@@ -6414,7 +6414,7 @@ fn live_deploy_apply_orchestrate(
 // order, which is LC_ALL=C sort). A single differing file refuses with step "readback", and the
 // receipt -- the completeness marker, written last -- is then NOT written. installed_digest is the
 // sha256 of the sorted `<hex>  <relative path>` lines, byte-for-byte what the retired shell receipt
-// recorded, so gunbc.auth.approval_broker_cutover observe_broker_tree_receipt reads it unchanged.
+// recorded, so gunbc.live_deploy.release_locus observe_release_tree_receipt reads it unchanged.
 //
 // source_root must be reachable from the transport (the install reads it on the host that runs it):
 // over SshShell a source_root absent on the host refuses at the first file install, never installs

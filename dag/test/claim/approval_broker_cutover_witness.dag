@@ -30,35 +30,8 @@ import gunbc.auth.approval_broker_demand {
   PeakOfIncarnationExercising, broker_demand_from_incarnations, broker_demand_observed_max,
   broker_demand_phases, broker_demand_phase_label,
 }
-import gunbc.auth.approval_broker_cutover {
-  ApprovalBrokerCutoverStage,
-  DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes,
-  ApprovalBrokerCutoverEvidence,
-  DarkDeploymentStanding, DarkUnitNotStarted, DarkUnitListening,
-  ReleaseReadback, ReleaseNotReadBack, ReleaseReadBack,
-  release_readback_from_read,
-  BrokerDemandReading, DemandUnmeasured, DemandMeasured,
-  FrontDoorStanding, FrontDoorPointsAtRoadmap, FrontDoorPointsAtBroker,
-  RouteClassProbe, RouteClassUnprobed, RouteClassRefused, RouteClassAnswered,
-  CutoverAdmission, StageAdmitted, StageRefused,
-  CutoverRefusal, DarkDeploymentNotListening, DarkDeploymentOnUnexpectedPort, ReleaseUnreadable,
-  DemandNotMeasured, FrontDoorStillAtRoadmap, RouteClassNotProbed, RouteClassProbeRefused,
-  RouteClassAnsweredByNoBroker, RouteClassAnsweredByWrongFold,
-  approval_broker_cutover_admission,
-  approval_broker_cutover_stage_discharged,
-  dark_install_release_discharged, dark_install_evidence,
-  BrokerTreeReceiptRead, TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved,
-  observe_broker_tree_receipt, TreeReceiptNotObserved, TreeIsNotTheCandidate,
-  DarkUnitNotStarted,
-  approval_broker_cutover_complete,
-  ApprovalRouteOwnership,
-  ApprovalPathsRoutedToRoadmap, ApprovalPathsRoutedToBroker, ApprovalPathsOwnedByBroker,
-  approval_route_ownership, approval_route_ownership_for, roadmap_still_mounts_approval_routes,
-  approval_front_door_mounts_installed, roadmap_is_routed_for_approvals, broker_is_routed_for_approvals,
-  approval_broker_front_door_enable_argv,
-  approval_broker_cutover_stages,
-  approval_broker_front_door_enable_argv,
-}
+import gunbc.auth.approval_broker_cutover { ApprovalBrokerCutoverStage, DeployDark, ProveRelease, MeasureDemand, RepointFrontDoor, ProbeRouteClasses, RetireRoadmapRoutes, ApprovalBrokerCutoverEvidence, DarkDeploymentStanding, DarkUnitNotStarted, DarkUnitListening, ReleaseReadback, ReleaseNotReadBack, ReleaseReadBack, release_readback_from_read, BrokerDemandReading, DemandUnmeasured, DemandMeasured, FrontDoorStanding, FrontDoorPointsAtRoadmap, FrontDoorPointsAtBroker, RouteClassProbe, RouteClassUnprobed, RouteClassRefused, RouteClassAnswered, CutoverAdmission, StageAdmitted, StageRefused, CutoverRefusal, DarkDeploymentNotListening, DarkDeploymentOnUnexpectedPort, ReleaseUnreadable, DemandNotMeasured, FrontDoorStillAtRoadmap, RouteClassNotProbed, RouteClassProbeRefused, RouteClassAnsweredByNoBroker, RouteClassAnsweredByWrongFold, approval_broker_cutover_admission, approval_broker_cutover_stage_discharged, dark_install_release_discharged, dark_install_evidence, TreeReceiptNotObserved, TreeIsNotTheCandidate, DarkUnitNotStarted, approval_broker_cutover_complete, ApprovalRouteOwnership, ApprovalPathsRoutedToRoadmap, ApprovalPathsRoutedToBroker, ApprovalPathsOwnedByBroker, approval_route_ownership, approval_route_ownership_for, roadmap_still_mounts_approval_routes, approval_front_door_mounts_installed, roadmap_is_routed_for_approvals, broker_is_routed_for_approvals, approval_broker_front_door_enable_argv, approval_broker_cutover_stages, approval_broker_front_door_enable_argv }
+import gunbc.live_deploy.release_locus { ReleaseTreeReceiptRead, TreeReceiptUnreadable, TreeReceiptMalformed, TreeReceiptObserved, observe_release_tree_receipt }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -826,7 +799,7 @@ test fn a_broker_running_this_candidate_discharges_the_readback() -> Bool {
 }
 
 // THE RECEIPT FIXTURE IS BUILT BY THE REAL READER, not asserted as a TreeReceiptObserved literal.
-// If it were minted directly, observe_broker_tree_receipt could refuse every real receipt and every
+// If it were minted directly, observe_release_tree_receipt could refuse every real receipt and every
 // claim below would stay green -- which is precisely the shape review 68965 caught: a receipt
 // written, never read, and a witness that only checked the WRITE SITE mentioned its path.
 data cutover_fixture_receipt_body: String = join([
@@ -834,8 +807,8 @@ data cutover_fixture_receipt_body: String = join([
   "installed_digest=3f786850e387550fdab836ed7e6dc881de23001b\n",
 ], "")
 
-fn fixture_tree_receipt() -> BrokerTreeReceiptRead {
-  observe_broker_tree_receipt(success: true, body: cutover_fixture_receipt_body, error: "no read error" as NonEmptyStr)
+fn fixture_tree_receipt() -> ReleaseTreeReceiptRead {
+  observe_release_tree_receipt(success: true, body: cutover_fixture_receipt_body, error: "no read error" as NonEmptyStr)
 }
 
 // ── A STALE TREE ANSWERS /livez PERFECTLY ───────────────────────────────────────────────────
@@ -845,7 +818,7 @@ fn fixture_tree_receipt() -> BrokerTreeReceiptRead {
 // bytes on disk are from an earlier deploy. Every release-side check passes; only the receipt
 // separates them.
 test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
-  let stale = observe_broker_tree_receipt(
+  let stale = observe_release_tree_receipt(
     success: true,
     body: join(["candidate_revision=", cutover_other_release as String, "\ninstalled_digest=aaaa\n"], ""),
     error: "no read error" as NonEmptyStr,
@@ -869,7 +842,7 @@ test fn a_stale_tree_refuses_even_when_the_liveness_read_is_correct() -> Bool {
 // tree install did not finish -- the unit may be pointed at a directory nothing populated. Folding
 // this into "release not established" would send the operator to the wrong layer.
 test fn an_absent_tree_receipt_refuses_rather_than_being_skipped() -> Bool {
-  let absent = observe_broker_tree_receipt(
+  let absent = observe_release_tree_receipt(
     success: false, body: "", error: "no such file" as NonEmptyStr,
   )
   match dark_install_release_discharged(

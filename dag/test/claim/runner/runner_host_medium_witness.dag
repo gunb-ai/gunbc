@@ -242,8 +242,8 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
-      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: "https://mirror.invalid/runner.tar.gz", digest: a.digest })
-      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: actions_runner_release_2_337_0.digest_x86_64 })
+      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: SeedArtifactFetchedFrom { url: "https://mirror.invalid/runner.tar.gz" }, digest: a.digest })
+      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: actions_runner_release_2_337_0.digest_x86_64 })
       let key = seeded_install_media_build_key(input: input) as String
       key == (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: moved)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: other)) as String)
@@ -271,7 +271,7 @@ fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCl
 }
 
 fn artifact_named(n: String) -> NoCloudSeedArtifact {
-  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", digest: sha256_digest(hex: supplied_digest) }
+  NoCloudSeedArtifact { name: n as NonEmptyStr, source: SeedArtifactFetchedFrom { url: "https://example.invalid/x" }, digest: sha256_digest(hex: supplied_digest) }
 }
 
 test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
@@ -355,7 +355,7 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
   match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let hex = actions_runner_release_2_337_0.digest_aarch64.hex
-      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: sha512_digest(hex: hex) })
+      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: sha512_digest(hex: hex) })
       (seeded_install_media_build_key(input: input) as String) != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: as_512)) as String)
         && seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha256_digest(hex: hex))
         && !seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha512_digest(hex: hex))

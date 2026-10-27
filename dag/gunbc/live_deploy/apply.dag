@@ -123,10 +123,9 @@ import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, 
 import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
 import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
 import gunbc.live_deploy.member_identity { EffectsDerived, EffectsRefused, decision_label }
-import gunbc.auth.approval_broker_cutover {
-  CutoverAdmission, StageAdmitted, StageRefused,
-  dark_install_release_discharged, cutover_refusal_reason,
-  BrokerTreeReceiptRead, observe_broker_tree_receipt,
+import gunbc.auth.approval_broker_cutover { CutoverAdmission, StageAdmitted, StageRefused, dark_install_release_discharged, cutover_refusal_reason }
+import gunbc.live_deploy.release_locus {
+  ReleaseTreeReceiptRead, observe_release_tree_receipt, release_locus_tree_receipt_path, RevisionBoundAtEmission, ReleaseRevisionBinding,
 }
 import gunbc.live_deploy.readiness {
   live_deploy_poll_until_service_ready_for_deploy, live_deploy_healthz_get_for_port, running_release_unidentified_detail,
@@ -144,11 +143,6 @@ import gunbc.live_deploy.service_ready {
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
 import gunbc.live_deploy.emit {
   microvm_controller_vmm_receipt_path, device_crypto_sidecar_binary_path,
-}
-import gunbc.live_deploy.release_locus {
-  release_locus_tree_receipt_path,
-  RevisionBoundAtEmission,
-  ReleaseRevisionBinding,
 }
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_root, microvm_controller_vmm_name, microvm_controller_jailer_name,
@@ -1017,7 +1011,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     revision: RevisionBoundAtEmission { revision: candidate.revision },
   )
   let receipt_read = Filesystem.Read(path: receipt_path)
-  let tree_receipt = observe_broker_tree_receipt(
+  let tree_receipt = observe_release_tree_receipt(
     success: receipt_read.success,
     body: receipt_read.content,
     error: join(["reading ", receipt_path, ": ", receipt_read.error], "") as NonEmptyStr,
@@ -1107,7 +1101,7 @@ fn microvm_controller_install_wet_with_access(spec: DeploymentSpec, access: Depl
 fn microvm_controller_install_readback_exit(candidate: CandidateRelease) -> ProcessExit {
   let revision = RevisionBoundAtEmission { revision: candidate.revision }
   let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root, revision: revision))
-  match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+  match observe_release_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
     TreeReceiptUnreadable { detail: d } =>
       exit_failure(reason: join(["microvm_controller_install: the locus tree receipt could not be read, so the copy did not complete: ", d as String], ""))
     TreeReceiptMalformed { detail: d } =>

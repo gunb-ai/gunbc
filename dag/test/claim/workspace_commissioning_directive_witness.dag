@@ -2,7 +2,7 @@ module test.claim.workspace_commissioning_directive_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.workspace_commissioning_runtime { workspace_commissioning_tree_receipt_matches }
-import gunbc.auth.approval_broker_cutover { TreeReceiptObserved, TreeReceiptUnreadable }
+import gunbc.live_deploy.release_locus { TreeReceiptObserved, TreeReceiptUnreadable }
 import test.claim.workspace_commissioning_transaction_witness { transaction_fixture_provenance }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared, WorkspaceCommissioningCommitted }
 import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }

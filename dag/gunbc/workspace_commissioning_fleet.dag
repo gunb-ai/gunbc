@@ -14,8 +14,9 @@ import gunbc.runner.runner_slot_desired { CpuQuotaResolved, SlotCpuQuotaUnbounde
 import gunbc.runner.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
 import gunbc.runner.runner_microvm_slot_controller { bind_slot_host, resolve_network_subject, NetworkSubjectResolved, NetworkSubjectRefused, refusal_text }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root, microvm_controller_gunbc_binary, microvm_slot_unit_instance_name }
-import gunbc.live_deploy.release_locus { release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission }
-import gunbc.auth.approval_broker_cutover { observe_broker_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable }
+import gunbc.live_deploy.release_locus {
+  release_locus_dir, release_locus_tree_receipt_path, RevisionBoundAtEmission, observe_release_tree_receipt, TreeReceiptObserved, TreeReceiptMalformed, TreeReceiptUnreadable,
+}
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningRecordAbsent, WorkspaceCommissioningRecordRead, WorkspaceCommissioningCommitted, WorkspaceCommissioningPrepared, WorkspaceCommissioningRecordUnreadable }
 import gunbc.workspace_commissioning_runtime { workspace_commissioning_runtime_refusal }
@@ -87,7 +88,7 @@ fn workspace_commissioning_candidate_slot(slot: RunnerSlotIdentity, revision: Co
     HostKernelDependencyPlanned { plan } => {
       let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root,
         revision: RevisionBoundAtEmission { revision: revision }))
-      match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+      match observe_release_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
         TreeReceiptObserved { revision: actual, installed_digest: _ } => if actual == revision {
           WorkspaceCommissioningFleetDependencyObserved { plan: plan }
         } else { WorkspaceCommissioningFleetRefused { reason: "installed tree revision differs from dependency plan revision" } }
@@ -106,7 +107,7 @@ fn workspace_commissioning_capable_candidate_slot(slot: RunnerSlotIdentity, revi
         WorkspaceInitialSanitationReadback { observation } => {
           let tree = Filesystem.Read(path: release_locus_tree_receipt_path(root: microvm_controller_root,
             revision: RevisionBoundAtEmission { revision: revision }))
-          match observe_broker_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
+          match observe_release_tree_receipt(success: tree.success, body: tree.content, error: tree.error as NonEmptyStr) {
             TreeReceiptObserved { revision: actual, installed_digest } => if (actual as String) != (revision as String) {
               WorkspaceCommissioningFleetRefused { reason: "installed tree revision differs from commissioning revision" }
             } else { match sha256sum_file_digest_via_shell(path: microvm_controller_gunbc_binary(release_dir: installed) as NonEmptyStr) {

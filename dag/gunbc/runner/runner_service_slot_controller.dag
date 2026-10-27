@@ -55,6 +55,9 @@ import gunbc.runner.runner_jit_mint_binding {
 }
 import gunbc.runner.runner_microvm_slot_unit { microvm_locus_execstart }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
+import gunbc.live_deploy.release_locus { ReleaseTreeReceiptRead, TreeReceiptObserved, TreeReceiptUnreadable, TreeReceiptMalformed, observe_release_tree_receipt }
 
 // THE HOST-UNIT SERVICE SLOT'S MAINPID: one mint -> deliver -> run one job -> deregister pass, the
 // host-unit binding of the rule gunbc.runner.runner_jit_mint_binding shares with the microVM attempt.
@@ -627,6 +630,44 @@ fn service_slot_unit_standing() -> ServiceSlotUnitStanding
   }
 }
 
+// THE BAKED RELEASE MUST BE THE ACCEPTED ONE (gunbc.plans.mtcollins1_ci_service_legs F1; operator decision A, condition
+// 2). The unit runs from the release the image baked, so its WorkingDirectory is that release locus and the locus's own
+// tree receipt (gunbc.live_deploy.release_locus observe_release_tree_receipt) says which revision was baked. The start mode
+// puts the revision gunbc.fleet.fleet_revision_acceptance accepted into the unit's environment. A pass is admitted only
+// when the two are the same revision: an image baked at another revision, an unreadable or malformed receipt, or no
+// accepted revision at all refuses before anything is minted. The stop does not take this standing: deregistering this
+// unit's own registration is correct whatever release is baked.
+data service_slot_accepted_revision_env_name: String = "GUNBC_SERVICE_SLOT_ACCEPTED_REVISION"
+
+type ServiceSlotReleaseStanding
+  = ServiceSlotReleaseAccepted { revision: NonEmptyStr }
+  | ServiceSlotReleaseRefused { cause: String }
+
+fn service_slot_release_admission(receipt: ReleaseTreeReceiptRead, accepted: String?) -> ServiceSlotReleaseStanding {
+  match accepted {
+    Absent => ServiceSlotReleaseRefused { cause: join([service_slot_accepted_revision_env_name, " is not set, so no accepted revision is known to compare the baked release against"], "") }
+    Present { value: a } =>
+      match receipt {
+        TreeReceiptUnreadable { detail: d } => ServiceSlotReleaseRefused { cause: concat("the baked release's tree receipt is unreadable: ", d as String) }
+        TreeReceiptMalformed { detail: d } => ServiceSlotReleaseRefused { cause: concat("the baked release's tree receipt is malformed: ", d as String) }
+        TreeReceiptObserved { revision: r, installed_digest: _ } =>
+          if (r as String) == a {
+            ServiceSlotReleaseAccepted { revision: r }
+          } else {
+            ServiceSlotReleaseRefused { cause: join(["the baked release is revision ", r as String, " but the accepted revision is ", a], "") }
+          }
+      }
+  }
+}
+
+fn service_slot_release_read() -> ServiceSlotReleaseStanding {
+  let read = Filesystem.Read(path: release_locus_tree_receipt_name)
+  service_slot_release_admission(
+    receipt: observe_release_tree_receipt(success: read.success, body: read.content, error: concat("the tree receipt in the unit's working directory: ", read.error) as NonEmptyStr),
+    accepted: service_slot_env(name: service_slot_accepted_revision_env_name),
+  )
+}
+
 // EVERY REFUSAL BEFORE service_slot_pass MINTS NOTHING, so there is nothing to deregister; after it, every
 // arm (never launched, exited clean, exited nonzero) reaches the deregistration.
 fn service_slot_controller_main() -> ProcessExit
@@ -635,6 +676,9 @@ fn service_slot_controller_main() -> ProcessExit
   match service_slot_unit_standing() {
     ServiceSlotUnitRefused { reason: r } => exit_failure(reason: r)
     ServiceSlotUnitReady { unit: unit, identity: identity, admission: admission, key: key } =>
+      match service_slot_release_read() {
+        ServiceSlotReleaseRefused { cause: c } => exit_failure(reason: join(["service slot ", unit, ": ", c], ""))
+        ServiceSlotReleaseAccepted { revision: _ } =>
       match service_slot_isolate_listener(identity: identity, row: host_credential_custody_row(c: ServiceSlotAppKey)) {
         ServiceSlotListenerCouldReadKey { user: u } => exit_failure(reason: join(["service slot ", unit, ": the listener user ", u as String, " could read the App key"], ""))
         ServiceSlotListenerUserUnspecified { host: h } => exit_failure(reason: join(["service slot ", unit, ": no runner user is declared for ", h as String], ""))
@@ -644,6 +688,7 @@ fn service_slot_controller_main() -> ProcessExit
             ServiceSlotPassIdRefused { cause: c } => exit_failure(reason: join(["service slot ", unit, ": ", c as String], ""))
             ServiceSlotPassIdRead { pass: pass } => service_slot_pass_exit(pass: service_slot_pass(admission: admission, key: key, isolated: isolated, pass: pass))
           }
+      }
       }
   }
 }
