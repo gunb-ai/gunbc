@@ -7,6 +7,7 @@ import std.host_text { chars }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_of_id }
 
 // ipmitool's PRINTED REPORTS, READ BACK: `sel elist` rows, and two configuration reads, `lan print <channel>` (IPMI v2.0 LAN configuration
 // parameters, of which this module reads 23, the RMCP+ cipher suite entries, and 24, the per-entry
@@ -124,9 +125,22 @@ fn cipher_max_admits_admin(max: IpmiCipherPrivilegeMax) -> Bool {
   }
 }
 
+// A listed suite ID read as the spec's suite (extdeps.bmc.ipmi ipmi_cipher_suite_table), or kept as the ID the
+// controller printed when that table does not list it: an unknown ID is carried, never dropped and never guessed.
+type IpmiCipherSuiteReading
+  = IpmiCipherSuiteListed { suite: IpmiCipherSuite }
+  | IpmiCipherSuiteUnlisted { id: Int }
+
+fn ipmi_cipher_suite_reading_of_id(id: Int) -> IpmiCipherSuiteReading {
+  match ipmi_cipher_suite_of_id(id: id) {
+    Absent => IpmiCipherSuiteUnlisted { id: id }
+    Present { value: s } => IpmiCipherSuiteListed { suite: s }
+  }
+}
+
 // The suites an ADMINISTRATOR session may open with, in the controller's listed order.
-fn ipmi_cipher_suites_admitting_admin(pairs: List<IpmiCipherSuitePrivilege>) -> List<Int> {
-  map(filter(pairs, p => cipher_max_admits_admin(max: p.max)), p => p.suite)
+fn ipmi_cipher_suites_admitting_admin(pairs: List<IpmiCipherSuitePrivilege>) -> List<IpmiCipherSuiteReading> {
+  map(filter(pairs, p => cipher_max_admits_admin(max: p.max)), p => ipmi_cipher_suite_reading_of_id(id: p.suite))
 }
 
 // ── SOL CONFIGURATION (`sol info`). The fields a console consumer needs before activating: whether SOL is
