@@ -11,13 +11,18 @@ import v2.compiler.source_root_eval {
   NativeInferCensusInferred,
   NativeInferCensusOutcome,
   NativeInferCensusResolveRefused,
+  NativeCensusFirstRefusal,
   NativeTestContext,
+  census_file_refusal_at_text,
+  native_census_infer_binding_lines,
+  native_census_infer_first_refusal,
   native_census_module_inference,
   native_census_module_resolution,
   native_census_residual_rows,
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import v2.compiler.dependency_demand_census { demand_census_unbound_site_text }
 import v2.compiler.native_test_vocabulary {
   FileRefusalAtLine,
   FileRefusalAtOtherFile,
@@ -32,8 +37,12 @@ import extdeps.communication.medium { Lossless, Medium }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Symbol }
-import v2.std.text { String }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.text { String, string_split }
+import std.coercion { unicode_scalar_unfold }
+import std.types { Char }
+import std.optional { Absent, Optional, Present }
+import std.algebra { FreeSemigroup, list_at_optional, for_all }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -49,6 +58,18 @@ data infer_miss_source: String = "module v2.cl.infer_miss\n\nimport std.types { 
 data collide_a_source: String = "module v2.cl.collide_a\n\nfn collide_a_go() -> Int {\n  1\n"
 
 data collide_b_source: String = "module v2.cl.collide_b\n\nimport std.types { Int }\n\n\n\n\n\nfn collide_b_go() -> Int {\n  collide_b_absent\n}\n"
+
+// THE ACCEPTED CONTROL FOR THE FIRST-REFUSAL ROW: a module the walk takes whole (it resolves AND
+// infers), so its census row must carry NO first refusal. Appended LAST in planted_ingest so the
+// occurrence-id collision the collide claims depend on -- collide_a first, collide_b re-minting --
+// is undisturbed.
+data accepted_source: String = "module v2.cl.accepted\n\nimport std.types { Int }\n\nfn cl_accepted_go() -> Int {\n  7\n}\n"
+
+// THE FIRST-REFUSAL SPECIMEN: TWO unbound names, deliberately in two declarations so the walk meets
+// one and then the other. `cl_first_unbound_a` is the one the depth-first walk meets FIRST (line 6);
+// `cl_first_unbound_b` follows it at line 10. A row that printed the later refusal, or a reason
+// gathered by a second traversal, passes a one-unbound fixture and fails here.
+data two_unbound_source: String = "module v2.cl.two_unbound\n\nimport std.types { Int }\n\nfn cl_two_unbound_first() -> Int {\n  cl_first_unbound_a\n}\n\nfn cl_two_unbound_second() -> Int {\n  cl_first_unbound_b\n}\n"
 
 fn planted_read(source: String, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -80,8 +101,17 @@ type LocatedCensus
       resolve_at: FileRefusalAt
       infer_at: FileRefusalAt
       collide_b_at: FileRefusalAt
+      two_unbound_first_refusal: Optional<NativeCensusFirstRefusal>
+      two_unbound_unreached_row: String
+      accepted_first_refusal: Optional<NativeCensusFirstRefusal>
+      accepted_inferred: Bool
+      accepted_rows: List<String>
     }
 
+// THE ROW'S OWN ROUTE. [native-census-infer] prints one row per module of a fold of
+// native_census_module_inference, so a first refusal and its binding row are read off THAT outcome --
+// a NativeInferCensusStep -- and never off the resolution step the residual rows above use. The fold
+// keeps the real census's shape: each module continues from the previous step's context.
 fn located_census() -> LocatedCensus {
   match native_test_context_from_ingest(ingest: planted_ingest) {
     Rejected { diagnostics: _ } => LocatedCensusContextRefused
@@ -91,13 +121,27 @@ fn located_census() -> LocatedCensus {
         let resolve_entry = NativeCensusModule { module: "v2.cl.resolve_miss", path: ^cl_resolve_miss_cu }
         let infer_entry = NativeCensusModule { module: "v2.cl.infer_miss", path: ^cl_infer_miss_cu }
         let collide_b_entry = NativeCensusModule { module: "v2.cl.collide_b", path: ^cl_collide_b_cu }
+        let two_unbound_entry = NativeCensusModule { module: "v2.cl.two_unbound", path: ^cl_two_unbound_cu }
+        let accepted_entry = NativeCensusModule { module: "v2.cl.accepted", path: ^cl_accepted_cu }
         let resolve_step = native_census_module_resolution(context: context, refusal_index: refusal_index, entry: resolve_entry)
         let infer_step = native_census_module_inference(context: resolve_step.context, refusal_index: refusal_index, entry: infer_entry)
         let collide_step = native_census_module_resolution(context: infer_step.context, refusal_index: refusal_index, entry: collide_b_entry)
+        let two_unbound_step = native_census_module_inference(context: collide_step.context, refusal_index: refusal_index, entry: two_unbound_entry)
+        let accepted_step = native_census_module_inference(context: two_unbound_step.context, refusal_index: refusal_index, entry: accepted_entry)
         LocatedCensusReported {
           resolve_at: residual_fatal_at(context: collide_step.context, entry: resolve_entry, outcome: resolve_step.outcome),
           infer_at: infer_fatal_at(context: collide_step.context, entry: infer_entry, outcome: infer_step.outcome),
-          collide_b_at: residual_fatal_at(context: collide_step.context, entry: collide_b_entry, outcome: collide_step.outcome)
+          collide_b_at: residual_fatal_at(context: collide_step.context, entry: collide_b_entry, outcome: collide_step.outcome),
+          two_unbound_first_refusal: native_census_infer_first_refusal(positions: two_unbound_step.context.positions, entry: two_unbound_entry, outcome: two_unbound_step.outcome),
+          two_unbound_unreached_row: census_first_binding_unreached(lines: native_census_infer_binding_lines(positions: two_unbound_step.context.positions, entry: two_unbound_entry, outcome: two_unbound_step.outcome)),
+          accepted_first_refusal: native_census_infer_first_refusal(positions: accepted_step.context.positions, entry: accepted_entry, outcome: accepted_step.outcome),
+          accepted_inferred: match accepted_step.outcome {
+            NativeInferCensusInferred { resolved: _, inferred: _, frontier: _, loci: _ } => true
+            NativeInferCensusFileRefused => false
+            NativeInferCensusResolveRefused { first: _, rest: _, observation: _, partial: _, loci: _, unbound: _ } => false
+            NativeInferCensusInferRefused { resolved: _, chain: _, loci: _ } => false
+          },
+          accepted_rows: native_census_infer_binding_lines(positions: accepted_step.context.positions, entry: accepted_entry, outcome: accepted_step.outcome)
         }
       }
   }
@@ -142,6 +186,55 @@ fn at_is_other_file(at: FileRefusalAt, file: Symbol) -> Bool {
   }
 }
 
+// THE ROW AS A CONSUMER READS IT. The producer writes binding_unreached rows tab-separated, with
+// the first refusal in the two TRAILING fields the ambient-name-census reader parses at indices 3
+// and 4; the split below is that read, done in the claim so the claim states the row's SHAPE and
+// not only its fields. A row of the old four-field shape simply has no index 3 and reads as absent.
+data census_row_field_delimiter: Char = 9
+
+fn census_row_fields(row: String) -> List<String> {
+  string_split(source: unicode_scalar_unfold(s: row), delimiter: FreeSemigroup { head: census_row_field_delimiter, tail: Empty })
+}
+
+fn census_row_field(row: String, index: Int) -> Optional<String> {
+  list_at_optional(xs: census_row_fields(row: row), index: index)
+}
+
+// THE FIRST ROW OF THAT PREFIX, which is what one module's one refusal mints.
+fn census_first_binding_unreached(lines: List<String>) -> String {
+  match list_at_optional(xs: lines, index: 0) {
+    Present { value: row } => if census_row_is_unreached(row: row) { row } else { "" }
+    Absent => ""
+  }
+}
+
+fn census_row_is_unreached(row: String) -> Bool {
+  match census_row_field(row: row, index: 0) {
+    Present { value: prefix } => prefix == "binding_unreached"
+    Absent => false
+  }
+}
+
+fn census_row_field_eq(row: String, index: Int, expected: String) -> Bool {
+  match census_row_field(row: row, index: index) {
+    Present { value: field } => field == expected
+    Absent => false
+  }
+}
+
+// THE LOCUS HALF OF THE ROW, re-derived in the claim from the carrier's OWN fields with the SAME two
+// renderers the producer prints through (census_file_refusal_at_text for the position,
+// demand_census_unbound_site_text for the reference the resolver located). The claim compares the
+// printed row against that re-derivation, so a row whose locus disagrees with the carrier it claims
+// to print -- or which was located by a different derivation -- fails here.
+fn census_first_refusal_row_cause(refusal: NativeCensusFirstRefusal) -> String {
+  symbol_lexeme(sym: refusal.cause)
+}
+
+fn census_first_refusal_row_locus(refusal: NativeCensusFirstRefusal) -> String {
+  concat(demand_census_unbound_site_text(u: refusal.unbound), concat(" ", census_file_refusal_at_text(at: refusal.at)))
+}
+
 // THE ONE REAL-ROUTE PRODUCER. Assemble of the four planted files plus resolve and infer of the
 // refusing members. Tests below read fields; they do not re-enter the front end.
 fn located_refusal_census() -> LocatedCensus { located_census() }
@@ -169,5 +262,62 @@ test fn colliding_occurrence_ids_do_not_borrow_the_other_file_position_holds() -
     LocatedCensusContextRefused => false
     LocatedCensusReported { resolve_at: _, infer_at: _, collide_b_at: at } =>
       at_is_line(at: at, line: 10) && !at_is_other_file(at: at, file: ^cl_collide_a_cu)
+  }
+}
+
+// THE RED SPECIMEN: a module that refuses at RESOLVE carries, in its own census row, the FIRST
+// refusal -- the reason symbol and the located site. The cause is not a stamp the row invents: it is
+// the fatal reason of the chain the walk stopped on, read through the same authority the
+// dependency-demand census reads (v2.std.diagnostic diagnostics_fatal_reason, beside
+// native_demand_census_unbound_standing), and the locus is the same occurrence located in the position
+// table the walk itself built. `cl_first_unbound_a` is the first unbound name of the
+// depth-first walk (line 6); the fixture carries a SECOND one (line 10) so a row produced by a later
+// or differently-gathered refusal -- or by a second traversal -- fails here while a one-unbound
+// fixture would pass it.
+test fn census_resolve_refused_row_carries_its_first_refusal_holds() -> Bool {
+  match located_refusal_census() {
+    LocatedCensusContextRefused => false
+    LocatedCensusReported {
+      resolve_at: _, infer_at: _, collide_b_at: _,
+      two_unbound_first_refusal: refusal, two_unbound_unreached_row: row,
+      accepted_first_refusal: _, accepted_inferred: _, accepted_unreached_row: _
+    } =>
+      match refusal {
+        Absent => false
+        Present { value: r } =>
+          r.module == "v2.cl.two_unbound"
+            && symbol_lexeme(sym: r.cause) == "resolve_reason_unbound_symbol"
+            && (match r.unbound {
+              Present { value: u } => match u {
+                UnboundNamed { name: n } => symbol_lexeme(sym: n) == "cl_first_unbound_a"
+                UnboundShaped { kind: _, reference: _ } => false
+              }
+              Absent => false
+            })
+            && at_is_line(at: r.at, line: 6)
+            && census_row_is_unreached(row: row)
+            && census_row_field_eq(row: row, index: 1, expected: "v2.cl.two_unbound")
+            && census_row_field_eq(row: row, index: 2, expected: "resolve")
+            && census_row_field_eq(row: row, index: 3, expected: census_first_refusal_row_cause(refusal: r))
+            && census_row_field_eq(row: row, index: 4, expected: census_first_refusal_row_locus(refusal: r))
+      }
+  }
+}
+
+// THE ACCEPTED CONTROL: a module the row accepts carries NO first refusal, and its row says so by
+// keeping the prefix's width without claiming a cause. This is the half that keeps the field honest --
+// a producer that printed a refusal for every module, or that defaulted the locus to something
+// plausible, passes the RED specimen and fails here.
+test fn census_accepted_row_carries_no_first_refusal_holds() -> Bool {
+  match located_refusal_census() {
+    LocatedCensusContextRefused => false
+    LocatedCensusReported {
+      resolve_at: _, infer_at: _, collide_b_at: _,
+      two_unbound_first_refusal: _, two_unbound_unreached_row: _,
+      accepted_first_refusal: refusal, accepted_inferred: inferred, accepted_rows: rows
+    } => inferred && match refusal {
+      Absent => for_all(xs: rows, predicate: fn(row) { !census_row_is_unreached(row: row) })
+      Present { value: _ } => false
+    }
   }
 }
