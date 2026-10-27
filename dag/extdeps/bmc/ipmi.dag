@@ -95,7 +95,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // SelListAuthenticated IS SelList WITH A CREDENTIAL, FOR THE SAME REASON SdrTypeList IS SdrList
 // WITH ONE: every controller in this fleet refuses an unauthenticated session, and changing what
 // SelList means would silently change its existing readers. It binds stderr and exit_code because
-// its consumer (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) records WHY a read failed,
+// its consumer (gunbc.machine_intake.megarac_boot_diagnostic_bundle) records WHY a read failed,
 // and it runs under coreutils `timeout` (extdeps.tools.gnu_coreutils timeout_command's argv shape,
 // --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
 // answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.

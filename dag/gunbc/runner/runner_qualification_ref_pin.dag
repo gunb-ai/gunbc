@@ -225,6 +225,7 @@ fn qualification_ref_pin_of(
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "pin_ok"),
   ]
 {
   match readback {
