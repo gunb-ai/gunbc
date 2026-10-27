@@ -1,0 +1,23 @@
+Device ID                 : 32
+Device Revision           : 1
+Firmware Revision         : 1.52
+IPMI Version              : 2.0
+Manufacturer ID           : 10876
+Manufacturer Name         : Super Micro Computer Inc.
+Product ID                : 6659 (0x1a03)
+Product Name              : H11SSL-i/c/nc
+Device Available          : yes
+Provides Device SDRs      : no
+Additional Device Support :
+    Sensor Device
+    SDR Repository Device
+    SEL Device
+    FRU Inventory Device
+    IPMB Event Receiver
+    IPMB Event Generator
+    Chassis Device
+Aux Firmware Rev Info     : 
+    0x25
+    0x01
+    0x00
+    0x00
