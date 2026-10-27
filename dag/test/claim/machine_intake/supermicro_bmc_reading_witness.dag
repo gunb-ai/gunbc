@@ -8,7 +8,8 @@ import extdeps.firmware.types { firmware_semantic_version }
 import extdeps.bmc.endpoint { SupermicroAten }
 import extdeps.bmc.types { BootOverrideDisabled, BootOverrideModeUefi, BootTargetBiosSetup, BootTargetPxe }
 import extdeps.bmc.ipmi_sdr { SdrLineDecoded, SdrLineUnstructured }
-import extdeps.bmc.ipmitool_print_read { ipmi_cipher_suites_admitting_admin, ipmitool_sel_elist_rows, ipmi_cipher_suite_privileges_of_lan_print }
+import extdeps.bmc.ipmi { RakpHmacSha1, HmacSha1_96, AesCbc128 }
+import extdeps.bmc.ipmitool_print_read { IpmiCipherSuiteReading, IpmiCipherSuiteListed, IpmiCipherSuiteUnlisted, ipmi_cipher_suites_admitting_admin, ipmitool_sel_elist_rows, ipmi_cipher_suite_privileges_of_lan_print }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_flags_reading_of_bootparam_get, ipmi_boot_selector_reading, IpmiSelectorModeled, IpmiSelectorUnmodeled, IpmiBootPxe }
 import extdeps.bmc.redfish_memory_inventory { redfish_memory_member_of }
 import extdeps.bmc.supermicro { SupermicroLicenceDcms, SupermicroLicenceSum, SupermicroLicenceOob, SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable }
@@ -201,8 +202,18 @@ fn unit1_sol_is_enabled_and_only_cipher_suite_3_admits_admin(r: SupermicroH11ssl
       }
         && match r.cipher_suites {
           Absent => false
-          Present { value: ps } => ps.length() == 2 && ipmi_cipher_suites_admitting_admin(pairs: ps) == [3]
+          Present { value: ps } => ps.length() == 2 && only_suite_3_as_the_spec_assigns_it(admitting: ipmi_cipher_suites_admitting_admin(pairs: ps))
         }
+}
+
+// The one suite admitting an administrator is read as the spec's suite 3, RAKP-HMAC-SHA1 with HMAC-SHA1-96 integrity
+// and AES-CBC-128 confidentiality (extdeps.bmc.ipmi ipmi_cipher_suite_table), not as a bare number.
+fn only_suite_3_as_the_spec_assigns_it(admitting: List<IpmiCipherSuiteReading>) -> Bool {
+  admitting.length() == 1 && match admitting.first() {
+    Present { value: IpmiCipherSuiteListed { suite: s } } => s.id == 3 && s.authentication == RakpHmacSha1 && s.integrity == HmacSha1_96 && s.confidentiality == AesCbc128
+    Present { value: IpmiCipherSuiteUnlisted { id: _ } } => false
+    Absent => false
+  }
 }
 
 // THE TWO INHABITANCE CLAIMS: each unit's reading is produced ONCE from its committed captures through the
@@ -281,4 +292,14 @@ test fn a_valid_pxe_bootparam_reads_as_pxe_and_a_truncated_one_has_no_reading() 
       Absent => false
       Present { value: b } => ipmi_boot_selector_reading(selector: b.device_selector) == IpmiSelectorUnmodeled { selector: 6 }
     }
+}
+
+// RED (item 7): a suite ID the spec table does not list (here 255, outside IDs 0 to 17) is carried as the ID the
+// controller printed, never dropped from the admitting list and never read as a guessed suite.
+test fn an_unlisted_suite_id_is_carried_not_dropped() -> Bool {
+  let changed = join(split(s: capture(name: concat(unit1_ipmitool, "lan-print-1.txt")), delimiter: ": 3,17"), ": 255,17")
+  match ipmi_cipher_suite_privileges_of_lan_print(stdout: changed) {
+    Absent => false
+    Present { value: ps } => ipmi_cipher_suites_admitting_admin(pairs: ps) == [IpmiCipherSuiteUnlisted { id: 255 }]
+  }
 }
