@@ -52,7 +52,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceResolutionReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
   NativeCensusVerbProducer,
   SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
@@ -310,7 +310,7 @@ fn type_declaration_use_census_label() -> Label {
 // THE OCCURRENCE-BINDING CENSUS THE NAMESPACE-XL WAVES ARE DRIVEN FROM (operator ruling 2026-10-15:
 // every name the corpus uses is an ordinary declaration reached by import). One row per module-level
 // reference occurrence of `dag` + `src/v2`, read off resolve's one binding record
-// (v2.compiler.occurrence_binding_census) by the same native census-infer walk; the ambient rows are
+// (v2.compiler.occurrence_resolution_census) by the same native census-infer walk; the ambient rows are
 // the names a wave has left to move, grouped by spelling and table by the reader
 // (gunbc.instruments.ambient_name_census_reading), which also refuses when any module recorded one
 // occurrence twice. IT IS A RATCHET: exit 0 says no module is newly refused against the merge base, not that every
@@ -1319,7 +1319,7 @@ fn ambient_operation_disposition_census_binding() -> TargetBinding {
 }
 
 fn ambient_name_census_binding() -> TargetBinding {
-  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
+  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceResolutionReading } }
 }
 
 fn namespace_wave_binding_diff_binding() -> TargetBinding {
