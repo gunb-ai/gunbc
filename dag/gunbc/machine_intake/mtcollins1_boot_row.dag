@@ -42,6 +42,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnEvidence, mtcollins1_power_on_account, mtcollins1_power_on_account_text,
   mtcollins1_power_on_account_notes,
 }
+import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
 
 // ── THE RECEIPTS ─────────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ data mtcollins1_boot_row_value: MegaRacBootRow = MegaRacBootRow {
           kill_after: mtcollins1_boot_ipmi_kill_after,
           planned_reads: mtcollins1_boot_ipmi_read_count(),
         },
-        ipmi_cipher_suite: mtcollins1_boot_control_route.ipmi_cipher_suite,
+        ipmi_cipher_suite: bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route),
         redfish: MegaRacRedfishReadPolicy {
           read_deadline: mtcollins1_boot_redfish_read_deadline,
           read_budget: mtcollins1_boot_redfish_read_budget,

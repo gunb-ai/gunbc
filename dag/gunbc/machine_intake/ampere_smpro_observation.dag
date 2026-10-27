@@ -5,7 +5,7 @@ import std.algebra { trim }
 import std.measure { Second }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes }
 import extdeps.bmc.ipmi_master_write_read {
@@ -341,7 +341,7 @@ fn smpro_request_text(w: SmproRequestWire) -> NonEmptyStr {
   concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", w.read_count as String) as NonEmptyStr
 }
 
-fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second, cipher_suite: Int?) -> SmproProbeOutcome
+fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproProbeOutcome
 {
   match master_write_read_bus_byte(bus: bus) {
     Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the bus fields do not fit the request's byte 1" }
@@ -439,7 +439,7 @@ fn smpro_pass_sequenced(plan: SmproPlan, read: fn(SmproTarget, SmproRegister, In
   ]))
 }
 
-fn smpro_pass_probes(subject: SmproPassSubject, username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second, cipher_suite: Int?) -> SmproPassObservation
+fn smpro_pass_probes(subject: SmproPassSubject, username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproPassObservation
 {
   SmproPassObservation { subject: subject, outcomes: smpro_pass_sequenced(plan: smpro_pass_plan(site: subject.site), read: (t, reg, n) => smpro_pass_read(bmc_host: subject.endpoint.host, bus: subject.site.bus, username: username, password_file: password_file, target: t, reg: reg, sequence: n, deadline: deadline, kill_after: kill_after, cipher_suite: cipher_suite)) }
 }

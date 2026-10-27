@@ -205,10 +205,71 @@ fn ipmitool_sol_activate_refusal_text(refusal: IpmitoolSolActivateRefusal) -> St
 // ipmi_cipher_suites_admitting_admin), so this module holds NO default suite: each route supplies its own,
 // Absent renders no -C at all and the argv is exactly what it was before the option existed, and Present renders
 // "-C" and the suite. The input is required on every operation, so a call site cannot leave it to a default.
-fn ipmi_cipher_suite_argv(suite: Int?) -> List<String> {
+// THE CIPHER SUITE IDS, as the IPMI v2.0 specification assigns them (extdeps_intel_ipmi_spec_citation, its Cipher Suite
+// IDs table: Table 22-20 in the rev 1.1 numbering the operator cites). Each ID names one authentication algorithm
+// (RAKP), one integrity algorithm and one confidentiality algorithm, and the spec's ID is kept as the suite's id,
+// never renumbered. The rows are transcribed from ipmitool's implementation of that table
+// (github.com/ipmitool/ipmitool src/plugins/lanplus/lanplus.c, lanplus_get_requested_ciphers), whose comment
+// cites "table 22-19": the numbering differs between revisions of the spec, and the spec PDF could not be read as
+// text here to settle which. Only IDs 0 to 17 are transcribed, because that is what the read source confirms; the
+// spec's later rows and its OEM range are not, so an ID outside this table has no IpmiCipherSuite and a reader
+// carries it as unlisted rather than as a guessed row.
+type IpmiAuthenticationAlgorithm
+  = RakpNone
+  | RakpHmacSha1
+  | RakpHmacMd5
+  | RakpHmacSha256
+
+type IpmiIntegrityAlgorithm
+  = IntegrityNone
+  | HmacSha1_96
+  | HmacMd5_128
+  | Md5_128
+  | HmacSha256_128
+
+type IpmiConfidentialityAlgorithm
+  = ConfidentialityNone
+  | AesCbc128
+  | Xrc4_128
+  | Xrc4_40
+
+type IpmiCipherSuite sole_constructor {
+  id: Int
+  authentication: IpmiAuthenticationAlgorithm
+  integrity: IpmiIntegrityAlgorithm
+  confidentiality: IpmiConfidentialityAlgorithm
+}
+
+data ipmi_cipher_suite_table: List<IpmiCipherSuite> = [
+  IpmiCipherSuite { id: 0, authentication: RakpNone, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 1, authentication: RakpHmacSha1, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 2, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 3, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 4, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 5, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 6, authentication: RakpHmacMd5, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 7, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 8, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 9, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 10, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 11, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 12, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 13, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 14, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 15, authentication: RakpHmacSha256, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 16, authentication: RakpHmacSha256, integrity: HmacSha256_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 17, authentication: RakpHmacSha256, integrity: HmacSha256_128, confidentiality: AesCbc128 },
+]
+
+// The suite the spec assigns to an ID, or Absent for an ID this table does not list.
+fn ipmi_cipher_suite_of_id(id: Int) -> IpmiCipherSuite? {
+  first(filter(ipmi_cipher_suite_table, s => s.id == id))
+}
+
+fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
   match suite {
     Absent => []
-    Present { value: id } => ["-C", to_string(id)]
+    Present { value: s } => ["-C", to_string(s.id)]
   }
 }
 

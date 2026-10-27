@@ -14,6 +14,7 @@ import extdeps.board_authority {
 import std.optional { Present, Absent }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac { MegaRacImageRedirection }
+import extdeps.bmc.ipmi { IpmiCipherSuite }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbeReceipt }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -96,13 +97,19 @@ type BmcAccessProfileKey {
 // locators could only describe it by inventing them. One controller may expose
 // several routes at once; the host identity is the endpoint, separate from any
 // route.
+//
+// An IPMI lanplus route carries the cipher suite it is driven with (ipmitool -C, extdeps.bmc.ipmi
+// ipmi_cipher_suite_argv), chosen per unit from what its controller admits at ADMINISTRATOR
+// (extdeps.bmc.ipmitool_print_read ipmi_cipher_suites_admitting_admin), the way a MegaRAC REST route carries its
+// image-redirection setting. Absent means the route passes no -C and ipmitool uses its own default; there is no
+// default suite here, and no other route kind can carry one.
 type BmcAccessRoute
   = RedfishRoute {
       system_locator: NonEmptyStr
       chassis_locator: NonEmptyStr
       manager_locator: NonEmptyStr
     }
-  | IpmiLanplusRoute
+  | IpmiLanplusRoute { cipher_suite: IpmiCipherSuite? }
   | MegaRacRestRoute { image_redirection: MegaRacImageRedirection }
   | OpenBmcShellRoute
   | OpenBmcNbdWebsocketRoute { ws_path: NonEmptyStr }
@@ -165,16 +172,10 @@ type BmcObservedIdentity {
 // says the controller served boot control somehow; this says through what, so
 // a plan can name the route that was OBSERVED rather than the one the catalog
 // prefers (2026-08-30 re-review, boot-control ruling).
-//
-// ipmi_cipher_suite is the IPMI v2.0 lanplus cipher suite this route was driven with (ipmitool -C,
-// extdeps.bmc.ipmi ipmi_cipher_suite_argv), chosen per unit from what its controller admits at ADMINISTRATOR
-// (extdeps.bmc.ipmitool_print_read ipmi_cipher_suites_admitting_admin). Absent means the route passes no -C and
-// ipmitool uses its own default; there is no default suite here. It is read only on an IpmiLanplusRoute.
 type BmcBootControlRouteObservation {
   route: BmcAccessRoute
   raw_response: ContentHash
   observed_at: EpochMs
-  ipmi_cipher_suite: Int?
 }
 
 type BmcAccessObservation {
@@ -192,20 +193,26 @@ type BmcAccessObservation {
 // An observation is a receipt of an attempt; its absence is a state a solver
 // must see, so there is no default observation and no empty one standing in
 // for "not yet probed".
-// THE LANPLUS CIPHER SUITE A CONTROLLER'S IPMI CALLS USE: the observed IpmiLanplusRoute's own. A controller
-// with no observed lanplus route has no suite to supply, which is the same no -C its calls rendered before the
-// suite existed.
-fn bmc_observation_ipmi_cipher_suite(observation: BmcAccessObservation) -> Int? {
-  match filter(observation.boot_control_routes, r => match r.route {
-    IpmiLanplusRoute => true
-    RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => false
-    MegaRacRestRoute { image_redirection: _ } => false
-    OpenBmcShellRoute => false
-    OpenBmcNbdWebsocketRoute { ws_path: _ } => false
-  }).first() {
-    Absent => Absent
-    Present { value: r } => r.ipmi_cipher_suite
+// The cipher suite a route carries: a lanplus route's own, and none for any other kind.
+fn bmc_access_route_ipmi_cipher_suite(route: BmcAccessRoute) -> IpmiCipherSuite? {
+  match route {
+    IpmiLanplusRoute { cipher_suite: c } => c
+    RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => Absent
+    MegaRacRestRoute { image_redirection: _ } => Absent
+    OpenBmcShellRoute => Absent
+    OpenBmcNbdWebsocketRoute { ws_path: _ } => Absent
   }
+}
+
+// THE LANPLUS CIPHER SUITE A CONTROLLER'S IPMI CALLS USE: the first observed route that carries one. A controller
+// whose observed routes carry none has no suite to supply, which is the same no -C its calls rendered before the
+// suite existed.
+fn bmc_observation_ipmi_cipher_suite(observation: BmcAccessObservation) -> IpmiCipherSuite? {
+  let none_yet: IpmiCipherSuite? = Absent
+  fold(observation.boot_control_routes, init: none_yet, f: (acc, r) => match acc {
+    Present { value: _ } => acc
+    Absent => bmc_access_route_ipmi_cipher_suite(route: r.route)
+  })
 }
 
 type BmcAccessObservationStanding
@@ -337,7 +344,7 @@ fn bmc_profile_megarac_image_redirection(profile: BmcAccessProfile) -> MegaRacIm
     f: (acc, route) => match route {
       MegaRacRestRoute { image_redirection: r } => Present { value: r }
       RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
-      IpmiLanplusRoute => acc
+      IpmiLanplusRoute { cipher_suite: _ } => acc
       OpenBmcShellRoute => acc
       OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
     },
@@ -355,7 +362,7 @@ type BmcRouteBootControlCapability
 fn bmc_route_boot_control_capability(route: BmcAccessRoute) -> BmcRouteBootControlCapability {
   match route {
     RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => BootControlRealizedByRoute
-    IpmiLanplusRoute => BootControlRealizedByRoute
+    IpmiLanplusRoute { cipher_suite: _ } => BootControlRealizedByRoute
     MegaRacRestRoute { image_redirection: _ } => BootControlNotRealizedByRoute
     OpenBmcShellRoute => BootControlNotRealizedByRoute
     OpenBmcNbdWebsocketRoute { ws_path: _ } => BootControlNotRealizedByRoute
@@ -376,7 +383,7 @@ fn bmc_profile_nbd_websocket_path(profile: BmcAccessProfile) -> NonEmptyStr? {
     f: (acc, route) => match route {
       OpenBmcNbdWebsocketRoute { ws_path: p } => Present { value: p }
       RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
-      IpmiLanplusRoute => acc
+      IpmiLanplusRoute { cipher_suite: _ } => acc
       MegaRacRestRoute { image_redirection: _ } => acc
       OpenBmcShellRoute => acc
     },

@@ -1,7 +1,7 @@
 module gunbc.machine_intake.bmc_fan_observation
 
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation,
   ChassisPowerRead,
@@ -222,7 +222,7 @@ fn observe_fan_round(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   round_index: Int,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> FanObservationRound
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
@@ -322,7 +322,7 @@ fn observe_fan_series(
   round_index: Int,
   interval: Second,
   acc: List<FanObservationRound>,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<FanObservationRound>
 {
   if rounds_remaining <= 0 {
@@ -548,7 +548,7 @@ fn observe_fan_policy(
   password_file: NonEmptyStr,
   rounds: ObservationRoundCount,
   interval: Second,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> FanObservationSeries
 {
   if trim(username as String) == "" {

@@ -4,10 +4,11 @@ import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.operation_argv { ArgvMaterialization, OperationInputBinding, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
-import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, bmc_observation_ipmi_cipher_suite }
+import extdeps.bmc.ipmi { IpmiCipherSuite, RakpHmacSha1, HmacSha1_96, AesCbc128, RakpHmacSha256, HmacSha256_128, ipmi_cipher_suite_argv, ipmi_cipher_suite_of_id, ipmi_cipher_suite_table }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, IpmiLanplusRoute, bmc_access_route_ipmi_cipher_suite, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
 import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+import gunbc.machine_intake.sol_hold { mtcollins1_sol_hold_activate_script, mtcollins1_sol_hold_supervisor_script, sol_hold_activate_script }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -21,17 +22,22 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 data ipmi_path: String = "dag/extdeps/bmc/ipmi.dag"
 data ipmi_service: String = "diagnostic.ipmi.Tool"
 
+// The spec's suite 3, from the table (IpmiCipherSuite has one constructor, the table's).
+fn suite_3() -> IpmiCipherSuite? {
+  ipmi_cipher_suite_of_id(id: 3)
+}
+
 // The suite each of mtcollins1's routes supplies: the bound-route chain reads its access observation, and the
 // run's row reads the same route observation. Both are its observed IPMI route's own.
-fn mtcollins1_observation_suite() -> Int? {
+fn mtcollins1_observation_suite() -> IpmiCipherSuite? {
   bmc_observation_ipmi_cipher_suite(observation: mtcollins1_access_observation)
 }
 
-fn mtcollins1_row_suite() -> Int? {
+fn mtcollins1_row_suite() -> IpmiCipherSuite? {
   mtcollins1_boot_row_value.ipmi_cipher_suite
 }
 
-fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: Int?) -> List<String> {
+fn materialize(operation: String, bindings: List<OperationInputBinding>, suite: IpmiCipherSuite?) -> List<String> {
   operation_argv_tokens_or_refusal_label(m: shell_materialize_operation_argv(
     ipmi_path,
     ipmi_service,
@@ -350,15 +356,37 @@ test fn mc_info_argv_is_mains_on_both_mtcollins1_routes() -> Bool {
 // ── The suite each route supplies, and the renderer ─────────────────────────────────────────────
 
 test fn absent_renders_no_option_and_a_suite_renders_dash_c() -> Bool {
-  ipmi_cipher_suite_argv(suite: Absent) == [] && ipmi_cipher_suite_argv(suite: Present { value: 3 }) == ["-C", "3"]
+  ipmi_cipher_suite_argv(suite: Absent) == [] && ipmi_cipher_suite_argv(suite: suite_3()) == ["-C", "3"]
 }
 
 // mtcollins1's IPMI route was exercised with no -C, so both chains that reach its calls supply none, and the run's
 // row reads the route observation rather than a second spelling of it.
 test fn both_mtcollins1_routes_supply_no_suite_and_agree() -> Bool {
-  mtcollins1_boot_control_route.ipmi_cipher_suite == Absent
+  mtcollins1_boot_control_route.route == IpmiLanplusRoute { cipher_suite: Absent }
     && mtcollins1_observation_suite() == Absent
-    && mtcollins1_row_suite() == mtcollins1_boot_control_route.ipmi_cipher_suite
+    && mtcollins1_row_suite() == bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route)
+}
+
+// ── The suite type: the spec's IDs, as ipmitool implements the table ───────────────────────────
+
+test fn the_table_lists_ids_0_to_17_each_once_in_order() -> Bool {
+  map(ipmi_cipher_suite_table, s => s.id) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+}
+
+test fn suite_3_is_sha1_with_aes_and_suite_17_is_sha256_with_aes() -> Bool {
+  match ipmi_cipher_suite_of_id(id: 3) {
+    Absent => false
+    Present { value: s } => s.authentication == RakpHmacSha1 && s.integrity == HmacSha1_96 && s.confidentiality == AesCbc128
+  }
+    && match ipmi_cipher_suite_of_id(id: 17) {
+      Absent => false
+      Present { value: s } => s.authentication == RakpHmacSha256 && s.integrity == HmacSha256_128 && s.confidentiality == AesCbc128
+    }
+}
+
+// RED: an ID the table does not list has no suite, so no route can carry a guessed one.
+test fn an_id_outside_the_table_has_no_suite() -> Bool {
+  ipmi_cipher_suite_of_id(id: 18) == Absent && ipmi_cipher_suite_of_id(id: 128) == Absent && ipmi_cipher_suite_of_id(id: -1) == Absent
 }
 
 // ── REDs: a suite on the route must change the argv ─────────────────────────────────────────────
@@ -396,7 +424,7 @@ fn with_suite_after_lanplus(xs: List<String>, suite: String) -> List<String> {
 test fn every_operation_renders_the_suite_after_lanplus_and_differs_from_main() -> Bool {
   count(ipmi_argv_rows()) == 18
     && all(ipmi_argv_rows(), r => {
-      let rendered = materialize(operation: r.operation, bindings: r.bindings, suite: Present { value: 3 })
+      let rendered = materialize(operation: r.operation, bindings: r.bindings, suite: suite_3())
       rendered == with_suite_after_lanplus(xs: r.main, suite: "3") && rendered != r.main
     })
 }
@@ -405,10 +433,9 @@ test fn every_operation_renders_the_suite_after_lanplus_and_differs_from_main() 
 // through the chain the bound-route callers use. The boot write, the power write and the SOL release all move.
 fn injected_route() -> BmcBootControlRouteObservation {
   BmcBootControlRouteObservation {
-    route: mtcollins1_boot_control_route.route,
+    route: IpmiLanplusRoute { cipher_suite: suite_3() },
     raw_response: mtcollins1_boot_control_route.raw_response,
     observed_at: mtcollins1_boot_control_route.observed_at,
-    ipmi_cipher_suite: Present { value: 3 },
   }
 }
 
@@ -428,8 +455,28 @@ fn injected_observation() -> BmcAccessObservation {
 
 test fn a_suite_injected_on_mtcollins1s_route_changes_its_boot_power_and_sol_argv() -> Bool {
   let suite = bmc_observation_ipmi_cipher_suite(observation: injected_observation())
-  suite == Present { value: 3 }
+  suite == suite_3()
     && materialize(operation: "ChassisBootDevWithOptions", bindings: bindings_chassis_boot_dev_with_options(), suite: suite) != main_argv_chassis_boot_dev_with_options
     && materialize(operation: "ChassisPowerControl", bindings: bindings_chassis_power_control(), suite: suite) != main_argv_chassis_power_control
     && materialize(operation: "SolDeactivate", bindings: bindings_sol_deactivate(), suite: suite) == with_suite_after_lanplus(xs: main_argv_sol_deactivate, suite: "3")
+}
+
+// ── THE SOL HOLD: its hand-built script takes the suite through the same renderer ───────────────
+// main rendered mtcollins1_sol_hold_activate_script as this join: the literal text around "-I lanplus" is main's,
+// transcribed from origin/main's gunbc.machine_intake.sol_hold, and the supervisor body between them is the same
+// symbol main joined (this change does not touch it), so the comparison is byte for byte over the whole script.
+fn main_sol_hold_activate_script() -> String {
+  join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+}
+
+test fn the_sol_hold_script_is_mains_on_mtcollins1s_route() -> Bool {
+  mtcollins1_sol_hold_activate_script == main_sol_hold_activate_script()
+    && sol_hold_activate_script(suite: mtcollins1_observation_suite()) == main_sol_hold_activate_script()
+}
+
+// RED: a suite on the route puts "-C 3" right after "-I lanplus" in the hold's script, and nothing else moves.
+test fn a_suite_changes_the_sol_hold_script_after_lanplus_only() -> Bool {
+  let with_suite = sol_hold_activate_script(suite: bmc_observation_ipmi_cipher_suite(observation: injected_observation()))
+  with_suite != main_sol_hold_activate_script()
+    && with_suite == join(split(s: main_sol_hold_activate_script(), delimiter: " -I lanplus -U "), " -I lanplus -C 3 -U ")
 }

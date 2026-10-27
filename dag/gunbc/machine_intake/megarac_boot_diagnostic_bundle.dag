@@ -23,7 +23,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import std.optional { Present }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, post_power_fan_gate_text }
@@ -427,7 +427,7 @@ type MegaRacBootRow {
   ipmi: MegaRacIpmiReadPolicy,
   // The lanplus cipher suite this controller's IPMI reads use (extdeps.bmc.ipmi ipmi_cipher_suite_argv): the
   // unit's observed IPMI route's own, never a default here.
-  ipmi_cipher_suite: Int?,
+  ipmi_cipher_suite: IpmiCipherSuite?,
   redfish: MegaRacRedfishReadPolicy,
   // How long the bundle write may take before the attempt stops waiting on it.
   publish_allowance: Second,

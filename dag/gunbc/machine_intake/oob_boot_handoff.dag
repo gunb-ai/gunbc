@@ -17,7 +17,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_verb,
 }
 import extdeps.bmc.ipmi
-import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection,
   ipmi_boot_device_label,
@@ -421,7 +421,7 @@ fn oob_power_readback_allowance() -> Second {
     + (second_count(s: oob_ipmi_read_ceiling()) as Int))
 }
 
-fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: Int?) -> ChassisPowerObservation {
+fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ChassisPowerObservation {
   status = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: bmc_host,
     username: username,
@@ -439,7 +439,7 @@ fn oob_power_readback_poll(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
   let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
@@ -467,7 +467,7 @@ fn oob_power_readback_continue(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
   let waited = sleep_delay_seconds_second_carrier_projection(duration: oob_power_readback_interval)
@@ -487,7 +487,7 @@ fn oob_power_action_after_confirmed_selection(
   password_file: NonEmptyStr,
   device: NonEmptyStr,
   admission: OobBootHandoffAdmission,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
@@ -516,7 +516,7 @@ fn oob_power_actuate_and_read_back(
   device: NonEmptyStr,
   action: OobPowerAction,
   admission: OobBootHandoffAdmission,
-  cipher_suite: Int?,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
