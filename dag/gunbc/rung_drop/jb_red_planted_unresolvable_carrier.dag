@@ -1,0 +1,13 @@
+// RED PROBE (lives on no PR branch; see jb/14868-red-newly-refused).
+//
+// A module ABSENT AT THE MERGE BASE and REFUSED HERE, with an import-target refusal that names no declarer. The ambient-name
+// census must classify it `newly_refused` and exit 1: it is in the rewritten set (this ref adds it), no base run can have
+// refused it, it is not probed at the base, and it is not on the closed identity list of
+// gunbc.rung_drop.ambient_name_census_new_modules_on_carried_declarer, so the cascade exemption cannot admit it.
+module gunbc.rung_drop.jb_red_planted_unresolvable_carrier
+
+import gunbc.rung_drop.jb_red_planted_missing_carrier { jb_red_planted_symbol }
+
+fn jb_red_planted_reading() -> String {
+  jb_red_planted_symbol()
+}
