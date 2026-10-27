@@ -59,7 +59,7 @@ import gunbc.runner.runner_qualification_attempt_pass {
   QualificationAttemptPass, AttemptPinRefused, AttemptPassed,
   QualificationAttemptRun, AttemptNotMinted, AttemptSubjectRefused, AttemptDispatchRefused, AttemptDispatchAmbiguous,
   AttemptNothingRegistered, AttemptRegistrationRemains,
-  qualification_attempt_pass_over, qualification_attempt_retired,
+  qualification_attempt_pass_over, qualification_attempt_registration_and_branch_removed,
 }
 import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome }
 
@@ -338,17 +338,17 @@ test fn a_refused_pin_mints_nothing_and_removes_the_branch_it_may_have_created()
   }) && removed_branch(p: p) == (pin_branch as String)
 }
 
-// RETIRED needs both halves: a registration still listed, or a branch still present, is not retired; with nothing
-// registered and the branch removed it is.
-fn retired_of(p: QualificationAttemptPass?) -> Bool? {
+// THE GITHUB-SIDE REMOVAL needs both halves: a registration still listed, or a branch still present, fails it; with
+// nothing registered and the branch removed it holds. (The host-side teardown is not this predicate's.)
+fn removed_of(p: QualificationAttemptPass?) -> Bool? {
   match p {
     Absent => none
-    Present { value: v } => Present { value: qualification_attempt_retired(pass: v) }
+    Present { value: v } => Present { value: qualification_attempt_registration_and_branch_removed(pass: v) }
   }
 }
 
-test fn retired_means_the_registration_and_the_branch_are_both_gone() -> Bool {
-  retired_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: true }
-    && retired_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_stays)) == Present { value: false }
-    && retired_of(p: pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: false }
+test fn the_github_side_removal_needs_the_registration_and_the_branch_both_gone() -> Bool {
+  removed_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: true }
+    && removed_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_stays)) == Present { value: false }
+    && removed_of(p: pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: false }
 }
