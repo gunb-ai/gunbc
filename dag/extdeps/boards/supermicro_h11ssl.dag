@@ -7,17 +7,19 @@ import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
-import extdeps.boards.types { HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
+import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  CitedFigureStanding, TranscribedUncited, FactCitation,
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited, FactCitation,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { SupermicroAten }
+import extdeps.bmc.supermicro { supermicro_bmc_resources_authority }
 import extdeps.uri { Uri, Https }
 import std.algebra { FreeSemigroup }
 import extdeps.board_soc { BoardSocEdge }
@@ -73,12 +75,20 @@ data supermicro_h11ssl_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   }
 }
 
-// NO BaseboardCatalogRow. That row requires a BmcFirmwareFamily, a closed OpenBmc | AmiMegaRac,
-// and the manual states neither: it says only "ATEN IPMI from ASPEED AST 2500 BMC" (p.15). Picking
-// an arm would fabricate a firmware family, so the row is withheld until the closed enum gains a
-// vendor-firmware arm or an authority names the family.
-data supermicro_h11ssl_bmc_firmware_family_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Manual p.15 names 'ATEN IPMI' on an AST2500 and no firmware family. Ground against Supermicro's BMC firmware release notes for H11SSL REV 2.0, or an on-wire identification receipt, before a BaseboardCatalogRow is minted.",
+// THE BMC FIRMWARE FAMILY. The manual (p.15) says only "ATEN IPMI from ASPEED AST 2500 BMC"; the
+// family is Supermicro's own X11/H11-generation BMC firmware, which Supermicro states is built on the
+// AST2500 for X11/H11/H12 boards (extdeps.bmc.supermicro's anchor, its bmc-resources page). The on-wire
+// identification on both H11SSL units (Manager Oem key "Supermicro", Get Device ID manufacturer 10876)
+// is the observing layer's receipt, gunbc.machine_intake.supermicro_bmc_reading.
+data supermicro_h11ssl_bmc_firmware_family_standing: CitedFigureStanding = CitedToAuthority {
+  authority: supermicro_bmc_resources_authority,
+}
+
+data supermicro_h11ssl_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
+  model: supermicro_h11ssl_board_authority,
+  model_label: "Supermicro H11SSL-i/C/NC",
+  vendor: supermicro,
+  bmc_firmware: SupermicroAten,
 }
 
 // ---- Processor (Preface p.3, p.15, p.18). The manual does not name the EPYC 7702P.
