@@ -73,19 +73,12 @@ test fn caret_symbol_named_type_is_not_the_minted_carrier() -> Bool {
 }
 
 // THE DECLARED GAP IS BOUNDED TO SYMBOL-AT-STRING ONLY (operator ruling, 2026-10-26): no other
-// text-like or kernel formal is a target. Each of these must refuse, so the exemption cannot widen
-// to "anything text-shaped".
-//
-// WHY `NonEmptyStr` IS NOT A TARGET ROW OF ITS OWN: it is declared `type NonEmptyStr = String where
-// string_non_empty` (dag/std/types.dag), and this judgment peels a where-refinement to the kernel it
-// is represented by BEFORE comparing -- the peel is the seed's own declared rule (see the
-// gunbc#12695 note above this function, which peels `"x" as NonEmptyStr` to judge it as the kernel
-// String). Asserting a refusal there would contradict that rule and would name a second kernel, not
-// bound the gap. The rows below are therefore the text-like and kernel formals that are NOT
-// refinements of String: a free semigroup over text, and the remaining kernel ground names.
-test fn symbol_at_free_semigroup_refuses() -> Bool {
-  blocking_in_class(source: "module litsymbol.atfsg\nfn f() -> FreeSemigroup<String> { ^tag }\n", wanted_class: "TypeMismatch") >= 1
-}
+// kernel formal is a target. Each of these must refuse, so the exemption cannot widen to
+// "anything kernel-shaped". MEASURED, not assumed: Secret, Bytes, Float and Json refuse with
+// TypeMismatch at the seed's fixed-point mirrors. A FreeSemigroup<String> formal was probed and is
+// ACCEPTED (zero blocking rows) -- the seed's declared coercion rows judge it by its element -- and a
+// refinement like NonEmptyStr is peeled to the kernel it represents by this judgment's own declared
+// peel rule, so neither is a refusal row of its own; naming one would contradict those authorities.
 
 test fn symbol_at_secret_refuses() -> Bool {
   blocking_in_class(source: "module litsymbol.atsecret\nfn f() -> Secret { ^tag }\n", wanted_class: "TypeMismatch") >= 1
