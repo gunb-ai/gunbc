@@ -1,0 +1,30 @@
+module gunbc.recurring_failure_mode.effectful_call_admitted_in_a_pure_data_initializer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data effectful_call_admitted_in_a_pure_data_initializer: RecurringFailureMode = RecurringFailureMode {
+  identity: "effectful_call_admitted_in_a_pure_data_initializer" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the refusal itself, now buildable over an empty population: v1's front end refusing a data item whose initializer performs a declared effect, directly or inside a function value it stores, located at the initializer, with a RED fixture refused on the real acceptance path. The precondition this row once named as its second trigger, no data initializer in the corpus performing an effect, holds since gunbc#15047; the stored-closure case reaches structural guarantee from modeled effect facts only with effect evidence carried on function types (gunbc.compile_clean_diagnostic_policy EffectSummaryIncompleteAtFunctionValue), and until then the check reads the callees a stored closure closes over" } },
+
+  receipts: [
+    "**an effectful operation call inside a pure `data` initializer is admitted** (INVALID STATE: v1's front end accepts a `data` item whose initializer performs a declared effect -- directly, or inside a function value it stores -- although data is pure and no resource binding exists where it is evaluated. Specimen: gunbc.filesystem_interface data local_filesystem, a FilesystemInterface record each of whose fields is a closure calling an extdeps.filesystem.filesystem_io Filesystem operation (Read, List, Delete, WriteCreateNew, WriteCreateNewWithMode, WriteOwnerOnly).",
+
+    "HARM: emission realizes the data item as a thread-local cached value whose closures call the service through a handle nothing binds, inside synchronous closures. Dated specimen, 2026-10-24 (wise-wolf-174, class 10 of stern-bat-401's emitter-debt list), `gunbc compile --source-root dag --source-root src/v2 --entry dag/gunbc/durable_cas_file_store.dag --target rust` on main 7a1c55247016 (via scratch branch session/wise-wolf-174-route-main2 @286476d40ae9, which changes only an unrelated census entry), then cargo build: the emitted realization of gunbc.filesystem_interface local_filesystem carries rustc E0425 `cannot find value filesystem in this scope` and E0728 `await is only allowed inside async functions and blocks` in every field closure, at the emitted `let r = filesystem.read(path.clone()).await?;` and its sibling calls. Interpreted, the same module runs correctly: the interpreter performs the effect dynamically, so the defect is invisible until a native closure reaches it.",
+
+    "SPECIMEN DISSOLVED, 2026-10-25: gunbc#15047 deleted gunbc.filesystem_interface. The CAS store (gunbc.durable_cas_file_store) calls the extdeps.filesystem.filesystem_io Filesystem operations directly, and the deferred realization selection is its own declared frontier, gunbc.recurring_failure_mode filesystem_realization_selected_outside_the_effect_grant. No data initializer that performs an effect is known to remain, so the refusal can land without reddening a working program; it is the follow-up change, behind its own RED.",
+
+    "WHY IT WAS NOT REFUSED THEN (stern-bat-401 ruling, 2026-10-24): the effect is decidable for a direct call in the initializer (v1.compiler.infer_service records the data item's service_names, closed over callees), but a refusal today would red every module whose import closure reaches gunbc.durable_cas_file_store (the reverse import closure of that module) and runs correctly under the interpreter, and turning local_filesystem into a function over an explicit Filesystem handle cannot make the crate build either, because the closures it returns still perform async effects inside synchronous Rc<dyn Fn> (v1 function types carry no effects). The buildable repair was removing the specimen, staffed as its own change by operator-approved plan; gunbc.durable_cas_file_store is a DESIGN-named leasing authority.",
+
+    "RUNG: found at mitigatable (rustc refuses the emitted crate; the interpreter path is correct). Ceiling structurally guaranteed: with the refusal built, the check refuses an effect in a data initializer, direct or through a stored function value, from the modeled effect facts rather than a spelling.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.durable_cas_file_store", decl_name: "file_compare_and_set_windowed", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode.filesystem_realization_selected_outside_the_effect_grant", decl_name: "filesystem_realization_selected_outside_the_effect_grant", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.compile_clean_diagnostic_policy", decl_name: "compile_clean_diagnostic_policy_scaffold", field: WholeDeclaration },
+  ],
+}

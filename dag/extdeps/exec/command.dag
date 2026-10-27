@@ -126,6 +126,21 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_remove_force_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_rename_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
+    // The GPU container acceptance run (gunbc.runner.runner_gpu_container_toolchain). Admitted in
+    // extdeps.docker.cli, the module that already owns every other `docker` verb in the fleet, so the
+    // probe cannot be re-spelled at a call site into something that is not an acceptance run: --rm and
+    // the BARE CDI device name are each load-bearing and each easy to drop when the words are retyped
+    // by hand. Deliberately NO --entrypoint: the measured command that works (srv1 2026-10-25, as the
+    // job user over its own socket) passes nvidia-smi -L as the image's ARGUMENTS, letting ubuntu's
+    // default entrypoint exec it; an --entrypoint override was written before it was measured and is
+    // not what the green run does.
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_gpu_cdi_probe_run_command"),
+    // nvidia-ctk's two legs — generate (writes /etc/cdi/nvidia.yaml) and list (the readback that
+    // proves the complete-device arm resolves). Declared where they are built, in
+    // extdeps.container.nvidia_container_toolkit, next to the pinned repository row that serves the
+    // package providing the binary.
+    decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_generate_command"),
+    decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_reproducible_command"),
@@ -364,7 +379,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
-    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),

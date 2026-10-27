@@ -1,0 +1,294 @@
+module test.claim.machine_intake.megarac_boot_row_witness
+
+// ── THE ROW WITNESS (cut 4d-ii) ─────────────────────────────────────────────────────
+//
+// The two claims the host-generic split exists to earn:
+//
+//  1. A MACHINE THAT IS NOT mtcollins1 derives its own bundle. The adapter's rendering takes a row as
+//     a parameter, so a second board's row -- its own endpoint, its own retained-artifact prefix, its
+//     own census population, its own console reference -- produces a bundle whose every machine-shaped
+//     line is that board's. If any of these facts were still a constant in
+//     gunbc.machine_intake.megarac_boot_diagnostic_bundle, the foreign row's text would come back
+//     saying mtcollins1, and this witness would fail while a mtcollins1 witness stayed green.
+//
+//  2. A ROW AND AN ENDPOINT THAT DISAGREE ARE REFUSED. mtcollins1_boot_row answers with
+//     BootRowEndpointMismatch when handed another board's endpoint, rather than serving that board
+//     mtcollins1's measured bounds. The refusal is the whole point of routing the host through the
+//     binding: applying mtcollins1's read budget or census population to a board nobody measured them
+//     on is a claim, not a default.
+//
+// Both are red against the retired root, where the endpoint, the artifact prefix, the socket list and
+// the reference scopes were constants in the module that rendered the bundle: there was no row to
+// pass and so no way to ask for another machine, and no seam a mismatch could be detected at.
+
+import std.types { NonEmptyStr, String }
+import std.measure { byte_size, second, second_count }
+import std.algebra { string_contains }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.tools.sha256sum { Sha256FileDigestUnavailable }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BootDiagnosticBundle, MegaRacAccountReceipt, MegaRacBootRow, MegaRacConsoleReference,
+  MegaRacIpmiReadPolicy, MegaRacRedfishReadPolicy, MegaRacRunRecord, InventoryReading,
+  SelSnapshotNotTaken, SdrCacheNotTaken, SensorsNotTaken, MembersNotTaken,
+  megarac_boot_bundle_text, megarac_run_record_not_taken,
+}
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_boot_row, MegaRacBootRowStanding, BootRowFor, BootRowEndpointMismatch,
+}
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_slots }
+import gunbc.host.boot_attempt {
+  AttemptRunId, ConsoleNotConfigured, ConsoleReading, CaptureContents, CaptureContentsRead,
+  console_reading,
+}
+import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt }
+import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
+import gunbc.machine_intake.megarac_kvm_still { kvm_observer_record_not_started }
+
+// A board that is not mtcollins1: a different endpoint, its own artifacts under its own prefix, one
+// socket, and a reference nobody on mtcollins1 measured. Every one of these is a value this module
+// supplies and the adapter has no way to invent.
+fn another_board_row() -> MegaRacBootRow {
+  MegaRacBootRow {
+    controller: BmcControllerEndpoint { host: "10.20.30.40" },
+    operator_host: "operator-srv9",
+    label: "srv9",
+    ipmi: MegaRacIpmiReadPolicy { deadline: second(count: 5), kill_after: second(count: 8), planned_reads: 6 },
+    redfish: MegaRacRedfishReadPolicy {
+      read_deadline: second(count: 9),
+      read_budget: 12,
+      collection_page_bound: 2,
+      collection_member_bound: 4,
+      service_root_path: "/redfish/v1/",
+    },
+    publish_allowance: second(count: 20),
+    sensor_sockets: [1],
+    retained_artifact_prefix: "artifacts/srv9-boot-",
+    diagnostics_path: "artifacts/srv9-boot-diagnostics.txt",
+    console_reference: MegaRacConsoleReference {
+      census_sol_artifact_path: "/w/srv9/census-sol.txt",
+      reference_firmware_scope: "srv9 firmware set",
+      reference_configuration_scope: "one socket, eight DIMMs",
+    },
+  }
+}
+
+fn no_account() -> MegaRacAccountReceipt {
+  MegaRacAccountReceipt { account: none, text: "no power-on account", notes: [] }
+}
+
+// The bundle, with every section not taken: what the witness is testing is whose MACHINE the text
+// names, not what the BMC answered.
+fn empty_bundle() -> BootDiagnosticBundle {
+  BootDiagnosticBundle {
+    configuration: no_configuration(),
+    attempt: AttemptRunId { run_id: "90000000001" },
+    outcome: "fixture: no verdict",
+    sel_before: SelSnapshotNotTaken { reason: "fixture" },
+    sel_after: SelSnapshotNotTaken { reason: "fixture" },
+    sdr_cache: SdrCacheNotTaken { reason: "fixture" },
+    sensors: SensorsNotTaken { reason: "fixture" },
+    smpro: SmproNotTaken { reason: "fixture" },
+    inventory: InventoryReading {
+      system_id: "",
+      memory: MembersNotTaken { reason: "fixture" },
+      processors: MembersNotTaken { reason: "fixture" },
+      credential_removed: false,
+    },
+    console: ConsoleNotConfigured,
+    run: no_run(),
+    screen: kvm_observer_record_not_started(attempt: "90000000001", reason: "fixture: no observer"),
+  }
+}
+
+fn no_run() -> MegaRacRunRecord = megarac_run_record_not_taken(reason: "fixture: no run record")
+
+// THE CONSOLE A ROW'S OWN RECEIPTS PRODUCE. With no console configured the renderer prints one
+// "NOT CONFIGURED" line, and the row's retained-artifact prefix and its two reference scopes never
+// reach the text -- an earlier revision of the three claims below asserted exactly those strings
+// against a bundle with no console and failed for that reason (the assertions were true of the ROW,
+// false of the RENDERING). So each claim hands the renderer a bundle whose console was read from the
+// row under test: the capture sits under THAT row's retained-artifact root, and the checkpoint line
+// is what carries the row's firmware and configuration scopes into the text, since the relation line
+// is their only home in the rendering. One "CP:" token line yields one span with a last token, so a
+// relation exists rather than being unread; the reference is the same capture, so the relation is
+// established, not refused.
+data boot_console_capture_text: String = "CP: 0ff00900\n"
+
+fn boot_console_capture() -> CaptureContents {
+  CaptureContentsRead {
+    text: boot_console_capture_text,
+    digest: Sha256FileDigestUnavailable { path: "witness", reason: "not digested in this claim" },
+  }
+}
+
+fn console_of(row: MegaRacBootRow) -> ConsoleReading {
+  console_reading(
+    path: concat(row.retained_artifact_prefix as String, "90000000001-sol.capture"),
+    size: byte_size(count: 4096),
+    capture: boot_console_capture(),
+    reference: boot_console_capture(),
+    retained_prefix: row.retained_artifact_prefix,
+    census_sol_reference_path: row.console_reference.census_sol_artifact_path,
+    reference_firmware_scope: row.console_reference.reference_firmware_scope,
+    reference_configuration_scope: row.console_reference.reference_configuration_scope,
+  )
+}
+
+// The bundle, with the row's console read into it. Every other section stays not-taken for the same
+// reason as empty_bundle(): the witness is about whose machine the text names.
+fn bundle_of(row: MegaRacBootRow) -> BootDiagnosticBundle {
+  let empty = empty_bundle()
+  BootDiagnosticBundle {
+    configuration: empty.configuration, attempt: empty.attempt, outcome: empty.outcome,
+    sel_before: empty.sel_before, sel_after: empty.sel_after,
+    sdr_cache: empty.sdr_cache, sensors: empty.sensors, smpro: empty.smpro,
+    inventory: empty.inventory, console: console_of(row),
+    run: empty.run, screen: empty.screen,
+  }
+}
+
+// The attempt asked for no topology, so the bundle records none: the witness is about WHICH machine
+// the text names, not about what any sensor said.
+fn no_configuration() -> AttemptConfigurationReceipt {
+  attempt_configuration_not_recorded(host: "srv9", attempt: "90000000001", reason: "the witness records no population")
+}
+
+// ── RED 1: A ROW THAT IS NOT mtcollins1 DERIVES ITS OWN BUNDLE ──────────────────────
+
+// The rendering is driven entirely by the row it was handed: the foreign board's artifact prefix and
+// its own console reference appear, and mtcollins1 appears nowhere.
+test fn a_foreign_row_renders_its_own_bundle_and_names_no_mtcollins1() -> Bool {
+  let rendered = megarac_boot_bundle_text(row: another_board_row(), bundle: bundle_of(another_board_row()), account: no_account())
+  string_contains(s: rendered, pattern: "artifacts/srv9-boot-")
+    && string_contains(s: rendered, pattern: "srv9 firmware set")
+    && string_contains(s: rendered, pattern: "one socket, eight DIMMs")
+    && !string_contains(s: rendered, pattern: "mtcollins1")
+}
+
+// The same bundle rendered under mtcollins1's row says mtcollins1, so the test above is not passing
+// because the machine is simply never mentioned: the row is what decides whose machine the text names.
+test fn the_mtcollins1_row_still_renders_mtcollins1() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      string_contains(s: megarac_boot_bundle_text(row: row, bundle: bundle_of(row), account: no_account()),
+        pattern: "artifacts/mtcollins1-boot-")
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+// Two rows, one bundle: the renderings differ exactly where the rows differ. A constant left anywhere
+// in the adapter would make these two texts agree on a machine-shaped line.
+test fn two_rows_produce_two_different_bundles_from_one_attempt() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: mine } => {
+      let a = megarac_boot_bundle_text(row: mine, bundle: bundle_of(mine), account: no_account())
+      let b = megarac_boot_bundle_text(row: another_board_row(), bundle: bundle_of(another_board_row()), account: no_account())
+      a != b
+        && string_contains(s: a, pattern: "two sockets")
+        && string_contains(s: b, pattern: "one socket, eight DIMMs")
+    }
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+// ── RED 2: A MISMATCHED BINDING REFUSES ─────────────────────────────────────────────
+
+// mtcollins1's row will not describe a board it was not measured on. The refusal carries both ends:
+// what the receipts were measured against, and what was asked for.
+test fn a_row_asked_about_another_board_refuses_rather_than_borrowing_its_numbers() -> Bool {
+  match mtcollins1_boot_row(controller: BmcControllerEndpoint { host: "10.20.30.40" }) {
+    BootRowEndpointMismatch { expected: e, observed: o } =>
+      e == mtcollins1_endpoint.host && o == "10.20.30.40"
+    BootRowFor { row: _ } => false
+  }
+}
+
+// The refusal is not a degraded row: there is no path from a mismatched endpoint to a MegaRacBootRow,
+// so a caller cannot reach the read chain with the wrong board's bounds at all.
+test fn a_refused_row_gives_no_way_to_reach_the_reads() -> Bool {
+  match mtcollins1_boot_row(controller: BmcControllerEndpoint { host: "192.0.2.7" }) {
+    BootRowEndpointMismatch { expected: _, observed: _ } => true
+    BootRowFor { row: _ } => false
+  }
+}
+
+// The row accepts only the endpoint its receipts were measured against -- the same one the managed
+// host binding secures. This is the positive half of the seam: without it, RED 2 could be satisfied by
+// a row that refused everything.
+test fn the_row_admits_the_endpoint_its_receipts_were_measured_on() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      row.controller.host == mtcollins1_endpoint.host
+        && row.retained_artifact_prefix == "artifacts/mtcollins1-boot-"
+        && count(row.sensor_sockets) == 2
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+// ── THE READ BOUNDS ARE GROUNDED IN THE ROW'S OWN RECEIPTS (review 81761) ──────────
+//
+// The row sets three bounds -- how many Redfish reads one attempt may make, how many pages a
+// collection may walk, how large a collection may be -- and no external or versioned authority fixes
+// those numbers: they are EXPLICIT POLICY BUDGETS the row sets for itself. That is admissible only if
+// they are grounded and their effect on refusal is decidable, so the claims below compare each bound
+// against the census receipts on the SAME row (DESIGN §5: a bounding literal must be grounded in a
+// controlled fixture, an external authority, or an explicit policy budget). The refusal paths
+// themselves -- a page bound hit with a nextLink pending, a count over the member bound -- are claimed
+// in megarac_boot_diagnostic_bundle_witness, which builds those refusals out of the row's own numbers;
+// these claims cover the other half: that the numbers still describe THIS board's measured population,
+// and that a second board is never handed them.
+
+test fn the_read_budget_pays_for_this_rows_measured_population() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      // One read per census slot plus one per socket, which is what the inventory walk actually makes
+      // (one member read per Memory slot, one per Processor), is what the budget has to cover. A budget
+      // cut below the population it was sized for stops paying for reads the census says exist.
+      row.redfish.read_budget >= count(mtcollins1_slots) + count(row.sensor_sockets)
+        // ...and a budget that cannot pay for even one read is a bound that refuses everything.
+        && row.redfish.read_budget >= 1
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_member_bound_clears_the_census_population_it_was_sized_for() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      row.redfish.collection_member_bound >= count(mtcollins1_slots)
+        && row.redfish.collection_member_bound >= 1
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_page_bound_admits_the_measured_walk_and_stays_inside_the_budget() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } =>
+      // The census measured ONE page per collection for this BMC, so the load-bearing floor is that the
+      // bound admits at least a collection's first page: at 0, fetch_collection_pages refuses before any
+      // read and both inventory sections come back BmcCollectionIncomplete on a BMC that answers fine.
+      row.redfish.collection_page_bound >= 1
+        // ...and the bound stays reachable: it may not demand more pages than the row's own read budget
+        // can pay for, or the walk is refused by the budget before the page bound is ever consulted and
+        // the number in the refusal names a bound that could never have been hit.
+        && row.redfish.collection_page_bound <= row.redfish.read_budget
+        && row.redfish.collection_member_bound <= row.redfish.read_budget
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}
+
+test fn the_second_boards_bounds_are_its_own_not_this_rows() -> Bool {
+  match mtcollins1_boot_row(controller: mtcollins1_endpoint) {
+    BootRowFor { row: row } => {
+      let other = another_board_row()
+      // None of the three bounds is inherited: srv9's are every one different, and smaller, because
+      // it was measured with one socket and eight DIMMs. If a bound were a constant the two rows would
+      // agree on it, which is the failure these claims are here to catch.
+      row.redfish.read_budget != other.redfish.read_budget
+        && row.redfish.collection_page_bound != other.redfish.collection_page_bound
+        && row.redfish.collection_member_bound != other.redfish.collection_member_bound
+        && second_count(s: row.redfish.read_deadline) != second_count(s: other.redfish.read_deadline)
+    }
+    BootRowEndpointMismatch { expected: _, observed: _ } => false
+  }
+}

@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all, list_sort_by_key, int_total_order }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -44,7 +44,7 @@ import std.occurrence_identity {
   OccurrenceSynthetic,
   ValuePosition
 }
-import std.types { List, Bool, GitRef }
+import std.types { List, Bool, GitRef, Map }
 import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present }
@@ -97,9 +97,10 @@ type RosterHeadRow {
 // KeepHead is every row whose call spelling IS the home's name, so the rows that predate this field are unchanged by
 // construction. RenameHead rewrites each selected call head to `to`; its `positional` is the other half of the same
 // fact, so it lives in the arm and a KeepHead row cannot carry one: the home declaration's parameter labels, in order, given to a call's positional arguments, because the home's
-// callable is called by label where the ambient spelling was called by position. A call that does not have exactly that
-// many positional arguments, or that names any argument, refuses: the row cannot know which parameter a named or
-// surplus argument meant.
+// callable is called by label where the ambient spelling was called by position. EXACT ARITY IS REQUIRED: a call that does
+// not have exactly that many positional arguments refuses. An argument already named with the label this row declares AT
+// ITS POSITION is retained as authored; a mismatched or reordered label refuses, because the rewrite never reorders
+// arguments -- reordering an argument list reorders its evaluation.
 type RosterHeadRewrite
   = KeepHead
   | RenameHead { to: String, positional: List<String> }
@@ -186,9 +187,10 @@ type RosterRefusalReason
   // misspelled call or a wrong home would otherwise sweep nothing and report converged. Located by home and selection.
   | RefusalScopeSelectsNoRow { home: String, selection: String }
   | RefusalScopeSelectsSeveralRows { home: String, call: String, count: Int }
-  // A RenameHead row's call whose arguments the row's positional labels cannot place: a different number of positional
-  // arguments than the row declares, a named argument (the row cannot tell which parameter it meant), or a bare
-  // reference with no call. The file is left untouched and the cause names the call spelling.
+  // A RenameHead row's call whose arguments the row's positional labels cannot place: EXACT ARITY is required (a different
+  // number of positional arguments than the row declares refuses); an argument already named with the label the row declares
+  // AT ITS POSITION is retained as authored, while a mismatched or reordered label refuses (the rewrite never reorders
+  // arguments); or a bare reference with no call. The file is left untouched and the cause names the call spelling.
   | RefusalRenameCallArity { call: String }
   | RefusalRenameCallNamedArgument { call: String }
   // A `|>` whose right operand starts at the renamed call but extends past it: the call is not the pipe's target, so its
@@ -358,6 +360,8 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "join", import_name: "collection_join_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // list_push is FreeMonoid's own snoc (tidy-ant-251 ruling): one ambient name, one declared home std.algebra.
     RosterHeadRow { call: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
+    // sha256_hex_of_text: UTF-8 encode, SHA-256, lowercase hex; one declared home beside sha256_hex_digest (sleek-owl-397).
+    RosterHeadRow { call: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
@@ -1350,7 +1354,8 @@ fn roster_primary_heads(parse_root: Node, call: String) -> List<Node> {
   })
 }
 
-// THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold.
+// THE LABEL PLAN OF A SET OF ROWS: every rename of every row, in one fold. The pipe sites of the parse are indexed ONCE
+// here (the fold's shared value): a head's pipe read is a map lookup, never a subtree walk.
 fn roster_rows_label_plan(sides: List<RosterHomeSide>, 
   text: Optional<String>,
   parse_root: Node,
@@ -1359,6 +1364,7 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
   imported: List<AliasBindingRow>,
   rows: List<RosterHeadRow>
 ) -> RosterLabelPlan {
+  let pipe_index = roster_pipe_index(parse_root: parse_root, spans: spans)
   let planned = fold_list(xs: rows, empty: LabelsSelected { edits: [] }, cons: fn(acc, row) {
     match acc {
       LabelsAmbiguous => LabelsAmbiguous
@@ -1369,7 +1375,7 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
           RenameHead { to: to, positional: positional } =>
             match roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
-                match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
+                match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, pipe_index: pipe_index, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es3, right: more) }
                   other => other
                 }
@@ -1465,6 +1471,7 @@ fn roster_rename_plan(
   sides: List<RosterHomeSide>,
   text: Optional<String>,
   parse_root: Node,
+  pipe_index: Map<Int, List<RosterPipeSite>>,
   spans: SpanIndex,
   normalized_root: Node,
   imported: List<AliasBindingRow>,
@@ -1476,11 +1483,12 @@ fn roster_rename_plan(
     FreeHeadsAmbiguous => LabelsAmbiguous
     FreeHeads { heads: heads } =>
     // INNERMOST FIRST: a pipe whose left operand holds another of this row's selected calls waits for the next pass, after
-    // the inner call is rewritten (a chain `a |> f() |> join(s)` converges stage by stage).
-    fold_list(xs: roster_heads_innermost_first(parse_root: parse_root, spans: spans, heads: heads), empty: LabelsSelected { edits: [] }, cons: fn(acc, head) {
+    // the inner call is rewritten (a chain `a |> f() |> join(s)` converges stage by stage). The pipe read rides the selection
+    // into the rename fold below, so each head is read off the index once, not once per pass over the head.
+    fold_list(xs: roster_heads_innermost_first(pipe_index: pipe_index, spans: spans, heads: heads), empty: LabelsSelected { edits: [] }, cons: fn(acc, selected) {
       match acc {
         LabelsSelected { edits: es } =>
-          match roster_rename_call_edits(text: text, parse_root: parse_root, head: head, spans: spans, row: row, to: to, positional: positional) {
+          match roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional) {
             LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
             other => other
           }
@@ -1494,8 +1502,9 @@ fn roster_rename_plan(
 // named argument still refuses with the existing causes, and the site becomes `to(label0: <lhs>, label1: <arg1>, ...)` through
 // the edits of roster_rename_pipe_edit, no operand or argument byte moved (a nested or multi-line operand stays intact). A declared home cannot keep the pipe (gunbc.recurring_failure_mode
 // pipe_into_a_declared_function_resolves_as_a_method). A pipe whose right operand is more than the call refuses typed.
-fn roster_rename_call_edits(text: Optional<String>, parse_root: Node, head: Node, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>) -> RosterLabelPlan {
-  match roster_pipe_read(parse_root: parse_root, spans: spans, head: head) {
+fn roster_rename_call_edits(text: Optional<String>, selected: RosterSelectedHead, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>) -> RosterLabelPlan {
+  let head = selected.head
+  match selected.read {
     NotPiped => roster_rename_direct_call_edits(head: head, spans: spans, row: row, to: to, positional: positional)
     PipeOperandUnclean => LabelsRenameRefused { reason: RefusalRenamePipeOperandUnclean { call: row.call } }
     PipedFrom { left: lr, call: cr } =>
@@ -1636,51 +1645,100 @@ type RosterPipeRead
   | PipedFrom { left: RosterByteRange, call: RosterByteRange }
   | PipeOperandUnclean
 
-fn roster_pipe_read(parse_root: Node, spans: SpanIndex, head: Node) -> RosterPipeRead {
-  match roster_node_byte_range(node: head, spans: spans) {
-    Absent => NotPiped
-    Present { value: hr } =>
-      fold_list(xs: node_subtree_nodes(root: parse_root), empty: NotPiped, cons: fn(acc, n) {
-        match acc {
-          NotPiped => roster_pipe_read_at(node: n, spans: spans, call: hr)
-          other => other
-        }
-      })
-  }
+// ONE `|>` INFIX NODE'S RELEVANT GEOMETRY: its right operand's extent (the key) and its left operand's extent, Absent
+// when the left cannot be placed (the same condition the fold read as PipeOperandUnclean).
+type RosterPipeSite {
+  left: Optional<RosterByteRange>
+  right: RosterByteRange
 }
 
-fn roster_pipe_read_at(node: Node, spans: SpanIndex, call: RosterByteRange) -> RosterPipeRead {
+// A SELECTED CALL HEAD with its pipe read, carried from the selection fold into the rename fold so the read is computed
+// once per head, not once per pass over the head (DESIGN.md §2: share the first value).
+type RosterSelectedHead {
+  head: Node
+  read: RosterPipeRead
+}
+
+// THE PIPE SITES OF ONE PARSE, INDEXED ONCE: keyed by the start byte of each `|>` infix node's right operand, the entries
+// in tree order so the whole-tree fold's first-match semantics survive a lookup. Built once per file plan (the label pass
+// and the import pass, over the same parse); a head is then a lookup, not a subtree walk.
+fn roster_pipe_index(parse_root: Node, spans: SpanIndex) -> Map<Int, List<RosterPipeSite>> {
+  let empty_index: Map<Int, List<RosterPipeSite>> = empty_map()
+  fold_list(xs: node_subtree_nodes(root: parse_root), empty: empty_index, cons: fn(acc, n) {
+    match roster_pipe_site_of(node: n, spans: spans) {
+      Present { value: s } => roster_pipe_index_snoc(acc: acc, site: s)
+      Absent => acc
+    }
+  })
+}
+
+fn roster_pipe_index_snoc(acc: Map<Int, List<RosterPipeSite>>, site: RosterPipeSite) -> Map<Int, List<RosterPipeSite>> {
+  let prior = match map_lookup(m: acc, key: site.right.start) {
+    Present { value: p } => p
+    Absent => []
+  }
+  map_insert(m: acc, key: site.right.start, value: list_snoc_item(xs: prior, item: site))
+}
+
+fn roster_pipe_site_of(node: Node, spans: SpanIndex) -> Optional<RosterPipeSite> {
   match find_named_child(root: node, name: ^grammar_infix_operator_node_projection) {
-    Rejected { diagnostics: _ } => NotPiped
+    Rejected { diagnostics: _ } => Absent
     Accepted { value: op, diagnostics: _ } =>
       if !roster_is_pipe_operator(op: op) {
-        NotPiped
+        Absent
       } else {
         match find_named_child(root: node, name: ^grammar_infix_right_node_projection) {
-          Rejected { diagnostics: _ } => NotPiped
+          Rejected { diagnostics: _ } => Absent
           Accepted { value: right, diagnostics: _ } =>
             match roster_node_byte_range(node: right, spans: spans) {
-              Absent => NotPiped
+              Absent => Absent
               Present { value: rr } =>
-                if (rr.start == call.start) && (rr.end == call.end) {
-                  match find_named_child(root: node, name: ^grammar_infix_left_node_projection) {
-                    Rejected { diagnostics: _ } => PipeOperandUnclean
-                    Accepted { value: left, diagnostics: _ } =>
-                      match roster_node_byte_range(node: left, spans: spans) {
-                        Absent => PipeOperandUnclean
-                        Present { value: lr } => PipedFrom { left: lr, call: call }
-                      }
-                  }
-                } else if (rr.start == call.start) && (rr.end > call.end) {
-                  PipeOperandUnclean
-                } else {
-                  NotPiped
+                match find_named_child(root: node, name: ^grammar_infix_left_node_projection) {
+                  Rejected { diagnostics: _ } => Present { value: RosterPipeSite { left: Absent, right: rr } }
+                  Accepted { value: left, diagnostics: _ } =>
+                    match roster_node_byte_range(node: left, spans: spans) {
+                      Absent => Present { value: RosterPipeSite { left: Absent, right: rr } }
+                      Present { value: lr } => Present { value: RosterPipeSite { left: Present { value: lr }, right: rr } }
+                    }
                 }
             }
         }
       }
   }
 }
+
+// WHERE A CALL HEAD SITS RELATIVE TO A PIPE, read off the index: the entries at the head's start byte, in tree order,
+// first decisive one wins -- exactly what the whole-tree fold returned.
+fn roster_pipe_read(index: Map<Int, List<RosterPipeSite>>, spans: SpanIndex, head: Node) -> RosterPipeRead {
+  match roster_node_byte_range(node: head, spans: spans) {
+    Absent => NotPiped
+    Present { value: hr } =>
+      match map_lookup(m: index, key: hr.start) {
+        Absent => NotPiped
+        Present { value: sites } =>
+          fold_list(xs: sites, empty: NotPiped, cons: fn(acc, s) {
+            match acc {
+              NotPiped => roster_pipe_read_against(site: s, call: hr)
+              other => other
+            }
+          })
+      }
+  }
+}
+
+fn roster_pipe_read_against(site: RosterPipeSite, call: RosterByteRange) -> RosterPipeRead {
+  if (site.right.start == call.start) && (site.right.end == call.end) {
+    match site.left {
+      Absent => PipeOperandUnclean
+      Present { value: lr } => PipedFrom { left: lr, call: call }
+    }
+  } else if (site.right.start == call.start) && (site.right.end > call.end) {
+    PipeOperandUnclean
+  } else {
+    NotPiped
+  }
+}
+
 
 fn roster_is_pipe_operator(op: Node) -> Bool {
   match node_atom_identity_optional(node: op) {
@@ -1689,12 +1747,13 @@ fn roster_is_pipe_operator(op: Node) -> Bool {
   }
 }
 
-fn roster_heads_innermost_first(parse_root: Node, spans: SpanIndex, heads: List<Node>) -> List<Node> {
+fn roster_heads_innermost_first(pipe_index: Map<Int, List<RosterPipeSite>>, spans: SpanIndex, heads: List<Node>) -> List<RosterSelectedHead> {
   let ranges = fold_list(xs: heads, empty: roster_no_ranges(), cons: fn(acc, h) { roster_range_snoc(acc: acc, node: h, spans: spans) })
   fold_list(xs: heads, empty: [], cons: fn(acc, h) {
-    match roster_pipe_read(parse_root: parse_root, spans: spans, head: h) {
-      PipedFrom { left: lr, call: _ } => if roster_any_range_within(ranges: ranges, outer: lr) { acc } else { list_snoc_item(xs: acc, item: h) }
-      _ => list_snoc_item(xs: acc, item: h)
+    let read = roster_pipe_read(index: pipe_index, spans: spans, head: h)
+    match read {
+      PipedFrom { left: lr, call: _ } => if roster_any_range_within(ranges: ranges, outer: lr) { acc } else { list_snoc_item(xs: acc, item: RosterSelectedHead { head: h, read: read }) }
+      _ => list_snoc_item(xs: acc, item: RosterSelectedHead { head: h, read: read })
     }
   })
 }
