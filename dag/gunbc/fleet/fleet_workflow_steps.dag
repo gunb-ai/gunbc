@@ -19,6 +19,7 @@ module gunbc.fleet.fleet_workflow_steps
 // does not have.
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
@@ -1041,12 +1042,18 @@ fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
 // release-bins download (transfer tier), the unpack-and-verify (aux tier), and the deploy itself
 // (live-deploy tier). Every step in that job runs on every dispatch of it -- there is no mode gating
 // WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the converge
-// job's bound this really is a straight sum rather than a worst-case-branch selection.
+// job's bound this really is a straight sum rather than a worst-case-branch selection. The srv1
+// root-mutation approval (gunbc.fleet.srv1_root_mutation_approval_run) adds its WIF auth (aux tier),
+// its file-and-wait step (its own bound, which covers the operator's whole decision window) and its
+// receipt upload (transfer tier).
 fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_live_deploy_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
 // The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host
