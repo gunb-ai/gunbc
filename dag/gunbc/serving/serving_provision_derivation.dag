@@ -102,12 +102,6 @@ fn serving_provision_from_ninfer(recipe: ServingRecipe, build: NinferEngineRelea
           }
         WeightsNamedUnpinned { weights: _, quantization: _ } =>
           ServingProvisionRefusedStartSource { cause: "the recipe's weights are named and unpinned, so there is no digest to place" as NonEmptyStr }
-        // Per-variant standing, not a catch-all (§6b sibling of the arms above): a ninfer recipe pinned
-        // at the Hub has a checkpoint but no object-store placement, so there is no digest to place
-        // and no NinferArtifactSource to hand the launch. Refuse with the cause, same as the named-
-        // unpinned pair below refuses for a different reason.
-        WeightsPinnedAtHub { checkpoint: _, quantization: _ } =>
-          ServingProvisionRefusedStartSource { cause: "the recipe's weights are pinned at the Hub, not placed on the object store; the ninfer phase reads placed artifacts only" as NonEmptyStr }
       }
     // A HUB-PINNED start is unreadable to the ninfer leg the same way an observed store is: the ninfer
     // provision fetches a placed artifact, and a Hub revision at a pinned commit is not one. This arm
