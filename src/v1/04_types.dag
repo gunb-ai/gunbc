@@ -1264,6 +1264,37 @@ fn alias_identity_in_judgment(left: Node, right: Node, source_indices: Map<Strin
   }
 }
 
+// ONE TYPE-IDENTITY VERDICT, read from the declarations both sides settle to (settled_type, the carrier alias_settled_agree
+// compares, so an alias and its expansion share one head). Same and Different are decided only when both sides settle; a side that
+// does not settle is Unknown, never Same. ONE READER TODAY: v1.compiler.infer type_identity_different_admitted, the shadow
+// counter of the TypeIdentityDifferentAdmitted advisory class, which tells a spelled-name agreement apart from a
+// declaration agreement (gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace). PLANNED READERS,
+// all wired by PR B (the change that also deletes each one's own spelled-name comparison and makes Different refuse):
+// v1.compiler.infer nominal_product_heads_agree, and v1.compiler.infer_types node_type_equals_core, node_type_compatible
+// and prefer_specific_type, and v1.compiler.infer match_arm_types_are_disjoint_coproducts, record_lit_instantiated_fields
+// and container_element_nominal_brand_mismatch. Until PR B those keep their name arms.
+type TypeIdentityVerdict
+  = IdentitySame
+  | IdentityDifferent { declared: DeclarationRef, produced: DeclarationRef }
+  | IdentityUnknown
+
+fn type_identity_verdict(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> TypeIdentityVerdict {
+  match text {
+    TextJudgedIn { env: e } =>
+      match settled_type(n: left, source_indices: source_indices, env: e, fuel: 16) {
+        Absent => IdentityUnknown
+        Present { value: l } =>
+          match settled_type(n: right, source_indices: source_indices, env: e, fuel: 16) {
+            Absent => IdentityUnknown
+            Present { value: r } =>
+              if declaration_ref_eq(a: l.head, b: r.head) { IdentitySame }
+              else { IdentityDifferent { declared: l.head, produced: r.head } }
+          }
+      }
+    TextNotAsked { reason: _ } => IdentityUnknown
+  }
+}
+
 // The name-only entry of the same relation: a seam holding only two spellings reads each as the declaration it names and settles them
 // exactly as alias_identity_in_judgment settles two nodes, arguments judged by the same rule.
 fn alias_names_identity_in_judgment(left: String, right: String, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {

@@ -1,0 +1,69 @@
+module test.claim.type_identity_different_admitted_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: v1.compiler.infer type_identity_different_admitted, the shadow measurement of
+// v1.compiler.types type_identity_verdict. Two modules each declare a `Box` record; a value of
+// sh.b's Box at a parameter declared as sh.a's Box is admitted today by the spelling comparison,
+// and the advisory must name it. The same declaration on both sides must not. The RED is an
+// invalid program, authorable only as fixture source (DESIGN 4b).
+data tid_a_source: String = "module tid.a\ntype Box { v: Int }\n"
+data tid_b_source: String = "module tid.b\ntype Box { v: Int }\n"
+data tid_mk_source: String = "module tid.mk\nimport tid.b { Box }\nfn make_b_box() -> Box { Box { v: 1 } }\n"
+data tid_amk_source: String = "module tid.amk\nimport tid.a { Box }\nfn make_a_box() -> Box { Box { v: 1 } }\n"
+data tid_prelude: String = "module tid.entry\nimport tid.a { Box }\nimport tid.mk { make_b_box }\nimport tid.amk { make_a_box }\nfn tid_take_box(x: Box) -> Int { x.v }\n"
+
+fn tid_run(entry_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("tid/a.dag", tid_a_source),
+      fixture_source("tid/b.dag", tid_b_source),
+      fixture_source("tid/mk.dag", tid_mk_source),
+      fixture_source("tid/amk.dag", tid_amk_source),
+      fixture_source("tid/entry.dag", entry_source)
+    ],
+    entry: "tid/entry.dag"
+  })
+}
+
+fn tid_advisory_emitted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, "TypeIdentityDifferentAdmitted"),
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows, "TypeIdentityDifferentAdmitted"),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn tid_ran(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => true,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => true,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// RED: a same-named record of another declaration at a parameter emits the advisory.
+test fn tid_foreign_homonym_at_a_param_emits_the_advisory() -> Bool {
+  tid_advisory_emitted(o: tid_run(entry_source: concat(tid_prelude, "fn tid_use() -> Int { tid_take_box(x: make_b_box()) }\n")))
+}
+
+// POSITIVE CONTROL: the formal's own declaration, produced by another module, emits nothing.
+test fn tid_same_declaration_at_a_param_emits_no_advisory() -> Bool {
+  let o = tid_run(entry_source: concat(tid_prelude, "fn tid_use() -> Int { tid_take_box(x: make_a_box()) }\n"))
+  tid_ran(o: o) && !tid_advisory_emitted(o: o)
+}

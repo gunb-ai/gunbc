@@ -314,6 +314,17 @@ data advisory_class_ceilings: List<AdvisoryClassCeilingRow> = [
     }
   },
   AdvisoryClassCeilingRow {
+    class_name: "TypeIdentityDifferentAdmitted" as NonEmptyStr,
+    ceiling: WallAfterGrounding {
+      missing_capability: "a SHADOW MEASUREMENT FOR A STAGED CUT, not a warning that stays (DESIGN section 5). It counts the declared-type obligations v1.compiler.infer nominal_product_heads_agree admits by spelled name while v1.compiler.infer_types type_identity_verdict says the two sides settle to different declarations. DISSOLUTION: PR B flips this class to a blocking refusal at the argument, field and return sites, and deletes the name arm's override of a Different verdict. Trigger for PR B: this census reads 0 for the class, or every remaining hit has a filed owner whose fix lands first. Known populations: the re-export routes gunbc#15004 fixed, and the std.measure Time/Temperature pairs, which arise only in the whole-root pool, where a fixture's same-named type becomes visible to std.measure's users through global_bare; gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace owns them, and its global_bare fix lands before PR B. Unknown (a side that does not settle) is not counted here; it keeps today's name agreement under its own declared rung drop."
+    },
+    census: DeclarationRef {
+      module_path: "gunbc.instrument_targets",
+      decl_name: "compile_clean_diagnostic_census_binding",
+      field: WholeDeclaration
+    }
+  },
+  AdvisoryClassCeilingRow {
     class_name: "ServiceConfigReferenceJudgmentDeferred" as NonEmptyStr,
     ceiling: DeclaredAdmissionRoster {
       roster: DeclarationRef {

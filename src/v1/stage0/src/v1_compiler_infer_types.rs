@@ -3,6 +3,7 @@
 
 use self::TextJudgment::*;
 use self::TextNotAskedReason::*;
+use self::TypeIdentityVerdict::*;
 use self::TypeResolutionVerdict::*;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraProfile, FinitePowerSetProfile,
@@ -2940,6 +2941,78 @@ pub fn alias_identity_in_judgment(
             )
         }
         TextJudgment::TextNotAsked { reason: _, .. } => false,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeIdentityVerdict {
+    IdentitySame,
+    IdentityDifferent {
+        declared: Rc<DeclarationRef>,
+        produced: Rc<DeclarationRef>,
+    },
+    IdentityUnknown,
+}
+impl TypeIdentityVerdict {
+    pub fn declared(&self) -> Rc<DeclarationRef> {
+        match self {
+            TypeIdentityVerdict::IdentitySame => panic!("no declared on unit variant"),
+            TypeIdentityVerdict::IdentityDifferent {
+                declared: __val, ..
+            } => __val.clone(),
+            TypeIdentityVerdict::IdentityUnknown => panic!("no declared on unit variant"),
+        }
+    }
+    pub fn produced(&self) -> Rc<DeclarationRef> {
+        match self {
+            TypeIdentityVerdict::IdentitySame => panic!("no produced on unit variant"),
+            TypeIdentityVerdict::IdentityDifferent {
+                produced: __val, ..
+            } => __val.clone(),
+            TypeIdentityVerdict::IdentityUnknown => panic!("no produced on unit variant"),
+        }
+    }
+}
+
+pub fn type_identity_verdict(
+    left: Rc<Node>,
+    right: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    text: Rc<TextJudgment>,
+) -> Rc<TypeIdentityVerdict> {
+    match (*text.clone()).clone() {
+        TextJudgment::TextJudgedIn { env: e, .. } => {
+            match crate::v1_compiler_infer_env::settled_type(
+                left.clone(),
+                source_indices.clone(),
+                e.clone(),
+                16,
+            ) {
+                std::option::Option::None => Rc::new(TypeIdentityVerdict::IdentityUnknown),
+                Some(l) => match crate::v1_compiler_infer_env::settled_type(
+                    right.clone(),
+                    source_indices.clone(),
+                    e.clone(),
+                    16,
+                ) {
+                    std::option::Option::None => Rc::new(TypeIdentityVerdict::IdentityUnknown),
+                    Some(r) => {
+                        if crate::std_decl_ref::declaration_ref_eq(l.head.clone(), r.head.clone()) {
+                            Rc::new(TypeIdentityVerdict::IdentitySame)
+                        } else {
+                            Rc::new(TypeIdentityVerdict::IdentityDifferent {
+                                declared: l.head.clone(),
+                                produced: r.head.clone(),
+                            })
+                        }
+                    }
+                },
+            }
+        }
+        TextJudgment::TextNotAsked { reason: _, .. } => {
+            Rc::new(TypeIdentityVerdict::IdentityUnknown)
+        }
     }
 }
 

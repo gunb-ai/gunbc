@@ -313,6 +313,9 @@ pub use crate::v1_compiler_infer_sigs::{
 };
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::TextNotAskedInVariantFieldSummary;
+use crate::v1_compiler_infer_types::TypeIdentityVerdict::{
+    IdentityDifferent, IdentitySame, IdentityUnknown,
+};
 pub use crate::v1_compiler_infer_types::{
     alias_identity_in_judgment, alias_names_identity_in_judgment, bare_map_node, bare_set_node,
     callable_inferred, callable_return_type, child_type_node, collection_carrier_node,
@@ -324,7 +327,8 @@ pub use crate::v1_compiler_infer_types::{
     node_type_equals, node_type_shape, nominal_type_ref, normalize_access_type_node,
     prefer_specific_type, resolve_type_variables_from_template, resolved_type,
     structural_carrier_template_name, subtraction_refinement_of, template_return_has_variables,
-    template_return_is_receiver_self, KernelTypeBuild, TextJudgment, TextNotAskedReason,
+    template_return_is_receiver_self, type_identity_verdict, KernelTypeBuild, TextJudgment,
+    TextNotAskedReason, TypeIdentityVerdict,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
@@ -359,8 +363,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
     MethodNotFound, MissingField, OptionalCastNotEliminated, ReceiverTypeUnestablished,
     ServiceConfigReferenceJudgmentDeferred, SiblingOperandEffectOrderUndetermined,
     SoleConstructorViolation, TextCrossingHasNoImplicitRoute,
-    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch, TypeMismatch,
-    TypeParameterInValuePosition, UnlistedVariantValueUse, UnresolvedType, VariantCollision,
+    TextRepresentationUnidentifiedAtBoundary, TypeArgumentArityMismatch,
+    TypeIdentityDifferentAdmitted, TypeMismatch, TypeParameterInValuePosition,
+    UnlistedVariantValueUse, UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -7486,6 +7491,59 @@ pub fn nominal_coproduct_application_head_name(n: Rc<Node>, scope: Rc<InferScope
     }
 }
 
+pub fn type_identity_different_admitted(
+    obligation: Rc<DeclaredTypeObligation>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<ErrorNode>> {
+    {
+        let declared_head = nominal_product_head_name(obligation.declared.clone(), scope.clone());
+        let produced_head = nominal_product_head_name(obligation.produced.clone(), scope.clone());
+        if ((declared_head.clone() == "".to_string()) || (produced_head.clone() == "".to_string()))
+        {
+            std::option::Option::None
+        } else {
+            if (nominal_product_head_names_agree(
+                declared_head.clone(),
+                produced_head.clone(),
+                scope.clone(),
+            ) == false)
+            {
+                std::option::Option::None
+            } else {
+                match (*crate::v1_compiler_infer_types::type_identity_verdict(
+                    obligation.declared.clone(),
+                    obligation.produced.clone(),
+                    scope.type_env.source_indices.clone(),
+                    Rc::new(TextJudgment::TextJudgedIn {
+                        env: scope.type_env.clone(),
+                    }),
+                ))
+                .clone()
+                {
+                    TypeIdentityVerdict::IdentityDifferent {
+                        declared: d,
+                        produced: p,
+                        ..
+                    } => Some(crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::TypeIdentityDifferentAdmitted {
+                            position: declared_type_position_label(
+                                obligation.position.clone(),
+                                obligation.subject.clone(),
+                            ),
+                            declared: crate::std_decl_ref::declaration_ref_display_key(d.clone()),
+                            produced: crate::std_decl_ref::declaration_ref_display_key(p.clone()),
+                            span: obligation.span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    )),
+                    TypeIdentityVerdict::IdentitySame => std::option::Option::None,
+                    TypeIdentityVerdict::IdentityUnknown => std::option::Option::None,
+                }
+            }
+        }
+    }
+}
+
 pub fn nominal_product_heads_agree(
     declared: Rc<Node>,
     produced: Rc<Node>,
@@ -7733,7 +7791,12 @@ pub fn declared_type_obligation_diags(
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match (*declared_type_inhabitance(obligation.clone(), scope.clone())).clone() {
-        InhabitanceVerdict::Inhabits => Rc::new(vec![]),
+        InhabitanceVerdict::Inhabits => {
+            match type_identity_different_admitted(obligation.clone(), scope.clone()) {
+                Some(e) => Rc::new(vec![e.clone()]),
+                std::option::Option::None => Rc::new(vec![]),
+            }
+        }
         InhabitanceVerdict::InhabitanceUndecidable { reason: r, .. } => {
             Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::DeclaredTypeInhabitanceUndecided {
