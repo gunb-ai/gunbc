@@ -26239,6 +26239,19 @@ pub fn unify_generics(
     }
 }
 
+pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
+        match slot.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: _, .. }) => {
+                crate::v1_compiler_infer_types::child_type_node(slot.clone())
+            }
+            _ => slot.clone(),
+        }
+    } else {
+        slot.clone()
+    }
+}
+
 pub fn unify_generic_child_pairs(
     mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
@@ -26267,7 +26280,7 @@ pub fn unify_generic_child_pairs(
                         let __tco_3 = source_indices.clone();
                         let __tco_4 = unify_generics(
                             f.clone(),
-                            a.clone(),
+                            generic_actual_position_type(a.clone()),
                             generic_names.clone(),
                             source_indices.clone(),
                             acc,
