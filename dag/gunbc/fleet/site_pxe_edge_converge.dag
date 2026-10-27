@@ -49,6 +49,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarge
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
 import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.machine_intake.boot_image_fetch { boot_image_staging_path }
 import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead,
   RemoteFileViaNonInteractiveSudo,
@@ -1634,6 +1635,12 @@ data site_pxe_edge_staging_root: NonEmptyStr = "/var/lib/gunbc-site-pxe-edge/sta
 
 data site_pxe_edge_iso_mount: NonEmptyStr = "/mnt/gunbc-site-pxe-edge-iso"
 
+// THE IMAGE IS STAGED BESIDE THE HTTP ROOT, NOT IN IT, so the bytes being fetched and checked are never servable,
+// and under the same parent so the publishing hard link can reach the served directory. Same parent is not same
+// filesystem; the link is what proves it: link(2) across filesystems fails with EXDEV, and the leg refuses rather
+// than copying (gunbc.machine_intake.boot_image_fetch states the same argument for its export).
+data site_pxe_edge_image_staging_root: NonEmptyStr = "/srv/gunbc-site-pxe-edge/staging"
+
 type SitePxeEdgePlacementOutcome
   = PlacementNotNeeded
   | PlacementNotAttempted { reason: String }
@@ -1702,14 +1709,32 @@ fn site_pxe_edge_place_member(target: SshTarget, context: FleetSshExecutionConte
   }
 }
 
+// PUBLISHING A VERIFIED STAGED IMAGE, atomically (merry-fox-82's side-chat review). The staged file is hard-linked
+// into the served directory under the staging sibling name (gunbc.machine_intake.boot_image_fetch
+// boot_image_staging_path: not .iso, and holding only the verified inode), then renamed over the served name: rename(2)
+// within one directory replaces it in one step, so a reader sees the prior image or the verified one and never a
+// partial file. Until that rename the prior image is untouched. A leftover link from an interrupted run is removed
+// first, since link(2) will not replace a name.
+fn site_pxe_edge_publish_staged_image(target: SshTarget, context: FleetSshExecutionContext, staged: NonEmptyStr, served: NonEmptyStr) -> String? {
+  let link = boot_image_staging_path(published_path: served)
+  match site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", link as String], step: "rm stale link") {
+    Present { value: why } => Present { value: why }
+    Absent => match site_pxe_edge_posix_leg(target: target, context: context, argv: ["ln", staged as String, link as String], step: "ln (staging must share the served root's filesystem)") {
+      Present { value: why } => Present { value: why }
+      Absent => site_pxe_edge_posix_leg(target: target, context: context, argv: ["mv", "-fT", link as String, served as String], step: "mv -T")
+    }
+  }
+}
+
 // THE IMAGE: fetched from Canonical's publishing mirror into staging only when the served copy does not already hold
-// the media row's digest, verified there, then installed under the HTTP root and verified again.
+// the media row's digest, verified THERE, outside the served root, and published only after it agrees; a fetch that
+// disagrees is removed from staging and the prior served image stays as it was.
 fn site_pxe_edge_place_image(target: SshTarget, context: FleetSshExecutionContext, image: SitePxeEdgeInstallerImage) -> SitePxeEdgePlacementOutcome {
   let served = site_pxe_edge_installer_image_path(image: image)
   if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: served), pinned: image.digest) {
     PlacementVerified { placed: [image.served_path] }
   } else {
-    let staged = join([site_pxe_edge_staging_root as String, "/", ubuntu_install_media_filename(artifact: image.media) as String], "") as NonEmptyStr
+    let staged = join([site_pxe_edge_image_staging_root as String, "/", ubuntu_install_media_filename(artifact: image.media) as String], "") as NonEmptyStr
     let url = ubuntu_install_media_mirror_url(artifact: image.media, mirror: ubuntu_install_media_publishing_mirror(arch: image.media.architecture))
     match site_pxe_edge_posix_leg(target: target, context: context, argv: ["curl", "-fL", "--retry", "3", "-o", staged as String, url as String], step: "curl") {
       Present { value: why } => PlacementRefused { step: "fetch installer image", reason: why }
@@ -1718,14 +1743,20 @@ fn site_pxe_edge_place_image(target: SshTarget, context: FleetSshExecutionContex
           let removed = site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", staged as String], step: "rm")
           PlacementRefused { step: "verify installer image", reason: match removed { Absent => "the fetched image's sha256 is not the SHA256SUMS line; removed" Present { value: why } => concat("the fetched image's sha256 is not the SHA256SUMS line, and removing it failed: ", why) } }
         } else {
-          match site_pxe_edge_posix_leg(target: target, context: context, argv: ["install", "-m", "0644", "-D", staged as String, served as String], step: "install") {
-            Present { value: why } => PlacementRefused { step: "install installer image", reason: why }
-            Absent =>
+          match site_pxe_edge_publish_staged_image(target: target, context: context, staged: staged, served: served) {
+            Present { value: why } => PlacementRefused { step: "publish installer image", reason: why }
+            Absent => {
+              let unstaged = site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", staged as String], step: "rm staged")
               if site_pxe_edge_digest_agrees(observation: site_pxe_edge_posix_digest(target: target, context: context, path: served), pinned: image.digest) {
-                PlacementVerified { placed: [image.served_path] }
+                match unstaged {
+                  Absent => PlacementVerified { placed: [image.served_path] }
+                  Present { value: why } => PlacementRefused { step: "unstage installer image", reason: concat("the image is published and verified, but its staging name remains: ", why) }
+                }
               } else {
-                PlacementRefused { step: "verify served installer image", reason: "the installed image differs from the SHA256SUMS line" }
+                let removed = site_pxe_edge_posix_leg(target: target, context: context, argv: ["rm", "-f", served as String], step: "rm")
+                PlacementRefused { step: "verify served installer image", reason: match removed { Absent => "the served image read back differs from the SHA256SUMS line after publishing; removed" Present { value: why } => concat("the served image read back differs from the SHA256SUMS line after publishing, and removing it failed: ", why) } }
               }
+            }
           }
         }
     }
@@ -1750,7 +1781,7 @@ fn site_pxe_edge_placement_join(left: SitePxeEdgePlacementOutcome, right: SitePx
 // THE WHOLE PLACEMENT, in order, stopping at the first refusal: directories, image, mount, members,
 // unmount (attempted whatever the members' fate once the mount held).
 fn place_site_pxe_edge_ubuntu_chain(target: SshTarget, context: FleetSshExecutionContext, chain: SitePxeEdgePinnedChain, image: SitePxeEdgeInstallerImage) -> SitePxeEdgePlacementOutcome {
-      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["mkdir", "-p", site_pxe_edge_staging_root as String, site_pxe_edge_iso_mount as String, concat(site_pxe_edge_tftp_root as String, "/grub"), concat(site_pxe_edge_http_root as String, "/iso")], step: "mkdir") {
+      match site_pxe_edge_posix_leg(target: target, context: context, argv: ["mkdir", "-p", site_pxe_edge_staging_root as String, site_pxe_edge_image_staging_root as String, site_pxe_edge_iso_mount as String, concat(site_pxe_edge_tftp_root as String, "/grub"), concat(site_pxe_edge_http_root as String, "/iso")], step: "mkdir") {
         Present { value: why } => PlacementRefused { step: "directories", reason: why }
         Absent =>
           match site_pxe_edge_place_image(target: target, context: context, image: image) {
