@@ -501,7 +501,7 @@ fn mbp_node_within(root: Node, wanted: Node) -> Bool {
 
 fn mbp_reason_within(x: Diagnostic, declaration: Node) -> List<Symbol> {
   match x.at {
-    NodeLocus { anchor: a } => if mbp_node_within(root: declaration, wanted: a.at) { [x.reason] } else { Empty }
+    NodeLocus { anchor: a } => if mbp_node_within(root: declaration, wanted: a.at.node) { [x.reason] } else { Empty }
     _ => Empty
   }
 }

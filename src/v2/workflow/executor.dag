@@ -3,7 +3,7 @@ module v2.workflow.executor
 import std.types { List }
 import std.algebra { list_snoc_item, contains, non_empty }
 import v2.std.dependency { DependencyView, ReadinessLayer }
-import v2.std.node { node_same_occurrence, Node }
+import v2.std.node { node_same_occurrence, Node, NodeOccurrence }
 import v2.workflow.scheduler {
   RunnableFrontier,
   SchedulerBlockedEvidence,
@@ -16,7 +16,7 @@ import v2.workflow.scheduler {
 }
 
 type ExecutorJob {
-  node: Node
+  node: NodeOccurrence
 }
 
 type ExecutorBatch {
@@ -45,7 +45,7 @@ type ExecutorRunPlan
     }
 
 fn executor_job_for_node(node: Node) -> ExecutorJob {
-  ExecutorJob { node: node }
+  ExecutorJob { node: NodeOccurrence { node: node } }
 }
 
 fn executor_jobs_for_frontier(frontier: RunnableFrontier<Node>) -> List<ExecutorJob> {
@@ -62,7 +62,7 @@ fn executor_batch_for_frontier(frontier: RunnableFrontier<Node>) -> ExecutorBatc
 
 fn executor_job_nodes(jobs: List<ExecutorJob>) -> List<Node> {
   fold(jobs, init: [], f: fn(nodes, job) {
-    list_snoc_item(xs: nodes, item: job.node)
+    list_snoc_item(xs: nodes, item: job.node.node)
   })
 }
 
@@ -155,7 +155,7 @@ fn executor_batches_for_layers(layers: List<ReadinessLayer<Node>>) -> List<Execu
 fn executor_nodes_from_batches(batches: List<ExecutorBatch>) -> List<Node> {
   fold(batches, init: [], f: fn(nodes, batch) {
     fold(batch.jobs, init: nodes, f: fn(acc, job) {
-      list_snoc_item(xs: acc, item: job.node)
+      list_snoc_item(xs: acc, item: job.node.node)
     })
   })
 }

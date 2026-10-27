@@ -1659,6 +1659,22 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
+// A FINITELY SUPPORTED FUNCTION'S EQUALITY UNDER A CALLER-NAMED VALUE QUESTION: the same keys (compared by
+// the key type's own equality) and, at each, equal values by `eq`. The map counterpart of zip_eq and
+// std.optional optional_eq, used where a map's values reach a routed equality (v1.compiler.infer equality_route_declarations).
+fn map_values_eq<K, V>(a: Map<K, V>, b: Map<K, V>, eq: fn(V, V) -> Bool) -> Bool {
+  (count(map_keys(a)) == count(map_keys(b))) && for_all(xs: map_keys(a), predicate: fn(k) {
+    match map_get(a, k) {
+      Present { value: x } =>
+        match map_get(b, k) {
+          Present { value: y } => eq(x, y)
+          Absent => false
+        }
+      Absent => false
+    }
+  })
+}
+
 fn zip_eq<T>(
   a: FreeMonoid<T>,
   b: FreeMonoid<T>,

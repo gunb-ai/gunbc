@@ -89,7 +89,7 @@ fn walk_bind(binder: Node, value: Node, body: Node) -> Node {
 fn walk_chain_identity(c: NonEmptyDiagnostics) -> Symbol {
   match diagnostics_fatal(d: c).at {
     NodeLocus { anchor: a } =>
-      match a.at.kind {
+      match a.at.node.kind {
         TypeNode { connective: Atom { identity: id } } => id
         _ => ^walk_chain_not_an_atom
       }

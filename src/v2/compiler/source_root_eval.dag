@@ -720,7 +720,7 @@ fn native_file_refusal_at(at: Locus, path: Symbol, spans: SpanIndex, lines: Sour
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match node_authored_span_optional(node: a.at, index: spans) {
+      match node_authored_span_optional(node: a.at.node, index: spans) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: resolved } => native_file_refusal_from_resolved_locus(resolved: resolved, path: path, lines: lines)
       }
@@ -863,7 +863,7 @@ fn native_census_locate(at: Locus, path: Symbol, positions: NativeCensusPosition
     InvariantPortLocus { anchor: _, invariant: inv } => FileRefusalAtInvariant { invariant: inv }
     DeclarationLocus { declaration: q } => FileRefusalAtDeclaration { declaration: q }
     NodeLocus { anchor: a } =>
-      match native_census_owner_key(node: a.at) {
+      match native_census_owner_key(node: a.at.node) {
         Absent => FileRefusalAtUnresolvedNode
         Present { value: id } =>
           match native_census_owner_of(positions: positions, id: id) {
@@ -2816,12 +2816,12 @@ fn native_locus_naming_atom(locus: Locus, node: Node) -> Locus {
 fn native_authored_first_cause_diagnostic(d: Diagnostic, positions: NativeCensusPositionTable) -> Optional<Diagnostic> {
   match d.at {
     NodeLocus { anchor: a } =>
-      match native_node_authored_locus(node: a.at, positions: positions) {
+      match native_node_authored_locus(node: a.at.node, positions: positions) {
         Absent => optional_absent()
         Present { value: locus } =>
           optional_present(value: Diagnostic {
             reason: d.reason,
-            at: native_locus_naming_atom(locus: locus, node: a.at),
+            at: native_locus_naming_atom(locus: locus, node: a.at.node),
             correction: d.correction
           })
       }
@@ -3739,7 +3739,7 @@ type NativeCensusUnbound {
 fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
   match at {
     NodeLocus { anchor: a } =>
-      match a.at.kind {
+      match a.at.node.kind {
         TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
         _ => optional_absent()
       }
@@ -6575,7 +6575,7 @@ fn census_obligation_row(module: String, stage: NativeCensusCauseStage, outcome:
 
 fn census_occurrence_from_locus(at: Locus) -> Optional<OccurrenceId> {
   match at {
-    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.occurrence_id)
+    NodeLocus { anchor: a } => authored_occurrence_of(identity: a.at.node.occurrence_id)
     _ => optional_absent()
   }
 }

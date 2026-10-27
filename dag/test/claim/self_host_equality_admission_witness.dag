@@ -74,17 +74,21 @@ data structural_record_eq_green_source: String = "module eq_probe_structural_rec
 
 data edge_eq_red_source: String = "module eq_probe_edge\nimport v2.std.node { Edge }\nfn same(a: Edge, b: Edge) -> Bool { a == b }\n"
 
-data edge_in_record_eq_red_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
+data edge_in_record_eq_green_source: String = "module eq_probe_edge_record\nimport v2.std.node { Edge }\ntype Holder {\n  e: Edge\n}\nfn same(a: Holder, b: Holder) -> Bool { a == b }\n"
 
 data node_eq_red_source: String = "module eq_probe_node\nimport v2.std.node { Node }\nfn same(a: Node, b: Node) -> Bool { a == b }\n"
 
 data node_erasure_route_green_source: String = "module eq_probe_node_route\nimport v2.std.node { Node, node_equal_ignoring_provenance, node_same_occurrence }\nfn same(a: Node, b: Node) -> Bool { node_equal_ignoring_provenance(a: a, b: b) || node_same_occurrence(a: a, b: b) }\n"
 
-data composite_reaching_node_unlisted_red_source: String = "module eq_probe_composite\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn same(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+data composite_reaching_node_green_source: String = "module eq_probe_composite\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn same(a: Wrap, b: Wrap) -> Bool { a == b }\n"
 
-data composite_reaching_node_listed_green_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\ntype Wrap { n: Node }\nfn symbolic_max_rhs(a: Wrap, b: Wrap) -> Bool { a == b }\n"
+data composite_reaching_node_occurrence_green_source: String = "module eq_probe_composite_occurrence\nimport v2.std.node { Node, NodeOccurrence }\ntype Both { value: Node, at: NodeOccurrence }\nfn same(a: Both, b: Both) -> Bool { a == b }\n"
 
-data bare_node_at_listed_site_red_source: String = "module v2.lens.cost\nimport v2.std.node { Node }\nfn symbolic_max_rhs(a: Node, b: Node) -> Bool { a == b }\n"
+data node_occurrence_root_green_source: String = "module eq_probe_node_occurrence\nimport v2.std.node { NodeOccurrence }\nfn same(a: NodeOccurrence, b: NodeOccurrence) -> Bool { a == b }\n"
+
+data generic_eq_census_row_source: String = "module eq_probe_generic\nfn same<T>(a: T, b: T) -> Bool { a == b }\n"
+
+data collection_key_census_row_source: String = "module eq_probe_collection_key\nimport std.types { Map, Int }\nimport v2.std.node { Node }\ntype Keyed { by_node: Map<Node, Int> }\n"
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
@@ -126,8 +130,10 @@ test fn edge_equality_refuses_blocking() -> Bool {
   eq_blocking_count(source: edge_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
 }
 
-test fn edge_reached_through_a_record_refuses_blocking() -> Bool {
-  eq_blocking_count(source: edge_in_record_eq_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+// Below the root an Edge member is a value: the record compares it through its route
+// (node_edge_equal_ignoring_provenance), member by member, so the record is admitted.
+test fn edge_reached_through_a_record_is_admitted_through_its_route() -> Bool {
+  eq_admitted(source: edge_in_record_eq_green_source)
 }
 
 // Node reaches Edge through its children: derived == on a Node compares occurrence ids and
@@ -140,18 +146,52 @@ test fn node_erasure_routes_stay_admitted() -> Bool {
   eq_admitted(source: node_erasure_route_green_source)
 }
 
-// gunbc.rung_drop.node_reaching_composite_equality: a composite reaching Node is admitted ONLY at a listed
-// declaration; a new site outside the population refuses, and a bare Node operand refuses even at a listed one.
-test fn composite_reaching_node_outside_the_drop_refuses_blocking() -> Bool {
-  eq_blocking_count(source: composite_reaching_node_unlisted_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+// DERIVED EQUALITY WITH ROUTED LEAVES (std.operator_realization EqualityPlan): a composite reaching Node is
+// admitted anywhere, comparing a bare Node member as a value and a NodeOccurrence member as the same
+// occurrence; a NodeOccurrence is itself comparable at the root, a bare Node or Edge is not. What each
+// comparison answers is exercised by execution in v2.test.claim.derived_equality_routes.
+test fn composite_reaching_node_is_admitted_through_the_plan() -> Bool {
+  eq_admitted(source: composite_reaching_node_green_source)
 }
 
-test fn composite_reaching_node_at_a_listed_declaration_is_admitted() -> Bool {
-  eq_admitted(source: composite_reaching_node_listed_green_source)
+test fn composite_reaching_node_and_node_occurrence_is_admitted() -> Bool {
+  eq_admitted(source: composite_reaching_node_occurrence_green_source)
 }
 
-test fn bare_node_at_a_listed_declaration_still_refuses_blocking() -> Bool {
-  eq_blocking_count(source: bare_node_at_listed_site_red_source, wanted: "EqualityOnInadmissibleType") >= 1
+test fn node_occurrence_root_is_admitted() -> Bool {
+  eq_admitted(source: node_occurrence_root_green_source)
+}
+
+// THE RESIDUAL'S CENSUS ROWS ARE NEVER A VERDICT (gunbc.rung_drop derived_equality_residual_field_equality,
+// condition of sleek-owl-397's 2026-10-25 admission): each source below is ACCEPTED -- no blocking row --
+// while carrying its census row, so promoting either class into a gate turns these red.
+fn eq_class_count(source: String, wanted: String) -> Int {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+test fn generic_eq_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: generic_eq_census_row_source)
+    && eq_class_count(source: generic_eq_census_row_source, wanted: "EqualityInstantiationBlindGenericSite") >= 1
+}
+
+test fn collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_census_row_source)
+    && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+}
+
+// ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived
+// equality, and the emitter carries no hand-spelled conversion of a routed leaf's arguments: the routed call
+// is inside that declaration's ordinary body. The forbidden text is what the retired plan reader emitted.
+test fn planned_equality_emits_one_declared_call_and_no_hand_spelled_route() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.deq_emit_probe\nimport v2.std.node { Node }\ntype DeqEmitWrap { n: Node }\nfn same(a: DeqEmitWrap, b: DeqEmitWrap) -> Bool { a == b }\n",
+    "src/test_claim_deq_emit_probe.rs",
+    ["equality_derived_"],
+    ["::core::convert::From::from("]
+  )
 }
 
 test fn presence_test_stays_admitted() -> Bool {

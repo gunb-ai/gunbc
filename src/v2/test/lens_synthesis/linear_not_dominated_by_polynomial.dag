@@ -10,7 +10,7 @@ import v2.lens.cost {
 }
 import v2.std.cardinality { NonZeroNat }
 import std.nat { Zero }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, NodeOccurrence }
 
 data synthesis_lin_poly_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_lin_poly_x_symbol } },
@@ -24,9 +24,9 @@ data synthesis_polynomial_degree_two: PolynomialDegree = PolynomialDegree {
 
 test fn linear_not_dominated_by_polynomial_claim_holds() -> Bool {
   !symbolic_cost_dominates(
-    a: LinearCost { variable: SizeVariable { source: synthesis_lin_poly_x } },
+    a: LinearCost { variable: SizeVariable { source: NodeOccurrence { node: synthesis_lin_poly_x } } },
     b: PolynomialCost {
-      variable: SizeVariable { source: synthesis_lin_poly_x },
+      variable: SizeVariable { source: NodeOccurrence { node: synthesis_lin_poly_x } },
       degree: synthesis_polynomial_degree_two
     }
   )

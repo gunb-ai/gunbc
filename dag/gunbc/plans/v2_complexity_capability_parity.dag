@@ -101,7 +101,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
       rows: [
         row(cells: [cell(text: "Asymptotic class + dominance lattice"), cell(text: "yes"), cell(text: "**yes** (and better factored)")]),
         row(cells: [cell(text: "Symbolic cost expression"), cell(text: "`CostConst/Add/Mul/Max/Sum/Log/Extern/Unknown`"), cell(text: "partial — no `Max`, no binder-carrying `Sum`, no extern")]),
-        row(cells: [cell(text: "Size expression"), cell(text: "`SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax`"), cell(text: "**none** — `SizeVariable { source: Node }` only")]),
+        row(cells: [cell(text: "Size expression"), cell(text: "`SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax`"), cell(text: "**none** — `SizeVariable { source: NodeOccurrence }` only")]),
         row(cells: [cell(text: "Exact summation over a bounded collection"), cell(text: "`CostSum { binder, upper, body }`"), cell(text: "**no**")]),
         row(cells: [cell(text: "Work vs span"), cell(text: "both, on `ComplexitySummary`"), cell(text: "**neither**")]),
         row(cells: [cell(text: "Output-size derivation"), cell(text: "`output_size: Map<String, CostExpr>`"), cell(text: "**no**")]),

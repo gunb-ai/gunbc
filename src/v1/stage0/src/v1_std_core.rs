@@ -462,6 +462,7 @@ pub enum ExprData {
         op: BinOp,
         algebra_field: Option<AlgebraFieldKind>,
         operand: Option<Rc<OperandDeclaration>>,
+        derived: Option<Rc<DeclarationRef>>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,
@@ -885,6 +886,16 @@ pub enum CompilerDiagnostic {
         optional_side: String,
         span: Rc<SourceSpan>,
     },
+    EqualityInstantiationBlindGenericSite {
+        operand_type: String,
+        declaration: String,
+        span: Rc<SourceSpan>,
+    },
+    CollectionKeyReachesEqualityRoute {
+        key_type: String,
+        declaration: String,
+        span: Rc<SourceSpan>,
+    },
     TypeArgumentArityMismatch {
         type_name: String,
         supplied: i64,
@@ -1086,6 +1097,8 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::EqualityOnFunctionMember { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityMemberUnjudgeable { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityOnInadmissibleType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::EqualityInstantiationBlindGenericSite { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CollectionKeyReachesEqualityRoute { span: s, .. } => s.clone(),
         CompilerDiagnostic::EqualityOptionalityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentArityMismatch { span: s, .. } => s.clone(),
         CompilerDiagnostic::TypeArgumentKindMismatch { span: s, .. } => s.clone(),
@@ -1169,6 +1182,8 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     CompilerDiagnostic::EqualityOnFunctionMember { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': member '".to_string()), m.clone()), "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='".to_string()),
     CompilerDiagnostic::EqualityOnInadmissibleType { type_name: t, .. } => v1_rt::concat(v1_rt::concat("equality is not defined for '".to_string(), t.clone()), "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='".to_string()),
     CompilerDiagnostic::EqualityMemberUnjudgeable { type_name: t, member: m, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("equality admission for '".to_string(), t.clone()), "' cannot be judged: ".to_string()), m.clone()), " — '==' is refused rather than admitted on an unjudged member".to_string()),
+    CompilerDiagnostic::EqualityInstantiationBlindGenericSite { operand_type: t, declaration: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): '==' over type variable '".to_string(), t.clone()), "' in ".to_string()), d.clone()), " is admitted instantiation-blind, so it carries no equality plan".to_string()),
+    CompilerDiagnostic::CollectionKeyReachesEqualityRoute { key_type: t, declaration: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("census row (gunbc.rung_drop derived_equality_residual_field_equality): collection key type '".to_string(), t.clone()), "' in ".to_string()), d.clone()), " reaches a routed equality declaration, so membership uses derived equality, not the plan".to_string()),
     CompilerDiagnostic::EqualityOptionalityMismatch { optional_side: side, .. } => v1_rt::concat(v1_rt::concat("'==' compares an optional value with a required one (the ".to_string(), side.clone()), " operand is optional): no declared coercion lifts T into T?, so the comparison has no single meaning -- match on the optional".to_string()),
     CompilerDiagnostic::TypeArgumentArityMismatch { type_name: t, supplied: s, declared: d, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument arity mismatch applying '".to_string(), t.clone()), "': ".to_string()), (s.clone()).to_string()), " type argument(s) supplied, ".to_string()), (d.clone()).to_string()), " type parameter(s) declared".to_string()),
     CompilerDiagnostic::TypeArgumentKindMismatch { type_name: t, param_name: p, kind_name: k, supplied: sup, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("type argument does not inhabit the declared kind applying '".to_string(), t.clone()), "': parameter '".to_string()), p.clone()), "' is declared '".to_string()), k.clone()), "', and '".to_string()), sup.clone()), "' is not one of its inhabitants".to_string()),
@@ -1484,6 +1499,14 @@ pub fn diagnostic_disposition(d: Rc<CompilerDiagnostic>) -> Rc<DiagnosticDisposi
     CompilerDiagnostic::EqualityOnInadmissibleType { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,
     gate: Rc::new(DiagnosticGateDisposition::GateBlocking),
+}),
+    CompilerDiagnostic::EqualityInstantiationBlindGenericSite { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
+}),
+    CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => Rc::new(DiagnosticDisposition {
+    severity: DiagnosticSeverity::SeverityNonError,
+    gate: Rc::new(DiagnosticGateDisposition::GateAdvisoryTypecheck),
 }),
     CompilerDiagnostic::EqualityOptionalityMismatch { .. } => Rc::new(DiagnosticDisposition {
     severity: DiagnosticSeverity::SeverityError,

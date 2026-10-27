@@ -29,7 +29,7 @@ test fn loop_iteration_floor_projects_linear() -> Bool {
   match cost_lens(n: loop_iteration_floor_input) {
     Holds { value: actual } =>
       match actual {
-        LinearCost { variable: sv } => node_same_occurrence(a: sv.source, b: loop_iteration_floor_measure)
+        LinearCost { variable: sv } => node_same_occurrence(a: sv.source.node, b: loop_iteration_floor_measure)
         _ => false
       }
     _ => false

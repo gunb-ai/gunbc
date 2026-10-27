@@ -1272,6 +1272,32 @@ fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_car
     }
 }
 
+// A PLANNED `==` IS ONE CALL of the declared function the checker named for it (the ExprBinOp's
+// `derived`): the operand type's synthesized derived equality, or the routed function itself
+// (v1.compiler.infer equality_derived_target). Every per-member decision lives in that declaration's
+// ordinary body, which this interpreter runs like any other function.
+fn derived_equality_call(
+    ctx: &InterpContext,
+    function: &crate::std_decl_ref::DeclarationRef,
+    a: &Value,
+    b: &Value,
+) -> InterpResult<bool> {
+    let qualified = format!("{}.{}", function.module_path, function.decl_name);
+    let fn_node = ctx
+        .lookup_fn(&qualified)
+        .cloned()
+        .ok_or_else(|| InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' is not declared in this frame"),
+        })?;
+    let env = Env::empty();
+    match call_function(ctx, &fn_node, &[(None, a.clone()), (None, b.clone())], &env)? {
+        Value::Bool(v) => Ok(v),
+        other => Err(InterpError::TypeError {
+            msg: format!("derived equality '{qualified}' returned a non-Bool ({other:?})"),
+        }),
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         value_depth_guarded(|| {
@@ -8507,7 +8533,7 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
         // `match a { False => False  True => b }`, so the right operand is demanded only under one
         // left value, and the interpreter was the arm disagreeing with the corpus's own logic
         // authority.
-        ExprData::ExprBinOp { op, .. } => {
+        ExprData::ExprBinOp { op, derived, .. } => {
             let left = eval_expr(&binop_left(node.clone()), env, ctx)?;
             match &*crate::std_operator_realization::operand_demand(op.clone()) {
                 crate::std_operator_realization::OperandDemand::DemandsRightOnlyWhenLeftIs {
@@ -8524,7 +8550,13 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
                 }
                 _ => {
                     let right = eval_expr(&binop_right(node.clone()), env, ctx)?;
-                    eval_binop(&op, left, right, ctx)
+                    match (op, derived.as_deref()) {
+                        (BinOp::Eq | BinOp::Ne, Some(function)) => {
+                            let equal = derived_equality_call(ctx, function, &left, &right)?;
+                            Ok(Value::Bool(if matches!(op, BinOp::Eq) { equal } else { !equal }))
+                        }
+                        _ => eval_binop(&op, left, right, ctx),
+                    }
                 }
             }
         }

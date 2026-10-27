@@ -17,7 +17,7 @@ import std.optional {
   Present
 }
 import v2.std.integer { Int }
-import v2.std.node { Node, Symbol }
+import v2.std.node { Node, Symbol, NodeOccurrence }
 
 type PortReading
   = PortBareName { name: Symbol }
@@ -50,7 +50,7 @@ fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
 
 fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
   PolynomialCost {
-    variable: SizeVariable { source: n },
+    variable: SizeVariable { source: NodeOccurrence { node: n } },
     degree: polynomial_degree_two()
   }
 }

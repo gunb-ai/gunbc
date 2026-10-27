@@ -1,17 +1,17 @@
 module v2.test.claim.name_resolve.admission_fail_closed
 
-import std.occurrence_identity { OccurrenceSynthetic }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.compiler.name_resolve { ResolutionContext, Admission, AdmissionAccepted, AdmissionRejected, AdmissionState, Import, ImportVisible, ResolutionSubject, admit_import_entry, admit_imported_modules, resolution_context, resolve_in_context, resolve_with_admission, resolve_with_admission_policy, validated_module_root_for_name, module_root_find, validate_module_roots, ValidatedModuleRoots }
 import v2.std.declaration_marker { test_code_index_empty, test_marker_channel_empty }
 import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_tree, no_import_bindings, no_imported_modules, no_type_declaration_kinds, no_type_declaration_modifiers }
 import v2.std.cross_tree.import_model { DagTree, SourceRootRef, SourceRootSet, V2Tree }
 import v2.std.cross_tree.resolution { SourceRootIndex, source_root_index_empty, source_root_index_insert }
 import v2.extdeps.languages.dag { dag_grammar_atom, dag_language_model_surface_empty_prelude, dag_named_edge, dag_surface_edge }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, empty_map, map_insert, zip_eq }
 import v2.std.namespace_alias { CapturedImportTarget }
 import v2.std.diagnostic { Accepted, ByteRange, None, Outcome, Rejected, bind_outcome, outcome_accepted, Textual, diagnostics_eq, non_empty_diagnostics_eq, locus_eq }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.node { node_same_occurrence, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode, symbol_lexeme, fold_list_node, NotADeclaration }
 import v2.std.resolution_policy { ImportScoped }
 
 test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
@@ -567,7 +567,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
     match validate_module_roots(roots: roots) {
       Rejected { diagnostics: _ } => false
       Accepted { value: validated, diagnostics: _ } =>
-        validated.roots == roots && fold_list(
+        zip_eq(a: validated.roots, b: roots, eq: fn(x, y) { x == y }) && fc_roots_same_occurrence(a: validated.roots, b: roots) && fold_list(
           xs: [^fc_subject_a_seg, ^fc_subject_b_seg, ^fc_missing_seg],
           empty: true,
           cons: fn(ok, segment) {
@@ -576,7 +576,7 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
               Accepted { value: expected, diagnostics: expected_diag } =>
                 match validated_module_root_for_name(roots: validated, name: name) {
                   Accepted { value: actual, diagnostics: actual_diag } =>
-                    actual == expected && diagnostics_eq(a: actual_diag, b: expected_diag)
+                    actual == expected && node_same_occurrence(a: actual.root, b: expected.root) && diagnostics_eq(a: actual_diag, b: expected_diag)
                   Rejected { diagnostics: _ } => false
                 }
               Rejected { diagnostics: expected } =>
@@ -589,6 +589,38 @@ test fn validated_subject_index_matches_general_lookup() -> Bool {
         )
     }
   })
+}
+
+// THE SUBJECT REACHES THE SEMANTIC GRAPH WITH ITS OCCURRENCES INTACT. NormalizedTree.root is a value,
+// so `==` over the roots compares structure; whether validation handed back the SAME authored roots is
+// the occurrence question, asked explicitly.
+fn fc_roots_same_occurrence(a: FreeMonoid<NormalizedTree>, b: FreeMonoid<NormalizedTree>) -> Bool {
+  zip_eq(a: a, b: b, eq: fn(x, y) { node_same_occurrence(a: x.root, b: y.root) })
+}
+
+// RED for the occurrence assertion. The shared fixture's roots are synthetic, so on them the occurrence
+// question degrades to structure and cannot discriminate; this one mints its root. Validation must hand
+// back that same occurrence, and a structurally equal root minted separately must fail the assertion that
+// a rebuilt-with-fresh-provenance validator would otherwise pass structurally.
+test fn rebuilt_structurally_equal_root_refuses_the_occurrence_assertion() -> Bool {
+  let shape = fc_dual_import_subject_root(seg: ^fc_subject_a_seg, use_sym: ^fc_use_a_sym, imported_decl: ^fc_export_a_sym)
+  let authored = Node { kind: shape.kind, children: shape.children, occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 41 } } }
+  let rebuilt = Node { kind: shape.kind, children: shape.children, occurrence_id: OccurrenceMinted { id: OccurrenceId { value: 42 } } }
+  match fc_admitted(n: authored) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: tree, diagnostics: _ } =>
+      match validate_module_roots(roots: Cons { head: tree, tail: Empty }) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: validated, diagnostics: _ } =>
+          match validated.roots {
+            Empty => false
+            Cons { head: v, tail: _ } =>
+              node_same_occurrence(a: v.root, b: authored)
+                && node_equal_ignoring_provenance(a: v.root, b: rebuilt)
+                && !node_same_occurrence(a: v.root, b: rebuilt)
+          }
+      }
+  }
 }
 
 // Duplicate roots refuse before a validated index can be consumed; the general
