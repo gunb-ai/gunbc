@@ -426,7 +426,7 @@ fn router_dev_body_filter_lines() -> List<String> {
     "if content:find('text/event-stream', 1, true) then",
     "  local pos = 1",
     "  while true do",
-    "    local stop = buf:find('\n', pos, true)",
+    "    local stop = buf:find('\\n', pos, true)",
     "    if not stop then break end",
     "    local line = buf:sub(pos, stop - 1)",
     "    local data = line:match('^data:%s*(.-)%s*$')",

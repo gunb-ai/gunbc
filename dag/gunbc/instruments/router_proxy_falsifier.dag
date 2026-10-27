@@ -6,6 +6,8 @@ import std.algebra { skip }
 import std.measure { byte_size }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject }
 import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
@@ -337,6 +339,38 @@ fn dev_row(name: String, retiring: List<String>) -> RouterDevUpstream {
 
 // HOW MANY TIMES A NEEDLE OCCURS. Some rows must count, not just spot: eleven rows carrying a field is a
 // different fact from one row carrying it, and a presence test cannot tell them apart.
+// ROW FIELDS ARE COUNTED BY PARSING, NOT BY GREPPING THE RENDER. Two emitters are in play here:
+// this repository's serialize_json writes '"key": value' and cjson (used by the running proxy) writes
+// '"key":value'. A string needle spells one of them and silently misses the other -- a count of zero
+// for a field present in every row is a test bug, not a product bug, and it is invisible unless the
+// expectation is written against the parsed value.
+fn row_array(json: String) -> List<JsonValue> {
+  match parse_json_document(s: json) {
+    JsonDocumentParsed { value: JsonArray { elements } } => elements
+    _ => []
+  }
+}
+
+fn row_string_field_count(json: String, key: String, want: String) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonString { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
+fn row_bool_field_count(json: String, key: String, want: Bool) -> Int {
+  count(filter(row_array(json: json), r => match r {
+    JsonObject { members } => any(json_object_members_named(members: members, key: key), v => match v {
+      JsonBool { value } => value == want
+      _ => false
+    })
+    _ => false
+  }))
+}
+
 fn occurrences(s: String, needle: String) -> Int {
   if needle == "" { 0 } else { count(split(s: s, delimiter: needle)) - 1 }
 }
@@ -510,7 +544,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   // overlap -- the holding turn would already have finished by the time its successor was issued. One
   // transfer holds f1 (its engine sleeps six seconds) while the other arrives, and -i prints the status
   // line and headers of each so the refusal is visible as a 429 carrying Retry-After.
-  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "http://127.0.0.1:18445/v1/chat/completions?hold", "http://127.0.0.1:18445/v1/chat/completions?hold"])
+  let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "https://127.0.0.1:18445/v1/chat/completions?hold", "https://127.0.0.1:18445/v1/chat/completions?hold"])
   // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
   let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
   let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
@@ -545,7 +579,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     // The row fields the binding rules read are the ones in the emitted file: a drained row is present
     // and false, an engine-local row is not silently shared, and every row carries the fields at all.
-    case_of(identity: "rows_carry_cache_locality_and_in_service", held: occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":false") == 0 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"") == 9 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"shared\"") == 2 && contains(s: dev_text(), p: "u.cache_locality == ") && contains(s: dev_text(), p: "engine_local") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: concat(to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":")), "/", to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"")))),
+    case_of(identity: "rows_carry_cache_locality_and_in_service", held: row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "engine_local") == 9 && row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "shared") == 2 && row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: true) == 11 && row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: false) == 0 && contains(s: dev_text(), p: "u.cache_locality == ") && contains(s: dev_text(), p: "engine_local") && contains(s: dev_text(), p: "u.in_service ~= false"), observed: concat(to_string(row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "engine_local")), "/", to_string(row_string_field_count(json: router_dev_first_party_json(), key: "cache_locality", want: "shared")), "/", to_string(row_bool_field_count(json: router_dev_first_party_json(), key: "in_service", want: true)))),
     // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
     // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
     // another row's retiring list, and one name retired by two rows at once.
@@ -563,7 +597,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "effort_translation_is_a_row_not_a_lua_literal", held: occurrences(s: dev_text(), needle: "ROUTER_EFFORT") >= 3 && contains(s: dev_text(), p: "chat_template_kwargs") && contains(s: dev_text(), p: "enable_thinking"), observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_EFFORT"))),
     // The comparison price is READ FROM A QUOTE ROW (figures, reference model, authority, reading date),
     // never written as a literal in the proxy's Lua.
-    case_of(identity: "comparison_pricing_arrives_as_cited_rows", held: occurrences(s: dev_text(), needle: "ROUTER_COMPARISON[") == 3 && contains(s: dev_text(), p: "reference_model") && contains(s: dev_text(), p: "read_on") && contains(s: dev_text(), p: "input_micro") && occurrences(s: dev_text(), needle: "0.15") == 0, observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_COMPARISON["))),
+    case_of(identity: "comparison_pricing_arrives_as_cited_rows", held: occurrences(s: dev_text(), needle: "ROUTER_COMPARISON['") == 3 && contains(s: dev_text(), p: "reference_model") && contains(s: dev_text(), p: "read_on") && contains(s: dev_text(), p: "input_micro") && occurrences(s: dev_text(), needle: "0.15") == 0, observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_COMPARISON["))),
     case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && !contains(s: dev_models, p: "m-g") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
     case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
     case_of(identity: "dev_https_upstream_is_verified_against_its_pin", held: contains(s: dev_b, p: "upstream=b auth=Bearer kb") && contains(s: dev_b, p: "\n200 exit=0"), observed: dev_b),
