@@ -7,13 +7,23 @@ import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMed
 import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
-import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image }
+import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, RunnerHostBakedRelease }
+import extdeps.crypto.hash { sha256_digest }
 import gunbc.runner.runner_host_medium_publish {
   mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
   ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, served_link_after,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A BAKED RELEASE AS THE PUBLISH RUN WOULD STAGE IT: supplied at the interface, its digest a fixture pin.
+fn fixture_baked_release() -> RunnerHostBakedRelease {
+  RunnerHostBakedRelease {
+    revision: "1111111111111111111111111111111111111111",
+    digest: sha256_digest(hex: "2222222222222222222222222222222222222222222222222222222222222222" as NonEmptyStr),
+    staged_path: "/var/tmp/gunbc-image-staging/gunbc-release-1111111111111111111111111111111111111111.tar" as NonEmptyStr,
+  }
+}
 
 data digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
@@ -23,7 +33,7 @@ fn built_of(input: UbuntuSeededInstallMediaBuildInput) -> UbuntuSeededInstallMed
 
 // The route's host derives an image (not a fixture): the publish caller is handed this value.
 test fn the_mtcollins1_runner_host_derives_an_image() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: _, runner: _ } => true
     _ => false
   }
@@ -39,7 +49,7 @@ test fn a_refused_publication_does_not_hold() -> Bool {
 }
 
 test fn an_already_published_image_holds_and_its_receipt_names_the_digest() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: i, runner: _ } => {
       let a = RunnerImagePublishRan { publication: SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }, link: ServedLinkPointsAt { link_path: boot_medium_served_link_path(), target: "/srv/bmc/x.iso" as NonEmptyStr } }
       runner_image_attempt_holds(a: a) && contains(render_runner_image_attempt(a: a), "output_digest=0123456789abcdef")
@@ -50,7 +60,7 @@ test fn an_already_published_image_holds_and_its_receipt_names_the_digest() -> B
 }
 
 test fn a_published_image_with_an_unremoved_build_directory_does_not_hold() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: i, runner: _ } =>
       !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: SeededImagePublished {
         built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr, work: RemovalUnconfirmed { dir: "/tmp/w" as NonEmptyStr, exit_code: 1, stderr: "r" }, staging_residue: none }, link: ServedLinkNotSet { reason: "r" } })
@@ -71,7 +81,7 @@ fn link_word(l: ServedLinkReading) -> String {
 // be set does not hold; a refused publication leaves the link unset. CONTROL: readlink naming the published
 // path points the link at it.
 test fn the_served_link_is_set_after_a_holding_publication_and_read_back_exactly() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: i, runner: _ } => {
       let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
       let pointed = served_link_after(publication: held, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso\n" } })
