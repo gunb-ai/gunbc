@@ -57,6 +57,7 @@ import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_provision_check_verdict,
   GpuContainerProvisionStep,
   GpuContainerProvisioned, GpuContainerProvisionRefused, GpuContainerProvisionSkipped,
+  gpu_container_acceptance_image, gpu_container_acceptance_probe_argv,
   gpu_container_subordinate_integrity_holds,
   gpu_container_provision_subuid_verify_step,
   gpu_container_provision_subgid_verify_step,
@@ -82,6 +83,18 @@ import extdeps.shadow.subordinate_ids {
   subordinate_collisions,
   plan_subordinate_file,
 }
+
+import extdeps.exec.command { ArgvCommand, argv_words }
+import extdeps.sudo.elevation { sudo_program }
+import extdeps.tools.env { env_path_resolved_program }
+import extdeps.docker.cli {
+  docker_info_command, docker_program, docker_gpu_cdi_probe_run_command,
+}
+import extdeps.container.nvidia_container_toolkit {
+  nvidia_ctk_cdi_generate_command, nvidia_ctk_cdi_list_command, nvidia_ctk_program,
+  nvidia_cdi_all_gpu_device,
+}
+import gunbc.runner.runner_gpu_container_toolchain { job_user_command }
 
 // ── THE READBACK GATE ────────────────────────────────────────────────────────────────────────
 
@@ -838,4 +851,83 @@ test fn the_gpu_label_set_always_carries_the_gpu_capability() -> Bool {
     && gpu_labels_for_witnesses(host: operator_host_srv1, witnesses: []).any(l => l == gunbc_gpu_docker_label)
     && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: [browser_held()]).any(l => l == gunbc_gpu_docker_label)
     && gpu_labels_for_witnesses(host: operator_host_srv3, witnesses: []).any(l => l == gunbc_gpu_docker_label)
+}
+
+// ── THE EMITTED ARGV IS THE CONTRACT, NOT THE INTENT ─────────────────────────────────────────
+//
+// Two defects the whole witness suite missed and a live host caught on its first run (srv3,
+// 2026-10-26), because every claim so far asks a QUESTION OF A MODEL VALUE and none inspects the word
+// list that leaves for the host. Both were silent, both were fatal to the arm they belonged to, and both
+// were invisible until something actually exec'd:
+//   - nvidia-ctk's argv rows began with "nvidia-ctk" while argv_command also carries it as the program,
+//     and argv_words PREPENDS the program, so the host received `nvidia-ctk nvidia-ctk cdi generate …`
+//     and exited 3 with "unknown command nvidia-ctk". The CDI arm was red for a spelling.
+//   - job_user_command put the DOCKER_HOST assignment in FRONT of sudo, and /etc/sudoers is
+//     `Defaults env_reset`, so the value was erased before docker ran; docker fell back to the rootful
+//     socket and both job-user arms certified a daemon that was never contacted.
+// These claims pin the two shapes at the only level that would have caught them: the words.
+
+fn word_at(words: List<String>, n: Int) -> String {
+  match words.get(index: n) {
+    Present { value: w } => w
+    Absent => ""
+  }
+}
+
+// THE PROGRAM APPEARS EXACTLY ONCE. A row list that spells the binary it is arguments TO is the bug, and
+// "exactly once" is the assertion that distinguishes it: the second occurrence is what the binary reads as
+// its first subcommand. Asserted on BOTH legs, and on the list form too, because the defect was in the rows
+// and either consumer of them would have shipped it.
+test fn the_nvidia_ctk_argv_never_repeats_its_program() -> Bool {
+  let generate_words = argv_words(command: nvidia_ctk_cdi_generate_command())
+  let list_words = argv_words(command: nvidia_ctk_cdi_list_command())
+  let ctk = nvidia_ctk_program().invocation as String
+  word_at(words: generate_words, n: 0) == ctk
+    && word_at(words: generate_words, n: 1) == "cdi"
+    && word_at(words: generate_words, n: 2) == "generate"
+    && !generate_words.skip(n: 1).any(w => w == ctk)
+    && word_at(words: list_words, n: 0) == ctk
+    && word_at(words: list_words, n: 1) == "cdi"
+    && word_at(words: list_words, n: 2) == "list"
+    && !list_words.skip(n: 1).any(w => w == ctk)
+}
+
+// THE DOCKER INFO ARM REACHES THE JOB USER, AS THE JOB USER, WITH ITS OWN SOCKET. Order is the entire
+// meaning here: `env` must sit AFTER sudo's -n -u <user>, because sudo's env_reset erases anything set in
+// front of it. The wrong order puts words 4 and 5 at "env" and "DOCKER_HOST=…" and the right order puts
+// them at the user name and "env" — so this claim is red on the shape that shipped, not merely green on
+// the shape that works.
+test fn the_job_user_docker_host_survives_the_elevation() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_info_command()
+  ))
+  word_at(words: words, n: 0) == sudo_program().invocation as String
+    && word_at(words: words, n: 1) == "-n"
+    && word_at(words: words, n: 2) == "-u"
+    && word_at(words: words, n: 3) == "ghrunner"
+    && word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && word_at(words: words, n: 6) == docker_program().invocation as String
+    && word_at(words: words, n: 7) == "info"
+}
+
+// THE SAME SHAPE FOR THE CONTAINER ARM, since it is a second, independently-composed call and a fix that
+// covered only docker info would leave the GPU readback asking the rootful daemon. The device word is
+// checked too: the probe must go through the CDI device the label certifies, not through --gpus.
+test fn the_gpu_container_probe_is_elevated_inside_its_environment() -> Bool {
+  let words = argv_words(command: job_user_command(
+    user: "ghrunner" as NonEmptyStr,
+    socket: "unix:///run/user/999/docker.sock",
+    inner: docker_gpu_cdi_probe_run_command(
+      image: gpu_container_acceptance_image,
+      device: nvidia_cdi_all_gpu_device,
+      probe_argv: gpu_container_acceptance_probe_argv,
+    )
+  ))
+  word_at(words: words, n: 4) == env_path_resolved_program().invocation as String
+    && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
+    && words.any(w => w == nvidia_cdi_all_gpu_device as String)
+    && !words.any(w => w == "--gpus")
 }
