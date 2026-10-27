@@ -43,6 +43,7 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_program, host_capture_bind, host_capture_section_reading,
 }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import extdeps.tools.shadow_utils { useradd_system_nologin_command }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //
@@ -99,6 +100,15 @@ fn runner_host_listener_path() -> String {
   concat(actions_runner_base_dir, actions_runner_listener_relative_path)
 }
 
+// THE ACCOUNT THE IMAGE'S LISTENERS RUN AS (operator decision, merry-fox-82, 2026-10-27: option B). The image is
+// stateless and image-baked, so no SSH converge enrols it and no runner_host_spec row describes it; the image itself
+// declares the account and creates it at every boot as a captured, gated section (runner-account), so a boot that did
+// not create it is refused by runner_host_up_readback rather than reported up. Slots on an image-baked host read
+// their runner user from here through gunbc.runner.runner_host_listener_account host_unit_slot_runner_user. A system
+// account with no home and no login shell: the listener needs an identity the App key's custody row does not admit,
+// nothing more. CHANGING THIS CHANGES THE BOOT IMAGE (the medium's user-data, so its output digest).
+data runner_host_medium_runner_account: NonEmptyStr = "gunbc-runner"
+
 // THE SECTION NAMES ARE READ BACK BY NAME, so the program's roster and the predicate's reads are one
 // set of rows.
 data runner_host_section_boot_media: NonEmptyStr = "boot-media"
@@ -107,6 +117,7 @@ data runner_host_section_runner_clear: NonEmptyStr = "runner-clear"
 data runner_host_section_runner_dir: NonEmptyStr = "runner-dir"
 data runner_host_section_runner_extract: NonEmptyStr = "runner-extract"
 data runner_host_section_runner_listener: NonEmptyStr = "runner-listener"
+data runner_host_section_runner_account: NonEmptyStr = "runner-account"
 data runner_host_section_systemd: NonEmptyStr = "systemd-manager"
 data runner_host_section_meminfo: NonEmptyStr = "meminfo"
 data runner_host_section_nproc: NonEmptyStr = "nproc"
@@ -119,6 +130,7 @@ data runner_host_up_section_names: List<NonEmptyStr> = [
   runner_host_section_runner_dir,
   runner_host_section_runner_extract,
   runner_host_section_runner_listener,
+  runner_host_section_runner_account,
   runner_host_section_systemd,
   runner_host_section_meminfo,
   runner_host_section_nproc,
@@ -138,6 +150,7 @@ fn runner_host_up_stages(artifact: ActionsRunnerBinaryArtifact) -> List<HostCapt
     HostCaptureStage { name: runner_host_section_runner_dir, command: shell_command_render(command: mkdir_parents_command(path: actions_runner_base_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_extract, command: shell_command_render(command: tar_extract_command(archive: runner_host_medium_tarball_on_medium(artifact: artifact), into_directory: actions_runner_base_dir, strip_components: 0)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_runner_listener, command: shell_command_render(command: test_executable_command(path: runner_host_listener_path())) as NonEmptyStr },
+    HostCaptureStage { name: runner_host_section_runner_account, command: shell_command_render(command: useradd_system_nologin_command(name: runner_host_medium_runner_account)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_systemd, command: shell_command_render(command: test_directory_command(path: systemd_booted_runtime_dir)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_meminfo, command: shell_command_render(command: cat_command(path: procfs_path_literal(p: ProcMeminfo) as String)) as NonEmptyStr },
     HostCaptureStage { name: runner_host_section_nproc, command: shell_command_render(command: nproc_command()) as NonEmptyStr },
@@ -333,7 +346,7 @@ fn runner_host_up_over_closed(envelope: BoundHostCaptureEnvelope, label: NonEmpt
   }
   let digest_refusals = runner_host_tarball_digest_refusals(read: runner_host_section_read(envelope: envelope, name: runner_host_section_tarball_digest))
   let gates = append(append(media_refusals, items: digest_refusals), items: flat_map(
-    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_systemd],
+    [runner_host_section_runner_clear, runner_host_section_runner_dir, runner_host_section_runner_extract, runner_host_section_runner_listener, runner_host_section_runner_account, runner_host_section_systemd],
     n => runner_host_section_refusal(read: runner_host_section_read(envelope: envelope, name: n)),
   ))
   let mem_read = runner_host_section_read(envelope: envelope, name: runner_host_section_meminfo)

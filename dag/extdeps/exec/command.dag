@@ -85,6 +85,7 @@ type ArgvCommand sole_constructor {
 fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
   admit_callers: [
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
+    decl_ref(module_path: "extdeps.tools.shadow_utils", decl_name: "useradd_system_nologin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),

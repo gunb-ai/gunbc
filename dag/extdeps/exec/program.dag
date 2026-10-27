@@ -205,6 +205,7 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.rust.rustc", decl_name: "rustc_program_at"),
     decl_ref(module_path: "extdeps.gnupg.gpgv", decl_name: "gpgv_program"),
     decl_ref(module_path: "extdeps.tools.xz", decl_name: "xz_program"),
+    decl_ref(module_path: "extdeps.tools.shadow_utils", decl_name: "useradd_program"),
     decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_program_at"),
     decl_ref(module_path: "extdeps.virtualization.qemu", decl_name: "qemu_system_aarch64_program"),
     decl_ref(module_path: "extdeps.posix.test_utility", decl_name: "test_program"),

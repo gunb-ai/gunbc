@@ -35,7 +35,7 @@ import gunbc.runner.runner_host_medium {
   RunnerHostMediumHost, RunnerHostMediumImage, RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused,
   RunnerHostUp, RunnerHostUpReadback, RunnerHostUpPending, RunnerHostUpRefused, RunnerHostUpObserved,
   RunnerHostSectionFailed, RunnerHostTarballDigestDiffers, RunnerHostMachineNotAarch64, RunnerHostMachineUnrecognized, RunnerHostSectionAbsent, RunnerHostLabelAbsent,
-  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id,
+  runner_host_medium_image, runner_host_boot_medium, runner_host_up_readback, runner_host_medium_volume_id, runner_host_medium_runner_account,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -73,6 +73,10 @@ fn sections(install_exit: String, machine: String) -> String {
 }
 
 fn sections_with_digest(install_exit: String, machine: String, tarball_digest: String) -> String {
+  sections_full(install_exit: install_exit, machine: machine, tarball_digest: tarball_digest, account_exit: "0")
+}
+
+fn sections_full(install_exit: String, machine: String, tarball_digest: String, account_exit: String) -> String {
   concat(
     section(name: "boot-media", argv: "ls -1 /dev/disk/by-label", body: "GUNBC_RUNNER_HOST_2404_3\nEFI\n", exit_code: "0"),
     section(name: "runner-tarball-digest", argv: "sha256sum -- (the tarball on the medium)", body: concat(tarball_digest, "  /cdrom/gunbc-runner/actions-runner-linux-arm64-2.337.0.tar.gz\n"), exit_code: "0"),
@@ -80,6 +84,7 @@ fn sections_with_digest(install_exit: String, machine: String, tarball_digest: S
     section(name: "runner-dir", argv: "mkdir -p /opt/actions-runner", body: "", exit_code: "0"),
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
+    section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
     section(name: "nproc", argv: "nproc", body: "80\n", exit_code: "0"),
@@ -359,4 +364,25 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false
   }
+}
+
+// THE IMAGE CREATES THE ACCOUNT ITS LISTENERS RUN AS, AND THE READBACK GATES ON IT (operator decision B,
+// 2026-10-27). The seed program runs useradd for exactly the declared account; a boot whose runner-account section
+// failed (useradd exits 9 on a name already in use, 1 when it cannot update the password file) is refused naming
+// that section, never reported up with an account the slots would then fail to find.
+test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() -> Bool {
+  let created = match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } =>
+      string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: "useradd")
+        && string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: runner_host_medium_runner_account as String)
+    _ => false
+  }
+  let failed = concat(begin_line, concat(sections_full(install_exit: "0", machine: "aarch64", tarball_digest: actions_runner_release_2_337_0.digest_aarch64.hex as String, account_exit: "9"), end_line))
+  created && (match readback(capture: failed) {
+    Present { value: RunnerHostUpRefused { refusals: rs } } => rs |> any(r => match r {
+      RunnerHostSectionFailed { name: n, exit_code: c } => (n as String) == "runner-account" && c == "9"
+      _ => false
+    })
+    _ => false
+  })
 }
