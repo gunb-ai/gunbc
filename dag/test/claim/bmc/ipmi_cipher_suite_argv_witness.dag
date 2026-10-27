@@ -3,7 +3,7 @@ module test.claim.bmc.ipmi_cipher_suite_argv_witness
 import std.types { Bool, Int, List, String }
 import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv { ArgvMaterialization, OperationInputBinding, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { ArgvMaterialization, OperationInputBinding, operation_argv_bind_text, operation_argv_bind_text_list, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcBootControlRouteObservation, bmc_observation_ipmi_cipher_suite }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route, mtcollins1_access_observation }
