@@ -539,6 +539,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("serving-benchmark-run"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
@@ -2093,8 +2099,9 @@ fn run_ambient_name_census(
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
     ];
-    if let Some(kit) = &kit {
+    if let (Some(kit), Some((kit_root, _))) = (&kit, &kit_inputs) {
         args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+        args.push((Some("kit_root".to_string()), text(kit_root)));
     }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),
