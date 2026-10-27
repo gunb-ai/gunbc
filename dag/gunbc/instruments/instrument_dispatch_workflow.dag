@@ -224,7 +224,7 @@ fn instrument_dispatch_labels() -> List<Label> {
     // lane declares; it is dispatched on the fleet when the cell's operator books the window.
     serving_benchmark_run_label(),
     // The ambient-name census is the whole-tree binding census the NAMESPACE-XL waves and the generated import sweep
-    // read (v2.compiler.occurrence_binding_census): the emitted compiler's census-infer over dag + src/v2, which outlives
+    // read (v2.compiler.occurrence_resolution_census): the emitted compiler's census-infer over dag + src/v2, which outlives
     // the free remote runner's cap, so it is run on purpose here and never as a merge gate.
     ambient_name_census_label(),
     // The import sweep's controls (v2.workflow.roster_import_sweep roster_controls_report) run the sweep's fixture controls

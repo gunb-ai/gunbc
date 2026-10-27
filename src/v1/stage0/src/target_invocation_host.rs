@@ -255,7 +255,7 @@ pub enum V2NativeCensusReading {
     },
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    OccurrenceResolution,
     /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
     /// primitive spelling's disposition.
     AmbientOperationDisposition,
@@ -442,7 +442,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -1176,7 +1176,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(
             &self_host_source_roots(),
             "ambient-name-census",
@@ -6087,10 +6087,14 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
         message: format!("regen-round-cost: subject unreached: {detail}"),
     };
     let roots = self_host_source_roots();
+    // NOT a heal round: an instrument prices a round on the checkout it runs on, so it asks for
+    // no base mirror and its receipt renders no base-mirror line. Which authority a round seeds
+    // from is decided by the CALLER's context, never by whether something failed.
     let round = match cli_run::run_regen_round_cost(
         "target/stage0-regen-candidate",
         "target/stage0-regen-receipt.json",
         &roots,
+        false,
         false,
     ) {
         Ok(round) => round,
