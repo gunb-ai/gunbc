@@ -1,0 +1,220 @@
+module gunbc.machine_intake.supermicro_bmc_reading
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.content_hash { sha256_hex_of_text }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
+import extdeps.network.mac { Eui48Address }
+import extdeps.boards.supermicro_h11ssl { supermicro_h11ssl_catalog }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootFlagsReading, ipmi_boot_flags_reading_of_bootparam_get }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, sdr_decode_lines }
+import extdeps.bmc.ipmitool_print_read {
+  IpmitoolSelRow, IpmiCipherSuitePrivilege, IpmiSolConfiguration,
+  ipmitool_sel_elist_rows, ipmi_cipher_suite_privileges_of_lan_print, ipmi_sol_configuration_of_sol_info,
+}
+import extdeps.bmc.redfish_memory_inventory { RedfishMemoryMember, redfish_memory_member_of, RedfishCollectionPage, redfish_collection_page_of }
+import extdeps.bmc.redfish_boot_override { RedfishBootOverrideReading, redfish_boot_override_of_system }
+import extdeps.bmc.supermicro {
+  SupermicroSmbiosDimm, SupermicroCgiRead, SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable,
+  supermicro_cgi_smbios_dimms_of,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
+import gunbc.bmc.supermicro_bmc_read {
+  SupermicroIdentityReading, SupermicroResourceStanding, DimmReadingDisagreement, SupermicroVirtualMediaOffer,
+  supermicro_bmc_identity, supermicro_resource_standing, supermicro_dimm_reading_disagreements, supermicro_virtual_media_offer,
+  supermicro_identity_agrees_with_catalog,
+}
+
+// RECEIPTS, NOT UPSTREAM FACT (DESIGN section 3). What the two H11SSL units' BMCs answered to read-only
+// requests, keyed by BMC MAC like gunbc.machine_intake.supermicro_h11ssl_unit_observation, and the readings
+// gunbc.bmc.supermicro_bmc_read folds out of them. Nothing here was written to a BMC.
+//
+// UNIT 1 (BMC 192.168.1.252, MAC ac:1f:6b:e3:f5:7b), 2026-10-27, taken by merry-fox-82 with an
+// operator-supplied credential that is in no file. Redfish: curl GETs from the session host; IPMI:
+// ipmitool -I lanplus -C 3 from h11-a16 (192.168.1.202). Each capture's body is committed verbatim as
+// relayed; the HTTP status of each Redfish GET is the relay's status line, carried on its row below. The
+// manifest is the authority for which file answered which request; each read checks the file's sha256.
+//
+// TWO READINGS ON THIS CAPTURE THAT ARE THE FIRMWARE'S, NOT THE HOST'S: every Memory member reports
+// RankCount equal to its member index (1..8) and MaxTDPMilliWatts values from 0 to 20480000 on identical
+// RDIMMs. Neither is decoded by the Memory reader, and neither is read as a fact about the modules.
+//
+// UNIT 2 (BMC 192.168.1.254, MAC ac:1f:6b:e3:f6:22): the first-contact CGI pages already committed
+// (artifacts/bmc/h11ssl-unit2-first-contact-*), and its Redfish root, refused unlicensed. Its HTTP status
+// was not recorded. Unit 2 was unreachable on 2026-10-27, so it has no IPMI reading.
+type SupermicroCapture { path: NonEmptyStr, sha256: NonEmptyStr, request: NonEmptyStr, http_status: Int? }
+
+data supermicro_h11ssl_unit1_captures_2026_10_27: List<SupermicroCapture> = [
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1.json", sha256: "9915c2a8208f27e2d3f86b6a0d47bdd848e34429e9e47aa7d7d28075d57aa904", request: "GET /redfish/v1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Chassis_1_Thermal.json", sha256: "85b3d32070bc8ea308760412817e5d2a514ebb9b242a414456d605c1f298f766", request: "GET /redfish/v1/Chassis/1/Thermal", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1.json", sha256: "4f4b39ccecdf396a4c68437aeffa3272914c6bf91e690acedfc5c303ede6df63", request: "GET /redfish/v1/Managers/1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1_EthernetInterfaces_1.json", sha256: "d4d58c81d22a09f44e4b5191e98125fa244debcfeeae8a8911f8905c79aa5472", request: "GET /redfish/v1/Managers/1/EthernetInterfaces/1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1_LicenseManager_QueryLicense.html", sha256: "e6814f9c0261a6cf497b0832eb6d68d72a61a7e4f5c0f36440fff650581fb9bc", request: "GET /redfish/v1/Managers/1/LicenseManager/QueryLicense", http_status: Present { value: 404 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1_VirtualMedia.json", sha256: "8ce14b95debb681d2b28eb9e62a814515d2ce179497798ad0619fc29e66d2ac3", request: "GET /redfish/v1/Managers/1/VirtualMedia", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1_VirtualMedia_CD1.json", sha256: "117c9322f83dd0521574a146e0e03ad0140de7d41804423e496e85d84c5bcfb7", request: "GET /redfish/v1/Managers/1/VirtualMedia/CD1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1.json", sha256: "d593c132a7e7f21744fa9005445ae74533b0e8672630d3e05bcdbc030d45367e", request: "GET /redfish/v1/Systems/1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_EthernetInterfaces.json", sha256: "e5bc6a3ad1508569b50a4978e0fceb162859a2d602a847df0e18a4351ea4ed60", request: "GET /redfish/v1/Systems/1/EthernetInterfaces", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_EthernetInterfaces_1.json", sha256: "8048968edd235ad9842d7e6d5ae8d8d58954a9867bb2ab9582d10156b4c9106e", request: "GET /redfish/v1/Systems/1/EthernetInterfaces/1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory.json", sha256: "3e75483ce1b78dc79c7f3cbe67a762f340f09c669510c2c87ed619e92248856a", request: "GET /redfish/v1/Systems/1/Memory", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_1.json", sha256: "7efd3eee6a23761fac8ad6cc475c4ad5daf2e3ccca15478051f9ef3c0d24d4b9", request: "GET /redfish/v1/Systems/1/Memory/1", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_2.json", sha256: "12388b6a75ba1c7a7d7ed9a8382b6184410afa8243f453facd540acb8221e9a0", request: "GET /redfish/v1/Systems/1/Memory/2", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_3.json", sha256: "2c3f736f9851a6a9d6ccad8fe6b121468e72a02399cc1c8ea586e2828c8b682f", request: "GET /redfish/v1/Systems/1/Memory/3", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_4.json", sha256: "8786b464953539b709d45f96372b50e5ddd18ce39a29939606fa525a8bcd368c", request: "GET /redfish/v1/Systems/1/Memory/4", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_5.json", sha256: "19d7b33d4d57eb281ede88c2f8c14ecc33dfec92beebb8065edc54cb8900a435", request: "GET /redfish/v1/Systems/1/Memory/5", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_6.json", sha256: "7e376a2102262c289fb797f1280a2cd678faf0467259fdbc95943c8c9b0b24ca", request: "GET /redfish/v1/Systems/1/Memory/6", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_7.json", sha256: "b048ddf65cecbd2416472de4120d5522491316e4007165a70f24df43abb5720e", request: "GET /redfish/v1/Systems/1/Memory/7", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_8.json", sha256: "eb416dc70d579d42431d5e2afc2642f0a55bc6b8ea18b05ef722f9d16608e485", request: "GET /redfish/v1/Systems/1/Memory/8", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_SimpleStorage.json", sha256: "207c1f121d96f2525c70e3db040c9f34c53d5273f33f15bbf1879d1725384f6c", request: "GET /redfish/v1/Systems/1/SimpleStorage", http_status: Present { value: 200 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Storage.json", sha256: "26afd1979f7febd52fdc81309794c29c4270cf20d83202b42fba1a64364b9ba0", request: "GET /redfish/v1/Systems/1/Storage", http_status: Present { value: 403 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_UpdateService_FirmwareInventory.json", sha256: "26afd1979f7febd52fdc81309794c29c4270cf20d83202b42fba1a64364b9ba0", request: "GET /redfish/v1/UpdateService/FirmwareInventory", http_status: Present { value: 403 } },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/channel-info-1.txt", sha256: "0527300a4e07d522f5f6561007b61b7ea57d32a7b22eb730b557a1d59064189d", request: "ipmitool -I lanplus -C 3 channel info 1", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/chassis-bootparam-get-5.txt", sha256: "19ee73f844dca9cc228e958ab24d28a99f74c00188dd097623c4786f2d58ecbe", request: "ipmitool -I lanplus -C 3 chassis bootparam get 5", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/chassis-status.txt", sha256: "bb2c7e91d9d89faed9f6a56183e82d85efb60937871e05e6269e46c462dba7b1", request: "ipmitool -I lanplus -C 3 chassis status", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/fru-print-0.txt", sha256: "bb6f6da2f5752fb44480540496b8bee02b6cca887bd6a7719d48305417254d21", request: "ipmitool -I lanplus -C 3 fru print 0", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/lan-print-1.txt", sha256: "c78825fb987ae9138bae683952eba59e34ebca6a27d1331bdb9170bbe8d0d19b", request: "ipmitool -I lanplus -C 3 lan print 1", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/mc-info.txt", sha256: "dd6dfa0c1dc81600e56ad81d0b812616983cccb6e47931dcedaa1a88b22d3c6e", request: "ipmitool -I lanplus -C 3 mc info", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/raw-0x06-0x01.txt", sha256: "5d5b62bc067f74eaec14ea525e6449fa21c787dc69412ffc29b93f716747e7ad", request: "ipmitool -I lanplus -C 3 raw 0x06 0x01", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sdr-elist.txt", sha256: "0a0aaa5f5702f087458af33d2f51ded9bc75fe9b32f91c84bfff55147d8a7c6d", request: "ipmitool -I lanplus -C 3 sdr elist", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sel-elist.txt", sha256: "76602c0b7e2af9d0b2edbfc2a98de89f076b84fd914c6059feb1082d5a2a7c82", request: "ipmitool -I lanplus -C 3 sel elist", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sel-info.txt", sha256: "85f496459d1239849ba47aad3343cc5c4eda20c5975a2a56f303edba4048f845", request: "ipmitool -I lanplus -C 3 sel info", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/sol-info-1.txt", sha256: "be55fc7e3a44ced5e72b4e9402d6164441fdc8193cad57c12392c2f562317a92", request: "ipmitool -I lanplus -C 3 sol info 1", http_status: none },
+]
+
+data supermicro_h11ssl_unit2_captures: List<SupermicroCapture> = [
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml", sha256: "cc235f24b518607107d54145517f20a43af2c6773c3c9379a428f1fc3e56cbd7", request: "POST /cgi/ipmi.cgi GENERIC_INFO", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit2-first-contact-smbios-info.xml", sha256: "3d667965e4ac2c13fa7ecbbb0cfbfdedfb32666353cc8d19663c3f9aaa19641e", request: "POST /cgi/ipmi.cgi SMBIOS_INFO", http_status: none },
+  SupermicroCapture { path: "artifacts/bmc/h11ssl-unit2-first-contact-redfish-root.json", sha256: "f160c160356e0fe880fc48f8ff6c5172d70c82c5a486afa4bd60511e7f556831", request: "GET /redfish/v1", http_status: none },
+]
+
+// ── READING THE MANIFEST. A capture whose file is unreadable or whose digest differs refuses the whole
+// reading: a reading assembled from the captures that happened to verify would be a different reading.
+type CaptureBody { capture: SupermicroCapture, text: String }
+
+type CaptureFold = CapturesRead { bodies: List<CaptureBody> } | CaptureRefused { path: NonEmptyStr, cause: String }
+
+fn read_capture(capture: SupermicroCapture) -> CaptureFold uses fs: std.resources.Filesystem {
+  let read = Filesystem.Read(path: capture.path as String)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error: e } => CaptureRefused { path: capture.path, cause: e }
+    FilesystemReadSucceeded { content: text } =>
+      if sha256_hex_of_text(text: text) != (capture.sha256 as String) {
+        CaptureRefused { path: capture.path, cause: concat("sha256 differs from the manifest: ", sha256_hex_of_text(text: text)) }
+      } else { CapturesRead { bodies: [CaptureBody { capture: capture, text: text }] } }
+  }
+}
+
+fn read_captures(captures: List<SupermicroCapture>) -> CaptureFold uses fs: std.resources.Filesystem {
+  let none_yet: List<CaptureBody> = []
+  let init: CaptureFold = CapturesRead { bodies: none_yet }
+  fold(captures, init: init, f: (acc, c) => match acc {
+    CaptureRefused { path: p, cause: x } => CaptureRefused { path: p, cause: x }
+    CapturesRead { bodies: bs } => match read_capture(capture: c) {
+      CaptureRefused { path: p, cause: x } => CaptureRefused { path: p, cause: x }
+      CapturesRead { bodies: one } => CapturesRead { bodies: concat(bs, one) }
+    }
+  })
+}
+
+fn body_of(bodies: List<CaptureBody>, suffix: String) -> String? {
+  match first(filter(bodies, b => ends_with(s: b.capture.path as String, suffix: suffix))) {
+    Absent => none
+    Present { value: b } => Present { value: b.text }
+  }
+}
+
+fn bodies_matching(bodies: List<CaptureBody>, infix: String) -> List<CaptureBody> {
+  filter(bodies, b => string_contains(s: b.capture.path as String, pattern: infix))
+}
+
+// ── THE READING OF ONE UNIT. ───────────────────────────────────────────────────────────────────────────
+type SupermicroResourceRead { request: NonEmptyStr, standing: SupermicroResourceStanding }
+
+type SupermicroH11sslBmcReading {
+  bmc_mac: Eui48Address
+  identity: SupermicroIdentityReading
+  identity_agrees_with_catalog: Bool
+  resources: List<SupermicroResourceRead>
+  boot_ipmi: IpmiBootFlagsReading?
+  boot_redfish: ObservationAttempt<RedfishBootOverrideReading, NonEmptyStr>?
+  sdr: List<SdrLineResult>
+  sel: List<IpmitoolSelRow>?
+  cipher_suites: List<IpmiCipherSuitePrivilege>?
+  sol: IpmiSolConfiguration?
+  redfish_memory_collection: ObservationAttempt<RedfishCollectionPage, NonEmptyStr>?
+  redfish_dimms: List<ObservationAttempt<RedfishMemoryMember, NonEmptyStr>>
+  smbios_dimms: SupermicroCgiRead<List<SupermicroSmbiosDimm>>?
+  dimm_disagreements: List<DimmReadingDisagreement>
+  virtual_media: ObservationAttempt<SupermicroVirtualMediaOffer, NonEmptyStr>?
+}
+
+type SupermicroH11sslReadingOutcome
+  = SupermicroH11sslRead { reading: SupermicroH11sslBmcReading }
+  | SupermicroH11sslReadRefused { path: NonEmptyStr, cause: String }
+
+fn established_members(attempts: List<ObservationAttempt<RedfishMemoryMember, NonEmptyStr>>) -> List<RedfishMemoryMember> {
+  flat_map(attempts, a => match a {
+    ObservationEstablished { observed: m } => [m]
+    ObservationRefused { cause: _ } => []
+  })
+}
+
+fn optional_map_sdr(stdout: String?) -> List<SdrLineResult> {
+  match stdout {
+    Absent => []
+    Present { value: s } => sdr_decode_lines(stdout: s)
+  }
+}
+
+fn reading_of_bodies(bmc_mac: Eui48Address, bodies: List<CaptureBody>) -> SupermicroH11sslBmcReading {
+  let identity = supermicro_bmc_identity(
+    manager_body: body_of(bodies: bodies, suffix: "redfish_v1_Managers_1.json"),
+    cgi_generic_body: body_of(bodies: bodies, suffix: "generic-info.xml"),
+    device_id_stdout: body_of(bodies: bodies, suffix: "raw-0x06-0x01.txt"),
+  )
+  let redfish_dimms = map(bodies_matching(bodies: bodies, infix: "redfish_v1_Systems_1_Memory_"), b => redfish_memory_member_of(body: b.text))
+  let sel = match body_of(bodies: bodies, suffix: "sel-elist.txt") {
+    Absent => none
+    Present { value: s } => ipmitool_sel_elist_rows(stdout: s)
+  }
+  SupermicroH11sslBmcReading {
+    bmc_mac: bmc_mac,
+    identity: identity,
+    identity_agrees_with_catalog: supermicro_identity_agrees_with_catalog(reading: identity, catalog: supermicro_h11ssl_catalog),
+    resources: flat_map(bodies, b => match b.capture.http_status {
+      Present { value: _ } => [SupermicroResourceRead { request: b.capture.request, standing: supermicro_resource_standing(http_status: b.capture.http_status, body: b.text) }]
+      Absent => if starts_with(s: b.capture.request as String, prefix: "GET ") {
+        [SupermicroResourceRead { request: b.capture.request, standing: supermicro_resource_standing(http_status: none, body: b.text) }]
+      } else { [] }
+    }),
+    boot_ipmi: match body_of(bodies: bodies, suffix: "chassis-bootparam-get-5.txt") { Absent => none  Present { value: s } => ipmi_boot_flags_reading_of_bootparam_get(stdout: s) },
+    boot_redfish: match body_of(bodies: bodies, suffix: "redfish_v1_Systems_1.json") { Absent => none  Present { value: s } => Present { value: redfish_boot_override_of_system(body: s) } },
+    sdr: optional_map_sdr(stdout: body_of(bodies: bodies, suffix: "sdr-elist.txt")),
+    sel: sel,
+    cipher_suites: match body_of(bodies: bodies, suffix: "lan-print-1.txt") { Absent => none  Present { value: s } => ipmi_cipher_suite_privileges_of_lan_print(stdout: s) },
+    sol: match body_of(bodies: bodies, suffix: "sol-info-1.txt") { Absent => none  Present { value: s } => ipmi_sol_configuration_of_sol_info(stdout: s) },
+    redfish_memory_collection: match body_of(bodies: bodies, suffix: "redfish_v1_Systems_1_Memory.json") { Absent => none  Present { value: s } => Present { value: redfish_collection_page_of(body: s) } },
+    redfish_dimms: redfish_dimms,
+    smbios_dimms: match body_of(bodies: bodies, suffix: "smbios-info.xml") { Absent => none  Present { value: s } => Present { value: supermicro_cgi_smbios_dimms_of(body: s) } },
+    dimm_disagreements: match sel {
+      Absent => []
+      Present { value: rows } => supermicro_dimm_reading_disagreements(members: established_members(attempts: redfish_dimms), sel: rows)
+    },
+    virtual_media: match body_of(bodies: bodies, suffix: "redfish_v1_Managers_1_VirtualMedia_CD1.json") { Absent => none  Present { value: s } => Present { value: supermicro_virtual_media_offer(body: s) } },
+  }
+}
+
+fn supermicro_h11ssl_reading(bmc_mac: Eui48Address, captures: List<SupermicroCapture>) -> SupermicroH11sslReadingOutcome uses fs: std.resources.Filesystem {
+  match read_captures(captures: captures) {
+    CaptureRefused { path: p, cause: c } => SupermicroH11sslReadRefused { path: p, cause: c }
+    CapturesRead { bodies: bs } => SupermicroH11sslRead { reading: reading_of_bodies(bmc_mac: bmc_mac, bodies: bs) }
+  }
+}
+
+fn supermicro_h11ssl_unit1_reading_2026_10_27() -> SupermicroH11sslReadingOutcome uses fs: std.resources.Filesystem {
+  supermicro_h11ssl_reading(bmc_mac: supermicro_h11ssl_unit1_bmc_mac, captures: supermicro_h11ssl_unit1_captures_2026_10_27)
+}
+
+fn supermicro_h11ssl_unit2_reading() -> SupermicroH11sslReadingOutcome uses fs: std.resources.Filesystem {
+  supermicro_h11ssl_reading(bmc_mac: supermicro_h11ssl_unit2_bmc_mac, captures: supermicro_h11ssl_unit2_captures)
+}

@@ -141,7 +141,7 @@ import gunbc.guarantee_rung {
 // WHICH SIDE OF THE PROJECTION LINE THESE FILES SIT ON, because the answer decides whether the
 // separation can survive. They are HAND-AUTHORED. `gunbc.generated_artifact` emits exactly three
 // `.dag` artifacts, all under `dag/gunbc/stage0/`, and no registry row names anything here; the one
-// generated artifact in this family is `docs/design-rung-drops.md`, which these rows feed. So today
+// generated artifact in this family is `gunbc.design_ledgers` `expected_design_rung_drops_md`, which these rows feed. So today
 // nothing regenerates a row file and the blank lines survive because no producer touches them. If a
 // producer is ever given these files, EMITTING THE SEPARATION IS PART OF ITS CONTRACT: an emitter
 // that renders a row without it silently restores the defect on the first projection, and would do

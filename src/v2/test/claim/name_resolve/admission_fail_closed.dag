@@ -814,8 +814,10 @@ fn fc_with_validated(o: Outcome<ValidatedModuleRoots>, f: fn(ValidatedModuleRoot
 // the module-not-found arm above does, rather than the resolve port's invariant. RED on main: the
 // denial's `at` was invariant_port_locus(resolve_diagnostic_port, resolve_cross_tree_import_denied),
 // which a census reports as FileRefusalAtInvariant though the import's line was known. The subject is
-// a dag-tree module importing a v2-tree one (LessFundamental in v2.std.cross_tree.resolution
-// tree_fundamentality_order); the found root is the target, so the gate is the only refusal reachable.
+// a dag-tree module importing a v2-tree one while only the dag tree is active, so the gate's root-set
+// denial is the one refusal reachable (v2.std.cross_tree.resolution cross_tree_edge_decision keeps only the
+// active-root denials; membership is decided at the storage lookup, ruling
+// gunbc.design_ruling cross_tree_admission_is_namespace_membership).
 fn fc_cross_tree_index(subject: SourceRootRef, target: FreeMonoid<SourceRootRef>) -> SourceRootIndex {
   fold_list(
     xs: target,
@@ -828,7 +830,11 @@ fn fc_both_trees() -> SourceRootSet {
   Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
 }
 
-fn fc_cross_tree_admission(roots: FreeMonoid<NormalizedTree>, index: SourceRootIndex) -> AdmissionState {
+fn fc_dag_tree_only() -> SourceRootSet {
+  Cons { head: DagTree, tail: Empty }
+}
+
+fn fc_cross_tree_admission(roots: FreeMonoid<NormalizedTree>, index: SourceRootIndex, active_roots: SourceRootSet) -> AdmissionState {
   match validate_module_roots(roots: roots) {
     Rejected { diagnostics: d } => AdmissionRejected { diagnostics: d }
     Accepted { value: validated, diagnostics: _ } =>
@@ -838,7 +844,7 @@ fn fc_cross_tree_admission(roots: FreeMonoid<NormalizedTree>, index: SourceRootI
         state: fc_initial_admission_state(),
         subject_qn: fc_qn(seg: ^fc_subject_seg),
         index: index,
-        active_roots: fc_both_trees()
+        active_roots: active_roots
       )
   }
 }
@@ -855,7 +861,7 @@ fn fc_refused_at_import_line(state: AdmissionState, reason: Symbol) -> Bool {
 test fn cross_tree_denied_import_is_located_at_its_import_line() -> Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
     fc_refused_at_import_line(
-      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Empty })),
+      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Empty }), active_roots: fc_dag_tree_only()),
       reason: ^resolve_cross_tree_import_denied
     )
   })
@@ -864,17 +870,17 @@ test fn cross_tree_denied_import_is_located_at_its_import_line() -> Bool {
 test fn cross_tree_ambiguous_import_is_located_at_its_import_line() -> Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
     fc_refused_at_import_line(
-      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } })),
+      state: fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }), active_roots: fc_both_trees()),
       reason: ^resolve_cross_tree_import_ambiguous
     )
   })
 }
 
-// THE POSITIVE CONTROL ON THE SAME FIXTURE: the reversed edge (v2 importing dag, MoreFundamental) is
-// admitted, so the RED above is the gate's verdict and not a fixture that refuses on every route.
+// THE POSITIVE CONTROL ON THE SAME FIXTURE: the same dag-to-v2 edge with both trees active is admitted, so the
+// RED above is the gate's root-set verdict and not a fixture that refuses on every route.
 test fn cross_tree_admitted_import_is_accepted_on_the_same_fixture() -> Bool {
   fc_with_roots(o: fc_single_found_root(), f: fn(roots) {
-    match fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: V2Tree, target: Cons { head: DagTree, tail: Empty })) {
+    match fc_cross_tree_admission(roots: roots, index: fc_cross_tree_index(subject: DagTree, target: Cons { head: V2Tree, tail: Empty }), active_roots: fc_both_trees()) {
       AdmissionAccepted { bindings: _, origins: _ } => true
       AdmissionRejected { diagnostics: _ } => false
     }

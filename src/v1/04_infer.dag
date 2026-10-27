@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization {
@@ -26,8 +26,6 @@ import std.literal_elaboration {
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
-  carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
-  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
@@ -150,7 +148,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -1376,7 +1374,7 @@ fn constructor_call_admission_diags_for_outcome(
 // compile_error! where there is none.
 //
 // WHAT THIS FOLD IS NOT: it is not an admission wall. Whether a caller ESTABLISHES a resource is
-// owned by DESIGN D13's derived DependencyDemand (docs/plans/demand-engine-program.md), under which
+// owned by DESIGN D13's derived DependencyDemand (`gunbc.plans.demand_engine_program`), under which
 // a transparent function's demand is derived rather than authored. This fold reads the caller's
 // AUTHORED `uses` rows only because no derived carrier with a binding identity exists yet
 // (its return is the next-rung trigger on gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target). A caller whose
@@ -7551,6 +7549,64 @@ fn builtin_text_argument_crossing_diags(func_name: String, typed_args: List<Node
   }
 }
 
+// A ROSTER RESULT NAMED BY ITS DECLARATION (a v1.compiler.infer_method registry row whose result is
+// nominal_type_ref of a qualified name) IS THAT DECLARATION AT THE CALL, joined through the
+// closure's symbol index by declaring module and name
+// (v1.compiler.infer_env declaration_node_of_ref) and never by a homonym elsewhere. A non-generic
+// result is the declaration node itself, the shape a match reads its variants from and a field read
+// its fields from; a generic result is the use node with each argument joined the same way and the
+// declaration as its resolution, the shape an authored `-> D<A>` return type resolves to. A name the
+// closure does not declare refuses at the call, located, rather than leaving the result untyped. A
+// roster result that is not a qualified name (a kernel type, a container, a type variable) is
+// unchanged.
+type BuiltinResultAtCall
+  = BuiltinResultReady { node: Node }
+  | BuiltinResultDeclarationAbsent { qualified: String }
+
+fn builtin_result_at_call(bt: Node, scope: InferScope) -> BuiltinResultAtCall {
+  let module_path = qualified_all_but_last(name: bt.name)
+  if bt.inferred != none || bt.connective != NoConnective || module_path == "" {
+    BuiltinResultReady { node: bt }
+  } else {
+    match declaration_node_of_ref(d: decl_ref(module_path: module_path, decl_name: qualified_last_segment(name: bt.name)), env: scope.type_env) {
+      Absent => BuiltinResultDeclarationAbsent { qualified: bt.name }
+      Present { value: decl } =>
+        if bt.children |> count == 0 {
+          BuiltinResultReady { node: decl }
+        } else {
+          match builtin_result_arguments_at_call(arguments: bt.children, scope: scope) {
+            BuiltinResultArgumentsReady { nodes: args } =>
+              BuiltinResultReady { node: node_with_inferred(n: node_with_children(n: bt, children: args), inferred: Present { value: Resolved { node: decl } }) }
+            BuiltinResultArgumentAbsent { qualified: q } => BuiltinResultDeclarationAbsent { qualified: q }
+          }
+        }
+    }
+  }
+}
+
+// THE REFUSAL IS TERMINAL: the call is typed CompilerError, not left the roster's bare type variable,
+// so nothing downstream can bind the result to a type and report a second, derived error from it.
+fn builtin_result_declaration_absent_message(func_name: String, qualified: String) -> String {
+  concat("builtin '", concat(func_name, concat("' returns ", concat(qualified, ", which this module's closure does not declare: import the module that declares it"))))
+}
+
+type BuiltinResultArguments
+  = BuiltinResultArgumentsReady { nodes: List<Node> }
+  | BuiltinResultArgumentAbsent { qualified: String }
+
+fn builtin_result_arguments_at_call(arguments: List<Node>, scope: InferScope) -> BuiltinResultArguments {
+  fold(arguments, init: BuiltinResultArgumentsReady { nodes: [] }, f: (acc, a) =>
+    match acc {
+      BuiltinResultArgumentAbsent { qualified: _ } => acc
+      BuiltinResultArgumentsReady { nodes: ready } =>
+        match builtin_result_at_call(bt: a, scope: scope) {
+          BuiltinResultReady { node: r } => BuiltinResultArgumentsReady { nodes: concat(ready, [r]) }
+          BuiltinResultDeclarationAbsent { qualified: q } => BuiltinResultArgumentAbsent { qualified: q }
+        }
+    }
+  )
+}
+
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
   if func_name == "lookup" || func_name == "map_get" {
     Tier2bBt {
@@ -7939,13 +7995,6 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn cast_source_declaration(inner: Node, scope: InferScope) -> DeclarationRef? {
-  match inner.inferred {
-    Present { value: Resolved { node: n } } => carried_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env)
-    _ => none
-  }
-}
-
 // The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
 // construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
 // type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
@@ -8116,69 +8165,11 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
 // source_is_nominal is the head exposure of the source's declaration identity, the same authority
 // product_at_scalar_declared_type reads, never a bare spelling.
-// A CAST FROM A GROUNDED CARRIER IS DECIDED BY THE DERIVED CROSSING, keyed on both declarations
-// (std.literal_elaboration kernel_grounding_crossing over gunbc.structural_realization_bindings
-// kernel_grounding_rows): onto another grounded carrier it is admitted exactly when the source's extent lies
-// inside the target's, so `Nat as Int` at std.integer Int is the identity re-typing and the converse refuses.
-// A grounded NATURAL source has no route to any other target, so its cast refuses here ("no declared
-// conversion route"), EXCEPT onto the kernel Int: that cast is not an inclusion (the naturals are not inside
-// the 64-bit integers), and stern-bat-401's ruling keeps it on the name-keyed chain below, a declared
-// below-ceiling class (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). A target that carries no identity
-// (unidentified, or a type variable) is not decided here either: a missing identity is not evidence of a different
-// target, so the name-keyed chain below keeps the answer it gave before. A source no row grounds is not decided here.
-type GroundedCastVerdict
-  = GroundedCastAdmitted
-  | GroundedCastRefused { cause: String }
-  | GroundedCastNotDecided
-
-fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclarationReading) -> GroundedCastVerdict {
-  match carrier_grounding(rows: kernel_grounding_rows, carrier: source) {
-    CarrierGroundingRefused { cause: c } =>
-      match c {
-        CarrierNotGrounded { carrier: _ } => GroundedCastNotDecided
-        _ => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
-      }
-    CarrierGroundingFound { row: _ } =>
-      let natural = declaration_is_grounded_natural(rows: kernel_grounding_rows, d: source)
-      match target {
-        TypeReferenceNamesDeclaration { declaration: t } =>
-          match carrier_grounding(rows: kernel_grounding_rows, carrier: t) {
-            CarrierGroundingFound { row: _ } =>
-              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: source, to: t) {
-                CrossingTotalWidening => GroundedCastAdmitted
-                CrossingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
-              }
-            CarrierGroundingRefused { cause: CarrierNotGrounded { carrier: _ } } =>
-              if natural { GroundedCastRefused { cause: concat("no declared conversion route onto ", declaration_ref_display_key(ref: t)) } } else { GroundedCastNotDecided }
-            CarrierGroundingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
-          }
-        TypeReferenceIsKernelType { name: k } =>
-          if k == "Int" { GroundedCastNotDecided }
-          else if natural { GroundedCastRefused { cause: "no declared conversion route" } }
-          else { GroundedCastNotDecided }
-        _ => GroundedCastNotDecided
-      }
-  }
-}
-
-fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
+fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
-      let grounded = match source_declaration {
-        Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
-        Absent => GroundedCastNotDecided
-      }
       if source_name == target_name { none }
-      else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
-      else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
-        let cause = match grounded {
-          GroundedCastRefused { cause: c } => c
-          _ => ""
-        }
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- ", cause)
-        Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
-      }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
@@ -8193,7 +8184,7 @@ fn validate_cast(source_inferred: InferredNode?, source_declaration: Declaration
       else if !is_dag_cast_domain_type(name: target_name) { none }
       else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- no declared conversion route in std.coercion")
+        let msg = concat("invalid cast: ", source_name, " as ", target_name)
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
@@ -10405,7 +10396,15 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
-          let bt = tier2b.bt
+          let result_at_call = builtin_result_at_call(bt: tier2b.bt, scope: scope)
+          let call_inferred = match result_at_call {
+            BuiltinResultReady { node: r } => Present { value: Resolved { node: r } }
+            BuiltinResultDeclarationAbsent { qualified: q } => Present { value: CompilerError { message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span } }
+          }
+          let result_declaration_diags = match result_at_call {
+            BuiltinResultReady { node: _ } => []
+            BuiltinResultDeclarationAbsent { qualified: q } => [inference_error(message: builtin_result_declaration_absent_message(func_name: func_name, qualified: q), span: span, module_name: scope.module_name)]
+          }
           let call_semantics = if func_name == "lookup" {
             Present { value: LookupCallSemantics { target: RuntimePrimitiveCall { primitive_name: func_name, projected_from: none } } }
           } else {
@@ -10415,11 +10414,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             typed: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
               name: func_name, expr_data: ExprCall { call_semantics: call_semantics, descent_evidence: none },
               children: typed_arg_nodes,
-              inferred: Present { value: Resolved { node: bt } },
+              inferred: call_inferred,
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope)))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
@@ -11224,7 +11223,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Present { value: Resolved { node: source_node } } => value_type_is_declared_nominal(t: source_node, scope: scope)
         _ => false
       }
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
@@ -17061,7 +17060,7 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
 // DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
 // a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
 // demand identity for "this lookup, in this closure" -- the demand-identity carriers of
-// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// `gunbc.plans.demand_engine_program` (M1). Until that capability exists, no key of `global_bare`
 // can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
 // both ruled out; this stays eager.
 fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
