@@ -1387,6 +1387,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key"),
+    effect: PrivilegedEffect {
+      subject: "in the service_runner_lost_boot_sweep_dry_run fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token that reads the organization runner listing for the dry run's plan; no registration is deleted and the key is removed on every arm",
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
     effect: PrivilegedEffect {
       subject: "in the qualification_attempt fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token the qualification route's own sites then use (the JIT mint, the ref pin, the floor dispatch, the deregistration and the unpin, each rowed at its own site); the key is removed on every arm; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
