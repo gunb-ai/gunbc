@@ -312,6 +312,6 @@ data dispatch_replay_recording_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.dispatch_replay_recording", decl_name: "recording_capture"),
     reason: "recording_capture is not yet bound to a completed attempt's belt step; until it is, its executing consumer is the operator-run entry gunbc.dispatch_replay_capture srv1_lab_recording_capture_cli over one completed attempt's records",
-    dissolution: unbound_dissolution(description: "a completed lab attempt's belt step captures its recording"),
+    dissolution: unbound_dissolution(description: "No production path captures a recording: recording_capture's only caller in this tree is the operator-run entry srv1_lab_recording_capture_cli, and no belt step calls it. UNBOUND ON PURPOSE -- dissolution_status decides a bound condition by asking whether a named declaration is present, and a new CALLER appearing is not a declaration the model can test, so retires_dissolution would read Fired today (the reference it names is absent). TRIGGER: a belt step of a completed lab attempt invokes recording_capture over that attempt's own durable records. SUFFICIENT FOR deleting this row."),
   ),
 ]
