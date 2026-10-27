@@ -1,0 +1,23 @@
+module test.claim.wl_probe_anyclass
+
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows, census_blocking_rows_of_class, census_total_count }
+
+fn any_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+fn cls_count(source: String, wanted_class: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: wanted_class))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn probe_caret_eq_string_any() -> Bool { any_count(source: "module wl.p1\nfn f() -> Bool { ^a == \"a\" }\n") >= 1 }
+test fn probe_caret_eq_string_tm() -> Bool { cls_count(source: "module wl.p2\nfn f() -> Bool { ^a == \"a\" }\n", wanted_class: "TypeMismatch") >= 1 }
+test fn probe_caret_eq_string_eqopt() -> Bool { cls_count(source: "module wl.p3\nfn f() -> Bool { ^a == \"a\" }\n", wanted_class: "EqualityOptionalityMismatch") >= 1 }
+test fn probe_fsg_any() -> Bool { any_count(source: "module wl.p4\nimport std.algebra { FreeSemigroup }\nfn f() -> FreeSemigroup<String> { ^tag }\n") >= 1 }
+test fn probe_fsg_tm() -> Bool { cls_count(source: "module wl.p5\nimport std.algebra { FreeSemigroup }\nfn f() -> FreeSemigroup<String> { ^tag }\n", wanted_class: "TypeMismatch") >= 1 }
