@@ -2,7 +2,7 @@ module test.claim.os_install_deduction
 
 
 import extdeps.uri { Uri, Https }
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer }
+import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer, WithIdentity }
 import std.optional { Present }
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
@@ -17,8 +17,7 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: Present { value: srv3_autoinstall_identity },
-  user_data: Absent,
+  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -30,8 +29,7 @@ data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoi
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: Present { value: srv3_autoinstall_identity },
-  user_data: Absent,
+  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -113,8 +111,7 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
     },
     fully_automated: true,
     target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: Present { value: srv3_autoinstall_identity },
-    user_data: Absent,
+    identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -172,8 +169,7 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
     delivery: NoCloudLocal,
     fully_automated: false,
     target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: Present { value: srv3_autoinstall_identity },
-    user_data: Absent,
+    identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },

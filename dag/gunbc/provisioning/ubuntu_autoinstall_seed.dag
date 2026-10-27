@@ -118,6 +118,8 @@ import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall {
   AutoinstallDeliveryMethod,
   AutoinstallIdentity,
+  WithIdentity,
+  UserDataOnly,
   CloudInitUserEntry,
   AutoinstallStoragePolicy,
   NoCloudLocal,
@@ -3437,13 +3439,15 @@ fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstal
             delivery: payload_delivery_for(delivery: seed.delivery),
             fully_automated: true,
             target_distribution: NobleNumbat2404Lts,
-            identity: Present { value: AutoinstallIdentity {
-              hostname: "altra-installer" as NonEmptyStr,
-              username: "gunbc-admin" as NonEmptyStr,
-              realname: "gunbc provisioning" as NonEmptyStr,
-              hashed_password: hashed,
-            } },
-            user_data: Absent,
+            identity_posture: WithIdentity {
+              identity: AutoinstallIdentity {
+                hostname: "altra-installer" as NonEmptyStr,
+                username: "gunbc-admin" as NonEmptyStr,
+                realname: "gunbc provisioning" as NonEmptyStr,
+                hashed_password: hashed,
+              },
+              user_data: Absent,
+            },
             locale: seed_locale_wire(locale: seed.locale),
             keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
             ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
@@ -3457,22 +3461,27 @@ fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstal
         delivery: payload_delivery_for(delivery: seed.delivery),
         fully_automated: true,
         target_distribution: NobleNumbat2404Lts,
-        identity: Absent,
-        // THE NAME IS POSIX-LEGAL ON PURPOSE. gunbc.provisioning.public_nocloud_seed admits the user's name
+        // THE KEY-ONLY ROUTE IS THE OTHER ARM: no identity section at all, and the operator's account in
+        // cloud-init's user-data. This is not the emitter being told to omit a field — WithIdentity cannot
+        // be written without an identity, and UserDataOnly cannot be written without the user table, so a
+        // document with NEITHER (which subiquity refuses) is not a payload this module can hand over.
+        identity_posture: UserDataOnly {
+          // THE NAME IS POSIX-LEGAL ON PURPOSE. gunbc.provisioning.public_nocloud_seed admits the user's name
         // through extdeps.posix.shell_command_language.admit_posix_shell_name (XBD 3.235), whose continue
         // alphabet is letters, digits and underscore — a hyphen is not in it. "gunbc-admin" would render a
         // document the seed admission refuses at the name leaf, so the key-only account is named the way the
         // rule allows. (The SEEDED-HANDLE identity above keeps "gunbc-admin": that document publishes no
         // user-data users section at all, so its username never meets the POSIX leaf, and its bytes are the
         // ones the ARM control witness pins byte-for-byte.)
-        user_data: Present { value: [
+          users: [
           CloudInitUserEntry {
             name: "gunbcadmin" as NonEmptyStr,
             ssh_authorized_keys: seed.entry.authorised_keys,
             lock_passwd: true,
             shell: BashLoginShell,
           },
-        ] },
+          ],
+        },
         locale: seed_locale_wire(locale: seed.locale),
         keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
         ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),

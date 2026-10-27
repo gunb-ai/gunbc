@@ -6,6 +6,8 @@ import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
+  WithIdentity,
+  UserDataOnly,
   CloudInitUserEntry,
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
@@ -66,39 +68,46 @@ fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
 }
 
 fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
-  // The identity mapping renders only when it is there at all; when the seed's entry is key-only the
-  // document carries no identity key, because upstream's identity schema demands username+hostname+password
-  // TOGETHER and the no-password posture upstream allows is the one with user-data instead (cited on
-  // CloudInitUserEntry in extdeps.os.ubuntu_autoinstall). Present renders exactly the old four entries,
-  // in the old order, at the old position — byte-for-byte the pre-optional rendering.
-  let identity_entries_present = match payload.identity {
-    Present { value: id } => [
-      kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: id))),
-    ]
-    Absent => []
-  }
-  let base = append(
-    [
-      kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
-      kv(key: "locale", value: yaml_string(s: payload.locale)),
-      kv(key: "keyboard", value: yaml_mapping(entries: [
-        kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
-      ])),
-    ],
-    items: identity_entries_present,
-  )
-  // The user-data section sits beside identity, not inside it: upstream reads it as its own section and
-  // waives identity's requirement when it is present. An empty user list still emits the section — the
-  // section's PRESENCE is what makes the identity waiver legal, and refusing on an empty list would
-  // silently change which documents upstream accepts.
-  let with_user_data = match payload.user_data {
-    Present { value: users } => append(base, items: [
+  // THE ENTRY ROUTE IS READ OFF A DECLARED CHOICE, so this function has no invalid combination to notice.
+  // AutoinstallIdentityPosture (extdeps.os.ubuntu_autoinstall) has exactly two arms because upstream has
+  // exactly two legal documents: identity present, or user-data present and identity omitted (Canonical:
+  // identity "is the only configuration key that must be present (unless the user-data section is present,
+  // in which case it is optional)"). The head of the document is the same in both arms — version, locale,
+  // keyboard — and then the arms differ in which section follows, at the position identity has always sat.
+  // WithIdentity renders exactly the old four identity entries, in the old order, at the old position:
+  // byte-for-byte the rendering that predates the key-only posture.
+  let head = [
+    kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
+    kv(key: "locale", value: yaml_string(s: payload.locale)),
+    kv(key: "keyboard", value: yaml_mapping(entries: [
+      kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
+    ])),
+  ]
+  let with_user_data = match payload.identity_posture {
+    // The user-data section sits beside identity, not inside it: upstream reads it as its own section.
+    // An empty user list still emits the section, as before — the section's PRESENCE is what makes the
+    // identity waiver legal, and refusing on an empty list would silently change which documents upstream
+    // accepts. (The seed audit is what refuses a key-only entry with no keys; see the witness's RED.)
+    WithIdentity { identity: id, user_data: optional_users } => append(
+      append(head, items: [
+        kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: id))),
+      ]),
+      items: match optional_users {
+        Present { value: users } => [
+          kv(key: "user-data", value: yaml_mapping(entries: [
+            kv(key: "users", value: yaml_sequence(elements: map(users, u =>
+              yaml_mapping(entries: cloudinit_user_entries(user: u))))),
+          ])),
+        ]
+        Absent => []
+      },
+    )
+    UserDataOnly { users: users } => append(head, items: [
       kv(key: "user-data", value: yaml_mapping(entries: [
         kv(key: "users", value: yaml_sequence(elements: map(users, u =>
           yaml_mapping(entries: cloudinit_user_entries(user: u))))),
       ])),
     ])
-    Absent => base
   }
   let with_ssh = match payload.ssh {
     Present { value: ssh } => append(with_user_data, items: [

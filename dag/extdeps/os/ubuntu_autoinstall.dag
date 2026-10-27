@@ -102,28 +102,50 @@ type AutoinstallSshServer {
   password_auth: Bool
 }
 
+// THE IDENTITY AND THE USER TABLE ARE ONE CHOICE, NOT TWO FIELDS.
+// WHY THERE ARE TWO AT ALL is Canonical's own ruling on the identity section, verbatim at its `identity`
+// heading (https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html):
+//   "This is the only configuration key that must be present (unless the user-data section is present,
+//   in which case it is optional)."
+// So exactly one of the two must be present, and that is what this coproduct states: WithIdentity carries
+// subiquity's identity mapping, and UserDataOnly carries the operator's entry in cloud-init's user-data
+// instead. The invalid pair — NEITHER — is not a value here at all, because a payload that renders a
+// document upstream refuses is not a document shape this fleet should be able to assemble (DESIGN.md §5:
+// "Stronger than catching a wrong state is making it unwritable — correctness by construction, not
+// validation."). Two independent Optionals said "the emitter will notice"; the emitter is a serializer and
+// a serializer that drops both keys emits a document subiquity rejects, which is §5's fabricated plausible
+// output. With the choice declared, the emitter has nothing left to notice: every value it can be handed
+// renders a document upstream accepts, and the branches below are the two upstream-legal ones.
+type AutoinstallIdentityPosture
+  = WithIdentity { identity: AutoinstallIdentity, user_data: Optional<List<CloudInitUserEntry>> }
+  | UserDataOnly { users: List<CloudInitUserEntry> }
+
+// THE IDENTITY, IF THE SEED TOOK THAT ROUTE. Consumers that legitimately need the identity (a hostname for a
+// seeded image's label, an instance-id for a staged meta-data file) read it through here instead of reaching
+// into a field that no longer exists as an Optional: the choice says whether there is one, and this function
+// only ever hands back what the choice contains — it cannot be asked for the case that was never legal.
+fn autoinstall_identity_of(payload: UbuntuAutoinstallPayload) -> Optional<AutoinstallIdentity> {
+  match payload.identity_posture {
+    WithIdentity { identity: id, user_data: _ } => Present { value: id }
+    UserDataOnly { users: _ } => Absent
+  }
+}
+
 type UbuntuAutoinstallPayload {
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
   fully_automated: Bool
   target_distribution: UbuntuDistribution
-  // THE IDENTITY SECTION IS OPTIONAL IN THE ONLY UPSTREAM-LEGAL WAY: absent here means the autoinstall
-  // document carries no identity mapping at all, and the operator's entry then lives in `user_data`
-  // below (Canonical's ruling is cited on CloudInitUserEntry: identity "is the only configuration key
-  // that must be present (unless the user-data section is present, in which case it is optional)" —
-  // https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html).
-  // Present keeps today's rendering byte-for-byte: subiquity's identity schema demands
-  // username+hostname+password together whenever the mapping is there at all.
-  identity: Optional<AutoinstallIdentity>
+  // WHICH OF THE TWO UPSTREAM-LEGAL ENTRY ROUTES this seed takes. WithIdentity renders today's document
+  // byte-for-byte: subiquity's identity schema (server/controllers/identity.py, IdentityData) declares
+  // required ["username","hostname","password"], so a mapping without a password is what upstream refuses,
+  // and the passwordless posture has to come through UserDataOnly. See CloudInitUserEntry for the key-only
+  // entry's own type, which cannot express a password field at all.
+  identity_posture: AutoinstallIdentityPosture
   locale: NonEmptyStr
   keyboard_layout: NonEmptyStr
   ssh: Optional<AutoinstallSshServer>
   storage_policy: AutoinstallStoragePolicy
-  // The cloud-init `user-data` section, carried straight through into the emitted document. It is what
-  // makes a key-only posture expressible without inventing a password (see CloudInitUserEntry); Absent
-  // means the emitted document has no user-data key and identity must be Present — a combination the
-  // emitter checks rather than assumes.
-  user_data: Optional<List<CloudInitUserEntry>>
 }
 
 // A LIVE-SESSION autoinstall: upstream's `early-commands` run in the live installer environment
