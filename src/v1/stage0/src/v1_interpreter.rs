@@ -15924,6 +15924,20 @@ fn reference_derived_closure_admission_value(
                 (ctx.sym("failure"), scenario_failure(failure)),
             ])),
         },
+        A::ReferenceDerivedClosureBindingRefused {
+            capability: c,
+            cause,
+        } => {
+            let cause_value = structural_binding_refusal_value(cause, ctx);
+            Value::Variant {
+                type_name: ctx.sym("ReferenceDerivedClosureAdmission"),
+                variant_name: ctx.sym("ReferenceDerivedClosureBindingRefused"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("capability"), capability(c)),
+                    (ctx.sym("cause"), cause_value),
+                ])),
+            }
+        }
         A::ReferenceDerivedClosureUnavailable {
             capability: c,
             trigger,
@@ -15935,6 +15949,249 @@ fn reference_derived_closure_admission_value(
                 (ctx.sym("trigger"), trigger_value(trigger)),
             ])),
         },
+    }
+}
+
+/// Encode a `StructuralBindingRefusal` with its COMPLETE payload, one arm per `.dag` variant.
+/// Total over the closed sum: a new variant is a compile error here, never a dropped cause.
+fn structural_binding_refusal_value(
+    cause: &crate::std_reference_binding_observation::StructuralBindingRefusal,
+    ctx: &InterpContext,
+) -> Value {
+    use crate::std_occurrence_binding_candidates::{
+        AuthoredOrderIndexRefusal as AO, DeclarationExposure as DE,
+        DeclarationExposureIndexRefusal as DX, OccurrenceModulePathIndexRefusal as MP,
+    };
+    use crate::std_occurrence_identity::{
+        AuthoredTokenOrdinal, OccurrenceContainmentPath, OccurrenceId, OccurrenceRole,
+        OccurrenceTransportRefusal as TR,
+    };
+    use crate::std_reference_binding_observation::{
+        ReferenceBindingProductionGap as G, StructuralBindingRefusal as R,
+    };
+    let variant = |ty: &str, name: &str, fields: Vec<(&str, Value)>| Value::Variant {
+        type_name: ctx.sym(ty),
+        variant_name: ctx.sym(name),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    };
+    let record = |ty: &str, fields: Vec<(&str, Value)>| Value::Record {
+        type_name: ctx.sym(ty),
+        fields: Rc::new(sorted_fields(
+            fields.into_iter().map(|(k, v)| (ctx.sym(k), v)).collect(),
+        )),
+    };
+    let occurrence =
+        |o: &OccurrenceId| record("OccurrenceId", vec![("value", Value::Int(o.value))]);
+    let ordinal = |o: &AuthoredTokenOrdinal| {
+        record("AuthoredTokenOrdinal", vec![("value", Value::Int(o.value))])
+    };
+    let span = |sp: &crate::std_types::SourceSpan| {
+        record(
+            "SourceSpan",
+            vec![
+                ("file", str_value(&sp.file)),
+                ("start", Value::Int(sp.start)),
+                ("end", Value::Int(sp.end)),
+            ],
+        )
+    };
+    let role = |r: &OccurrenceRole| {
+        let name = match r {
+            OccurrenceRole::DeclarationRole => "DeclarationRole",
+            OccurrenceRole::ReferenceRole => "ReferenceRole",
+        };
+        variant("OccurrenceRole", name, vec![])
+    };
+    let path = |p: &OccurrenceContainmentPath| {
+        record(
+            "OccurrenceContainmentPath",
+            vec![
+                (
+                    "ancestors",
+                    list_value(p.ancestors.iter().map(&occurrence).collect::<Vec<_>>()),
+                ),
+                ("terminal", occurrence(&p.terminal)),
+            ],
+        )
+    };
+    let exposure = |e: &DE| match e {
+        DE::LexicalExposure { exposing_scope } => variant(
+            "DeclarationExposure",
+            "LexicalExposure",
+            vec![("exposing_scope", path(exposing_scope))],
+        ),
+        DE::ModuleExposure { module } => variant(
+            "DeclarationExposure",
+            "ModuleExposure",
+            vec![("module", str_value(module))],
+        ),
+        DE::RootExposure => variant("DeclarationExposure", "RootExposure", vec![]),
+    };
+    let wrap = |name: &str, refusal: Value| {
+        variant("StructuralBindingRefusal", name, vec![("refusal", refusal)])
+    };
+    match cause {
+        R::StructuralBindingIndexTransportRefused { refusal } => wrap(
+            "StructuralBindingIndexTransportRefused",
+            match &**refusal {
+                TR::MissingAuthoredOccurrenceIdentity { diagnostic_span } => variant(
+                    "OccurrenceTransportRefusal",
+                    "MissingAuthoredOccurrenceIdentity",
+                    vec![("diagnostic_span", span(diagnostic_span))],
+                ),
+                TR::DuplicateAuthoredOccurrenceIdentity {
+                    occurrence: o,
+                    diagnostic_span,
+                } => variant(
+                    "OccurrenceTransportRefusal",
+                    "DuplicateAuthoredOccurrenceIdentity",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("diagnostic_span", span(diagnostic_span)),
+                    ],
+                ),
+                TR::DuplicateSuppliedCandidateIdentity {
+                    occurrence: o,
+                    diagnostic_span,
+                } => variant(
+                    "OccurrenceTransportRefusal",
+                    "DuplicateSuppliedCandidateIdentity",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("diagnostic_span", span(diagnostic_span)),
+                    ],
+                ),
+                TR::InconsistentOccurrenceContainment {
+                    occurrence: o,
+                    diagnostic_span,
+                } => variant(
+                    "OccurrenceTransportRefusal",
+                    "InconsistentOccurrenceContainment",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("diagnostic_span", span(diagnostic_span)),
+                    ],
+                ),
+                TR::WrongOccurrenceRole {
+                    occurrence: o,
+                    expected,
+                    observed,
+                    diagnostic_span,
+                } => variant(
+                    "OccurrenceTransportRefusal",
+                    "WrongOccurrenceRole",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("expected", role(expected)),
+                        ("observed", role(observed)),
+                        ("diagnostic_span", span(diagnostic_span)),
+                    ],
+                ),
+                TR::UnknownOccurrenceIdentity { occurrence: o } => variant(
+                    "OccurrenceTransportRefusal",
+                    "UnknownOccurrenceIdentity",
+                    vec![("occurrence", occurrence(o))],
+                ),
+            },
+        ),
+        R::StructuralBindingIndexModulePathRefused { refusal } => wrap(
+            "StructuralBindingIndexModulePathRefused",
+            match &**refusal {
+                MP::DuplicateOccurrenceModulePathRow {
+                    occurrence: o,
+                    first_module_path,
+                    conflicting_module_path,
+                } => variant(
+                    "OccurrenceModulePathIndexRefusal",
+                    "DuplicateOccurrenceModulePathRow",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("first_module_path", str_value(first_module_path)),
+                        (
+                            "conflicting_module_path",
+                            str_value(conflicting_module_path),
+                        ),
+                    ],
+                ),
+                MP::MissingOccurrenceModulePathRow { occurrence: o } => variant(
+                    "OccurrenceModulePathIndexRefusal",
+                    "MissingOccurrenceModulePathRow",
+                    vec![("occurrence", occurrence(o))],
+                ),
+            },
+        ),
+        R::StructuralBindingIndexExposureRefused { refusal } => wrap(
+            "StructuralBindingIndexExposureRefused",
+            match &**refusal {
+                DX::MissingDeclarationExposure { occurrence: o } => variant(
+                    "DeclarationExposureIndexRefusal",
+                    "MissingDeclarationExposure",
+                    vec![("occurrence", occurrence(o))],
+                ),
+                DX::ConflictingDeclarationExposure {
+                    occurrence: o,
+                    first_exposure,
+                    conflicting_exposure,
+                } => variant(
+                    "DeclarationExposureIndexRefusal",
+                    "ConflictingDeclarationExposure",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("first_exposure", exposure(first_exposure)),
+                        ("conflicting_exposure", exposure(conflicting_exposure)),
+                    ],
+                ),
+            },
+        ),
+        R::StructuralBindingIndexAuthoredOrderRefused { refusal } => wrap(
+            "StructuralBindingIndexAuthoredOrderRefused",
+            match &**refusal {
+                AO::MissingAuthoredOrderRow { occurrence: o } => variant(
+                    "AuthoredOrderIndexRefusal",
+                    "MissingAuthoredOrderRow",
+                    vec![("occurrence", occurrence(o))],
+                ),
+                AO::ConflictingAuthoredOrderRow {
+                    occurrence: o,
+                    first_ordinal,
+                    conflicting_ordinal,
+                } => variant(
+                    "AuthoredOrderIndexRefusal",
+                    "ConflictingAuthoredOrderRow",
+                    vec![
+                        ("occurrence", occurrence(o)),
+                        ("first_ordinal", ordinal(first_ordinal)),
+                        ("conflicting_ordinal", ordinal(conflicting_ordinal)),
+                    ],
+                ),
+            },
+        ),
+        R::StructuralBindingIndexDeclarationBucketRefused { occurrence: o } => variant(
+            "StructuralBindingRefusal",
+            "StructuralBindingIndexDeclarationBucketRefused",
+            vec![("occurrence", occurrence(o))],
+        ),
+        R::StructuralBindingProductionRefused { gap } => {
+            let gap_name = match gap {
+                G::ReferenceBindingParserTransportRefused => {
+                    "ReferenceBindingParserTransportRefused"
+                }
+                G::ReferenceBindingNamedReferenceAbsent => "ReferenceBindingNamedReferenceAbsent",
+                G::ReferenceBindingNamedDeclarationAbsent => {
+                    "ReferenceBindingNamedDeclarationAbsent"
+                }
+            };
+            variant(
+                "StructuralBindingRefusal",
+                "StructuralBindingProductionRefused",
+                vec![(
+                    "gap",
+                    variant("ReferenceBindingProductionGap", gap_name, vec![]),
+                )],
+            )
+        }
     }
 }
 
@@ -30474,5 +30731,266 @@ mod canonical_render_order_tests {
         assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
         let ints = [Value::Int(2), Value::Int(1)];
         assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod binding_refusal_encoder_tests {
+    use super::{
+        namespace_structural_observation_admissions_value,
+        reference_derived_closure_admission_value,
+    };
+    use super::{ExecutionMode, InterpContext, InterpError, Value};
+    use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::{
+        ReferenceDerivedClosureAdmission as A, ReferenceDerivedClosureCapability as C,
+    };
+    use crate::std_occurrence_binding_candidates::{
+        AuthoredOrderIndexRefusal, DeclarationExposureIndexRefusal,
+        OccurrenceModulePathIndexRefusal,
+    };
+    use crate::std_occurrence_identity::{OccurrenceId, OccurrenceTransportRefusal};
+    use crate::std_reference_binding_observation::{
+        ReferenceBindingProductionGap as G, StructuralBindingRefusal as R,
+        StructuralObservationSubjectModule as M,
+    };
+    use crate::std_types::SourceSpan;
+    use crate::v1_compiler_compile::SourceFile;
+    use std::rc::Rc;
+
+    fn with_ctx<T>(f: impl FnOnce(&InterpContext) -> T) -> T {
+        let result =
+            crate::v1_compiler_compile::compile_to_resolved(Rc::new(im::vector![Rc::new(
+                SourceFile {
+                    path: "workspace/src/common.dag".to_string(),
+                    content: "module fixture.common\nfn check() -> Bool { true }\n".to_string(),
+                },
+            )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let ctx = InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        );
+        f(&ctx)
+    }
+
+    fn refused(cause: R) -> A {
+        A::ReferenceDerivedClosureBindingRefused {
+            capability: C::SameFileEarlierNeighbourVisible,
+            cause: Rc::new(cause),
+        }
+    }
+
+    fn occ() -> OccurrenceId {
+        OccurrenceId { value: 7 }
+    }
+
+    fn unsupported() -> Vec<(&'static str, R)> {
+        vec![
+            (
+                "transport",
+                R::StructuralBindingIndexTransportRefused {
+                    refusal: Rc::new(
+                        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                            diagnostic_span: Rc::new(SourceSpan {
+                                file: "f.dag".to_string(),
+                                start: 0,
+                                end: 1,
+                            }),
+                        },
+                    ),
+                },
+            ),
+            (
+                "module_path",
+                R::StructuralBindingIndexModulePathRefused {
+                    refusal: Rc::new(
+                        OccurrenceModulePathIndexRefusal::MissingOccurrenceModulePathRow {
+                            occurrence: occ(),
+                        },
+                    ),
+                },
+            ),
+            (
+                "exposure",
+                R::StructuralBindingIndexExposureRefused {
+                    refusal: Rc::new(
+                        DeclarationExposureIndexRefusal::MissingDeclarationExposure {
+                            occurrence: occ(),
+                        },
+                    ),
+                },
+            ),
+            (
+                "authored_order",
+                R::StructuralBindingIndexAuthoredOrderRefused {
+                    refusal: Rc::new(AuthoredOrderIndexRefusal::MissingAuthoredOrderRow {
+                        occurrence: occ(),
+                    }),
+                },
+            ),
+            (
+                "declaration_bucket",
+                R::StructuralBindingIndexDeclarationBucketRefused { occurrence: occ() },
+            ),
+        ]
+    }
+
+    fn supported() -> A {
+        refused(R::StructuralBindingProductionRefused {
+            gap: G::ReferenceBindingNamedReferenceAbsent,
+        })
+    }
+
+    fn module() -> M {
+        M::SubjectModuleProduced {
+            module_path: "fixture.common".to_string(),
+        }
+    }
+
+    fn find<'a>(v: &'a Value, ctx: &InterpContext, field: &str) -> &'a Value {
+        let (Value::Variant { fields, .. } | Value::Record { fields, .. }) = v else {
+            panic!("not a variant or record")
+        };
+        &fields
+            .iter()
+            .find(|(k, _)| *k == ctx.sym(field))
+            .unwrap_or_else(|| panic!("missing field {field}"))
+            .1
+    }
+
+    fn cause_of<'a>(admission: &'a Value, ctx: &InterpContext) -> &'a Value {
+        find(admission, ctx, "cause")
+    }
+
+    fn leaves(v: &Value, out: &mut Vec<String>) {
+        let mut stack = vec![v];
+        while let Some(v) = stack.pop() {
+            match v {
+                Value::Int(n) => out.push(format!("i{n}")),
+                Value::Str(s) => out.push(format!("s{}", &**s)),
+                Value::List(items) => stack.extend(items.iter()),
+                Value::Variant { fields, .. } | Value::Record { fields, .. } => {
+                    stack.extend(fields.iter().map(|(_, x)| x))
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn each_index_build_cause_encodes_with_its_complete_payload() {
+        with_ctx(|ctx| {
+            let expected = [
+                (
+                    "StructuralBindingIndexTransportRefused",
+                    vec!["sf.dag", "i0", "i1"],
+                ),
+                ("StructuralBindingIndexModulePathRefused", vec!["i7"]),
+                ("StructuralBindingIndexExposureRefused", vec!["i7"]),
+                ("StructuralBindingIndexAuthoredOrderRefused", vec!["i7"]),
+                ("StructuralBindingIndexDeclarationBucketRefused", vec!["i7"]),
+            ];
+            let causes = unsupported();
+            assert_eq!(causes.len(), expected.len());
+            for ((family, cause), (name, payload)) in causes.into_iter().zip(expected) {
+                let v = reference_derived_closure_admission_value(&refused(cause), ctx);
+                let encoded = cause_of(&v, ctx);
+                let Value::Variant { variant_name, .. } = encoded else {
+                    panic!("{family}: cause is not a variant")
+                };
+                assert!(
+                    *variant_name == ctx.sym(name),
+                    "{family}: wrong cause variant"
+                );
+                let mut got = Vec::new();
+                leaves(encoded, &mut got);
+                for want in payload {
+                    assert!(
+                        got.iter().any(|g| g == want),
+                        "{family}: payload lost {want}: {got:?}"
+                    );
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn a_supported_refusal_encodes_with_its_capability_and_gap() {
+        with_ctx(|ctx| {
+            let v = reference_derived_closure_admission_value(&supported(), ctx);
+            let Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } = &v
+            else {
+                panic!("not a variant")
+            };
+            assert!(*variant_name == ctx.sym("ReferenceDerivedClosureBindingRefused"));
+            let cap = fields
+                .iter()
+                .find(|(k, _)| *k == ctx.sym("capability"))
+                .expect("capability");
+            let Value::Variant {
+                variant_name: cap_name,
+                ..
+            } = &cap.1
+            else {
+                panic!("capability")
+            };
+            assert!(*cap_name == ctx.sym("SameFileEarlierNeighbourVisible"));
+            let cause = fields
+                .iter()
+                .find(|(k, _)| *k == ctx.sym("cause"))
+                .expect("cause");
+            let Value::Variant {
+                variant_name: cause_name,
+                fields: cf,
+                ..
+            } = &cause.1
+            else {
+                panic!("cause")
+            };
+            assert!(*cause_name == ctx.sym("StructuralBindingProductionRefused"));
+            let Value::Variant {
+                variant_name: gap, ..
+            } = &cf[0].1
+            else {
+                panic!("gap")
+            };
+            assert!(*gap == ctx.sym("ReferenceBindingNamedReferenceAbsent"));
+        });
+    }
+
+    #[test]
+    fn a_mixed_list_keeps_every_member_in_order() {
+        with_ctx(|ctx| {
+            for (family, cause) in unsupported() {
+                let mixed: Vec<Rc<A>> = vec![
+                    Rc::new(supported()),
+                    Rc::new(refused(cause)),
+                    Rc::new(supported()),
+                ];
+                let v = namespace_structural_observation_admissions_value(&module(), &mixed, ctx);
+                let Value::List(rows) = &v else {
+                    panic!("{family}: result is not a list")
+                };
+                assert_eq!(rows.len(), 3, "{family}: a member was dropped");
+                let names: Vec<_> = rows
+                    .iter()
+                    .map(|r| match cause_of(find(r, ctx, "admission"), ctx) {
+                        Value::Variant { variant_name, .. } => *variant_name,
+                        _ => panic!("cause"),
+                    })
+                    .collect();
+                assert!(names[0] == ctx.sym("StructuralBindingProductionRefused"));
+                assert!(
+                    names[1] != ctx.sym("StructuralBindingProductionRefused"),
+                    "{family}: fabricated as supported"
+                );
+                assert!(names[2] == ctx.sym("StructuralBindingProductionRefused"));
+            }
+        });
     }
 }

@@ -10,14 +10,15 @@ use crate::NonEmptyBTreeSet;
 pub use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::{ReferenceDerivedClosureAdmission, assess_reference_binding_observation};
 pub use crate::std_occurrence_binding_candidates::{OccurrenceBindingCandidateInputs, DeclarationExposureGrounding};
 pub use crate::std_occurrence_identity::{OccurrenceTransport, OccurrenceId};
-pub use crate::std_reference_binding_observation::{ReferenceBindingObservation, StructuralObservationSubjectModule, structural_binding_resolution_from_candidates, StructuralBindingResolution, ReferenceBindingProductionGap};
+pub use crate::std_reference_binding_observation::{ReferenceBindingObservation, StructuralObservationSubjectModule, structural_binding_resolution_from_candidates, StructuralBindingResolution, StructuralBindingRefusal, ReferenceBindingProductionGap};
 pub use crate::std_types::{List, NonEmptyStr};
 pub use crate::v1_gunbc_occurrence_binding_parser_walk::{parse_authored_occurrence_binding_source, occurrence_binding_inputs_from_transport, reference_named, declarations_named, references_named, ParsedOccurrenceBindingSource};
 use crate::gunbc_namespace_cut_namespace_reference_derived_closure_admission::ReferenceDerivedClosureAdmission::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::{ModuleLocalMemberExposure};
 use crate::std_reference_binding_observation::ReferenceBindingObservation::{SameFileNeighbourObservation, SameFileNeighbourProductionRefused, SiblingBranchObservation, SiblingBranchProductionRefused, LaterDeclarationObservation, LaterDeclarationProductionRefused, DistinctHomonymObservation, DistinctHomonymProductionRefused};
 use crate::std_reference_binding_observation::ReferenceBindingProductionGap::{ReferenceBindingParserTransportRefused, ReferenceBindingNamedReferenceAbsent, ReferenceBindingNamedDeclarationAbsent};
-use crate::std_reference_binding_observation::StructuralBindingResolution::{StructuralBindingProductionRefused};
+use crate::std_reference_binding_observation::StructuralBindingRefusal::{StructuralBindingProductionRefused};
+use crate::std_reference_binding_observation::StructuralBindingResolution::{StructuralBindingRefused};
 use crate::std_reference_binding_observation::StructuralObservationSubjectModule::{SubjectModuleProduced, SubjectModuleProductionRefused};
 use crate::v1_gunbc_occurrence_binding_parser_walk::ParsedOccurrenceBindingSource::{ParsedOccurrenceBindingSourceReady, ParsedOccurrenceBindingSourceRefused};
 use self::NrdfcParsed::*;
@@ -128,8 +129,10 @@ pub fn sibling_branch_observation(
     std::option::Option::None => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
     own_branch_declaration: else_branch_binder.occurrence.clone(),
     sibling_branch_declaration: then_branch_binder.occurrence.clone(),
-    resolution: Rc::new(StructuralBindingResolution::StructuralBindingProductionRefused {
+    resolution: Rc::new(StructuralBindingResolution::StructuralBindingRefused {
+    cause: Rc::new(StructuralBindingRefusal::StructuralBindingProductionRefused {
     gap: ReferenceBindingProductionGap::ReferenceBindingNamedReferenceAbsent,
+}),
 }),
 }),
     Some(else_branch_ref) => Rc::new(ReferenceBindingObservation::SiblingBranchObservation {
