@@ -17114,6 +17114,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     Some(cp) => {
                                         let cpt =
                                             crate::v1_std_core::param_node_type_expr(cp.clone());
+                                        diag_uni("DIAGLAM", format!("param={} exp_name={} exp_params={} cpt=[{}]", pair.1.clone(), exp.name.clone(), exp.params.len(), diag_node_brief(cpt.clone())));
                                         if type_node_is_established(
                                             cpt.clone(),
                                             scope.type_env.source_indices.clone(),
@@ -17156,12 +17157,15 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                     } else {
                         if ((lam_params.clone().len() as i64) == 1) {
                             match lam_params.clone().first().cloned() {
-                                Some(p) => extend_scope(
-                                    scope.clone(),
-                                    p.clone(),
-                                    exp.clone(),
-                                    elem_prov.clone(),
-                                ),
+                                Some(p) => {
+                                    diag_uni("DIAGLAM1", format!("param={} exp=[{}]", p.clone(), diag_node_brief(exp.clone())));
+                                    extend_scope(
+                                        scope.clone(),
+                                        p.clone(),
+                                        exp.clone(),
+                                        elem_prov.clone(),
+                                    )
+                                }
                                 std::option::Option::None => scope.clone(),
                             }
                         } else {
