@@ -1,5 +1,6 @@
 module gunbc.machine_intake.mtcollins1_boot_run
 
+import std.nat { nat_to_decimal_string }
 import gunbc.machine_intake.megarac_media_attach { megarac_convergence_allowance, megarac_presentation_look_allowance }
 import std.types { Bool, FilePath, Int, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
@@ -32,7 +33,7 @@ import gunbc.host.managed_host_unit_hold {
   boot_run_acquire_unit_hold, unit_hold_release, unit_hold_proof_refusal,
 }
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, MegaRacIpmiReadBound, megarac_attach_boot_image, megarac_stale_power_off_allowance, megarac_boot_media_gate, megarac_observe_boot_presentation, megarac_release_boot_session }
-import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs }
+import gunbc.machine_intake.megarac_media_attach { MegaRacShareBinding, MegaRacShareNfs, MegaRacAttachResult }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import extdeps.network.ipv4 { render_ipv4_address }
 import gunbc.host.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text, megarac_operation_evidence }
@@ -80,6 +81,7 @@ import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, A
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
 import extdeps.shell
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
 import extdeps.bmc.ipmi { IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake.sol_hold {
@@ -107,24 +109,35 @@ import gunbc.host.host_boot_attempt_admission {
   attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
 }
 import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken, mtcollins1_power_on_account_notes, carrier_text, carrier_standing_text }
+// THE CUT 4d-ii REPLACEMENT. The old mtcollins1_boot_diagnostic_bundle root is deleted and split
+// three ways, and this run procedure asks each part for what it owns: gunbc.host.boot_attempt for
+// what a boot attempt IS (records any controller has), gunbc.machine_intake.megarac_boot_diagnostic_bundle
+// for the MegaRAC/IPMI/Redfish reads and their RAW records, and gunbc.machine_intake.mtcollins1_boot_row
+// for mtcollins1's own measured receipts -- the endpoint, the artifact prefix, the read bounds, the
+// census population, the console capture. The bundle stores the RAW records; the neutral BootRunRecord
+// is produced by megarac_boot_run_record(...) where a neutral consumer wants one.
+import gunbc.host.boot_attempt {
+  AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
+  // The reading the poll answers with, the pairing that turns it into an after-the-attempt state, and
+  // the terminal that pairing needs. The row keeps no sum of its own for either decision (review 81601).
+  HostPowerReading, HostPowerRead, HostPowerNotTaken, HostPowerState, PowerOn, PowerOff, PowerUnread,
+  power_after_attempt, PowerAfterAttempt, PoweredOffAfterTerminal,
+  TerminalObserved, TerminalMarker, TerminalNotObserved,
+  OverrideNotHandedOff,
+}
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_boot_console, mtcollins1_boot_row_value, mtcollins1_boot_account_receipt, mtcollins1_kvm_observer_dir
+}
 import gunbc.host.smpro_platform_capability {
-  SmproProbed, SmproNotTaken, SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
+  SmproReading, SmproProbed, SmproNotTaken,
+  SmproSubjectOutcome, SmproSubjectMinted, SmproSubjectNotCarried,
   SmproSubjectUnestablished, SmproSubjectSiteRefused, SmproSubjectEndpointMismatch,
   smpro_subject_absence_reason,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  MtCollins1BootDiagnosticBundle, mtcollins1_kvm_observer_dir, SelSnapshotReading, SelSnapshotNotTaken, inventory_not_taken,
-  SdrCacheReading, SdrCacheNotTaken, mtcollins1_boot_sdr_cache,
-  SensorsNotTaken, mtcollins1_boot_sensors,
-  mtcollins1_boot_sel_snapshot, mtcollins1_boot_inventory, mtcollins1_boot_hpm_check, mtcollins1_boot_build_reading, build_reading_receipt_line, mtcollins1_boot_console,
-  mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, mtcollins1_boot_pre_power_retained, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
-  mtcollins1_boot_write_bundle, mtcollins1_boot_outcome_after_bundle, mtcollins1_boot_findings, harness_finding_text, bundle_write_receipt_line,
-  mtcollins1_boot_diagnostics_allowance, AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
-  SmproReading, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, PowerAfterUnobserved, MtCollins1BootRunRecord, run_record_not_taken, MtCollins1MediaAttachRecord, MediaAttachNotAttempted, MtCollins1HandoffMedia, recheck_text, MtCollins1EndMedia, EndMediaNotTaken, EndMediaObserved, HandoffMediaNotReached, HandoffMediaWithheldAtRecheck, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, mtcollins1_boot_param5, mtcollins1_boot_chassis_power,
-  BmcReachability, bmc_reachability_text, mtcollins1_boot_bmc_reachability,
-  BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, mtcollins1_ipmi_endpoint,
-  PowerAfterAttempt, PoweredOffAfterCensusEnd, PoweredOffWithoutCensusEnd, PoweredOnAfterAttempt, PowerAfterNotTaken, power_after_attempt, OverrideNotHandedOff, boot_override_consumption,
-  EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release,
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  BootDiagnosticBundle, MegaRacRunRecord, MegaRacMediaAttach, MegaRacHandoff, MegaRacEndMedia, megarac_power_reading_not_taken, MegaRacMediaAttachNotAttempted, MegaRacHandoffNotReached, MegaRacEndMediaNotTaken, SelSnapshotReading, SelSnapshotNotTaken, SdrCacheReading, SdrCacheNotTaken, SensorsNotTaken, inventory_not_taken, BootParam5Reading, BootParam5NotTaken, BootParam5Read, BootParam5Unread, BmcReachability, BmcReadCause, bmc_read_cause_text, bmc_ipmitool_session_cause, bmc_reachability_text, harness_finding_text, bundle_write_receipt_line, recheck_text, end_media_is_owed, media_loss_after_handoff, outcome_attributing_media_loss, megarac_ipmi_endpoint, megarac_boot_sdr_cache, megarac_boot_sel_snapshot, megarac_boot_sensors, megarac_boot_inventory, megarac_boot_hpm_check, megarac_boot_param5, megarac_boot_chassis_power, megarac_boot_bmc_reachability, megarac_boot_write_bundle, megarac_boot_outcome_after_bundle, megarac_boot_findings, megarac_diagnostics_allowance, megarac_run_record_not_taken, megarac_boot_override_consumption, megarac_power_after_from_observation, SdrCacheUnread, MegaRacHandoffAttempted, MegaRacHandoffConfirmed, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacEndMediaObserved, megarac_boot_evidence,
+  EndMediaRelease, EndReleaseKeptHostOn, EndReleaseWithheld, EndReleaseRan, EndReleaseGateKeep, EndReleaseGateWithhold, EndReleaseGateAdmit, end_release_gate, outcome_with_end_release, megarac_boot_build_reading, megarac_build_reading_receipt_line,
+  mtcollins1_boot_mc_info_retain, mtcollins1_boot_fru_print_retain, pre_power_retention_receipt_line, mtcollins1_boot_mc_info_path, mtcollins1_boot_fru_print_path, MtCollins1PrePowerRetention,
 }
 import std.dissolution { dissolution_description }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
@@ -231,7 +244,7 @@ fn mtcollins1_boot_step_timeout_minutes() -> Minute {
     + second_count(s: mtcollins1_boot_in_run_smpro_allowance())
     + second_count(s: mtcollins1_boot_actuation_allowance)
     + second_count(s: mtcollins1_boot_cleanup_allowance)
-    + second_count(s: mtcollins1_boot_diagnostics_allowance())
+    + second_count(s: megarac_diagnostics_allowance(row: mtcollins1_boot_row_value))
     + second_count(s: megarac_kvm_still_allowance())
     + second_count(s: mtcollins1_sol_notice_final_allowance)
   minute(count: (secs + 59) / 60)
@@ -561,7 +574,7 @@ fn sol_establishment_failure(collector: SolCollectorObservation, client_diagnost
     match ipmitool_sol_activate_refusal(output: client_diagnostics) {
       Present { value: r } => SolActivateRefused { refusal: r }
       Absent =>
-        match bmc_ipmitool_session_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, stderr: client_diagnostics) {
+        match bmc_ipmitool_session_cause(endpoint: megarac_ipmi_endpoint(row: mtcollins1_boot_row_value), at: at, stderr: client_diagnostics) {
           Present { value: c } => SolSessionRefused { cause: c }
           Absent => SolCollectorLeftUnexplained { collector: collector, last_line: last_nonempty_line(s: client_diagnostics) }
         }
@@ -956,7 +969,7 @@ fn edac_qualification(envelope: BoundHostCaptureEnvelope, name: String) -> Termi
 // the capture line; the observed side stays the raw text the host printed.
 fn nproc_judge(expected: HardwareThreadCount, out: List<String>) -> MtCollins1BootTerminalCause? {
   let observed = fold(out, init: "", f: (acc, l) => if l == "" { acc } else { l })
-  if observed == (hardware_thread_count_value(t: expected) as String) { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
+  if observed == (nat_to_decimal_string(value: hardware_thread_count_value(t: expected))) { none } else { Present { value: HardwareThreadCountMismatch { expected: expected, observed: observed } } }
 }
 
 fn boot_media_judge(label: NonEmptyStr, out: List<String>) -> MtCollins1BootTerminalCause? {
@@ -1001,7 +1014,7 @@ fn workload_byte_reading(out: List<String>, token: String) -> WorkloadByteReadin
 
 fn workload_byte_reading_text(r: WorkloadByteReading) -> String {
   match r {
-    WorkloadBytesReported { bytes: b } => byte_size_count(b: b) as String
+    WorkloadBytesReported { bytes: b } => nat_to_decimal_string(value: byte_size_count(b: b))
     WorkloadBytesUnreported => "unreported"
     WorkloadBytesUnparsed { spelling: sp } => concat("unparsed '", sp, "'")
   }
@@ -1298,14 +1311,14 @@ fn mtcollins1_boot_terminal_cause_text(cause: MtCollins1BootTerminalCause) -> St
     TerminalSectionUnterminatedAtRefusal { name: n } => concat(n, " section opened but had not printed its EXIT line when the open envelope refused; unqualified")
     TerminalSectionFailed { name: n, exit_code: c } => concat(n, " exited ", c)
     TerminalSectionMalformed { name: _, reason: r } => r
-    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", hardware_thread_count_value(t: e) as String)
-    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", hardware_thread_count_value(t: e.threads) as String, " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
+    HardwareThreadCountMismatch { expected: e, observed: o } => concat("nproc observed ", o, ", qualification expects ", nat_to_decimal_string(value: hardware_thread_count_value(t: e)))
+    SocketPlacementMismatch { expected: e, observed: o } => concat("numa placement ", o, ", milestone expects ", nat_to_decimal_string(value: hardware_thread_count_value(t: e.threads)), " CPUs on socket ", to_string(e.socket as Int), " and none elsewhere")
     SocketPlacementUnread => "numa section carries no node cpus line; socket placement is not read"
     BootMediaLabelAbsent { label: l } => concat("boot-media does not name the census volume ", l as String)
     EdacCountersNotClean { name: n } => concat(n, ": mc0 ce_count/ue_count not both 0")
     WorkloadPreflightRefused { declared: d, shm_avail: sh, mem_available: ma } =>
-      concat("workload preflight refused: declared ", byte_size_count(b: d) as String, " bytes, /dev/shm free ", workload_byte_reading_text(r: sh), ", MemAvailable ", workload_byte_reading_text(r: ma))
-    WorkloadFootprintMismatch { declared: d, observed: o } => concat("workload footprint ", workload_byte_reading_text(r: o), " bytes, profile declares ", byte_size_count(b: d) as String)
+      concat("workload preflight refused: declared ", nat_to_decimal_string(value: byte_size_count(b: d)), " bytes, /dev/shm free ", workload_byte_reading_text(r: sh), ", MemAvailable ", workload_byte_reading_text(r: ma))
+    WorkloadFootprintMismatch { declared: d, observed: o } => concat("workload footprint ", workload_byte_reading_text(r: o), " bytes, profile declares ", nat_to_decimal_string(value: byte_size_count(b: d)))
     WorkloadWriteFailed { rc: rc } => concat("workload write rc=", rc)
     WorkloadDigestUnstable => "workload digest not stable across passes"
     PreOsFirmwareRefusal { statement: st, locus: locus } =>
@@ -1610,8 +1623,8 @@ fn mtcollins1_boot_channel_lost(loss: SolObservationLoss, capture_path: String, 
     match mtcollins1_bmc_username {
       Absent => ChannelLostReadsNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
       Present { value: user } => ChannelLostReadsTaken {
-        bmc: mtcollins1_boot_bmc_reachability(username: user, password_file: password_file as NonEmptyStr),
-        power: mtcollins1_boot_chassis_power(username: user, password_file: password_file as NonEmptyStr),
+        bmc: megarac_boot_bmc_reachability(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr),
+        power: megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr),
       }
     }
   }
@@ -2088,16 +2101,16 @@ type MtCollins1BootActuationStage
 // release, and the unit-hold forged probe enrolls each outside call as a refusal.
 type MtCollins1BootActuation {
   outcome: ProcessExit
-  media: MtCollins1MediaAttachRecord
-  handoff_media: MtCollins1HandoffMedia
+  media: MegaRacMediaAttach
+  handoff_media: MegaRacHandoff
   // WHICH RELEASE THE EXECUTED HANDOFF CONSULTED, read off its own result. none until the controller
   // was driven -- which is exactly when handoff_media says it was not attempted.
   admitted: BmcFirmwareReleaseIdentity?
-  end_media: MtCollins1EndMedia
+  end_media: MegaRacEndMedia
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
-  power_after: PowerAfterAttempt
+  power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
@@ -2107,14 +2120,14 @@ type MtCollins1BootActuation {
 fn actuation_not_powered_on(outcome: ProcessExit, reason: NonEmptyStr) -> MtCollins1BootActuation {
   MtCollins1BootActuation {
     outcome: outcome,
-    media: MediaAttachNotAttempted { reason: reason },
-    handoff_media: HandoffMediaNotReached { reason: reason },
+    media: MegaRacMediaAttachNotAttempted { reason: reason },
+    handoff_media: MegaRacHandoffNotReached { reason: reason },
     admitted: none,
-    end_media: EndMediaNotTaken { reason: reason },
+    end_media: MegaRacEndMediaNotTaken { reason: reason },
     stage: ActuationNotPoweredOn { reason: reason },
     override_before: BootParam5NotTaken { reason: reason },
     override_after: BootParam5NotTaken { reason: reason },
-    power_after: PowerAfterNotTaken { reason: reason },
+    power_after: megarac_power_reading_not_taken(reason: reason),
     screen: kvm_observer_record_not_started(attempt: "", reason: reason),
     timing: boot_phase_timing_not_taken(reason: reason),
     runner_host: none,
@@ -2148,13 +2161,13 @@ fn smpro_phase_result(reading: SmproReading) -> BootPhaseRunResult {
   }
 }
 
-fn power_after_phase_result(p: PowerAfterAttempt) -> BootPhaseRunResult {
+fn power_after_phase_result(p: HostPowerReading) -> BootPhaseRunResult {
   match p {
-    PowerAfterUnobserved { observation: _ } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
-    PowerAfterNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
-    PoweredOffAfterCensusEnd => PhaseVerified
-    PoweredOffWithoutCensusEnd => PhaseVerified
-    PoweredOnAfterAttempt => PhaseVerified
+    HostPowerNotTaken { reason: why } => PhaseRefused { cause: concat("not taken: ", why as String) }
+    HostPowerRead { state: PowerUnread { reason: _ } } => PhaseRefused { cause: "chassis power unobserved (observation in the run record)" }
+    // Either chassis answer verified the phase: the poll took a reading. Whether the attempt reached its
+    // terminal is a separate fact (the stage, then MegaRacRunRecord.census_ended), not a power arm.
+    HostPowerRead { state: _ } => PhaseVerified
   }
 }
 
@@ -2177,13 +2190,13 @@ type ActuationWatch {
 // terminal accepted. mtcollins1_boot_actuate builds its result only through this.
 fn actuation_after_watch(
   observed: ActuationWatch,
-  media: MtCollins1MediaAttachRecord,
-  handoff_media: MtCollins1HandoffMedia,
+  media: MegaRacMediaAttach,
+  handoff_media: MegaRacHandoff,
   admitted: BmcFirmwareReleaseIdentity?,
-  end_media: MtCollins1EndMedia,
+  end_media: MegaRacEndMedia,
   override_before: BootParam5Reading,
   override_after: BootParam5Reading,
-  power_after: PowerAfterAttempt,
+  power_after: HostPowerReading,
   outcome: ProcessExit,
   screen: KvmObserverRecord,
   timing: BootPhaseTiming,
@@ -2258,7 +2271,7 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 {
   match mtcollins1_bmc_username {
     Absent => BootParam5NotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
-    Present { value: user } => mtcollins1_boot_param5(username: user, password_file: password_file as NonEmptyStr)
+    Present { value: user } => megarac_boot_param5(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr)
   }
 }
 
@@ -2266,28 +2279,30 @@ fn mtcollins1_boot_param5_under_hold(password_file: String) -> BootParam5Reading
 // unit off, so an ON read then is re-read up to the sample bound before it is taken as the answer;
 // without the END marker one read is the observation. Unreadable or undecodable reads are recorded as
 // such, never as a power state.
-fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> PowerAfterAttempt
+fn mtcollins1_boot_power_after_poll(password_file: String, census_ended: Bool, remaining: Int) -> HostPowerReading
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
   ]
 {
   match mtcollins1_bmc_username {
-    Absent => PowerAfterNotTaken { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" }
+    Absent => megarac_power_reading_not_taken(reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" as NonEmptyStr)
     Present { value: user } => {
-      let observed = power_after_attempt(observation: mtcollins1_boot_chassis_power(username: user, password_file: password_file as NonEmptyStr), census_ended: census_ended)
+      let observed = megarac_power_after_from_observation(observation: megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr))
+      // THE POLL POLLS A READING, NOT A DECISION. Whether to sample again is asked of the power the
+      // read ANSWERED (the core's HostPowerState); a read that did not answer, and a read that was
+      // never made because no account is modeled to make it, are both final and returned as they are.
       match observed {
-        PoweredOnAfterAttempt =>
+        HostPowerNotTaken { reason: _ } => observed
+        HostPowerRead { state: PowerUnread { reason: _ } } => observed
+        HostPowerRead { state: PowerOff } => observed
+        HostPowerRead { state: PowerOn } =>
           if census_ended && remaining > 1 {
             let _paced = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_boot_power_after_interval)
             mtcollins1_boot_power_after_poll(password_file: password_file, census_ended: census_ended, remaining: remaining - 1)
           } else {
             observed
           }
-        PoweredOffAfterCensusEnd => observed
-        PoweredOffWithoutCensusEnd => observed
-        PowerAfterUnobserved { observation: _ } => observed
-        PowerAfterNotTaken { reason: _ } => observed
       }
     }
   }
@@ -2424,18 +2439,18 @@ fn mtcollins1_boot_release_sol(proof: UnitHoldProof, password_file: String, pid_
 // off is eager-owl-205's declared frontier, not this gate's.
 type MediaGatedHandoff {
   result: BootHandoffResult
-  media: MtCollins1HandoffMedia
+  media: MegaRacHandoff
   live_at: String
 }
 
 // THE SOL SUPERVISION CHECK SITS AFTER THE BLOCKING PRESENTATION RECHECK and immediately before the
 // handoff it guards, so no network read separates the observation of the collector and its notice
-// watcher from the boot-device and power writes. A loss there withholds the handoff (HandoffMediaNotReached
+// watcher from the boot-device and power writes. A loss there withholds the handoff (MegaRacHandoffNotReached
 // with the frozen incident's reason). live_at is the last instant the collector was observed held, which
 // the capture watch measures its detection bound from.
 fn mtcollins1_boot_handoff_when_media_ready(
   proof: UnitHoldProof,
-  media: MtCollins1MediaAttachRecord,
+  media: MegaRacMediaAttach,
   subject: AdmittedBootSubject,
   password_file: String,
   attempt: String,
@@ -2449,7 +2464,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
 {
   match megarac_boot_media_gate(record: media) {
     MediaGateWithheld { reason: why } =>
-      MediaGatedHandoff { result: boot_handoff_not_issued(outcome: exit_failure(reason: why as String)), media: HandoffMediaNotReached { reason: why }, live_at: last_live_at }
+      MediaGatedHandoff { result: boot_handoff_not_issued(outcome: exit_failure(reason: why as String)), media: MegaRacHandoffNotReached { reason: why }, live_at: last_live_at }
     MediaGateReady { evidence: _ } => {
       let before = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "before-handoff")
       match presentation_still_served(result: before) {
@@ -2457,7 +2472,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
           let supervised_at = match mtcollins1_sol_supervised(stage: SolLostBeforeHandoff, pid_path: pid_path, capture_path: capture_path, password_file: password_file, last_live_at: last_live_at) {
             SolLostAt { outcome: o } => return MediaGatedHandoff {
               result: boot_handoff_not_issued(outcome: o),
-              media: HandoffMediaNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
+              media: MegaRacHandoffNotReached { reason: sol_supervision_refusal_reason(outcome: o) },
               live_at: last_live_at,
             }
             SolHeldAt { at: a } => a as String
@@ -2471,9 +2486,9 @@ fn mtcollins1_boot_handoff_when_media_ready(
           let after = megarac_observe_boot_presentation(proof: proof, image_name: subject.medium.image_name, share: mtcollins1_media_share, password_file: password_file, attempt: attempt, look: "after-handoff")
           MediaGatedHandoff {
             result: handed,
-            media: HandoffMediaAttempted {
+            media: MegaRacHandoffAttempted {
               before: before,
-              handoff: match handed.outcome { ExitSuccess => HandoffConfirmed  ExitFailure { code: _, reason: r } => HandoffAttemptedUnconfirmed { reason: r } },
+              handoff: match handed.outcome { ExitSuccess => MegaRacHandoffConfirmed  ExitFailure { code: _, reason: r } => MegaRacHandoffAttemptedUnconfirmed { reason: r } },
               after: after,
             },
             live_at: supervised_at,
@@ -2490,7 +2505,7 @@ fn mtcollins1_boot_handoff_when_media_ready(
 fn handoff_withheld_at_recheck(before: MegaRacAttachResult, live_at: String) -> MediaGatedHandoff {
   MediaGatedHandoff {
     result: boot_handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: media was ready at the gate but the pre-handoff recheck did not admit it; no boot-device or power write was made: ", recheck_text(v: presentation_still_served(result: before))))),
-    media: HandoffMediaWithheldAtRecheck { before: before },
+    media: MegaRacHandoffWithheldAtRecheck { before: before },
     live_at: live_at,
   }
 }
@@ -2556,10 +2571,10 @@ fn mtcollins1_boot_actuate(
       // only this attempt's own image.
       let lane_stems = FreeSemigroup { head: image_stem, tail: [mtcollins1_census_image_stem] }
       let media = match before_attach {
-        SolLostAt { outcome: o } => MediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
+        SolLostAt { outcome: o } => MegaRacMediaAttachNotAttempted { reason: sol_supervision_refusal_reason(outcome: o) }
         SolHeldAt { at: _ } =>
           match boot_medium_served_refusal_before_attach(subject: mtcollins1_census_machine, readback: boot_medium_served_readback(medium: medium, check: census_served_check(medium: medium, image: mtcollins1_census_image), attempt: boot_medium_served_attempt_raw)) {
-            Present { value: why } => MediaAttachNotAttempted { reason: why as NonEmptyStr }
+            Present { value: why } => MegaRacMediaAttachNotAttempted { reason: why as NonEmptyStr }
             Absent =>
               megarac_attach_boot_image(
                 proof: proof,
@@ -2584,7 +2599,7 @@ fn mtcollins1_boot_actuate(
       let gated = match sol_handoff_admission(sol: before_attach) {
         SolHandoffRefused { cause: why } => MediaGatedHandoff {
           result: boot_handoff_not_issued(outcome: exit_failure(reason: concat("mtcollins1 boot: handoff refused: no SOL observation of this run holds: ", why))),
-          media: HandoffMediaNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
+          media: MegaRacHandoffNotReached { reason: concat("no SOL observation of this run holds: ", why) as NonEmptyStr },
           live_at: attach_live_at,
         }
         SolHandoffAdmitted { held_at: _ } => mtcollins1_boot_handoff_when_media_ready(
@@ -2600,10 +2615,10 @@ fn mtcollins1_boot_actuate(
       }
       let handoff_live_at = gated.live_at
       let handoff = match gated.media {
-        HandoffMediaAttempted { before: _, handoff: _, after: _ } =>
+        MegaRacHandoffAttempted { before: _, handoff: _, after: _ } =>
           HandoffRun { result: gated.result, step: PhaseStepRan { result: exit_phase_result(outcome: gated.result.outcome), end: proc_uptime_read() }, live_at: handoff_live_at }
-        HandoffMediaNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
-        HandoffMediaWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
+        MegaRacHandoffNotReached { reason: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
+        MegaRacHandoffWithheldAtRecheck { before: _ } => HandoffRun { result: gated.result, step: PhaseStepSkipped { reason: "the SOL supervision, the media gate or its pre-handoff recheck withheld the handoff" }, live_at: handoff_live_at }
       }
       // THE POWERED BRANCH IS ENTERED ON THE HANDOFF'S POWER-ON RECORD, which only an issued control carries, with the
       // account it was written with: every post-power-on gate read and safe stop uses that account, so no powered host
@@ -2676,11 +2691,11 @@ fn mtcollins1_boot_actuate(
       // THE RELEASE FOLLOWS THE END LOOK AND THE POWER READING, still under the hold: the look records the
       // medium as the attempt left it, and only a host observed OFF has its own session stopped.
       let end_media = match end_look {
-        Absent => EndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
+        Absent => MegaRacEndMediaNotTaken { reason: "the media attach was not attempted, so this attempt reached no media state to observe" }
         Present { value: look } =>
-          EndMediaObserved {
+          MegaRacEndMediaObserved {
             look: look,
-            end_release: match end_release_gate(power_after: power_after) {
+            end_release: match end_release_gate(power_after: power_after_attempt(power: power_after, terminal: mtcollins1_boot_terminal_of_stage(stage: observed.stage))) {
               EndReleaseGateKeep => EndReleaseKeptHostOn
               EndReleaseGateWithhold { reason: why } => EndReleaseWithheld { reason: why }
               EndReleaseGateAdmit { power: off } => EndReleaseRan { result: megarac_release_boot_session(proof: proof, image_name: subject.medium.image_name, replaceable_seeded_stems: lane_stems, power: off, password_file: password_file, attempt: attempt) }
@@ -2700,7 +2715,7 @@ fn mtcollins1_boot_actuate(
           outcome: match observed.outcome {
             ExitSuccess =>
               if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
-            other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
+            other => outcome_attributing_media_loss(row: mtcollins1_boot_row_value, outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
           },
           end: end_media,
         ),
@@ -2834,6 +2849,7 @@ fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearan
           fru: PrePowerNotRetained { reason: concat("the pre-power phase did not read it: ", why) as NonEmptyStr },
         }
       } else {
+
         // THE READ-ONLY PRE-POWER PHASE keeps THREE verbatim captures: the retained hpm table (which mints
         // the build identity), `mc info` (the channel's own account of what BMC it is), and `fru print 0`
         // board 0 (the inventory the identity rows are made from). All three operations are declared
@@ -2841,10 +2857,10 @@ fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearan
         // the two additions answers a question the boot decides on -- the admission, the selection, and
         // the actuation consume only the hpm table, exactly as before. Each capture's OWN result leaves
         // the phase in the phase record; the receipt is composed from those results at conclusion.
-        let mc_kept = mtcollins1_boot_mc_info_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
-        let fru_kept = mtcollins1_boot_fru_print_retain(username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
+        let mc_kept = mtcollins1_boot_mc_info_retain(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
+        let fru_kept = mtcollins1_boot_fru_print_retain(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr, run_attempt: run_attempt)
         MtCollins1PrePowerPhase {
-          configuration: attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt)),
+          configuration: attempt_configuration_with_pre_power(c: configuration, firmware: megarac_boot_hpm_check(row: mtcollins1_boot_row_value, username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt)),
           mc_info: mc_kept,
           fru: fru_kept,
         }
@@ -2853,8 +2869,8 @@ fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearan
 }
 
 fn mtcollins1_boot_baseline(username: NonEmptyStr, password_file: NonEmptyStr) -> MtCollins1BootBaseline {
-  let sdr = mtcollins1_boot_sdr_cache(username: username, password_file: password_file, path: concat(password_file as String, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
-  MtCollins1BootBaseline { sdr: sdr, sel_before: mtcollins1_boot_sel_snapshot(username: username, password_file: password_file, sdr: sdr) }
+  let sdr = megarac_boot_sdr_cache(row: mtcollins1_boot_row_value, username: username, password_file: password_file, path: concat(password_file as String, mtcollins1_boot_sdr_cache_suffix) as NonEmptyStr)
+  MtCollins1BootBaseline { sdr: sdr, sel_before: megarac_boot_sel_snapshot(row: mtcollins1_boot_row_value, username: username, password_file: password_file, sdr: sdr) }
 }
 
 fn mtcollins1_boot_actuate_held(
@@ -2887,7 +2903,7 @@ fn mtcollins1_boot_actuate_held(
 }
 
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
-// writes the diagnostic bundle (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) and the
+// writes the diagnostic bundle (gunbc.machine_intake.megarac_boot_diagnostic_bundle) and the
 // receipt, and appends the bundle's decisive findings to a refusal reason. The attempt returns a
 // RECORD of how far it got with the BMC instead of a bare exit, so a refusal before the credential
 // was read -- including the unit held -- still uploads a bundle
@@ -2903,17 +2919,17 @@ type MtCollins1BootBmcAccess
 
 type MtCollins1BootAttempt {
   outcome: ProcessExit
-  media: MtCollins1MediaAttachRecord
-  handoff_media: MtCollins1HandoffMedia
+  media: MegaRacMediaAttach
+  handoff_media: MegaRacHandoff
   // THE RELEASE THE EXECUTED HANDOFF CONSULTED (none when no control was ever issued): the actuation
   // read it off the handoff result, which read it off the outcome the executed route returned.
   admitted: BmcFirmwareReleaseIdentity?
-  end_media: MtCollins1EndMedia
+  end_media: MegaRacEndMedia
   bmc: MtCollins1BootBmcAccess
   stage: MtCollins1BootActuationStage
   override_before: BootParam5Reading
   override_after: BootParam5Reading
-  power_after: PowerAfterAttempt
+  power_after: HostPowerReading
   timing: BootPhaseTiming
   screen: KvmObserverRecord
   runner_host: RunnerHostUp?
@@ -2962,15 +2978,15 @@ fn mtcollins1_boot_attempt_of(act: MtCollins1BootActuation, bmc: MtCollins1BootB
 fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttempt {
   MtCollins1BootAttempt {
     outcome: outcome,
-    media: MediaAttachNotAttempted { reason: "the attempt ended before the unit hold" },
-    handoff_media: HandoffMediaNotReached { reason: "the attempt ended before the unit hold" },
+    media: MegaRacMediaAttachNotAttempted { reason: "the attempt ended before the unit hold" },
+    handoff_media: MegaRacHandoffNotReached { reason: "the attempt ended before the unit hold" },
     admitted: none,
-    end_media: EndMediaNotTaken { reason: "the attempt ended before the unit hold" },
+    end_media: MegaRacEndMediaNotTaken { reason: "the attempt ended before the unit hold" },
     bmc: BmcAccessNotReached { reason: concat("the attempt ended before the BMC credential was read (", mtcollins1_boot_exit_reason(outcome: outcome), ")") as NonEmptyStr },
     stage: ActuationNotPoweredOn { reason: "the attempt ended before the unit hold" },
     override_before: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
     override_after: BootParam5NotTaken { reason: "the attempt ended before the unit hold" },
-    power_after: PowerAfterNotTaken { reason: "the attempt ended before the unit hold" },
+    power_after: megarac_power_reading_not_taken(reason: "the attempt ended before the unit hold" as NonEmptyStr),
     timing: boot_phase_timing_not_taken(reason: "the attempt ended before the unit hold"),
     screen: kvm_observer_record_not_started(attempt: "", reason: "the attempt ended before the unit hold"),
     runner_host: none,
@@ -2981,11 +2997,11 @@ fn mtcollins1_boot_ended_before_bmc(outcome: ProcessExit) -> MtCollins1BootAttem
   }
 }
 
-fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: AttemptIdentityReading, capture_path: String) -> MtCollins1BootDiagnosticBundle
+fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: AttemptIdentityReading, capture_path: String) -> BootDiagnosticBundle
 {
   match attempt.bmc {
     BmcAccessNotReached { reason: why } =>
-      MtCollins1BootDiagnosticBundle {
+      BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: SelSnapshotNotTaken { reason: why },
@@ -2995,28 +3011,30 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
         smpro: SmproNotTaken { reason: why },
         inventory: inventory_not_taken(reason: why),
         console: mtcollins1_boot_console(path: capture_path),
-        run: run_record_not_taken(reason: why),
+        run: megarac_run_record_not_taken(reason: why),
         screen: attempt.screen,
         configuration: attempt.configuration,
       }
     BmcAccessHeld { username: user, password_file: pf, password: pw, sdr_cache: sdr, sel_before: before } => {
-      let sel_after = mtcollins1_boot_sel_snapshot(username: user, password_file: pf, sdr: sdr)
+      let sel_after = megarac_boot_sel_snapshot(row: mtcollins1_boot_row_value, username: user, password_file: pf, sdr: sdr)
       let power_after = attempt.power_after
-      MtCollins1BootDiagnosticBundle {
+      BootDiagnosticBundle {
         attempt: run,
         outcome: mtcollins1_boot_exit_reason(outcome: attempt.outcome),
         sel_before: before,
         sel_after: sel_after,
         sdr_cache: sdr,
-        sensors: mtcollins1_boot_sensors(password_file: pf, sdr: sdr),
-        smpro: match power_after {
-          PoweredOffAfterCensusEnd => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
-          PoweredOffWithoutCensusEnd => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          PoweredOnAfterAttempt => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          PowerAfterUnobserved { observation: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
-          PowerAfterNotTaken { reason: _ } => mtcollins1_boot_smpro_read(username: user, password_file: pf)
+        sensors: megarac_boot_sensors(row: mtcollins1_boot_row_value, password_file: pf, sdr: sdr),
+        // The post-attempt SMpro pass is skipped only when the off is the census image's own doing:
+        // powered off AND the attempt reached its END marker. The pairing is the CORE'S question --
+        // power_after_attempt over this row's power reading and this row's terminal -- and the skip is
+        // taken from the state it answers with, so this call site and the run record cannot pair the two
+        // facts differently. Everything else (powered on, read did not answer, read never made) reads.
+        smpro: match power_after_attempt(power: power_after, terminal: mtcollins1_boot_terminal_of_stage(stage: attempt.stage)) {
+          PoweredOffAfterTerminal => SmproNotTaken { reason: "the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record" }
+          _ => mtcollins1_boot_smpro_read(username: user, password_file: pf)
         },
-        inventory: mtcollins1_boot_inventory(username: user, password: pw),
+        inventory: megarac_boot_inventory(row: mtcollins1_boot_row_value, username: user, password: pw),
         console: mtcollins1_boot_console(path: capture_path),
         run: mtcollins1_boot_run_record(media: attempt.media, handoff_media: attempt.handoff_media, end_media: attempt.end_media, stage: attempt.stage, before: attempt.override_before, after: attempt.override_after, power_after: power_after, timing: attempt.timing, fan_gate: attempt.fan_gate),
         screen: attempt.screen,
@@ -3026,10 +3044,22 @@ fn mtcollins1_boot_bundle_of_attempt(attempt: MtCollins1BootAttempt, run: Attemp
   }
 }
 
-fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media: MtCollins1HandoffMedia, end_media: MtCollins1EndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: PowerAfterAttempt, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MtCollins1BootRunRecord {
+// THE TERMINAL'S ONE HOME IN THE ACTUATION IS THE STAGE: ActuationCensusEnded is the fact that this
+// row's watch saw its END marker. This fn is the only place that turns a stage into a TerminalObserved,
+// and MegaRacRunRecord's census_ended and the SMpro skip below both read that one value, so they cannot
+// drift. No MegaRacPowerAfter arm encodes the terminal any more.
+fn mtcollins1_boot_terminal_of_stage(stage: MtCollins1BootActuationStage) -> TerminalObserved {
+  match stage {
+    ActuationCensusEnded { selection: _, smpro_power_on: _, smpro_census: _ } => TerminalMarker { marker: "the diagnostic census ended" }
+    ActuationPoweredOn { selection: _, smpro_power_on: _, smpro_census: _ } => TerminalNotObserved
+    ActuationNotPoweredOn { reason: _ } => TerminalNotObserved
+  }
+}
+
+fn mtcollins1_boot_run_record(media: MegaRacMediaAttach, handoff_media: MegaRacHandoff, end_media: MegaRacEndMedia, stage: MtCollins1BootActuationStage, before: BootParam5Reading, after: BootParam5Reading, power_after: HostPowerReading, timing: BootPhaseTiming, fan_gate: PostPowerFanGateReading) -> MegaRacRunRecord {
   match stage {
     ActuationNotPoweredOn { reason: why } =>
-      MtCollins1BootRunRecord {
+      MegaRacRunRecord {
         census_ended: false,
         media: media,
         handoff_media: handoff_media,
@@ -3038,13 +3068,16 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         smpro_census: SmproNotTaken { reason: why },
         override_before: before,
         override_after: after,
+        // The override was never handed off: the attempt never got that far. That is a fact of THIS
+        // row's actuation (the stage says so), stated with the core's own arm -- the core's decision
+        // cannot be run over reads that were never made.
         override: OverrideNotHandedOff { reason: why },
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
       }
     ActuationPoweredOn { selection: sel, smpro_power_on: on, smpro_census: census } =>
-      MtCollins1BootRunRecord {
+      MegaRacRunRecord {
         census_ended: false,
         media: media,
         handoff_media: handoff_media,
@@ -3053,13 +3086,13 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
+        override: megarac_boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: false),
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
       }
     ActuationCensusEnded { selection: sel, smpro_power_on: on, smpro_census: census } =>
-      MtCollins1BootRunRecord {
+      MegaRacRunRecord {
         census_ended: true,
         media: media,
         handoff_media: handoff_media,
@@ -3068,7 +3101,7 @@ fn mtcollins1_boot_run_record(media: MtCollins1MediaAttachRecord, handoff_media:
         smpro_census: census,
         override_before: before,
         override_after: after,
-        override: boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
+        override: megarac_boot_override_consumption(before: before, after: after, selection: sel, booted_through_override_device: true),
         power_after: power_after,
         timing: timing,
         fan_gate: fan_gate,
@@ -3100,24 +3133,26 @@ fn mtcollins1_boot_conclude(attempt: MtCollins1BootAttempt) -> ProcessExit
 {
   let run = mtcollins1_boot_attempt_identity(read: actions_variable_read(name: github_run_id_variable_name))
   let bundle = mtcollins1_boot_bundle_of_attempt(attempt: attempt, run: run, capture_path: actions_variable_trimmed(name: mtcollins1_boot_sol_capture_path_env))
-  let write = mtcollins1_boot_write_bundle(bundle: bundle)
-  let concluded = mtcollins1_boot_outcome_after_bundle(outcome: attempt.outcome, bundle: bundle, write: write)
-  let findings = mtcollins1_boot_findings(bundle: bundle)
+  let write = megarac_boot_write_bundle(row: mtcollins1_boot_row_value, bundle: bundle, account: mtcollins1_boot_account_receipt(e: megarac_boot_evidence(row: mtcollins1_boot_row_value, bundle: bundle)))
+  let concluded = megarac_boot_outcome_after_bundle(row: mtcollins1_boot_row_value, outcome: attempt.outcome, bundle: bundle, write: write, account: mtcollins1_boot_account_receipt(e: megarac_boot_evidence(row: mtcollins1_boot_row_value, bundle: bundle)))
+  let findings = megarac_boot_findings(row: mtcollins1_boot_row_value, bundle: bundle, account: mtcollins1_boot_account_receipt(e: megarac_boot_evidence(row: mtcollins1_boot_row_value, bundle: bundle)))
   let exit_word = match concluded { ExitSuccess => "ok"  ExitFailure { code: _, reason: _ } => "refused" }
   let receipt_body = join([
     "authorization=workload identity of the fleet-converge run on main (operator ruling 2026-09-25); no per-run or standing approval; the unit hold is the interlock",
     concat("attempt=", attempt_identity_text(a: run)),
     concat("exit=", exit_word),
-    bundle_write_receipt_line(w: write),
+    bundle_write_receipt_line(row: mtcollins1_boot_row_value, w: write),
     kvm_observer_receipt_line(rec: attempt.screen),
-    build_reading_receipt_line(r: mtcollins1_boot_build_reading(attempt: run)),
+    megarac_build_reading_receipt_line(r: megarac_boot_build_reading(row: mtcollins1_boot_row_value, attempt: run)),
     // THE PRE-POWER RETENTIONS: the ORIGINAL cause the executing phase reported (carried in the record),
     // and only on a write-side retention does the conclusion read the file back by the run's own identity.
     // These speak only for this attempt -- no phase, no claim; no run identity at conclusion, no read.
-    pre_power_retention_receipt_line(prefix: "mc-info", executed: attempt.mc_info, run: run, path_of: mtcollins1_boot_mc_info_path),
-    pre_power_retention_receipt_line(prefix: "fru", executed: attempt.fru, run: run, path_of: mtcollins1_boot_fru_print_path),
-    concat("account=", join(mtcollins1_power_on_account_notes(a: findings.account), "; ")),
-    concat("coverage=", join(map(filter(findings.account.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")),
+    pre_power_retention_receipt_line(prefix: "mc-info", executed: attempt.mc_info, run: run,
+      path_of: a => mtcollins1_boot_mc_info_path(row: mtcollins1_boot_row_value, run_attempt: a)),
+    pre_power_retention_receipt_line(prefix: "fru", executed: attempt.fru, run: run,
+      path_of: a => mtcollins1_boot_fru_print_path(row: mtcollins1_boot_row_value, run_attempt: a)),
+    concat("account=", join(findings.account.notes, "; ")),
+    concat("coverage=", match findings.account.account { Present { value: a } => join(map(filter(a.coverage, c => match c.standing { CarrierRead => false CarrierReadEmpty => true CarrierPartial { detail: _ } => true CarrierRefused { cause: _ } => true CarrierNotTaken { reason: _ } => true }), c => concat(carrier_text(c: c.carrier), ": ", carrier_standing_text(s: c.standing))), "; ")  Absent => "no account read on this row" }),
     concat("harness=", if count(findings.harness) == 0 { "none" } else { join(map(findings.harness, f => harness_finding_text(f: f)), "; ") }),
   ], "\n")
   let kept = Filesystem.Write(path: mtcollins1_boot_receipt_path, content: receipt_body)

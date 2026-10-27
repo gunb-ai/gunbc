@@ -340,6 +340,7 @@ fn qualification_dispatch_subject_over(
     decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "qualification_dispatch_subject"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
     decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
+    decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "admit_real"),
   ]
 {
   match jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: dispatch }) {
