@@ -1690,7 +1690,6 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::TextRepresentationUnidentifiedAtBoundary { .. } => None,
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => None,
         CompilerDiagnostic::TypeAliasCycle { .. } => None,
-        CompilerDiagnostic::TypeArgumentArityMismatch { .. } => None,
         CompilerDiagnostic::TypeArgumentKindMismatch { .. } => None,
         CompilerDiagnostic::TypeMismatch { expected, got, .. } => {
             Some((expected.clone(), got.clone()))
