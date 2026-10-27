@@ -576,6 +576,7 @@ fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRe
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "kvm_observer_acquire_unit_hold"),
+    decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "qualification_acquire_unit_hold"),
   ]
 {
   match unit_hold_store_executor(subject: subject) {

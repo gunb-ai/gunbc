@@ -59,6 +59,12 @@ data systemd_run_authority: ExternalAuthority = extdeps_external_authority_ancho
 
 fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
+// `systemd-run --version`: its first line is the version the summary format is grounded against
+// (summary_format_standing), read from the same manager that will print the summary.
+fn systemd_run_version_command() -> SystemdRunCommandReading {
+  systemd_run_command_of(options: [Version], command_argv: [])
+}
+
 // THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: SystemdSummaryPrintingWait is minted in
 // exactly one place, summary_printing_wait_of, which the two waiting non-quiet builders (the user
 // manager's systemd_run_user_wait_command and the system manager's
@@ -103,6 +109,7 @@ type SystemdSetenvBinding {
 //   Quiet          --quiet
 //   Pipe           --pipe
 //   Collect        --collect
+//   Version        --version (prints the manager's version and exits; no unit is started)
 //   EndOfOptions   -- (systemd-run's own options end; the rest is the command)
 type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
@@ -115,6 +122,7 @@ type SystemdRunOption
   | Quiet
   | Pipe
   | Collect
+  | Version
   | EndOfOptions
 
 // WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
@@ -283,6 +291,7 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
         Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
         Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        Version => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--version"]) }
         EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
       }
   }

@@ -1158,6 +1158,11 @@ data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcR
   function: "lost_boot_sweep_wet",
 }
 
+data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
+  function: "qualification_attempt_wet",
+}
+
 data gunbc_ci_mtcollins1_boot_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/machine_intake/mtcollins1_boot_admission.dag",
   function: "mtcollins1_boot_admit_executor",
@@ -1549,6 +1554,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_mtcollins1_sol_notice_target,
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
+    gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
     gunbc_ci_gcp_iam_converge_apply_target,
@@ -4380,6 +4386,16 @@ fn gunbc_ci_arrival_admit_invoke() -> String {
 // NO SHELL PRELUDE: the sweep stages the gunbai-ci App key itself from Secret Manager under the run's
 // WIF_ACCESS_TOKEN (gunbc.github_effect_perform stage_controller_app_key), so no credential is
 // minted, exported or traced in shell.
+fn gunbc_ci_qualification_attempt_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_qualification_attempt_target.entry,
+    function: gunbc_ci_qualification_attempt_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,

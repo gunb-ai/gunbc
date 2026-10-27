@@ -125,9 +125,13 @@ fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot:
 
 // ── the exit, as the deregistration's vocabulary ────────────────────────────────────────────────
 
+// A REMOTE LAUNCH READS ITS END FROM THE MANAGER'S OWN SUMMARY (gunbc.runner.runner_qualification_attempt_run), which
+// names the unit's Result rather than a status number: a result other than success is ListenerEndedUnclean with
+// that result, never an invented exit code.
 type ListenerRun
   = ListenerNotLaunched { cause: NonEmptyStr }
   | ListenerExited { exit_code: Int }
+  | ListenerEndedUnclean { result: NonEmptyStr }
   | ListenerOutcomeUnobserved { cause: NonEmptyStr }
 
 // EVERY ARM MAPS TO AN EXIT, SO EVERY ARM DEREGISTERS: a listener that never started leaves a
@@ -135,6 +139,7 @@ type ListenerRun
 fn service_slot_exit_of(run: ListenerRun) -> JitSlotExit {
   match run {
     ListenerNotLaunched { cause: c } => SlotNeverLaunched { cause: c }
+    ListenerEndedUnclean { result: r } => SlotListenerExitedNonzero { cause: join(["the listener's unit ended with result ", r as String], "") as NonEmptyStr }
     ListenerOutcomeUnobserved { cause: c } => SlotListenerOutcomeUnobserved { cause: c }
     ListenerExited { exit_code: code } =>
       if code == 0 {
