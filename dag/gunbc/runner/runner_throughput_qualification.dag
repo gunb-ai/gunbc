@@ -4,12 +4,13 @@ import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import std.nat { Nat }
 import std.measure {
-  ByteSize, byte_size_count,
-  EvalStepCount, eval_step_count_value,
-  EvalStepsPerMillisecond, eval_steps_per_millisecond, eval_steps_per_millisecond_count,
+  ByteSize, byte_size, byte_size_count,
   HardwareThreadCount, hardware_thread_count_value,
-  Millisecond, millisecond, millisecond_count,
+  Second, second, second_count,
 }
+import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
+import gunbc.host.memory_envelope_receipt_reading { memory_receipt_held }
+import gunbc.runner.runner_qualification_subject_readings { SubjectStepReading }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
@@ -20,20 +21,6 @@ import product.capacity.cohort_observation {
   CohortSeal, CohortSealed, CohortRefused, SeatSucceeded, SeatFailed, cohort_refusal_wire,
 }
 import extdeps.toolchain.types { Architecture, architecture_diagnostic_name }
-import gunbc.required_ci_phase_roster {
-  RequiredCiPhase, required_ci_phase_name, required_ci_phase_is, required_ci_phases,
-}
-import gunbc.host.host_budget_source {
-  HostBudgetResolution, HostBudgetResolved, HostBudgetDeclaredUnverified, HostBudgetUnreadable,
-  HostBudgetExternallyBounded,
-}
-import gunbc.compute.unit_bounds {
-  ExternallyBoundedExecutor,
-  user_work_scope_standing_wire,
-}
-import v2.workflow.floor_eval_step_calibration {
-  EvalStepCalibration, calibration_rate, calibration_specimen_eval_steps,
-}
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
 
@@ -46,7 +33,7 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 //
 // SELECTION PRECEDES THE ASSESSMENT (DESIGN section 3d; operator hold on gunbc#11722, 2026-09-19).
 // The selected offer, the requirements the offer is claimed to deliver, the selected conserving
-// host allocation, the selected slot, the sampling policy and the phase ceilings are INPUTS --
+// host allocation, the selected slot, the sampling policy and the baseline wall allowance are INPUTS --
 // `SelectedRunnerQualification` -- chosen by the fleet before any run and projected from the
 // fleet's own authorities by `gunbc.runner.runner_throughput_selection`, which also carries the
 // independently selected `ExecutorSanction` the fabric admits on. This module mints none of them:
@@ -73,9 +60,9 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 // reconsidered.
 //
 // THE OBSERVED RUN IS PRODUCER-OWNED AND SEALED. `ObservedRunnerQualificationRun` carries every
-// identity the assessment joins on -- host, program, revision, calibration specimen, image and
-// runtime, slot unit and incarnation, the EFFECTIVE unit properties read back, the cgroup level
-// with its bound, the workspace locus as READ -- and nothing in it is copied from the selection.
+// identity the assessment joins on -- host, program, revision, image and runtime, slot unit and
+// incarnation, the EFFECTIVE unit properties read back, every subject step's wall and memory receipt
+// (whose limit is the bound), the workspace locus as READ -- and nothing in it is copied from the selection.
 // It is `sole_constructor`: only `observed_run` mints one, and the producer that will call it is a
 // declared frontier below. The assessment is `sole_constructor` too, minted only by
 // `assess_runner_throughput`, whose first act is the SUBJECT JOIN: a run from another host,
@@ -83,29 +70,28 @@ import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_censu
 // whose effective bound is not the selected bound is refused by name on the axis that differs.
 // An admitted disposition cannot be authored: there is no constructor for it outside this module.
 //
-// NOTHING HERE IS A NEW BENCHMARK. Every instrument is one the required run already emits, and
-// throughput is denominated in `std.measure EvalStepsPerMillisecond` against the pin
-// `v2.workflow.floor_eval_step_calibration` holds -- the same measure, the same specimen, the same
-// protocol, on a different machine. The conclusion is NARROWED to what is assessed
-// (`assessed_facts`): the interpreter rate and one slot-memory envelope, plus per-phase walls
-// only where the selection supplies a ceiling. Carried readings the claim does not cover are
-// observation, and the claim says so.
+// NOTHING HERE IS A NEW BENCHMARK, AND THE BASELINE IS NOT A LITERAL (operator decision A, 2026-10-27). Every
+// instrument is one today's required floor already emits: each subject step's wall from the job record and its
+// gunbc test memory receipt. Walls are judged against the SAME steps of the same revision run on an existing fleet host
+// (FleetBaselineRun), under an allowance the selection supplies as policy. The conclusion is NARROWED to what is
+// assessed (`assessed_facts`): the slot memory envelope over every step and every step's wall against the baseline.
 //
 // EACH AXIS IS THREE-VALUED, AS product.fabric.node_qualification RULES: holds with the numbers,
 // falls short with the numbers, or unread. Unread is never agreement and there is no Bool that
 // answers false for it. Sampling is a supplied policy and aggregation is conservative per axis --
-// minimum rate and width, maximum peak and wall, unread dominating -- so no single internally
+// minimum width, maximum peak and wall, unread dominating -- so no single internally
 // chosen run speaks for axes it did not measure.
 
-// ── THE WORKLOAD: THE FLOOR AT A PINNED REVISION, ON A NAMED SPECIMEN ──────────────────────────
+// ── THE WORKLOAD: TODAY'S FLOOR AT A PINNED REVISION ─────────────────────────────────────────
 //
-// `program` names the producer (gunbc.fabric.fabric_witness_run floor_work_contract names the same one),
-// `revision` pins the corpus it walked, `specimen` names the calibration specimen whose [witness]
-// line the rate is floored from. Two runs differing in any of the three measured different work.
+// `program` names the producer (gunbc.fabric.fabric_witness_run floor_work_contract names the same one) and
+// `revision` pins the corpus it walked. Two runs differing in either measured different work. The floor is the
+// required job's own work (gunbc.runner.runner_qualification_floor_job): a seed build, then one gunbc test step per
+// gunbc.emitted_subject_build_gate emitted_subject_build_rows row. The withdrawn floor's calibration specimen is gone
+// with it (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A).
 type FloorWorkloadPin {
   program: NonEmptyStr
   revision: CommitSha
-  specimen: NonEmptyStr
 }
 
 // THE RUNTIME THE WORKLOAD RAN IN IS SELECTED, NOT MERELY OBSERVED. The pin says what work ran; this
@@ -149,24 +135,10 @@ fn workspace_locus_eq(a: WorkspaceBytesLocus, b: WorkspaceBytesLocus) -> Bool {
 
 // ── THE INSTRUMENT READINGS, ONE PER RUN ──────────────────────────────────────────────────────
 
-type PhaseWall {
-  phase: RequiredCiPhase
-  wall: Millisecond
-}
-
-// THE CALIBRATION SPECIMEN'S OWN LINE, on this host. Steps are a property of the tree and must
-// equal the pinned specimen's count; the CPU milliseconds are the only thing the host changes.
-type RateSpecimenReading
-  = RateSpecimenRead { eval_steps: EvalStepCount, cpu: Millisecond }
-  | RateSpecimenUnread { because: NonEmptyStr }
-
-// THE SLOT CGROUP AS THE RUN SAW IT: the level, the bound that limited it (through the same
-// resolution the executor arms against) and memory.peak at that level. The join proves the bound's
-// effective bytes equal the selected slot's high; a run under an unreadable bound ran unbounded and
-// its peak is not evidence about the slot shape.
-type CgroupMemoryReading
-  = CgroupMemoryRead { level: NonEmptyStr, bound: HostBudgetResolution, peak: ByteSize }
-  | CgroupMemoryUnreadable { reason: NonEmptyStr }
+// EACH SUBJECT STEP'S WALL AND MEMORY RECEIPT, read from the run by gunbc.runner.runner_qualification_subject_readings
+// (SubjectStepReading): the step's own start and completion times from the job record, and the receipt gunbc test
+// printed at the step's bounding cgroup. The withdrawn floor's per-phase walls over required_ci_phases, its eval-step
+// count and its calibration rate are deleted, not carried unread (operator decision A, 2026-10-27).
 
 // THE UNIT'S PROPERTIES AS systemd REPORTS THEM AFTER THE RUN STARTED -- what bound the run, as
 // opposed to what was asked for. The join compares them to the selected slot. THE CPU QUOTA IS
@@ -208,7 +180,6 @@ type ObservedRunnerQualificationRun sole_constructor {
   host: HostIdentity
   program: NonEmptyStr
   revision: CommitSha
-  specimen: NonEmptyStr
   image_digest: NonEmptyStr
   runtime_closure: NonEmptyStr
   slot_unit: NonEmptyStr
@@ -217,10 +188,7 @@ type ObservedRunnerQualificationRun sole_constructor {
   host_threads: HardwareThreadCount
   host_architecture: Architecture
   workspace: WorkspaceBytesLocus
-  phase_wall: List<PhaseWall>
-  floor_eval_steps: EvalStepCount
-  rate_specimen: RateSpecimenReading
-  memory: CgroupMemoryReading
+  subjects: List<SubjectStepReading>
 }
 
 fn observed_run(
@@ -230,7 +198,6 @@ fn observed_run(
   host: HostIdentity,
   program: NonEmptyStr,
   revision: CommitSha,
-  specimen: NonEmptyStr,
   image_digest: NonEmptyStr,
   runtime_closure: NonEmptyStr,
   slot_unit: NonEmptyStr,
@@ -239,19 +206,15 @@ fn observed_run(
   host_threads: HardwareThreadCount,
   host_architecture: Architecture,
   workspace: WorkspaceBytesLocus,
-  phase_wall: List<PhaseWall>,
-  floor_eval_steps: EvalStepCount,
-  rate_specimen: RateSpecimenReading,
-  memory: CgroupMemoryReading,
+  subjects: List<SubjectStepReading>,
 ) -> ObservedRunnerQualificationRun {
   ObservedRunnerQualificationRun {
     run: run, attempt_label: attempt_label, observed_at: observed_at,
-    host: host, program: program, revision: revision, specimen: specimen,
+    host: host, program: program, revision: revision,
     image_digest: image_digest, runtime_closure: runtime_closure,
     slot_unit: slot_unit, incarnation: incarnation, effective: effective,
     host_threads: host_threads, host_architecture: host_architecture, workspace: workspace,
-    phase_wall: phase_wall, floor_eval_steps: floor_eval_steps,
-    rate_specimen: rate_specimen, memory: memory,
+    subjects: subjects,
   }
 }
 
@@ -287,12 +250,13 @@ type SamplingPolicy
   = ExactlyOneReconciledRun
   | ConservativePerAxis { minimum_runs: Int }
 
-// PER-PHASE CEILINGS ARE POLICY THE SELECTION SUPPLIES. Without them the phase walls are carried
-// as observation and the claim does not cover them; with them every required phase must be read
-// exactly once and its maximum wall must sit within its ceiling.
-type PhaseCeilings
-  = NoPhaseCeilings
-  | PhaseCeilingsDeclared { ceilings: List<PhaseWall> }
+// THE WALL ALLOWANCE AGAINST THE FLEET BASELINE IS POLICY THE SELECTION SUPPLIES (operator decision A): each subject
+// step's wall on the subject may be at most numerator/denominator of the same step's wall on the baseline run. The
+// allowance is a declared policy ratio, never a wall literal; the walls it multiplies are both observed.
+type BaselineWallAllowance {
+  numerator: Int
+  denominator: Int
+}
 
 type SelectedRunnerQualification<P> {
   offer: SupplierOffer<P>
@@ -304,9 +268,8 @@ type SelectedRunnerQualification<P> {
   slot: SelectedSlot
   workspace: WorkspaceBacking
   cores_per_slot: HardwareThreadCount
-  calibration: EvalStepCalibration
   sampling: SamplingPolicy
-  phase_ceilings: PhaseCeilings
+  wall_allowance: BaselineWallAllowance
 }
 
 // ── THE SUBJECT JOIN ──────────────────────────────────────────────────────────────────────────
@@ -317,7 +280,6 @@ type SubjectJoinAxis
   = HostAxis
   | ProgramAxis
   | RevisionAxis
-  | SpecimenAxis
   | ImageDigestAxis
   | RuntimeClosureAxis
   | HostThreadsAxis
@@ -335,7 +297,6 @@ fn subject_join_axis_wire(a: SubjectJoinAxis) -> String {
     HostAxis => "host"
     ProgramAxis => "program"
     RevisionAxis => "revision"
-    SpecimenAxis => "specimen"
     ImageDigestAxis => "image digest"
     RuntimeClosureAxis => "runtime closure"
     HostThreadsAxis => "host threads"
@@ -382,24 +343,18 @@ fn locus_wire(l: WorkspaceBytesLocus) -> String {
   }
 }
 
-// THE BOUND AXIS: the run's cgroup bound must have RESOLVED to the selected slot's high. An
-// unreadable or declared-unverified bound is a join refusal, not a memory standing -- the run was
-// not bounded by the subject's envelope, so nothing it measured is about the subject.
+// THE BOUND AXIS: every subject step's receipt must report the selected slot's high as the limit that bound it (the
+// receipt's limit_high, read at the step's bounding cgroup). A run with no subject readings, or a step bounded by any
+// other high, ran outside the subject's envelope, so nothing it measured is about the subject: a join refusal, not a
+// memory standing.
 fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQualificationRun) -> SubjectJoin {
-  let want = byte_size_count(b: selection.slot.memory_high)
-  match run.memory {
-    CgroupMemoryUnreadable { reason: r } =>
-      SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
-    CgroupMemoryRead { level: _, bound: b, peak: _ } =>
-      match b {
-        HostBudgetUnreadable { reason: r } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
-        HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
-        HostBudgetResolved { effective_bytes: e, requested_bytes: _, observation: _ } =>
-          join_axis(run: run.run, axis: BoundAxis, holds: byte_size_count(b: e) == want, selected: want as String, observed: byte_size_count(b: e) as String)
-        HostBudgetExternallyBounded { run_id: id } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id }) }
+  let want = byte_size_count(b: selection.slot.memory_high) as String
+  match run.subjects.first() {
+    Absent => SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want, observed: "no subject step was read" }
+    Present { value: _ } =>
+      match run.subjects |> filter(r => (r.receipt.limit_high as String) != want) |> first() {
+        Absent => SubjectJoined
+        Present { value: off } => SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want, observed: off.receipt.limit_high as String }
       }
   }
 }
@@ -436,7 +391,6 @@ fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunne
     join_axis(run: run.run, axis: HostAxis, holds: (selection.host as String) == (run.host as String), selected: selection.host as String, observed: run.host as String),
     join_axis(run: run.run, axis: ProgramAxis, holds: (selection.workload.program as String) == (run.program as String), selected: selection.workload.program as String, observed: run.program as String),
     join_axis(run: run.run, axis: RevisionAxis, holds: selection.workload.revision == run.revision, selected: selection.workload.revision, observed: run.revision),
-    join_axis(run: run.run, axis: SpecimenAxis, holds: (selection.workload.specimen as String) == (run.specimen as String), selected: selection.workload.specimen as String, observed: run.specimen as String),
     join_axis(run: run.run, axis: ImageDigestAxis, holds: (selection.runtime.image_digest as String) == (run.image_digest as String), selected: selection.runtime.image_digest as String, observed: run.image_digest as String),
     join_axis(run: run.run, axis: RuntimeClosureAxis, holds: (selection.runtime.runtime_closure as String) == (run.runtime_closure as String), selected: selection.runtime.runtime_closure as String, observed: run.runtime_closure as String),
     join_axis(run: run.run, axis: HostThreadsAxis, holds: hardware_thread_count_value(t: selection.offer.shape.hard.threads) == hardware_thread_count_value(t: run.host_threads), selected: hardware_thread_count_value(t: selection.offer.shape.hard.threads) as String, observed: hardware_thread_count_value(t: run.host_threads) as String),
@@ -457,39 +411,52 @@ fn first_join_refusal<P>(selection: SelectedRunnerQualification<P>, runs: List<O
 
 // ── THREE-VALUED STANDINGS, ONE PER AXIS ──────────────────────────────────────────────────────
 
-// THE PIN IS THE FLOOR'S DECLARED MINIMUM-VIABLE THROUGHPUT. Every claim ceiling the floor enforces
-// is `envelope_ms x steps_per_ms` at the pinned rate, so a host delivering fewer steps per
-// millisecond than the pin runs every claim past the wall its budget was derived for. The measured
-// rate is the floored ratio, exactly as the pin was taken; over a sample it is the MINIMUM.
-type ThroughputStanding
-  = ThroughputMeetsPin { measured: EvalStepsPerMillisecond, pinned: EvalStepsPerMillisecond }
-  | ThroughputBelowPin { measured: EvalStepsPerMillisecond, pinned: EvalStepsPerMillisecond }
-  | ThroughputUnread { because: NonEmptyStr }
-
 // THE SLOT ENVELOPE MUST HOLD THE FLOOR TWICE OVER: its high line must sit at or above
 // `gunbc_floor_minimum_viable_armed_budget` (or the executor refuses to arm at all), and the
-// MAXIMUM peak over the sample must sit within that line, or a run was held by the throttle rather
-// than measured -- the censored-lower-bound lesson `gunbc.runner.runner_slot_allocation` records.
+// MAXIMUM peak over every subject step of every run must sit within that line, or a step was held by the throttle
+// rather than measured -- the censored-lower-bound lesson `gunbc.runner.runner_slot_allocation` records. AND EVERY STEP'S
+// ENVELOPE MUST HAVE HELD (operator decision A, the RED): a receipt that reports the envelope violated, an OOM kill the
+// step added or any swap refuses the qualification whatever its peak, naming the subject.
 type MemoryEnvelopeStanding
   = PeakWithinSlotHigh { peak: ByteSize, high: ByteSize }
   | PeakExceedsSlotHigh { peak: ByteSize, high: ByteSize }
   | SlotHighBelowFloorMinimum { high: ByteSize, minimum: ByteSize }
+  | MemoryEnvelopeViolatedAt { subject: NonEmptyStr }
   | MemoryUnread { reason: NonEmptyStr }
 
-// THE PHASE ROSTER IS AN IDENTITY JOIN, NOT A COUNT: every required phase read exactly once.
-type PhaseRosterStanding
-  = PhaseRosterComplete
-  | PhaseMissing { phase: RequiredCiPhase }
-  | PhaseDuplicated { phase: RequiredCiPhase }
-  | PhaseRosterNotAssessed { because: NonEmptyStr }
+// THE SUBJECT ROSTER IS AN IDENTITY JOIN, NOT A COUNT: every emitted subject row read exactly once in every run.
+type SubjectRosterStanding
+  = SubjectRosterComplete
+  | SubjectMissing { subject: NonEmptyStr }
+  | SubjectDuplicated { subject: NonEmptyStr }
+  | SubjectRosterNotAssessed { because: NonEmptyStr }
 
-// A CEILING ALWAYS NAMES A REQUIRED PHASE BY CONSTRUCTION: RequiredCiPhase is the closed roster
-// coproduct, so there is no ceiling for a phase that is not required and no arm for one
-// (review 68860 removed a check that could never go red).
-type PhaseWallStanding
-  = PhaseWallsNotAssessed
-  | PhaseWallsWithinCeilings
-  | PhaseWallExceedsCeiling { phase: RequiredCiPhase, wall: Millisecond, ceiling: Millisecond }
+// THE BASELINE IS OBSERVED, NEVER A LITERAL (operator decision A): a run of the same subject rows at the same revision
+// on an existing fleet host, read through the same decoder (gunbc.runner.runner_qualification_subject_readings) and
+// sealed here. sole_constructor: only observed_baseline mints one, from readings.
+type FleetBaselineRun sole_constructor {
+  run: GitHubWorkflowRunId
+  host: HostIdentity
+  revision: CommitSha
+  slot_unit: NonEmptyStr
+  subjects: List<SubjectStepReading>
+}
+
+fn observed_baseline(run: GitHubWorkflowRunId, host: HostIdentity, revision: CommitSha, slot_unit: NonEmptyStr, subjects: List<SubjectStepReading>) -> FleetBaselineRun {
+  FleetBaselineRun { run: run, host: host, revision: revision, slot_unit: slot_unit, subjects: subjects }
+}
+
+// EACH SUBJECT STEP'S WALL ON THE SUBJECT, AGAINST THE SAME STEP ON THE BASELINE UNDER THE SELECTED ALLOWANCE. The
+// subject's wall is the maximum over the sample (conservative per axis). A baseline that is not about the same work --
+// taken on the subject host itself, at another revision, or missing a subject -- is not a baseline, and refuses.
+type SubjectWallStanding
+  = SubjectWallsWithinBaseline
+  | SubjectWallExceedsBaseline { subject: NonEmptyStr, wall: Second, baseline: Second, allowance: BaselineWallAllowance }
+  | BaselineOnTheSubjectHost { host: HostIdentity }
+  | BaselineAtAnotherRevision { selected: CommitSha, baseline: CommitSha }
+  | BaselineMissingSubject { subject: NonEmptyStr }
+  | BaselineAllowanceMalformed { allowance: BaselineWallAllowance }
+  | SubjectWallsNotAssessed { because: NonEmptyStr }
 
 // THE SLOT COUNT IS READ OFF THE SELECTED ALLOCATION: its runner slice over the selected slot's
 // MemoryMax, and its effective runner CPU cap over the fleet's cores-per-slot policy; the minimum
@@ -498,70 +465,35 @@ type SlotWidthStanding
   = SlotWidthDerived { by_memory: Int, by_cpu: Int, slots: Int }
   | SlotWidthUnderivable { cause: NonEmptyStr }
 
-fn qualify_throughput(calibration: EvalStepCalibration, reading: RateSpecimenReading) -> ThroughputStanding {
-  match reading {
-    RateSpecimenUnread { because: b } => ThroughputUnread { because: b }
-    RateSpecimenRead { eval_steps: steps, cpu: cpu } => {
-      let pinned_steps = eval_step_count_value(s: calibration_specimen_eval_steps(calibration: calibration))
-      let observed_steps = eval_step_count_value(s: steps)
-      let cpu_ms = millisecond_count(m: cpu)
-      if observed_steps != pinned_steps {
-        ThroughputUnread {
-          because: "the specimen performed a different step count than the pinned specimen, so the reading is of a different program and not a rate sample" as NonEmptyStr,
-        }
-      } else if cpu_ms == 0 {
-        ThroughputUnread { because: "the specimen reported zero CPU milliseconds, so no ratio exists to floor" as NonEmptyStr }
-      } else {
-        let measured = eval_steps_per_millisecond(count: observed_steps / cpu_ms)
-        let pinned = eval_steps_per_millisecond(count: calibration_rate(calibration: calibration))
-        if eval_steps_per_millisecond_count(r: measured) >= eval_steps_per_millisecond_count(r: pinned) {
-          ThroughputMeetsPin { measured: measured, pinned: pinned }
-        } else {
-          ThroughputBelowPin { measured: measured, pinned: pinned }
-        }
+fn subject_label(row: EmittedSubjectBuildRow) -> NonEmptyStr {
+  emitted_subject_build_label_text(row: row) as NonEmptyStr
+}
+
+fn reading_is_row(r: SubjectStepReading, row: EmittedSubjectBuildRow) -> Bool {
+  (subject_label(row: r.row) as String) == (subject_label(row: row) as String)
+}
+
+fn run_roster_standing(run: ObservedRunnerQualificationRun, rows: List<EmittedSubjectBuildRow>) -> SubjectRosterStanding {
+  fold(rows, init: SubjectRosterComplete, f: (acc, row) =>
+    match acc {
+      SubjectRosterComplete => {
+        let n = count(run.subjects |> filter(r => reading_is_row(r: r, row: row)))
+        if n == 0 { SubjectMissing { subject: subject_label(row: row) } } else if n > 1 { SubjectDuplicated { subject: subject_label(row: row) } } else { acc }
       }
-    }
-  }
+      SubjectMissing { subject: _ } => acc
+      SubjectDuplicated { subject: _ } => acc
+      SubjectRosterNotAssessed { because: _ } => acc
+    })
 }
 
-fn standing_measured(s: ThroughputStanding) -> EvalStepsPerMillisecond? {
-  match s {
-    ThroughputUnread { because: _ } => none
-    ThroughputMeetsPin { measured: m, pinned: _ } => Present { value: m }
-    ThroughputBelowPin { measured: m, pinned: _ } => Present { value: m }
-  }
-}
-
-// CONSERVATIVE AGGREGATION: unread dominates; otherwise the lower measured rate.
-fn throughput_worse(candidate: ThroughputStanding, held: ThroughputStanding) -> ThroughputStanding {
-  match standing_measured(s: candidate) {
-    Absent => candidate
-    Present { value: c } =>
-      match standing_measured(s: held) {
-        Absent => held
-        Present { value: h } =>
-          if eval_steps_per_millisecond_count(r: c) < eval_steps_per_millisecond_count(r: h) { candidate } else { held }
-      }
-  }
-}
-
-fn aggregate_throughput(calibration: EvalStepCalibration, runs: List<ObservedRunnerQualificationRun>) -> ThroughputStanding {
-  match runs.first() {
-    Absent => ThroughputUnread { because: "no run observed" as NonEmptyStr }
-    Present { value: first } =>
-      fold(
-        runs,
-        init: qualify_throughput(calibration: calibration, reading: first.rate_specimen),
-        f: (acc, r) => throughput_worse(candidate: qualify_throughput(calibration: calibration, reading: r.rate_specimen), held: acc),
-      )
-  }
-}
-
-fn run_peak(run: ObservedRunnerQualificationRun) -> ByteSize? {
-  match run.memory {
-    CgroupMemoryUnreadable { reason: _ } => none
-    CgroupMemoryRead { level: _, bound: _, peak: p } => Present { value: p }
-  }
+fn subject_roster_standing(runs: List<ObservedRunnerQualificationRun>, rows: List<EmittedSubjectBuildRow>) -> SubjectRosterStanding {
+  fold(runs, init: SubjectRosterComplete, f: (acc, r) =>
+    match acc {
+      SubjectRosterComplete => run_roster_standing(run: r, rows: rows)
+      SubjectMissing { subject: _ } => acc
+      SubjectDuplicated { subject: _ } => acc
+      SubjectRosterNotAssessed { because: _ } => acc
+    })
 }
 
 fn peak_standing(peak: ByteSize, envelope: SelectedSlot) -> MemoryEnvelopeStanding {
@@ -572,33 +504,23 @@ fn peak_standing(peak: ByteSize, envelope: SelectedSlot) -> MemoryEnvelopeStandi
   }
 }
 
-fn standing_peak(s: MemoryEnvelopeStanding) -> ByteSize? {
-  match s {
-    PeakWithinSlotHigh { peak: p, high: _ } => Present { value: p }
-    PeakExceedsSlotHigh { peak: p, high: _ } => Present { value: p }
-    SlotHighBelowFloorMinimum { high: _, minimum: _ } => none
-    MemoryUnread { reason: _ } => none
-  }
+fn max_subject_peak(runs: List<ObservedRunnerQualificationRun>) -> Nat {
+  fold(runs, init: byte_size_count(b: byte_size(count: 0)), f: (acc, r) => fold(r.subjects, init: acc, f: (inner, s) => {
+    let p = byte_size_count(b: s.receipt.peak)
+    if p > inner { p } else { inner }
+  }))
 }
 
-// THE MAXIMUM PEAK OVER THE SAMPLE; a run with no readable peak makes the axis unread. Equality
-// at the high line refuses: a peak pinned at the throttle is a censored bound, not a measurement.
-fn memory_worse(candidate: MemoryEnvelopeStanding, held: MemoryEnvelopeStanding) -> MemoryEnvelopeStanding {
-  match standing_peak(s: candidate) {
-    Absent => candidate
-    Present { value: c } =>
-      match standing_peak(s: held) {
-        Absent => held
-        Present { value: h } => if byte_size_count(b: c) > byte_size_count(b: h) { candidate } else { held }
-      }
-  }
-}
-
-fn run_memory_standing(envelope: SelectedSlot, run: ObservedRunnerQualificationRun) -> MemoryEnvelopeStanding {
-  match run_peak(run: run) {
-    Absent => MemoryUnread { reason: "a run in the sample has no readable memory.peak" as NonEmptyStr }
-    Present { value: p } => peak_standing(peak: p, envelope: envelope)
-  }
+fn first_violated_subject(runs: List<ObservedRunnerQualificationRun>) -> NonEmptyStr? {
+  fold(runs, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match r.subjects |> filter(s => !memory_receipt_held(r: s.receipt)) |> first() {
+          Absent => none
+          Present { value: v } => Present { value: subject_label(row: v.row) }
+        }
+    })
 }
 
 fn aggregate_memory(envelope: SelectedSlot, runs: List<ObservedRunnerQualificationRun>) -> MemoryEnvelopeStanding {
@@ -606,75 +528,55 @@ fn aggregate_memory(envelope: SelectedSlot, runs: List<ObservedRunnerQualificati
   let minimum = byte_size_count(b: envelope.floor_minimum_armed_budget)
   if high < minimum {
     SlotHighBelowFloorMinimum { high: envelope.memory_high, minimum: envelope.floor_minimum_armed_budget }
+  } else if count(runs) == 0 || (runs |> any(r => count(r.subjects) == 0)) {
+    MemoryUnread { reason: "a run in the sample carries no subject step, so no memory receipt was read" as NonEmptyStr }
   } else {
-    match runs.first() {
-      Absent => MemoryUnread { reason: "no run observed" as NonEmptyStr }
-      Present { value: first } =>
-        fold(
-          runs,
-          init: run_memory_standing(envelope: envelope, run: first),
-          f: (acc, r) => memory_worse(candidate: run_memory_standing(envelope: envelope, run: r), held: acc),
-        )
+    match first_violated_subject(runs: runs) {
+      Present { value: s } => MemoryEnvelopeViolatedAt { subject: s }
+      Absent => peak_standing(peak: byte_size(max_subject_peak(runs: runs)), envelope: envelope)
     }
   }
 }
 
-fn phase_count(walls: List<PhaseWall>, phase: RequiredCiPhase) -> Int {
-  fold(walls, init: 0, f: (acc, w) => if required_ci_phase_is(a: w.phase, b: phase) { acc + 1 } else { acc })
+fn max_subject_wall(runs: List<ObservedRunnerQualificationRun>, row: EmittedSubjectBuildRow) -> Nat {
+  fold(runs, init: second_count(second(count: 0)), f: (acc, r) => fold(r.subjects |> filter(s => reading_is_row(r: s, row: row)), init: acc, f: (inner, s) => {
+    let w = second_count(s.wall)
+    if w > inner { w } else { inner }
+  }))
 }
 
-fn phase_roster_standing(walls: List<PhaseWall>) -> PhaseRosterStanding {
-  fold(required_ci_phases, init: PhaseRosterComplete, f: (acc, p) =>
-    match acc {
-      PhaseRosterComplete => {
-        let n = phase_count(walls: walls, phase: p)
-        if n == 0 { PhaseMissing { phase: p } } else if n > 1 { PhaseDuplicated { phase: p } } else { acc }
-      }
-      PhaseMissing { phase: _ } => acc
-      PhaseDuplicated { phase: _ } => acc
-      PhaseRosterNotAssessed { because: _ } => acc
-    }
-  )
+fn baseline_wall(baseline: FleetBaselineRun, row: EmittedSubjectBuildRow) -> Second? {
+  match baseline.subjects |> filter(s => reading_is_row(r: s, row: row)) |> first() {
+    Absent => none
+    Present { value: s } => Present { value: s.wall }
+  }
 }
 
-fn first_incomplete_roster(runs: List<ObservedRunnerQualificationRun>) -> PhaseRosterStanding {
-  fold(runs, init: PhaseRosterComplete, f: (acc, r) =>
-    match acc {
-      PhaseRosterComplete => phase_roster_standing(walls: r.phase_wall)
-      PhaseMissing { phase: _ } => acc
-      PhaseDuplicated { phase: _ } => acc
-      PhaseRosterNotAssessed { because: _ } => acc
-    }
-  )
-}
-
-fn max_wall_for(runs: List<ObservedRunnerQualificationRun>, phase: RequiredCiPhase) -> Int {
-  fold(runs, init: 0, f: (acc, r) =>
-    fold(r.phase_wall, init: acc, f: (inner, w) => {
-      let ms = millisecond_count(m: w.wall) as Int
-      if required_ci_phase_is(a: w.phase, b: phase) && ms > inner { ms } else { inner }
-    })
-  )
-}
-
-fn phase_wall_standing(ceilings: PhaseCeilings, runs: List<ObservedRunnerQualificationRun>) -> PhaseWallStanding {
-  match ceilings {
-    NoPhaseCeilings => PhaseWallsNotAssessed
-    PhaseCeilingsDeclared { ceilings: cs } =>
-      fold(cs, init: PhaseWallsWithinCeilings, f: (acc, c) =>
-        match acc {
-          PhaseWallsWithinCeilings => {
-            let observed = max_wall_for(runs: runs, phase: c.phase)
-            if observed > (millisecond_count(m: c.wall) as Int) {
-              PhaseWallExceedsCeiling { phase: c.phase, wall: millisecond(count: observed), ceiling: c.wall }
-            } else {
-              acc
+fn subject_wall_standing<P>(selection: SelectedRunnerQualification<P>, runs: List<ObservedRunnerQualificationRun>, baseline: FleetBaselineRun, rows: List<EmittedSubjectBuildRow>) -> SubjectWallStanding {
+  let allowance = selection.wall_allowance
+  if (baseline.host as String) == (selection.host as String) {
+    BaselineOnTheSubjectHost { host: baseline.host }
+  } else if baseline.revision != selection.workload.revision {
+    BaselineAtAnotherRevision { selected: selection.workload.revision, baseline: baseline.revision }
+  } else if allowance.numerator < 1 || allowance.denominator < 1 {
+    BaselineAllowanceMalformed { allowance: allowance }
+  } else {
+    fold(rows, init: SubjectWallsWithinBaseline, f: (acc, row) =>
+      match acc {
+        SubjectWallsWithinBaseline =>
+          match baseline_wall(baseline: baseline, row: row) {
+            Absent => BaselineMissingSubject { subject: subject_label(row: row) }
+            Present { value: b } => {
+              let observed = max_subject_wall(runs: runs, row: row)
+              if (observed as Int) * allowance.denominator > (second_count(b) as Int) * allowance.numerator {
+                SubjectWallExceedsBaseline { subject: subject_label(row: row), wall: second(count: observed), baseline: b, allowance: allowance }
+              } else {
+                acc
+              }
             }
           }
-          PhaseWallsNotAssessed => acc
-          PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => acc
-        }
-      )
+        _ => acc
+      })
   }
 }
 
@@ -788,10 +690,9 @@ fn concurrency_standing_wire(s: ConcurrencyStanding) -> String {
 type ThroughputRefusal
   = SubjectJoinDidNotHold { join: SubjectJoin }
   | SamplingDidNotHold { policy: SamplingPolicy, observed_runs: Int }
-  | ThroughputDidNotHold { standing: ThroughputStanding }
   | MemoryEnvelopeDidNotHold { standing: MemoryEnvelopeStanding }
-  | PhaseRosterDidNotHold { standing: PhaseRosterStanding }
-  | PhaseWallDidNotHold { standing: PhaseWallStanding }
+  | SubjectRosterDidNotHold { standing: SubjectRosterStanding }
+  | SubjectWallDidNotHold { standing: SubjectWallStanding }
   | SlotWidthDidNotHold { standing: SlotWidthStanding }
   | ConcurrencyDidNotHold { standing: ConcurrencyStanding }
 
@@ -803,37 +704,34 @@ fn sampling_refusal(policy: SamplingPolicy, observed_runs: Int) -> List<Throughp
   }
 }
 
-fn throughput_refusal(s: ThroughputStanding) -> List<ThroughputRefusal> {
-  match s {
-    ThroughputMeetsPin { measured: _, pinned: _ } => []
-    ThroughputBelowPin { measured: _, pinned: _ } => [ThroughputDidNotHold { standing: s }]
-    ThroughputUnread { because: _ } => [ThroughputDidNotHold { standing: s }]
-  }
-}
-
 fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
   match s {
     PeakWithinSlotHigh { peak: _, high: _ } => []
     PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
     SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryEnvelopeViolatedAt { subject: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
     MemoryUnread { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
   }
 }
 
-fn phase_roster_refusal(s: PhaseRosterStanding) -> List<ThroughputRefusal> {
+fn subject_roster_refusal(s: SubjectRosterStanding) -> List<ThroughputRefusal> {
   match s {
-    PhaseRosterComplete => []
-    PhaseMissing { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
-    PhaseDuplicated { phase: _ } => [PhaseRosterDidNotHold { standing: s }]
-    PhaseRosterNotAssessed { because: _ } => [PhaseRosterDidNotHold { standing: s }]
+    SubjectRosterComplete => []
+    SubjectMissing { subject: _ } => [SubjectRosterDidNotHold { standing: s }]
+    SubjectDuplicated { subject: _ } => [SubjectRosterDidNotHold { standing: s }]
+    SubjectRosterNotAssessed { because: _ } => [SubjectRosterDidNotHold { standing: s }]
   }
 }
 
-fn phase_wall_refusal(s: PhaseWallStanding) -> List<ThroughputRefusal> {
+fn subject_wall_refusal(s: SubjectWallStanding) -> List<ThroughputRefusal> {
   match s {
-    PhaseWallsNotAssessed => []
-    PhaseWallsWithinCeilings => []
-    PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => [PhaseWallDidNotHold { standing: s }]
+    SubjectWallsWithinBaseline => []
+    SubjectWallExceedsBaseline { subject: _, wall: _, baseline: _, allowance: _ } => [SubjectWallDidNotHold { standing: s }]
+    BaselineOnTheSubjectHost { host: _ } => [SubjectWallDidNotHold { standing: s }]
+    BaselineAtAnotherRevision { selected: _, baseline: _ } => [SubjectWallDidNotHold { standing: s }]
+    BaselineMissingSubject { subject: _ } => [SubjectWallDidNotHold { standing: s }]
+    BaselineAllowanceMalformed { allowance: _ } => [SubjectWallDidNotHold { standing: s }]
+    SubjectWallsNotAssessed { because: _ } => [SubjectWallDidNotHold { standing: s }]
   }
 }
 
@@ -846,16 +744,15 @@ fn slot_width_refusal(s: SlotWidthStanding) -> List<ThroughputRefusal> {
   }
 }
 
-// ── THE ASSESSMENT: SEALED, MINTED ONLY HERE ──────────────────────────────────────────────────
+// ── THE ASSESSMENT: SEALED, MINTED ONLY HERE ─────────────────────────────────────────────────
 //
-// `assessed_facts` is the whole of what the claim covers. Phase walls join it only when ceilings
-// were supplied; `floor_eval_steps` never does -- it is carried for the reader and covers nothing.
-// An assessment whose subject join or sampling refused covers NOTHING and says so with an empty
-// list, rather than naming facts it never computed (review 68940).
+// `assessed_facts` is the whole of what the claim covers: the slot memory envelope over every subject step's receipt,
+// and every subject step's wall against the fleet baseline under the selected allowance, plus the concurrent cohort
+// when one was observed at the width. An assessment whose subject join or sampling refused covers NOTHING and says so
+// with an empty list, rather than naming facts it never computed (review 68940).
 type AssessedFact
-  = InterpreterRateAgainstPin
-  | SlotMemoryEnvelope
-  | PhaseWallsAgainstSuppliedCeilings
+  = SlotMemoryEnvelope
+  | SubjectWallsAgainstFleetBaseline
   | ConcurrentCohortAtWidth
 
 type RunnerThroughputAssessment<P> sole_constructor {
@@ -863,22 +760,15 @@ type RunnerThroughputAssessment<P> sole_constructor {
   host: HostIdentity
   workload: FloorWorkloadPin
   runs: List<GitHubWorkflowRunId>
+  baseline: GitHubWorkflowRunId
   join: SubjectJoin
-  throughput: ThroughputStanding
   memory: MemoryEnvelopeStanding
-  phase_roster: PhaseRosterStanding
-  phase_walls: PhaseWallStanding
+  subject_roster: SubjectRosterStanding
+  subject_walls: SubjectWallStanding
   slot_width: SlotWidthStanding
   concurrency: ConcurrencyStanding
   assessed_facts: List<AssessedFact>
   refusals: List<ThroughputRefusal>
-}
-
-fn assessed_facts_for(ceilings: PhaseCeilings) -> List<AssessedFact> {
-  match ceilings {
-    NoPhaseCeilings => [InterpreterRateAgainstPin, SlotMemoryEnvelope]
-    PhaseCeilingsDeclared { ceilings: _ } => [InterpreterRateAgainstPin, SlotMemoryEnvelope, PhaseWallsAgainstSuppliedCeilings]
-  }
 }
 
 fn join_holds(j: SubjectJoin) -> Bool {
@@ -888,19 +778,31 @@ fn join_holds(j: SubjectJoin) -> Bool {
   }
 }
 
+// THE SUBJECT ROWS ARE THE GATE'S OWN (gunbc.emitted_subject_build_gate emitted_subject_build_rows), the rows today's
+// floor runs; the assessment is parameterized on them so a claim can supply a roster and read the join.
 fn assess_runner_throughput<P>(
   selection: SelectedRunnerQualification<P>,
   runs: List<ObservedRunnerQualificationRun>,
+  baseline: FleetBaselineRun,
   cohort: RunnerCohortEvidence,
+) -> RunnerThroughputAssessment<P> {
+  assess_runner_throughput_over(selection: selection, runs: runs, baseline: baseline, cohort: cohort, rows: emitted_subject_build_rows())
+}
+
+fn assess_runner_throughput_over<P>(
+  selection: SelectedRunnerQualification<P>,
+  runs: List<ObservedRunnerQualificationRun>,
+  baseline: FleetBaselineRun,
+  cohort: RunnerCohortEvidence,
+  rows: List<EmittedSubjectBuildRow>,
 ) -> RunnerThroughputAssessment<P> {
   let join = first_join_refusal(selection: selection, runs: runs)
   let sampling = sampling_refusal(policy: selection.sampling, observed_runs: runs.length())
   let joined = join_holds(j: join) && sampling.length() == 0
   let not_assessed = "not assessed: the subject join or the sampling policy refused" as NonEmptyStr
-  let throughput = if joined { aggregate_throughput(calibration: selection.calibration, runs: runs) } else { ThroughputUnread { because: not_assessed } }
   let memory = if joined { aggregate_memory(envelope: selection.slot, runs: runs) } else { MemoryUnread { reason: not_assessed } }
-  let roster = if joined { first_incomplete_roster(runs: runs) } else { PhaseRosterNotAssessed { because: not_assessed } }
-  let walls = if joined { phase_wall_standing(ceilings: selection.phase_ceilings, runs: runs) } else { PhaseWallsNotAssessed }
+  let roster = if joined { subject_roster_standing(runs: runs, rows: rows) } else { SubjectRosterNotAssessed { because: not_assessed } }
+  let walls = if joined { subject_wall_standing(selection: selection, runs: runs, baseline: baseline, rows: rows) } else { SubjectWallsNotAssessed { because: not_assessed } }
   let width = qualify_slot_width(selection: selection)
   let concurrency = if joined { qualify_concurrency(cohort: cohort, runs: runs, width: width) } else { ConcurrencyNotAssessed { because: not_assessed } }
   let join_refusals = if join_holds(j: join) { [] } else { [SubjectJoinDidNotHold { join: join }] }
@@ -909,24 +811,21 @@ fn assess_runner_throughput<P>(
     host: selection.host,
     workload: selection.workload,
     runs: map(runs, r => r.run),
+    baseline: baseline.run,
     join: join,
-    throughput: throughput,
     memory: memory,
-    phase_roster: roster,
-    phase_walls: walls,
+    subject_roster: roster,
+    subject_walls: walls,
     slot_width: width,
     concurrency: concurrency,
     assessed_facts: if joined {
-      concat(assessed_facts_for(ceilings: selection.phase_ceilings), match concurrency { ConcurrencyObservedAtWidth { population: _ } => [ConcurrentCohortAtWidth] _ => [] })
+      concat([SlotMemoryEnvelope, SubjectWallsAgainstFleetBaseline], match concurrency { ConcurrencyObservedAtWidth { population: _ } => [ConcurrentCohortAtWidth] _ => [] })
     } else { [] },
     refusals: concat(
       join_refusals,
       concat(
         sampling,
-        concat(
-          throughput_refusal(s: throughput),
-          concat(memory_refusal(s: memory), concat(phase_roster_refusal(s: roster), concat(phase_wall_refusal(s: walls), concat(slot_width_refusal(s: width), concurrency_refusal(s: concurrency))))),
-        ),
+        concat(memory_refusal(s: memory), concat(subject_roster_refusal(s: roster), concat(subject_wall_refusal(s: walls), concat(slot_width_refusal(s: width), concurrency_refusal(s: concurrency))))),
       ),
     ),
   }
@@ -971,24 +870,14 @@ fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
 }
 
 data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthority {
-  lands_with: "a collect stage on the qualification route that parses the run's [floor-phase], [floor-cgroup] and calibration [witness] rows, the unit's effective properties and the guest's idle meminfo/nproc into observed_run, with admit_callers on observed_run naming it, AND reads every seat's ready/start/end instants and settlement plus the barrier and host window into a product.capacity.cohort_observation CohortReading, seals it with seal_cohort and passes it to assess_runner_throughput as CohortObserved (gunbc.runner.runner_throughput_qualification_route ConcurrentCohortSeatWindows); until then assess_runner_throughput has no production caller and a delivery claim refuses ConcurrencyUnobserved; it needs a runner to have run, so it follows gunbc.runner.runner_throughput_qualification_route mtcollins1_boot_leg" as NonEmptyStr,
-  sufficient_for: "minting ObservedRunnerQualificationRuns and a sealed concurrent cohort of them from a real run of the floor on mtcollins1, so assess_runner_throughput is fed by execution rather than by a fixture" as NonEmptyStr,
+  lands_with: "a collect stage on the qualification route that reads the floor job's step times and its log into gunbc.runner.runner_qualification_subject_readings subject_readings_of at the attempt unit, the unit's effective properties and the guest's idle meminfo, and mints observed_run from them; and the same reading of a named fleet host's required run of the same rows into observed_baseline" as NonEmptyStr,
+  sufficient_for: "minting ObservedRunnerQualificationRuns, a FleetBaselineRun and a sealed concurrent cohort from real runs of the floor, so assess_runner_throughput is fed by execution rather than fixtures" as NonEmptyStr,
 }
 
 // ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
 
 fn nat_wire(n: Nat) -> String {
   n as String
-}
-
-fn throughput_standing_wire(s: ThroughputStanding) -> NonEmptyStr {
-  match s {
-    ThroughputMeetsPin { measured: m, pinned: p } =>
-      join(["throughput ", nat_wire(n: eval_steps_per_millisecond_count(r: m)), " steps/ms meets the pin ", nat_wire(n: eval_steps_per_millisecond_count(r: p))], "") as NonEmptyStr
-    ThroughputBelowPin { measured: m, pinned: p } =>
-      join(["throughput ", nat_wire(n: eval_steps_per_millisecond_count(r: m)), " steps/ms is below the pin ", nat_wire(n: eval_steps_per_millisecond_count(r: p))], "") as NonEmptyStr
-    ThroughputUnread { because: b } => concat("throughput unread: ", b as String) as NonEmptyStr
-  }
 }
 
 fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
@@ -999,7 +888,21 @@ fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
       join(["peak ", nat_wire(n: byte_size_count(b: p)), " B reaches or exceeds slot high ", nat_wire(n: byte_size_count(b: h))], "") as NonEmptyStr
     SlotHighBelowFloorMinimum { high: h, minimum: m } =>
       join(["slot high ", nat_wire(n: byte_size_count(b: h)), " B is below the floor's minimum viable armed budget ", nat_wire(n: byte_size_count(b: m))], "") as NonEmptyStr
+    MemoryEnvelopeViolatedAt { subject: x } => concat("the memory envelope did not hold for subject ", x as String) as NonEmptyStr
     MemoryUnread { reason: r } => concat("memory unread: ", r as String) as NonEmptyStr
+  }
+}
+
+fn subject_wall_wire(s: SubjectWallStanding) -> String {
+  match s {
+    SubjectWallsWithinBaseline => "every subject step's wall is within the baseline allowance"
+    SubjectWallExceedsBaseline { subject: x, wall: w, baseline: b, allowance: a } =>
+      join(["subject ", x as String, " wall ", nat_wire(n: second_count(w)), "s exceeds the baseline ", nat_wire(n: second_count(b)), "s times ", a.numerator as String, "/", a.denominator as String], "")
+    BaselineOnTheSubjectHost { host: h } => concat("the baseline run is on the subject host itself: ", h as String)
+    BaselineAtAnotherRevision { selected: x, baseline: b } => join(["the baseline ran revision ", b as String, ", the subject runs ", x as String], "")
+    BaselineMissingSubject { subject: x } => concat("the baseline carries no reading of subject ", x as String)
+    BaselineAllowanceMalformed { allowance: a } => join(["the wall allowance ", a.numerator as String, "/", a.denominator as String, " is not a positive ratio"], "")
+    SubjectWallsNotAssessed { because: b } => concat("subject walls not assessed: ", b as String)
   }
 }
 
@@ -1024,22 +927,15 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
         ExactlyOneReconciledRun => join(["sampling policy wants exactly one reconciled run, observed ", n as String], "")
         ConservativePerAxis { minimum_runs: m } => join(["sampling policy wants at least ", m as String, " runs, observed ", n as String], "")
       }
-    ThroughputDidNotHold { standing: s } => throughput_standing_wire(s: s) as String
     MemoryEnvelopeDidNotHold { standing: s } => memory_standing_wire(s: s) as String
-    PhaseRosterDidNotHold { standing: s } =>
+    SubjectRosterDidNotHold { standing: s } =>
       match s {
-        PhaseRosterComplete => "phase roster complete"
-        PhaseMissing { phase: p } => concat("required phase missing from the run: ", required_ci_phase_name(p: p))
-        PhaseDuplicated { phase: p } => concat("required phase read more than once: ", required_ci_phase_name(p: p))
-        PhaseRosterNotAssessed { because: b } => concat("phase roster not assessed: ", b as String)
+        SubjectRosterComplete => "subject roster complete"
+        SubjectMissing { subject: x } => concat("subject missing from the run: ", x as String)
+        SubjectDuplicated { subject: x } => concat("subject read more than once: ", x as String)
+        SubjectRosterNotAssessed { because: b } => concat("subject roster not assessed: ", b as String)
       }
-    PhaseWallDidNotHold { standing: s } =>
-      match s {
-        PhaseWallsNotAssessed => "phase walls not assessed"
-        PhaseWallsWithinCeilings => "phase walls within ceilings"
-        PhaseWallExceedsCeiling { phase: p, wall: w, ceiling: c } =>
-          join(["phase ", required_ci_phase_name(p: p), " wall ", nat_wire(n: millisecond_count(m: w)), "ms exceeds ceiling ", nat_wire(n: millisecond_count(m: c)), "ms"], "")
-      }
+    SubjectWallDidNotHold { standing: s } => subject_wall_wire(s: s)
     SlotWidthDidNotHold { standing: s } => slot_width_wire(s: s) as String
     ConcurrencyDidNotHold { standing: s } => concurrency_standing_wire(s: s)
   }
@@ -1049,7 +945,7 @@ fn assessment_wire<P>(a: RunnerThroughputAssessment<P>) -> NonEmptyStr {
   if a.refusals.length() == 0 {
     join([
       "offer delivers on ", a.host as String, " from runs ", join(map(a.runs, r => run_key(r: r)), ","), ": ",
-      throughput_standing_wire(s: a.throughput) as String, "; ", memory_standing_wire(s: a.memory) as String,
+      memory_standing_wire(s: a.memory) as String, "; ", subject_wall_wire(s: a.subject_walls),
       "; ", slot_width_wire(s: a.slot_width) as String,
     ], "") as NonEmptyStr
   } else {

@@ -143,24 +143,21 @@ fn ephemeral_slot_unit(host: HostIdentity, attempt: NonEmptyStr) -> NonEmptyStr 
 // the declaration index in the parse phase like every other citation (review 68775: a producer
 // named in prose is a citation nothing can check). The arm says what is read; the ref says who
 // owns the vocabulary the reading is denominated in. None is a benchmark added for this route.
+// TODAY'S FLOOR'S INSTRUMENTS (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A, 2026-10-27): the withdrawn
+// claim_executor floor's [floor-phase] and [floor-cgroup] rows, its claim-cost artifact and its calibration specimen are
+// deleted with it, not carried unread.
 type QualificationInstrument
-  = FloorPhaseRows
-  | FloorCgroupRows
-  | ClaimCostArtifactEvalSteps
-  | CalibrationSpecimenWitnessLine
+  = SubjectMemoryReceipts
+  | SubjectStepWalls
   | GuestIdleMeminfoAndNproc
   | ConcurrentCohortSeatWindows
 
 fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationRef {
   match i {
-    FloorPhaseRows =>
-      decl_ref(module_path: "gunbc.required_ci_phase_roster", decl_name: "required_ci_phases")
-    FloorCgroupRows =>
-      decl_ref(module_path: "gunbc.host.host_budget_source", decl_name: "HostBudgetResolution")
-    ClaimCostArtifactEvalSteps =>
-      decl_ref(module_path: "gunbc.floor_cost_distribution", decl_name: "parse_claim_cost_tsv")
-    CalibrationSpecimenWitnessLine =>
-      decl_ref(module_path: "v2.workflow.floor_eval_step_calibration", decl_name: "floor_eval_step_calibration")
+    SubjectMemoryReceipts =>
+      decl_ref(module_path: "gunbc.host.memory_envelope_receipt_reading", decl_name: "memory_receipt_line")
+    SubjectStepWalls =>
+      decl_ref(module_path: "extdeps.github.workflow_runs", decl_name: "WorkflowJobStep")
     GuestIdleMeminfoAndNproc =>
       decl_ref(module_path: "extdeps.linux.proc_meminfo", decl_name: "meminfo_field_names")
     ConcurrentCohortSeatWindows =>
@@ -171,10 +168,8 @@ fn qualification_instrument_producer(i: QualificationInstrument) -> DeclarationR
 fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
   let producer = qualification_instrument_producer(i: i)
   let what = match i {
-    FloorPhaseRows => "[floor-phase] rows of claim_executor --required-ci: wall_ms per phase of"
-    FloorCgroupRows => "[floor-cgroup] rows of the same run at the slot cgroup level, memory.high as the bound and memory.peak as the peak, resolved through"
-    ClaimCostArtifactEvalSteps => "the required-floor-claim-cost artifact, eval_steps summed over the floor phase, parsed by"
-    CalibrationSpecimenWitnessLine => "the calibration specimen's [witness] line (cpu=..ms eval_steps=..), the sample behind"
+    SubjectMemoryReceipts => "each subject step's gunbc test MEMORY RECEIPT at the attempt unit's cgroup (peak, limits, OOM and swap), read by"
+    SubjectStepWalls => "each subject step's start and completion on the floor job's record (the Jobs API steps), denominated by"
     GuestIdleMeminfoAndNproc => "the guest's idle MemTotal and MemAvailable (fields of) plus nproc and uname -m, read before the job starts:"
     ConcurrentCohortSeatWindows => "every seat's ready, start and end instants and settlement against the barrier and the host window, sealed by"
   }
@@ -182,10 +177,8 @@ fn qualification_instrument_wire(i: QualificationInstrument) -> NonEmptyStr {
 }
 
 data qualification_instruments: List<QualificationInstrument> = [
-  FloorPhaseRows,
-  FloorCgroupRows,
-  ClaimCostArtifactEvalSteps,
-  CalibrationSpecimenWitnessLine,
+  SubjectMemoryReceipts,
+  SubjectStepWalls,
   GuestIdleMeminfoAndNproc,
   ConcurrentCohortSeatWindows,
 ]
@@ -195,7 +188,7 @@ data qualification_instruments: List<QualificationInstrument> = [
 // RAM-BACKED TMPFS, AND WHY NOT A SCRATCH EXPORT FROM srv2.
 //
 // The subject of the receipt is THIS HOST. A scratch export from srv2 puts the checkout, the build
-// tree and every page the floor writes on a LAN hop and on srv2's disks, so the wall per phase and
+// tree and every page the floor writes on a LAN hop and on srv2's disks, so the wall per subject step and
 // the memory peak would be facts about srv2's export and the switch between them, and the receipt
 // would name mtcollins1 while measuring something else. srv2 is also the 125 GiB legacy host that
 // serves the boot image itself; charging it a second host's build I/O during a qualification is
@@ -263,7 +256,7 @@ data mtcollins1_deregistration_leg: RouteLegStanding = LegAuthorityImplemented {
 // claim-cost artifact into a sealed receipt; nothing on the route invokes it yet.
 data mtcollins1_collect_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
-  wiring_owed: "the same route fold calling collect_qualification_instruments with the DispatchedQualificationRun the dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration the registration leg minted; SUFFICIENT FOR FloorPhaseRows and FloorCgroupRows being read on every executed attempt from the one job its registered runner ran, as a sealed QualificationJobLogReceipt or a typed refusal (gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows) THE FOLD DOES NOT CALL THIS LEG'S AUTHORITY: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over reads the run back through collect_qualification_run only; collect_qualification_instruments is not sequenced, and its two instruments read the [floor-phase]/[floor-cgroup] rows of the withdrawn claim_executor floor, which today's required floor does not print (gunbc.plans.mtcollins1_ci_service_legs, the G3 instrument re-pointing)." as NonEmptyStr,
+  wiring_owed: "the same route fold calling collect_qualification_instruments with the DispatchedQualificationRun the dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration the registration leg minted; SUFFICIENT FOR SubjectMemoryReceipts and SubjectStepWalls being read on every executed attempt from the one job its registered runner ran, as a sealed QualificationJobLogReceipt or a typed refusal (gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows) THE FOLD DOES NOT CALL THIS LEG'S AUTHORITY: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over reads the run back through collect_qualification_run only; collect_qualification_instruments is not sequenced. Its instruments now read today's floor (each subject step's memory receipt and wall, gunbc.plans.mtcollins1_ci_service_legs G3)." as NonEmptyStr,
 }
 
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to

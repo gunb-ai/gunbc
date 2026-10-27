@@ -1,0 +1,119 @@
+module test.claim.runner.runner_qualification_subject_readings_witness
+
+// THE SUBJECT READINGS OF TODAY'S FLOOR (gunbc.plans.mtcollins1_ci_service_legs G3, operator decision A). The pairing
+// claim decodes a RECORDED required run (test.fixture.recorded_v2_bootstrap_receipts): the real receipt printer's lines
+// and GitHub's real step record. The REDs supply the shapes the decoder must refuse: a missing receipt, a receipt that
+// says the envelope was violated or whose numbers show an OOM kill or swap, a receipt bounded outside the slot, a
+// garbled receipt, and a job record without steps.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { second_count, byte_size_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, Completed, Success }
+import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
+import gunbc.host.memory_envelope_receipt_reading {
+  memory_receipt_line, memory_receipt_held, MemoryReceiptRead, MemoryReceiptGarbled, NotAMemoryReceipt,
+}
+import gunbc.runner.runner_qualification_subject_readings {
+  subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, JobStepsUnrecorded, SubjectReceiptCountDiffers,
+  SubjectReceiptOutsideSlot, SubjectReceiptGarbled, SubjectStepAbsent,
+}
+import test.fixture.recorded_v2_bootstrap_receipts {
+  recorded_v2_bootstrap_receipt_log, recorded_v2_bootstrap_subject_steps, recorded_v2_bootstrap_slot_unit,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn job_with(steps: List<WorkflowJobStep>) -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 122206492701, run_id: 40509253563, run_attempt: 1, name: "v2-bootstrap", status: Completed,
+    conclusion: Present { value: Success }, labels: [], runner_id: none, runner_name: none,
+    created_at: none, started_at: none, completed_at: none, steps: Present { value: steps },
+  }
+}
+
+// A RECORD THAT DID NOT READ ITS STEPS: steps absent, never an empty list.
+fn job_without_steps() -> WorkflowJobRun {
+  WorkflowJobRun {
+    id: 122206492701, run_id: 40509253563, run_attempt: 1, name: "v2-bootstrap", status: Completed,
+    conclusion: Present { value: Success }, labels: [], runner_id: none, runner_name: none,
+    created_at: none, started_at: none, completed_at: none, steps: none,
+  }
+}
+
+fn slot() -> NonEmptyStr { recorded_v2_bootstrap_slot_unit as NonEmptyStr }
+
+fn first_receipt_line() -> String {
+  match split(s: recorded_v2_bootstrap_receipt_log, delimiter: "\n").first() {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+// THE PAIRING CLAIM: the recorded run's two subject steps decode, in roster order, to walls of 813 s and 870 s (the
+// Jobs API's own instants) and receipts bounded by the run's slot, each of which held.
+test fn a_recorded_required_run_decodes_to_one_reading_per_subject_step() -> Bool {
+  match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows()) {
+    SubjectReadingsRead { readings: rs } =>
+      count(rs) == 2
+        && join(rs |> map(r => second_count(r.wall) as String), ",") == "813,870"
+        && (rs |> all(r => memory_receipt_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (r.receipt.limit_high as String) == "22548578304"))
+    SubjectReadingsRefused { refusal: _ } => false
+  }
+}
+
+// RED: a subject whose receipt is missing refuses the reading; it never reads as a subject with no memory.
+test fn a_missing_receipt_refuses() -> Bool {
+  match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: first_receipt_line(), slot_unit: slot(), rows: emitted_subject_build_rows()) {
+    SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: 1, subjects: 2 } } => true
+    _ => false
+  }
+}
+
+// RED: an OOM kill the step added, or swap resident at exit, fails the envelope whatever the peak; and a receipt the
+// printer marked violated fails it on that sentence alone.
+test fn an_oom_kill_or_swap_fails_the_envelope() -> Bool {
+  let oom = replace(s: first_receipt_line(), from: "oom_kills_delta=0", to: "oom_kills_delta=1")
+  let swapped = replace(s: first_receipt_line(), from: "swap_current_bytes=0", to: "swap_current_bytes=4096")
+  let violated = concat("gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. ", first_receipt_line())
+  (match memory_receipt_line(line: first_receipt_line()) { MemoryReceiptRead { reading: r } => memory_receipt_held(r: r)  _ => false })
+    && (match memory_receipt_line(line: oom) { MemoryReceiptRead { reading: r } => !memory_receipt_held(r: r)  _ => false })
+    && (match memory_receipt_line(line: swapped) { MemoryReceiptRead { reading: r } => !memory_receipt_held(r: r)  _ => false })
+    && (match memory_receipt_line(line: violated) { MemoryReceiptRead { reading: r } => r.violated && !memory_receipt_held(r: r)  _ => false })
+}
+
+// RED: a receipt bounded by another unit measured another subject's memory.
+test fn a_receipt_outside_the_slot_refuses() -> Bool {
+  match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: recorded_v2_bootstrap_receipt_log, slot_unit: "gunbc-qualification-mtcollins1-q-1.service" as NonEmptyStr, rows: emitted_subject_build_rows()) {
+    SubjectReadingsRefused { refusal: SubjectReceiptOutsideSlot { cgroup: _, slot_unit: _ } } => true
+    _ => false
+  }
+}
+
+// RED: a receipt missing a key is garbled and names the key; it is never skipped. A line that is not a receipt is
+// not one.
+test fn a_garbled_receipt_names_its_key_and_is_never_skipped() -> Bool {
+  let no_peak = replace(s: first_receipt_line(), from: " peak_bytes=14481920000", to: "")
+  (match memory_receipt_line(line: no_peak) {
+    MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "peak_bytes")
+    _ => false
+  })
+    && (match memory_receipt_line(line: "Finished with result: success") { NotAMemoryReceipt => true  _ => false })
+    && (match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: concat(no_peak, "\n"), slot_unit: slot(), rows: emitted_subject_build_rows()) {
+      SubjectReadingsRefused { refusal: SubjectReceiptGarbled { line: _, cause: _ } } => true
+      _ => false
+    })
+}
+
+// RED: a job record that did not carry its steps, or lacks a subject's step, refuses before any receipt is read.
+test fn a_job_without_its_steps_refuses() -> Bool {
+  (match subject_readings_of(job: job_without_steps(), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows()) {
+    SubjectReadingsRefused { refusal: JobStepsUnrecorded } => true
+    _ => false
+  })
+    && (match subject_readings_of(job: job_with(steps: []), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows()) {
+      SubjectReadingsRefused { refusal: SubjectStepAbsent { step: _ } } => true
+      _ => false
+    })
+}

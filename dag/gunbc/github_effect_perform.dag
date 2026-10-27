@@ -1,6 +1,6 @@
 module gunbc.github_effect_perform
 
-import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs, Bytes }
+import std.types { String, NonEmptyStr, Int, List, Secret, EpochSecs }
 import std.resources { Network }
 import std.decl_ref { decl_ref }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -38,8 +38,6 @@ import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 import extdeps.github.org_actions
 import extdeps.github.org_actions { OrgRunnerGroupWire }
 import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
-import extdeps.github.actions_artifacts
-import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -416,12 +414,10 @@ fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr
   }
 }
 
-// THE QUALIFICATION RUN'S OUTPUTS, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF. One job's
+// THE QUALIFICATION RUN'S OUTPUT, READ UNDER THE SAME CONTROLLER TOKEN AS THE RUN ITSELF: the floor job's
 // log (actions/download-job-logs-for-workflow-run, followed through its redirect by the bound REST
-// handler), the run's artifact listing, and one artifact's archive. Each answer is sealed beside its
-// RestResult, like the run and job reads above, so a consumer cannot pair a body with a result it
-// did not come with. The archive is Bytes and today's handler reads bodies as text,
-// so a real download answers RestRefused with RestBodyUndecodable (extdeps.github.actions_artifacts).
+// handler). The answer is sealed beside its RestResult, like the run and job reads above, so a consumer
+// cannot pair a body with a result it did not come with.
 type WorkflowJobLogRead sole_constructor {
   job_id: Int
   log: RestResult<String>
@@ -433,36 +429,6 @@ fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, rep
     job_id: job_id,
     log: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.log }
-      RestRefused { refusal } => RestRefused { refusal: refusal }
-    },
-  }
-}
-
-type WorkflowRunArtifactsRead sole_constructor {
-  listed: RestResult<ActionsArtifactList>
-}
-
-fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunArtifactsRead uses net: Network {
-  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
-  WorkflowRunArtifactsRead {
-    listed: match read {
-      RestAnswered { answer } => RestAnswered { answer: answer.result }
-      RestRefused { refusal } => RestRefused { refusal: refusal }
-    },
-  }
-}
-
-type ArtifactArchiveRead sole_constructor {
-  artifact_id: Int
-  archive: RestResult<Bytes>
-}
-
-fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
-  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: artifact_id as String)
-  ArtifactArchiveRead {
-    artifact_id: artifact_id,
-    archive: match read {
-      RestAnswered { answer } => RestAnswered { answer: answer.archive }
       RestRefused { refusal } => RestRefused { refusal: refusal }
     },
   }

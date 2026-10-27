@@ -1,0 +1,181 @@
+module gunbc.runner.runner_qualification_subject_readings
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.measure { Second, second, second_count }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.algebra { list_at_optional }
+import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep }
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
+import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_step_name }
+import gunbc.host.memory_envelope_receipt_reading {
+  MemoryReceiptReading, MemoryReceiptLine, NotAMemoryReceipt, MemoryReceiptRead, MemoryReceiptGarbled, memory_receipt_line,
+}
+
+// WHAT TODAY'S FLOOR SAYS ABOUT EACH SUBJECT STEP (gunbc.plans.mtcollins1_ci_service_legs G3, decision A): the step's wall,
+// from the job record's own step times (the Jobs API steps), and the step's memory receipt, from the job's log. The
+// subject roster is gunbc.emitted_subject_build_gate emitted_subject_build_rows, and a step is found by the name that
+// gate renders for its row (emitted_subject_build_step_name), so the join key is the declaration that named the step,
+// never a second spelling. The same reader serves the qualification run on the attempt's slot and the baseline run on a
+// fleet host: only the slot unit whose cgroup must bound the receipts differs, so it is a parameter.
+//
+// EVERY SUBJECT MUST BE READ EXACTLY ONCE, OR THE READING REFUSES. A job record that carries no steps, a subject step
+// that is absent, repeated, untimed or carries an instant this reader cannot parse, a garbled receipt, a receipt count
+// that is not the subject count, or a receipt bounded by any cgroup but the slot's: each is a typed refusal, never a
+// partial reading. Receipts are paired with subjects in order, the order the gate's steps run in.
+
+type SubjectStepReading {
+  row: EmittedSubjectBuildRow
+  wall: Second
+  receipt: MemoryReceiptReading
+}
+
+type SubjectReadingsRefusal
+  = JobStepsUnrecorded
+  | SubjectStepAbsent { step: String }
+  | SubjectStepRepeated { step: String, count: Int }
+  | SubjectStepUntimed { step: String }
+  | SubjectStepInstantUnreadable { step: String, instant: String }
+  | SubjectStepEndsBeforeItStarts { step: String }
+  | SubjectReceiptGarbled { line: String, cause: NonEmptyStr }
+  | SubjectReceiptCountDiffers { receipts: Int, subjects: Int }
+  | SubjectReceiptOutsideSlot { cgroup: NonEmptyStr, slot_unit: NonEmptyStr }
+
+type SubjectReadings
+  = SubjectReadingsRead { readings: List<SubjectStepReading> }
+  | SubjectReadingsRefused { refusal: SubjectReadingsRefusal }
+
+type StepWall
+  = StepWallRead { wall: Second }
+  | StepWallRefused { refusal: SubjectReadingsRefusal }
+
+fn step_wall(step: WorkflowJobStep) -> StepWall {
+  match step.started_at {
+    Absent => StepWallRefused { refusal: SubjectStepUntimed { step: step.name } }
+    Present { value: started } =>
+      match step.completed_at {
+        Absent => StepWallRefused { refusal: SubjectStepUntimed { step: step.name } }
+        Present { value: completed } =>
+          match iso8601_utc_epoch_seconds(text: started) {
+            Absent => StepWallRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: started } }
+            Present { value: s } =>
+              match iso8601_utc_epoch_seconds(text: completed) {
+                Absent => StepWallRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: completed } }
+                Present { value: e } => {
+                  let span = (second_count(e) as Int) - (second_count(s) as Int)
+                  if span < 0 {
+                    StepWallRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
+                  } else {
+                    match checked_int_magnitude(a: span) {
+                      CheckedNatOverflow { cause: _ } => StepWallRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
+                      CheckedNatReady { value: n } => StepWallRead { wall: second(count: n) }
+                    }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+fn subject_step_wall(steps: List<WorkflowJobStep>, row: EmittedSubjectBuildRow) -> StepWall {
+  let name = emitted_subject_build_step_name(row: row)
+  let named = steps |> filter(s => s.name == name)
+  if count(named) == 0 {
+    StepWallRefused { refusal: SubjectStepAbsent { step: name } }
+  } else if count(named) > 1 {
+    StepWallRefused { refusal: SubjectStepRepeated { step: name, count: count(named) } }
+  } else {
+    match named.first() {
+      Absent => StepWallRefused { refusal: SubjectStepAbsent { step: name } }
+      Present { value: s } => step_wall(step: s)
+    }
+  }
+}
+
+type LogReceipts
+  = LogReceiptsRead { receipts: List<MemoryReceiptReading> }
+  | LogReceiptsRefused { refusal: SubjectReadingsRefusal }
+
+fn log_receipts(log: String) -> LogReceipts {
+  fold(split(s: log, delimiter: "\n"), init: LogReceiptsRead { receipts: [] }, f: (acc, line) =>
+    match acc {
+      LogReceiptsRefused { refusal: _ } => acc
+      LogReceiptsRead { receipts: rs } =>
+        match memory_receipt_line(line: line) {
+          NotAMemoryReceipt => acc
+          MemoryReceiptGarbled { line: l, cause: c } => LogReceiptsRefused { refusal: SubjectReceiptGarbled { line: l, cause: c } }
+          MemoryReceiptRead { reading: r } => LogReceiptsRead { receipts: list_push(rs, r) }
+        }
+    })
+}
+
+fn receipt_in_slot(receipt: MemoryReceiptReading, slot_unit: NonEmptyStr) -> Bool {
+  ends_with(s: receipt.cgroup as String, suffix: concat("/", slot_unit as String))
+}
+
+// The walls in roster order, or the first refusal.
+fn subject_walls(steps: List<WorkflowJobStep>, rows: List<EmittedSubjectBuildRow>) -> List<StepWall> {
+  rows |> map(r => subject_step_wall(steps: steps, row: r))
+}
+
+fn first_wall_refusal(walls: List<StepWall>) -> SubjectReadingsRefusal? {
+  match walls |> filter(w => match w { StepWallRefused { refusal: _ } => true StepWallRead { wall: _ } => false }) |> first() {
+    Present { value: StepWallRefused { refusal: r } } => Present { value: r }
+    _ => none
+  }
+}
+
+// ONE PASS OVER THE ROSTER WITH ITS INDEX: the walls were checked total above and the receipt count equals the row
+// count, so every index has a wall and a receipt; an index that had neither would drop that row, and the caller
+// compares the paired count with the roster before admitting the reading.
+type PairingAcc {
+  index: Int
+  readings: List<SubjectStepReading>
+}
+
+fn paired(rows: List<EmittedSubjectBuildRow>, walls: List<StepWall>, receipts: List<MemoryReceiptReading>) -> List<SubjectStepReading> {
+  fold(rows, init: PairingAcc { index: 0, readings: [] }, f: (acc, row) => {
+    let next = acc.index + 1
+    match list_at_optional(xs: walls, index: acc.index) {
+      Present { value: StepWallRead { wall: w } } =>
+        match list_at_optional(xs: receipts, index: acc.index) {
+          Present { value: rc } => PairingAcc { index: next, readings: list_push(acc.readings, SubjectStepReading { row: row, wall: w, receipt: rc }) }
+          Absent => PairingAcc { index: next, readings: acc.readings }
+        }
+      _ => PairingAcc { index: next, readings: acc.readings }
+    }
+  }).readings
+}
+
+fn subject_readings_of(job: WorkflowJobRun, log: String, slot_unit: NonEmptyStr, rows: List<EmittedSubjectBuildRow>) -> SubjectReadings {
+  match job.steps {
+    Absent => SubjectReadingsRefused { refusal: JobStepsUnrecorded }
+    Present { value: steps } => {
+      let walls = subject_walls(steps: steps, rows: rows)
+      match first_wall_refusal(walls: walls) {
+        Present { value: r } => SubjectReadingsRefused { refusal: r }
+        Absent =>
+          match log_receipts(log: log) {
+            LogReceiptsRefused { refusal: r } => SubjectReadingsRefused { refusal: r }
+            LogReceiptsRead { receipts: rs } =>
+              if count(rs) != count(rows) {
+                SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: count(rs), subjects: count(rows) } }
+              } else {
+                match rs |> filter(r => !receipt_in_slot(receipt: r, slot_unit: slot_unit)) |> first() {
+                  Present { value: outside } => SubjectReadingsRefused { refusal: SubjectReceiptOutsideSlot { cgroup: outside.cgroup, slot_unit: slot_unit } }
+                  Absent => {
+                    let readings = paired(rows: rows, walls: walls, receipts: rs)
+                    if count(readings) != count(rows) {
+                      SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: count(readings), subjects: count(rows) } }
+                    } else {
+                      SubjectReadingsRead { readings: readings }
+                    }
+                  }
+                }
+              }
+          }
+      }
+    }
+  }
+}

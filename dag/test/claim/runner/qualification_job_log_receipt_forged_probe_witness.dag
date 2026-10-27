@@ -36,14 +36,13 @@ fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int 
   }
 }
 
-data control_source: String = "module probe_qualification_receipt_harness_control\nimport std.types { String }\nimport gunbc.runner.runner_qualification_dispatch { JobLogInstrumentDecode, decode_job_log_instruments }\nfn decoded(t: String) -> JobLogInstrumentDecode { decode_job_log_instruments(log: t, slot_unit: \"x.service\") }\n"
+data control_source: String = "module probe_qualification_receipt_harness_control\nimport std.types { String }\nimport extdeps.github.workflow_runs { WorkflowJobRun }\nimport gunbc.runner.runner_qualification_subject_readings { SubjectReadings }\nimport gunbc.runner.runner_qualification_dispatch { decode_job_instruments }\nfn decoded(j: WorkflowJobRun, t: String) -> SubjectReadings { decode_job_instruments(job: j, log: t, slot_unit: \"x.service\") }\n"
 
 test fn a_source_that_only_names_the_module_forges_nothing() -> Bool {
   let c = census_of(source: control_source)
   blocking(c: c, wanted: "SoleConstructorViolation", subject: "QualificationJobLogReceipt") == 0
     && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "job_log_standing") == 0
     && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "collect_qualification_instruments_under") == 0
-    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "read_claim_cost_artifact") == 0
 }
 
 test fn a_forged_job_log_receipt_refuses_at_its_own_name() -> Bool {
@@ -59,9 +58,4 @@ test fn the_receipt_minter_refuses_a_caller_other_than_the_collect_stage() -> Bo
 // caller holding a genuine collection cannot read it under another installation's token.
 test fn the_reads_refuse_a_caller_other_than_the_checked_entry() -> Bool {
   blocking(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "collect_qualification_instruments_under") >= 1
-}
-
-// AND THE CLAIM-COST READ CANNOT BE AIMED AT ANOTHER RUN: it admits only the confined reads above.
-test fn the_claim_cost_read_refuses_a_free_token_and_run_id() -> Bool {
-  blocking(c: probe(), wanted: "ConstructorCallAdmissionRefused", subject: "read_claim_cost_artifact") >= 1
 }
