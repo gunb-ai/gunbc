@@ -1,5 +1,7 @@
 module gunbc.runner.runner_service_slot_controller
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_dissolve_derived_variant_test, nfr_reason_one_variant_projection, nfr_reason_variant_test_predicate }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, NonEmptyStr, Int, List, Bool }
 import std.decl_ref { decl_ref }
 import std.optional { Absent, Present }
@@ -652,6 +654,11 @@ data service_slot_controller_entry_function: String = "service_slot_controller_m
 fn service_slot_controller_execstart(release_dir: String) -> NonEmptyStr {
   microvm_locus_execstart(release_dir: release_dir, entry: service_slot_controller_entry_file, function: service_slot_controller_entry_function)
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "service_slot_credential_of" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "service_slot_path_cause" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+]
 
 data service_slot_pass_binding_execution_frontier: DissolutionCondition = unbound_dissolution(
   description: "NAMED CONSUMER: service_slot_controller_main, through service_slot_pass. POPULATION: the four production bindings service_slot_pass hands to service_slot_pass_over (observe_jit_mint_control_plane, mint_for_binding, run_listener_with, deregister_binding_registration) and the sealed JitRunnerDeregistered success arm. NOT ESTABLISHED, deferred: (F1) that service_slot_pass executes those real bindings, with a wrong-binding and a missing-binding control that fail, so deleting a binding at its call site fails a control; (F2) that the real producer's Deregistered receipt reaches its consumer, the hermetic witness stopping at ServiceSlotPassRegistrationRemains. TRIGGER, two routes: (1) the capability authenticated REST exchange replay in extdeps.transports.rest (an operation carrying a Secret Bearer, blocked on RestExchangeFixture input_digest), with which a claim runs the real bindings over supplied responses; (2) the first live service pass of leg F (gunbc.plans.mtcollins1_ci_service_legs F5), run only after leg G's qualification receipt admits the slot shape, which executes the real bindings on the host and must record the sealed Deregistered receipt. Leg G does not fire this: it qualifies an attempt slot through gunbc.runner.runner_qualification_dispatch, whose subject refuses a service slot (SubjectSlotNotAttemptScoped) so that the attempt label alone selects the job's runner, and an unqualified host takes no required CI (lane owner merry-fox-82, option A, 2026-10-27)."

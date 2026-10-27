@@ -1,5 +1,7 @@
 module gunbc.instruments.layout_witness_join
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_reason_one_variant_projection }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { Bool, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -981,3 +983,7 @@ fn joined_report(old: Observation, new: Observation, plan: PlanEdges, declaratio
   if count(red_findings(findings: findings)) == 0 { written }
   else { exit_failure(reason: concat("layout witness join: ", int_to_decimal_string(value: count(red_findings(findings: findings))), " red findings; see ", report)) }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "finding_line" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+]

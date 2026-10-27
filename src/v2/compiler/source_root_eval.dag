@@ -1,6 +1,6 @@
 module v2.compiler.source_root_eval
 
-import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_dissolve_derived_variant_test, nfr_dissolve_owning_fold, nfr_reason_one_variant_projection, nfr_reason_typed_census_ca5ed1724b, nfr_reason_variant_test_predicate }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.compiler_entry {
   CompilerEntryDriver,
@@ -18,7 +18,7 @@ import v2.workflow.v2_native_route {
   native_route_package_text_module,
   required_v2_native_job_name
 }
-import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
+import gunbc.native_census_verb { NativeCensusVerbWord, CensusVerbDemand, CensusVerbDeclRef, CensusVerbNfrWildcard, CensusVerbEffectPair, native_census_verb_of_word, native_census_verb_word, native_census_verbs }
 import gunbc.native_route_universe {
   native_route_default_pattern,
   native_route_label_in_package,
@@ -270,9 +270,11 @@ import v2.compiler.dependency_demand {
   FunctionFact,
   OperationFact,
 }
+import gunbc.non_fold_residue_scope { NfrProductionScope, NfrTestLayerExcluded, nfr_file_scope }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, declares_member_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
 import v2.compiler.self_host.seed_retention_frontier { self_host_frontier_report }
 import v2.compiler.live_resolution_context { live_resolution_context }
-import v2.compiler.decl_ref_census { LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, prose_target_names, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
+import v2.compiler.decl_ref_census { ImportPair, LiteralCtx, LiteralScan, declaration_ref_literals, import_pairs_of, prose_target_modules, prose_target_names, root_aliases_declaration_ref, empty_decl_ref_census, decl_ref_census_merge, decl_ref_census_of_literals, decl_ref_census_of_prose, DeclRefCensus, decl_ref_census_exit, decl_ref_census_lines, top_level_namespaces }
 import v2.compiler.effect_pair_census { BodyOrdered, EffectPairCensusReport, ImporteeRefusedCause, ResolveRefusedCause, ResolveUnclassifiedCause, UnobservedRoot, effect_pair_census_exit, effect_pair_census_lines, effect_pair_census_of_module, effect_reach_table, module_ordered_bodies, not_derived_keys_of, unobserved_roots_add, use_edges_of }
 import v2.compiler.value_use_dependency { value_use_dispositions }
 import v2.compiler.dependency_demand_census {
@@ -3515,6 +3517,268 @@ fn native_decl_ref_census_output(ingest: SourceRootIngest) -> NativeDeclRefCensu
                 ),
                 exit: decl_ref_census_exit(c: census)
               }
+          }
+      }
+  }
+}
+
+// THE NON-FOLD-RESIDUE WILDCARD CENSUS. Population: every production fn whose body holds a Match with a
+// wildcard arm over one of its own parameters whose declared type head names a closed coproduct. The
+// gate: each such fn is a row of a module's `data non_fold_residue_frontier` (the roster) and each row
+// names such a fn. DEMAND (DESIGN 2): a text prefilter picks the files that spell a wildcard arm
+// (candidates) or the roster data name (holders); only those are normalized, unresolved, and a
+// parameter's head is qualified through the module's OWN import rows to the one module that declares it
+// (DESIGN 3: module a.b.c is stored at one path, so the lookup is the by_name map), read once and
+// memoized. A head no import row binds and the module does not declare is AMBIENT (a kernel spelling):
+// counted and listed by name, never read as a coproduct.
+type NativeNfrState {
+  alloc: OccurrenceIdAllocator
+  roots: Map<String, Node>
+  verdicts: Map<String, Bool>
+  sites: Map<String, String>
+  site_keys: List<String>
+  rows: Map<String, Bool>
+  row_keys: List<String>
+  duplicates: List<String>
+  ambient: Map<String, Bool>
+  ambient_list: List<String>
+  refused: List<String>
+  classified: List<String>
+  unread: List<String>
+}
+
+type NativeNfrHeadRead {
+  state: NativeNfrState
+  closed: Bool
+  ambient: Bool
+}
+
+fn native_nfr_state_with_alloc(s: NativeNfrState, alloc: OccurrenceIdAllocator) -> NativeNfrState {
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+}
+
+fn native_nfr_refuse(s: NativeNfrState, read: DagSourceReadWitness, alloc: OccurrenceIdAllocator) -> NativeNfrState {
+  NativeNfrState { alloc: alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: list_snoc_item(xs: s.refused, item: symbol_lexeme(sym: read.compilation_unit)), classified: s.classified, unread: s.unread }
+}
+
+// The module root of a declaring module, normalized once.
+fn native_nfr_module_root(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural, module: String) -> NativeNfrModuleRead {
+  match map_lookup(m: s.roots, key: module) {
+    Present { value: root } => NativeNfrModuleRead { state: s, root: Present { value: root } }
+    Absent =>
+      match map_lookup(m: plan.by_name, key: module) {
+        Absent => NativeNfrModuleRead { state: s, root: Absent }
+        Present { value: read } =>
+          let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
+          match result.produced {
+            Rejected { diagnostics: _ } => NativeNfrModuleRead { state: native_nfr_refuse(s: s, read: read, alloc: result.alloc), root: Absent }
+            Accepted { value: tree, diagnostics: _ } =>
+              NativeNfrModuleRead {
+                state: NativeNfrState { alloc: result.alloc, roots: map_insert(s.roots, module, tree.root), verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread },
+                root: Present { value: tree.root }
+              }
+          }
+      }
+  }
+}
+
+type NativeNfrModuleRead {
+  state: NativeNfrState
+  root: Optional<Node>
+}
+
+fn native_nfr_head_read(s: NativeNfrState, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural, self_root: Node, pairs: List<ImportPair>, head: String) -> NativeNfrHeadRead {
+  if declares_coproduct_named(root: self_root, name: head) {
+    NativeNfrHeadRead { state: s, closed: true, ambient: false }
+  } else if declares_member_named(root: self_root, name: head) {
+    NativeNfrHeadRead { state: s, closed: false, ambient: false }
+  } else {
+    match head_module_optional(pairs: pairs, head: head) {
+      Absent => NativeNfrHeadRead { state: s, closed: false, ambient: true }
+      Present { value: module } =>
+        let key = concat(module, "|", head)
+        match map_lookup(m: s.verdicts, key: key) {
+          Present { value: v } => NativeNfrHeadRead { state: s, closed: v, ambient: false }
+          Absent =>
+            let read = native_nfr_module_root(s: s, plan: plan, front: front, ingest_scope: ingest_scope, module: module)
+            match read.root {
+              Absent => NativeNfrHeadRead { state: read.state, closed: false, ambient: true }
+              Present { value: root } =>
+                let v = declares_coproduct_named(root: root, name: head)
+                NativeNfrHeadRead {
+                  state: NativeNfrState { alloc: read.state.alloc, roots: read.state.roots, verdicts: map_insert(read.state.verdicts, key, v), sites: read.state.sites, site_keys: read.state.site_keys, rows: read.state.rows, row_keys: read.state.row_keys, duplicates: read.state.duplicates, ambient: read.state.ambient, ambient_list: read.state.ambient_list, refused: read.state.refused, classified: read.state.classified, unread: read.state.unread },
+                  closed: v,
+                  ambient: false
+                }
+            }
+        }
+    }
+  }
+}
+
+fn native_nfr_add_site(s: NativeNfrState, key: String, head: String) -> NativeNfrState {
+  match map_lookup(m: s.sites, key: key) {
+    Present { value: _ } => s
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, head), site_keys: list_snoc_item(xs: s.site_keys, item: key), rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+  }
+}
+
+fn native_nfr_add_ambient(s: NativeNfrState, head: String) -> NativeNfrState {
+  match map_lookup(m: s.ambient, key: head) {
+    Present { value: _ } => s
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: map_insert(s.ambient, head, true), ambient_list: list_snoc_item(xs: s.ambient_list, item: head), refused: s.refused, classified: s.classified, unread: s.unread }
+  }
+}
+
+fn native_nfr_add_row(s: NativeNfrState, key: String) -> NativeNfrState {
+  match map_lookup(m: s.rows, key: key) {
+    Present { value: _ } => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: list_snoc_item(xs: s.duplicates, item: key), ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: map_insert(s.rows, key, true), row_keys: list_snoc_item(xs: s.row_keys, item: key), duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+  }
+}
+
+fn native_nfr_count_of(xs: List<String>, want: String) -> Int {
+  length(xs: fold_list(xs: xs, empty: [], cons: fn(acc, u) { if u == want { list_snoc_item(xs: acc, item: u) } else { acc } }))
+}
+
+// A function holding a wildcard match the reader could not turn into a site is still a function with a
+// wildcard match, so a roster row naming it is not stale: it is unjudged, and the Classified / Unread /
+// ambient line already counts it. It enters `sites` (the identity lookup stale reads) and never `site_keys`
+// (the list unrostered reads), so it cannot manufacture an unrostered finding.
+fn native_nfr_add_judged(s: NativeNfrState, key: String, cause: String) -> NativeNfrState {
+  match map_lookup(m: s.sites, key: key) {
+    Present { value: _ } => s
+    Absent => NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: map_insert(s.sites, key, cause), site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: s.unread }
+  }
+}
+
+// A file the ingest refused cannot say which functions it holds, so a row under it is unobserved (already
+// counted as `refused`), not stale.
+fn native_nfr_key_under_refused_file(refused: List<String>, key: String) -> Bool {
+  fold_list(xs: refused, empty: false, cons: fn(acc, f) { acc || starts_with(s: key, prefix: concat(f, "::")) })
+}
+
+fn native_nfr_add_classified(s: NativeNfrState, item: String) -> NativeNfrState {
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: list_snoc_item(xs: s.classified, item: item), unread: s.unread }
+}
+
+fn native_nfr_add_unread(s: NativeNfrState, item: String) -> NativeNfrState {
+  NativeNfrState { alloc: s.alloc, roots: s.roots, verdicts: s.verdicts, sites: s.sites, site_keys: s.site_keys, rows: s.rows, row_keys: s.row_keys, duplicates: s.duplicates, ambient: s.ambient, ambient_list: s.ambient_list, refused: s.refused, classified: s.classified, unread: list_snoc_item(xs: s.unread, item: item) }
+}
+
+fn native_nfr_scan_candidate(s: NativeNfrState, read: DagSourceReadWitness, plan: NativeDeclRefCensusPlan, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
+  let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
+  match result.produced {
+    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Accepted { value: tree, diagnostics: _ } =>
+      let pairs = import_pairs_of(rows: normalized_tree_import_bindings(tree: tree))
+      let file = symbol_lexeme(sym: read.compilation_unit)
+      fold_list(
+        xs: root_member_reads(root: tree.root),
+        empty: native_nfr_state_with_alloc(s: s, alloc: result.alloc),
+        cons: fn(acc, r) {
+          match r {
+            Classified { fn_name: f, cause: c } => native_nfr_add_judged(s: native_nfr_add_classified(s: acc, item: concat(file, "::", f, " ", c)), key: site_join_key(file: file, fn_name: f), cause: c)
+            Unread { fn_name: f, cause: c } => native_nfr_add_judged(s: native_nfr_add_unread(s: acc, item: concat(file, "::", f, " ", c)), key: site_join_key(file: file, fn_name: f), cause: c)
+            Site { fn_name: f, type_head: h } =>
+              let head = native_nfr_head_read(s: acc, plan: plan, front: front, ingest_scope: ingest_scope, self_root: tree.root, pairs: pairs, head: h)
+              if head.closed {
+                native_nfr_add_site(s: head.state, key: site_join_key(file: file, fn_name: f), head: h)
+              } else if head.ambient {
+                native_nfr_add_judged(s: native_nfr_add_ambient(s: head.state, head: h), key: site_join_key(file: file, fn_name: f), cause: "ambient-head")
+              } else {
+                head.state
+              }
+          }
+        }
+      )
+  }
+}
+
+fn native_nfr_scan_holder(s: NativeNfrState, read: DagSourceReadWitness, front: NativeTestFrontEnd, ingest_scope: Fnv1a64Structural) -> NativeNfrState {
+  let result = program_assembly_read_to_normalized_root_seeded(read: read, lex: front.lex, prepared: front.prepared, seed: s.alloc, scope: ingest_scope)
+  match result.produced {
+    Rejected { diagnostics: _ } => native_nfr_refuse(s: s, read: read, alloc: result.alloc)
+    Accepted { value: tree, diagnostics: _ } =>
+      fold_list(
+        xs: roster_join_keys(file: symbol_lexeme(sym: read.compilation_unit), root: tree.root),
+        empty: native_nfr_state_with_alloc(s: s, alloc: result.alloc),
+        cons: fn(acc, key) { native_nfr_add_row(s: acc, key: key) }
+      )
+  }
+}
+
+type NativeNfrOutput {
+  lines: List<String>
+  exit: Int
+}
+
+fn native_nfr_wildcard_census_output(ingest: SourceRootIngest) -> NativeNfrOutput {
+  match native_test_front_end_prepare() {
+    Rejected { diagnostics: d } =>
+      NativeNfrOutput { lines: [concat("[nfr-wildcard-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+    Accepted { value: front, diagnostics: _ } =>
+      match program_assembly_ingest_scope_outcome(ingest: ingest) {
+        Rejected { diagnostics: d } =>
+          NativeNfrOutput { lines: [concat("[nfr-wildcard-census] no observation: ", symbol_lexeme(sym: d.head.reason))], exit: 2 }
+        Accepted { value: ingest_scope, diagnostics: _ } =>
+          let plan = native_decl_ref_census_plan(ingest: ingest)
+          // CANDIDATE SELECTION READS THE LEXED TOKEN STREAM, NOT THE TEXT SPELLING (review 86129).
+          // The prefilter here used to be string_contains(r.source.carried, "_ =>"), and the census then
+          // reported itself complete (unrostered=0, exit 0) even when an arm was written `_=>`, `_  =>`,
+          // or with a line break before the arrow: such a file never became a candidate, its sites were
+          // never counted, and the omission was invisible. That is an uncounted degradation (DESIGN.md §5),
+          // and this instrument feeds the population of gunbc.rung_drop.native_wildcard_census_unenforced.
+          // Now every ingested file is tokenized with the prepared DAG lexer and becomes a candidate when
+          // its token stream holds an underscore token immediately followed by a fat-arrow token -- any
+          // spacing, any line break (trivia is dropped by the lexer, so adjacency here is token adjacency).
+          // A file whose LEXING FAILS is also taken as a candidate: it then reaches the scan and lands in
+          // `refused`, which is a counted observation, while a silent drop would be an uncounted one.
+          // The holders prefilter below stays text-based: it keys on a declaration NAME, not a formatting
+          // spelling, so it cannot miss a site through whitespace.
+          let wild = fold_list(xs: ingest, empty: [], cons: fn(acc, r) {
+            match program_assembly_phase_tokenize(read: r, lex: front.lex) {
+              Rejected { diagnostics: _ } => list_snoc_item(xs: acc, item: r)
+              Accepted { value: stream, diagnostics: _ } => if nfr_wildcard_arm_in_tokens(stream: stream) { list_snoc_item(xs: acc, item: r) } else { acc }
+            }
+          })
+          let candidates = fold_list(xs: wild, empty: [], cons: fn(acc, r) { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } })
+          let holders = fold_list(xs: ingest, empty: [], cons: fn(acc, r) { if string_contains(s: r.source.carried, pattern: "non_fold_residue_frontier") { match nfr_file_scope(path: symbol_lexeme(sym: r.compilation_unit)) { NfrProductionScope => list_snoc_item(xs: acc, item: r)  NfrTestLayerExcluded => acc } } else { acc } })
+          let excluded = length(xs: wild) - length(xs: candidates)
+          let start = NativeNfrState { alloc: occurrence_id_allocator_initial(), roots: empty_map(), verdicts: empty_map(), sites: empty_map(), site_keys: [], rows: empty_map(), row_keys: [], duplicates: [], ambient: empty_map(), ambient_list: [], refused: [], classified: [], unread: [] }
+          let scanned = fold_list(xs: candidates, empty: start, cons: fn(acc, r) { native_nfr_scan_candidate(s: acc, read: r, plan: plan, front: front, ingest_scope: ingest_scope) })
+          let done = fold_list(xs: holders, empty: scanned, cons: fn(acc, r) { native_nfr_scan_holder(s: acc, read: r, front: front, ingest_scope: ingest_scope) })
+          let unrostered = fold_list(xs: done.site_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.rows, key: k) { Present { value: _ } => acc  Absent => list_snoc_item(xs: acc, item: k) } })
+          let stale = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { match map_lookup(m: done.sites, key: k) { Present { value: _ } => acc  Absent => if native_nfr_key_under_refused_file(refused: done.refused, key: k) { acc } else { list_snoc_item(xs: acc, item: k) } } })
+          let unjudged = fold_list(xs: done.row_keys, empty: [], cons: fn(acc, k) { if native_nfr_key_under_refused_file(refused: done.refused, key: k) { list_snoc_item(xs: acc, item: "refused-file") } else { match map_lookup(m: done.sites, key: k) { Present { value: c } => if c == "scrutinee-is-an-expression" || c == "scrutinee-is-not-a-parameter" || c == "ambient-head" { list_snoc_item(xs: acc, item: c) } else { acc }  Absent => acc } } })
+          // EXIT PRECEDENCE: a found violation is a complete observation even beside refused files, so it is 1;
+          // 2 is only "no violation found, but refused or unjudged rows leave the verdict incomplete"; 0 needs both clean.
+          let unobserved = length(xs: done.refused) + length(xs: done.unread)
+          let bad = length(xs: unrostered) + length(xs: stale) + length(xs: done.duplicates)
+          NativeNfrOutput {
+            lines: list_append(
+              left: [concat("[nfr-wildcard-census] files=", to_string(n: length(xs: ingest)), " wildcard_files=", to_string(n: length(xs: wild)), " excluded_test_layer=", to_string(n: excluded), " candidates=", to_string(n: length(xs: candidates)), " holders=", to_string(n: length(xs: holders)), " sites=", to_string(n: length(xs: done.site_keys)), " rows=", to_string(n: length(xs: done.row_keys)), " unrostered=", to_string(n: length(xs: unrostered)), " stale=", to_string(n: length(xs: stale)), " duplicates=", to_string(n: length(xs: done.duplicates)), " refused=", to_string(n: length(xs: done.refused)), " unread=", to_string(n: length(xs: done.unread)), " classified=", to_string(n: length(xs: done.classified)), " ambient_heads=", to_string(n: length(xs: done.ambient_list)), " unjudged_rows=", to_string(n: length(xs: unjudged)), " unjudged_expression=", to_string(n: native_nfr_count_of(xs: unjudged, want: "scrutinee-is-an-expression")), " unjudged_non_parameter=", to_string(n: native_nfr_count_of(xs: unjudged, want: "scrutinee-is-not-a-parameter")), " unjudged_ambient_head=", to_string(n: native_nfr_count_of(xs: unjudged, want: "ambient-head")), " unjudged_refused_file=", to_string(n: native_nfr_count_of(xs: unjudged, want: "refused-file")), " verified_rows=", to_string(n: length(xs: done.row_keys) - length(xs: unjudged) - length(xs: stale)))],
+              right: list_append(
+                left: fold_list(xs: unrostered, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unrostered ", k)) }),
+                right: list_append(
+                  left: fold_list(xs: stale, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] stale ", k)) }),
+                  right: list_append(
+                    left: fold_list(xs: done.duplicates, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] duplicate ", k)) }),
+                    right: list_append(
+                      left: fold_list(xs: done.refused, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] refused ", k)) }),
+                      right: list_append(
+                        left: fold_list(xs: done.unread, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] unread ", k)) }),
+                        right: list_append(
+                          left: fold_list(xs: done.classified, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] classified ", k)) }),
+                          right: fold_list(xs: done.ambient_list, empty: [], cons: fn(acc, k) { list_snoc_item(xs: acc, item: concat("[nfr-wildcard-census] ambient_head ", k)) })
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            ),
+            exit: if bad > 0 { 1 } else if unobserved + length(xs: unjudged) > 0 { 2 } else { 0 }
           }
       }
   }
@@ -7293,6 +7557,10 @@ fn census_obligation_modules(rows: List<CensusObligationRow>) -> List<String> {
 }
 
 data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "census_occurrence_from_locus" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "census_stage_behind_matches" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "native_census_at_locus" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "native_census_unbound_spelling" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
   FrontierRow { subject: PathSubject { path: "native_demand_occurrence_census_rows" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "native_demand_preparation_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "native_demand_prepared" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
@@ -7429,6 +7697,9 @@ fn native_census_verb_output(verb: NativeCensusVerbWord, ingest: SourceRootInges
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbDeclRef =>
       let o = native_decl_ref_census_output(ingest: ingest)
+      NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
+    CensusVerbNfrWildcard =>
+      let o = native_nfr_wildcard_census_output(ingest: ingest)
       NativeCensusVerbOutput { lines: o.lines, exit: o.exit }
     CensusVerbEffectPair =>
       let o = native_effect_pair_census_output(ingest: ingest)

@@ -1,5 +1,7 @@
 module gunbc.fleet.fleet_converge_plan
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.fleet.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -3375,3 +3377,7 @@ fn fleet_converge_observed_baseline_matches(
     Sha512Hash(_) => false
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "observed_baseline_families" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

@@ -1,5 +1,7 @@
 module gunbc.compute.compute_seat_ensure
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_dissolve_derived_variant_test, nfr_dissolve_owning_fold, nfr_reason_one_variant_projection, nfr_reason_variant_test_predicate, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse, UpsertClassification, ObservationVerdict, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.list { distinct_by_key }
@@ -482,3 +484,14 @@ fn compute_seat_discharge_all(instance: HostDashboardInstance, leases_dir: Strin
       }
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "compute_seat_classify" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "seat_discharge_pass_standing" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+  FrontierRow { subject: PathSubject { path: "seat_drop_own_lease" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "seat_granted_of" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "seat_outcome_is_red" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "seat_outcome_is_refused" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "seat_settle_lease" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "seat_stop_due" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+]

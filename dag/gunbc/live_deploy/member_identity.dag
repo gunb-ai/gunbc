@@ -1,5 +1,7 @@
 module gunbc.live_deploy.member_identity
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, Bool, List, Int, NonEmptyStr, CommitSha, HttpStatus }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest, HashAlgorithm, Sha256, Sha512 }
@@ -1060,3 +1062,7 @@ fn full_install_plan(roster: List<ConvergedMember>, target: ReleaseTarget) -> Re
     RepositorySharedPosture { path: _ } => AssertRepositorySharedPosture
   })
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "decide_member" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

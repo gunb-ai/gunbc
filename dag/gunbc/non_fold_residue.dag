@@ -36,6 +36,27 @@ data nfr_reason_binding_outcome_resolution_wildcard: String = "StructuralBinding
 
 data nfr_dissolve_binding_outcome_resolution_wildcard: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT: a declaration ref cannot name an arm that does not exist yet, and binding to a fabricated constructor is the DESIGN §3 fabricated-citation class. THE CAPABILITY: gunbc.namespace_cut.namespace_reference_derived_closure_admission ReferenceDerivedClosureAdmission gains an arm whose payload is the StructuralBindingResolution refusal cause — the six closed off-Resolved variants std.reference_binding_observation already distinguishes (StructuralBindingIndexTransportRefused, StructuralBindingIndexModulePathRefused, StructuralBindingIndexExposureRefused, StructuralBindingIndexAuthoredOrderRefused, StructuralBindingIndexDeclarationBucketRefused, StructuralBindingProductionRefused) — so a program matches the cause rather than option-absence. SUFFICIENT FOR: assess_reference_binding_observation routes each of those variants to a distinct assessment without Absent collapse, binding_outcome_from_resolution becomes a total match, and this row deletes with the wildcard. CONSUMERS ARE NOT LISTED HERE (DESIGN §6: name the instrument, never transcribe its output; DESIGN §3c: a declaration's consumers are already a fact of the namespace tree). The producer that re-derives the dependent set is v2.lens.module_impact_query DependentsOf over ModuleIdentity { name: gunbc.namespace_cut.namespace_reference_derived_closure_admission }. The v1 seed mirror of that same module is the emitted file whose path follows the module name (src/v1/stage0/src/gunbc_namespace_cut_namespace_reference_derived_closure_admission.rs); its dependents are that file's, not a second hand census.")
 
+data nfr_reason_variant_test_predicate: String = "variant-test predicate (R1): a match whose arms answer true/false (or none/Present) from the scrutinee's constructor alone, with at most a field condition on the one named arm, and one wildcard for every other constructor. Found unrostered by the row-to-wildcard identity measurement at main 8f00f69fd5b7 (fallback_arm_census_facts joined to the frontier union, Charter 3; measured once, not gated). The wildcard is what makes a newly added constructor answer the default silently; un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+
+data nfr_dissolve_derived_variant_test: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY, NOT AN ARTIFACT: a derived constructor test (`x is V`, realized from the closed coproduct's declared constructors through ConstructorTag promoted to std) is sufficient for each of these predicates to be authored as data over the declaration, so adding a constructor to the coproduct changes the predicate's answer correctly with no edit. SUFFICIENT FOR: the predicate body is that test (plus its field condition where one exists) and carries no wildcard; the row deletes with the wildcard.")
+
+data nfr_reason_one_variant_projection: String = "one-variant projection or pass-through: a match that extracts the payload of one constructor (or rewrites one or two constructors) and answers a default or the scrutinee itself through one wildcard for every other constructor. Found unrostered by the row-to-wildcard identity measurement at main 8f00f69fd5b7 (Charter 3; measured once, not gated). Each other constructor is absorbed into the default without being named; un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+
+data nfr_dissolve_derived_variant_projection: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: a derived per-constructor payload projection (an Optional-typed read of one constructor's declared field, derived from the coproduct declaration) is sufficient for a one-variant extraction to be authored as data, and a pass-through default is then an explicit total case rather than a wildcard. SUFFICIENT FOR: the function body reads through that projection or a total match and carries no wildcard; the row deletes with it.")
+
+data nfr_reason_wildcard_found_by_join_measurement: String = "a top-level wildcard arm over a closed coproduct found unrostered by the row-to-wildcard identity measurement at main 8f00f69fd5b7 (fallback_arm_census_facts joined to the frontier union, Charter 3; measured once, not gated). It is not a variant-test predicate or a one-variant projection: its wildcard absorbs several constructors into one answer inside a larger fold. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+
+data nfr_reason_scores_equal_ratio: String = "DELIBERATE, not structural: UnitCostScore equality is ratio equality (cost over accepted work, decided by two cross-multiplied unit_cost_beats comparisons that must both be false), so UnitCostScore { cost: 2, accepted: 1 } equals { cost: 4, accepted: 2 }. A derived structural == would answer false for those, so scores_equal does not dissolve to ==; its other arms (NetValueScore by micro count, UnboundedUnitCost with itself) and the off-constructor wildcards are the cross-constructor false cases"
+
+data nfr_dissolve_scores_equal_ratio: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: ValuedObjectiveScore declares its declared equality (a quotient/normalized key for UnitCostScore) so the score equality is the derived == over that declared key and scores_equal deletes with this row; or the incumbent comparison is totalized over a normalized score so equality is no longer asked of two unnormalized ratios")
+
+data nfr_reason_nat_keyed_lookup_table: String = "a Nat-keyed lookup table authored as a match: each arm is one header pin number from the cited Supermicro H11SSL manual and the wildcard answers Absent for a pin number the board does not have. The scrutinee is the open Nat domain, so the wildcard is the declared no-such-pin answer, not an absorbed constructor; found by the row-to-wildcard identity measurement at main 8f00f69fd5b7 (Charter 3; measured once, not gated) because the census treats Nat as a coproduct. Rostered in this layer because dag/extdeps/ subjects are coverage receipts, not facts of the observed upstream"
+
+data nfr_dissolve_nat_keyed_lookup_table: DissolutionCondition = unbound_dissolution(description: "THE TRIGGER IS A CAPABILITY: the pin table is authored as keyed data rows (pin number to signal, one row each) read by a keyed lookup that returns Absent for a missing key, so the board's pin map is rows and not a match; or the typed census classifies a Nat scrutinee as an open domain and no longer reports it")
+
+data nfr_reason_wildcard_landed_after_join_measurement: String = "a top-level wildcard arm over a closed coproduct found unrostered by the row-to-wildcard identity measurement re-run on the merge of main eed4a900e23e into the join-data branch (fallback_arm_census_facts joined to the frontier union; measured, not gated); it landed on main after the 8f00f69fd5b7 measurement. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+data nfr_reason_wildcard_found_by_native_census: String = "a top-level wildcard arm over a closed coproduct found unrostered by the native nfr-wildcard-census (gunbc test //gunbc/instruments:nfr-wildcard-census) over the roster union at the head of its first exact-head run. Un-migrated modeling (DESIGN section 6), rostered so the ratchet counts it"
+
 // Seed-mirrored subjects and extdeps coverage receipts: lists stay here.
 data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow {
@@ -77,5 +98,340 @@ data non_fold_residue_frontier: List<FrontierRow> = [
       subject: PathSubject { path: "src/v2/extdeps/languages/swift/rows.dag::swl_closure_is_inline" },
       reason: nfr_reason_typed_census_ca5ed1724b,
       dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/boards/supermicro_h11ssl.dag::supermicro_h11ssl_fan_pin" },
+      reason: nfr_reason_nat_keyed_lookup_table,
+      dissolution: nfr_dissolve_nat_keyed_lookup_table,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/boards/supermicro_h11ssl.dag::supermicro_h11ssl_jpw1_pin" },
+      reason: nfr_reason_nat_keyed_lookup_table,
+      dissolution: nfr_dissolve_nat_keyed_lookup_table,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/boards/supermicro_h11ssl.dag::supermicro_h11ssl_jpwr1_pin" },
+      reason: nfr_reason_nat_keyed_lookup_table,
+      dissolution: nfr_dissolve_nat_keyed_lookup_table,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/boards/supermicro_h11ssl.dag::supermicro_h11ssl_jpwr2_pin" },
+      reason: nfr_reason_nat_keyed_lookup_table,
+      dissolution: nfr_dissolve_nat_keyed_lookup_table,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/languages/rust/primitives.dag::rust_float_binding_for_representation" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/extdeps/tools/curl.dag::curl_exit_outcome" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/auth/gcp_iam_bootstrap_delta_route.dag::operation_step" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/auth/gcp_iam_bootstrap_journal.dag::journal_store_failure_text" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/claim_coverage_census_live.dag::claim_coverage_composed_standing" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/host_effect_realize.dag::live_deploy_preamble_injected_result" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag::fci1_runtime_state_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/fabric_ci_fci1_bounded_controls_actuator.dag::fci1_store_state_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/provisioning/altra_autoinstall_seed.dag::admit_altra_autoinstall_target" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_busy" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_drained" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_idle_listener" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::drain_class_is_unproven" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/electrical/carrier_phase.dag::is_phase_classified" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/product/p4261_carrier_layout.dag::unread_projection_gap" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_control_choose" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/eval.dag::eval_control_frame_if_agreeing" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/translate.dag::translate_algebra_finalize_at_node" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/swift_expr_door.dag::swift_expr_door_lower" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/extdeps/languages/swift_expr_door.dag::swift_expr_door_names" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/workflow/roster_import_sweep.dag::roster_control_edit_row_round_trip" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_subject_cause_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_terminals_equal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::listener_restart_refusal" },
+      reason: nfr_reason_wildcard_landed_after_join_measurement,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_cap_bracket.dag::holder_ledger_after_verdict" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_slot_cap_converge.dag::slot_cap_outcome_host_settled" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/verified_archive_install.dag::run_archive_commands" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/verified_archive_install.dag::publish_staged_tree_wet" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_safety_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/known_red_derivation.dag::known_red_ground_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/replica_incarnation.dag::after_host_facts" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::rejects_factory_default" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_root_refused" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_activation" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/supermicro_h11ssl_first_contact.dag::is_root_answered" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/machine_intake/bmc_recovery_route.dag::recovery_write_reset_arm" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/target_binding.dag::native_serve_probe_if_entry" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/workflow/roster_import_sweep.dag::roster_scope_exit_refuses" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/boot_medium_served_readback.dag::boot_medium_served_context_refused" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/host/boot_medium_served_readback.dag::boot_medium_served_readback" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/migration_kit.dag::reading_is_unbound" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/namespace_cut/migration_kit.dag::reading_is_bound_to" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::lexical_binder_standing_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/resolve.dag::occurrence_binding_equal" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw.dag::withdrawal_succeeded" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw.dag::restoration_succeeded" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/runner/runner_host_withdraw_record.dag::host_is_withdrawn" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::throughput_scoreable" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_experiment_identity.dag::serving_variant_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_image_capability_observation.dag::image_capability_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_maxq_fork_measurements.dag::fork_card_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_predictions.dag::prediction_id_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::weight_dtype_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_quant_matrix.dag::kv_dtype_eq" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/serving/flash_next_topology.dag::card_budget_from_measured_cell" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_holding" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "src/v2/compiler/module_acquisition.dag::acquisition_decided_held" },
+      reason: nfr_reason_wildcard_found_by_native_census,
+      dissolution: nfr_dissolve_owning_fold,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_pass" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_fixed_pass" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_retry_off" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_buffering_off" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_access_hook" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
+    },
+  FrontierRow {
+      subject: PathSubject { path: "dag/gunbc/instruments/router_proxy_falsifier.dag::is_log_hook" },
+      reason: nfr_reason_variant_test_predicate,
+      dissolution: nfr_dissolve_derived_variant_test,
     },
 ]

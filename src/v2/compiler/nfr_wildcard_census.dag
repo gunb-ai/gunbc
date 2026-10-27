@@ -1,0 +1,323 @@
+module v2.compiler.nfr_wildcard_census
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, length, list_at_optional, list_snoc_item }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.types { Bool, List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Arrow, Edge, Atom, Authored, Conj, ComputationNode, Disj, Instantiation, Match, MatchArmPatternEdge, Node, Positional, StructuralLabel, TypeNode, node_subtree_nodes, positional_child_target_nodes, symbol_lexeme }
+import v2.std.node_query { arrow_domain_named_param_bindings, find_arrow_body_child, find_binder_type, find_core_child, is_wildcard_pattern }
+import v2.compiler.decl_ref_census { ImportPair, field_target, pair_target, string_value, tag_path_text, last_segment }
+import v2.std.node_query { construct_field_edges }
+import v2.std.compilers.lexing {
+  TokenStream,
+}
+import v2.std.text { String }
+
+// THE NON-FOLD-RESIDUE WILDCARD CENSUS (a pure reader; the verb is v2.compiler.source_root_eval
+// `nfr-wildcard-census`). The population it reads is the set of SITES in a module's normalized tree:
+// a fn whose body holds a Match with a wildcard arm. Each is read as a Site (a plain variable naming a
+// parameter), a Classified match (an expression scrutinee, a local, a headless type) or an Unread refusal.
+// A site's parameter type head is the declaration whose closedness decides whether
+// the wildcard stands where a variant arm was available (the closed-coproduct test lives in the verb,
+// which owns the cross-module lookup). The join key of a site is its fn name; the module path
+// prefix is the verb's.
+
+// THE CANDIDATE QUESTION, ANSWERED ON TOKENS (review 86129): does this stream contain the wildcard arm
+// shape -- an underscore token immediately followed by a fat-arrow token? The DAG lexer spells a pattern
+// underscore as an IDENT token whose lexeme is exactly "_", and the arrow is its own fat-arrow token
+// (the same shapes the parse claims construct: v2.test.claim.parse.variant_field_lowering). The fold
+// carries the previous token's verdict, so the pair is read in one pass. Near-misses stay false: a
+// string literal's lexeme carries its quotes, an identifier like "_b" is a different lexeme, and
+// comments/whitespace never appear in the stream. A text prefilter on the two characters "_ =>" misses
+// `_=>`, `_  =>` and a line break before the arrow; token adjacency is spelling-independent, so this
+// cannot. Lives here (the pure reader) so the claim file and the verb import the SAME decision.
+type NfrWildcardArmScan {
+  pending_underscore: Bool
+  found_arm: Bool
+}
+
+fn nfr_wildcard_arm_in_tokens(stream: TokenStream) -> Bool {
+  fold_list(
+    xs: stream.all,
+    empty: NfrWildcardArmScan { pending_underscore: false, found_arm: false },
+    cons: fn(acc, t) {
+      if acc.found_arm { acc }
+      else if acc.pending_underscore {
+        NfrWildcardArmScan { pending_underscore: false, found_arm: (t.class == ^dag_token_fat_arrow) }
+      } else {
+        NfrWildcardArmScan { pending_underscore: (t.class == ^dag_token_ident) && (t.lexeme == "_"), found_arm: false }
+      }
+    }
+  ).found_arm
+}
+
+// The head spelling of a parameter's declared type: an atom, or the head of an instantiation.
+// Anything else (a qualified Conj spine, an arrow) has no bare head and is Absent, which the verb counts.
+fn type_head_optional(t: Node) -> Optional<String> {
+  match t.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
+    TypeNode { connective: Instantiation } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: t), index: 0) {
+        Present { value: h } => type_head_optional(t: h)
+        Absent => optional_absent()
+      }
+    _ => optional_absent()
+  }
+}
+
+type ParamHead {
+  name: String
+  head: Optional<String>
+  type_read: Bool
+}
+
+// Absent when the arrow's parameters cannot be read: the caller refuses rather than reading "no parameters".
+// A fn with no parameters has an empty Conj domain, which the owning accessor refuses as malformed
+// (arrow_domain_named_param_bindings answers Rejected for zero bindings). That refusal is the accessor's
+// statement that it has no binding to return, not that the arrow is unreadable, so a zero-arity arrow is
+// read here as the empty parameter list it is; every other Rejected stays Absent and is counted Unread.
+fn arrow_domain_is_empty_conj(arrow: Node) -> Bool {
+  match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+    Present { value: domain } =>
+      match domain.kind {
+        TypeNode { connective: Conj } => is_empty(xs: domain.children)
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn param_heads_optional(arrow: Node) -> Optional<List<ParamHead>> {
+  match arrow_domain_named_param_bindings(arrow: arrow) {
+    Rejected { diagnostics: _ } => if arrow_domain_is_empty_conj(arrow: arrow) { optional_present(value: Empty) } else { optional_absent() }
+    Accepted { value: names, diagnostics: _ } =>
+      match list_at_optional(xs: positional_child_target_nodes(node: arrow), index: 0) {
+        Absent => optional_absent()
+        Present { value: domain } =>
+          optional_present(value: fold(names, init: [], f: fn(acc, nm) {
+              list_snoc_item(xs: acc, item: match find_binder_type(root: domain, name: nm) {
+                Accepted { value: t, diagnostics: _ } => ParamHead { name: symbol_lexeme(sym: nm), head: type_head_optional(t: t), type_read: true }
+                Rejected { diagnostics: _ } => ParamHead { name: symbol_lexeme(sym: nm), head: optional_absent(), type_read: false }
+              })
+            }))
+      }
+  }
+}
+
+fn arm_is_wildcard(arm: Node) -> Bool {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Accepted { value: pat, diagnostics: _ } => is_wildcard_pattern(pattern: pat)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn match_has_wildcard_arm(m: Node) -> Bool {
+  fold(positional_child_target_nodes(node: m), init: false, f: fn(acc, c) { acc || arm_is_wildcard(arm: c) })
+}
+
+// What a Match scrutinee is: a plain variable (its name), a larger expression, or missing altogether.
+type Scrutinee =
+  | ScrutineeVariable { name: String }
+  | ScrutineeExpression
+  | ScrutineeMissing
+
+fn scrutinee_read(m: Node) -> Scrutinee {
+  match list_at_optional(xs: positional_child_target_nodes(node: m), index: 0) {
+    Absent => ScrutineeMissing
+    Present { value: s } =>
+      match s.kind {
+        TypeNode { connective: Atom { identity: id } } => ScrutineeVariable { name: symbol_lexeme(sym: id) }
+        _ => ScrutineeExpression
+      }
+  }
+}
+
+fn match_node_is(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: Match } => true
+    _ => false
+  }
+}
+
+// The reading of one wildcard Match, or of one fn the census could not read. NOTHING is dropped without
+// a trace: a Site is a parameter wildcard to judge; a Classified match is read and is not a parameter
+// wildcard (counted by cause); an Unread is a refusal located at the fn (cause plus fn), and the verb
+// exits non-zero on any.
+type SiteRead =
+  | Site { fn_name: String, type_head: String }
+  | Classified { fn_name: String, cause: String }
+  | Unread { fn_name: String, cause: String }
+
+fn site_read_one(fn_name: String, params: List<ParamHead>, m: Node) -> List<SiteRead> {
+  match scrutinee_read(m: m) {
+    ScrutineeMissing => [Unread { fn_name: fn_name, cause: "match-without-scrutinee" }]
+    ScrutineeExpression => [Classified { fn_name: fn_name, cause: "scrutinee-is-an-expression" }]
+    ScrutineeVariable { name: s } =>
+      match find_param_head(params: params, name: s) {
+        Absent => [Classified { fn_name: fn_name, cause: "scrutinee-is-not-a-parameter" }]
+        Present { value: p } =>
+          if p.type_read == false {
+            [Unread { fn_name: fn_name, cause: "parameter-type-unreadable" }]
+          } else {
+            match p.head {
+              Present { value: h } => [Site { fn_name: fn_name, type_head: h }]
+              Absent => [Classified { fn_name: fn_name, cause: "parameter-type-has-no-head" }]
+            }
+          }
+      }
+  }
+}
+
+fn find_param_head(params: List<ParamHead>, name: String) -> Optional<ParamHead> {
+  fold(params, init: optional_absent(), f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if p.name == name { optional_present(value: p) } else { optional_absent() }
+    }
+  })
+}
+
+// One reading per wildcard Match under the member. The member is judged only when it holds a wildcard
+// Match (an arrow TYPE alias holds none, so it is never refused); then its body and parameters must
+// read, or the fn is an Unread refusal rather than "no site".
+fn fn_site_reads(fn_name: String, arrow: Node) -> List<SiteRead> {
+  let matches = fold(node_subtree_nodes(root: arrow), init: [], f: fn(acc, n) {
+    if match_node_is(n: n) && match_has_wildcard_arm(m: n) { list_snoc_item(xs: acc, item: n) } else { acc }
+  })
+  if is_empty(xs: matches) {
+    []
+  } else {
+    match find_arrow_body_child(root: arrow) {
+      Rejected { diagnostics: _ } => [Unread { fn_name: fn_name, cause: "body-unfindable" }]
+      Accepted { value: _, diagnostics: _ } =>
+        match param_heads_optional(arrow: arrow) {
+          Absent => [Unread { fn_name: fn_name, cause: "parameters-unreadable" }]
+          Present { value: params } =>
+            fold(matches, init: [], f: fn(acc, m) {
+              fold(site_read_one(fn_name: fn_name, params: params, m: m), init: acc, f: fn(a2, r) { list_snoc_item(xs: a2, item: r) })
+            })
+        }
+    }
+  }
+}
+
+fn node_is_arrow(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Arrow } => true
+    _ => false
+  }
+}
+
+fn node_member_edges(root: Node) -> List<Edge> {
+  fold(node_subtree_nodes(root: root), init: [], f: fn(acc, n) {
+    fold(n.children, init: acc, f: fn(a2, e) { list_snoc_item(xs: a2, item: e) })
+  })
+}
+
+fn root_member_reads(root: Node) -> List<SiteRead> {
+  fold(node_member_edges(root: root), init: [], f: fn(acc, e) {
+      match e.label {
+        Authored { name: sym } =>
+          if node_is_arrow(n: e.target) {
+            fold(fn_site_reads(fn_name: symbol_lexeme(sym: sym), arrow: e.target), init: acc, f: fn(a2, s) { list_snoc_item(xs: a2, item: s) })
+          } else {
+            acc
+          }
+        Positional => acc
+        StructuralLabel { label: _ } => acc
+      }
+  })
+}
+
+// A type member is a closed coproduct when its declaration subtree holds a Disj.
+fn member_is_coproduct(target: Node) -> Bool {
+  fold(node_subtree_nodes(root: target), init: false, f: fn(acc, n) {
+      acc || (match n.kind {
+        TypeNode { connective: Disj } => true
+        _ => false
+      })
+  })
+}
+
+fn declares_coproduct_named(root: Node, name: String) -> Bool {
+  fold(node_member_edges(root: root), init: false, f: fn(acc, e) {
+      acc || (match e.label {
+        Authored { name: sym } => symbol_lexeme(sym: sym) == name && (node_is_arrow(n: e.target) == false) && member_is_coproduct(target: e.target)
+        Positional => false
+        StructuralLabel { label: _ } => false
+      })
+  })
+}
+
+// The module a head denotes under the module's import rows: the binding's target is the declaration's
+// qualified path, so its module is everything before the last segment. Absent when no row binds the head.
+fn head_module_optional(pairs: List<ImportPair>, head: String) -> Optional<String> {
+  match pair_target(pairs: pairs, binding: head) {
+    Absent => optional_absent()
+    Present { value: target } =>
+      optional_present(value: target.substring(start: 0, end: target.length() - last_segment(spelling: target).length() - 1))
+  }
+}
+
+// ROSTER ROWS. A row's subject is a PathSubject construct inside the module's own
+// `data non_fold_residue_frontier` item; the host file is the prefix of a bare symbol, so the join key
+// of a row is "<file>::<symbol>" for a bare subject and the subject itself when it already carries one.
+// An `#armN` suffix names an arm and is dropped: the site is the fn.
+data frontier_data_name: String = "non_fold_residue_frontier"
+
+data path_subject_spelling: String = "PathSubject"
+
+fn subject_join_key(file: String, path: String) -> String {
+  let base = match list_at_optional(xs: path.split(delimiter: "#"), index: 0) {
+    Present { value: b } => b
+    Absent => path
+  }
+  if length(xs: base.split(delimiter: "::")) > 1 { base } else { concat(file, "::", base) }
+}
+
+fn path_subject_paths(n: Node, acc: List<String>) -> List<String> {
+  let here = match tag_path_text(n: n) {
+    Present { value: p } =>
+      if last_segment(spelling: p) == path_subject_spelling {
+        match string_value(n: field_target(n: n, name: "path")) {
+          Present { value: v } => list_snoc_item(xs: acc, item: v)
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) { path_subject_paths(n: e.target, acc: a) })
+}
+
+fn frontier_member_targets(root: Node) -> List<Node> {
+  fold(node_member_edges(root: root), init: [], f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => if symbol_lexeme(sym: sym) == frontier_data_name { list_snoc_item(xs: acc, item: e.target) } else { acc }
+      Positional => acc
+      StructuralLabel { label: _ } => acc
+    }
+  })
+}
+
+// Every join key the module's frontier item names, in authored order (duplicates kept: the verb refuses them).
+fn roster_join_keys(file: String, root: Node) -> List<String> {
+  fold(frontier_member_targets(root: root), init: [], f: fn(acc, t) {
+    fold(path_subject_paths(n: t, acc: []), init: acc, f: fn(a, p) { list_snoc_item(xs: a, item: subject_join_key(file: file, path: p)) })
+  })
+}
+
+fn site_join_key(file: String, fn_name: String) -> String {
+  concat(file, "::", fn_name)
+}
+
+fn declares_member_named(root: Node, name: String) -> Bool {
+  fold(node_member_edges(root: root), init: false, f: fn(acc, e) {
+    acc || (match e.label {
+      Authored { name: sym } => symbol_lexeme(sym: sym) == name && (node_is_arrow(n: e.target) == false)
+      Positional => false
+      StructuralLabel { label: _ } => false
+    })
+  })
+}

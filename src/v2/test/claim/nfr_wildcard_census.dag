@@ -1,0 +1,227 @@
+module v2.test.claim.nfr_wildcard_census
+
+import std.algebra { fold_list, list_at_optional, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.types { List }
+import v2.compiler.decl_ref_census { ImportPair }
+import v2.compiler.nfr_wildcard_census { Classified, Site, SiteRead, Unread, declares_coproduct_named, head_module_optional, nfr_wildcard_arm_in_tokens, roster_join_keys, root_member_reads, site_join_key }
+import v2.compiler.normalize { normalize }
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.compiler.parse { parse_module_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.compilers.lexing {
+  Token,
+  TokenStream,
+  token_stream_new,
+}
+import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUBJECT: v2.compiler.nfr_wildcard_census over a module's normalized tree. BOUNDARY: source text in,
+// normalized tree out (the tokenize, prepared-grammar parse and normalize the native route runs), so the
+// input is supplied text and the lexer, parser and normalize still execute. The inhabitance claim for the
+// real corpus is the native `nfr-wildcard-census` run recorded on the PR.
+
+fn nfr_normalized(text: String) -> Outcome<NormalizedTree> {
+  match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: "test/nfr.dag"), prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: stream, diagnostics: _ } =>
+      match dag_prepared_grammar() {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: _ } =>
+          match parse_module_prepared(tokens: stream, prepared: prepared) {
+            Rejected { diagnostics: d } => Rejected { diagnostics: d }
+            Accepted { value: artifact, diagnostics: _ } => normalize(parse_tree: artifact.tree)
+          }
+      }
+  }
+}
+
+data nfr_src: String = "module m.t\n\ntype C = A | B\n\ntype R { x: Int }\n\nfn pick(c: C, n: Int) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn closed(c: C) -> Int {\n  match c {\n    A => 1\n    B => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  match n {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+fn nfr_reads_of(text: String) -> List<SiteRead> {
+  match nfr_normalized(text: text) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => root_member_reads(root: nt.root)
+  }
+}
+
+fn nfr_count_sites(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc + 1  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_classified(reads: List<SiteRead>, want: String) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: c } => if c == want { acc + 1 } else { acc }  Unread { fn_name: _, cause: _ } => acc } })
+}
+
+fn nfr_count_unread(reads: List<SiteRead>) -> Int {
+  fold_list(xs: reads, empty: 0, cons: fn(acc, r) { match r { Site { fn_name: _, type_head: _ } => acc  Classified { fn_name: _, cause: _ } => acc  Unread { fn_name: _, cause: _ } => acc + 1 } })
+}
+
+test fn nfr_census_finds_the_wildcard_site_on_a_parameter() -> Bool {
+  nfr_count_sites(reads: nfr_reads_of(text: nfr_src)) == 2
+}
+
+test fn nfr_census_site_is_the_param_fn_and_head() -> Bool {
+  match list_at_optional(xs: nfr_reads_of(text: nfr_src), index: 0) {
+    Present { value: Site { fn_name: f, type_head: h } } => f == "pick" && h == "C"
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+// RED for the dropped-without-a-trace class: a wildcard Match whose scrutinee is an expression, and one
+// over a local rather than a parameter, are each READ and counted by cause, never skipped; and a fully
+// readable source has no Unread.
+data nfr_classify_src: String = "module m.k\n\nfn expr(n: Int) -> Int {\n  match n + 1 {\n    1 => 1\n    _ => 0\n  }\n}\n\nfn local(n: Int) -> Int {\n  let k = n\n  match k {\n    1 => 1\n    _ => 0\n  }\n}\n"
+
+test fn nfr_expression_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-an-expression") == 1
+}
+
+test fn nfr_local_scrutinee_is_classified_not_skipped() -> Bool {
+  nfr_count_classified(reads: nfr_reads_of(text: nfr_classify_src), want: "scrutinee-is-not-a-parameter") == 1
+}
+
+test fn nfr_readable_source_has_no_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_classify_src)) == 0 && nfr_count_unread(reads: nfr_reads_of(text: nfr_src)) == 0
+}
+
+test fn nfr_census_coproduct_declared_in_module() -> Bool {
+  match nfr_normalized(text: nfr_src) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: nt, diagnostics: _ } =>
+      declares_coproduct_named(root: nt.root, name: "C") && (declares_coproduct_named(root: nt.root, name: "R") == false)
+  }
+}
+
+data nfr_roster_src: String = "module m.r\n\nimport std.roster_frontier { FrontierRow, PathSubject }\n\ndata non_fold_residue_frontier: List<FrontierRow> = [\n  FrontierRow { subject: PathSubject { path: \"pick\" }, reason: \"r\", dissolution: d },\n  FrontierRow { subject: PathSubject { path: \"dag/x.dag::other#arm2\" }, reason: \"r\", dissolution: d }\n]\n"
+
+fn nfr_roster_keys() -> List<String> {
+  match nfr_normalized(text: nfr_roster_src) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: nt, diagnostics: _ } => roster_join_keys(file: "dag/m/r.dag", root: nt.root)
+  }
+}
+
+test fn nfr_roster_bare_subject_takes_the_host_file_prefix() -> Bool {
+  match list_at_optional(xs: nfr_roster_keys(), index: 0) {
+    Present { value: k } => k == "dag/m/r.dag::pick"
+    Absent => false
+  }
+}
+
+test fn nfr_roster_qualified_subject_keeps_its_file_and_drops_the_arm() -> Bool {
+  (count(nfr_roster_keys()) == 2) && (match list_at_optional(xs: nfr_roster_keys(), index: 1) {
+    Present { value: k } => k == "dag/x.dag::other"
+    Absent => false
+  })
+}
+
+test fn nfr_head_module_is_the_import_target_minus_the_declaration() -> Bool {
+  match head_module_optional(pairs: [ImportPair { binding: "Optional", target: "std.optional.Optional" }], head: "Optional") {
+    Present { value: m } => m == "std.optional"
+    Absent => false
+  }
+}
+
+test fn nfr_unbound_head_has_no_module() -> Bool {
+  match head_module_optional(pairs: [], head: "Optional") {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+test fn nfr_site_key_joins_file_and_fn() -> Bool {
+  site_join_key(file: "dag/m/r.dag", fn_name: "pick") == "dag/m/r.dag::pick"
+}
+
+data nfr_zero_arity_src: String = "module m.z\n\ntype C = A | B\n\nfn pick() -> C {\n  A\n}\n\nfn zero() -> Int {\n  match pick() {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+// A fn with no parameters is read, not unread: its empty Conj domain is the accessor's "no binding", and the
+// scrutinee (necessarily not a parameter) is classified. Before the fix this was Unread parameters-unreadable
+// (8 production fns at the first exact-head run); the RED is that Unread count being 1.
+test fn nfr_zero_arity_fn_is_classified_not_unread() -> Bool {
+  nfr_count_unread(reads: nfr_reads_of(text: nfr_zero_arity_src)) == 0 && nfr_count_classified(reads: nfr_reads_of(text: nfr_zero_arity_src), want: "scrutinee-is-an-expression") == 1
+}
+
+// --- REVIEW 86129: THE CANDIDATE SELECTION IS ON THE LEXED TOKEN STREAM, NOT THE TEXT SPELLING ---
+
+// THE DETECTOR, tested directly. The token shapes are spelled exactly as the lexer emits them
+// (compare v2.test.claim.parse.variant_field_lowering): a pattern underscore is an IDENT token whose
+// lexeme is exactly "_"; the arrow is its own fat-arrow token.
+
+data nfr_tok_arrow: Token = Token { class: ^dag_token_fat_arrow, lexeme: "=>", file: ^nfr_probe, start: 0, end: 2 }
+
+fn nfr_tok_ident(lexeme: String, start: Int) -> Token {
+  Token { class: ^dag_token_ident, lexeme: lexeme, file: ^nfr_probe, start: start, end: start + 1 }
+}
+
+data nfr_probe: Symbol = ^nfr_wildcard_arm_probe
+
+test fn nfr_wildcard_arm_detector_accepts_the_adjacent_pair() -> Bool {
+  nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "c", start: 0), nfr_tok_ident(lexeme: "_", start: 1), nfr_tok_arrow, nfr_tok_ident(lexeme: "none", start: 2)]))
+}
+
+// The text-spelling bug, as a token-level RED: the arm `_=>` produces the SAME token pair (trivia is
+// dropped by the lexer), so a spelling-based prefilter and a token-based one must agree here -- and only
+// the token one can, because the odd spellings below hold no "_" " " "=>" text run at all.
+test fn nfr_wildcard_arm_detector_negatives() -> Bool {
+  (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_b", start: 0), nfr_tok_arrow])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_", start: 0), nfr_tok_ident(lexeme: "=>x", start: 1)])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [nfr_tok_ident(lexeme: "_", start: 0), nfr_tok_ident(lexeme: "then", start: 1), nfr_tok_arrow])) == false)
+    && (nfr_wildcard_arm_in_tokens(stream: token_stream_new(all: [])) == false)
+}
+
+// THE RED (fixture): a PRODUCTION-shape source whose wildcard arm is spelled with no spaces (`_=>none`)
+// and whose second arm breaks the line before the arrow. The old candidate prefilter asked the text for
+// "_ =>"; neither spelling contains it, so the file was never a candidate, the sites were never counted,
+// and the census still printed unrostered=0. Both fns take a CLOSED COPRODUCT (`c: C`), so each is a
+// SITE -- exactly what the census must count. The RED is either count reading 0.
+data nfr_odd_spelling_src: String = "module m.odd\n\ntype C = A | B\n\nfn squeeze(c: C) -> Int {\n  match c {\n    A => 1\n    _=>0\n  }\n}\n\nfn wrapped(c: C) -> Int {\n  match c {\n    A => 1\n    _\n      => 0\n  }\n}\n"
+
+test fn nfr_odd_spelling_wildcard_arms_are_sites_not_silent_drops() -> Bool {
+  (nfr_count_sites(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == 2) && (nfr_count_unread(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == 0)
+}
+
+// THE POSITIVE CONTROL: the canonically spelled twin of the fixture above counts the SAME two sites, so
+// the odd-spelling claim above measures the SPELLING, not a different program. This is also the guard on
+// the fixture: if someone reformats the fixture to the canonical spelling, this claim still passes while
+// the RED above stops distinguishing anything -- so the fixture's odd spellings are pinned textually:
+// the odd source must not contain the canonical "_ =>" run anywhere.
+data nfr_canonical_twin_src: String = "module m.odd\n\ntype C = A | B\n\nfn squeeze(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n\nfn wrapped(c: C) -> Int {\n  match c {\n    A => 1\n    _ => 0\n  }\n}\n"
+
+test fn nfr_odd_spelling_fixture_is_the_same_program_as_the_canonical_twin() -> Bool {
+  (nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)) == 2)
+    && (nfr_count_sites(reads: nfr_reads_of(text: nfr_odd_spelling_src)) == nfr_count_sites(reads: nfr_reads_of(text: nfr_canonical_twin_src)))
+    && (string_contains(s: nfr_odd_spelling_src, pattern: "_ =>") == false)
+}
+
+// THE DISCRIMINATOR, on the production path. `nfr_candidate_is_produced` is the verb's own candidate
+// decision re-expressed here from the SAME exported predicate the verb imports
+// (v2.compiler.nfr_wildcard_census nfr_wildcard_arm_in_tokens) over the REAL DAG lexer
+// (v2.compiler.program_assembly dag_prepared_lex): a file is a candidate when its token stream holds the
+// wildcard arm pair, and a file that fails to lex is a candidate too (it then reaches the scan and lands
+// in `refused`, which is counted -- a silent drop would not be). The claim pins the two decisions apart on
+// the odd-spelling fixture: the TOKEN decision says candidate, the old TEXT decision (`string_contains
+// "_ =>"`, the prefilter review 86129 rejected) says not -- so a census that follows the tokens cannot
+// share the text prefilter's silent drop. On the canonical twin the two decisions agree, which keeps this
+// claim from passing for a vacuous reason (if the fixtures ever stop differing, the second line fails).
+fn nfr_candidate_is_produced(producer: String) -> Bool {
+  match tokenize_prepared(text: producer, file: ^nfr_wildcard_arm_probe, prepared: dag_prepared_lex()) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: stream, diagnostics: _ } => nfr_wildcard_arm_in_tokens(stream: stream)
+  }
+}
+
+test fn nfr_odd_spelling_candidate_decision_discriminates_the_text_prefilter() -> Bool {
+  nfr_candidate_is_produced(producer: nfr_odd_spelling_src)
+    && (string_contains(s: nfr_odd_spelling_src, pattern: "_ =>") == false)
+    && nfr_candidate_is_produced(producer: nfr_canonical_twin_src)
+    && string_contains(s: nfr_canonical_twin_src, pattern: "_ =>")
+}

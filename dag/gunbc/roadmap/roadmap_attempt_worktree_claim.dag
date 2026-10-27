@@ -1,5 +1,7 @@
 module gunbc.roadmap.roadmap_attempt_worktree_claim
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, Bool, List, NonEmptyStr, EpochSecs }
 import std.upsert_decision { ObservationVerdict, Noop, Apply, Refuse, UpsertClassification, Converged, Drifted, Inaccessible, UnknownRefused }
 import std.decl_ref { decl_ref }
@@ -549,3 +551,7 @@ fn worktree_claim_outcome_is_red(o: WorktreeClaimOutcome) -> Bool {
     WorktreeClaimKept { subject: _, reason: _ } => false
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "worktree_claim_worker_standing" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

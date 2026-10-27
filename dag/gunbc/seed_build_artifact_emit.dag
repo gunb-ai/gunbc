@@ -1,5 +1,7 @@
 module gunbc.seed_build_artifact_emit
 
+import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { List, String }
 import gunbc.generated_artifact {
   GeneratedArtifact, CargoConfigArtifact,
@@ -82,3 +84,7 @@ fn seed_build_artifact_body(a: GeneratedArtifact) -> SeedBuildArtifactBody {
     _ => SeedBuildArtifactNotSeedBuild
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "seed_build_artifact_body" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]

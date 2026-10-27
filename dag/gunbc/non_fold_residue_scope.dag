@@ -1,0 +1,23 @@
+module gunbc.non_fold_residue_scope
+
+import std.types { List }
+import v2.std.text { String }
+
+// WHICH FILES THE NON-FOLD-RESIDUE WILDCARD CENSUS READS (consumed by the `nfr-wildcard-census` verb,
+// v2.compiler.source_root_eval). The roster (gunbc.non_fold_residue and the `non_fold_residue_frontier`
+// lists beside the sites) dispositions PRODUCTION wildcard arms; a test layer is a fixture population
+// whose wildcard arms are not a design residue, so it is excluded by this typed predicate and the verb
+// prints how many files it excluded rather than hiding them.
+type NfrFileScope
+  = NfrProductionScope
+  | NfrTestLayerExcluded
+
+data nfr_test_layer_prefixes: List<String> = ["dag/test/", "src/v2/test/"]
+
+fn nfr_file_scope(path: String) -> NfrFileScope {
+  if fold(nfr_test_layer_prefixes, init: false, f: fn(acc, p) { acc || starts_with(s: path, prefix: p) }) {
+    NfrTestLayerExcluded
+  } else {
+    NfrProductionScope
+  }
+}

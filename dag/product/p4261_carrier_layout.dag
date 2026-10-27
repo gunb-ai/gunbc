@@ -1,5 +1,7 @@
 module product.p4261_carrier_layout
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_test, nfr_reason_variant_test_predicate }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, nat_min }
 import std.measure { Volt, Ampere, Micrometer, volt, ampere, micrometer, volt_count, micrometer_count, milliampere, millivolt, millivolt_count }
@@ -4502,3 +4504,8 @@ fn edge_connector_text(layout: CarrierLayoutObservation) -> String {
     ], "")
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "is_operator_photograph" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "is_received_label" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+]

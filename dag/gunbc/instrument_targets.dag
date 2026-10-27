@@ -6,7 +6,7 @@ import gunbc.native_serve_probe_plan {
   NativeServeProbe, NativeServePhase, NativeServePeerInstance, NativeServeRefusedLaunch, NativeServeStuckCeilingExit,
   native_serve_phase_names, native_serve_declares_peer, native_serve_declares_refused_launch, native_serve_declares_stuck_ceiling_exit,
 }
-import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbEffectPair }
+import gunbc.native_census_verb { CensusVerbDemand, CensusVerbDeclRef, CensusVerbNfrWildcard, CensusVerbEffectPair }
 import gunbc.target_binding {
   TargetBinding,
   BehavioralReceiptPlanProducer, BehavioralReceiptCensusProducer,
@@ -731,6 +731,15 @@ fn decl_ref_census_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "decl-ref-census" } }
 }
 
+// THE NON-FOLD-RESIDUE WILDCARD CENSUS (v2.compiler.source_root_eval native_nfr_wildcard_census_output,
+// the emitted compiler's `nfr-wildcard-census` verb): every production fn with a wildcard arm over a
+// closed-coproduct parameter must be a row of a `non_fold_residue_frontier` list, and every row must name
+// one; exit 1 on an unrostered site, a stale or duplicate row. An executed, re-derivable instrument, NOT
+// a required gate. `gunbc test //gunbc/instruments:nfr-wildcard-census`.
+fn nfr_wildcard_census_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "nfr-wildcard-census" } }
+}
+
 // THE EFFECT-PAIR CENSUS (gunbc.plans.demand_engine_program D16 TRIGGER; v2.compiler.source_root_eval
 // native_effect_pair_census_output, the emitted compiler's `effect-pair-census` verb): per function body,
 // every pair of effect-reaching call occurrences with no derived ordering (value use or Branch/Match
@@ -888,6 +897,10 @@ fn dependency_demand_census_binding() -> TargetBinding {
 
 fn decl_ref_census_binding() -> TargetBinding {
   TargetBinding { target: decl_ref_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbDeclRef } }
+}
+
+fn nfr_wildcard_census_binding() -> TargetBinding {
+  TargetBinding { target: nfr_wildcard_census_label() producer: NativeCensusVerbProducer { verb: CensusVerbNfrWildcard } }
 }
 
 fn effect_pair_census_binding() -> TargetBinding {
@@ -1474,7 +1487,7 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), nfr_wildcard_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
@@ -1497,7 +1510,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), nfr_wildcard_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),

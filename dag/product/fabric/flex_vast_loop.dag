@@ -1,5 +1,7 @@
 module product.fabric.flex_vast_loop
 
+import gunbc.non_fold_residue { nfr_dissolve_derived_variant_projection, nfr_dissolve_derived_variant_test, nfr_dissolve_owning_fold, nfr_reason_one_variant_projection, nfr_reason_variant_test_predicate, nfr_reason_wildcard_found_by_join_measurement }
+import std.roster_frontier { FrontierRow, PathSubject }
 import std.types { String, NonEmptyStr, Bool, Int, List, Secret, EpochMs }
 import std.optional { Present, Absent }
 import std.resources { Network }
@@ -817,3 +819,12 @@ fn flex_pass_outcome_wire(outcome: FlexPassOutcome) -> String {
       concat("released destroy=", match d { Present { value: s } => s Absent => "not-performed" })
   }
 }
+
+data non_fold_residue_frontier: List<FrontierRow> = [
+  FrontierRow { subject: PathSubject { path: "flex_admitted_bid" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "flex_created_outcome" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "flex_outcome_without_write" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "flex_quote_wall" }, reason: nfr_reason_variant_test_predicate, dissolution: nfr_dissolve_derived_variant_test },
+  FrontierRow { subject: PathSubject { path: "flex_reconciled_allocation" }, reason: nfr_reason_one_variant_projection, dissolution: nfr_dissolve_derived_variant_projection },
+  FrontierRow { subject: PathSubject { path: "flex_spent" }, reason: nfr_reason_wildcard_found_by_join_measurement, dissolution: nfr_dissolve_owning_fold },
+]
