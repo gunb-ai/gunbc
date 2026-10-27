@@ -15,10 +15,31 @@ import std.optional {Present, Absent}
 // A gap enters this corpus ONE OF TWO WAYS: it was measured, with the two points named, or it needs
 // measuring and carries the obligation to do so. There is no third way -- a remembered number with no
 // instrument, no date and no named points is a guess wearing a unit, and the duct model refuses it.
+//
+// What sits INSIDE the measured way is not one thing either, and the two standings are two different
+// speech acts. `EstimatedByOperator` is a guess at what the gap IS ("probably at least 40").
+// `DeclaredConservativeByOperator` is not a guess at anything: it is a number the operator AUTHORS as a
+// working limit, quoting the rough reading it comes from and saying which way it errs. "its like 73mm
+// but i want to be conservative" does not report a 70 mm gap; it rules that the design may spend 70.
+// The bound is not a measurement of the world and does not pretend to be one, so the caliper standing
+// is not its standing either -- but it IS the operator's own word about what the design may spend, and
+// a design may be admitted on a ruling the owner of the chassis gave. Printing on it is still refused
+// (gap_may_be_printed_on), because a print commits the chassis to a shape.
 
 type ChassisGapStanding
   = CaliperByOperator { instrument: NonEmptyStr, date: NonEmptyStr, positions: NonEmptyStr }
   | EstimatedByOperator { bound: Micrometer, date: NonEmptyStr, positions: NonEmptyStr, bound_is: NonEmptyStr }
+  // The operator's own conservative limit, authored rather than read. `reading` is what they say it is
+  // "like", offered as rough, and is Absent when they gave no reading at all -- only the word that
+  // there is more than enough. Neither this nor its reading is a caliper reading or a receipt.
+  | DeclaredConservativeByOperator {
+      bound: Micrometer,
+      reading: Micrometer?,
+      date: NonEmptyStr,
+      positions: NonEmptyStr,
+      basis: NonEmptyStr,
+      does_not_settle: NonEmptyStr,
+    }
 
 type ChassisGap
   = Measured { name: NonEmptyStr, from_point: NonEmptyStr, to_point: NonEmptyStr, distance: Micrometer, standing: ChassisGapStanding }
@@ -46,7 +67,33 @@ fn gap_is_estimate(g: ChassisGap) -> Bool {
   match g {
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => true
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => false
+    // Not an estimate of what the gap is: a limit the operator authored. It is not re-read as an
+    // estimate would be, because there is no claim about the world to confirm -- only a spend the
+    // operator allowed, and the allowance is used by asking whether the route needs less than it.
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+// The gap a route is measured against, and which way it errs: Present for the two operator standings
+// that carry a limit the design may be measured against directly (a spoken estimate's bound, or an
+// authored conservative bound), Absent for a caliper reading, which is a fact about the chassis rather
+// than a limit the operator set. The route model uses this to tell "the chassis is smaller than you
+// thought" apart from "the operator let you spend this much".
+fn gap_declared_bound(g: ChassisGap) -> Micrometer? {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: b, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => Present { value: b }
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: b, date: _, positions: _, bound_is: _}} => Present { value: b }
+    _ => Absent
+  }
+}
+
+// A declared bound is the operator's own words, not a reading; a route admitted on one must say so with
+// them, so the reader can see the ruling the shape was admitted on.
+fn gap_declared_basis(g: ChassisGap) -> NonEmptyStr? {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: b, does_not_settle: _}} => Present { value: b }
+    _ => Absent
   }
 }
 
@@ -56,6 +103,9 @@ fn gap_may_be_printed_on(g: ChassisGap) -> Bool {
   match g {
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
+    // A declared bound admits a route and still refuses a print. The operator ruled what the design may
+    // SPEND; they did not report what the chassis IS, and a print commits the chassis to a shape.
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
   }
 }
@@ -64,28 +114,43 @@ fn gap_display(g: ChassisGap) -> String {
   match g {
     Measured {name: n, from_point: _, to_point: _, distance: d, standing: CaliperByOperator {instrument: i, date: dt, positions: p}} => join([n as String, ": ", to_string(value: um(m: d) / 1000), " mm by ", i as String, " on ", dt as String, " (", p as String, ")"], "")
     Measured {name: n, from_point: _, to_point: _, distance: d, standing: EstimatedByOperator {bound: bnd, date: dt, positions: p, bound_is: bw}} => join([n as String, ": about ", to_string(value: um(m: d) / 1000), " mm, estimated by the operator on ", dt as String, " (", p as String, "); +/-", to_string(value: um(m: bnd) / 1000), " mm (", bw as String, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: DeclaredConservativeByOperator {bound: bnd, reading: r, date: dt, positions: p, basis: bs, does_not_settle: uns}} => join([
+      n as String, ": ", to_string(value: um(m: d) / 1000), " mm DECLARED BY THE OPERATOR as a conservative bound, on ", dt as String, " (", p as String, ")",
+      match r { Present { value: rd } => join(["; the operator reads it as about ", to_string(value: um(m: rd) / 1000), " mm and wrote the bound BELOW it"], "") Absent => "; the operator gave no reading, only leave" },
+      "; operator's words: ", bs as String,
+      "; not a caliper reading, and the bound itself is the design allowance -- ", to_string(value: um(m: bnd) / 1000), " mm may be spent",
+      "; what it does NOT settle: ", uns as String,
+    ], "")
     NeedsMeasurement {name: n, from_point: a, to_point: b, read_obligation: o} => join([n as String, ": UNMEASURED (from ", a as String, " to ", b as String, ") -- ", o as String], "")
   }
 }
 
 // ═══ THIS CHASSIS ═══
 //
-// The one rear-fan distance the operator has given, read 2026-10-26 after the A16 plug fit ring printed
-// and fitted, which confirmed the measured end face and the plug/flange geometry. It is an estimate:
-// "about 70 mm", no instrument named, one card at one slot. The +/- is NOT the operator's; it is the
-// width this repository puts on the word "about" so that a route which fits by less than it is refused
-// rather than printed. The nearest surface of the fan is not distinguished between blade and shroud,
-// which matters: a shroud 6 mm ahead of the blades turns a 70 mm route into a 64 mm one.
+// The one rear-fan distance the operator has given, 2026-10-26, after the A16 plug fit ring printed and
+// fitted, which confirmed the measured end face and the plug/flange geometry. It is NOT a caliper
+// reading and is not carried as one. What the operator gave is a ruling with a rough reading behind it:
+//
+//   "i would put 70mm for now - its like 73mm but i want to be conservative"
+//
+// That sentence does two things, and the standing below keeps them in their own order. The reading is
+// about 73 mm -- "like", their own word for rough -- and the number they AUTHOR for the design to spend
+// is 70 mm, deliberately under the reading. The 70 is not a failed measurement of the gap; it is the
+// allowance the operator set, which is exactly why a route may be admitted against the 70 and not against
+// the 73. The reading is recorded because it is what they said, and it is not promoted to a measurement:
+// no instrument, no date of reading, no named points behind it.
 data card_end_rear_fan_clearance: ChassisGap = Measured {
   name: "plug end to rear chassis fan",
   from_point: "the card's plug end: the outer face of the end cap the duct's plug and screw flange seat against (product.printed_chassis.gpu_duct a16_end_face)",
-  to_point: "the nearest surface of the rear chassis fan assembly in the card's lane -- blade or shroud NOT distinguished by the reading",
+  to_point: "the nearest surface of the rear chassis fan assembly in the card's lane -- blade or shroud NOT distinguished by the operator's word",
   distance: micrometer(count: 70000),
-  standing: EstimatedByOperator {
-    bound: micrometer(count: 5000),
+  standing: DeclaredConservativeByOperator {
+    bound: micrometer(count: 70000),
+    reading: Present { value: micrometer(count: 73000) },
     date: "2026-10-26",
-    positions: "one A16, one slot, read at the deck; not repeated at other slots or heights",
-    bound_is: "this repository's width on the operator's word 'about'; the operator has not stated a tolerance",
+    positions: "one A16, one slot, said at the deck; the operator offered no instrument, no repeated slot, and no blade/shroud distinction",
+    basis: "operator, 2026-10-26: 'i would put 70mm for now - its like 73mm but i want to be conservative'",
+    does_not_settle: "what the gap actually measures, and whether the near surface the 73 mm was judged against is the fan's blades or its shroud -- a shroud 6 mm ahead of the blades turns a 70 mm allowance into a 64 mm one",
   },
 }
 
@@ -119,13 +184,32 @@ data side_lane_width: ChassisGap = NeedsMeasurement {
 // The lane a blower gets behind the plug end: measured across the slot direction, in the region BEHIND
 // the card ends, from this card's own plane to whatever the next card's duct becomes. The card's own
 // thickness is NOT this number -- behind the end there is no card, and the thing a standing blower
-// competes with is its neighbour's duct, which nobody has built yet. Until the pitch is read this lane
-// is unmeasured and any blower that needs it is refused with the number it needs.
-data neighbour_lane_width: ChassisGap = NeedsMeasurement {
+// competes with is its neighbour's duct, which nobody has built yet.
+//
+// This row used to be NeedsMeasurement and it was the ONLY thing refusing the flat-on-the-plug-end home.
+// The operator has now ruled on it, 2026-10-26, in answer to exactly that question:
+//
+//   "yes, you can assume more than enough space on the sides, 70mm is fine"
+//
+// Carried as an authored ample bound, not as a reading: `distance`/`bound` is the per-side allowance they
+// gave the design (their own 70 mm figure, the same number they set behind the end), and `reading` is
+// Absent because they gave none -- there is no "it's like X" behind this one, only the word that there is
+// more than enough. A route is admitted when its per-side need is under the bound; the caliper obligation
+// is recorded in `does_not_settle` rather than dropped, because the print is still refused until the side
+// is actually read.
+data neighbour_lane_width: ChassisGap = Measured {
   name: "lane between adjacent cards, behind the plug ends",
   from_point: "this card's own centre plane across the slot (the plane of the card's broad face)",
   to_point: "the nearest surface of the adjacent card's own duct or blower in the region behind the plug ends",
-  read_obligation: "operator: measure the slot pitch (distance between adjacent card centre planes) and state what sits between two cards behind their ends -- nothing, a blanking plate, a cable. A blower standing behind a plug end spends its housing depth across this lane; two cards in adjacent slots each carrying a blower spend it twice.",
+  distance: micrometer(count: 70000),
+  standing: DeclaredConservativeByOperator {
+    bound: micrometer(count: 70000),
+    reading: Absent,
+    date: "2026-10-26",
+    positions: "the sides of the card row, said at the deck; the operator named no instrument and no side, and did not say what sits between two cards behind their ends",
+    basis: "operator, 2026-10-26: 'yes, you can assume more than enough space on the sides, 70mm is fine'",
+    does_not_settle: "the slot pitch itself and what physically sits between two cards behind their ends (nothing, a blanking plate, a cable). The bound says the design may spend 70 mm per side; it does not say a neighbouring duct is absent, and two adjacent cards each carrying a blower spend this lane twice.",
+  },
 }
 
 data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width]
@@ -135,11 +219,13 @@ fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
 }
 
 // What the operator must read before a curved route is printed, as a list a human can carry to the
-// machine. An estimate appears only as a re-read demand: a print does not stand on an estimate.
+// machine. Nothing that cannot carry a print appears as a blank: an estimate appears as a re-read demand,
+// and so does a DECLARED BOUND -- the bound admitted a route's geometry, and the print still owes the
+// instrument. A caliper reading is the only standing that earns its way off this list.
 fn remeasure_before_print(gaps: List<ChassisGap>) -> List<String> {
   fold(gaps, init: [], f: (acc, g) => match gap_obligation(g: g) {
     Present { value: o } => concat(acc, [gap_display(g: g)])
-    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else { acc }
+    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else if gap_may_be_printed_on(g: g) { acc } else { concat(acc, [join(["re-read with an instrument before printing -- this gap is a declared bound, not a measurement: ", gap_display(g: g)], "")]) }
   })
 }
 

@@ -707,3 +707,190 @@ fn duct_readme(mount: DuctCardMount, extent: DuctExtent) -> String {
     CardFitRing => join(["A16 fit ring (", m, "). Generated from product.printed_chassis.gpu_duct.\nThe card interface of the full duct alone; print flange-down without support and check seating and both M3 x 4 screws.\n"], "")
   }
 }
+
+
+// ═══ THE FLAT-ON-THE-PLUG-END HOME, AS PRINTABLE GEOMETRY ═══
+//
+// The third blower home, and the one the operator's 2026-10-26 bounds admit: product.printed_chassis.card_cooling_route
+// PlaneOnEnd, ruled on in gunbc.design_ruling a16_rear_clearance_and_sides_are_operator_declared_bounds (which carries
+// the operator's words). The blower lies FLAT behind the plug end with its intake facing the rear chassis fan, so the
+// only thing that goes back is the housing's THICKNESS -- 33 mm plus Delta's tolerance, and with the two plates of the
+// shoulder this part budgets, exactly the 37.5 mm the route model asks the chassis for. What it spends instead is
+// WIDTH: the 97.2 mm housing edge runs across the slot, overhanging this card's own lane by 28.28 mm on each side,
+// which is the figure the operator's word about the sides was a word about.
+//
+// WHY THIS IS NOT THE BLOWER DUCT TURNED. The blower duct beside it (a16_blower_duct_parts) puts the housing's THICKNESS
+// across the card, in a socket the blower drops into; its broad face -- 97.2 mm -- then lies in the plane that runs
+// behind the end, and that is the 108 mm the chassis refuses. Here the housing is rotated a quarter turn: its thickness
+// is along z, behind the end, and its broad face lies in the end-face plane. Rotating the housing moves its OUTLET with
+// it: the outlet lies on the periphery, in the plane of the thickness, so it now points sideways across the end face and
+// NOT at the fin window. The air has to be caught where it leaves and turned back through the window onto the fins. That
+// turn is the shoulder and the collector below, and it is why this is a new part rather than a parameter of the old one.
+//
+// THE OUTLET POSITION IS UNREAD, AND THE PART IS BUILT FOR THAT RATHER THAN AROUND IT. extdeps.fans.delta
+// delta_bfb1012m_outlet_standing: Delta's drawing carries the outlet's dimensions but not a position attributable on it,
+// and this model does not invent one. So the collector is not a spigot sized to a guessed outlet -- it is an OPEN
+// SHOULDER. The housing stands on the shoulder's floor; the whole band of its periphery that faces the card is left open
+// from the floor to the top of the housing, with no wall, no spigot and no divider in it. An outlet anywhere along that
+// band discharges into the collector and is carried to the window by the same one path. A matching spigot would have
+// been a claim about where on the housing the outlet is; nothing here makes that claim, in geometry or in text.
+//
+// WHAT IT DOES NOT DO, RECORDED AND NOT ARGUED AWAY.
+//   * ONE CARD. Two cards in adjacent slots would each put a 97.2 mm face at a 40.64 mm pitch: the housings would face
+//     each other's intakes across 5.04 mm. The operator's bound is a per-side ALLOWANCE and is not read as a statement
+//     that the next lane is empty. BlowerCardCountUnsupported says the same thing about the other blower home.
+//   * IT CROSSES THE 8-PIN KEEP-OUT ON ITS TOP-END CORNER, and the model does not hide it: the housing is 94.4 mm wide in
+//     the end-face plane, and connector_keepout_length puts a band at the top end off limits (the connector's own position
+//     plus the keep-out past its outer pin). The shoulder reaches past that band's inner edge by
+//     plane_on_end_keepout_crossing_um, and the model says so rather than computing a comfortable number. Whether the
+//     connector is still reachable with the shoulder there is exactly what the kernel's POWER-KEEPOUT check
+//     (product.printed_chassis.cad_check_run, required_keepouts) and a fit print decide. It is NOT decided here, and no
+//     figure here is evidence that it is.
+//   * IT IS A FIT PROTOTYPE. The print itself is still refused: chassis_clearances gap_may_be_printed_on is false for
+//     both of the standings this part is admitted under, so an instrument reading of the rear gap and of one side lane is
+//     owed before material moves. PLA for an unpowered fit check; PETG or ASA for service; no powered A16 operation is
+//     admitted by a fit print.
+
+// The two plates the route model budgets as "two walls" behind the end: the shoulder's floor, which carries the housing's
+// weight and the four M3 fixes, and the junction plate that ties that floor to the plug-end flange. Both are a wall
+// thick, so the shoulder's z stack is exactly the route model's run back -- plane_on_end_duct_run_back says so, and
+// test.claim.card_cooling_route_witness pins the equality, so the part cannot quietly outgrow the admitted demand.
+fn plane_on_end_duct_run_back(b: BlowerDuctDesign, d: GpuDuctDesign) -> Int {
+  um(m: b.blower.thickness) + um(m: b.blower.thickness_tolerance) + 2 * um(m: d.wall)
+}
+
+// How far the shoulder's top-end corner reaches past the 8-pin keep-out's inner edge, in micrometres: the
+// housing's half-width plus a wall, measured from the top end of the face, minus the keep-out band. Positive
+// means the part crosses into the keep-out, which it does -- this figure exists so the crossing is a number a
+// reader can see and a kernel can check, not a paragraph of reassurance. Zero or negative would mean this
+// home had never touched the connector, and it has not earned that.
+fn plane_on_end_keepout_crossing_um(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> Int {
+  smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth)) / 2 + um(m: d.wall)
+    - (um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d))
+}
+
+// The housing's centre across the slot: the card's own thickness centre, because the card (38.6 mm, cited) is the only
+// thing in the row that locates this part sideways. Centring it is a visible choice: offsetting the housing would spend
+// the operator's per-side allowance unevenly, and nothing here has earned the right to do that.
+fn plane_on_end_housing_y(card_y: Int) -> Int { card_y }
+
+fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi: Int) -> Primitive {
+  block(w: x_hi - x_lo, h: y_hi - y_lo, d: z_hi - z_lo, x: (x_lo + x_hi) / 2, y: (y_lo + y_hi) / 2, z: (z_lo + z_hi) / 2)
+}
+
+fn plane_on_end_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> List<AssemblyPart> {
+  let wall = um(m: d.wall)
+  let bc = um(m: d.band_clearance)
+  let fl = um(m: d.flange_thickness)
+  let sc = um(m: b.socket_clearance)
+  let face_z = um(m: d.plug_depth) + um(m: f.fin_setback) - um(m: d.fin_margin)
+  let top = um(m: f.face_length) / 2
+  let band = um(m: f.window_from_back)
+  let card_y = band - um(m: f.face_thickness) / 2
+  let wl = um(m: f.window_length)
+  let wd = um(m: f.window_depth)
+  let window_x = top - um(m: f.window_from_top) - wl / 2
+  let window_y = 0 - wd / 2
+  let pc = um(m: d.plug_clearance)
+  let plug_w = wl - 2 * pc
+  let plug_h = wd - 2 * pc
+  // Across the end face the housing is the SHORTER edge; across the slot it is the longer one, which is the whole
+  // point of this home and the whole cost of it.
+  let housing_x = smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+  let housing_y = larger_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
+  let th = um(m: b.blower.thickness)
+  let tol = um(m: b.blower.thickness_tolerance)
+  let interface = card_interface(f: f, d: d, mount: PlugAndFlange, face_z: face_z, window_x: window_x, window_y: window_y, card_y: card_y, top: top)
+  // The z stack, from the plane the flange seats against. Two wall-thick plates, then the housing, open to the fan.
+  let seat_z = face_z
+  let floor_hi_z = seat_z + 2 * wall
+  let housing_lo_z = floor_hi_z
+  let housing_hi_z = housing_lo_z + th + tol
+  // Footprints. The shoulder is the housing's plan plus a wall all round; the collector reaches from the housing's
+  // card-facing edge inward, over the card, to the window's front edge.
+  let shoulder_lo_x = 0 - housing_x / 2 - wall
+  let shoulder_hi_x = 0 + housing_x / 2 + wall
+  let housing_lo_y = plane_on_end_housing_y(card_y: card_y) - housing_y / 2
+  let housing_hi_y = plane_on_end_housing_y(card_y: card_y) + housing_y / 2
+  let shoulder_lo_y = housing_lo_y - wall
+  let shoulder_hi_y = housing_hi_y + wall
+  let collector_lo_y = housing_lo_y - wall
+  let collector_hi_y = window_y + wd / 2 + wall
+  let collector_lo_x = window_x - plug_w / 2 - wall
+  let collector_hi_x = window_x + plug_w / 2 + wall
+  let duct = part(id: "DUCT", name: "Inlet duct: BFB1012M flat on the plug end, open shoulder and turned collector into the fin window",
+    kind: Printed, scope: FixedFrame,
+    adds: concat([
+      // The shoulder's floor: the two plates the route model budgets, under the housing's whole plan.
+      plane_on_end_slab(x_lo: shoulder_lo_x, x_hi: shoulder_hi_x, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: seat_z, z_hi: floor_hi_z),
+      // The housing's four walls, open at the top so the blower is dropped in from the fan side.
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 - wall, x_hi: 0 - housing_x / 2, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
+      plane_on_end_slab(x_lo: 0 + housing_x / 2, x_hi: 0 + housing_x / 2 + wall, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: housing_hi_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
+      // The collector: walls along its two flanks and a roof, so air leaving the outlet band is carried inward over the
+      // card and down through the window rather than spilled into the chassis. Its card-facing END is left open on
+      // purpose -- that opening is the shoulder, and it is what makes the unread outlet position harmless.
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_lo_x, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
+      plane_on_end_slab(x_lo: collector_hi_x, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_hi_y, y_hi: collector_hi_y + wall, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: housing_hi_z, z_hi: housing_hi_z + wall),
+    ], interface.adds),
+    cuts: concat(concat([
+      // The housing's pocket: its plan plus a clearance, open through the top, and open at its card-facing wall so the
+      // whole peripheral band that may carry the outlet stands open from the floor to the top of the housing.
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 - sc, x_hi: 0 + housing_x / 2 + sc, y_lo: housing_lo_y - sc, y_hi: housing_hi_y + sc, z_lo: floor_hi_z, z_hi: housing_hi_z + 2000),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - wall - 2000, y_hi: housing_lo_y + wall, z_lo: floor_hi_z, z_hi: housing_hi_z + 2000),
+      // The passage down to the fins: the window's plug passage, cleared through the shoulder's floor and the
+      // collector's floor so the turned air reaches the fins instead of striking a plate.
+      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: seat_z - fl - 2000, z_hi: housing_hi_z + wall + 2000),
+    ], interface.cuts), card_screw_holes(f: f, d: d, face_z: face_z)),
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: LayOnXY,
+    notes: "Print shoulder-down; the shoulder floor is solid, the housing pocket is open upward and open toward the card along the whole outlet band, and the collector's roof needs support. Drive both M3 x 4 screws into the end cap's inserts through the flange BEFORE the blower goes down, then drop the housing into the pocket with its intake facing the rear chassis fan. The 8-pin connector keep-out is crossed by the shoulder's top-end corner: check the connector is still reachable before committing to a service print. PLA for an unpowered fit prototype only; PETG or ASA for service.")
+  let blower = part(id: "FAN", name: "Delta BFB1012M radial blower envelope, flat on the plug end", kind: Purchased, scope: FixedFrame,
+    adds: [plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: plane_on_end_housing_y(card_y: card_y) - housing_y / 2, y_hi: plane_on_end_housing_y(card_y: card_y) + housing_y / 2, z_lo: housing_lo_z, z_hi: housing_hi_z)],
+    cuts: [],
+    x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -120000, plane: LayOnXY,
+    notes: "Bounding envelope only: the housing lies flat, 94.4 mm along the end face and 97.2 mm across the slot, 33 mm thick along the card's length with Delta's tolerance. Housing cited to Delta's BFB sheet (extdeps.fans.delta delta_bfb1012m_envelope_standing); the outlet's position along the peripheral band is uncited (delta_bfb1012m_outlet_standing), which is why the collector is an open shoulder and not a spigot.")
+  concat([duct, blower], card_reference_parts(f: f, d: d, face_z: face_z))
+}
+
+// The joints this home needs: the same two M3 fixes into the end cap's inserts and the same plug lip that
+// locate the plug-and-flange mount (card_joints), plus the blower's own seat. The blower is not screwed
+// into this part -- it rests on the shoulder's floor and its pocket locates it, which is what the fit print
+// is for -- so the fastener is a locating sleeve with no retention and the note says so.
+fn plane_on_end_duct_joints() -> List<MechanicalInterface> {
+  concat(card_joints(mount: PlugAndFlange, printed_id: "DUCT"), [
+    mechanical_interface(id: "blower-to-shoulder", members: ["FAN", "DUCT"], fastener: LocatingSleeveNoRetention, quantity: 1, status: Proposed,
+      requirement: "The housing is dropped into the shoulder's pocket, which locates it on four sides; it is not fastened. Its intake faces the rear chassis fan and its outlet band faces the card. The fit print is what tests whether it stays put."),
+  ])
+}
+
+fn plane_on_end_presentation_members() -> List<JsonKeyValue> {
+  [
+    json_kv(key: "axes", value: json_string(s: "z along the card's length, increasing from the plug end toward the rear chassis fan; x along the end face, the 8-pin end toward +x; y across the card's thickness, which is the slot direction, with the card centred about card_y")),
+    json_kv(key: "home", value: json_string(s: "PlaneOnEnd: the blower lies flat behind the plug end with its intake facing the rear chassis fan, its 94.4 mm edge along the end face and its 97.2 mm edge across the slot")),
+    json_kv(key: "route_admission", value: json_string(s: "product.printed_chassis.card_cooling_route admit_home(home: PlaneOnEnd) == RouteAdmittedOnOperatorBound, on the operator's declared conservative bounds; the print is still refused by chassis_clearances gap_may_be_printed_on")),
+    json_kv(key: "run_back_um", value: json_int(n: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_duct_design))),
+    json_kv(key: "overhang_per_side_um", value: json_int(n: (larger_um(a: um(m: a16_blower_duct_design.blower.housing_length), b: um(m: a16_blower_duct_design.blower.housing_depth)) - um(m: a16_blower_duct_design.slot_pitch)) / 2)),
+    json_kv(key: "material_admission", value: json_string(s: "PLA admitted for an unpowered fit prototype only; PETG or ASA for service; no powered A16 operation admitted")),
+    json_kv(key: "power_keepout_crossing_um", value: json_int(n: plane_on_end_keepout_crossing_um(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design))),
+    json_kv(key: "known_open_point", value: json_string(s: "the shoulder's top-end corner crosses the 8-pin POWER keep-out's inner edge; decided by the kernel's POWER-KEEPOUT check and a fit print, not by this model")),
+    json_kv(key: "end_face", value: face_json(f: a16_end_face)),
+    json_kv(key: "blower_model", value: json_string(s: a16_blower_duct_design.blower.model as String)),
+    json_kv(key: "blower_housing_figures", value: cited_figure_json(standing: delta_bfb1012m_envelope_standing)),
+    json_kv(key: "blower_outlet_figures", value: cited_figure_json(standing: delta_bfb1012m_outlet_standing)),
+    json_kv(key: "collector", value: json_string(s: "open shoulder, not a spigot: the outlet's position on the housing is unread, so the whole peripheral band facing the card is open and any outlet position in it feeds the window")),
+    json_kv(key: "card_count", value: json_int(n: 1)),
+  ]
+}
+
+fn plane_on_end_readme() -> String {
+  join([
+    "A16 inlet duct for a Delta BFB1012M radial blower laid FLAT on the plug end. Generated from product.printed_chassis.gpu_duct.\n",
+    "Admitted by product.printed_chassis.card_cooling_route on the operator's declared conservative bounds of 2026-10-26: 70 mm behind the plug end ('i would put 70mm for now - its like 73mm but i want to be conservative') and ample space on the sides ('yes, you can assume more than enough space on the sides, 70mm is fine'). Neither is a caliper reading, so the PRINT is still held: read the rear gap and one side lane with an instrument before slicing.\n",
+    "What goes back is the housing's thickness: 37.5 mm including its tolerance and the shoulder's two plates, against the 70 mm allowed. What it spends is width: the 97.2 mm edge runs across the slot and overhangs this card's lane by 28.28 mm on each side. One card only -- two adjacent housings would face each other's intakes across 5.04 mm.\n",
+    "The collector is an OPEN SHOULDER, not a spigot, because the outlet's position on Delta's housing is unread: the whole band of the housing's periphery that faces the card is left open, so any outlet position in it feeds the window.\n",
+    "KNOWN OPEN POINT: the shoulder's top-end corner crosses the 8-pin power keep-out's inner edge (presentation field power_keepout_crossing_um). The kernel's POWER-KEEPOUT check and a fit print decide whether the connector stays reachable; do not assume it until one has run.\n",
+    "DUCT.stl prints shoulder-down and needs support under the collector's roof. Drive both M3 x 4 screws into the end cap through the flange before the blower goes down. PLA for an unpowered fit check; PETG or ASA for service.\n",
+  ], "")
+}

@@ -3,15 +3,17 @@ module product.printed_chassis.card_cooling_route
 import std.types {Int, List, NonEmptyStr, String}
 import std.measure {Micrometer, micrometer}
 import std.optional {Present, Absent}
-import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display}
+import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMeasurement, CaliperByOperator, EstimatedByOperator, DeclaredConservativeByOperator, card_end_rear_fan_clearance, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, gap_display, gap_declared_bound}
 import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 
-// ═══ WHERE THE BLOWER CAN LIVE WHEN THE CHASSIS GIVES 70 mm BEHIND THE PLUG END ═══
+// ═══ WHERE THE BLOWER CAN LIVE WHEN THE OPERATOR ALLOWS 70 mm BEHIND THE PLUG END ═══
 //
-// The operator's chassis (product.printed_chassis.chassis_clearances) gives about 70 mm from a card's
-// plug end to the rear chassis fan. The existing straight-back duct does not fit in it: with the outlet's
+// The operator's chassis (product.printed_chassis.chassis_clearances) ALLOWS 70 mm from a card's plug end
+// to the rear chassis fan -- their word, authored as a conservative bound under a rough ~73 mm reading,
+// not a caliper reading (DeclaredConservativeByOperator, and gunbc.design_ruling
+// a16_rear_clearance_and_sides_are_operator_declared_bounds for the ruling and the quotes). The existing straight-back duct does not fit in it: with the outlet's
 // edge on Delta's drawing still unread (extdeps.fans.delta delta_bfb1012m_outlet_standing), the socket
 // bounds the housing at its LONGER edge behind the end -- product.printed_chassis.gpu_duct
 // blower_reach_behind = 97.2 mm -- plus the socket's 10 mm depth and a wall, so the straight-back home
@@ -25,9 +27,16 @@ import extdeps.fans.delta {delta_bfb1012m_envelope}
 //                     back. The extent along the card's length axis is the housing's THICKNESS -- 34 mm
 //                     with tolerance -- so the 70 mm is satisfied with room to spare. But the fan's face
 //                     (97.2 x 94.4 mm) now spans the slot direction, where the card is only 38.6 mm and
-//                     the neighbouring card's duct starts at the slot pitch, 40.64 mm: it spills about
-//                     54-57 mm into the neighbour's lane. The outlet points sideways or up, so a leg has
-//                     to turn the air forward into the window -- that turn is the curve.
+//                     the neighbouring card's duct starts at the slot pitch, 40.64 mm: the face overhangs
+//                     its own lane by 28.28 mm on EACH side. The outlet points sideways or up, so a leg
+//                     has to turn the air forward into the window -- that turn is the curve.
+//
+// WHAT CHANGED 2026-10-26, AND WHAT DID NOT. The operator ruled on both of this home's blanks: 70 mm
+// behind the end, and "more than enough space on the sides". That converts the home from refused-by-an-
+// unmeasured-gap to ADMITTED ON AN OPERATOR BOUND -- a verdict of its own, not RouteAdmitted, because the
+// bound is a ruling about what the design may spend and not a report of what the chassis is. The print is
+// still refused (chassis_clearances gap_may_be_printed_on), the outlet's position on Delta's housing is
+// still unread, and the two remaining unread gaps still refuse the homes that need them.
 //
 //   PLANE-ACROSS-ROW  the fan stands on its side wall, its outlet facing the window directly, as the
 //                     existing duct does: only the 33 mm thickness crosses the slot, which the 40.64 mm
@@ -37,7 +46,9 @@ import extdeps.fans.delta {delta_bfb1012m_envelope}
 //
 // So the 70 mm is NOT the only constraint, and saying it is would send the operator to measure the wrong
 // thing. Every home that satisfies the 70 mm puts a 94-97 mm housing face somewhere the chassis has never
-// been measured, and every home refuses by naming the reading it needs. THE REFUSALS ARE THE DELIVERABLE.
+// been measured, and every home that is not admitted says which reading it still needs. THE REFUSALS ARE
+// STILL THE DELIVERABLE for the homes nobody has ruled on; the one home the operator has ruled on is
+// admitted, on their bound, with the print still held.
 //
 // Frame (product.printed_chassis.gpu_duct): x along the end face from its TOP end, y across the face from
 // its BACK face (the deck side), z along the card's length with the plug end toward the rear fan.
@@ -71,10 +82,19 @@ fn longest_face_edge(b: RadialBlowerEnvelope) -> Int { larger_i(a: um(m: b.housi
 fn shortest_face_edge(b: RadialBlowerEnvelope) -> Int { smaller_i(a: um(m: b.housing_length), b: um(m: b.housing_depth)) }
 fn thickness_extent(b: RadialBlowerEnvelope) -> Int { um(m: b.thickness) + um(m: b.thickness_tolerance) }
 
-// PLANE-ON-END: the thickness is all that goes back, so the 70 mm buys it.
+// PLANE-ON-END: the thickness is all that goes back, so the operator's 70 mm buys it.
 fn plane_on_end_run_back(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int { thickness_extent(b: b) + 2 * um(m: d.wall) }
 // ...but its face spans the slot, where the pitch is the only room.
 fn plane_on_end_slot_demand(b: RadialBlowerEnvelope) -> Int { longest_face_edge(b: b) }
+// The same demand stated the way the SIDES are measured. The face spans the pitch, so what it spends
+// into the region beside this card's own lane is the excess, halved: at 97.2 mm of housing over a 40.64 mm
+// pitch that is 28.28 mm on each side. The operator's word about the sides ("70mm is fine") is a word
+// about the space on ONE side, so this is the number it has to cover -- asking it against the whole 97.2
+// would be asking a per-side allowance to cover a two-sided span.
+fn plane_on_end_overhang_per_side(b: RadialBlowerEnvelope) -> Int {
+  let excess = plane_on_end_slot_demand(b: b) - a16_slot_pitch_um()
+  if excess <= 0 { 0 } else { excess / 2 }
+}
 
 // PLANE-ACROSS-ROW (today): the socket bounds the housing at its longer edge behind the end while the
 // outlet's edge stays unread; the socket's own depth and a wall are added because the housing does not
@@ -103,10 +123,23 @@ fn beside_the_row_demand(b: RadialBlowerEnvelope, d: GpuDuctDesign) -> Int { sho
 fn larger_i(a: Int, b: Int) -> Int { if a > b { a } else { b } }
 fn smaller_i(a: Int, b: Int) -> Int { if a < b { a } else { b } }
 
+// The slot pitch this design is drawn at: the same figure the blower duct's own row geometry carries
+// (product.printed_chassis.gpu_duct a16_blower_duct_design), which is the NVIDIA drawing's figure for the
+// card row, not a chassis reading. It is used here only to turn a span across the pitch into the excess
+// that lands beside this card's own lane; it is never used as a clearance.
+fn a16_slot_pitch_um() -> Int { um(m: a16_blower_duct_design.slot_pitch) }
+
 // ═══ ADMISSION ═══
 
+// ADMITTED and ADMITTED ON AN OPERATOR BOUND ARE NOT THE SAME VERDICT, so they are not the same shape.
+// The first rests on a caliper reading: the chassis was measured and is bigger than the route needs. The
+// second rests on a ruling: the operator authored a conservative bound and the route's need is under it,
+// which is exactly what they said the bound was for. Only the second is available today, and it still
+// refuses the PRINT (gap_may_be_printed_on) -- a ruling about what a design may spend is not a report of
+// what the chassis is. Collapsing the two would let a declared 70 mm read as a measured one.
 type RouteAdmission
   = RouteAdmitted { home: BlowerHome, needs: List<RouteDemand> }
+  | RouteAdmittedOnOperatorBound { home: BlowerHome, needs: List<RouteDemand>, on_bound: ChassisGap, margin: Micrometer }
   | RouteProposalOnly { home: BlowerHome, needs: List<RouteDemand>, on_estimate: ChassisGap, margin: Micrometer }
   | RouteRefusedByChassis { home: BlowerHome, unmet: RouteDemand, gap: ChassisGap }
   | RouteHomeUnmeasured { home: BlowerHome, unmet: RouteDemand, gap: ChassisGap }
@@ -120,6 +153,10 @@ fn demand_display(n: RouteDemand) -> String {
 fn route_admission_display(a: RouteAdmission) -> String {
   match a {
     RouteAdmitted {home: h, needs: ns} => join([blower_home_display(h: h), ": ADMITTED -- ", join(map(ns, n => demand_display(n: n)), "; ")], "")
+    RouteAdmittedOnOperatorBound {home: h, needs: ns, on_bound: g, margin: mg} => join([
+      blower_home_display(h: h), ": ADMITTED ON AN OPERATOR-DECLARED BOUND -- ", join(map(ns, n => demand_display(n: n)), "; "),
+      "; needs ", to_string(value: um(m: mg) / 1000), " mm LESS than the bound allows; the bound is the operator's ruling, not a measurement (",
+      gap_display(g: g), "); the print itself is still refused until the gap is read with an instrument"], "")
     RouteProposalOnly {home: h, needs: ns, on_estimate: g, margin: mg} => join([blower_home_display(h: h), ": PROPOSED ONLY -- ", join(map(ns, n => demand_display(n: n)), "; "), "; fits by ", to_string(value: um(m: mg) / 1000), " mm against an ESTIMATE (", gap_display(g: g), "); re-read before printing"], "")
     RouteRefusedByChassis {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and the chassis gives ", gap_display(g: g)], "")
     RouteHomeUnmeasured {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and that gap is UNMEASURED -- ", gap_display(g: g)], "")
@@ -138,32 +175,53 @@ fn a16_route_report() -> List<String> {
 fn a16_blower() -> RadialBlowerEnvelope { delta_bfb1012m_envelope }
 fn a16_wall_design() -> GpuDuctDesign { a16_duct_design }
 
+// THE PUBLISHED VERDICT: every home measured against THIS chassis -- the one gap the operator has given a
+// word about, and the three that have never been read.
 fn admit_home(home: BlowerHome) -> RouteAdmission {
+  admit_home_over(home: home, rear: card_end_rear_fan_clearance, lane: neighbour_lane_width)
+}
+
+// PLANE-ON-END, over the two gaps it actually spends: what lies behind the plug end, and the lane beside
+// this card's own lane that the housing's overhang reaches into. Split out from admit_home so a witness can
+// run the SAME home against a chassis the operator has not blessed -- the refusal at a 30 mm rear is the
+// same code path, with a different number in it, and not a hand-written verdict.
+fn admit_plane_on_end(rear: ChassisGap, lane: ChassisGap) -> RouteAdmission {
+  let b = a16_blower()
+  let d = a16_wall_design()
+  let home = PlaneOnEnd
+  // The slot first: a 97 mm face at a 40.64 mm pitch is not a near thing, and it is not fixed by
+  // re-reading the 70 mm. The run back is checked after, because it is the one the operator asked about.
+  // What is asked of the neighbour lane is the OVERHANG per side, which is what the operator's word about
+  // the sides was a word about; the pitch itself is the design's row geometry, not a chassis gap.
+  let slot = RouteDemand { name: "across the slot (neighbour lane behind the ends)", needed: micrometer(count: plane_on_end_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
+  let overhang = RouteDemand { name: "overhang into the region beside this card's lane, per side", needed: micrometer(count: plane_on_end_overhang_per_side(b: b)), of_gap: "space on the sides of the card row" }
+  match ask(gap: lane, need: um(m: overhang.needed), home: home, unmet: overhang) {
+    Present { value: refused } => refused
+    Absent => {
+      let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
+      finish(home: home, needs: [slot, overhang, back], gap: rear, need: um(m: back.needed))
+    }
+  }
+}
+
+// THE SAME HOME, OVER THE GAPS YOU GIVE IT. The published verdict passes this chassis's rows; a witness
+// passes a hypothetical one, so a refusal at 30 mm behind the end is the same rule with a different number
+// in it rather than a hand-written conclusion.
+fn admit_home_over(home: BlowerHome, rear: ChassisGap, lane: ChassisGap) -> RouteAdmission {
   let f = a16_end_face
   let d = a16_wall_design()
   let b = a16_blower()
   match home {
-    PlaneOnEnd => {
-      // The slot first: a 97 mm face at a 40.64 mm pitch is not a near thing, and it is not fixed by
-      // re-reading the 70 mm. The run back is checked after, because it is the one the operator asked about.
-      let slot = RouteDemand { name: "across the slot (neighbour lane behind the ends)", needed: micrometer(count: plane_on_end_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
-      match ask(gap: neighbour_lane_width, need: um(m: slot.needed), home: home, unmet: slot) {
-        Present { value: refused } => refused
-        Absent => {
-          let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_on_end_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
-          finish(home: home, needs: [slot, back], gap: card_end_rear_fan_clearance, need: um(m: back.needed))
-        }
-      }
-    }
+    PlaneOnEnd => admit_plane_on_end(rear: rear, lane: lane)
     PlaneAcrossRowStanding => {
       let back = RouteDemand { name: "behind the plug end", needed: micrometer(count: plane_across_row_run_back(b: b, d: d)), of_gap: "plug end to rear chassis fan" }
-      match ask(gap: card_end_rear_fan_clearance, need: um(m: back.needed), home: home, unmet: back) {
+      match ask(gap: rear, need: um(m: back.needed), home: home, unmet: back) {
         Present { value: refused } => refused
         Absent => {
-          let slot = RouteDemand { name: "across the slot", needed: micrometer(count: plane_across_row_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
-          match ask(gap: neighbour_lane_width, need: um(m: slot.needed), home: home, unmet: slot) {
+          let across = RouteDemand { name: "across the slot", needed: micrometer(count: plane_across_row_slot_demand(b: b)), of_gap: "lane between adjacent cards, behind the plug ends" }
+          match ask(gap: lane, need: um(m: across.needed), home: home, unmet: across) {
             Present { value: refused2 } => refused2
-            Absent => RouteAdmitted { home: home, needs: [back, slot] }
+            Absent => RouteAdmitted { home: home, needs: [back, across] }
           }
         }
       }
@@ -175,7 +233,7 @@ fn admit_home(home: BlowerHome) -> RouteAdmission {
         Present { value: refused } => refused
         Absent => {
           let back = RouteDemand { name: "behind the plug end (the turned leg)", needed: micrometer(count: over_the_row_run_back(d: d, b: b)), of_gap: "plug end to rear chassis fan" }
-          match ask(gap: card_end_rear_fan_clearance, need: um(m: back.needed), home: home, unmet: back) {
+          match ask(gap: rear, need: um(m: back.needed), home: home, unmet: back) {
             Present { value: refused2 } => refused2
             Absent => RouteAdmitted { home: home, needs: [high, back, RouteDemand { name: "fan face span along the row", needed: micrometer(count: over_the_row_span(b: b)), of_gap: "free row length behind the card ends" }] }
           }
@@ -183,10 +241,10 @@ fn admit_home(home: BlowerHome) -> RouteAdmission {
       }
     }
     BesideTheRow => {
-      let lane = RouteDemand { name: "free lane beside the row", needed: micrometer(count: beside_the_row_demand(b: b, d: d)), of_gap: "free lane beside the card row" }
-      match ask(gap: side_lane_width, need: um(m: lane.needed), home: home, unmet: lane) {
+      let beside = RouteDemand { name: "free lane beside the row", needed: micrometer(count: beside_the_row_demand(b: b, d: d)), of_gap: "free lane beside the card row" }
+      match ask(gap: side_lane_width, need: um(m: beside.needed), home: home, unmet: beside) {
         Present { value: refused } => refused
-        Absent => RouteAdmitted { home: home, needs: [lane] }
+        Absent => RouteAdmitted { home: home, needs: [beside] }
       }
     }
   }
@@ -195,17 +253,34 @@ fn admit_home(home: BlowerHome) -> RouteAdmission {
 fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand) -> RouteAdmission? {
   match gap {
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => Present { value: RouteHomeUnmeasured { home: home, unmet: unmet, gap: gap } }
-    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} => if um(m: dist) < need { Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } } } else { Absent }
+    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} =>
+      // What the need is compared against: the operator's declared bound when there is one -- the bound is
+      // what they ruled the design may spend, and comparing against the row's `distance` instead would let
+      // the two figures in that row drift apart without anyone noticing which one governed.
+      let limit = match gap_declared_bound(g: gap) { Present { value: b } => um(m: b) Absent => um(m: dist) }
+      if limit < need { Present { value: RouteRefusedByChassis { home: home, unmet: unmet, gap: gap } } } else { Absent }
   }
 }
 
-// The last gap of a home: a caliper reading admits, an estimate proposes, a shortfall refuses. An
-// estimate never admits -- a 70 mm that turns out to be 64 mm is a cracked housing, so printing on one is
-// refused here even though a proposal is allowed to exist.
+// THE ADMISSION RULE, IN ONE PLACE. A gap's standing decides what a route may do with it, and the three
+// operator-facing standings differ in kind, not in degree:
+//
+//   caliper reading      the chassis was measured and is bigger than the route needs   -> ADMITTED
+//   declared bound       the operator authored a conservative allowance, and the route's need is under it
+//                        -> ADMITTED ON AN OPERATOR BOUND. This is the operator ruling of 2026-10-26 read
+//                        literally: they did not measure 70 mm, they ALLOWED 70 mm (gunbc.design_ruling
+//                        a16_rear_clearance_and_sides_are_operator_declared_bounds), and a design may be
+//                        admitted on a limit the owner of the chassis set for it. What the bound does NOT
+//                        buy is the print: gap_may_be_printed_on stays false, so a reader still owes the
+//                        caliper reading before material moves.
+//   spoken estimate      a guess at what the gap is, which admits nothing -- a 70 mm that turns out to be
+//                        64 mm is a cracked housing                                -> PROPOSED ONLY
+//   unread               nobody has looked                                            -> REFUSED
 fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, need: Int) -> RouteAdmission {
   match ask(gap: gap, need: need, home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }) {
     Present { value: refused } => refused
     Absent => match gap {
+      Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: bnd, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => RouteAdmittedOnOperatorBound { home: home, needs: needs, on_bound: gap, margin: micrometer(count: um(m: bnd) - need) }
       Measured {name: _, from_point: _, to_point: _, distance: dist, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => RouteProposalOnly { home: home, needs: needs, on_estimate: gap, margin: micrometer(count: um(m: dist) - need) }
       Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => RouteAdmitted { home: home, needs: needs }
       NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => RouteHomeUnmeasured { home: home, unmet: RouteDemand { name: "final gap", needed: micrometer(count: need), of_gap: "final gap" }, gap: gap }
