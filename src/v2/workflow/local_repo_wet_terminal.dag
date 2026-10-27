@@ -3640,9 +3640,15 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_ledger_notes_back_what_the_document_does_not_cite" },
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_every_ruling_is_cited_by_the_document_or_noted" },
       entry: "dag/test/claim/documentary_refs_witness.dag",
-      function: "documentary_refs_ledger_notes_back_what_the_document_does_not_cite",
+      function: "documentary_refs_every_ruling_is_cited_by_the_document_or_noted",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_no_ruling_is_both_cited_and_noted" },
+      entry: "dag/test/claim/documentary_refs_witness.dag",
+      function: "documentary_refs_no_ruling_is_both_cited_and_noted",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3652,9 +3658,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_population_is_exactly_the_document_cited_rows" },
+      identity: WitnessIdentity { module_path: "test.claim.documentary_refs_witness", function: "documentary_refs_population_is_exactly_the_notes_complement" },
       entry: "dag/test/claim/documentary_refs_witness.dag",
-      function: "documentary_refs_population_is_exactly_the_document_cited_rows",
+      function: "documentary_refs_population_is_exactly_the_notes_complement",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

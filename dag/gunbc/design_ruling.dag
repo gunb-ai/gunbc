@@ -44,6 +44,22 @@ type RulingLedgerNote {
 
 data ruling_ledger_notes: List<RulingLedgerNote> = [
   RulingLedgerNote {
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
+    reason: "operator refinement routing recurring effects inside the one approved initial convergence, owned by gunbc.auth.authorization_pattern_selection and gunbc.auth.privileged_effect_census; DESIGN.md states the broker route and pattern selection but does not cite this ruling",
+  },
+  RulingLedgerNote {
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
+    reason: "operator policy for how the approval app enrols, owned by the gunbc.auth approval modules; DESIGN.md names the one-off approved access authorities but does not cite this ruling",
+  },
+  RulingLedgerNote {
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
+    reason: "operator extension of the native claim-route denominator to the docker CLI service for the router proxy falsifier, owned by std.compiler_entry native_claim_route_denominator; DESIGN.md states the native-process-effect route and the seed discipline but does not cite this ruling",
+  },
+  RulingLedgerNote {
+    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
+    reason: "operator chose route B, the job files one broker approval itself, over the deployment-protection-rule App; DESIGN.md states the broker route generally but does not cite this choice, owned by gunbc.fleet.srv1_root_mutation_approval_run",
+  },
+  RulingLedgerNote {
     ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
     reason: "operator policy routing every privileged action through the approval broker route, owned by gunbc.auth.access_request, approval_capability and approval_broker; DESIGN.md states the authorization-pattern selection but does not cite this ruling",
   },

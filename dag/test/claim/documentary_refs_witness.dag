@@ -131,32 +131,43 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
   refusals_against(facts: forked) == 1
 }
 
-// THE BYTES COME FROM THE ROWS, WHICH IS WHAT MAKES THE ROWS LOAD-BEARING RATHER THAN DECORATIVE. A
-// typed reference sitting beside a paragraph that independently spells the same name is two
-// representations of one fact -- the rename would move the row and leave the sentence, and the
-// enrolled population would resolve while the document lied. Cited-ness is derived from the rendered
-// document, so the two fixed system rows are the only references the population carries that the
-// document could quietly drop; this claim is what holds them, and the derived ruling half is held by
-// the claims below.
-
+// THE TWO FIXED SYSTEM ROWS ARE RENDERED, WHERE THAT IS A REAL CHECK. For a ruling row, "the
+// population contains it" and "the document contains its symbol text" are the same predicate (the
+// population is defined by that containment), so holding them against each other could never fail --
+// and that is exactly why the ruling half is not checked this way. The two fixed rows are different:
+// they are in the population BY CONSTRUCTION, not by document containment, so requiring the rendered
+// document to actually carry their symbol text is a claim that can fail -- deleting either reference
+// from the projection's source turns it red. The ruling half is held by the named-citation claim and
+// the cited-or-noted join below.
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
-  all(generated_document_declaration_refs(document: md), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
+  string_contains(s: md, pattern: documentary_ref_symbol_text(reference: v1_maintenance_standing_ref))
+    && string_contains(s: md, pattern: documentary_ref_symbol_text(reference: required_gate_subjects_ref))
 }
 
-// A DERIVED POPULATION IS ONLY AN HONEST ONE IF THE LEDGER SAYS WHAT THE DOCUMENT DOES NOT. Each
-// ruling_ledger_notes() entry asserts the document leaves its row unstated; the row's OWN ABSENCE
-// from the rendered document must back that up, and it must also sit outside the derived population.
-// The note's reason text is not consulted anywhere in the derivation -- so editing a reason (the RED
-// the reviewer asked for) moves nothing, while citing a noted row in the document turns this claim
-// red and forces the stale note to be deleted.
-test fn documentary_refs_ledger_notes_back_what_the_document_does_not_cite() -> Bool {
+// COMPLETENESS IS AN IDENTITY JOIN, NOT A COUNT: design_rulings() = cited rows UNION noted rows, in
+// both directions. Cited-ness is derived from the rendered document, so without this join a row could
+// fall out of the population quietly -- its citation deleted, or a new row added the document never
+// cites -- and nothing would refuse. A row the document does not cite MUST carry a ruling_ledger_note
+// saying the document leaves it out; a row with no note must be cited. The notes are therefore the
+// checked complement of the cited set, not free-floating commentary: deleting a citation from
+// gunbc/design_document.dag without adding a note turns this claim red.
+test fn documentary_refs_every_ruling_is_cited_by_the_document_or_noted() -> Bool {
   let md = expected_design_md()
-  let population = generated_document_declaration_refs(document: md)
-  all(ruling_ledger_notes(), n =>
-    !string_contains(s: md, pattern: documentary_ref_symbol_text(reference: n.ruling))
-      && !any(population, p => p.decl_name == n.ruling.decl_name && p.module_path == n.ruling.module_path)
+  all(design_rulings(), r =>
+    string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r.reference))
+      || any(ruling_ledger_notes(), n => n.ruling.decl_name == r.reference.decl_name && n.ruling.module_path == r.reference.module_path)
   )
+}
+
+// THE JOIN IS DISJOINT, SO THE TWO POPULATIONS ARE NOT OVERLAPPING CLAIMS ON THE SAME ROW: a row the
+// document cites may not also carry a note asserting the document leaves it out, and a noted row may
+// not be rendered. Citing a noted row (or noting a cited one) turns this claim red, which is the
+// direction the notes alone could not check. Only n.ruling is read -- the reason text is inert here
+// too, as RED B (editing a reason must keep every claim green) proves.
+test fn documentary_refs_no_ruling_is_both_cited_and_noted() -> Bool {
+  let md = expected_design_md()
+  all(ruling_ledger_notes(), n => !string_contains(s: md, pattern: documentary_ref_symbol_text(reference: n.ruling)))
 }
 
 // THE CITATION ACTUALLY REACHES THE POPULATION, NAMED. Cited-ness is derived from the rendered
@@ -175,21 +186,22 @@ test fn documentary_refs_named_document_citations_reach_the_population() -> Bool
     && any(population, p => p.decl_name == "where_refinements_retire_for_checked_constructors")
 }
 
-// NO SECOND AUTHORITY, PROVEN STRUCTURALLY: the population is exactly the two fixed system rows plus
-// every ruling row the rendered document cites, recomputed here independently of the product
-// function. Today this is true by construction; it is the tripwire against re-introducing an
-// authored filter (the standing field this claim retires) -- a filter over notes or any other stored
-// flag makes the two sides disagree, and RED B (editing a note's reason must keep every claim green)
-// is its mutation counterpart.
-test fn documentary_refs_population_is_exactly_the_document_cited_rows() -> Bool {
+// THE POPULATION IS EXACTLY THE NOTES' COMPLEMENT. The independent side of this identity join is
+// NOT a re-run of the product's citation filter (that would be the product compared with itself,
+// green no matter what it computes): it is every ruling row whose reference is not named by any
+// ruling_ledger_note(). The population must equal that set exactly, both directions and by count.
+// If the product's filter drifted -- an authored predicate re-introduced, a filter over the notes,
+// a count shortcut -- a row the notes claim is uncited would still sit in the population, or a
+// cited row would be missing, and this claim refuses.
+test fn documentary_refs_population_is_exactly_the_notes_complement() -> Bool {
   let md = expected_design_md()
-  let from_document = map(
-    filter(design_rulings(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r.reference))),
+  let product = generated_document_declaration_refs(document: md)
+  let complement = map(
+    filter(design_rulings(), r => !any(ruling_ledger_notes(), n => n.ruling.decl_name == r.reference.decl_name && n.ruling.module_path == r.reference.module_path)),
     r => r.reference,
   )
-  let product = generated_document_declaration_refs(document: md)
-  length(xs: product) == length(xs: concat([v1_maintenance_standing_ref, required_gate_subjects_ref], from_document))
-    && all(from_document, p => any(product, q => q.decl_name == p.decl_name && q.module_path == p.module_path))
+  length(xs: product) == length(xs: concat([v1_maintenance_standing_ref, required_gate_subjects_ref], complement))
+    && all(complement, p => any(product, q => q.decl_name == p.decl_name && q.module_path == p.module_path))
 }
 
 // THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
