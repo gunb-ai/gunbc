@@ -145,6 +145,7 @@ import gunbc.auth.ci_app_key_rotation {
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
 import gunbc.ci.ci_spec {
   site_pxe_edge_converge_receipt_path,
@@ -192,6 +193,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_approval_keyring_converge_invoke,
   gunbc_ci_mtcollins1_boot_invoke,
   gunbc_ci_microvm_runner_group_ensure_invoke,
+  gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
@@ -803,7 +805,7 @@ data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_c
 //     identity from the agent;
 //   - extdeps.bmc.ipmi Tool.SelListAuthenticated and extdeps.bmc.http redfish.Http
 //     GetSystemsCollection/GetMemoryCollection/GetMemory/GetProcessorCollection/GetProcessor, the
-//     readonly reads of gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle -- the same BMC
+//     readonly reads of gunbc.machine_intake.megarac_boot_diagnostic_bundle -- the same BMC
 //     credential, by -f for ipmitool and through a per-attempt gunbc.auth.netrc_binding netrc,
 //     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --
@@ -1844,7 +1846,7 @@ data fleet_converge_spark_grants_observe_step_if: String = fleet_converge_mode_s
 // so github.ref == refs/heads/main in this file is not a trust boundary: a branch can delete it.
 data fleet_converge_srv1_root_mutation_environment: NonEmptyStr = srv1_production_environment_name
 
-data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_mode_step_if(mode: DashboardDeploy)
+data fleet_converge_dashboard_deploy_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: DashboardDeploy)
 
 data fleet_converge_rlm_receipt_step_if: String = fleet_converge_mode_step_if(mode: RlmLaunchDeploymentReceipt)
 
@@ -4116,6 +4118,98 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // is false in both readings and that is the half that matters most -- a queued deploy must never
 // interrupt the one currently holding the host mutation window, which is the state that produces a
 // half-applied cutover.
+// THE srv1 ROOT-MUTATION APPROVAL STEPS (gunbc.fleet.srv1_root_mutation_approval_run), the same three
+// in each root-mutation job, after the release is unpacked and before any step that writes as root:
+// federate for the submission key, file one request with the broker and wait for the operator's
+// decision, then upload the receipt naming that decision whatever the outcome. Every later step keeps
+// its implicit success(), so a refused or expired approval ends the job with nothing written.
+// THE SELECTION THE APPROVAL BINDS: each dispatch input a later step of the job consumes, as indexed
+// NAME_i / VALUE_i pairs the gate reads into the approved subject (srv1_root_mutation_approval_run).
+fn fleet_converge_srv1_root_mutation_select_env(index: Int, inputs: List<String>) -> List<YamlKeyValue> {
+  match inputs.first() {
+    Absent => []
+    Present { value: name } => concat(
+      [
+        kv(key: srv1_root_mutation_select_name_env(index: index), value: yaml_string(s: name)),
+        kv(key: srv1_root_mutation_select_value_env(index: index), value: yaml_string(s: join(["${{ inputs.", name, " }}"], ""))),
+      ],
+      fleet_converge_srv1_root_mutation_select_env(index: index + 1, inputs: inputs.skip(n: 1)),
+    )
+  }
+}
+
+data fleet_converge_dashboard_deploy_selected_inputs: List<String> = ["plan_workflow_run_id", "apply_workflow_run_id", "plan_artifact_hash", "expected_revision"]
+data fleet_converge_microvm_controller_install_selected_inputs: List<String> = ["workspace_image_run_id", "revision_job_image_run_id"]
+data fleet_converge_approval_broker_dark_install_selected_inputs: List<String> = []
+
+fn fleet_converge_srv1_root_mutation_approval_step(selects: List<String>) -> Step {
+  RunStep {
+    name: Present { value: "srv1 root mutation: file one approval with the broker and wait for the operator's decision; no root step runs without it" },
+    id: Present { value: "srv1_root_mutation_approval" },
+    run: gunbc_ci_srv1_root_mutation_approval_invoke(),
+    shell: none,
+    env: Present { value: concat([
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+    ], fleet_converge_srv1_root_mutation_select_env(index: 0, inputs: selects)) },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: minute_count(srv1_root_mutation_approval_step_timeout_minutes()) }
+  }
+}
+
+fn fleet_converge_srv1_root_mutation_approval_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the srv1 root-mutation approval receipt" },
+    id: Present { value: "srv1_root_mutation_approval_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "srv1-root-mutation-approval-receipts")),
+      kv(key: "path", value: yaml_string(s: srv1_root_mutation_approval_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: "always()" },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// THE ROOT-MUTATION JOBS' TOKEN PERMISSIONS: id-token write for the gate's WIF auth, actions read for
+// the receipt downloads from the plan and apply runs, contents read for the checkout. Declaring any
+// permission sets every undeclared one to none, so all three the jobs use are named.
+data fleet_converge_srv1_root_mutation_job_permissions: WorkflowPermissions = WorkflowPermissions {
+  contents: Present { value: PermRead },
+  pull_requests: none,
+  issues: none,
+  actions: Present { value: PermRead },
+  id_token: Present { value: PermWrite },
+}
+
+// A srv1 ROOT-MUTATION JOB IS ADMITTED ONLY FOR host == srv1, AT THE JOB: the WIF step and the
+// approval-filing key fetch are the job's first credentialed steps, so a host check inside the gate
+// step would come after the key had already reached another host's runner (review 5649820707).
+// The gate's own srv1 check stays as the in-process refusal for a job admitted some other way.
+fn fleet_converge_srv1_root_mutation_job_if(mode: FleetConvergeWorkflowMode) -> String {
+  serialize_expression(expression: LogicalAnd {
+    left: fleet_converge_dispatch_mode_is(mode: mode),
+    right: Equals {
+      left: ContextAccess { context: Github, path: ["event", "inputs", "host"] },
+      right: StringLiteral { value: operator_host_srv1 as String },
+    },
+  })
+}
+
+fn fleet_converge_srv1_root_mutation_approval_steps(selects: List<String>) -> List<Step> {
+  [
+    ci_fleet_wif_auth_step(),
+    fleet_converge_srv1_root_mutation_approval_step(selects: selects),
+    fleet_converge_srv1_root_mutation_approval_receipt_upload_step(),
+  ]
+}
+
 fn fleet_converge_dashboard_deploy_job() -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: DashboardDeploy) as String,
@@ -4127,6 +4221,9 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+      ],
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_dashboard_deploy_selected_inputs),
+      [
         fleet_converge_receipt_download_step(
           id: "dashboard_plan_receipt_download",
           name: "Download the plan artifact (carries the plan receipt) from the plan run",
@@ -4165,7 +4262,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 
@@ -4191,7 +4288,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
 // installer asserting it installed is the control-plane fact standing in for the subject
 // observation that gunbc.recurring_failure_mode
 // control_plane_acknowledgement_minted_as_effect exists to refuse.
-data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
+data fleet_converge_approval_broker_dark_install_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: ApprovalBrokerDarkInstall)
 
 fn fleet_converge_approval_broker_dark_install_step() -> Step {
   RunStep {
@@ -4217,7 +4314,7 @@ fn fleet_converge_approval_broker_dark_install_step() -> Step {
 // (ghrunner on the host-pinned runner), copies from the release bins this job downloaded and
 // verified, and writes an additive locus + template unit that starts no instance. It shares the
 // host-mutation concurrency group so it cannot land inside a roadmap deploy or a broker install.
-data fleet_converge_microvm_controller_install_step_if: String = fleet_converge_mode_step_if(mode: MicrovmControllerInstall)
+data fleet_converge_microvm_controller_install_step_if: String = fleet_converge_srv1_root_mutation_job_if(mode: MicrovmControllerInstall)
 
 fn fleet_converge_microvm_controller_install_step() -> Step {
   RunStep {
@@ -4254,6 +4351,9 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+      ],
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_microvm_controller_install_selected_inputs),
+      [
         fleet_converge_receipt_download_step(id: "workspace_image_download", name: "Download the workspace image selected for installation",
           artifact: workspace_image_artifact_name, path: workspace_image_staging_root,
           run_id_expression: "${{ inputs.workspace_image_run_id }}"),
@@ -4276,7 +4376,7 @@ fn fleet_converge_microvm_controller_install_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 
@@ -4291,6 +4391,9 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+      ],
+      fleet_converge_srv1_root_mutation_approval_steps(selects: fleet_converge_approval_broker_dark_install_selected_inputs),
+      [
         fleet_converge_approval_broker_dark_install_step(),
       ]
     ),
@@ -4307,7 +4410,7 @@ fn fleet_converge_approval_broker_dark_install_job() -> Job {
         explicit_single: none
       }
     },
-    permissions: none,
+    permissions: Present { value: fleet_converge_srv1_root_mutation_job_permissions },
   }
 }
 

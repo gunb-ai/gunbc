@@ -215,7 +215,7 @@ fn fmi_infer_with_member_formal_authored(tree: ResolvedTree) -> Outcome<Bool> {
                     root: fmi_replace_atom(n: tree.root, from: variable, to: int_type),
                     symbol_index: tree.symbol_index,
                     resolved_declarations: tree.resolved_declarations,
-                    occurrence_bindings: tree.occurrence_bindings, duplicate_binding_records: tree.duplicate_binding_records,
+                    occurrence_resolutions: tree.occurrence_resolutions, duplicate_binding_records: tree.duplicate_binding_records,
                     module_outcomes: tree.module_outcomes, outcome_index: tree.outcome_index,
     member_kinds: tree.member_kinds,
                     type_declaration_modifiers: tree.type_declaration_modifiers,

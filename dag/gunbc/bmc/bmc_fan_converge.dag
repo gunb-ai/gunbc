@@ -155,7 +155,7 @@ import product.cooling_qualification {
   cooling_catalog_refusal_reason,
   installed_cooling_verdict_for_host,
 }
-import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac }
+import extdeps.bmc.endpoint { BmcFirmwareFamily, OpenBmc, AmiMegaRac, SupermicroAten }
 import product.fan_policy_standing {
   ConvergeRouteBound,
   ConvergeRouteUnbound,
@@ -426,6 +426,7 @@ fn bmc_firmware_family_content_hash(
   match family {
     OpenBmc => content_hash_atom(value: "OpenBmc"),
     AmiMegaRac => content_hash_atom(value: "AmiMegaRac"),
+    SupermicroAten => content_hash_atom(value: "SupermicroAten"),
   }
 }
 

@@ -2,6 +2,7 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
+import std.nat { Nat }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -78,6 +79,42 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
     url as String,
     "-w",
     "\n%\{http_code\}",
+  ]
+}
+
+// curl(1) --retry / --retry-delay words, rendered here from std.measure carriers. Together with the
+// caller's per-request --max-time they bound how long a polling wait can last; a caller must not
+// spell them as string literals (DESIGN.md §3: an argv carries a literal it should receive as a
+// parameter).
+fn http_client_retry_flag(attempts: Nat) -> NonEmptyStr {
+  to_string(attempts) as NonEmptyStr
+}
+
+fn http_client_retry_delay_flag(delay: Second) -> NonEmptyStr {
+  to_string(second_count(s: delay)) as NonEmptyStr
+}
+
+// A readiness poll for a caller that runs curl AS A CONTAINER ENTRYPOINT (curlimages/curl): the curl
+// ARGUMENTS only, no program word — the image is the program. The body is discarded (-o /dev/null),
+// every transport error is retried (--retry-all-errors: a connection refused while the server boots
+// is curl 7, which plain --retry would not retry), and the status code is the whole of stdout
+// (-w '%{http_code}'), so the caller compares it exactly. attempts x delay + max_time is the bound
+// on the wait; all three arrive as carriers from the caller's policy.
+fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Second, max_time: Second) -> List<String> {
+  [
+    "-sS",
+    "-o",
+    "/dev/null",
+    "-w",
+    "%\{http_code\}",
+    "--retry",
+    http_client_retry_flag(attempts: attempts) as String,
+    "--retry-delay",
+    http_client_retry_delay_flag(delay: delay) as String,
+    "--retry-all-errors",
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
   ]
 }
 
