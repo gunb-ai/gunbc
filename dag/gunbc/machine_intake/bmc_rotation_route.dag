@@ -8,7 +8,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
 import std.content_hash { content_hash_of_value }
 import extdeps.external_authority { ExternalAuthority }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcAccessSurface }
 import extdeps.bmc.ipmi_channel {
@@ -302,6 +302,7 @@ fn canonical_firmware_family(family: BmcFirmwareFamily) -> String {
   match family {
     OpenBmc => "openbmc"
     AmiMegaRac => "ami-megarac"
+    SupermicroAten => "supermicro-aten"
   }
 }
 
