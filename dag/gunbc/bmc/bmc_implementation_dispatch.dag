@@ -1,8 +1,9 @@
 module gunbc.bmc.bmc_implementation_dispatch
 
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import std.credentials { FactoryLogin }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, BmcProtocol, OpenBmc, SupermicroAten }
 import extdeps.bmc.openbmc {
   HostStorageBlind,
   RedfishHostStorageVisibility,
@@ -11,6 +12,12 @@ import extdeps.bmc.openbmc {
   openbmc_supported_protocols,
 }
 import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_floor }
+import extdeps.bmc.supermicro {
+  supermicro_factory_username,
+  supermicro_factory_password_form,
+  supermicro_unique_password_authority,
+  supermicro_supported_protocols_floor,
+}
 
 // THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits
 // here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor
@@ -27,10 +34,20 @@ import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_
 // family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from
 // extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact
 // carried on the build binding, never here.
-fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
+// A FAMILY EITHER PUBLISHES ONE FACTORY LOGIN OR FIXES ONLY THE USERNAME. Supermicro ships a per-unit
+// password on the board's sticker (extdeps.bmc.supermicro supermicro_unique_password_authority), so its
+// family-grain answer names the username, the password's published form and the authority, and carries
+// no password: the credential itself is the operator-held inventory row keyed by the BMC MAC
+// (gunbc.machine_intake.bmc_operator_credential_inventory), never a family fact.
+type BmcFactoryLoginStanding
+  = FactoryLoginPublished { login: FactoryLogin }
+  | FactoryLoginPerUnit { username: NonEmptyStr, password_form: NonEmptyStr, authority: ExternalAuthority }
+
+fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> BmcFactoryLoginStanding {
   match family {
-    OpenBmc => openbmc_factory_login
-    AmiMegaRac => megarac_factory_login
+    OpenBmc => FactoryLoginPublished { login: openbmc_factory_login }
+    AmiMegaRac => FactoryLoginPublished { login: megarac_factory_login }
+    SupermicroAten => FactoryLoginPerUnit { username: supermicro_factory_username, password_form: supermicro_factory_password_form, authority: supermicro_unique_password_authority }
   }
 }
 
@@ -38,6 +55,7 @@ fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtoc
   match family {
     OpenBmc => openbmc_supported_protocols
     AmiMegaRac => megarac_supported_protocols_floor
+    SupermicroAten => supermicro_supported_protocols_floor
   }
 }
 
@@ -49,9 +67,15 @@ fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtoc
 // module is not its home.)
 data megarac_host_storage_visibility_floor: RedfishHostStorageVisibility = HostStorageBlind
 
+// FAMILY-FLOOR answer for Supermicro: Systems/1/Storage is licence-gated (DCMS), so at the family grain
+// the host's storage is not enumerable over Redfish; on 01.52.25 with only the OOB licence active it
+// answers 403 SMC.1.0.OemLicenseNotPassed (gunbc.machine_intake.supermicro_bmc_reading).
+data supermicro_host_storage_visibility_floor: RedfishHostStorageVisibility = HostStorageBlind
+
 fn bmc_firmware_host_storage_visibility(family: BmcFirmwareFamily) -> RedfishHostStorageVisibility {
   match family {
     OpenBmc => openbmc_redfish_host_storage_visibility
     AmiMegaRac => megarac_host_storage_visibility_floor
+    SupermicroAten => supermicro_host_storage_visibility_floor
   }
 }

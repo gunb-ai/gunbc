@@ -308,6 +308,15 @@ pub fn primitive_list_push() -> Rc<PrimitiveIdentity> {
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
 }
 
+pub fn primitive_shell_materialize_operation_argv() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("shell_materialize_operation_argv".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
 pub fn primitive_string_contains() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
@@ -339,6 +348,15 @@ pub fn primitive_machine_word_native_operate() -> Rc<PrimitiveIdentity> {
     thread_local! {
         static CACHED: Rc<PrimitiveIdentity> = {
             primitive_identity_slug("machine_word_native_operate".to_string())
+        };
+    }
+    CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
+}
+
+pub fn primitive_compile_dag_diagnostic_census() -> Rc<PrimitiveIdentity> {
+    thread_local! {
+        static CACHED: Rc<PrimitiveIdentity> = {
+            primitive_identity_slug("compile_dag_diagnostic_census".to_string())
         };
     }
     CACHED.with(|c: &Rc<PrimitiveIdentity>| c.clone())
@@ -477,6 +495,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(
+            primitive_shell_materialize_operation_argv(),
+            "std.operation_argv".to_string(),
+            "shell_materialize_operation_argv".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
             primitive_string_contains(),
             "std.algebra".to_string(),
             "string_contains".to_string(),
@@ -498,6 +522,12 @@ pub fn primitive_projection_roster() -> Rc<Vec<Rc<PrimitiveProjection>>> {
             primitive_machine_word_native_operate(),
             "std.machine_word".to_string(),
             "machine_word_native_operate".to_string(),
+            Rc::new(ProjectionFidelity::HostRealizedSeam),
+        ),
+        primitive_projection_row(
+            primitive_compile_dag_diagnostic_census(),
+            "gunbc.compile_diagnostic_census".to_string(),
+            "compile_dag_diagnostic_census".to_string(),
             Rc::new(ProjectionFidelity::HostRealizedSeam),
         ),
         primitive_projection_row(

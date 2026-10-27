@@ -664,7 +664,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "emit_host_native_cache_evict",
     "contiguous_loop_elementwise_kernel",
     "contiguous_loop_elementwise_float_kernel",
-    "shell_materialize_operation_argv",
     "shell_transport_operation_rows",
     "extdeps_shape_transport_policy_facts_for_qualified_name",
     "extdeps_qualified_name_resolves_in_derived_module_set",

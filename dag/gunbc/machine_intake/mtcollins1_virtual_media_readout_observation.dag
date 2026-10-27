@@ -1,0 +1,567 @@
+module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
+
+// MTCOLLINS1 PHASE B0 (gunbc.plans.boot_origin_bmc_media B0; discharges work item
+// adhoc-9e4ea90a-fd0 alongside adhoc-b4222c87-d37): WHAT THE CONTROLLER ADMITS FOR VIRTUAL MEDIA,
+// AND WHAT COULD NOT BE READ.
+//
+// The B0 reading is the field `admitted_protocols` of a RedfishVirtualMediaProbeReceipt
+// (extdeps.bmc.redfish_virtual_media). The boot lane's media-route selector consumes exactly that
+// field: an admitted protocol selects the route, an EMPTY admitted list is refused as
+// CandidateRedfishProbeEmpty, and a contradictory one as CandidateRedfishProbeContradictory
+// (gunbc.boot_artifact_delivery redfish_eligibility). No receipt and no reading is the third
+// state -- and that is what this phase produced.
+//
+// WHY THE PLAN'S OWN PREMISE HAD TO BE CORRECTED FIRST. The plan text (boot_origin_bmc_media
+// line 30), and the planning lanes that repeat it, state that mtcollins1 "serves no Redfish",
+// citing gunbc.machine_intake.mtcollins1_access_observation, whose Redfish rows were taken on
+// 2026-09-11 under firmware 0.32. That premise is no longer true and it is load-bearing, so it is
+// corrected by measurement rather than by argument. On 2026-10-27T00:54:24Z, against the SAME
+// address (192.168.1.228:443) on the 0.45 build, the controller answers:
+//
+//   GET /redfish                             200   {"v1":"/redfish/v1/"}   (DSP0266 discovery doc)
+//   GET /redfish/v1                          200   Server: AMI MegaRAC Redfish Service
+//   GET /redfish/v1/                         200   Server: AMI MegaRAC Redfish Service
+//   GET /redfish/v1/Managers/Self/VirtualMedia   401   WWW-Authenticate: Basic, X-Auth-Token
+//   GET /api/settings/media/general          401   Server: lighttpd
+//   GET /api/session                         404   Server: lighttpd
+//
+// The service root is served with its full DMTF body, quoted from the committed capture rather than
+// paraphrased: RedfishVersion "1.8.0", @odata.type "#ServiceRoot.v1_5_2.ServiceRoot", @odata.id
+// "/redfish/v1/", Id "RootService", Name "Root Service", Vendor "AMI", Product "AMI Redfish Server",
+// UUID "2254ee50-beb6-1000-01e6-4cd68a3cc128", Links { Sessions }, and thirteen top-level service
+// links (AccountService, CertificateService, Chassis, CompositionService, EventService, JsonSchemas,
+// Managers, Registries, SessionService, Systems, Tasks, TelemetryService, UpdateService). Note the
+// two versions that are easy to conflate and were conflated in an earlier draft of this module:
+// RedfishVersion is the protocol version and is 1.8.0; 1.5.2 is the ServiceRoot SCHEMA version
+// carried in @odata.type. They are different fields answering different questions.
+//
+// TWO SERVERS ANSWER THIS ONE ADDRESS, which is the single most consequential thing the ladder
+// shows, because it is what the superseded premise got wrong. The /redfish tree is answered by
+// "AMI MegaRAC Redfish Service"; /api/session, /api/settings/media/general and the web root are
+// answered by "lighttpd". So the 0.32 observation -- 200 at /, 404 at every /redfish path -- was
+// never evidence that the BOX had no Redfish. It was evidence that lighttpd served the web root and
+// no Redfish service was mounted behind it at that time. Reading a single-attestation "the box
+// serves no Redfish" out of a host where two independent servers share an address conflated them,
+// and the Server header is the field that distinguishes them. It is now a per-row field of the
+// ladder rather than a sentence about the host.
+//
+// Under 0.32 the ladder returned 404 at every /redfish path (mtcollins1_access_observation, the
+// mtcollins1_http_probes rows). So the absence of Redfish was a property of that firmware build,
+// not of the box, and the reflash to 0.45 brought a Redfish service with it. The observation below
+// is the record of that, made on the controller rather than inherited from the plan. It does NOT
+// touch mtcollins1_access_observation, which remains the true record of what was observed on
+// 2026-09-11 under 0.32: correcting a stale CONCLUSION by editing a dated OBSERVATION would destroy
+// the older measurement that is still evidence, and is the only thing that makes the change visible.
+//
+// IDENTITY, BECAUSE A SURFACE READ AT AN ADDRESS IS NOT YET A READ OF A UNIT -- AND STATED ONLY AS
+// FAR AS THE CAPTURE CARRIES IT, no further. Three values, from three committed artifacts:
+//
+//   * the service root served in this pass reports UUID 2254ee50-beb6-1000-01e6-4cd68a3cc128;
+//   * the host's own SMBIOS UUID, read from the machine in artifacts/bmc/mtcollins1-host-capture.txt
+//     (and pinned in the memory-census observation), is d5b80e46-903a-1000-01e6-4cd68a3cc128;
+//   * the BMC's reserved MAC is 28:C1:3C:8A:D6:4C, recorded in the committed intake capture as the
+//     endpoint MAC and on the FRU Board Extra as "28C13C8AD64C".
+//
+// The relation among them, and nothing beyond it: reversing the MAC's byte order yields
+// 4cd68a3cc128, and BOTH UUIDs end in exactly those twelve hex digits. The SMBIOS UUID and the BMC
+// UUID are therefore NOT equal -- they differ above the MAC field -- and no claim of equality is
+// made here, because the evidence does not carry one. What the capture does support is that the
+// controller answering on 192.168.1.228 publishes a UUID encoding the unit's own burned-in BMC MAC,
+// and that the host on that board publishes a UUID encoding the same MAC, which is corroborated
+// independently by the FRU. Impersonating that on the LAN would require reproducing the unit's
+// burned MAC-derived UUIDs, not merely answering on its address. That is enough to tie the address,
+// the served Redfish service and the unit together for a read-only surface probe; it is not, and is
+// not claimed as, an attestation of the firmware's authenticity.
+//
+// WHAT B0 CANNOT SETTLE, AND WHY IT IS NOT PAVED OVER. TransferProtocolType allowable values live
+// inside the VirtualMedia resource bodies. Those bodies are NOT in the unauthenticated surface:
+// every Redfish collection and resource path, and the OEM /api/settings/media/general path, answer
+// 401 Unauthorized with Basic and X-Auth-Token challenges. The reading that could fill
+// admitted_protocols must be AUTHENTICATED, and the read-only BMC credential is unreachable from
+// the observation lane: its Secret Manager container is dispatched from the fleet-converge
+// runner's own identity (extdeps.cloud.gcp.secret_manager secret_version_payload_read), and this
+// observing container has no ADC, no workload-identity federation and no grant. That is the typed
+// gap below. It is a gap in the CREDENTIAL, not in the SURFACE -- which is precisely the
+// distinction the surface premise got wrong, so both halves are carried in one receipt.
+//
+// THE AUTHENTICATED AXIS IS ALSO MEASURED, NOT ASSUMED. It is not the case that "the account
+// works, we simply did not present it". The boot lane HAS presented a credential to these
+// resources on the 0.45 build and been refused. Verbatim, grepped from the committed captures:
+//   artifacts/bmc/mtcollins1-boot-run-40258937016/mtcollins1-boot-diagnostics.txt line 106 --
+//     "Redfish inventory: refused: BMC refused the credential at
+//      https://192.168.1.228/redfish/v1/Systems (2026-10-26T02:57:01Z):
+//      curl: (22) The requested URL returned error: 401"
+//   artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt line 103 --
+//     the same sentence at (2026-10-26T06:30:20Z); both runs' hpm checks show APP Active
+//     0.45 03000000, and memory and processors are UNREAD in both.
+// The cause of that refusal is UNKNOWN, is tracked as its own lane, and is NOT diagnosed here --
+// neither a credential reset nor a rate limit is grounded for it.
+//
+// ONE THING THIS READ CAN SAY ABOUT IT, because it is measured here and nowhere else. An
+// UNAUTHENTICATED GET of that very path returns 401 too (row "redfish_systems", with the same
+// Server and challenge as the other protected rows). So the sentence "BMC refused the credential
+// at .../redfish/v1/Systems: ... 401" does not by itself distinguish "the credential was refused"
+// from "no credential reached the endpoint": 401 there is the answer to both. Telling them apart
+// needs the BODY, which the boot captures do not record. In this probe the two shapes are
+// distinct and are both committed: an unauthenticated Redfish refusal carries the
+// WWW-Authenticate challenge, and the OEM /api/settings/media/general refusal its
+// {"cc":7,"error":"Invalid Authentication"} body. The lesson for the credential lane is to
+// capture response bodies, not statuses alone -- which is what the capture beside this module
+// does, and which the boot lane cannot retroactively do for those two runs.
+//
+// THEREFORE B0 SELECTS NEITHER ROUTE. The B0 rule is "DirectRedfishHttps when HTTPS is listed,
+// NfsRelayThroughHolder otherwise, an unread value selects neither". `admitted_protocols` is
+// unread: no reader in this corpus has ever received the member bodies that carry it. So it is
+// neither EMPTY -- which would be a read that admitted nothing -- nor populated. B0's third arm
+// fires: neither route is selected, and B3 (the NFS relay) is NOT built on this reading's
+// authority. The deciding read is named exactly, because "unread" without a named next read is how
+// a phase stays unread forever: an authenticated GET of the VirtualMedia collection and its
+// members as the health-ReadOnly principal (gunbc.bmc.bmc_health_reader, username gunbc_health) --
+// NOT as bmc-mtcollins1-gunbc v2, which is the boot/operator credential and the wrong principal
+// for a GET. The read-only pattern to copy is gunbc.fleet.fleet_health_observe, whose every arm is
+// a GET on redfish.Http authenticated through a private per-run netrc shredded on every path out.
+//
+// THESE 401s DESCRIBE THE ENDPOINT, NOT THE CREDENTIAL -- AND THE AUTHENTICATED 401 IS A SEPARATE,
+// UNEXPLAINED FINDING THIS RECEIPT DOES NOT CLOSE. Every request here presented nothing, so a 401 is
+// the endpoint behaving correctly against an anonymous reader; it is not evidence about any account.
+// That distinction matters because there IS an unexplained authenticated refusal on this box: boot 6
+// (run 40264233543) was refused at https://192.168.1.228/redfish/v1/Systems with the pinned
+// credential on 2026-10-26, its cause is UNKNOWN, and it is tracked as its own lane. Two facts sit
+// beside each other with no bridge: the IPMI lanplus path on this unit is PROVEN live at 0.45 (boot
+// 6 authenticated and read hpm check, mc info and fru print 0), yet the only recent committed
+// REDFISH attempt with a credential returned 401. Same account, two protocols, one refusing. Nobody
+// has explained it, so this receipt explains nothing about it either, and specifically supports
+// neither "the credential was reset" nor "rate limiting" -- neither is grounded. Anyone resuming the
+// read should treat a 401 as a finding to capture, not a fluke to retry into.
+//
+// A CAUTION THIS RECEIPT CANNOT LIFT, INHERITED FROM ITS ADDRESS. A firmware reflash restores
+// factory accounts and erases the remote-media configuration, so a 401 seen while or after a
+// firmware converge can say nothing about the endpoint (gunbc.recurring_failure_mode
+// .firmware_reflash_resets_the_bmc_credential_it_needs). The one confounder that WAS checked: no
+// mtcollins firmware-converge run was in flight when the ladder was taken (the latest
+// fleet-converge runs completed at 2026-10-26T14:12Z, 21:05Z and 22:32Z, all before this probe), so
+// these rows are not the artifact of a reflash restoring factory accounts mid-read. That check
+// bounds the ladder, not the boot lane's authenticated refusal above. mtcollins1 is also the
+// standing boot target of gunbc.fleet.mtcollins_firmware_converge and the operator holds standing
+// boot permission for it, so a boot may present media concurrently: read this as a snapshot of the
+// SURFACE, never as a settled media state.
+//
+// PROVENANCE. Out-of-band only. Every request was an HTTPS GET issued from the observer's network
+// position; nothing was written, no session created, no account touched, no media action sent, and
+// no credential was fetched or presented. In-band ipmitool was not used as a fallback (operator
+// ruling 2026-09-18: fleet observation is out-of-band and least-privilege). Raw captures, with their
+// SHA256SUMS, are committed beside this module at
+// artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T040012Z/ -- the
+// instrumented pass, whose surface-ladder.txt is what the rows below are transcribed from. The
+// earlier ...T005424Z pass of the same probe is retained as SUPERSEDED rather than deleted; see its
+// ARGV for what the second pass adds and what was wrong in the first commit's use of it. The digest
+// below is the SHA256 of the instrumented directory's SHA256SUMS manifest, so re-hashing that
+// directory re-derives this receipt's evidence binding -- the binding itself, not every prose
+// sentence, which no hash can do and which is why the quoted values above are quoted from the
+// capture rather than paraphrased from memory.
+
+import std.types { Bool, Int, NonEmptyStr, List, EpochMs, list_length }
+import std.optional { Present, Absent, optional_present, optional_absent }
+import std.list { list_member, first_where }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.access_profile {
+  BmcAccessSurface,
+  BmcObservedIdentity,
+  SurfaceOemRestRemoteMedia,
+  SurfaceRedfishVirtualMedia,
+  SurfaceSystemInventory,
+}
+import extdeps.bmc.redfish_virtual_media {
+  RedfishVirtualMediaLocator,
+  UnderManager,
+  UnderSystem,
+  RedfishVirtualMediaTransferProtocol,
+  TransferHttps,
+}
+import gunbc.machine_intake.mtcollins1_access_observation {
+  mtcollins1_endpoint,
+  mtcollins1_identity,
+}
+import gunbc.host.bmc_release_capability_catalog { megarac_committed_hpm_check_identity }
+
+// THE B0 DECISION, AS A VALUE. The plan's three arms become three constructors so that "unread" is
+// a case every consumer must handle, rather than a default that can silently look like a decision.
+type BmcMediaRouteAdmission
+  = DirectRedfishHttps
+  | NfsRelayThroughHolder
+  | RouteUnsettledUnread { cause: NonEmptyStr }
+
+// WHETHER A READ ACTUALLY EXPOSED THE TRANSFER PROTOCOLS. Three states, because the corpus already
+// holds two of them and they mean different things downstream: a receipt whose list is EMPTY says
+// the controller ANSWERED and admitted nothing (gunbc.boot_artifact_delivery refuses that as
+// CandidateRedfishProbeEmpty), while a receipt never obtained says nobody has ever seen the field.
+// Collapsing the second into the first would let an absent read masquerade as a settled refusal --
+// and a settled refusal is exactly what would be cited to authorize building the NFS relay.
+type TransferProtocolReadout
+  = ReadoutRead { protocols: List<RedfishVirtualMediaTransferProtocol> }
+  | ReadoutRefusedUnauthenticated { challenge: NonEmptyStr }
+  | ReadoutNeverAttempted
+
+// ONE ROW OF THE STATUS LADDER.
+//
+// `method` is carried rather than implied so this record cannot hold a write while presenting
+// itself as what was issued: this phase sent GETs, and the witness counts the rows over it.
+//
+// `served_by` is the Server header the ANSWER came from, and it is not decoration. One address on
+// this box is answered by TWO servers: the /redfish tree by "AMI MegaRAC Redfish Service" and the
+// OEM /api paths and web root by "lighttpd". That distinction is exactly what the superseded 0.32
+// reading collapsed -- it saw 200 at / and 404 under /redfish and concluded the BOX had no Redfish,
+// when all it had established was that lighttpd served the web root and no Redfish service was
+// mounted behind it. Recording which server answered each row is what makes "the Redfish service
+// exists / does not exist" a question that can be asked of the right subject. A row that stored
+// only a status code would reproduce the original error.
+type BmcSurfaceProbeRow {
+  method: NonEmptyStr
+  path: NonEmptyStr
+  status: Int
+  served_by: NonEmptyStr
+}
+
+// The two servers this ladder saw, named once so rows are compared against names rather than
+// against prose in each row.
+data redfish_server: NonEmptyStr = "AMI MegaRAC Redfish Service"
+data oem_web_server: NonEmptyStr = "lighttpd"
+
+// THE B0 RECEIPT, AS THIS PHASE ACTUALLY MET IT.
+type B0VirtualMediaReadout {
+  endpoint: BmcControllerEndpoint
+  // What the controller reports itself to be, taken from the boot lane's committed 0.45 hpm check
+  // -- the same identity mtcollins1_current_build_firmware carries. The 0.32 intake row is NOT
+  // reused: 0.32 is the firmware whose ladder produced "no Redfish", and labelling a 0.45 surface
+  // read with 0.32 would misdate the entire observation.
+  firmware: BmcFirmwareReleaseIdentity?
+  identity: BmcObservedIdentity
+  // The unauthenticated ladder, one row per path, in the order issued. The ladder IS the finding:
+  // the Redfish service answers 200 at its three root forms and 401 at every resource below it,
+  // while the OEM paths are answered by a different server (see served_by).
+  ladder: List<BmcSurfaceProbeRow>
+  transfer_protocol_readout: TransferProtocolReadout
+  // Both cited collection locations, listed rather than guessed, because which one an endpoint
+  // serves is itself per-endpoint discovery and an unauthenticated ladder cannot settle it:
+  // Managers/Self (where mtjade1, another MegaRAC, is known to publish it) and Systems/1 (the
+  // older location the schema still allows).
+  candidate_locators: List<RedfishVirtualMediaLocator>
+  // True when the service root itself was served -- the fact that retires "serves no Redfish" for
+  // this firmware, independently of any credential.
+  redfish_service_root_served: Bool
+  // Which authentication mechanisms the controller offered for the refused VirtualMedia GET.
+  offered_auth_schemes: List<NonEmptyStr>
+  credential_path_available: Bool
+  credential_principal: NonEmptyStr
+  // Whether a firmware converge was live against this unit when the ladder was taken: the check
+  // that keeps a 401 from being read as a property of the surface.
+  firmware_converge_live_at_observation: Bool
+  observed_at: EpochMs
+  discovered_surfaces: List<BmcAccessSurface>
+  raw_capture_digest: ContentHash
+  // Digests of the boot-lane captures that carry the authenticated 401 rows, so the authenticated
+  // axis of this receipt is checkable against artifacts/bmc/ rather than against prose.
+  authenticated_refusal_captures: List<ContentHash>
+}
+
+fn redfish_row(path: NonEmptyStr, status: Int) -> BmcSurfaceProbeRow {
+  BmcSurfaceProbeRow { method: "GET", path: path, status: status, served_by: redfish_server }
+}
+
+fn oem_row(path: NonEmptyStr, status: Int) -> BmcSurfaceProbeRow {
+  BmcSurfaceProbeRow { method: "GET", path: path, status: status, served_by: oem_web_server }
+}
+
+// The ladder, row-for-row from the committed surface-ladder.txt of the instrumented pass
+// (observer wall clock 2026-10-27T04:00:12Z to 04:00:15Z).
+//
+// TWO ROWS WERE TRANScribed WRONG THE FIRST TIME, AND THE CORRECTION IS RECORDED RATHER THAN
+// QUIETLY MADE. The committed capture of the earlier partial pass (...T005424Z) recorded 200 for
+// /redfish, /redfish/v1 and /redfish/v1/ -- but the module's rows were transcribed from it as 401,
+// 401, 200. The capture was right and the transcription was not, which is the more dangerous
+// direction of this error: a reader comparing module to artifact would have found the artifact
+// contradicting the receipt, not confirming it. The rows are now taken row-for-row from this
+// instrumented pass, and the three root paths were additionally re-probed nine times over three
+// further passes with fresh connections, returning 200 every time. The earlier directory is
+// retained as superseded rather than deleted; deleting a capture is not how a superseded
+// measurement is handled. Getting a status code wrong in the one receipt whose job is to correct a
+// 404-based premise would have been the same class of error the receipt exists to fix.
+data b0_ladder: List<BmcSurfaceProbeRow> = [
+  redfish_row(path: "/redfish", status: 200),
+  redfish_row(path: "/redfish/v1", status: 200),
+  redfish_row(path: "/redfish/v1/", status: 200),
+  redfish_row(path: "/redfish/v1/Systems", status: 401),
+  redfish_row(path: "/redfish/v1/Managers", status: 401),
+  redfish_row(path: "/redfish/v1/Managers/Self", status: 401),
+  redfish_row(path: "/redfish/v1/Managers/Self/VirtualMedia", status: 401),
+  redfish_row(path: "/redfish/v1/Systems/1", status: 401),
+  redfish_row(path: "/redfish/v1/Systems/1/VirtualMedia", status: 401),
+  redfish_row(path: "/redfish/v1/Chassis", status: 401),
+  redfish_row(path: "/redfish/v1/SessionService", status: 401),
+  redfish_row(path: "/redfish/v1/AccountService", status: 401),
+  oem_row(path: "/api/session", status: 404),
+  oem_row(path: "/api/settings/media/general", status: 401),
+  oem_row(path: "/", status: 200),
+]
+
+// THE 401 CHALLENGE AS THE CONTROLLER RENDERED IT, split into the two schemes it will accept for a
+// VirtualMedia GET. Realm names only: no credential, token or cookie value appears here or in the
+// captures (the committed header files carry no Authorization and no Set-Cookie line).
+data b0_offered_auth_schemes: List<NonEmptyStr> = ["Basic", "X-Auth-Token"]
+
+data b0_unauthenticated_challenge: NonEmptyStr =
+  "Basic realm=\"AMI_Redfish_Server\", X-Auth-Token realm=\"AMI_Redfish_Server\""
+
+// THE TWO CITED COLLECTION LOCATIONS, with media_id "CD" as the one named member to read first.
+// Neither is claimed to be THE location this controller uses; that answer comes back with the
+// member bodies. The media_id is a starting point for the authenticated read, not a claim that a
+// "CD" member exists.
+data b0_candidate_locators: List<RedfishVirtualMediaLocator> = [
+  RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "Self" }, media_id: "CD" },
+  RedfishVirtualMediaLocator { parent: UnderSystem { system_id: "1" }, media_id: "CD" },
+]
+
+// THE CREDENTIAL AXIS, STATED AS A GAP WITH ITS PRINCIPAL NAMED. The read that fills
+// admitted_protocols authenticates as the health-ReadOnly account (gunbc.bmc.bmc_health_reader,
+// username gunbc_health, container "bmc-<host>-health-reader"), never as bmc-mtcollins1-gunbc v2:
+// that is the boot/operator credential, and presenting an operator principal to make a read-only
+// observation would silently promote it into an observation lane. The health reader is not yet
+// provisioned for mtcollins1 -- no bmc-mtcollins1-health-reader container is rostered in
+// gunbc.secret_provision -- and the observation lane holds no Secret Manager grant at all, so
+// NEITHER credential is reachable from here. That is why the gap is reported instead of being
+// worked around with the nearest credential to hand.
+data b0_credential_principal: NonEmptyStr =
+  "gunbc_health (Redfish ReadOnly, gunbc.bmc.bmc_health_reader); not provisioned for mtcollins1; bmc-mtcollins1-gunbc v2 is the boot credential and is not the principal for this read"
+
+// THE B0 READING ITSELF.
+data mtcollins1_b0_virtual_media_readout: B0VirtualMediaReadout = B0VirtualMediaReadout {
+  endpoint: mtcollins1_endpoint,
+  firmware: megarac_committed_hpm_check_identity,
+  identity: mtcollins1_identity,
+  ladder: b0_ladder,
+  // UNREAD. Not an empty list, and not a refusal that may be read as a "no": no reader has ever
+  // received the member bodies that carry the field.
+  transfer_protocol_readout: ReadoutRefusedUnauthenticated { challenge: b0_unauthenticated_challenge },
+  candidate_locators: b0_candidate_locators,
+  // TRUE, and the load-bearing half of the correction.
+  redfish_service_root_served: true,
+  offered_auth_schemes: b0_offered_auth_schemes,
+  credential_path_available: false,
+  credential_principal: b0_credential_principal,
+  firmware_converge_live_at_observation: false,
+  // 2026-10-27T04:00:12Z, the OBSERVER's wall clock at the first request of the instrumented pass.
+  // Not the BMC's Date header and not a file mtime: the BMC clock is recorded separately in META.txt
+  // and agreed with the observer to ~3s on this pass, but it is a separate instrument and is never
+  // the observation time (a reflash resets it).
+  observed_at: 1793073612000,
+  // DISCOVERED, not confirmed: something answers behind authentication at the Redfish inventory
+  // paths and at the OEM media-settings path. Neither is a confirmed success, because no
+  // authenticated GET has completed. That distinction keeps this receipt from being mistaken for
+  // the access observation it sits beside, whose successful_read_surfaces ARE confirmed reads.
+  discovered_surfaces: [SurfaceSystemInventory, SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia],
+  // sha256 over the committed SHA256SUMS manifest of the capture directory, which itself covers
+  // every file in it: ARGV.txt, META.txt, surface-ladder.txt, redfish_ServiceRoot.json,
+  // redfish_ServiceRoot_headers.txt, redfish_VirtualMedia_401_headers.txt.
+  raw_capture_digest: Sha256Hash(Sha256Digest { hex: "7cd6a2d7ccfbca1ae916eb4941b85adbcb236c184160e6653010429467c29341" }),
+  // mtcollins1-boot-run-40258937016 and -40264233543, mtcollins1-boot-diagnostics.txt, digests of
+  // the committed files as they stand.
+  authenticated_refusal_captures: [
+    Sha256Hash(Sha256Digest { hex: "16a18fed0a9630d33194fef1a0a5efb80807f64b2363ad7e63f94cc44dec498f" }),
+    Sha256Hash(Sha256Digest { hex: "e419f3fcc65dea77b6774ae037067c82a03acf3e3784ea4ef5f63be8d41b2822" }),
+  ],
+}
+
+fn protocol_eq(a: RedfishVirtualMediaTransferProtocol, b: RedfishVirtualMediaTransferProtocol) -> Bool {
+  a == b
+}
+
+fn protocol_in(xs: List<RedfishVirtualMediaTransferProtocol>, x: RedfishVirtualMediaTransferProtocol) -> Bool {
+  list_member(xs: xs, x: x, eq: protocol_eq)
+}
+
+// THE SELECTOR'S RULES AS PREDICATES, because this substrate has no list filter: the ladder is
+// asked questions through folds, and the witness uses the same doors rather than re-implementing
+// them, so a wrong door fails both sides at once.
+//
+// ladder_status returns Int?, NOT Int. An absent row must not come back as a number: -1 (or 0, or
+// any other sentinel) is indistinguishable from a real status at the call site, so a witness
+// written with != would go GREEN when the row was deleted -- an absent read standing in for an
+// answer, which is the exact failure this module exists to make unwritable. The caller has to
+// match on Present, and a missing probe then fails the match rather than passing the comparison.
+fn ladder_status(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Int? {
+  match first_where(readout.ladder, r => r.path == path) {
+    Present { value: row } => optional_present(value: row.status)
+    Absent => optional_absent()
+  }
+}
+
+// THE ONLY LEGITIMATE WAY TO ASK "WHAT DID THIS PATH ANSWER": a Present match, so the question
+// cannot be answered about a path that was never probed.
+fn ladder_answered(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ladder_answered_with(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: seen } => seen == status
+    Absent => false
+  }
+}
+
+// "NOT THIS STATUS, AND ONLY IF IT WAS PROBED AT ALL" -- the form the != assertions in the witness
+// need, so that deleting a row fails the test instead of satisfying it.
+fn ladder_answered_not(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: seen } => seen != status
+    Absent => false
+  }
+}
+
+fn ladder_is_get_only(readout: B0VirtualMediaReadout) -> Bool {
+  readout.ladder.all(r => r.method == "GET")
+}
+
+// B0'S RULE, AS A FUNCTION THE NEXT PHASE MUST MATCH ON -- the operator's ruling of 2026-09-18,
+// re-confirmed on this task, rendered one arm per sentence:
+//
+//   "A read that returns the allowable list with HTTPS in it selects DirectRedfishHttps. A read
+//    that returns non-HTTPS protocols (NFS-only, or any other non-HTTPS set) selects
+//    NfsRelayThroughHolder. Only a read where no protocol has been admitted at all, or a refusal,
+//    selects neither route."
+//
+// WHY THE MIDDLE ARM IS WIDER THAN THE PLAN'S SENTENCE SOUNDS. Only the direct route needs the
+// controller itself to admit HTTPS, because the relay feeds the share through the holder and the
+// controller attaches it over the OEM remote-media path, which takes NFS or CIFS shares without any
+// Redfish TransferProtocolType admission. So "read, and not HTTPS" genuinely is "use the relay": a
+// CIFS-only or SFTP-only answer is a reason to relay, not a reason to stop. HTTPS is tested FIRST,
+// so the direct route wins when both are admitted -- preference belongs to the selector, not to the
+// wire order.
+//
+// THE ARM THAT MUST NEVER FALL THROUGH. A refusal, a never-attempted reading, and a list with
+// NOTHING admitted all select NEITHER route. The first two are the absence of an answer; the third
+// is an answer that admitted nothing, which is not an admission of NFS either. Treating any of them
+// as "not HTTPS, therefore relay" would build relay infrastructure on a read that never happened --
+// the failure this phase exists to make unwritable, and what the witness drives hardest.
+//
+// THE EMPTY LIST IS THE ONE CASE WHERE THIS SELECTOR AND THE BOOT LANE'S OWN FOLD APART, and the
+// divergence is deliberate rather than accidental. gunbc.boot_artifact_delivery redfish_eligibility
+// files an empty receipt as CandidateRedfishProbeEmpty, because that fold asks "may this candidate
+// be fetched over Redfish" and an empty admission answers no. This selector asks the plan's own
+// question, "which media route do we take", and the ruling answers it with NEITHER for an empty
+// list: admitting nothing is not an admission of NFS. Same receipt, two questions, no contradiction
+// -- recorded here so the next reader does not "fix" one to match the other.
+fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmission {
+  match readout.transfer_protocol_readout {
+    ReadoutRead { protocols: protocols } =>
+      if list_length(items: protocols) == 0 {
+        RouteUnsettledUnread {
+          cause: "VirtualMedia answered and admitted no protocol at all: nothing was admitted, which is not an admission of NFS and so selects neither route",
+        }
+      } else if protocol_in(xs: protocols, x: TransferHttps) {
+        DirectRedfishHttps
+      } else {
+        NfsRelayThroughHolder
+      }
+    ReadoutRefusedUnauthenticated { challenge: challenge } => RouteUnsettledUnread {
+      cause: concat(
+        "VirtualMedia resource bodies are not in the unauthenticated surface: every collection path answered 401 (",
+        concat(challenge, "); the TransferProtocolType allowable values have never been returned to any reader"),
+      ),
+    }
+    ReadoutNeverAttempted => RouteUnsettledUnread {
+      cause: "no VirtualMedia read has been attempted against this endpoint",
+    }
+  }
+}
+
+// B0'S RESULT, AS A VALUE. It says NEITHER ROUTE.
+//
+// CONSUMER CLASSIFICATION (DESIGN §3c), STATED HONESTLY BECAUSE THE HONEST ANSWER IS "NOT YET
+// WIRED". The consumers of this datum today are: (a) this module's witness, which pins the
+// selector's arms; and (b) the plan gunbc.plans.boot_origin_bmc_media, whose survey and B0 phase
+// text now carry this reading's outcome and whose retirement condition already gates on "mtcollins1
+// has booted that ISO through the media route its B0 observation selected". There is NO executing
+// route that reads this datum as a value: no boot-lane code branches on it, and no B3 gate consumes
+// it. That is a real gap, not a completed gate, and it must not be described as one.
+//
+// WHY IT IS NOT WIRED INTO THE BOOT LANE IN THIS PR, and what wiring it would need. The boot lane
+// selects media by a different mechanism -- the fleet-converge workflow's boot step and the OEM
+// remote-media configuration -- and B0's answer is NEITHER, which means there is no route to wire:
+// a branch on DirectRedfishHttps or NfsRelayThroughHolder has no arm to take until the
+// TransferProtocolType read actually lands. Wiring a gate that can only ever pass through its
+// "unsettled" arm would be a scaffold, not a gate. The gate that DOES bite is the plan's retirement
+// condition, which cannot be satisfied by any route other than the one this datum selects, and
+// which this datum currently blocks.
+//
+// WHAT WOULD MAKE IT A VALUE-LEVEL CONSUMER: when the authenticated read lands (the credential lane
+// is separate and open), the datum should be read by the boot step's media-route selection in
+// gunbc.fleet.fleet_converge_workflow, which is where a boot's media attach is chosen. That is the
+// named consumer and the executing route; it is deliberately not attempted here, because changing
+// boot-attach selection on the strength of a NEITHER reading would be an unearned change to a live
+// boot lane.
+data mtcollins1_b0_media_route: BmcMediaRouteAdmission =
+  b0_media_route_admission(readout: mtcollins1_b0_virtual_media_readout)
+
+// THE GAP, TYPED -- because a gap that is a value can be gated on and a gap that is a comment
+// cannot.
+type B0CredentialGap
+  = GapNone
+  | GapCredentialUnreachable { principal: NonEmptyStr, cause: NonEmptyStr }
+
+fn b0_credential_gap(readout: B0VirtualMediaReadout) -> B0CredentialGap {
+  if readout.credential_path_available {
+    GapNone
+  } else {
+    GapCredentialUnreachable {
+      principal: readout.credential_principal,
+      cause: "read-only credential unreachable from the observation lane: its Secret Manager container is dispatched only from the fleet-converge runner identity, and this container has no ADC, no workload-identity federation and no grant",
+    }
+  }
+}
+
+data mtcollins1_b0_credential_gap: B0CredentialGap =
+  b0_credential_gap(readout: mtcollins1_b0_virtual_media_readout)
+
+// WHETHER THE SURFACE PREMISE STILL HOLDS, AS A PREDICATE RATHER THAN A SENTENCE. It held while the
+// 0.32-era reading stood; this reading makes it false, so any lane still asserting it is planning
+// against a firmware that is no longer on the box.
+fn b0_serves_no_redfish_premise_still_holds(readout: B0VirtualMediaReadout) -> Bool {
+  !readout.redfish_service_root_served
+}
+
+// THE CHALLENGE TEXT, EXPOSED FOR THE WITNESS: a refusal receipt that does not carry what the
+// controller offered is not usable by whoever resumes the read.
+fn b0_challenge_of(readout: B0VirtualMediaReadout) -> NonEmptyStr {
+  match readout.transfer_protocol_readout {
+    ReadoutRefusedUnauthenticated { challenge: challenge } => challenge
+    ReadoutRead { protocols: _ } => "read"
+    ReadoutNeverAttempted => "never attempted"
+  }
+}
+
+// THE CAUSE TEXT, EXPOSED FOR THE WITNESS for the same reason: the arms must be separable by their
+// stated reasons, not only by their constructor names.
+fn b0_route_cause(route: BmcMediaRouteAdmission) -> NonEmptyStr {
+  match route {
+    RouteUnsettledUnread { cause: cause } => cause
+    DirectRedfishHttps => "direct-redfish-https"
+    NfsRelayThroughHolder => "nfs-relay-through-holder"
+  }
+}
+
+fn route_is_unsettled(route: BmcMediaRouteAdmission) -> Bool {
+  match route {
+    RouteUnsettledUnread { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE ONE-LINE ANSWER B0 OWES THE PLAN: the Redfish service EXISTS on 0.45 (contrary to the 0.32
+// premise the plan carries), TransferProtocolType is UNREAD, the deciding read is an authenticated
+// GET by the health-ReadOnly principal (not provisioned for this unit), and therefore B3 is NOT
+// authorized by this reading.

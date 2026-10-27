@@ -37,7 +37,7 @@ import std.primitive_projection {
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
   primitive_list_push, primitive_chars, primitive_string_contains, primitive_machine_word_native_operate,
-  primitive_sha256_hex_of_text,
+  primitive_sha256_hex_of_text, primitive_compile_dag_diagnostic_census,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -1266,6 +1266,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "chars",
   "machine_word_native_operate",
   "sha256_hex_of_text",
+  "compile_dag_diagnostic_census",
 ]
 
 // list_push IS DECLARED HERE, AND GROUNDED, because its projection row and its cost row both key on
@@ -1666,6 +1667,20 @@ data primitive_list_push_traversal: PrimitiveTraversalOrderFact = PrimitiveTrave
 // result consults no order a realization could choose: OrderFreeResult, as for string_contains.
 data primitive_sha256_hex_of_text_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_sha256_hex_of_text, order: OrderFreeResult }
 
+// compile_dag_diagnostic_census reports its rows in the order the COMPILE produced its
+// diagnostics, and says so. The seed's realization (cli_run.rs compile_diagnostic_census_rows)
+// walks the compiled diagnostics vector front to back, pushing a key to `order` the FIRST time it
+// is seen and counting repeats in a side map it only ever queries by key -- the map is never
+// iterated for the result, so no hash order enters the row list, and nothing is sorted. The result
+// is therefore the input's own order, which is SourcePreservingOrder: the same reading
+// concept_decl_facts_live and data_init_decl_facts_live carry for the same shape of walk. NOT
+// CanonicalOrder -- a claim that rows come out sorted by (class, subject_name) would be a fact
+// about a sort the realization does not perform -- and not OrderFreeResult, which would claim the
+// order is never consulted, while claim rows compare positions against each other. Naming this is
+// what makes the claim module's position comparisons (the one-mislabel probe reads rows[0] and
+// rows[1] by class) a stable observation rather than a coin flip between runs.
+data primitive_compile_dag_diagnostic_census_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_compile_dag_diagnostic_census, order: SourcePreservingOrder }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1692,6 +1707,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_chars_traversal,
   primitive_list_push_traversal,
   primitive_sha256_hex_of_text_traversal,
+  primitive_compile_dag_diagnostic_census_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

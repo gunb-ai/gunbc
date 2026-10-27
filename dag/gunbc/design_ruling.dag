@@ -63,6 +63,13 @@ data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
   provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
 }
 
+data srv1_root_mutation_approval_is_filed_by_the_job: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
+  decided: "2026-10-26",
+  section: "3b",
+  provenance: "Operator ruling choosing between two routes for the srv1 root-mutation approval: (A) gunbc.plans.ntfy_deployment_gate_approval option A, a new least-privilege GitHub App answering a custom deployment protection rule on srv1-production after the operator approves, or (B) each srv1 root-mutation job files one access request with the approval broker as its first step and proceeds only on the operator's device-redeemed approval, through gunbc.auth.approval_gate, with the environment kept for its main-only branch rule. The operator chose B (\"B is fine\"). B supersedes option A of that plan, which had been approved by default and never answered. The approval check runs in reviewed main rather than in GitHub's gate, the census pattern already admitted for the runner-group create; the environment's required reviewer is removed by the operator only after the step has been seen to admit one approval and refuse one denial on a real dispatch. Realized by gunbc.fleet.srv1_root_mutation_approval_run.",
+}
+
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
   decided: "2026-09-26",
@@ -420,6 +427,7 @@ fn design_rulings() -> List<DesignRuling> {
     authorization_pattern_is_a_selection,
     one_approval_route_for_every_privileged_action,
     the_initial_convergence_is_the_only_approval,
+    srv1_root_mutation_approval_is_filed_by_the_job,
     coercion_is_the_implicit_safe_subset,
     text_crossings_go_through_the_unfold,
     v2_better_than_the_seed,
