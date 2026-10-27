@@ -5896,9 +5896,36 @@ fn run_shared_type_leaf_collision_census(source_roots: &[String]) -> InvocationO
     .iter()
     .all(|v| shared_type_census_subject_build_from_cargo_verdict(v).is_err());
     let unobserved_live_control = unobserved_mapped && !census::observation_held(held, true);
-    let completed_nonzero_control = census::build_is_refused_finding(refuse_report.build.clone())
-        && census::build_is_reportable_finding(refuse_report.build.clone())
-        && census::observation_held(held, false);
+    // THE COMPLETED-NONZERO CONTROL, RE-FORMED UNDER THE #15197 WALL (stern-bat-401 ruling B).
+    // Its old first conjunct observed a REAL refusal on stlc.red_entry -- E0204, which only
+    // existed while the emitter asked the leaf-keyed index for the derive roster. Since #15197
+    // the wall accepts that crate and no fixture completes non-zero, so the observed half of
+    // this control dissolved with the refusal it depended on; deleting the control or leaving it
+    // red were both ruled out. What the control is FOR -- a completed non-zero cargo verdict is a
+    // REPORTABLE REFUSAL and never silently counts as no-observation -- is a property of the
+    // verdict MAPPING, and a mapping property is checked by feeding the mapping its input,
+    // exactly as the unobserved control beside it has always done with its three arms. The input
+    // is a Completed status-101 verdict (the shape rustc's E0204 refusal arrives in); the check
+    // is that the census maps it to a refused, reportable finding rather than an unreached.
+    let completed_nonzero_mapped =
+        match shared_type_census_subject_build_from_cargo_verdict(&CargoVerdict::Completed {
+            status: 101,
+            stderr_tail: "controlled-completed-nonzero".to_string(),
+            probe_line: None,
+            probe_diagnostic: None,
+            warning_count: 0,
+            warning_headers: Vec::new(),
+            cargo_network_retries: 0,
+            first_error: None,
+        }) {
+            Ok(build) => {
+                census::build_is_refused_finding(build.clone())
+                    && census::build_is_reportable_finding(build)
+            }
+            Err(_) => false,
+        };
+    let completed_nonzero_control =
+        completed_nonzero_mapped && census::observation_held(held, false);
     println!(
         "{PREFIX}: {}",
         census::control_line(
