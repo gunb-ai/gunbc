@@ -255,7 +255,7 @@ pub enum V2NativeCensusReading {
     },
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    OccurrenceResolution,
     /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
     /// primitive spelling's disposition.
     AmbientOperationDisposition,
@@ -442,7 +442,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -536,6 +536,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("router-proxy-falsifier"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/router_proxy_falsifier.dag",
+            },
+        ),
+        (
+            instrument_label("serving-benchmark-run"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
             },
         ),
         (
@@ -1170,7 +1176,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(
             &self_host_source_roots(),
             "ambient-name-census",
@@ -2093,8 +2099,9 @@ fn run_ambient_name_census(
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
     ];
-    if let Some(kit) = &kit {
+    if let (Some(kit), Some((kit_root, _))) = (&kit, &kit_inputs) {
         args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+        args.push((Some("kit_root".to_string()), text(kit_root)));
     }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),

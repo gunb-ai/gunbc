@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.a_census_measurement_mode_changes_whether_emit_runs
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingDeclared }
+
+data a_census_measurement_mode_changes_whether_emit_runs: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_census_measurement_mode_changes_whether_emit_runs" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingDeclared { reference: DeclarationRef { module_path: "gunbc.rung_drop.v1_required_lanes_withdrawn", decl_name: "v1_required_lanes_withdrawn", field: WholeDeclaration } } },
+      trigger_capability: "a census and a production compile that bind a type reference through ONE route, so they cannot disagree: the N2 cut named by gunbc.type_ref_hit_ne_bind_measure.authority type_ref_hit_ne_bind_measure_dissolve_trigger, which deletes the measure arm. Until then the disagreement is typed and located (Mitigatable), and the next rung, a red required check, needs the native compiler judging these witnesses on the required path (the declared drop above)",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE (as found): a census-backed claim over a fixture that imports a production module reads zero refusals by construction. compile_dag_diagnostic_census arms the N1a measurement mode (v1_rt with_type_ref_hit_ne_bind_measure), which turns one type reference in the import closure into a blocking UnresolvedType where the production compile reports it as advisory. One blocking row stops the fixture compile before emit, so no TransportEmissionNotModeled row can appear for the fixture own operations. HARM: DESIGN section 5 silent green. test.claim.transport_emission_not_modeled_witness rows w_rest_and_shell_transports_emit_without_refusal and w_file_operation_emits_beside_its_rest_and_shell_siblings stayed HELD with an unmodeled chmod verb planted in their fixtures, with byte-identical eval_steps.",
+
+    "DISTINGUISHING FACTS, measured remotely 2026-10-25 (task: transport census keyed form, session sunny-bear-433). The fixture rest_and_shell_source imports extdeps.transports.rest; the census over it carried exactly one blocking row, UnresolvedType at std.effect_grant.Verb, from extdeps.transports.rest rest_method_verb whose return type was spelled std.effect_grant.Verb while the module selective import of std.effect_grant did not list Verb. Listing Verb alone left the blocking row and the silent green. Listing Verb and spelling the return type bare removed the blocking row, and the planted chmod then made both rest rows go red. The measurement mode therefore perturbs the emit decision it is used to measure.",
+
+    "THE QUESTION WAS RULED, AND THE RULING IS THAT THE CENSUS FOLLOWS COMPILATION (warm-wolf-570 relaying stern-bat-401, 2026-10-25, on gunbc#15097). Re-spelling the reference bare in extdeps.transports.rest made the census pass by changing production source, the shape DESIGN section 5 rejects; that change and the Nat-precedent reading of it are withdrawn, and rest keeps std.effect_grant.Verb. The divergence was read by EXECUTION before any edit: on main 557a7efac39f the rest fixture's one blocking row was UnresolvedType at std.effect_grant.Verb, and a probe build that flipped ONLY the containment conjunct of v1.compiler.infer_env type_ref_measure_binding_authority's qualified arm removed it. Production resolves that name through v1.compiler.infer_env lookup_qualified_module_projection, an exact symbol_index hit; the measure's qualified arm bound only a qualifier that is an ANCESTOR of the referring module and never read its imports. EARLIEST UNJUSTIFIED LINK (DESIGN 6b): that arm; the resolver leaf in v1.compiler.infer_resolve was innocent.",
+
+    "REPAIR AND ITS EVIDENCE. The arm now answers v1.compiler.infer_env TypeRefMeasureBinding: Bound when the exact hit holds and the qualifier is an ancestor OR a module this module imports (read from env.parents, the resolved imports, selective and whole alike); DisagreesWithProduction when the hit holds and the qualifier is neither, which the resolver reports as the blocking TypeRefMeasureBindingDisagreement, never UnresolvedType; Unbound when there is no hit, which stays UnresolvedType. Controls in test.claim.type_ref_hit_ne_bind_measure_witness: a qualified NoSuchVerb stays UnresolvedType; std.effect_grant.Verb under a selective and under a whole import binds; the same name reached only through rest's closure refuses as a disagreement; an ancestor-qualified local type (row7) binds without one. In test.claim.transport_emission_not_modeled_witness the qualified spelling now holds at zero in both classes and the planted chmod in the importing fixture goes red.",
+
+    "POPULATION, measured once and not re-runnable from the tree: a text scan, whose source is in the body of gunbc#15097, listed at base 333ab7c1cbbe by module and function every fn whose return type is spelled <module>.<Type> with Type missing from that file selective import of <module> (UNLISTED), and every such fn whose <module> is not imported at all (NOT-IMPORTED). A reader must re-run the scan rather than trust those lists. After the repair those sites bind under the census exactly when production binds them through an import or an ancestor; a site whose module is not imported now reads as TypeRefMeasureBindingDisagreement, located and blocking, rather than as a silent green. RE-DERIVATION TRIGGER: an instrument label that reads parsed return types and import lists from v2.std.decl_index, not text; that instrument is a follow-up. RECOGNITION RULE: a census-backed zero over a fixture that imports anything is only readable beside a planted refusal in the same fixture that goes red.",
+  ],
+
+  evidence: [],
+}

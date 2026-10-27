@@ -1,0 +1,188 @@
+module gunbc.deploy_transition_store
+
+import std.types { String, NonEmptyStr, Bool }
+import std.optional { Present, Absent }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  filesystem_listing_observation,
+  filesystem_file_observation,
+  filesystem_read_outcome,
+  FilesystemDirectoryListed,
+  FilesystemDirectoryListingRefused,
+  FilesystemDirectorySubjectRefused,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, dashboard_instance_root_spelling_refusal }
+
+// THE TRANSITION INHIBITION STORE, SEALED IN PLACE. gunbc.deploy_transition decides what the inhibition MEANS;
+// this leaf module is the only place that knows where it lives. It mints a sealed value from the instance alone
+// (the directory is derived here from the declaration and listed before a store exists), and the store's
+// operations are this module's functions over that value. So the inhibition's decision functions take a store,
+// never a root, and call no filesystem operation on it themselves.
+//
+// NO FORMAT CHANGE. Each operation is the exact filesystem call the decision module used to make itself -- the
+// owner-only exclusive create (Filesystem.WriteOwnerOnly, realized with create_new), the in-place rewrite of the
+// phase (Filesystem.Write), the listing-joined read, the delete -- at the same path (<instance_root>/<member>),
+// so a record written by the code before this change is the record this code reads.
+//
+// THE INHIBITION IS NOT A HOLD, so it is sealed here and not moved onto gunbc.durable_exclusive_hold_file_store:
+// its presence is the refusal, it is read by actuators that never acquire it (the belt, the launch admission),
+// and it is rewritten in place under a held lease, which the hold protocol has no operation for. Its own
+// consolidation target is a record slot (a FormatConsolidation follow-up), not the hold.
+//
+// THE LEASE IS NOT HERE. transition-lease.json is a hand lock, and stern-ram-763 ruled (2026-10-24) that it moves
+// onto the hold library once std.durable_exclusive_hold models a non-holder release typed by its evidence; until
+// then it stays where it is in gunbc.deploy_transition (Blocked: hold-release-model), with its own listing-joined
+// observation. That fold and transition_inhibition_observe below are the same few lines, kept apart on purpose:
+// a shared helper here would be an observer over a caller-chosen directory (ruling 2026-10-25), and the lease's
+// copy is deleted when the lease moves onto the hold library.
+
+// THE ONE DECLARATION OF THE STORE: the member it is under the instance root. The store is a single file
+// directly in the instance root, which the instance itself provisions; the store owns no directory, so there is
+// no directory row to derive (and no directory mode to declare -- the file's owner-only mode is the exclusive
+// create's). The mint, the store's path (transition_inhibition_store_path, over a minted store only) and every
+// operation derive from this row, so deleting it breaks every reader.
+type TransitionInhibitionDeclaration { member: NonEmptyStr }
+
+data transition_inhibition_slots: TransitionInhibitionDeclaration = TransitionInhibitionDeclaration {
+  member: "transition-inhibition.json" as NonEmptyStr,
+}
+
+// What a store write answers. The refusal detail names the path, because the host's error is about the path and
+// an operator repairing it needs both.
+type TransitionMarkerWrite
+  = TransitionMarkerWritten
+  | TransitionMarkerWriteRefused { detail: String }
+
+fn transition_marker_write(success: Bool, path: String, error: String) -> TransitionMarkerWrite {
+  if success {
+    TransitionMarkerWritten
+  } else {
+    TransitionMarkerWriteRefused { detail: join([path, " -- ", error], "") }
+  }
+}
+
+// THE INHIBITION STORE: DATA ONLY (stern-ram-763, 2026-10-24: no closure fields, which the native emitter cannot
+// realize, E0728). Sole constructor, non-generic and never a variant arm (the seal does not reach variant
+// construction: test.claim.sole_constructor_completeness_audit_probe f13), so only transition_inhibition_store
+// below builds one, and only from a listed directory derived from transition_inhibition_slots. What is sealed is
+// CONSTRUCTION. Field READS are not sealed today, so a holder can read `root` and spell a path from it; that is the
+// same declared residual #14944 records for its claim store, and no rung is claimed for it. A store for instance
+// B cannot meet a guard for instance A: no transition operation takes a store beside its guard or basis; each
+// reads the one TransitionContext (below) that guard or basis was minted with.
+type TransitionInhibitionStore sole_constructor {
+  instance: NonEmptyStr
+  root: NonEmptyStr
+}
+
+type TransitionInhibitionStoreReading
+  = TransitionInhibitionStoreReady { store: TransitionInhibitionStore }
+  | TransitionInhibitionStoreUnready { detail: String }
+
+// THE STORE'S ONLY MINT. It takes the instance and nothing else; the directory is the instance root, and it is
+// LISTED before a store is handed out. A root that does not list makes every absence unestablished, so a store
+// over it could only ever answer indeterminate; it is refused here instead, and the decision module reads the
+// refusal as an unreadable standing. A root that is not absolute or not spelled one way refuses before the
+// listing, by the instance's own rule (gunbc.roadmap.roadmap_dashboard_instance
+// dashboard_instance_root_spelling_refusal), so every location of one transition is addressed one way.
+fn transition_inhibition_store(instance: HostDashboardInstance) -> TransitionInhibitionStoreReading {
+  let root = instance.instance_root as String
+  let name = transition_inhibition_slots.member as String
+  match dashboard_instance_root_spelling_refusal(instance: instance) {
+    Present { value: why } =>
+      TransitionInhibitionStoreUnready {
+        detail: join(["the instance root ", root, " holding ", name, " is refused because ", why], ""),
+      }
+    Absent => {
+      let listing = Filesystem.List(path: root)
+      match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+        FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
+          TransitionInhibitionStoreUnready {
+            detail: join(["the instance root holding ", name, " is not admissible: ", c], ""),
+          }
+        FilesystemDirectoryListingRefused { directory: _, error: e } =>
+          TransitionInhibitionStoreUnready {
+            detail: join(["the instance root holding ", name, " could not be listed: ", e], ""),
+          }
+        FilesystemDirectoryListed(_) =>
+          TransitionInhibitionStoreReady {
+            store: TransitionInhibitionStore { instance: instance.instance_id, root: root as NonEmptyStr },
+          }
+      }
+    }
+  }
+}
+
+// ONE TRANSITION, ONE INSTANCE: the context a transition runs in, minted from the instance alone, carrying the
+// inhibition store and the lease's root together. A transition's every location derives from one of these (the
+// guard is bound to it, and every clearance basis carries it), so a guard acquired at instance A has no field
+// through which to write, mark or clear the records of instance B. `lease_root` is the still-blocked hand lock's
+// directory (Blocked: hold-release-model in gunbc.deploy_transition); the sealed lease store replaces this one
+// field when the lease moves onto the hold library. Sole constructor, non-generic and never a variant arm, for the
+// reason TransitionInhibitionStore gives; its field reads are the same declared residual.
+type TransitionContext sole_constructor {
+  inhibition: TransitionInhibitionStore
+  lease_root: NonEmptyStr
+}
+
+type TransitionContextReading
+  = TransitionContextReady { context: TransitionContext }
+  | TransitionContextUnready { detail: String }
+
+fn transition_context(instance: HostDashboardInstance) -> TransitionContextReading {
+  match transition_inhibition_store(instance: instance) {
+    TransitionInhibitionStoreUnready { detail: d } => TransitionContextUnready { detail: d }
+    TransitionInhibitionStoreReady { store: s } =>
+      TransitionContextReady {
+        context: TransitionContext { inhibition: s, lease_root: s.root },
+      }
+  }
+}
+
+fn transition_inhibition_store_path(store: TransitionInhibitionStore) -> String {
+  join([store.root as String, "/", transition_inhibition_slots.member as String], "")
+}
+
+// THE STORE'S OPERATIONS. `create` is exclusive (Filesystem.WriteOwnerOnly is realized with create_new) for the
+// reason gunbc.deploy_transition set_transition_inhibition gives: a residue is the only evidence a partial
+// transition happened, and an ordinary write would erase it. `replace` is the one in-place write, used only to
+// record a partial transition under the held lease.
+fn transition_inhibition_create(store: TransitionInhibitionStore, content: String) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let created = Filesystem.WriteOwnerOnly(path: path, content: content)
+  transition_marker_write(success: created.success, path: path, error: created.error)
+}
+
+fn transition_inhibition_replace(store: TransitionInhibitionStore, content: String) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let written = Filesystem.Write(path: path, content: content)
+  transition_marker_write(success: written.success, path: path, error: written.error)
+}
+
+// ABSENCE IS ESTABLISHED BY A SUCCESSFUL LISTING, NEVER BY A FAILED READ (the reasoning is
+// gunbc.deploy_transition's, beside TransitionFileObservation): the listing and the read are joined by the
+// substrate's own fold, so this module cannot write an absence either.
+fn transition_inhibition_observe(store: TransitionInhibitionStore) -> FilesystemFileObservation {
+  let directory = store.root as String
+  let name = transition_inhibition_slots.member as String
+  let path = transition_inhibition_store_path(store: store)
+  let listing = Filesystem.List(path: directory)
+  let read = Filesystem.Read(path: path)
+  filesystem_file_observation(
+    listing: filesystem_listing_observation(
+      directory: directory,
+      success: listing.success,
+      entries: listing.entries,
+      error: listing.error,
+    ),
+    name: name,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+fn transition_inhibition_delete(store: TransitionInhibitionStore) -> TransitionMarkerWrite {
+  let path = transition_inhibition_store_path(store: store)
+  let removed = Filesystem.Delete(path: path)
+  transition_marker_write(success: removed.success, path: path, error: removed.error)
+}
