@@ -10710,9 +10710,10 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 let cpt = param_node_type_expr(n: cp)
                 if type_node_is_established(n: cpt, source_indices: scope.type_env.source_indices) {
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
-                } else if is_unsolved_empty_list_element(n: cpt) {
-                  // The unsolved element of an empty list literal keeps its identity: collapsing it
-                  // to callable_param would defer a field read of it that no argument can establish.
+                } else if is_unsolved_type_variable(n: cpt) {
+                  // An unsolved type variable keeps its identity -- the empty list's element is the
+                  // instance the corpus surfaced: collapsing it to callable_param would defer a field
+                  // read of it that no argument can establish.
                   extend_scope(scope: acc, name: pair.second, resolved: cpt, provenance: param_prov)
                 } else {
                   extend_scope(scope: acc, name: pair.second, resolved: type_variable_node(id: "callable_param"), provenance: param_prov)
@@ -11145,9 +11146,18 @@ fn field_base_is_in_flight_lambda_param(base: Node, scope: InferScope) -> Bool {
   }
 }
 
-fn is_unsolved_empty_list_element(n: Node) -> Bool {
+// AN UNSOLVED TYPE VARIABLE: the node's type is a variable nothing has grounded -- the empty list's
+// element, an unbound generic parameter, any deferred identity. A type read that DESCENDS into one
+// trades a named slot for an ungroundable node whose spelling the field lookup refuses; keeping the
+// node's own identity is what lets deferral proceed. Both guards over unsolved reads -- the
+// lambda-parameter binding below and generic_actual_position_type in the unify arm -- share THIS one
+// predicate; it was formerly keyed on the empty_list_element id alone (the only instance the corpus
+// surfaced), which made the same defect invisible at the arm (work item adhoc-b5f23a5d-052 re-measure
+// on 14750 head 9706e5b48ea: descending into an empty-list element slot refused m.declarations,
+// m.path, d.label, d.target at ten corpus sites).
+fn is_unsolved_type_variable(n: Node) -> Bool {
   match n.inferred {
-    Present { value: TypeVariable { id: id } } => id == "empty_list_element"
+    Present { value: TypeVariable { id: _ } } => true
     _ => false
   }
 }
@@ -15312,10 +15322,21 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // its inferred is its EXPANSION and binding that would trade the nominal type for its structure.
 // (gunbc.recurring_failure_mode type_alias_identity_decided_by_spelling_at_each_check; work item
 // adhoc-b5f23a5d-052, with smart-tern-402's kernel-container RED.)
+// THE DESCENT IS INTO AN ESTABLISHED READ ONLY. Descending trades the slot for its resolution, so the
+// resolution must be something a reader can act on. When the resolved node is an UNSOLVED TYPE VARIABLE
+// -- the empty list's element (the corpus instance), an ungrounded parameter, any deferred identity --
+// the trade loses: the slot carried the container-declared name a reader can key on, the resolution is
+// an ungroundable node the field lookup refuses (measured on 14750 head 9706e5b48ea before this guard:
+// fold_list element readers m.declarations, m.path at source_root_eval.dag and d.label, d.target at
+// type_declaration_use_census.dag over an empty [] refused 'no field on type empty_list_element', ten
+// sites). Keep the slot then, as the pre-arm code did for every shape, and let deferral proceed; the
+// is_unsolved_type_variable guard is the SAME predicate the lambda-parameter binding uses for the same
+// purpose, so one rule governs both unsolved reads (DESIGN 6b, no second leaf).
 fn generic_actual_position_type(slot: Node) -> Node {
   if (slot.children |> count == 0 && slot.connective == NoConnective) {
     match slot.inferred {
-      Present { value: Resolved { node: _ } } => child_type_node(ch: slot)
+      Present { value: Resolved { node: r } } =>
+        if is_unsolved_type_variable(n: r) { slot } else { child_type_node(ch: slot) }
       _ => slot
     }
   } else { slot }
