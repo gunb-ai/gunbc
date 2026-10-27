@@ -255,7 +255,7 @@ pub enum V2NativeCensusReading {
     },
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    OccurrenceResolution,
     /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
     /// primitive spelling's disposition.
     AmbientOperationDisposition,
@@ -442,7 +442,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -1176,7 +1176,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(
             &self_host_source_roots(),
             "ambient-name-census",

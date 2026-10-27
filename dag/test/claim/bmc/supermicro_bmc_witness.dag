@@ -1,0 +1,175 @@
+module test.claim.bmc.supermicro_bmc_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.measure { mebibyte, megatransfers_per_second }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
+import extdeps.bmc.supermicro {
+  SupermicroLicenceGate, SupermicroLicenceRefused, SupermicroLicenceNotRefused, SupermicroLicenceUnreadable,
+  SupermicroLicenceSum, SupermicroLicenceDcms, SupermicroLicenceOob,
+  SupermicroCgiRead, SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable,
+  supermicro_redfish_licence_gate, supermicro_cgi_firmware_version_of_wire, supermicro_redfish_firmware_version_of_wire,
+  supermicro_cgi_generic_info_of, supermicro_cgi_smbios_dimms_of, supermicro_bmc_release_is_modeled,
+}
+
+// THE DECODERS OF extdeps.bmc.supermicro OVER THE BODIES THE H11SSL UNITS SERVED. Every positive control
+// reads a committed capture through Filesystem.Read; every RED is that capture with one fact changed, so a
+// decoder that stops reading the real shape fails the positive control and one that stops discriminating
+// fails its RED.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn read(path: String) -> String { Filesystem.Read(path: path).content }
+
+data unit1_dir: String = "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/"
+
+fn unit1(name: String) -> String { read(path: concat(unit1_dir, name)) }
+
+// ── VERSION: both wire encodings of one release decode to the same version; anything else has none.
+test fn the_cgi_and_redfish_spellings_of_one_release_decode_to_one_version() -> Bool {
+  supermicro_cgi_firmware_version_of_wire(wire: "015225  ") == Present { value: firmware_semantic_version(major: 1, minor: 52, patch: 25) }
+    && supermicro_redfish_firmware_version_of_wire(wire: "01.52.25") == Present { value: firmware_semantic_version(major: 1, minor: 52, patch: 25) }
+    && supermicro_bmc_release_is_modeled(version: firmware_semantic_version(major: 1, minor: 52, patch: 0))
+}
+
+fn no_version(v: FirmwareSemanticVersion?) -> Bool {
+  match v {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn a_version_wire_of_the_wrong_shape_has_no_version() -> Bool {
+  no_version(v: supermicro_cgi_firmware_version_of_wire(wire: "01522"))
+    && no_version(v: supermicro_cgi_firmware_version_of_wire(wire: "0152x5"))
+    && no_version(v: supermicro_redfish_firmware_version_of_wire(wire: "1.52.25"))
+    && no_version(v: supermicro_redfish_firmware_version_of_wire(wire: "01.52"))
+    && supermicro_bmc_release_is_modeled(version: firmware_semantic_version(major: 1, minor: 73, patch: 0)) == false
+}
+
+// ── LICENCE GATE.
+fn licence_refused_with(gate: SupermicroLicenceGate, id: String, count: Int) -> Bool {
+  match gate {
+    SupermicroLicenceRefused { message_id: m, any_of: ls } => (m as String) == id && ls.length() == count
+    SupermicroLicenceNotRefused => false
+    SupermicroLicenceUnreadable { cause: _ } => false
+  }
+}
+
+test fn the_unlicensed_unit2_service_root_is_refused_for_any_of_sum_dcms_oob() -> Bool {
+  match supermicro_redfish_licence_gate(body: read(path: "artifacts/bmc/h11ssl-unit2-first-contact-redfish-root.json")) {
+    SupermicroLicenceRefused { message_id: m, any_of: ls } =>
+      (m as String) == "Base.v1_4_0.OemLicenseNotPassed" && ls == [SupermicroLicenceSum, SupermicroLicenceDcms, SupermicroLicenceOob]
+    SupermicroLicenceNotRefused => false
+    SupermicroLicenceUnreadable { cause: _ } => false
+  }
+}
+
+test fn unit1_storage_and_firmware_inventory_are_refused_for_dcms_under_the_smc_registry() -> Bool {
+  match supermicro_redfish_licence_gate(body: unit1(name: "redfish_v1_Systems_1_Storage.json")) {
+    SupermicroLicenceRefused { message_id: m, any_of: ls } => (m as String) == "SMC.1.0.OemLicenseNotPassed" && ls == [SupermicroLicenceDcms]
+    SupermicroLicenceNotRefused => false
+    SupermicroLicenceUnreadable { cause: _ } => false
+  }
+    && licence_refused_with(gate: supermicro_redfish_licence_gate(body: unit1(name: "redfish_v1_UpdateService_FirmwareInventory.json")), id: "SMC.1.0.OemLicenseNotPassed", count: 1)
+}
+
+test fn a_served_resource_is_not_refused_by_licence() -> Bool {
+  supermicro_redfish_licence_gate(body: unit1(name: "redfish_v1_Managers_1.json")) == SupermicroLicenceNotRefused
+    && supermicro_redfish_licence_gate(body: unit1(name: "redfish_v1_Systems_1_Memory.json")) == SupermicroLicenceNotRefused
+}
+
+// RED: an unknown licence token makes the refusal unreadable rather than a shorter list.
+test fn a_refusal_naming_an_unmodeled_licence_is_unreadable_not_shortened() -> Bool {
+  let body = join(split(s: unit1(name: "redfish_v1_Systems_1_Storage.json"), delimiter: "[\"DCMS \"]"), "[\"DCMS RAID \"]")
+  body != unit1(name: "redfish_v1_Systems_1_Storage.json")
+    && match supermicro_redfish_licence_gate(body: body) {
+      SupermicroLicenceUnreadable { cause: c } => string_contains(s: c, pattern: "RAID")
+      SupermicroLicenceRefused { message_id: _, any_of: _ } => false
+      SupermicroLicenceNotRefused => false
+    }
+}
+
+// RED: an id outside the two modeled registries is not read as a licence refusal.
+test fn an_unmodeled_message_id_is_not_a_licence_refusal() -> Bool {
+  let body = join(split(s: unit1(name: "redfish_v1_Systems_1_Storage.json"), delimiter: "SMC.1.0.OemLicenseNotPassed"), "SMC.2.0.OemLicenseNotPassed")
+  body != unit1(name: "redfish_v1_Systems_1_Storage.json") && supermicro_redfish_licence_gate(body: body) == SupermicroLicenceNotRefused
+}
+
+// RED: a truncated capture is unreadable, never "not refused".
+test fn a_truncated_licence_body_is_unreadable() -> Bool {
+  match supermicro_redfish_licence_gate(body: substring(s: unit1(name: "redfish_v1_Systems_1_Storage.json"), start: 0, end: 120)) {
+    SupermicroLicenceUnreadable { cause: _ } => true
+    SupermicroLicenceRefused { message_id: _, any_of: _ } => false
+    SupermicroLicenceNotRefused => false
+  }
+}
+
+// ── CGI GENERIC_INFO.
+test fn both_units_generic_info_decode_to_their_firmware_identity() -> Bool {
+  match supermicro_cgi_generic_info_of(body: read(path: "artifacts/bmc/h11ssl-unit1-cpu2-generic-info.xml")) {
+    SupermicroCgiPageRead { page: g } =>
+      (g.bmc_mac_as_read as String) == "ac:1f:6b:e3:f5:7b" && (g.firmware_tag as String) == "BL_SUPERMICRO_X7SB3_2026-03-27_B"
+        && g.firmware_version == firmware_semantic_version(major: 1, minor: 52, patch: 25) && (g.firmware_build_date as String) == "03/27/2026"
+    SupermicroCgiSessionRedirect => false
+    SupermicroCgiUnreadable { cause: _ } => false
+  }
+    && match supermicro_cgi_generic_info_of(body: read(path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml")) {
+      SupermicroCgiPageRead { page: g } => g.firmware_version == firmware_semantic_version(major: 1, minor: 52, patch: 0)
+      SupermicroCgiSessionRedirect => false
+      SupermicroCgiUnreadable { cause: _ } => false
+    }
+}
+
+// RED: the login redirect the unit-1 power page answered is a session refusal, not a page.
+test fn the_login_redirect_body_is_a_session_refusal() -> Bool {
+  match supermicro_cgi_generic_info_of(body: read(path: "artifacts/bmc/h11ssl-unit1-cpu2-power-info.xml")) {
+    SupermicroCgiSessionRedirect => true
+    SupermicroCgiPageRead { page: _ } => false
+    SupermicroCgiUnreadable { cause: _ } => false
+  }
+}
+
+// RED: a version field that lost a digit refuses the page.
+test fn a_generic_info_with_a_malformed_version_is_unreadable() -> Bool {
+  let body = join(split(s: read(path: "artifacts/bmc/h11ssl-unit1-cpu2-generic-info.xml"), delimiter: "IPMIFW_VERSION=\"015225  \""), "IPMIFW_VERSION=\"01525  \"")
+  match supermicro_cgi_generic_info_of(body: body) {
+    SupermicroCgiUnreadable { cause: c } => string_contains(s: c, pattern: "IPMIFW_VERSION")
+    SupermicroCgiPageRead { page: _ } => false
+    SupermicroCgiSessionRedirect => false
+  }
+}
+
+// ── CGI SMBIOS DIMMs: the licence-free inventory route.
+test fn unit2_smbios_lists_its_one_dimm() -> Bool {
+  match supermicro_cgi_smbios_dimms_of(body: read(path: "artifacts/bmc/h11ssl-unit2-first-contact-smbios-info.xml")) {
+    SupermicroCgiPageRead { page: ds } => ds.length() == 1 && match first(ds) {
+      Present { value: d } => (d.location as String) == "DIMMC1" && d.size == mebibyte(count: 16384)
+        && d.configured_speed == megatransfers_per_second(count: 2667) && d.part_number_as_read == "HMA82GR7AFR4N-VK"
+        && d.serial_as_read == "80AD0117108184CA6D"
+      Absent => false
+    }
+    SupermicroCgiSessionRedirect => false
+    SupermicroCgiUnreadable { cause: _ } => false
+  }
+}
+
+// RED: a DIMM whose size lost its unit refuses the page rather than dropping the slot.
+test fn a_dimm_with_an_unparseable_size_refuses_the_page() -> Bool {
+  let body = join(split(s: read(path: "artifacts/bmc/h11ssl-unit2-first-contact-smbios-info.xml"), delimiter: "SIZE=\"16384 MiB\""), "SIZE=\"16384\"")
+  match supermicro_cgi_smbios_dimms_of(body: body) {
+    SupermicroCgiUnreadable { cause: c } => string_contains(s: c, pattern: "DIMMC1")
+    SupermicroCgiPageRead { page: _ } => false
+    SupermicroCgiSessionRedirect => false
+  }
+}
+
+// RED: a GENERIC_INFO page is not an SMBIOS page, even though it has no DIMM elements.
+test fn a_non_smbios_page_is_not_read_as_an_empty_dimm_list() -> Bool {
+  match supermicro_cgi_smbios_dimms_of(body: read(path: "artifacts/bmc/h11ssl-unit1-cpu2-generic-info.xml")) {
+    SupermicroCgiUnreadable { cause: _ } => true
+    SupermicroCgiPageRead { page: _ } => false
+    SupermicroCgiSessionRedirect => false
+  }
+}
