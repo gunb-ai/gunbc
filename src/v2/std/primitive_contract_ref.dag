@@ -3,7 +3,7 @@ module v2.std.primitive_contract_ref
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_init, qualified_name_last_segment }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_string_segments, qualified_name_init, qualified_name_last_segment }
 
 // THE NAMING OF A std.primitives CONTRACT DECLARATION, ONCE. A PrimitiveContract row is declared at
 // std.primitives.<name>_contract and carries `name: "<name>"`; a call head names the primitive by that `name`.
@@ -46,7 +46,7 @@ fn primitive_contract_leaf_of_path(path: QualifiedName) -> Optional<Symbol> {
   match qualified_name_last_segment(qn: path) {
     Absent => optional_absent()
     Present { value: leaf } =>
-      if qualified_name_init(qn: path) == qualified_name_from_dotted_string(dotted: primitive_contract_module_path()) {
+      if qualified_name_init(qn: path) == qualified_name_from_string_segments(segments: ["std", "primitives"]) {
         optional_present(value: leaf)
       } else {
         optional_absent()
