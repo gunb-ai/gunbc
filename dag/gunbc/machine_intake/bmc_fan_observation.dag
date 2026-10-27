@@ -1,6 +1,7 @@
 module gunbc.machine_intake.bmc_fan_observation
 
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import extdeps.bmc.ipmi_chassis_control {
   ChassisPowerObservation,
   ChassisPowerRead,
@@ -221,6 +222,7 @@ fn observe_fan_round(
   username: NonEmptyStr,
   password_file: NonEmptyStr,
   round_index: Int,
+  cipher_suite: Int?,
 ) -> FanObservationRound
 {
   status = diagnostic.ipmi.Tool.ChassisStatus(
@@ -229,6 +231,7 @@ fn observe_fan_round(
     password_file: password_file,
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   temps = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
@@ -237,6 +240,7 @@ fn observe_fan_round(
     sensor_type: "Temperature",
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   fans = diagnostic.ipmi.Tool.SdrTypeList(
     bmc_host: bmc_host,
@@ -245,6 +249,7 @@ fn observe_fan_round(
     sensor_type: "Fan",
     deadline: coreutils_duration_operand(d: fan_round_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: fan_round_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   let temp_results = sdr_decode_lines(stdout: temps.stdout)
   let fan_results = sdr_decode_lines(stdout: fans.stdout)
@@ -317,6 +322,7 @@ fn observe_fan_series(
   round_index: Int,
   interval: Second,
   acc: List<FanObservationRound>,
+  cipher_suite: Int?,
 ) -> List<FanObservationRound>
 {
   if rounds_remaining <= 0 {
@@ -327,6 +333,7 @@ fn observe_fan_series(
     username: username,
     password_file: password_file,
     round_index: round_index,
+    cipher_suite: cipher_suite,
   )
   let next = acc.append(round)
   if rounds_remaining == 1 {
@@ -341,6 +348,7 @@ fn observe_fan_series(
     round_index: round_index + 1,
     interval: interval,
     acc: next,
+    cipher_suite: cipher_suite,
   )
 }
 
@@ -540,6 +548,7 @@ fn observe_fan_policy(
   password_file: NonEmptyStr,
   rounds: ObservationRoundCount,
   interval: Second,
+  cipher_suite: Int?,
 ) -> FanObservationSeries
 {
   if trim(username as String) == "" {
@@ -562,6 +571,7 @@ fn observe_fan_policy(
     round_index: 0,
     interval: interval,
     acc: [],
+    cipher_suite: cipher_suite,
   )
   return if fold(series, init: false, f: (acc, r) => acc || chassis_was_read(chassis: r.chassis)) {
     FanObservationTaken { rounds: series, interval: interval }

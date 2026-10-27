@@ -81,7 +81,7 @@ import extdeps.github.actions_environment { github_run_id_variable_name, github_
 import extdeps.bmc.ipmi
 import extdeps.shell
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.ipmi { IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmitoolSolActivateRefusal, ipmitool_sol_activate_refusal, ipmitool_sol_activate_refusal_text, ipmitool_sol_operational_banner }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.machine_intake.sol_hold {
   mtcollins1_sol_hold_shell_emit_dissolution_trigger, sol_hold_line_prefix, sol_hold_exit_record_prefix, sol_hold_exit_record_instant_marker, sol_hold_pid_not_published_line, sol_hold_pid_not_published_unstopped_line,
@@ -411,6 +411,7 @@ fn mtcollins1_sol_release(
     bmc_host: mtcollins1_endpoint.host,
     username: username,
     password_file: password_file,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   dropped.success
 }
@@ -2024,7 +2025,7 @@ fn mtcollins1_boot_smpro_from_row(h: ManagedHost, username: NonEmptyStr, passwor
     // SMpro used to be rendered 'mtcollins1 has no bound controller to read SMpro through' -- false: the
     // controller IS bound, the silicon simply has no such interface (or we do not know that it does).
     BmcControlBound { route: _ } => match managed_host_smpro_subject(host: h, control: control) {
-      SmproSubjectMinted { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after) }
+      SmproSubjectMinted { subject: s } => SmproProbed { observation: smpro_pass_probes(subject: s, username: username, password_file: password_file, deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after, cipher_suite: mtcollins1_boot_row_value.ipmi_cipher_suite) }
       SmproSubjectSiteRefused { cause: cause } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectSiteRefused { cause: cause }) }
       SmproSubjectEndpointMismatch { bound: bound, site: site } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectEndpointMismatch { bound: bound, site: site }) }
       SmproSubjectNotCarried { family: family } => SmproNotTaken { reason: smpro_subject_absence_reason(outcome: SmproSubjectNotCarried { family: family }) }

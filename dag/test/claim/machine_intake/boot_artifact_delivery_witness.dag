@@ -419,9 +419,9 @@ data probe_collection_with_https: RedfishVirtualMediaProbeReceipt = RedfishVirtu
 }
 
 // Boot-control route observations: which route answered the control probe.
-data control_over_redfish: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: redfish_route, raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"), observed_at: 1788000000000 }
-data control_over_megarac_rest: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }, raw_response: content_hash_of_value(value: "boot-control-megarac-rest-fixture"), observed_at: 1788000000000 }
-data control_over_ipmi: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: IpmiLanplusRoute, raw_response: content_hash_of_value(value: "boot-control-ipmi-fixture"), observed_at: 1788000000000 }
+data control_over_redfish: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: redfish_route, raw_response: content_hash_of_value(value: "boot-control-redfish-fixture"), observed_at: 1788000000000, ipmi_cipher_suite: Absent }
+data control_over_megarac_rest: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: MegaRacRestRoute { image_redirection: MegaRacImageRedirectionEnabled }, raw_response: content_hash_of_value(value: "boot-control-megarac-rest-fixture"), observed_at: 1788000000000, ipmi_cipher_suite: Absent }
+data control_over_ipmi: BmcBootControlRouteObservation = BmcBootControlRouteObservation { route: IpmiLanplusRoute, raw_response: content_hash_of_value(value: "boot-control-ipmi-fixture"), observed_at: 1788000000000, ipmi_cipher_suite: Absent }
 
 fn observation_over(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?, control: List<BmcBootControlRouteObservation>) -> BmcAccessObservation {
   BmcAccessObservation {

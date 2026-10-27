@@ -186,6 +186,7 @@ data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootCont
   route: IpmiLanplusRoute,
   raw_response: mtcollins1_write_exercise_digest,
   observed_at: mtcollins1_write_exercise_observed_at,
+  ipmi_cipher_suite: Absent,
 }
 
 // THE OBSERVATION. redfish_virtual_media_probe is Absent, and that is the modeled meaning of the
