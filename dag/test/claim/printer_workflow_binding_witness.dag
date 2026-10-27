@@ -5,7 +5,9 @@ import std.optional { Present, Absent }
 import extdeps.github.actions { Step, RunStep, UsesStep }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.fleet.fleet_converge_workflow {
-  PrinterWorkflow, FleetSshKeyNotConsumed,
+  PrinterWorkflow, WorkspaceCommissioningPlan, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint,
+  FleetSshKeyNotConsumed, fleet_converge_workflow_modes, fleet_converge_spark_target_modes,
+  fleet_converge_workflow_mode_wire, fleet_converge_mode_job_id, fleet_converge_jobs,
   fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
   fleet_converge_printer_job, fleet_converge_shared_job_if,
 }
@@ -56,6 +58,39 @@ test fn printer_identity_reads_only_the_two_printer_secrets() -> Bool {
 }
 
 // The merge combines independent dispatch additions; neither side may erase the other.
+// Re-derived at the SOURCE (DESIGN.md §6b), 2026-10-27 (fierce-ferret-64, node adhoc-0201be55-56b):
+// this witness used to grep the four wire names out of fleet_converge_mode_options — the very
+// generated-text surface (the workflow's input-choice projection) the row
+// a_dispatch_surface_probe_asserts_generated_text_not_its_derivation names. Grepping the projection
+// cannot tell a lost mode from a renamed one and cannot tell a dispatchable mode from one that is
+// listed but lands no job. It reads the closed roster instead, in the mode's own typed value: a
+// mode is dispatchable when it is in fleet_converge_workflow_modes, is not excluded by the live
+// fleet_converge_spark_target_modes filter, and is named exactly once in fleet_converge_mode_options
+// (no duplicate wire name, which would silently double-list one job), and it is REACHABLE when the
+// job the product actually emits — fleet_converge_jobs(), the same list the generated yml is written
+// from — holds its fleet_converge_mode_job_id.
+// History of the four names, so 'stale' vs 'lost capability' is settled, not guessed: all four are
+// live product dispatch (printer #15086 87586a64e029, workspace_commissioning_plan, and the two
+// r2_workspace_object_*_mint modes), and the only modes ever removed from this list were the seven
+// spark_* variants, retired deliberately with the Spark fleet by fa44b9810259 (#13641, 2026-10-10 —
+// its own message: GitHub rejects an empty choice list, so the dead option went with the fleet);
+// #15160 c62131787d3 dropped them from this witness. Nothing here asserts a retired mode.
 test fn printer_and_main_workspace_modes_remain_dispatchable() -> Bool {
- all(["printer","workspace_commissioning_plan","r2_workspace_object_read_mint","r2_workspace_object_write_mint"],mode=>count(filter(fleet_converge_mode_options,m=>m==mode))==1)
+  let job_ids = map(fleet_converge_jobs(), j => j.id)
+  all([PrinterWorkflow, WorkspaceCommissioningPlan, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint], mode =>
+    count(filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == fleet_converge_workflow_mode_wire(mode: mode))) == 1
+      && !any(fleet_converge_spark_target_modes, m => fleet_converge_workflow_mode_wire(mode: m) == fleet_converge_workflow_mode_wire(mode: mode))
+      && count(filter(fleet_converge_mode_options, o => o == fleet_converge_workflow_mode_wire(mode: mode))) == 1
+      && any(job_ids, id => id == (fleet_converge_mode_job_id(mode: mode) as String)))
+}
+
+// POSITIVE CONTROL for the exclusion conjunct above, and the reason it may not be dropped as
+// vacuous: the fleet_converge_spark_target_modes filter is LIVE on main, not vestigial — the
+// closed roster still carries the retired fleet's remaining mode, and it is excluded exactly once.
+// Delete the filter in the product and options grows by one, which this conjunct catches; delete
+// this control and the exclusion reads as a filter that never excludes anything.
+test fn spark_target_exclusion_filter_is_live() -> Bool {
+  count(filter(fleet_converge_spark_target_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "spark_grants")) == 1
+    && count(filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "spark_grants")) == 1
+    && count(filter(fleet_converge_mode_options, o => o == "spark_grants")) == 0
 }
