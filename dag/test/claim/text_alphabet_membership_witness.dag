@@ -1,6 +1,7 @@
 module test.claim.text_alphabet_membership_witness
 
 import std.algebra { Cons, Empty }
+import std.coercion { unicode_scalar_unfold }
 import extdeps.posix.shell_command_language { posix_name_ok }
 import v2.extdeps.languages.bash_orch_if { bash_path_unquoted_ok }
 import v2.workflow.effect_plan_bash_materialize { effect_plan_bash_decimal_integer_ok, effect_plan_bash_operand_carries_shell_spelling }
@@ -33,12 +34,13 @@ test fn any_char_in_finds_one_admitted_character() -> Bool {
   string_any_char_in(s: "1a1", alphabet: lower)
 }
 
-// The Char operand is destructured out of a one-character string rather than written as a literal:
-// the substrate has no Char literal, and introducing one would be a language change this claim is
-// not about. The `Empty` arm cannot be reached by a one-character subject and answers false, so a
+// The Char operand is destructured out of a one-character string's Unicode scalar unfold rather than
+// written as a literal: the substrate has no Char literal, and introducing one would be a language
+// change this claim is not about; the host text "c" reaches its scalars only through the declared
+// unfold (gunbc.design_ruling text_crossings_go_through_the_unfold). The `Empty` arm cannot be reached by a one-character subject and answers false, so a
 // realization that lost the head would red here rather than pass vacuously.
 test fn contains_char_is_membership_not_substring_search() -> Bool {
-  match "c" {
+  match unicode_scalar_unfold(s: "c") {
     Empty => false
     Cons { head: c, tail: _ } => string_contains_char(s: lower, c: c)
   }
