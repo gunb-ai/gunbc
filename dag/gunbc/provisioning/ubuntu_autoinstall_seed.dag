@@ -127,6 +127,8 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyDirectLayout,
   UbuntuAutoinstallPayload,
   AutoinstallSshServer,
+  // The H11SSL key-only user's shell is stated here, so the closed type's arm is named here.
+  BashLoginShell,
 }
 // THE RENDERER IS THE ONE THE FLEET ALREADY BOOTS FROM. (review: merry-fox-82, HOLD section 1) This module
 // does not emit YAML and does not imitate the cloud-config writer: it builds the upstream payload record and
