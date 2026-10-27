@@ -146,6 +146,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   PlacementNotNeeded,
   PlacementRefused,
   PlacementVerified,
+  site_pxe_edge_withheld_only_on_members,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -976,4 +977,23 @@ test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
   let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
   let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
   !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
+}
+
+// WHICH CHAIN PLACEMENT MAY WRITE INTO (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_withheld_only_on_members):
+// a chain withheld only because its members are unplaced or differ from their pins. A chain withheld for any other
+// cause, a servable chain, or a chain of another architecture is never placed into.
+test fn placement_runs_only_for_a_chain_withheld_on_its_own_members() -> Bool {
+  let unplaced = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [MemberDigestMismatch { served_path: "initrd", observed: digest_a, pinned: digest_b }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [unplaced])
+}
+
+test fn placement_refuses_a_chain_withheld_for_another_cause() -> Bool {
+  let mixed = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [ChainUnpinned { obligation: "no rendering" }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [mixed]) == false
+}
+
+test fn placement_does_not_cross_architectures() -> Bool {
+  let arm = SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "snponly.efi", reason: "No such file" }, tail: [] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [arm]) == false
+    && site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: []) == false
 }
