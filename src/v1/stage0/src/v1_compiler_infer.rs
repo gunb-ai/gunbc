@@ -26188,10 +26188,12 @@ fn diag_node_brief(n: Rc<Node>) -> String {
         })
         .unwrap_or("None".to_string());
     format!(
-        "name={} children={} conn={:?} inferred={}",
+        "name={} children={} conn={:?} occ={:?} file={} inferred={}",
         n.name.clone(),
         n.children.len(),
         n.connective.clone(),
+        n.occurrence_identity.clone(),
+        n.span.file.clone(),
         inf
     )
 }
