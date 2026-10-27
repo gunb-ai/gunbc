@@ -2,9 +2,12 @@ module gunbc.spark.fabric_rail_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { ByteSize, byte_size }
 import product.host_identity { HostIdentity }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
-import extdeps.netplan.netplan { netplan_config_dir }
+import extdeps.network.ipv4 { Ipv4Address, PrefixLength, ipv4_address }
+import extdeps.netplan.netplan {
+  netplan_config_dir, NetplanDocument, NetplanEthernet, NetplanInterfaceAddress, MatchByName, NetworkManager, render_netplan_document, NetplanDocumentRendering,
+}
 import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_observations, fabric_lane_for_host, fabric_leg_cable_observed }
 
 // THE SWITCHED RAIL'S ADDRESSING, DERIVED FROM THE OBSERVED LANE. One /24 for the whole fabric, since
@@ -16,8 +19,8 @@ import gunbc.spark.fabric_switch_observed { FabricLaneObserved, fabric_lane_obse
 // drift the next observation reads back.
 
 data fabric_rail_network_prefix: NonEmptyStr = "192.168.110" as NonEmptyStr
-data fabric_rail_prefix_length: Nat = 24
-data fabric_rail_mtu: Nat = 9000
+data fabric_rail_prefix_length: PrefixLength = 24
+data fabric_rail_mtu: ByteSize = byte_size(count: 9000)
 data fabric_rail_netplan_file: NonEmptyStr = "90-gunbc-fabric.yaml" as NonEmptyStr
 data fabric_rail_connection_name: NonEmptyStr = "gunbc-fabric" as NonEmptyStr
 
@@ -41,46 +44,52 @@ fn fabric_rail_address(host: HostIdentity) -> Ipv4Address? {
   }
 }
 
-fn fabric_rail_cidr(o: FabricLaneObserved) -> String {
-  join([render_ipv4_address(addr: fabric_rail_address_of(o: o)) as String, "/", to_string(fabric_rail_prefix_length)], "")
+// The netplan document for one host, NetworkManager-rendered like the rails the pairs already carry,
+// as a value of extdeps.netplan.netplan's one document model so the rail and a host's primary
+// network (gunbc.host.host_primary_network) spell netplan through one renderer.
+fn fabric_rail_netplan_document(o: FabricLaneObserved) -> NetplanDocument {
+  NetplanDocument {
+    renderer: NetworkManager,
+    ethernets: [
+      NetplanEthernet {
+        id: fabric_rail_connection_name,
+        selector: MatchByName { name: o.leg_netdev },
+        addresses: [NetplanInterfaceAddress { address: fabric_rail_address_of(o: o), prefix: fabric_rail_prefix_length }],
+        mtu: Present { value: fabric_rail_mtu },
+        dhcp4: false,
+        dhcp4_route_metric: none,
+        dhcp6: Present { value: false },
+        link_local: Present { value: [] },
+        optional: true,
+      },
+      NetplanEthernet {
+        id: join([fabric_rail_connection_name as String, "-twin"], "") as NonEmptyStr,
+        selector: MatchByName { name: o.leg_netdev_twin },
+        addresses: [],
+        mtu: none,
+        dhcp4: false,
+        dhcp4_route_metric: none,
+        dhcp6: Present { value: false },
+        link_local: Present { value: [] },
+        optional: true,
+      },
+    ],
+  }
 }
 
-// The netplan document for one host, NetworkManager-rendered like the rails the pairs already carry.
-fn fabric_rail_netplan_text(o: FabricLaneObserved) -> String {
-  join([
-    "network:\n",
-    "  version: 2\n",
-    "  renderer: NetworkManager\n",
-    "  ethernets:\n",
-    "    ", fabric_rail_connection_name as String, ":\n",
-    "      match:\n",
-    "        name: \"", o.leg_netdev as String, "\"\n",
-    "      addresses:\n",
-    "      - \"", fabric_rail_cidr(o: o), "\"\n",
-    "      mtu: ", to_string(fabric_rail_mtu), "\n",
-    "      dhcp4: false\n",
-    "      dhcp6: false\n",
-    "      link-local: []\n",
-    "      optional: true\n",
-    "    ", fabric_rail_connection_name as String, "-twin:\n",
-    "      match:\n",
-    "        name: \"", o.leg_netdev_twin as String, "\"\n",
-    "      dhcp4: false\n",
-    "      dhcp6: false\n",
-    "      link-local: []\n",
-    "      optional: true\n",
-  ], "")
+fn fabric_rail_netplan_rendering(o: FabricLaneObserved) -> NetplanDocumentRendering {
+  render_netplan_document(d: fabric_rail_netplan_document(o: o))
 }
 
 type FabricRailDesired {
   host: HostIdentity
   netdev: NonEmptyStr
   address: Ipv4Address
-  netplan_text: String
+  netplan: NetplanDocumentRendering
 }
 
 fn fabric_rail_desired_of(o: FabricLaneObserved) -> FabricRailDesired {
-  FabricRailDesired { host: o.host, netdev: o.leg_netdev, address: fabric_rail_address_of(o: o), netplan_text: fabric_rail_netplan_text(o: o) }
+  FabricRailDesired { host: o.host, netdev: o.leg_netdev, address: fabric_rail_address_of(o: o), netplan: fabric_rail_netplan_rendering(o: o) }
 }
 
 data fabric_rail_desired: List<FabricRailDesired> = map(fabric_lane_observations, o => fabric_rail_desired_of(o: o))

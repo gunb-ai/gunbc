@@ -3,7 +3,7 @@ module gunbc.compile_diagnostic_census
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import std.types { String, NonEmptyStr, Bool, Int, List, Map }
-import std.optional { Absent, Present }
+import std.optional { Optional, Absent, Present }
 import std.algebra { empty_map, map_insert, map_lookup, map_support_keys }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -72,11 +72,33 @@ data compile_diagnostic_census_hand_rust_scaffold: Disposition = Scaffold {
   }
 }
 
+// THE RENDERED (EXPECTED, GOT) PAIR OF A DIAGNOSTIC GROUP, carried on the row so a witness can
+// judge WHAT THE COMPILER SHOWED, not only that a class fired. Three states, and the distinction
+// between the third and the others is the whole design: Absent means the class carries no pair at
+// all (the closed population below), never a pair-shaped stand-in for "the pair was equal" -- an
+// equal pair is Uniform with expected == got, and folding equal into absent would make the two
+// states the same reading, the fail-open this census exists to forbid.
+// THE PAIR-BEARING POPULATION IS CLOSED BY CONSTRUCTION: gunbc.cli_run compile_clean's
+// compile_clean_diagnostic_rendered_pair is a total match over CompilerDiagnostic -- the same
+// shape, at the same home, as the sibling compile_clean_diagnostic_histogram_key and
+// compile_clean_diagnostic_is_hard the fold already consults -- so a variant gains a pair only by
+// its arm being written, and the fold reads one extractor, never a per-consumer guess.
+// Uniform is the group's single rendered pair; Varied counts the distinct pairs the group folded
+// (count > 1; a count below two never reaches this arm -- the fold opens Varied only once a
+// second distinct pair exists, so it is unreachable by construction rather than refused). The
+// pair text is produced by the
+// type-shape renderer node_type_shape (gunbc.v1.infer_types, authority src/v1/04_types.dag);
+// a witness names that producer, it never transcribes its output.
+type RenderedPair
+  = Uniform { expected: String, got: String }
+  | Varied { distinct_pair_count: Int }
+
 type CompileDiagnosticCensusRow {
   diagnostic_class: NonEmptyStr
   subject_name: String
   blocking: Bool
   count: Int
+  rendered_pair: Optional<RenderedPair>
 }
 
 // THE ROW SET IS THE WHOLE COMPILE'S, NOT THE PROBED SOURCE'S. CensusObserved carries every

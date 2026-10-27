@@ -22,6 +22,7 @@ import gunbc.runner.runner_revision_job_unit { revision_job_image_staging_root }
 import gunbc.workspace_image_delivery { workspace_image_artifact_name, workspace_image_staging_root, workspace_image_artifact_paths }
 
 import gunbc.fleet.fleet_printer_access {printer_access_code_loci}
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact }
 import gunbc.auth.approval_keyring_pins {approval_submission_mac_key_path_env,approval_capability_mac_key_path_env,approval_store_receipt_mac_key_path_env}
 import gunbc.auth.approval_decision_store {approval_mac_key_path}
 import gunbc.auth.approval_request_submission {approval_submission_mac_key_path}
@@ -29,7 +30,7 @@ import gunbc.auth.approval_store_receipt {approval_store_receipt_mac_key_path}
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 
 import gunbc.live_deploy.desired { prod_role_actuated_realization }
-import extdeps.github.expressions { Expression, ContextAccess, Github, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
+import extdeps.github.expressions { Expression, ContextAccess, Github, Steps, Needs, StringLiteral, Equals, NotEquals, LogicalOr, LogicalAnd, LogicalNot, FunctionCall, Cancelled, interpolate, serialize_expression }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
 import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
@@ -42,8 +43,16 @@ import gunbc.auth.mtjade1_arrival_pair {
   mtjade1_arrival_environment, mtjade1_arrival_provider_resource, mtjade1_arrival_service_account,
 }
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
+import gunbc.ci.ci_spec { gunbc_ci_review_sheet_converge_invoke }
+import gunbc.review_sheet_federation {
+  review_sheet_converge_environment, review_sheet_converge_provider_resource, review_sheet_converge_service_account,
+  review_sheet_writer_token_scopes, schedule_event_name, push_event_name,
+}
+import gunbc.gcp.gcp_estate_observation { review_sheet_writer_sa_email }
+import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
+import extdeps.google.sheets { sheets_token_env }
 import gunbc.ci.ci_spec { gunbc_ci_namecheap_observe_invoke, gunbc_ci_arrival_admit_invoke, gunbc_ci_arrival_converge_invoke, gunbc_ci_sm_max_time }
-import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path }
+import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path, gunbc_ci_runner_host_withdraw_receipt_path, gunbc_ci_runner_host_restore_receipt_path, host_primary_network_receipt_path }
 
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_unit_timeout_stop, microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path, microvm_slot_reserve_wait_bound }
 import gunbc.auth.access_token_source { workload_identity_token_env }
@@ -53,7 +62,7 @@ import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
-  WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
+  WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
@@ -195,7 +204,10 @@ import gunbc.ci.ci_spec {
   gunbc_ci_runner_microvm_host_converge_invoke,
   gunbc_ci_runner_browser_toolchain_converge_invoke,
   gunbc_ci_runner_user_session_converge_invoke,
+  gunbc_ci_runner_gpu_container_toolchain_converge_invoke,
   gunbc_ci_runner_host_file_observe_invoke,
+  gunbc_ci_host_primary_network_observe_invoke,
+  gunbc_ci_host_primary_network_converge_invoke,
   gunbc_ci_host_memory_envelope_observe_invoke,
   gunbc_ci_runner_host_file_converge_invoke,
   gunbc_ci_runner_host_cap_release_invoke,
@@ -229,6 +241,7 @@ import gunbc.ci.ci_spec {
 }
 import gunbc.fleet.fleet_converge_receipt { fleet_converge_plan_run_id_env_name }
 import gunbc.actions_run_binding { rlm_expected_revision_env_name, fleet_converge_expected_host_env_name, fleet_converge_arrival_subject_env_name, fleet_converge_subject_host_env_name }
+import gunbc.host.host_primary_network_apply { primary_network_apply_phase_budgets }
 import gunbc.auth.github_deployment_environment { srv1_production_environment_name }
 import gunbc.fleet.host_credential_custody_converge { host_custody_credential_options, host_credential_custody_env_name }
 import gunbc.spark.credential_workflow { spark_administrator_credential_roster_hosts }
@@ -297,6 +310,7 @@ data fleet_converge_enrolled_host_options: List<String> = map(fleet_hosts(), h =
 // rostered again -- it does not fabricate srv5..srv12, and it does not emit a plausible empty choice.
 data fleet_converge_spark_target_options: List<String> = map(spark_administrator_credential_roster_hosts(), h => h as String)
 
+
 // ONE NAME PER MODE, SPELLED ONCE. The dispatch options and every `if:` expression that selects on
 // them used to spell every mode name independently: once as a bare String in the options
 // list, and again inside each hand-written "github.event.inputs.mode == '<name>'". Seventeen such
@@ -341,6 +355,8 @@ type FleetConvergeWorkflowMode
   | MicrovmSlotReserve
   | MicrovmSlotStart
   | RunnerHostFileConverge
+  | HostPrimaryNetworkObserve
+  | HostPrimaryNetworkConverge
   | RunnerHostWithdraw
   | RunnerHostRestore
   | SitePxeEdgeObserve
@@ -348,6 +364,7 @@ type FleetConvergeWorkflowMode
   | RunnerPasswordSessionToolConverge
   | RunnerBrowserToolchainConverge
   | RunnerUserSessionConverge
+  | RunnerGpuContainerToolchainConverge
   | HostCredentialCustodyConverge
   | R2MintPreflight
   | R2BucketEnsure
@@ -383,6 +400,7 @@ type FleetConvergeWorkflowMode
   | OrgRunnerRosterObserve
   | GcpIamConverge
   | NamecheapObserve
+  | ReviewSheetConverge
   | ArrivalConverge
   | PrinterWorkflow
 
@@ -422,6 +440,8 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MicrovmSlotReserve => "microvm_slot_reserve"
     MicrovmSlotStart => "microvm_slot_start"
     RunnerHostFileConverge => "runner_host_file_converge"
+    HostPrimaryNetworkObserve => "host_primary_network_observe"
+    HostPrimaryNetworkConverge => "host_primary_network_converge"
     RunnerHostWithdraw => "runner_host_withdraw"
     RunnerHostRestore => "runner_host_restore"
     SitePxeEdgeObserve => "site_pxe_edge_observe"
@@ -429,6 +449,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     RunnerPasswordSessionToolConverge => "runner_password_session_tool_converge"
     RunnerBrowserToolchainConverge => "runner_browser_toolchain_converge"
     RunnerUserSessionConverge => "runner_user_session_converge"
+    RunnerGpuContainerToolchainConverge => "runner_gpu_container_toolchain_converge"
     HostCredentialCustodyConverge => "host_credential_custody_converge"
     R2MintPreflight => "r2_mint_preflight"
     R2BucketEnsure => "r2_bucket_ensure"
@@ -453,6 +474,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     MtCollins1Boot => "mtcollins1_boot"
     GcpIamConverge => "gcp_iam_converge"
     NamecheapObserve => "namecheap_observe"
+    ReviewSheetConverge => "review_sheet_converge"
     ArrivalConverge => "arrival_converge"
     PrinterWorkflow => "printer"
     MtCollins1FanObserve => "mtcollins1_fan_observe"
@@ -490,7 +512,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -534,6 +556,8 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerHostFileObserve => SixteenBinaryPack
     HostMemoryObserve => SixteenBinaryPack
     RunnerHostFileConverge => SixteenBinaryPack
+    HostPrimaryNetworkObserve => SixteenBinaryPack
+    HostPrimaryNetworkConverge => SixteenBinaryPack
     RunnerHostWithdraw => SixteenBinaryPack
     RunnerHostRestore => SixteenBinaryPack
     SitePxeEdgeObserve => SixteenBinaryPack
@@ -541,6 +565,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerPasswordSessionToolConverge => SixteenBinaryPack
     RunnerBrowserToolchainConverge => SixteenBinaryPack
     RunnerUserSessionConverge => SixteenBinaryPack
+    RunnerGpuContainerToolchainConverge => SixteenBinaryPack
     R2MintPreflight => SixteenBinaryPack
     R2ObjectWriteMint => SixteenBinaryPack
     R2WorkspaceObjectReadMint => SixteenBinaryPack
@@ -577,6 +602,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     ServiceRunnerLostBootSweep => SixteenBinaryPack
     GcpIamConverge => SixteenBinaryPack
     NamecheapObserve => SixteenBinaryPack
+    ReviewSheetConverge => SixteenBinaryPack
     ArrivalConverge => SixteenBinaryPack
     PrinterWorkflow => SixteenBinaryPack
   }
@@ -648,6 +674,8 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerHostFileObserve => none
     HostMemoryObserve => none
     RunnerHostFileConverge => none
+    HostPrimaryNetworkObserve => none
+    HostPrimaryNetworkConverge => none
     RunnerHostWithdraw => none
     RunnerHostRestore => none
     SitePxeEdgeObserve => none
@@ -655,6 +683,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     RunnerPasswordSessionToolConverge => none
     RunnerBrowserToolchainConverge => none
     RunnerUserSessionConverge => none
+    RunnerGpuContainerToolchainConverge => none
     HostCredentialCustodyConverge => none
     R2MintPreflight => none
     R2BucketEnsure => none
@@ -679,6 +708,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     MtCollins1Boot => none
     GcpIamConverge => none
     NamecheapObserve => none
+    ReviewSheetConverge => none
     ArrivalConverge => none
     PrinterWorkflow => none
     MtCollins1FanObserve => none
@@ -856,6 +886,8 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerHostFileObserve => FleetSshKeyConsumed
     HostMemoryObserve => FleetSshKeyNotConsumed
     RunnerHostFileConverge => FleetSshKeyConsumed
+    HostPrimaryNetworkObserve => FleetSshKeyConsumed
+    HostPrimaryNetworkConverge => FleetSshKeyConsumed
     RunnerHostWithdraw => FleetSshKeyConsumed
     RunnerHostRestore => FleetSshKeyConsumed
     SitePxeEdgeObserve => FleetSshKeyConsumed
@@ -863,6 +895,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     RunnerPasswordSessionToolConverge => FleetSshKeyConsumed
     RunnerBrowserToolchainConverge => FleetSshKeyConsumed
     RunnerUserSessionConverge => FleetSshKeyConsumed
+    RunnerGpuContainerToolchainConverge => FleetSshKeyConsumed
     HostCredentialCustodyConverge => FleetSshKeyConsumed
     R2MintPreflight => FleetSshKeyConsumed
     R2ObjectWriteMint => FleetSshKeyConsumed
@@ -880,6 +913,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     ServiceRunnerLostBootSweep => FleetSshKeyNotConsumed
     GcpIamConverge => FleetSshKeyNotConsumed
     NamecheapObserve => FleetSshKeyNotConsumed
+    ReviewSheetConverge => FleetSshKeyNotConsumed
     ArrivalConverge => FleetSshKeyNotConsumed
     PrinterWorkflow => FleetSshKeyNotConsumed
   }
@@ -1279,9 +1313,18 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 // reads. Every other mode keeps the edge it had.
 // THE MODES WHOSE OWN JOB BUILDS WHAT IT RUNS: the boot (its compiler pair) and the reader key mint (gunbc,
 // on a GitHub-hosted runner).
-data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, BootMediumReaderKeyMint]
+data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, BootMediumReaderKeyMint, ReviewSheetConverge]
 
-data fleet_converge_build_job_if: String = join(map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], "")), " && ")
+// ONLY A DISPATCH BUILDS THE PACK OR RESOLVES A PLAN REVISION. The schedule and push triggers exist for
+// the review-sheet converge alone and carry no inputs, so an inputs.mode test reads empty there: build's
+// `!= mode` chain would be TRUE and plan-revision has no mode test at all. Gating both to dispatches is
+// what makes those two events start that one job and nothing else.
+data fleet_converge_dispatch_event_if: String = serialize_expression(expression: Equals {
+  left: ContextAccess { context: Github, path: ["event_name"] },
+  right: StringLiteral { value: workflow_dispatch_event_name },
+})
+
+data fleet_converge_build_job_if: String = join(concat([fleet_converge_dispatch_event_if], map(fleet_converge_modes_without_release_pack, m => join(["github.event.inputs.mode != '", fleet_converge_workflow_mode_wire(mode: m), "'"], ""))), " && ")
 
 fn fleet_converge_build_job() -> Job {
   Job {
@@ -1416,7 +1459,7 @@ fn fleet_converge_plan_revision_job() -> Job {
     outputs: Present {
       value: [kv(key: fleet_converge_plan_revision_output_name, value: yaml_string(s: "${{ steps.plan_revision.outputs.revision }}"))]
     },
-    if_condition: none,
+    if_condition: Present { value: fleet_converge_dispatch_event_if },
     timeout_minutes: Present { value: fold(steps, init: gunbc_ci_prelude_allowance_minutes, f: (acc, st) => acc + step_declared_timeout_minutes(st: st)) },
     continue_on_error: none,
     concurrency: none,
@@ -1511,6 +1554,12 @@ data fleet_converge_runner_host_restore_step_if: String = fleet_converge_mode_st
 
 data fleet_converge_runner_host_file_any_step_if: String = fleet_converge_any_mode_step_if(modes: [RunnerHostFileObserve, RunnerHostFileConverge])
 
+data fleet_converge_host_primary_network_observe_step_if: String = fleet_converge_mode_step_if(mode: HostPrimaryNetworkObserve)
+
+data fleet_converge_host_primary_network_converge_step_if: String = fleet_converge_mode_step_if(mode: HostPrimaryNetworkConverge)
+
+data fleet_converge_host_primary_network_any_step_if: String = fleet_converge_any_mode_step_if(modes: [HostPrimaryNetworkObserve, HostPrimaryNetworkConverge])
+
 data fleet_converge_site_pxe_edge_observe_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeObserve)
 
 data fleet_converge_site_pxe_edge_converge_step_if: String = fleet_converge_mode_step_if(mode: SitePxeEdgeConverge)
@@ -1554,6 +1603,26 @@ fn fleet_converge_runner_password_session_tool_receipt_upload_step() -> Step {
 // runs the floor job (runner_browser_toolchain_pool), and any other host is refused before
 // anything is fetched.
 data fleet_converge_runner_browser_toolchain_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerBrowserToolchainConverge)
+
+data fleet_converge_runner_gpu_container_toolchain_converge_step_if: String = fleet_converge_mode_step_if(mode: RunnerGpuContainerToolchainConverge)
+
+fn fleet_converge_runner_gpu_container_toolchain_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload GPU container toolchain converge receipt" },
+    id: Present { value: "runner_gpu_container_toolchain_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "runner-gpu-container-toolchain-converge-receipt")),
+      kv(key: "path", value: yaml_string(s: "target/runner-gpu-container-toolchain-converge-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_gpu_container_toolchain_converge_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
 
 // Uploaded on failure too: the refusal body -- a digest mismatch, a missing library with the
 // binary that needs it -- is what an operator reads after a red run.
@@ -1675,6 +1744,8 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     MicrovmSlotReserve => ExecutorDomain
     MicrovmSlotStart => ExecutorDomain
     RunnerHostFileConverge => ExecutorDomain
+    HostPrimaryNetworkObserve => ExecutorDomain
+    HostPrimaryNetworkConverge => ExecutorDomain
     RunnerHostWithdraw => ExecutorDomain
     RunnerHostRestore => ExecutorDomain
     SitePxeEdgeObserve => ExecutorDomain
@@ -1682,6 +1753,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     RunnerPasswordSessionToolConverge => ExecutorDomain
     RunnerBrowserToolchainConverge => ExecutorDomain
     RunnerUserSessionConverge => ExecutorDomain
+    RunnerGpuContainerToolchainConverge => ExecutorDomain
     HostCredentialCustodyConverge => ExecutorDomain
     R2MintPreflight => ExecutorDomain
     R2BucketEnsure => ExecutorDomain
@@ -1717,6 +1789,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     OrgRunnerRosterObserve => ExecutorDomain
     GcpIamConverge => ExecutorDomain
     NamecheapObserve => ExecutorDomain
+    ReviewSheetConverge => SubjectDomain { group: review_sheet_converge_mutation_group }
     ArrivalConverge => ExecutorDomain
     PrinterWorkflow => ExecutorDomain
   }
@@ -2370,6 +2443,15 @@ fn fleet_converge_runner_browser_toolchain_converge_step() -> Step {
   )
 }
 
+fn fleet_converge_runner_gpu_container_toolchain_converge_step() -> Step {
+  fleet_converge_runner_host_file_step(
+    id: "runner_gpu_container_toolchain_converge",
+    name: "GPU container toolchain: apt the NVIDIA container toolkit + rootless Docker over the admin edge, reconcile the job user's subordinate ranges, install and enable its rootless docker.service, generate the CDI spec, then read back the toolkit package, the CDI spec, the job-user daemon, and a container that sees the GPU",
+    invoke: gunbc_ci_runner_gpu_container_toolchain_converge_invoke(),
+    if_condition: fleet_converge_runner_gpu_container_toolchain_converge_step_if,
+  )
+}
+
 // THE HOST CREDENTIAL CUSTODY MODE (gunbc.fleet.host_credential_custody_converge). ONE mode for every
 // custody row: the credential is the `credential` dispatch choice over that module's closed roster
 // (host_custody_credential_options), not a mode per secret. A step in the host-pinned job like the
@@ -2526,6 +2608,69 @@ fn fleet_converge_runner_host_file_receipt_upload_step() -> Step {
     ] },
     env: none,
     if_condition: Present { value: concat("always() && (", concat(fleet_converge_runner_host_file_any_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+// A HOST'S PRIMARY NETWORK (gunbc.host.host_primary_network_apply), observed or converged FROM the
+// dispatched host and ON the subject, because a readback taken from the subject itself never crosses
+// the uplink it judges: the shared job runs on inputs.host, so the operator names an observer there
+// and the host to converge in `subject_host`, the executor/subject split's own input. The entry refuses
+// when the two are one host through gunbc.fleet.fleet_converge_executor_subject_split's predicate (that
+// module's wall 2); the workflow's split gate step stays the drain modes' own.
+fn fleet_converge_host_primary_network_step(id: String, name: String, invoke: String, if_condition: String, timeout_minutes: Int) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: Present { value: id },
+    run: invoke,
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: timeout_minutes }
+  }
+}
+
+fn fleet_converge_host_primary_network_observe_step() -> Step {
+  fleet_converge_host_primary_network_step(
+    id: "host_primary_network_observe",
+    name: "Primary network: read the target's links, lease, default route and /etc/netplan from the observer and plan (no writes)",
+    invoke: gunbc_ci_host_primary_network_observe_invoke(),
+    if_condition: fleet_converge_host_primary_network_observe_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+  )
+}
+
+fn fleet_converge_host_primary_network_converge_step() -> Step {
+  fleet_converge_host_primary_network_step(
+    id: "host_primary_network_converge",
+    name: "Primary network: stage the population, netplan try on the target, confirm only on a readback from the observer",
+    invoke: gunbc_ci_host_primary_network_converge_invoke(),
+    if_condition: fleet_converge_host_primary_network_converge_step_if,
+    timeout_minutes: fleet_converge_mtcollins1_probe_step_timeout_minutes(phases: primary_network_apply_phase_budgets()),
+  )
+}
+
+fn fleet_converge_host_primary_network_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload primary network receipt" },
+    id: Present { value: "host_primary_network_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "host-primary-network-receipt")),
+      kv(key: "path", value: yaml_string(s: host_primary_network_receipt_path)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_primary_network_any_step_if, ")")) },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -4584,8 +4729,13 @@ fn fleet_converge_mtcollins1_boot_runner() -> RunnerSpec {
 // verify. When the fabric cache credentials are pinned, the canonical pair for this tree is read from
 // the cache before this build and the build becomes the miss path (gunbc.fabric.fabric_blob_shell).
 fn fleet_converge_mtcollins1_boot_pair_build_step() -> Step {
+  fleet_converge_in_job_compiler_pair_build_step(name: "Build the compiler pair this boot runs (claim_executor + gunbc)")
+}
+
+// THE ONE BUILD STEP EVERY fleet_converge_in_job_compiler_pair_jobs ROW RUNS, under its own name.
+fn fleet_converge_in_job_compiler_pair_build_step(name: String) -> Step {
   RunStep {
-    name: Present { value: "Build the compiler pair this boot runs (claim_executor + gunbc)" },
+    name: Present { value: name },
     id: Present { value: "pair_build" },
     run: concat(compiler_pair_release_product().build_line, "\n"),
     shell: none,
@@ -4904,6 +5054,9 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_host_file_converge_step(),
         fleet_converge_runner_host_cap_release_step(),
         fleet_converge_runner_host_cap_release_receipt_upload_step(),
+        fleet_converge_host_primary_network_observe_step(),
+        fleet_converge_host_primary_network_converge_step(),
+        fleet_converge_host_primary_network_receipt_upload_step(),
         fleet_converge_runner_host_withdraw_step(),
         fleet_converge_runner_host_withdraw_receipt_upload_step(),
         fleet_converge_runner_host_restore_step(),
@@ -4914,6 +5067,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_runner_browser_toolchain_receipt_upload_step(),
         fleet_converge_runner_user_session_converge_step(),
         fleet_converge_runner_user_session_receipt_upload_step(),
+        fleet_converge_runner_gpu_container_toolchain_converge_step(),
+        fleet_converge_runner_gpu_container_toolchain_receipt_upload_step(),
         fleet_converge_host_credential_custody_converge_step(),
         fleet_converge_host_credential_custody_receipt_upload_step(),
         fleet_converge_runner_host_file_receipt_upload_step(),
@@ -5124,6 +5279,8 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     RunnerHostFileObserve => fleet_converge_shared_job_id
     HostMemoryObserve => fleet_converge_shared_job_id
     RunnerHostFileConverge => fleet_converge_shared_job_id
+    HostPrimaryNetworkObserve => fleet_converge_shared_job_id
+    HostPrimaryNetworkConverge => fleet_converge_shared_job_id
     RunnerHostWithdraw => fleet_converge_shared_job_id
     RunnerHostRestore => fleet_converge_shared_job_id
     SitePxeEdgeObserve => fleet_converge_shared_job_id
@@ -5131,6 +5288,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     RunnerPasswordSessionToolConverge => fleet_converge_shared_job_id
     RunnerBrowserToolchainConverge => fleet_converge_shared_job_id
     RunnerUserSessionConverge => fleet_converge_shared_job_id
+    RunnerGpuContainerToolchainConverge => fleet_converge_shared_job_id
     R2MintPreflight => fleet_converge_shared_job_id
     R2ObjectWriteMint => fleet_converge_shared_job_id
     OrgRunnerRosterObserve => fleet_converge_shared_job_id
@@ -5167,6 +5325,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     ServiceRunnerLostBootSweep => fleet_converge_shared_job_id
     GcpIamConverge => "gcp-iam-converge" as NonEmptyStr
     NamecheapObserve => "namecheap-observe" as NonEmptyStr
+    ReviewSheetConverge => "review-sheet-converge" as NonEmptyStr
     ArrivalConverge => "arrival-converge" as NonEmptyStr
     PrinterWorkflow => "printer" as NonEmptyStr
   }
@@ -5198,6 +5357,7 @@ data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 // (test.claim.workflow_dispatch_input). The boot is the one such job: it runs only gunbc.
 data fleet_converge_in_job_compiler_pair_jobs: List<String> = [
   fleet_converge_mode_job_id(mode: MtCollins1Boot) as String,
+  fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String,
   fleet_converge_plan_revision_job_id as String,
 ]
 
@@ -5221,6 +5381,7 @@ data fleet_converge_job_edges: List<FleetConvergeJobEdge> = [
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: RlmLaunchDeploymentReceipt), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: PrinterWorkflow), needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: NamecheapObserve), needs: [fleet_converge_release_bins_job_id as String] },
+  FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: ReviewSheetConverge), needs: [] },
   FleetConvergeJobEdge { id: fleet_converge_gcp_iam_bootstrap_request_job_id, needs: [fleet_converge_release_bins_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_gcp_iam_bootstrap_job_id, needs: [fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String] },
   FleetConvergeJobEdge { id: fleet_converge_mode_job_id(mode: GcpIamConverge), needs: [fleet_converge_release_bins_job_id as String, fleet_converge_gcp_iam_bootstrap_request_job_id as String, fleet_converge_gcp_iam_bootstrap_job_id as String] },
@@ -5267,6 +5428,7 @@ fn fleet_converge_jobs() -> List<Job> {
     fleet_converge_gcp_iam_bootstrap_job(),
     fleet_converge_gcp_iam_converge_job(),
     fleet_converge_namecheap_observe_job(),
+    fleet_converge_review_sheet_converge_job(),
     fleet_converge_arrival_converge_job(),
     fleet_converge_printer_job(),
   ]
@@ -6088,7 +6250,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   },
   DispatchInput {
     name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13). The split is enforced as a precondition refusal before any drain or mask leg." },
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
     required: false,
     default: none,
     type: InputChoice { options: fleet_converge_enrolled_host_options },
@@ -6255,7 +6417,9 @@ data fleet_converge_workflow: Workflow = Workflow {
   on: [
     WorkflowDispatch {
       inputs: fleet_converge_dispatch_inputs,
-    }
+    },
+    Schedule { cron: review_sheet_converge_cron },
+    Push { branches: [gunbc_default_branch_name], paths: review_sheet_converge_source_paths },
   ],
   concurrency: none,
   env: none,
@@ -6468,6 +6632,111 @@ fn fleet_converge_arrival_converge_job() -> Job {
         id_token: Present { value: PermWrite },
       }
     },
+  }
+}
+
+// ── THE REVIEW SHEETS, CONVERGED WITH NO HUMAN IN THE LOOP (gunbc.review_sheet_federation) ─────
+// Three events reach this job and no other: a dispatch of the mode, the daily schedule, and a push to
+// main touching the sheet sources. A schedule or push carries no inputs, so every other job's mode
+// check is false, and plan-revision and build are gated to dispatches (fleet_converge_dispatch_event),
+// so these two events start this job alone. It is not a required context: nothing on the pull-request
+// or merge-queue path reads fleet-converge.
+//
+// THE TOKEN IS MINTED BY THE RUN AND LIVES IN ONE STEP'S ENVIRONMENT. The auth step federates through
+// the dedicated pool and mints a review-sheet-writer token by delegation through review-sheet-converge;
+// the action masks its output, and the converge step reads it in-process at the transport. The auth
+// step continues on error so that a refused delegation reaches the converge step as an EMPTY token and
+// is refused there, typed and naming the missing cell, before any Drive or Sheets call.
+data review_sheet_converge_writer_token_step_id: String = "writer_token"
+
+// One converge at a time: two concurrent runs could each see no spreadsheet and both create one. A
+// newer pending run supersedes an older pending one, which loses nothing -- each run converges to the
+// tree it checked out, and the newer tree is the one that should win.
+data review_sheet_converge_mutation_group: String = "review-sheet-converge"
+
+// Daily, off the hour (06:41 UTC), so it does not land on the fleet's top-of-hour load.
+data review_sheet_converge_cron: CronSchedule = CronSchedule {
+  minute: Exact { value: 41 },
+  hour: Exact { value: 6 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+// THE SHEET SOURCES. A push to main touching any of them converges at once rather than at the next
+// schedule: the kinds and their schemas (review_sheet_*), and the census rows and projection
+// (realization_census_*). A source outside these globs reaches the sheets at the next daily run, never
+// silently not at all.
+data review_sheet_converge_source_paths: List<String> = [
+  "dag/gunbc/review_sheet_*.dag",
+  "dag/gunbc/realization_census_*.dag",
+]
+
+fn fleet_converge_review_sheet_event_admitted() -> Expression {
+  LogicalOr {
+    left: LogicalOr {
+      left: Equals { left: ContextAccess { context: Github, path: ["event_name"] }, right: StringLiteral { value: schedule_event_name } },
+      right: Equals { left: ContextAccess { context: Github, path: ["event_name"] }, right: StringLiteral { value: push_event_name } },
+    },
+    right: fleet_converge_dispatch_mode_is(mode: ReviewSheetConverge),
+  }
+}
+
+fn fleet_converge_review_sheet_writer_token_step() -> Step {
+  UsesStep {
+    name: Present { value: "Mint the review-sheet-writer token (WIF, delegated through review-sheet-converge; refused delegation leaves it empty)" },
+    id: Present { value: review_sheet_converge_writer_token_step_id },
+    uses: google_auth_action,
+    with: Present {
+      value: [
+        kv(key: "workload_identity_provider", value: yaml_string(s: review_sheet_converge_provider_resource())),
+        kv(key: "service_account", value: yaml_string(s: review_sheet_writer_sa_email as String)),
+        kv(key: "delegates", value: yaml_string(s: review_sheet_converge_service_account as String)),
+        kv(key: "token_format", value: yaml_string(s: "access_token")),
+        kv(key: "access_token_scopes", value: yaml_string(s: join(review_sheet_writer_token_scopes, ","))),
+        kv(key: "create_credentials_file", value: yaml_bool(b: false))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: Present { value: true },
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_review_sheet_converge_job() -> Job {
+  Job {
+    id: fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String, name: none,
+    runner: gunbc_ci_runner_spec(),
+    environment: Present { value: review_sheet_converge_environment as String },
+    steps: concat(ci_prelude_steps_with_checkout(checkout: fleet_converge_event_sha_checkout_step(), exact_head_preflight: []), [
+      fleet_converge_in_job_compiler_pair_build_step(name: "Build the compiler pair this converge runs (claim_executor + gunbc)"),
+      fleet_converge_review_sheet_writer_token_step(),
+      RunStep {
+        name: Present { value: "Converge every review sheet kind (live Drive and Sheets, every write read back)" },
+        id: Present { value: "review_sheet_converge" },
+        run: gunbc_ci_review_sheet_converge_invoke(), shell: none,
+        env: Present { value: [kv(key: sheets_token_env, value: yaml_string(s: interpolate(expression: ContextAccess { context: Steps, path: [review_sheet_converge_writer_token_step_id, "outputs", "access_token"] })))] },
+        working_directory: none, if_condition: none, continue_on_error: none,
+        timeout_minutes: Present { value: gunbc_ci_gunbc_run_resolve_step_timeout_minutes },
+      },
+    ]),
+    needs: fleet_converge_job_needs(id: fleet_converge_mode_job_id(mode: ReviewSheetConverge)),
+    env: none, outputs: none,
+    if_condition: Present { value: serialize_expression(expression: fleet_converge_review_sheet_event_admitted()) },
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_gunbc_run_resolve_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: review_sheet_converge_mutation_group,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present { value: WorkflowPermissions {
+      contents: Present { value: PermRead }, pull_requests: none, issues: none,
+      actions: none, id_token: Present { value: PermWrite },
+    } },
   }
 }
 

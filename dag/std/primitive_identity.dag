@@ -37,6 +37,7 @@ import std.primitive_projection {
   primitive_symbol_lexeme, primitive_symbol_intern_lexeme,
   primitive_data_init_decl_facts_live, primitive_bytes_octets, primitive_utf8_encode_bytes, primitive_octets_bytes, primitive_pure_dag_seam_unreachable, primitive_to_string,
   primitive_list_push, primitive_chars, primitive_string_contains, primitive_machine_word_native_operate,
+  primitive_sha256_hex_of_text,
 }
 
 // D0 is NOT terminal acceptance and does NOT close the subject universe. Landed and executing: join
@@ -931,6 +932,21 @@ data primitive_chars_cost: PrimitiveCostFact = PrimitiveCostFact {
   ),
 }
 
+// sha256_hex_of_text, re-homed the same way when std.content_hash declared it and its
+// sha256_hex_of_text_contract retired (work n, output_size 64, Proven, carrier-insensitive). The one
+// running realization (the interpreter's RustCrypto arm, gunbc.host_crypto_digest_seed_growth) encodes
+// the text as UTF-8 and compresses one 64-octet block per 64 octets, so the work is linear in the
+// text's length; a scalar is at most four octets, so the axis is the text's length. The output is a
+// constant 64 digits, which this bound does not carry.
+data primitive_sha256_hex_of_text_cost: PrimitiveCostFact = PrimitiveCostFact {
+  primitive: primitive_sha256_hex_of_text,
+  cost: linear_support_scan_cost(
+    profile: FreeMonoidScalarProfile,
+    coarse: ShapeLinearScan,
+    unavailable: carrier_support_axis_no_longer_finite_cause,
+  ),
+}
+
 // THE ROSTER THIS CARRIER NEVER HAD, AND WHAT IT IS NOT. Its sibling `PrimitiveTraversalOrderFact`
 // is gathered by `primitive_d0_traversal_facts`; these five rows were free-floating `data`
 // declarations that no fold reached, which is the DESIGN section 3c dangling state -- well-modeled
@@ -975,6 +991,7 @@ data primitive_d0_cost_facts: List<PrimitiveCostFact> = [
   primitive_index_by_cost,
   primitive_list_push_cost,
   primitive_chars_cost,
+  primitive_sha256_hex_of_text_cost,
 ]
 
 // THE DECLARATION-KEYED READ. A cost question is asked of a declaration, and the declaration
@@ -1248,6 +1265,7 @@ data primitive_projection_target_canonical_names: List<String> = [
   "string_contains",
   "chars",
   "machine_word_native_operate",
+  "sha256_hex_of_text",
 ]
 
 // list_push IS DECLARED HERE, AND GROUNDED, because its projection row and its cost row both key on
@@ -1643,6 +1661,11 @@ data primitive_chars_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversal
 
 data primitive_list_push_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_list_push, order: SourcePreservingOrder }
 
+// sha256_hex_of_text digests its text's octets in text order (the digest of a reordering is a
+// different digest), and walks no collection whose iteration order is unspecified, so its scalar
+// result consults no order a realization could choose: OrderFreeResult, as for string_contains.
+data primitive_sha256_hex_of_text_traversal: PrimitiveTraversalOrderFact = PrimitiveTraversalOrderFact { primitive: primitive_sha256_hex_of_text, order: OrderFreeResult }
+
 data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_length_traversal,
   primitive_map_insert_traversal,
@@ -1668,6 +1691,7 @@ data primitive_projection_traversal_facts: List<PrimitiveTraversalOrderFact> = [
   primitive_machine_word_native_operate_traversal,
   primitive_chars_traversal,
   primitive_list_push_traversal,
+  primitive_sha256_hex_of_text_traversal,
 ]
 
 fn primitive_declared_traversal_facts() -> List<PrimitiveTraversalOrderFact> {

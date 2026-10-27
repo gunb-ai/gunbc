@@ -244,3 +244,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 /docs/plans/ntfy-deployment-gate-approval.md
 /docs/plans/fabric-serving-router.md
 /docs/plans/network-install-architecture-rows.md
+/docs/plans/serving-fleet-program.md
+/docs/plans/fleet-naming-reach-access.md
+/docs/plans/site-segment-anchor-bmc-reach.md
+/docs/plans/boot-origin-bmc-media.md
