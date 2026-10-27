@@ -34,7 +34,7 @@ import std.decision {
   FleetObservedCoupling,
 }
 import gunbc.harness.harness_reasoning_wire {
-  HarnessServingUnit, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnPoolFront, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
+  HarnessServingUnit, Qwen3_8_27bOnNinfer, Qwen38FlashNextOnPoolFront, Qwen38FlashNextOnSrv1Card, DeepseekV4FlashOnVllm, Glm53FlashOnVllm,
   NemotronUltraFreeOnOpenRouter,
   harness_unit_placement, harness_serving_unit_compatibility, HarnessUnitsIdentical,
   HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,

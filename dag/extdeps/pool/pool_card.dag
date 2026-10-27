@@ -1,0 +1,15 @@
+module extdeps.pool.pool_card
+
+import std.types { NonEmptyStr }
+
+// ONE POOL CARD'S OWN SURFACE, reached without the front (extdeps.pool.pool_front). A card is a vLLM
+// OpenAI-compatible server (the local-inference-lab lil-serve image) behind its own bearer key and its own
+// self-signed TLS certificate; the front forwards to it. Every figure here was read live from the srv1 card on
+// 2026-10-27 (GET /v1/models, authorised: 200; unauthorised: 401), so these are readings of one deployment, not
+// a published upstream contract: a card on another image may differ.
+data pool_card_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+data pool_card_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
+
+// The id the card's GET /v1/models returned (max_model_len 262144). The front's "flash-next" is the front's
+// spelling of this model, not the card's.
+data pool_card_qwen38_flash_next_model_id: NonEmptyStr = "Qwen3.8-Flash-Next" as NonEmptyStr

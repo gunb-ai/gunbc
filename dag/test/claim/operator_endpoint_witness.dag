@@ -3,7 +3,7 @@ module test.claim.operator_endpoint_witness
 import std.types { Bool, String, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
 import gunbc.harness.harness_operator_route { operator_pinned_certificate, operator_pin_plan, operator_pinned_post_request, operator_pinned_probe_request,
-  harness_operator_route, operator_models_url, operator_chat_completions_url,
+  harness_operator_route, harness_pool_front_operator_route, harness_srv1_card_operator_route, operator_models_url, operator_chat_completions_url,
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
@@ -22,7 +22,7 @@ import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
 import gunbc.harness.harness_reasoning_wire {
   harness_unit_reasoning_projection,
-  Qwen38FlashNextOnPoolFront, Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
+  Qwen38FlashNextOnPoolFront, Qwen38FlashNextOnSrv1Card, Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
   harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
   harness_unit_model_id, harness_unit_reasoning_field, harness_unit_thinking_end_token, harness_unit_model_reasoning_field, harness_unit_reasoning_field_aliases, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
   DeepseekV4FlashOnVllm,
@@ -67,7 +67,7 @@ fn w_models_body_three(a: String, b: String, c: String) -> String {
 }
 
 fn w_roster_after(reading: OperatorModelsReading) -> HarnessBackendRoster {
-  harness_roster_of(folded: harness_operator_roster_step(acc: w_empty_fold(), route: harness_operator_route, standing: operator_route_standing(route: harness_operator_route, reading: reading)))
+  harness_roster_of(folded: harness_operator_roster_step(acc: w_empty_fold(), route: harness_pool_front_operator_route, standing: operator_route_standing(route: harness_pool_front_operator_route, reading: reading)))
 }
 
 // ── 1. THE ROSTER SEES THE ROUTE ────────────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ test fn an_unanswered_front_reads_unreachable_and_leaves_none_serving() -> Bool 
 }
 
 test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsRefused { url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/models", status: "401" }) {
+  match operator_route_standing(route: harness_pool_front_operator_route, reading: OperatorModelsRefused { url: "https://srv2.tailecbe08.ts.net:3737/pool/v1/models", status: "401" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -119,7 +119,7 @@ test fn a_front_that_rejects_the_key_reads_unreadable_not_unreachable() -> Bool 
 }
 
 test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_advertises() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "something-else") }) {
+  match operator_route_standing(route: harness_pool_front_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "something-else") }) {
     OperatorRouteModelNotAdmitted { advertised: a } => a == "something-else"
     OperatorRouteServing { model: _ } => false
     OperatorRouteUnreachable { url: _ } => false
@@ -128,7 +128,7 @@ test fn a_route_advertising_another_model_is_not_admitted_and_names_what_it_adve
 }
 
 test fn an_unparseable_models_body_reads_unreadable() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "not json" }) {
+  match operator_route_standing(route: harness_pool_front_operator_route, reading: OperatorModelsAnswered { body: "not json" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false
@@ -156,7 +156,7 @@ fn custody_path_text(path: NonEmptyStr?) -> String {
 // (test.claim.roadmap.dispatch_worker_traversal_witness the_dedicated_worker_unit_loads_both_pool_files_from_the_root_credstore)
 // -- and never from a home; one with only a home reads its custody there; one with neither locates nothing.
 test fn handed_credentials_are_read_from_the_managers_directory_and_a_home_only_from_its_custody() -> Bool {
-  let r = harness_operator_route
+  let r = harness_pool_front_operator_route
   let handed = OperatorCredentialHandedByManager { directory: "/run/credentials/gunbc-attempt-n-k.service" as NonEmptyStr }
   let home = OperatorCredentialInHome { home: "/home/svc" as NonEmptyStr }
   custody_path_text(path: operator_custody_file_path(custody: handed, identifier: r.credential_identifier, relative: r.credential_relative_path))
@@ -198,10 +198,10 @@ test fn a_quality_sensitive_any_model_turn_keeps_its_fleet_seat() -> Bool {
 
 // ── 5. THE QUALITY FLOOR IS NOT SILENT ──────────────────────────────────────────────────────────
 test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admits_batch() -> Bool {
-  (match operator_class_admission(route: harness_operator_route, class: InteractiveQualitySensitive) {
+  (match operator_class_admission(route: harness_pool_front_operator_route, class: InteractiveQualitySensitive) {
     OperatorClassRefused { detail: d } => string_contains(s: d, pattern: "Qwen3.8-Flash-Next")
     OperatorClassAdmitted => false
-  }) && (match operator_class_admission(route: harness_operator_route, class: BatchQualityTolerant) {
+  }) && (match operator_class_admission(route: harness_pool_front_operator_route, class: BatchQualityTolerant) {
     OperatorClassAdmitted => true
     OperatorClassRefused { detail: _ } => false
   })
@@ -209,12 +209,35 @@ test fn the_floor_refuses_a_quality_sensitive_turn_with_its_consequence_and_admi
 
 // ── 6. THE ROUTE'S DECLARED FACTS ───────────────────────────────────────────────────────────────
 test fn the_route_urls_are_the_pool_fronts_origin_plus_its_declared_paths() -> Bool {
-  (match operator_models_url() { Present { value: u } => (u as String) == "https://srv2.tailecbe08.ts.net:3737/pool/v1/models"  Absent => false })
-    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions"  Absent => false })
+  (join([harness_pool_front_operator_route.origin as String, harness_pool_front_operator_route.models_path as String], "") == "https://srv2.tailecbe08.ts.net:3737/pool/v1/models")
+    && (join([harness_pool_front_operator_route.origin as String, harness_pool_front_operator_route.chat_completions_path as String], "") == "https://srv2.tailecbe08.ts.net:3737/pool/v1/chat/completions")
+}
+
+// ── 6b. THE LAB IS PINNED TO THE SRV1 CARD (operator direction 2026-10-27) ──────────────────────
+test fn the_selected_route_is_the_srv1_card_at_its_own_paths() -> Bool {
+  (match operator_models_url() { Present { value: u } => (u as String) == "https://pool-card:18000/v1/models"  Absent => false })
+    && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://pool-card:18000/v1/chat/completions"  Absent => false })
+    && (match harness_operator_route.unit { Qwen38FlashNextOnSrv1Card => true  Qwen38FlashNextOnPoolFront => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false })
+    && (harness_operator_route.credential_identifier as String) == "gunbc-srv1-card-api-key"
+}
+
+// The card's own list, as read live on 2026-10-27, admits the card's model id; the front's alias does not.
+test fn the_card_route_serves_when_the_card_lists_its_model_and_refuses_the_alias() -> Bool {
+  (match operator_route_standing(route: harness_srv1_card_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "Qwen3.8-Flash-Next") }) {
+    OperatorRouteServing { model: m } => (m as String) == "Qwen3.8-Flash-Next"
+    OperatorRouteModelNotAdmitted { advertised: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+    OperatorRouteUnreadable { cause: _ } => false
+  }) && (match operator_route_standing(route: harness_srv1_card_operator_route, reading: OperatorModelsAnswered { body: w_models_body(id: "slop") }) {
+    OperatorRouteModelNotAdmitted { advertised: _ } => true
+    OperatorRouteServing { model: _ } => false
+    OperatorRouteUnreachable { url: _ } => false
+    OperatorRouteUnreadable { cause: _ } => false
+  })
 }
 
 test fn the_route_carries_the_fronts_card_concurrency_and_the_served_model_id() -> Bool {
-  harness_operator_route.concurrency_ceiling == 7
+  harness_pool_front_operator_route.concurrency_ceiling == 7
     && (harness_unit_model_id(unit: Qwen38FlashNextOnPoolFront) as String) == "slop"
 }
 
@@ -229,7 +252,7 @@ test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_re
 }
 
 test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
-  match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
+  match operator_route_standing(route: harness_pool_front_operator_route, reading: OperatorModelsAnswered { body: "{\"error\":{\"code\":\"invalid_api_key\"}}" }) {
     OperatorRouteUnreadable { cause: _ } => true
     OperatorRouteServing { model: _ } => false
     OperatorRouteModelNotAdmitted { advertised: _ } => false

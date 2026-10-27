@@ -12,6 +12,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
 import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
+import extdeps.pool.pool_card { pool_card_models_path, pool_card_chat_completions_path }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
@@ -19,7 +20,7 @@ import extdeps.pool.pool_front {
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontCardUnanswered, PoolFrontUpstreamsBusy, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, Qwen38FlashNextOnSrv1Card, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import std.list { list_member }
 
@@ -60,13 +61,27 @@ data operator_pool_front_origin: NonEmptyStr = tailnet_base_url_from(
   port: Present { value: operator_pool_front_port },
 )
 
-data operator_pinned_certificate: PoolFrontCertificate = PoolFrontCertificate {
+data operator_pool_front_certificate: PoolFrontCertificate = PoolFrontCertificate {
   sha256_fingerprint: "23:34:E0:C1:03:32:F8:0C:82:CA:D8:7F:D1:32:1E:1C:DF:0C:B6:CE:CF:B2:98:73:73:A0:12:3C:A4:F7:F1:CF" as NonEmptyStr,
   not_after: "2028-09-17" as NonEmptyStr,
 }
 
+// THE SRV1 CARD, REACHED WITHOUT THE FRONT (operator direction 2026-10-27: pin the lab's harness to the known srv1
+// Blackwell and wait for it). The card's self-signed certificate names only CN=pool-card (no subject alternative
+// name), so the one name that verifies is pool-card; the lab host maps it to 127.0.0.1 (/etc/hosts on srv1, a
+// deployment fact of this lab, not of the card). The port is the card container's published listener.
+data operator_srv1_card_origin: NonEmptyStr = "https://pool-card:18000" as NonEmptyStr
+
+data operator_srv1_card_certificate: PoolFrontCertificate = PoolFrontCertificate {
+  sha256_fingerprint: "E4:6E:F7:7E:FD:CB:14:41:04:5A:13:E1:CD:AA:3D:BC:56:3B:5A:79:B3:3D:9C:D8:FB:DD:26:69:F4:54:CC:97" as NonEmptyStr,
+  not_after: "2036-10-21" as NonEmptyStr,
+}
+
+// The certificate the selected route pins.
+data operator_pinned_certificate: PoolFrontCertificate = harness_operator_route.pinned_certificate
+
 fn operator_endpoint_origin() -> NonEmptyStr? {
-  Present { value: operator_pool_front_origin }
+  Present { value: harness_operator_route.origin }
 }
 
 fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
@@ -77,13 +92,13 @@ fn operator_endpoint_url(path: NonEmptyStr) -> NonEmptyStr? {
 }
 
 fn operator_models_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: pool_front_models_path)
+  operator_endpoint_url(path: harness_operator_route.models_path)
 }
 
 // The URL a turn POSTs to: the existing chat-completions POST (harness_wire) is reused, only its target
 // is this route's.
 fn operator_chat_completions_url() -> NonEmptyStr? {
-  operator_endpoint_url(path: pool_front_chat_completions_path)
+  operator_endpoint_url(path: harness_operator_route.chat_completions_path)
 }
 
 // THE QUALITY FLOOR. Swapping GLM-5.3-Flash for the pool's Qwen3.8-Flash-Next is a different quality product, and it must not
@@ -100,6 +115,10 @@ type OperatorQualityFloor {
 // growth surface) that counts open turns per route and refuses the ninth with a typed cause.
 type HarnessOperatorRoute {
   unit: HarnessServingUnit
+  origin: NonEmptyStr
+  models_path: NonEmptyStr
+  chat_completions_path: NonEmptyStr
+  pinned_certificate: PoolFrontCertificate
   group_wire: NonEmptyStr
   credential_relative_path: NonEmptyStr
   certificate_relative_path: NonEmptyStr
@@ -116,8 +135,12 @@ data pool_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
   reason: "the pool operator states a card runs about 5-7 requests at once and no per-client cap (ctrl #2375); the lab bounds its own fan-out at the high end until the figure is read" as NonEmptyStr,
 }
 
-data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+data harness_pool_front_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen38FlashNextOnPoolFront,
+  origin: operator_pool_front_origin,
+  models_path: pool_front_models_path,
+  chat_completions_path: pool_front_chat_completions_path,
+  pinned_certificate: operator_pool_front_certificate,
   group_wire: "operator:pool-front" as NonEmptyStr,
   credential_relative_path: ".config/gunbc-pool-front/api-key" as NonEmptyStr,
   certificate_relative_path: ".config/gunbc-pool-front/server.pem" as NonEmptyStr,
@@ -129,6 +152,28 @@ data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
     consequence: "the operator route serves the pool's Qwen3.8-Flash-Next (any card behind the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
   },
 }
+
+data harness_srv1_card_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen38FlashNextOnSrv1Card,
+  origin: operator_srv1_card_origin,
+  models_path: pool_card_models_path,
+  chat_completions_path: pool_card_chat_completions_path,
+  pinned_certificate: operator_srv1_card_certificate,
+  group_wire: "operator:srv1-card" as NonEmptyStr,
+  credential_relative_path: ".config/gunbc-srv1-card/api-key" as NonEmptyStr,
+  certificate_relative_path: ".config/gunbc-srv1-card/server.pem" as NonEmptyStr,
+  credential_identifier: "gunbc-srv1-card-api-key" as NonEmptyStr,
+  certificate_identifier: "gunbc-srv1-card-server-pem" as NonEmptyStr,
+  concurrency_ceiling: pool_budget_enforced(policy: pool_concurrency_budget_policy, upstream: pool_front_card_concurrency_high),
+  quality_floor: OperatorQualityFloor {
+    admitted_class: BatchQualityTolerant,
+    consequence: "the operator route serves the pool's Qwen3.8-Flash-Next (the srv1 card, reached without the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+  },
+}
+
+// THE ROUTE THE LAB'S HARNESS TAKES: pinned to the srv1 card (operator direction 2026-10-27). The pool front row
+// stays declared beside it; switching back is this one binding.
+data harness_operator_route: HarnessOperatorRoute = harness_srv1_card_operator_route
 
 type OperatorClassAdmission
   = OperatorClassAdmitted
