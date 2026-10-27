@@ -1643,6 +1643,10 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => None,
         CompilerDiagnostic::CallPositionalDeficit { .. } => None,
         CompilerDiagnostic::CallPositionalSurplus { .. } => None,
+        // The refusal carries the target NAME and the missing realization FACT, not a rendered
+        // type-shape pair: like the pairless classes its arm is None, and the census model's
+        // `Absent` is the honest reading.
+        CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,
         CompilerDiagnostic::ConstructorCallAdmissionRefused { .. } => None,
