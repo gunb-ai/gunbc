@@ -4,7 +4,7 @@ import test.fixture.board_fru_observation { jade_fru_read }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, AmiMegaRac, OpenBmc }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host {
@@ -21,8 +21,13 @@ import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
-import gunbc.host.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
-import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
+import gunbc.host.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, admit_megarac_host_at_current_build, megarac_host_admission_in, megarac_host_refusal_text }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_current_build_identity }
+import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming, MegaRacCurrentBuild, CurrentBuildRead, megarac_current_build, megarac_operation_standings, standing_grounds, megarac_operation_eq }
+import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_3 }
+import gunbc.machine_intake.megarac_operation_evidence { mtcollins1_megarac_operation_evidence }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.host.managed_host_boot { boot_selection, VirtualMediaBootSelectionAdmitted, VirtualMediaBootSelectionRefused }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -224,7 +229,7 @@ test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_
 // witness module and go red on this arm.
 test fn w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current() -> Bool {
   managed_hosts() |> all(h => megarac_operations |> all(op =>
-    match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: op) {
+    match admit_megarac_host_at_current_build(evidence: committed_evidence(), host: h, operation: op) {
       MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: o, current: c } } =>
         (c.raw_version as String) == "0.45" && (o.raw_version as String) == "0.32"
       _ => false
@@ -251,3 +256,87 @@ test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> B
     }
   })
 }
+
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// THE LEDGER UNDER TEST: the one committed evidence bundle production reads (gunbc.machine_intake
+// .megarac_operation_evidence) — never a fixture, so these claims see exactly what a boot sees.
+fn committed_evidence() -> MegaRacOperationEvidence { mtcollins1_megarac_operation_evidence() }
+
+// STEP 0 OF THE CURRENT-BUILD CUTOVER — THE TRIGGER, TESTED BEFORE ANY SWITCH (manager: RED-first,
+// aim to retire gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation).
+// The drop row retires only when its restoration_trigger holds: a COMMITTED READING of the current
+// build; a receipt per operation JOINING that reading with no transition between; and every caller
+// switched at once with the boot still admitted. These three claims are that trigger, written against
+// the reading already on file (boot run 40082618814's committed hpm check, minted by #15140). They
+// are the RED this cutover must turn green, and the witness is written FIRST so the RED is seen before
+// any caller moves.
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+// TRIGGER CLAUSE 1, THE COMMITTED READING. The evidence on file already knows a machine-read current
+// build for mtcollins1's controller, and it is the reading — not the transition's wanted build, and
+// not the vendor page label. If the committed hpm check were dropped from the ledger the current build
+// would fall back to CurrentBuildKnownUnread (the reflash's wanted image, never machine-read) and this
+// goes red; if any row started naming the page label 0.45.3 it goes red; if a NEWER reading of another
+// build lands, latest_reading changes and the claim must be re-read against the truth, not patched.
+test fn w_the_committed_evidence_reads_a_machine_read_current_build_for_mtcollins1() -> Bool {
+  match megarac_current_build(evidence: committed_evidence(), endpoint: mtcollins1_endpoint) {
+    CurrentBuildRead { reading: r } =>
+      (r.identity.firmware.raw_version as String) == "0.45"
+        && !bmc_firmware_release_identity_eq(a: r.identity.firmware, b: megarac_firmware_0_32)
+        && !bmc_firmware_release_identity_eq(a: r.identity.firmware, b: megarac_firmware_0_45_3)
+    CurrentBuildKnownUnread { transition: _ } => false
+    CurrentBuildUnobserved => false
+  }
+}
+
+// TRIGGER CLAUSE 2, THE RECEIPTS JOIN THAT READING. For EVERY operation the boot admits for — media
+// attach, KVM canvas still, SDR socket naming — there is a standing that grounds the operation AT THE
+// MACHINE-READ identity, which the join (gunbc.host.megarac_operation_standing) minted and nothing
+// else can: same controller, no reflash transition between receipt and reading, no reading of another
+// build between them. This is exactly what the drop row's trigger demands before it dissolves. RED
+// today for any operation whose receipt sits across the reflash or never existed (the KVM still has no
+// receipt at this build at all — see the inheritance claim above), and RED if the receipts stop joining.
+test fn w_every_admitted_operation_has_a_receipt_joining_the_committed_reading() -> Bool {
+  match mtcollins1_current_build_identity {
+    // NO MACHINE-READ IDENTITY TO JOIN AGAINST: the trigger's second clause cannot hold, and this
+    // claim says so rather than grounding operations against a stand-in build.
+    Absent => false
+    Present { value: current_build } => {
+      let standings = megarac_operation_standings(evidence: committed_evidence())
+      megarac_operations |> all(op => count(filter(standings, st => standing_grounds(standing: st, operation: op, identity: current_build))) > 0)
+        && count(filter(committed_evidence().receipts, rc => megarac_operation_eq(a: rc.operation, b: MegaRacVirtualMediaAttach))) > 0
+        && count(filter(committed_evidence().receipts, rc => megarac_operation_eq(a: rc.operation, b: MegaRacKvmCanvasStill))) > 0
+        && count(filter(committed_evidence().receipts, rc => megarac_operation_eq(a: rc.operation, b: MegaRacSdrSocketNaming))) > 0
+    }
+  }
+}
+
+// TRIGGER CLAUSE 3, EVERY CALLER SWITCHED AT ONCE WITH THE BOOT STILL ADMITTED. The shadow gate — the
+// admission the cutover switches the five production callers to — admits mtcollins1 for every operation
+// AT THE MACHINE-READ BUILD, AND the boot selection still admits, so the switch cannot trade a working
+// boot for a clean ledger. This is the RED OF REDS for the cutover: the sibling claim above
+// (w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current) proves that TODAY
+// this gate refuses every operation with observed 0.32 against current 0.45 — the bound observation
+// still names the 2026-09-05 0.32 probe. Switching callers before the observation is cut over would
+// refuse EVERY operation and stop the boot: this claim, run before the cutover, is exactly what says so.
+// It goes green only when the observation is cut over with the switch, in the same transition — the
+// drop row's 'every caller switched at once' clause, tested rather than trusted.
+test fn w_the_switch_admits_every_operation_at_the_machine_read_build_and_the_boot_still_admits() -> Bool {
+  match mtcollins1_current_build_identity {
+    Absent => false
+    Present { value: current_build } => {
+      managed_hosts() |> all(h =>
+        megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: committed_evidence(), host: h, operation: op) {
+          MegaRacHostAdmitted { host: a } => bmc_firmware_release_identity_eq(a: a.firmware, b: current_build.firmware)
+          MegaRacHostRefused { cause: _ } => false
+          _ => false
+        })
+          && match boot_selection(evidence: committed_evidence(), host: h) {
+            VirtualMediaBootSelectionAdmitted { selection: _, capability_row: _ } => true
+            VirtualMediaBootSelectionRefused { cause: _ } => false
+          })
+    }
+  }
+}
+
