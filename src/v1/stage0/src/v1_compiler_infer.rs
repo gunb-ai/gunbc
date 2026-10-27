@@ -7704,6 +7704,20 @@ pub fn applied_type_argument_is_nested_application(n: Rc<Node>, scope: Rc<InferS
     }
 }
 
+pub fn applied_type_argument_child_judgeable(child: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    if type_node_is_arrow(child.clone()) {
+        true
+    } else {
+        applied_type_argument_identity_known(
+            crate::v1_std_core::authored_name_at(
+                scope.type_env.source_indices.clone(),
+                child.clone(),
+            ),
+            scope.clone(),
+        )
+    }
+}
+
 pub fn applied_type_argument_identity_known(name: String, scope: Rc<InferScope>) -> bool {
     if (name.clone() == "".to_string()) {
         false
@@ -9008,7 +9022,7 @@ let actual = crate::v1_compiler_infer_types::resolved_type(actual_expr.clone());
 if ((((exposure_is_application(exposure_view_for_node(app.formal.declared_type.clone(), source_indices.clone())) && exposure_is_application(exposure_view_for_node(actual.clone(), source_indices.clone()))) && ((app.formal.declared_type.children.clone().len() as i64) > 0)) && ((app.formal.declared_type.children.clone().len() as i64) == (actual.children.clone().len() as i64))) && (crate::v1_std_core::authored_name_at(source_indices.clone(), app.formal.declared_type.clone()) == crate::v1_std_core::authored_name_at(source_indices.clone(), actual.clone()))) {
                 Rc::new({ let mut __result = Vec::new(); for declared_pair in Rc::new(app.formal.declared_type.children.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned() { __result.extend((*match app.formal.substitution_basis.children.clone().get((declared_pair.0.clone()) as usize).cloned() {
     Some(raw_declared_child) => match actual.children.clone().get((declared_pair.0.clone()) as usize).cloned() {
-    Some(produced_child) => if (applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(raw_declared_child.clone())), scope.clone()) && applied_type_argument_identity_known(crate::v1_std_core::authored_name_at(source_indices.clone(), crate::v1_compiler_infer_types::child_type_node(produced_child.clone())), scope.clone())) {
+    Some(produced_child) => if (applied_type_argument_child_judgeable(crate::v1_compiler_infer_types::child_type_node(raw_declared_child.clone()), scope.clone()) && applied_type_argument_child_judgeable(crate::v1_compiler_infer_types::child_type_node(produced_child.clone()), scope.clone())) {
                     declared_type_obligation_diags(Rc::new(DeclaredTypeObligation {
     position: DeclaredTypePosition::PositionGenericTypeArgument,
     subject: app.formal.parameter_identity.clone(),

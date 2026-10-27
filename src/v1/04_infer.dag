@@ -5506,6 +5506,26 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 // stays admitted. Deciding whether a Nat argument inhabits an Int one is the covariance question
 // this arm does not answer for any argument; admitting it here is the existing unjudged state, not a
 // new widen.
+// AN ARROW CHILD IS JUDGEABLE, AND THE NAME TEST CANNOT SEE IT. applied_type_argument_identity_known
+// asks whether the child NAMES A DECLARATION with structure, because a type variable resolves to
+// nothing and must stay gated out. An Arrow carries no such name (child_type_node keeps it as the
+// written arrow node, and an arrow is not a named declaration), so the name test fails it closed and
+// NOTHING judged the element pair: `List<fn() -> ProbeAnswer>` inhabited `List<ProbeAnswer>` with a
+// blocking delta of 0, the same exemption the central relation exists to close, at this one position.
+// The arrow connective is the whole fact (type_node_is_arrow), so it is tested directly, before the
+// name test; a type variable or an unresolved child is not an arrow and still falls to the name test
+// and stays gated out. MEASURED, not reasoned: probe List<fn() -> ProbeAnswer> -> List<ProbeAnswer>
+// at this head's parent refused nothing; probe List<ProbeCb> -> List<ProbeAnswer> (both named)
+// already refused at the generic type argument with this gate untouched.
+fn applied_type_argument_child_judgeable(child: Node, scope: InferScope) -> Bool {
+  if type_node_is_arrow(n: child) {
+    true
+  } else {
+    applied_type_argument_identity_known(
+      name: authored_name_at(source_indices: scope.type_env.source_indices, node: child), scope: scope)
+  }
+}
+
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
     false
@@ -6472,10 +6492,8 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                   Present { value: raw_declared_child } =>
                     match actual.children |> skip(declared_pair.first) |> first {
                       Present { value: produced_child } =>
-                        if applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
-                          && applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                        if applied_type_argument_child_judgeable(child: child_type_node(ch: raw_declared_child), scope: scope)
+                          && applied_type_argument_child_judgeable(child: child_type_node(ch: produced_child), scope: scope) {
                           declared_type_obligation_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,

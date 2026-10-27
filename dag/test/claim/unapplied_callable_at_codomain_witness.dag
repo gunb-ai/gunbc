@@ -38,7 +38,7 @@ fn probe_source(name: String, body: String) -> String {
   concat(concat(concat("module probe_unapplied_callable_", name), "\n"), concat(probe_prelude, body))
 }
 
-data probe_prelude: String = "import std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer, flag: fn() -> Bool }\ntype Holder { held: ProbeAnswer }\ntype CbHolder { cb: fn() -> ProbeAnswer }\ntype ConsumeOps { consume: fn(ProbeAnswer) -> Bool, take_cb: fn(fn() -> ProbeAnswer) -> Bool }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn pick(n: Int) -> ProbeAnswer {\n  ProbeYes\n}\nfn ident<T>(x: T) -> T {\n  x\n}\n"
+data probe_prelude: String = "import std.types { Bool, Int }\ntype ProbeAnswer = ProbeYes | ProbeNo\ntype ProbeOps { ask: fn() -> ProbeAnswer, ask_with: fn(Int) -> ProbeAnswer, flag: fn() -> Bool }\ntype Holder { held: ProbeAnswer }\ntype CbHolder { cb: fn() -> ProbeAnswer }\ntype ConsumeOps { consume: fn(ProbeAnswer) -> Bool, take_cb: fn(fn() -> ProbeAnswer) -> Bool }\nfn answered(a: ProbeAnswer) -> Bool {\n  match a {\n    ProbeYes => true\n    ProbeNo => false\n  }\n}\nfn pick(n: Int) -> ProbeAnswer {\n  ProbeYes\n}\nfn ident<T>(x: T) -> T {\n  x\n}\nfn takes_answers(xs: List<ProbeAnswer>) -> Bool {\n  true\n}\nfn takes_callbacks(xs: List<fn() -> ProbeAnswer>) -> Bool {\n  true\n}\n"
 
 data arrow_block_lambda_return_source: String = probe_source(name: "arrow_block_lambda_return", body: "fn g() -> fn(Int) -> Int {\n  let k = 1\n  fn(x) { x }\n}\n")
 
@@ -78,6 +78,10 @@ data ok_early_return_source: String = probe_source(name: "ok_early_return", body
 
 data ok_fn_return_source: String = probe_source(name: "ok_fn_return", body: "fn g(o: ProbeOps) -> ProbeAnswer {\n  o.ask()\n}\n")
 
+data ok_generic_argument_param_source: String = probe_source(name: "ok_generic_argument_param", body: "fn g(xs: List<ProbeAnswer>) -> Bool {\n  takes_answers(xs: xs)\n}\n")
+
+data ok_generic_argument_arrow_source: String = probe_source(name: "ok_generic_argument_arrow", body: "fn g(cbs: List<fn() -> ProbeAnswer>) -> Bool {\n  takes_callbacks(xs: cbs)\n}\n")
+
 data ok_generic_instantiation_source: String = probe_source(name: "ok_generic_instantiation", body: "fn g(o: ProbeOps) -> Bool {\n  let a: ProbeAnswer = ident(x: o.ask())\n  answered(a: a)\n}\n")
 
 data ok_if_branch_source: String = probe_source(name: "ok_if_branch", body: "fn g(o: ProbeOps, b: Bool) -> ProbeAnswer {\n  if b { ProbeYes } else { o.ask() }\n}\n")
@@ -105,6 +109,10 @@ data red_direct_call_arg_source: String = probe_source(name: "red_direct_call_ar
 data red_early_return_source: String = probe_source(name: "red_early_return", body: "fn g(o: ProbeOps, b: Bool) -> ProbeAnswer {\n  if b { return o.ask }\n  ProbeYes\n}\n")
 
 data red_fn_return_source: String = probe_source(name: "red_fn_return", body: "fn g(o: ProbeOps) -> ProbeAnswer {\n  o.ask\n}\n")
+
+data red_generic_argument_codomain_source: String = probe_source(name: "red_generic_argument_codomain", body: "fn g(cbs: List<fn() -> ProbeAnswer>) -> Bool {\n  takes_answers(xs: cbs)\n}\n")
+
+data red_generic_argument_domain_source: String = probe_source(name: "red_generic_argument_domain", body: "fn g(cbs: List<fn(Int) -> ProbeAnswer>) -> Bool {\n  takes_callbacks(xs: cbs)\n}\n")
 
 data red_generic_instantiation_source: String = probe_source(name: "red_generic_instantiation", body: "fn g(o: ProbeOps) -> Bool {\n  let a: ProbeAnswer = ident(x: o.ask)\n  answered(a: a)\n}\n")
 
@@ -138,8 +146,16 @@ data red_record_field_lambda_source: String = probe_source(name: "red_record_fie
 
 data red_unary_return_source: String = probe_source(name: "red_unary_return", body: "fn g(o: ProbeOps) -> ProbeAnswer {\n  o.ask_with\n}\n")
 
+test fn a_nominal_list_generic_argument_is_admitted() -> ProcessExit {
+  cell_exit(cell: "ok_generic_argument_param", verdict: blocking_delta(hostile: ok_generic_argument_param_source, holds: fn(n) { n <= 0 }))
+}
+
 test fn an_arrow_at_an_arrow_block_lambda_return_is_admitted() -> ProcessExit {
   cell_exit(cell: "arrow_block_lambda_return", verdict: blocking_delta(hostile: arrow_block_lambda_return_source, holds: fn(n) { n <= 0 }))
+}
+
+test fn an_arrow_at_an_arrow_generic_argument_is_admitted() -> ProcessExit {
+  cell_exit(cell: "ok_generic_argument_arrow", verdict: blocking_delta(hostile: ok_generic_argument_arrow_source, holds: fn(n) { n <= 0 }))
 }
 
 test fn an_arrow_at_an_arrow_data_initializer_is_admitted() -> ProcessExit {
@@ -264,6 +280,14 @@ test fn an_unapplied_callable_early_return_refuses() -> ProcessExit {
 
 test fn an_unapplied_callable_fn_return_refuses() -> ProcessExit {
   cell_exit(cell: "red_fn_return", verdict: blocking_delta(hostile: red_fn_return_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn an_unapplied_callable_generic_argument_codomain_refuses() -> ProcessExit {
+  cell_exit(cell: "red_generic_argument_codomain", verdict: blocking_delta(hostile: red_generic_argument_codomain_source, holds: fn(n) { n >= 1 }))
+}
+
+test fn an_unapplied_callable_generic_argument_domain_refuses() -> ProcessExit {
+  cell_exit(cell: "red_generic_argument_domain", verdict: blocking_delta(hostile: red_generic_argument_domain_source, holds: fn(n) { n >= 1 }))
 }
 
 test fn an_unapplied_callable_generic_instantiation_refuses() -> ProcessExit {
