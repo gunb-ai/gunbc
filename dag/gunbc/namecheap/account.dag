@@ -77,9 +77,12 @@ fn parse_nameservers(raws: List<NonEmptyStr>) -> Result<List<HostName>, Nameserv
   })
 }
 
+fn nameservers_cover(a: List<HostName>, b: List<HostName>) -> Bool {
+  fold(a, init: true, f: (acc, x) => acc && fold(b, init: false, f: (hit, y) => hit || host_name_eq(a: x, b: y)))
+}
+
 fn same_nameserver_set(a: List<HostName>, b: List<HostName>) -> Bool {
-  a.length() == b.length()
-    && fold(a, init: true, f: (acc, x) => acc && fold(b, init: false, f: (hit, y) => hit || host_name_eq(a: x, b: y)))
+  nameservers_cover(a: a, b: b) && nameservers_cover(a: b, b: a)
 }
 
 // The parent's answer reaches DelegationObservedInParent only when it names the set the registrar
