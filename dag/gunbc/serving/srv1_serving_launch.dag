@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -246,6 +246,25 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
     reason: "the key READ at exec time is the bash command substitution inside the retained wrapper body (the cat-substitution on --api-key in the docker run argument) — shell inside the sanctioned retained script, the ONLY place this repository spells it; the model carries the typed file source only (no shell in the interface, no shell-building fn).",
-    dissolution: unbound_dissolution(description: "the bash grammar (extdeps.languages.bash — today invocation only: bash_program_command, bash_script_argv) gains a command-substitution node plus an emit route, so the wrapper's --api-key argument becomes a grammar-emitted node realized from LilServeApiKeyFromFile. The capability restored is SHELL GRAMMAR EMIT for command substitution; when it lands the wrapper's substitution token retires with the docker-run half per srv1_serving_wrapper's dissolves_to. SUFFICIENT for retiring this trigger row."),
+    // RE-KEYED 2026-10-27 (review 86879), twice. First pass named grammar-emitted shell as the
+    // waiting-on — false since #15230 landed it. Second pass used retires_dissolution on
+    // srv1_serving_wrapper — also wrong: a trigger pointing at the row's own subject restates the
+    // wrapper's dissolves_to instead of naming a capability (DESIGN 4b meta-obligation 3). STANDING,
+    // stated per 4b meta-obligation 2: CAN CLIMB NOW BUT UNBUILT. The means exist today —
+    // v2.extdeps.languages.bash_build bash_build_word_cmdsubst over
+    // bash_build_command_from_lits(["cat", <path>]), emitted through v2.workflow.bash_emit
+    // bash_emit_stmts, consumed in production by extdeps.posix.sh_invocation
+    // posix_sh_export_from_file. The trigger names the EXACT remaining step: the render fn turning
+    // LilServeApiKeyFromFile.path into that grammar-emitted --api-key word. A forward trigger on an
+    // unbuilt ref, with precedent — gunbc.serving.router_proxy_scaffold triggers on
+    // extdeps.languages.nginx_conf nginx_conf_grammar and extdeps.languages.lua.grammar
+    // lua_chunk_grammar, both unbuilt; when srv1_serving_api_key_substitution_node lands this reads
+    // DissolutionFired and the row retires. Why it did not simply land in this PR: the wrapper body is
+    // a verbatim retention of the script srv1 RUNS (sha256-pinned in
+    // gunbc.host.srv1_serving_startup_receipt); under the operator hold I may neither rewrite that
+    // observation nor relaunch the container to prove the render. The render is modelable now — the
+    // adoption against the running host is the gated half — so the trigger waits on the render, not on
+    // the wrapper's larger retirement.
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_api_key_substitution_node")),
   ),
 ]
