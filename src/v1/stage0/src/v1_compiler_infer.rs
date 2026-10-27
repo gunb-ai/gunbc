@@ -17131,7 +17131,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 param_prov.clone(),
                                             )
                                         } else {
-                                            if is_unsolved_empty_list_element(cpt.clone()) {
+                                            if is_unsolved_type_variable(cpt.clone()) {
                                                 extend_scope(
                                                     acc.clone(),
                                                     pair.1.clone(),
@@ -17912,11 +17912,9 @@ pub fn field_base_is_in_flight_lambda_param(base: Rc<Node>, scope: Rc<InferScope
     }
 }
 
-pub fn is_unsolved_empty_list_element(n: Rc<Node>) -> bool {
+pub fn is_unsolved_type_variable(n: Rc<Node>) -> bool {
     match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: id, .. }) => {
-            (id.clone() == "empty_list_element".to_string())
-        }
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
         _ => false,
     }
 }
@@ -26242,8 +26240,12 @@ pub fn unify_generics(
 pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
     if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
         match slot.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                crate::v1_compiler_infer_types::child_type_node(slot.clone())
+            Some(InferredNode::Resolved { node: r, .. }) => {
+                if is_unsolved_type_variable(r.clone()) {
+                    slot.clone()
+                } else {
+                    crate::v1_compiler_infer_types::child_type_node(slot.clone())
+                }
             }
             _ => slot.clone(),
         }
