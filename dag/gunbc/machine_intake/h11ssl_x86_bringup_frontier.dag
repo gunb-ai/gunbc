@@ -202,19 +202,19 @@ data h11ssl_x86_network_boot_dissolution: DissolutionCondition = unbound_dissolu
 
 data h11ssl_x86_network_boot_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_pxe_edge_gap_subject,
-  reason: "x86_64 UEFI is admitted as a row (gunbc.network_boot_delivery uefi_pxe_admitted_architectures) and the edge renders the Ubuntu amd64 signed chain, but gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins holds the amd64 row Unpinned until its grub.cfg rendering binds the seed origin, nothing is placed on srv4, and no x86 client has been served",
+  reason: "x86_64 UEFI is admitted as a row (gunbc.network_boot_delivery uefi_pxe_admitted_architectures), the edge renders the Ubuntu amd64 signed chain, gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins carries the amd64 row pinned, and placement from the verified ISO is modeled (place_site_pxe_edge_ubuntu_chain), but no apply has placed it on srv4, no install binding is admitted, and no x86 client has been served",
   dissolution: h11ssl_x86_network_boot_dissolution,
 )
 
 // ---- G2: install-to-disk route for this board (fill-order step 7, the capstone) ----
 
 data h11ssl_install_to_disk_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: a modeled pass brings an OS onto this board's boot disk without a human at the console -- the shape of gunbc.srv3.srv3_os_install_actuate (plan refusal, seeded-image resolution, media attach, boot-order selection, the installed-system-booted-from-local-target check) spelled for the H11SSL with its BMC family, consuming the x86 seeded media and this BMC's virtual-media route, and an e2e pass completes on a unit. The operator installing by hand while the hand-install receipt records it is the CURRENT realization this row exists to retire -- it is not this trigger; nor is a route that compiles without ever attaching media to a real AST2500/ATEN BMC." as NonEmptyStr
+  description: "TRIGGER: a modeled pass brings an OS onto this board's boot disk without a human at the console -- the shape of gunbc.srv3.srv3_os_install_actuate (plan refusal, seeded-image resolution, media attach, boot-order selection, the installed-system-booted-from-local-target check) spelled for the H11SSL with its BMC family, consuming either the x86 seeded media and this BMC's virtual-media route or the network install route of gunbc.plans.network_install_architecture_rows (the route the operator settled 2026-10-24, its terminal gunbc.provisioning.network_install_receipt InstalledToDisk minted from a real attempt's readings), and an e2e pass completes on a unit. The operator installing by hand while the hand-install receipt records it is the CURRENT realization this row exists to retire -- it is not this trigger; nor is a route that compiles without ever attaching media to a real AST2500/ATEN BMC." as NonEmptyStr
 )
 
 data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
   ref: h11ssl_x86_bringup_install_route_gap_subject,
-  reason: "the only install-to-disk route is gunbc.srv3.srv3_os_install_actuate, scoped to srv3's Altra + MegaRAC pairing; H11SSL has no install route, which is the gap the 2026-10-24 hand install worked around",
+  reason: "the only install-to-disk route that has run is gunbc.srv3.srv3_os_install_actuate, scoped to srv3's Altra + MegaRAC pairing; the H11SSL route is the network install of gunbc.plans.network_install_architecture_rows, whose edge placement and installed-to-disk receipt (gunbc.provisioning.network_install_receipt) are modeled but whose BMC boot-override and power write path for this family is not, and no attempt has run; the 2026-10-24 hand install worked around this gap",
   dissolution: h11ssl_install_to_disk_dissolution,
 )
 

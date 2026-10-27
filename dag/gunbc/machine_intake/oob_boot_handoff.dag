@@ -17,6 +17,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_verb,
 }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection {
   IpmiBootSelection,
   ipmi_boot_device_label,
@@ -29,6 +30,7 @@ import extdeps.bmc.ipmi_boot_selection {
 import extdeps.bmc.access_profile {
   BmcAccessObservation,
   BmcAccessRoute,
+  bmc_observation_ipmi_cipher_suite,
 }
 import extdeps.bmc.capability {
   BmcFirmwareReleaseCapabilityRow,
@@ -419,13 +421,14 @@ fn oob_power_readback_allowance() -> Second {
     + (second_count(s: oob_ipmi_read_ceiling()) as Int))
 }
 
-fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> ChassisPowerObservation {
+fn read_chassis_power(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> ChassisPowerObservation {
   status = diagnostic.ipmi.Tool.ChassisStatus(
     bmc_host: bmc_host,
     username: username,
     password_file: password_file,
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   return chassis_observation(success: status.success, stdout: status.stdout)
 }
@@ -436,9 +439,10 @@ fn oob_power_readback_poll(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
-  let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
+  let sample = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   return match power_readback_step(progress: progress, sample: sample) {
     PowerTransitionObserved => PowerReadbackObserved
     PowerTransitionPending { progress: next } =>
@@ -451,6 +455,7 @@ fn oob_power_readback_poll(
           password_file: password_file,
           progress: next,
           samples_remaining: samples_remaining - 1,
+          cipher_suite: cipher_suite,
         )
       }
   }
@@ -462,6 +467,7 @@ fn oob_power_readback_continue(
   password_file: NonEmptyStr,
   progress: PowerReadbackProgress,
   samples_remaining: Int,
+  cipher_suite: IpmiCipherSuite?,
 ) -> PowerReadback
 {
   let waited = sleep_delay_seconds_second_carrier_projection(duration: oob_power_readback_interval)
@@ -471,6 +477,7 @@ fn oob_power_readback_continue(
     password_file: password_file,
     progress: progress,
     samples_remaining: samples_remaining,
+    cipher_suite: cipher_suite,
   )
 }
 
@@ -480,12 +487,13 @@ fn oob_power_action_after_confirmed_selection(
   password_file: NonEmptyStr,
   device: NonEmptyStr,
   admission: OobBootHandoffAdmission,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_boot_handoff"),
   ]
 {
-  let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file)
+  let before = read_chassis_power(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   return match oob_power_action_selection(observed: before) {
     PowerActionUnselectable { observed_state: o } => PowerStateReadFailed { selected: device, observed_state: o }
     PowerActionSelected { action: action } =>
@@ -496,6 +504,7 @@ fn oob_power_action_after_confirmed_selection(
         device: device,
         action: action,
         admission: admission,
+        cipher_suite: cipher_suite,
       )
   }
 }
@@ -507,6 +516,7 @@ fn oob_power_actuate_and_read_back(
   device: NonEmptyStr,
   action: OobPowerAction,
   admission: OobBootHandoffAdmission,
+  cipher_suite: IpmiCipherSuite?,
 ) -> OobBootHandoffOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.oob_boot_handoff", decl_name: "oob_power_action_after_confirmed_selection"),
@@ -519,6 +529,7 @@ fn oob_power_actuate_and_read_back(
     action: oob_power_action_verb(action: action),
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if control.success == false {
     return PowerCommandRefused { selected: device, action: action }
@@ -529,6 +540,7 @@ fn oob_power_actuate_and_read_back(
     password_file: password_file,
     progress: power_readback_start(action: action),
     samples_remaining: oob_power_readback_samples,
+    cipher_suite: cipher_suite,
   ) {
     // THE ISSUE IS MINTED THROUGH THE FOLD'S OWN ADMISSION, never by spelling an outcome.
     PowerReadbackObserved => boot_control_issuance(admission: admission, device: device, action: action)
@@ -576,6 +588,7 @@ fn oob_boot_handoff(
   // instead of trusting the value the claim handed in; the fold stays the one decision authority and
   // nothing downstream re-derives one.
   let bmc_host = observation.endpoint.host
+  let cipher_suite = bmc_observation_ipmi_cipher_suite(observation: observation)
   let device = ipmi_boot_device_label(device: selection.device)
 
   set = diagnostic.ipmi.Tool.ChassisBootDevWithOptions(
@@ -584,6 +597,7 @@ fn oob_boot_handoff(
     password_file: password_file,
     device: device,
     options: ipmi_boot_selection_options_token(selection: selection),
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if set.success == false {
     return BootSelectionRefused
@@ -596,6 +610,7 @@ fn oob_boot_handoff(
     parameter: "5",
     deadline: coreutils_duration_operand(d: oob_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: oob_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
   )
   if readback.success == false {
     return BootSelectionUnverifiable { requested: device, readback: readback.stdout }
@@ -613,6 +628,7 @@ fn oob_boot_handoff(
         password_file: password_file,
         device: device,
         admission: admission,
+        cipher_suite: cipher_suite,
       )
   }
 }

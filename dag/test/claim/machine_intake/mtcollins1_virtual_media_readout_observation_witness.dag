@@ -17,7 +17,7 @@ module test.claim.machine_intake.mtcollins1_virtual_media_readout_observation_wi
 // committed receipt, so every arm is driven by the same data the fleet will consume and cannot
 // drift from it.
 
-import std.types { Bool, List, list_length }
+import std.types { Bool, List, String, NonEmptyStr, list_length }
 import std.optional { Present, Absent }
 import std.algebra { length, string_contains }
 import std.content_hash { ContentHash, Sha256Hash, lower_hex_64 }
@@ -31,11 +31,13 @@ import extdeps.bmc.redfish_virtual_media {
 }
 import gunbc.machine_intake.mtcollins1_virtual_media_readout_observation {
   RouteUnsettledUnread,
+  BmcMediaRouteAdmission,
   TransferProtocolReadout,
   ReadoutRead,
   ReadoutRefusedUnauthenticated,
   ReadoutNeverAttempted,
   B0VirtualMediaReadout,
+  B0CredentialGap,
   GapNone,
   GapCredentialUnreachable,
   mtcollins1_b0_virtual_media_readout,
@@ -55,6 +57,22 @@ import gunbc.machine_intake.mtcollins1_virtual_media_readout_observation {
   ladder_is_get_only,
 }
 
+// The cause and challenge accessors answer Absent where an arm has none, so a text assertion
+// first requires the value to be Present: an absent cause fails rather than matching nothing.
+fn cause_contains(route: BmcMediaRouteAdmission, pattern: String) -> Bool {
+  match b0_route_cause(route: route) {
+    Present { value: cause } => string_contains(s: cause, pattern: pattern)
+    Absent => false
+  }
+}
+
+fn challenge_contains(readout: B0VirtualMediaReadout, pattern: String) -> Bool {
+  match b0_challenge_of(readout: readout) {
+    Present { value: challenge } => string_contains(s: challenge, pattern: pattern)
+    Absent => false
+  }
+}
+
 fn with_readout(readout: TransferProtocolReadout) -> B0VirtualMediaReadout {
   B0VirtualMediaReadout {
     endpoint: mtcollins1_b0_virtual_media_readout.endpoint,
@@ -65,8 +83,7 @@ fn with_readout(readout: TransferProtocolReadout) -> B0VirtualMediaReadout {
     candidate_locators: mtcollins1_b0_virtual_media_readout.candidate_locators,
     redfish_service_root_served: mtcollins1_b0_virtual_media_readout.redfish_service_root_served,
     offered_auth_schemes: mtcollins1_b0_virtual_media_readout.offered_auth_schemes,
-    credential_path_available: mtcollins1_b0_virtual_media_readout.credential_path_available,
-    credential_principal: mtcollins1_b0_virtual_media_readout.credential_principal,
+    credential_gap: mtcollins1_b0_virtual_media_readout.credential_gap,
     firmware_converge_live_at_observation: mtcollins1_b0_virtual_media_readout.firmware_converge_live_at_observation,
     observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
     discovered_surfaces: mtcollins1_b0_virtual_media_readout.discovered_surfaces,
@@ -75,7 +92,7 @@ fn with_readout(readout: TransferProtocolReadout) -> B0VirtualMediaReadout {
   }
 }
 
-fn with_credential_path(available: Bool) -> B0VirtualMediaReadout {
+fn with_credential_gap(gap: B0CredentialGap) -> B0VirtualMediaReadout {
   B0VirtualMediaReadout {
     endpoint: mtcollins1_b0_virtual_media_readout.endpoint,
     firmware: mtcollins1_b0_virtual_media_readout.firmware,
@@ -85,8 +102,7 @@ fn with_credential_path(available: Bool) -> B0VirtualMediaReadout {
     candidate_locators: mtcollins1_b0_virtual_media_readout.candidate_locators,
     redfish_service_root_served: mtcollins1_b0_virtual_media_readout.redfish_service_root_served,
     offered_auth_schemes: mtcollins1_b0_virtual_media_readout.offered_auth_schemes,
-    credential_path_available: available,
-    credential_principal: mtcollins1_b0_virtual_media_readout.credential_principal,
+    credential_gap: gap,
     firmware_converge_live_at_observation: mtcollins1_b0_virtual_media_readout.firmware_converge_live_at_observation,
     observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
     discovered_surfaces: mtcollins1_b0_virtual_media_readout.discovered_surfaces,
@@ -108,8 +124,7 @@ fn never_attempted() -> B0VirtualMediaReadout {
     candidate_locators: [],
     redfish_service_root_served: false,
     offered_auth_schemes: [],
-    credential_path_available: false,
-    credential_principal: mtcollins1_b0_virtual_media_readout.credential_principal,
+    credential_gap: mtcollins1_b0_virtual_media_readout.credential_gap,
     firmware_converge_live_at_observation: false,
     observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
     discovered_surfaces: [],
@@ -150,8 +165,8 @@ fn lists_both_cited_collections(readout: B0VirtualMediaReadout) -> Bool {
 // filed as a plain miss and never resumed, so the cause must name the wall and the field.
 test fn b0_selects_neither_route_and_says_why() -> Bool {
   route_is_unsettled(route: mtcollins1_b0_media_route)
-    && string_contains(s: b0_route_cause(route: mtcollins1_b0_media_route), pattern: "401")
-    && string_contains(s: b0_route_cause(route: mtcollins1_b0_media_route), pattern: "TransferProtocolType")
+    && cause_contains(route: mtcollins1_b0_media_route, pattern: "401")
+    && cause_contains(route: mtcollins1_b0_media_route, pattern: "TransferProtocolType")
 }
 
 // THE READING IS UNREAD -- the third state, not either of the two it could be confused with.
@@ -167,7 +182,7 @@ test fn b0_readout_is_the_refused_arm() -> Bool {
 // an admission of NFS. The two states must stay reachable separately, because conflating them is
 // how a refusal gets filed as a miss or a miss gets filed as a refusal.
 test fn b0_empty_admitted_list_is_a_different_state_from_unread() -> Bool {
-  (match with_readout(readout: ReadoutRead { protocols: [] }) {
+  (match with_readout(readout: ReadoutRead { protocols: [] }).transfer_protocol_readout {
     ReadoutRefusedUnauthenticated { challenge: _ } => false
     ReadoutRead { protocols: p } => list_length(items: p) == 0
     ReadoutNeverAttempted => false
@@ -181,8 +196,8 @@ test fn b0_empty_admitted_list_is_a_different_state_from_unread() -> Bool {
 // THE CHALLENGE IS CARRIED, so whoever resumes the read knows whether to present Basic or take a
 // session without probing again.
 test fn b0_refusal_carries_the_offered_schemes() -> Bool {
-  string_contains(s: b0_challenge_of(readout: mtcollins1_b0_virtual_media_readout), pattern: "Basic")
-    && string_contains(s: b0_challenge_of(readout: mtcollins1_b0_virtual_media_readout), pattern: "X-Auth-Token")
+  challenge_contains(readout: mtcollins1_b0_virtual_media_readout, pattern: "Basic")
+    && challenge_contains(readout: mtcollins1_b0_virtual_media_readout, pattern: "X-Auth-Token")
 }
 
 // THE SERVICE ROOT IS SERVED AND THE COLLECTIONS REFUSE, read out of the ladder rows themselves.
@@ -280,20 +295,20 @@ test fn b0_gap_names_the_readonly_principal() -> Bool {
 // THE GAP DOES NOT BLAME THE SURFACE. The credential gap's cause is about the credential path, and
 // the route's cause is about the 401 wall: two different failures, two different sentences.
 test fn b0_gap_and_route_causes_are_distinct_failures() -> Bool {
-  !string_contains(s: b0_route_cause(route: mtcollins1_b0_media_route), pattern: "no ADC")
+  !cause_contains(route: mtcollins1_b0_media_route, pattern: "no ADC")
     && match mtcollins1_b0_credential_gap {
       GapCredentialUnreachable { cause: cause } => !string_contains(s: cause, pattern: "401")
       GapNone => false
     }
 }
 
-// CREDENTIAL AVAILABILITY ALONE NEVER SELECTS A ROUTE. If someone flips credential_path_available
+// CREDENTIAL AVAILABILITY ALONE NEVER SELECTS A ROUTE. If someone closes the credential gap
 // without obtaining a reading, the gap closes but the route must STILL be unsettled: a reachable
 // credential is not a read, and a phase that treats it as one is the failure this receipt exists to
 // make unwritable.
 test fn b0_credential_availability_alone_never_selects_a_route() -> Bool {
-  route_is_unsettled(route: b0_media_route_admission(readout: with_credential_path(available: true)))
-    && (match b0_credential_gap(readout: with_credential_path(available: true)) {
+  route_is_unsettled(route: b0_media_route_admission(readout: with_credential_gap(gap: GapNone)))
+    && (match b0_credential_gap(readout: with_credential_gap(gap: GapNone)) {
       GapNone => true
       _ => false
     })
@@ -305,11 +320,11 @@ test fn b0_credential_availability_alone_never_selects_a_route() -> Bool {
 // as a 0.45 fact.
 test fn b0_never_attempted_is_distinct_from_refused() -> Bool {
   (match b0_media_route_admission(readout: never_attempted()) {
-    RouteUnsettledUnread { cause: cause } => string_contains(s: cause, pattern: "never been attempted")
+    RouteUnsettledUnread { cause: cause } => string_contains(s: cause, pattern: "no VirtualMedia read has been attempted")
     _ => false
   })
-    && b0_challenge_of(readout: never_attempted()) == "never attempted"
-    && b0_challenge_of(readout: mtcollins1_b0_virtual_media_readout) != "never attempted"
+    && (match b0_challenge_of(readout: never_attempted()) { Absent => true  _ => false })
+    && (match b0_challenge_of(readout: mtcollins1_b0_virtual_media_readout) { Present { value: _ } => true  _ => false })
 }
 
 // THE COMMITTED RECEIPT CARRIES ITS OWN EVIDENCE AND ITS FIRMWARE, and is pinned to the reserved
@@ -388,8 +403,7 @@ test fn b0_deleting_a_ladder_row_fails_every_door_rather_than_passing_one() -> B
     candidate_locators: thinned.candidate_locators,
     redfish_service_root_served: thinned.redfish_service_root_served,
     offered_auth_schemes: thinned.offered_auth_schemes,
-    credential_path_available: thinned.credential_path_available,
-    credential_principal: thinned.credential_principal,
+    credential_gap: thinned.credential_gap,
     firmware_converge_live_at_observation: thinned.firmware_converge_live_at_observation,
     observed_at: thinned.observed_at,
     discovered_surfaces: thinned.discovered_surfaces,
@@ -398,7 +412,7 @@ test fn b0_deleting_a_ladder_row_fails_every_door_rather_than_passing_one() -> B
   }
   // The row really is gone from the copy, or the test below proves nothing.
   ladder_answered(readout: mtcollins1_b0_virtual_media_readout, path: path)
-    && list_length(items: without.ladder) == list_length(items: mtcollins1_b0_ladder) - 1
+    && list_length(items: without.ladder) == list_length(items: b0_ladder) - 1
     // ...and none of the three doors accepts the absence.
     && !ladder_answered(readout: without, path: path)
     && !ladder_answered_with(readout: without, path: path, status: 401)
