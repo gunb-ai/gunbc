@@ -9,7 +9,10 @@ import std.measure {
   Second, second, second_count,
 }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
-import gunbc.host.memory_envelope_receipt_reading { memory_receipt_held }
+import gunbc.host.memory_envelope_receipt_reading {
+  MemoryReceiptStanding, MemoryReceiptHeld, MemoryReceiptViolated, MemoryReceiptSentenceDisagrees, memory_receipt_standing,
+}
+import gunbc.host.memory_envelope { MemoryEnvelopeVerdict }
 import extdeps.linux.cgroup_v2_memory {
   CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, cgroup_memory_limit_kernel_text,
 }
@@ -433,7 +436,8 @@ type MemoryEnvelopeStanding
   = PeakWithinSlotHigh { peak: ByteSize, high: ByteSize }
   | PeakExceedsSlotHigh { peak: ByteSize, high: ByteSize }
   | SlotHighBelowFloorMinimum { high: ByteSize, minimum: ByteSize }
-  | MemoryEnvelopeViolatedAt { subject: NonEmptyStr }
+  | MemoryEnvelopeViolatedAt { subject: NonEmptyStr, verdict: MemoryEnvelopeVerdict }
+  | MemoryReceiptDisagreesAt { subject: NonEmptyStr, printed_violated: Bool, verdict: MemoryEnvelopeVerdict }
   | MemoryUnread { reason: NonEmptyStr }
 
 // THE SUBJECT ROSTER IS AN IDENTITY JOIN, NOT A COUNT: every emitted subject row read exactly once in every run.
@@ -523,16 +527,23 @@ fn max_subject_peak(runs: List<ObservedRunnerQualificationRun>) -> Nat {
   }))
 }
 
-fn first_violated_subject(runs: List<ObservedRunnerQualificationRun>) -> NonEmptyStr? {
+// THE FIRST SUBJECT WHOSE RECEIPT DID NOT HOLD, CARRYING WHY (review 86993): a violated envelope and a receipt whose
+// printed sentence disagrees with its own numbers are different findings, so each keeps its own standing and verdict.
+fn subject_receipt_refusal(s: SubjectStepReading) -> MemoryEnvelopeStanding? {
+  match memory_receipt_standing(r: s.receipt) {
+    MemoryReceiptHeld => none
+    MemoryReceiptViolated { verdict: v } => Present { value: MemoryEnvelopeViolatedAt { subject: subject_label(row: s.row), verdict: v } }
+    MemoryReceiptSentenceDisagrees { printed_violated: p, verdict: v } => Present { value: MemoryReceiptDisagreesAt { subject: subject_label(row: s.row), printed_violated: p, verdict: v } }
+  }
+}
+
+fn first_unheld_receipt(runs: List<ObservedRunnerQualificationRun>) -> MemoryEnvelopeStanding? {
   fold(runs, init: none, f: (acc, r) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match r.subjects |> filter(s => !memory_receipt_held(r: s.receipt)) |> first() {
-          Absent => none
-          Present { value: v } => Present { value: subject_label(row: v.row) }
-        }
-    })
+    fold(r.subjects, init: acc, f: (inner, s) =>
+      match inner {
+        Present { value: _ } => inner
+        Absent => subject_receipt_refusal(s: s)
+      }))
 }
 
 fn aggregate_memory(envelope: SelectedSlot, runs: List<ObservedRunnerQualificationRun>) -> MemoryEnvelopeStanding {
@@ -543,8 +554,8 @@ fn aggregate_memory(envelope: SelectedSlot, runs: List<ObservedRunnerQualificati
   } else if count(runs) == 0 || (runs |> any(r => count(r.subjects) == 0)) {
     MemoryUnread { reason: "a run in the sample carries no subject step, so no memory receipt was read" as NonEmptyStr }
   } else {
-    match first_violated_subject(runs: runs) {
-      Present { value: s } => MemoryEnvelopeViolatedAt { subject: s }
+    match first_unheld_receipt(runs: runs) {
+      Present { value: refused } => refused
       Absent => peak_standing(peak: byte_size(max_subject_peak(runs: runs)), envelope: envelope)
     }
   }
@@ -721,7 +732,8 @@ fn memory_refusal(s: MemoryEnvelopeStanding) -> List<ThroughputRefusal> {
     PeakWithinSlotHigh { peak: _, high: _ } => []
     PeakExceedsSlotHigh { peak: _, high: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
     SlotHighBelowFloorMinimum { high: _, minimum: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
-    MemoryEnvelopeViolatedAt { subject: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryEnvelopeViolatedAt { subject: _, verdict: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
+    MemoryReceiptDisagreesAt { subject: _, printed_violated: _, verdict: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
     MemoryUnread { reason: _ } => [MemoryEnvelopeDidNotHold { standing: s }]
   }
 }
@@ -900,7 +912,9 @@ fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
       join(["peak ", nat_wire(n: byte_size_count(b: p)), " B reaches or exceeds slot high ", nat_wire(n: byte_size_count(b: h))], "") as NonEmptyStr
     SlotHighBelowFloorMinimum { high: h, minimum: m } =>
       join(["slot high ", nat_wire(n: byte_size_count(b: h)), " B is below the floor's minimum viable armed budget ", nat_wire(n: byte_size_count(b: m))], "") as NonEmptyStr
-    MemoryEnvelopeViolatedAt { subject: x } => concat("the memory envelope did not hold for subject ", x as String) as NonEmptyStr
+    MemoryEnvelopeViolatedAt { subject: x, verdict: _ } => concat("the memory envelope did not hold for subject ", x as String) as NonEmptyStr
+    MemoryReceiptDisagreesAt { subject: x, printed_violated: p, verdict: _ } =>
+      join(["the memory receipt of subject ", x as String, if p { " prints a violation its own numbers do not show" } else { " shows a violation it did not print" }], "") as NonEmptyStr
     MemoryUnread { reason: r } => concat("memory unread: ", r as String) as NonEmptyStr
   }
 }

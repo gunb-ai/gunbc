@@ -56,7 +56,7 @@ import gunbc.runner.runner_throughput_qualification {
   SamplingPolicy, ExactlyOneReconciledRun, ConservativePerAxis, BaselineWallAllowance, SelectedRunnerQualification,
   HostAllocationAdmitted, HostAllocationRefused,
   subject_join_axis_wire, SubjectJoined, SubjectJoinRefused,
-  PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryEnvelopeViolatedAt, MemoryUnread,
+  PeakWithinSlotHigh, PeakExceedsSlotHigh, MemoryEnvelopeViolatedAt, MemoryReceiptDisagreesAt, MemoryUnread,
   SubjectRosterComplete, SubjectMissing, SubjectDuplicated,
   SubjectWallsWithinBaseline, SubjectWallExceedsBaseline, BaselineOnTheSubjectHost, BaselineAtAnotherRevision, BaselineMissingSubject,
   SlotWidthDerived, SlotWidthUnderivable,
@@ -558,19 +558,38 @@ test fn a_workspace_read_off_the_subject_is_refused_on_the_workspace_axis() -> B
 
 // ── the memory envelope (operator decision A, condition 2) ────────────────────────────────────
 
-// RED: AN OOM KILL, RESIDENT SWAP OR A RECEIPT THE PRINTER MARKED VIOLATED REFUSES THE QUALIFICATION, naming the
-// subject, whatever the peak; the unmutated receipts (the positive control) hold.
-fn violated_by(from: String, to: String) -> Bool {
-  let rs = readings_of(log: attempt_log_with(from: from, to: to), unit: slot_unit())
-  let a = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: rs)])
-  count(rs) == count(subject_readings()) && !assessment_holds(a: a)
-    && (match a.memory { MemoryEnvelopeViolatedAt { subject: s } => (s as String) == first_label() _ => false })
+// RED: AN OOM KILL OR RESIDENT SWAP, PRINTED WITH ITS SENTENCE, REFUSES THE QUALIFICATION as a violated envelope naming
+// the subject and carrying the envelope verdict; the unmutated receipts (the positive control) hold.
+data violated_sentence: String = "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. gunbc test: MEMORY RECEIPT"
+
+fn assessed_with(log: String) -> RunnerThroughputAssessment<HostIdentity> {
+  assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: readings_of(log: log, unit: slot_unit()))])
 }
 
-test fn an_oom_kill_swap_or_violated_receipt_refuses_the_qualification() -> Bool {
+fn printed_violation(from: String, to: String) -> String {
+  replace(s: attempt_log_with(from: from, to: to), from: "gunbc test: MEMORY RECEIPT", to: violated_sentence)
+}
+
+fn violated_by(from: String, to: String) -> Bool {
+  let a = assessed_with(log: printed_violation(from: from, to: to))
+  !assessment_holds(a: a)
+    && (match a.memory { MemoryEnvelopeViolatedAt { subject: s, verdict: _ } => (s as String) == first_label() _ => false })
+}
+
+test fn an_oom_kill_or_resident_swap_refuses_the_qualification() -> Bool {
   violated_by(from: "oom_kills_delta=0", to: "oom_kills_delta=1")
     && violated_by(from: "swap_current_bytes=0", to: "swap_current_bytes=4096")
-    && violated_by(from: "gunbc test: MEMORY RECEIPT", to: "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. gunbc test: MEMORY RECEIPT")
+}
+
+// A RECEIPT THAT DISAGREES WITH ITS OWN NUMBERS IS ITS OWN FINDING (review 86993), never folded into a violation: numbers
+// that violate with no sentence, and a sentence over clean numbers, each refuse as MemoryReceiptDisagreesAt with the
+// side that was printed.
+test fn a_receipt_disagreeing_with_its_numbers_refuses_as_its_own_finding() -> Bool {
+  let unprinted = assessed_with(log: attempt_log_with(from: "oom_kills_delta=0", to: "oom_kills_delta=1"))
+  let unfounded = assessed_with(log: replace(s: attempt_log(), from: "gunbc test: MEMORY RECEIPT", to: violated_sentence))
+  !assessment_holds(a: unprinted) && !assessment_holds(a: unfounded)
+    && (match unprinted.memory { MemoryReceiptDisagreesAt { subject: s, printed_violated: p, verdict: _ } => (s as String) == first_label() && !p _ => false })
+    && (match unfounded.memory { MemoryReceiptDisagreesAt { subject: _, printed_violated: p, verdict: _ } => p _ => false })
 }
 
 // RED: A SUBJECT WHOSE RECEIPT IS MISSING IS NEVER A RUN. The decoder refuses the job (one receipt for two subjects),

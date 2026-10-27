@@ -14,7 +14,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, Completed, Success }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
 import gunbc.host.memory_envelope_receipt_reading {
-  memory_receipt_line, memory_receipt_held, MemoryReceiptRead, MemoryReceiptGarbled, NotAMemoryReceipt,
+  memory_receipt_line, MemoryReceiptReading, MemoryReceiptRead, MemoryReceiptGarbled, NotAMemoryReceipt,
   memory_receipt_standing, MemoryReceiptHeld, MemoryReceiptViolated, MemoryReceiptSentenceDisagrees,
 }
 import gunbc.runner.runner_qualification_subject_readings {
@@ -60,7 +60,7 @@ test fn a_recorded_required_run_decodes_to_one_reading_per_subject_step() -> Boo
     SubjectReadingsRead { readings: rs } =>
       count(rs) == 2
         && join(rs |> map(r => second_count(r.wall) as String), ",") == "813,870"
-        && (rs |> all(r => memory_receipt_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (match r.receipt.limit_high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 22548578304 _ => false })))
+        && (rs |> all(r => is_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (match r.receipt.limit_high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 22548578304 _ => false })))
     SubjectReadingsRefused { refusal: _ } => false
   }
 }
@@ -73,16 +73,13 @@ test fn a_missing_receipt_refuses() -> Bool {
   }
 }
 
-// RED: an OOM kill the step added, or swap resident at exit, fails the envelope whatever the peak; and a receipt the
-// printer marked violated fails it on that sentence alone.
+// RED: an OOM kill the step added, or swap resident at exit, violates the envelope whatever the peak -- printed with its
+// sentence, as the printer writes it.
 test fn an_oom_kill_or_swap_fails_the_envelope() -> Bool {
-  let oom = replace(s: first_receipt_line(), from: "oom_kills_delta=0", to: "oom_kills_delta=1")
-  let swapped = replace(s: first_receipt_line(), from: "swap_current_bytes=0", to: "swap_current_bytes=4096")
-  let violated = concat("gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. ", first_receipt_line())
-  (match memory_receipt_line(line: first_receipt_line()) { MemoryReceiptRead { reading: r } => memory_receipt_held(r: r)  _ => false })
-    && (match memory_receipt_line(line: oom) { MemoryReceiptRead { reading: r } => !memory_receipt_held(r: r)  _ => false })
-    && (match memory_receipt_line(line: swapped) { MemoryReceiptRead { reading: r } => !memory_receipt_held(r: r)  _ => false })
-    && (match memory_receipt_line(line: violated) { MemoryReceiptRead { reading: r } => r.violated && !memory_receipt_held(r: r)  _ => false })
+  let sentence = "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. "
+  let oom = concat(sentence, replace(s: first_receipt_line(), from: "oom_kills_delta=0", to: "oom_kills_delta=1"))
+  let swapped = concat(sentence, replace(s: first_receipt_line(), from: "swap_current_bytes=0", to: "swap_current_bytes=4096"))
+  standing_of(line: first_receipt_line()) == "held" && standing_of(line: oom) == "violated" && standing_of(line: swapped) == "violated"
 }
 
 // RED: a receipt bounded by another unit measured another subject's memory.
@@ -160,4 +157,11 @@ test fn a_limit_is_decoded_as_the_kernel_spells_it_or_the_receipt_is_garbled() -
       MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "limit_high")
       _ => false
     })
+}
+
+fn is_held(r: MemoryReceiptReading) -> Bool {
+  match memory_receipt_standing(r: r) {
+    MemoryReceiptHeld => true
+    _ => false
+  }
 }
