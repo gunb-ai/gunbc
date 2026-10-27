@@ -186,11 +186,14 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (DESIGN §5, RFM heal_round_one_bootstraps_
             // from_the_mirror_the_change_must_repair / PR #14963): round 1's seed compiles from
-            // the BASE ref's committed stage0 mirror, never from the mirror the PR's own .dag
-            // changes exist to repair. The flag carries NO value — the ref arrives as the
-            // HEAL_BASE_REF environment value (the candidate producer's env convention, same
-            // shape as GUNBC_AFFECTED_SCOPE), so a pull-request-controlled ref never reaches
-            // argv where it could be shell. Without the flag the round is the probe/CI shape:
+            // the BASE COMMIT's committed stage0 mirror, never from the mirror the PR's own .dag
+            // changes exist to repair. The flag carries NO value — the commit arrives as the
+            // HEAL_BASE_MIRROR_COMMIT environment value, named by `gunbc.heal_workflow`
+            // `heal_round_base_mirror_env` (env, not argv, because it is pull-request-controlled
+            // text; same shape as GUNBC_AFFECTED_SCOPE). It is a 40-hex COMMIT, not a ref:
+            // HEAL_BASE_REF belongs to the candidate step (gunbc.heal_candidate) and carries a
+            // branch NAME for a different purpose, so the round must not read it. Without the
+            // flag the round is the probe/CI shape:
             // the working tree's own committed mirror, byte for byte what it was. There is no
             // "try the tree, fall back on failure" path — the flag is set unconditionally by
             // the heal round step and its absence is a different CONTEXT, not a second attempt.
