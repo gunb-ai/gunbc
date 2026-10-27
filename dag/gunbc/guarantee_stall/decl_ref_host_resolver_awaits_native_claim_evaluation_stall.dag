@@ -1,0 +1,57 @@
+module gunbc.guarantee_stall.decl_ref_host_resolver_awaits_native_claim_evaluation_stall
+
+import std.types { String, List }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STALL, NOT A DROP (DESIGN section 4b(2) against 4b(3)): nothing that held a rung stopped holding
+// it. DeclarationRef citations resolve through TWO authorities, the native v2.std.decl_ref_resolution
+// (a ResolutionContext, typed Contested arm) and the host-fact v2.std.decl_ref_resolution_host, and
+// the host one cannot be deleted because each consumer below runs on the v1 seed, which cannot call a
+// native resolver (the delete-first attempt of the PR A/B pair failed on exactly this).
+//
+// THE DIFFERENCE BETWEEN THE TWO WAS SETTLED BY EXECUTION, not by name: the host's Ambiguous arm fires
+// on two declaration rows for one name; on the native route the ingest refuses that file, so the
+// module is absent from the roots (v2.test.claim.decl_ref_resolution_native_witness
+// duplicate_declaration_is_refused_at_ingest_not_contested). Contested is the arm for two claimants
+// at a binding position. The host's Ambiguous RED (decl_ref_refuses_ambiguous_binding) stays enrolled
+// as the permanent control when the host module is retired (DESIGN 4b(4)).
+//
+// WHAT EXISTS: v2.compiler.live_resolution_context, the native live-tree ResolutionContext, consumed
+// today by the decl-ref-census (v2.compiler.source_root_eval native_decl_ref_census_output).
+//
+// THE GAP IS TWO FACTS. (1) the capability: a claim run by the seed evaluates no native code.
+// gunbc.documentary_refs waits on the same capability. (2) DeclarationIdentity carries qualified_name
+// and name only; the host identity also carries rel_path and kind, which gunbc.primitive_egress.qualification
+// (kind) and v1_complexity_capability_census_resolution (rel_path) read, so those two consumers need
+// the identity widened or the fact joined from another authority before they can migrate.
+data decl_ref_host_resolver_awaits_native_claim_evaluation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a DeclarationRef citation resolves through ONE authority, the native v2.std.decl_ref_resolution over a ResolutionContext, and v2.std.decl_ref_resolution_host does not exist",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation {
+    members: [
+      "dag/gunbc/defork_type_name_census",
+      "dag/gunbc/dissolution_observation",
+      "dag/gunbc/doc_graph_roots",
+      "dag/gunbc/generated_artifact_producer_coverage",
+      "dag/gunbc/namespace_cut/namespace_cut_subject_observation",
+      "dag/gunbc/primitive_egress/census",
+      "dag/gunbc/primitive_egress/census_live",
+      "dag/gunbc/primitive_egress/qualification (reads kind)",
+      "dag/test/claim/decl_ref_keyed_read_agreement_witness",
+      "dag/test/claim/documentary_refs_witness",
+      "dag/test/claim/generated_artifact_producer_coverage_witness",
+      "dag/test/claim/long/carrier_reference_integrity_witness",
+      "dag/test/claim/long/decl_ref_resolution_witness",
+      "dag/test/claim/long/v1_complexity_capability_census_resolution (reads rel_path)",
+      "dag/test/claim/namespace_cut_subject_observation_witness",
+      "dag/test/claim/never_eliminator_witness",
+      "dag/test/claim/primitive_egress_census_witness",
+      "src/v2/lens/common/outside_modeled_guarantee_join",
+    ]
+  },
+  next_rung_trigger: climbs_when(capability: "a claim evaluated by the seed (or by the native route that replaces it) can call v2.std.decl_ref_resolution with a ResolutionContext, and DeclarationIdentity carries the rel_path and kind the host identity carries, SUFFICIENT FOR every module above resolves its DeclarationRef citations through v2.std.decl_ref_resolution (including its Contested arm), observed as the importers of v2.std.decl_ref_resolution_host being empty, so the host module is deleted with its Ambiguous control kept enrolled")
+}

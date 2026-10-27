@@ -3,7 +3,9 @@ module gunbc.ci.ci_spec
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
 
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_kvm_observer_dir
+}
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -992,9 +994,36 @@ data gunbc_ci_runner_host_file_converge_target: GunbcRunStepTarget = GunbcRunSte
   function: "runner_host_file_converge_ci_wet",
 }
 
+// THE PRIMARY NETWORK CONVERGE RUNS ON AN OBSERVER AND ACTS ON A TARGET (gunbc.host.host_primary_network_apply):
+// a readback taken from the target itself never crosses the uplink it judges.
+data host_primary_network_receipt_path: String = "target/host-primary-network-receipt.txt"
+
+data gunbc_ci_host_primary_network_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_observe_ci_wet",
+}
+
+data gunbc_ci_host_primary_network_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/host/host_primary_network_apply.dag",
+  function: "host_primary_network_converge_ci_wet",
+}
+
 data gunbc_ci_runner_host_cap_release_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_host_file_converge.dag",
   function: "runner_host_cap_release_ci_wet",
+}
+
+// THE WITHDRAW AND RESTORE WET ENTRYPOINTS (gunbc.runner.runner_host_withdraw) are separate dag files
+// from the converge, but they are DISPATCHES OF THE SAME fleet-converge job -- the modes live in the
+// workflow's roster, not in a new job (the roster is closed to growth).
+data gunbc_ci_runner_host_withdraw_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_withdraw_ci_wet",
+}
+
+data gunbc_ci_runner_host_restore_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_host_withdraw.dag",
+  function: "runner_host_restore_ci_wet",
 }
 
 // Where gunbc.fleet.site_pxe_edge_converge writes its run receipt: declared here, beside the step that cats it,
@@ -1021,6 +1050,16 @@ data gunbc_ci_runner_browser_toolchain_converge_target: GunbcRunStepTarget = Gun
   function: "runner_browser_toolchain_converge_ci_wet",
 }
 
+data gunbc_ci_runner_user_session_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_user_session.dag",
+  function: "runner_user_session_converge_ci_wet",
+}
+
+data gunbc_ci_runner_gpu_container_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_gpu_container_toolchain.dag",
+  function: "runner_gpu_container_toolchain_converge_ci_wet",
+}
+
 data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/printer_workflow_run.dag",
   function: "run",
@@ -1029,6 +1068,13 @@ data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
 data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/namecheap/observe.dag",
   function: "namecheap_observe_ci_wet",
+}
+
+// The review sheets' argv-free converge entry (gunbc.review_sheet_converge_cli). It writes no receipt
+// file: its verdict is the exit and the per-kind report on stderr, which names no token.
+data gunbc_ci_review_sheet_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/review_sheet_converge_cli.dag",
+  function: "converge_drive_half_cli",
 }
 
 data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -1446,12 +1492,17 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_host_memory_envelope_observe_target,
     gunbc_ci_runner_host_file_converge_target,
     gunbc_ci_runner_host_cap_release_target,
+    gunbc_ci_host_primary_network_observe_target,
+    gunbc_ci_host_primary_network_converge_target,
     gunbc_ci_site_pxe_edge_observe_target,
     gunbc_ci_site_pxe_edge_converge_target,
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
+    gunbc_ci_runner_user_session_converge_target,
+    gunbc_ci_runner_gpu_container_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_review_sheet_converge_target,
     gunbc_ci_printer_workflow_target,
     gunbc_ci_spark_grants_observe_target,
 
@@ -3109,6 +3160,26 @@ fn gunbc_ci_runner_host_file_observe_invoke() -> String {
   )
 }
 
+fn gunbc_ci_host_primary_network_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_observe_target.entry,
+    function: gunbc_ci_host_primary_network_observe_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
+fn gunbc_ci_host_primary_network_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_host_primary_network_converge_target.entry,
+    function: gunbc_ci_host_primary_network_converge_target.function,
+    claim_run: false,
+    receipt_rel: host_primary_network_receipt_path
+  )
+}
+
 fn gunbc_ci_host_memory_envelope_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -3133,6 +3204,8 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
 // path would replace the converge receipt, the record of a failed or withheld bracket.
 data gunbc_ci_runner_host_file_converge_receipt_path: String = "target/runner-host-file-converge-receipt.txt"
 data gunbc_ci_runner_host_cap_release_receipt_path: String = "target/runner-host-cap-release-receipt.txt"
+data gunbc_ci_runner_host_withdraw_receipt_path: String = "target/runner-host-withdraw-receipt.txt"
+data gunbc_ci_runner_host_restore_receipt_path: String = "target/runner-host-restore-receipt.txt"
 
 // THE BRACKET'S ADMISSION READS THE ORG ROSTER (organization_runner_roster_live_read), so this step needs the same
 // org-scoped installation token as the roster observe step, minted in-run and held only in this step's environment.
@@ -3154,6 +3227,29 @@ fn gunbc_ci_runner_host_cap_release_invoke() -> String {
     function: gunbc_ci_runner_host_cap_release_target.function,
     claim_run: false,
     receipt_rel: gunbc_ci_runner_host_cap_release_receipt_path
+  )
+}
+
+// THE WITHDRAW AND RESTORE INVOKE SCRIPTS. No org-roster prelude: the bracket's drain reads the roster
+// only for units it must PROVE admitted, and the withdraw's drain walks the same reading -- it is
+// carried by the step's own gunbc run, exactly as the cap release runs without the roster token.
+fn gunbc_ci_runner_host_withdraw_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_withdraw_target.entry,
+    function: gunbc_ci_runner_host_withdraw_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_withdraw_receipt_path
+  )
+}
+
+fn gunbc_ci_runner_host_restore_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_host_restore_target.entry,
+    function: gunbc_ci_runner_host_restore_target.function,
+    claim_run: false,
+    receipt_rel: gunbc_ci_runner_host_restore_receipt_path
   )
 }
 
@@ -3184,6 +3280,26 @@ fn gunbc_ci_runner_browser_toolchain_converge_invoke() -> String {
     function: gunbc_ci_runner_browser_toolchain_converge_target.function,
     claim_run: false,
     receipt_rel: "target/runner-browser-toolchain-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_user_session_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_user_session_converge_target.entry,
+    function: gunbc_ci_runner_user_session_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-user-session-converge-receipt.txt"
+  )
+}
+
+fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_gpu_container_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_gpu_container_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-gpu-container-toolchain-converge-receipt.txt"
   )
 }
 
@@ -4018,7 +4134,7 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 //
 // TWO POPULATION ARMS, STATED SO THEY ARE NOT LATER DISCOVERED AS SURPRISES. The
 // GeneratedArtifactPhase now issues ONE verdict over the REGISTRY (roughly 35 artifacts including
-// DESIGN.md, ROADMAP.md and the workflow emissions) AND the stage0 mirror population formerly
+// DESIGN.md and the workflow emissions) AND the stage0 mirror population formerly
 // adjudicated by a sibling RegenPhase. The component diagnostics remain separate and located; only
 // their independently-green terminal outcomes are gone. A generated `.rs` outside both --
 // `gunbc_rust_source_type_bindings.rs` on #9949 -- is in neither, which is why an authored `.dag`
@@ -4115,8 +4231,26 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
+
+// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE commit's committed
+// stage0 mirror instead of this checkout's (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
+// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
+// refusal stops the round before the regenerated seed can replace it (PR #13936, run
+// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
+// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
+// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
+// its siblings). The flag carries NO value: the base commit is this step's
+// `HEAL_BASE_MIRROR_COMMIT` environment value (gunbc.heal_workflow heal_round_base_mirror_env,
+// bound to the immutable github.event.pull_request.base.sha), never argv, because a
+// pull-request-controlled value spliced into a command line would be shell. A COMMIT and not the
+// branch name: a name resolves to whatever the checkout holds under it, and a local branch can sit
+// behind its remote-tracking ref, so seeding from "whichever name exists" and then recording the
+// pick as the base commit would fabricate the fact the receipt carries (DESIGN §3, §5). It is passed unconditionally -- the round does not try the
+// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
+// different invocation of the same producer with the flag absent, not a second path.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
@@ -4238,6 +4372,16 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_review_sheet_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_review_sheet_converge_target.entry,
+    function: gunbc_ci_review_sheet_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }
 

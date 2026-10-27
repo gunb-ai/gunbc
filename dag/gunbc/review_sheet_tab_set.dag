@@ -1,0 +1,238 @@
+module gunbc.review_sheet_tab_set
+
+import std.optional { Absent, Present }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.resources { Network }
+import std.algebra { FreeSemigroup, skip }
+import extdeps.transports.rest { RestAnswered, RestRefused }
+import extdeps.google.sheets
+import gunbc.ensure { EnsurePolicy, EnsureMayApply, EnsureObserveOnly }
+import gunbc.review_sheet_sheets { review_sheet_get_values_request }
+import gunbc.review_sheet_formula_observation {
+  FormulaWholeTabEmpty,
+  FormulaWholeTabOccupied,
+  FormulaWholeTabRefused,
+  observe_formula_whole_tab,
+  occupied_cell_text,
+  formula_whole_tab_refusal_text,
+}
+import gunbc.review_sheet_tab_locator {
+  ReviewTabCandidate,
+  ReviewTabSetReading,
+  TabSetRead,
+  TabSetUnreadable,
+  observe_review_tab_set,
+  review_tab_candidate_text,
+}
+
+// A KIND DECLARES ITS EXACT TAB SET, AND THIS MODULE MAKES THE SPREADSHEET CARRY IT. The tab locator
+// answers "the one tab with this title"; this answers the question one level up -- does the
+// workbook carry exactly the declared titles, no more and no fewer -- and it is the only writer of
+// tabs. Selection precedes convergence (DESIGN section 3d): plan_review_tab_set decides from a
+// supplied reading and a supplied declaration, and converge_review_tab_set performs that decision
+// and reads the set back independently.
+//
+// THE ONE RENAME IS THE CREATE'S OWN TAB. drive.Files.CreateFile mints a spreadsheet with exactly
+// one tab under upstream's default title, and the Drive request cannot name it. So a workbook whose
+// only tab is undeclared while no declared tab exists is the state this pipeline's own create
+// produces, and that tab becomes the first declared title; the rest are added. Any other undeclared
+// tab is a person's edit or another writer's, and renaming or deleting it would be this converge
+// authoring a decision about data it did not make, so it refuses and names the tabs.
+//
+// THE PLAN CANNOT SEE WHETHER THAT ONE TAB IS UNTOUCHED, SO THE CONVERGE LOOKS BEFORE IT RENAMES. A
+// sole undeclared tab is also what a kind sees when someone renamed its only tab, rows and all, and
+// renaming that back would be the converge reasserting a title over a person's edit. So the rename
+// is performed only after a FORMULA whole-tab read of that tab answers empty; an occupied tab, or a
+// read that could not answer, refuses with what it saw.
+
+type TabRename {
+  sheet_id: Int
+  from: NonEmptyStr
+  to: NonEmptyStr
+}
+
+type TabSetPlan
+  = TabSetConverged
+  | TabSetChange { rename: TabRename?, additions: List<NonEmptyStr> }
+  | TabSetRefused { cause: NonEmptyStr }
+
+fn declared_titles(declared: FreeSemigroup<NonEmptyStr>) -> List<NonEmptyStr> {
+  concat([declared.head], declared.tail)
+}
+
+fn title_declared(title: NonEmptyStr, declared: List<NonEmptyStr>) -> Bool {
+  count(filter(declared, d => (d as String) == (title as String))) > 0
+}
+
+fn title_observed(title: NonEmptyStr, observed: List<ReviewTabCandidate>) -> Bool {
+  count(filter(observed, c => (c.title as String) == (title as String))) > 0
+}
+
+fn doubled_observed_titles(observed: List<ReviewTabCandidate>) -> List<ReviewTabCandidate> {
+  filter(observed, c => count(filter(observed, o => (o.title as String) == (c.title as String))) > 1)
+}
+
+fn plan_review_tab_set(observed: List<ReviewTabCandidate>, declared: FreeSemigroup<NonEmptyStr>) -> TabSetPlan {
+  let titles = declared_titles(declared: declared)
+  let doubled = doubled_observed_titles(observed: observed)
+  let extras = filter(observed, c => !title_declared(title: c.title, declared: titles))
+  let missing = filter(titles, t => !title_observed(title: t, observed: observed))
+  if count(doubled) > 0 {
+    TabSetRefused {
+      cause: join(["the workbook carries one title on more than one tab, and only an operator can say which is the review tab: ", join(map(doubled, c => review_tab_candidate_text(c: c)), "; ")], "") as NonEmptyStr
+    }
+  } else if count(extras) == 0 && count(missing) == 0 {
+    TabSetConverged
+  } else if count(extras) == 0 {
+    TabSetChange { rename: none, additions: missing }
+  } else if count(observed) == 1 && count(missing) == count(titles) {
+    match first(observed) {
+      Present { value: created } =>
+        TabSetChange {
+          rename: Present { value: TabRename { sheet_id: created.sheet_id, from: created.title, to: declared.head } },
+          additions: declared.tail,
+        }
+      Absent => TabSetRefused { cause: "the workbook carries no tab, which a created spreadsheet never does" as NonEmptyStr }
+    }
+  } else {
+    TabSetRefused {
+      cause: join(["the workbook carries tabs this kind does not declare, and they are not the create's own tab: ", join(map(extras, c => review_tab_candidate_text(c: c)), "; ")], "") as NonEmptyStr
+    }
+  }
+}
+
+fn tab_set_plan_text(plan: TabSetPlan) -> String {
+  match plan {
+    TabSetConverged => "the workbook carries exactly the declared tabs"
+    TabSetChange { rename: r, additions: adds } =>
+      join([
+        match r {
+          Present { value: rn } => join(["rename tab ", rn.from as String, " to ", rn.to as String, "; "], "")
+          Absent => ""
+        },
+        "add tabs: ", join(map(adds, t => t as String), ", "),
+      ], "")
+    TabSetRefused { cause: c } => c as String
+  }
+}
+
+type TabSetConvergeOutcome
+  = TabSetAlreadyConverged
+  | TabSetChangedAndVerified { change: NonEmptyStr }
+  | TabSetChangeUnverified { change: NonEmptyStr, readback: NonEmptyStr }
+  | TabSetConvergeRefused { cause: NonEmptyStr }
+
+fn tab_set_converge_is_converged(o: TabSetConvergeOutcome) -> Bool {
+  match o {
+    TabSetAlreadyConverged => true
+    TabSetChangedAndVerified { change: _ } => true
+    TabSetChangeUnverified { change: _, readback: _ } => false
+    TabSetConvergeRefused { cause: _ } => false
+  }
+}
+
+fn tab_set_converge_text(o: TabSetConvergeOutcome) -> String {
+  match o {
+    TabSetAlreadyConverged => "tabs: already the declared set"
+    TabSetChangedAndVerified { change: c } => join(["tabs: ", c as String, " (verified by readback)"], "")
+    TabSetChangeUnverified { change: c, readback: r } => join(["tabs: ", c as String, ", and the readback does not show the declared set: ", r as String], "")
+    TabSetConvergeRefused { cause: c } => join(["tabs REFUSED: ", c as String], "")
+  }
+}
+
+// EACH STEP'S ANSWER IS NOT THE VERDICT; THE READBACK IS. A rename or add that Sheets refused, or
+// whose commit is ambiguous, leaves the workbook in whatever state it is in, and the second reading
+// says which. So the steps are issued in plan order and the outcome is decided by planning again
+// over the re-read set: converged is verified, anything else is reported with both the change that
+// was attempted and what the workbook now shows.
+fn perform_tab_rename(spreadsheet_id: NonEmptyStr, rename: TabRename) -> Bool uses net: Network {
+  match sheets.Spreadsheets.RenameSheet(
+    spreadsheet_id: spreadsheet_id as String,
+    sheet_id: rename.sheet_id,
+    title: rename.to as String,
+  ) {
+    RestAnswered { answer: _ } => true
+    RestRefused { refusal: _ } => false
+  }
+}
+
+fn perform_tab_add(spreadsheet_id: NonEmptyStr, title: NonEmptyStr) -> Bool uses net: Network {
+  match sheets.Spreadsheets.AddSheet(spreadsheet_id: spreadsheet_id as String, title: title as String) {
+    RestAnswered { answer: _ } => true
+    RestRefused { refusal: _ } => false
+  }
+}
+
+fn verify_tab_set(spreadsheet_id: NonEmptyStr, declared: FreeSemigroup<NonEmptyStr>, change: NonEmptyStr) -> TabSetConvergeOutcome uses net: Network {
+  match observe_review_tab_set(spreadsheet_id: spreadsheet_id) {
+    TabSetUnreadable { cause: c } => TabSetChangeUnverified { change: change, readback: c }
+    TabSetRead { candidates: cs } =>
+      match plan_review_tab_set(observed: cs, declared: declared) {
+        TabSetConverged => TabSetChangedAndVerified { change: change }
+        TabSetChange { rename: r, additions: a } =>
+          TabSetChangeUnverified { change: change, readback: tab_set_plan_text(plan: TabSetChange { rename: r, additions: a }) as NonEmptyStr }
+        TabSetRefused { cause: c } => TabSetChangeUnverified { change: change, readback: c }
+      }
+  }
+}
+
+fn converge_review_tab_set(
+  spreadsheet_id: NonEmptyStr,
+  declared: FreeSemigroup<NonEmptyStr>,
+  policy: EnsurePolicy,
+) -> TabSetConvergeOutcome uses net: Network {
+  match observe_review_tab_set(spreadsheet_id: spreadsheet_id) {
+    TabSetUnreadable { cause: c } => TabSetConvergeRefused { cause: c }
+    TabSetRead { candidates: cs } =>
+      match plan_review_tab_set(observed: cs, declared: declared) {
+        TabSetConverged => TabSetAlreadyConverged
+        TabSetRefused { cause: c } => TabSetConvergeRefused { cause: c }
+        TabSetChange { rename: r, additions: adds } => {
+          let change = tab_set_plan_text(plan: TabSetChange { rename: r, additions: adds }) as NonEmptyStr
+          match policy {
+            EnsureObserveOnly =>
+              TabSetConvergeRefused { cause: join(["observe-only, and the workbook needs: ", change as String], "") as NonEmptyStr }
+            EnsureMayApply =>
+              match rename_guard(spreadsheet_id: spreadsheet_id, rename: r) {
+                Present { value: refused } => TabSetConvergeRefused { cause: refused }
+                Absent => apply_tab_set_change(spreadsheet_id: spreadsheet_id, declared: declared, rename: r, additions: adds, change: change)
+              }
+          }
+        }
+      }
+  }
+}
+
+fn rename_guard(spreadsheet_id: NonEmptyStr, rename: TabRename?) -> NonEmptyStr? uses net: Network {
+  match rename {
+    Absent => none
+    Present { value: rn } =>
+      match observe_formula_whole_tab(spreadsheet_id: spreadsheet_id, requested: review_sheet_get_values_request(tab: rn.from)) {
+        FormulaWholeTabEmpty { observation: _ } => none
+        FormulaWholeTabOccupied { spreadsheet_id: _, tab: t, first: c } =>
+          Present { value: join(["the workbook's only tab, ", t as String, ", is not declared by this kind and is not empty (", occupied_cell_text(cell: c), "), so it is not the create's own tab and is not renamed"], "") as NonEmptyStr }
+        FormulaWholeTabRefused { refusal: f } =>
+          Present { value: join(["the workbook's only tab, ", rn.from as String, ", is not declared by this kind and could not be read to establish it is empty: ", formula_whole_tab_refusal_text(refusal: f)], "") as NonEmptyStr }
+      }
+  }
+}
+
+fn apply_tab_set_change(
+  spreadsheet_id: NonEmptyStr,
+  declared: FreeSemigroup<NonEmptyStr>,
+  rename: TabRename?,
+  additions: List<NonEmptyStr>,
+  change: NonEmptyStr,
+) -> TabSetConvergeOutcome uses net: Network {
+  let renamed = match rename {
+    Present { value: rn } => perform_tab_rename(spreadsheet_id: spreadsheet_id, rename: rn)
+    Absent => true
+  }
+  let added = map(additions, t => perform_tab_add(spreadsheet_id: spreadsheet_id, title: t))
+  let steps = if renamed && count(filter(added, a => !a)) == 0 {
+    change
+  } else {
+    join([change as String, " (at least one step was refused by Sheets)"], "") as NonEmptyStr
+  }
+  verify_tab_set(spreadsheet_id: spreadsheet_id, declared: declared, change: steps)
+}

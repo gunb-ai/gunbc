@@ -1231,3 +1231,84 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
     }
   }
 }
+
+// ── The store as a value ─────────────────────────────────────────────────────────────────────
+// THE SLOT STORE IS DATA: the root its slots live under, and nothing else. The operations are ordinary
+// functions over it (slot_observe, slot_commit, slot_keys), each answering through the Filesystem
+// operations the CAS functions above already perform. It holds no closures: a record of effectful
+// closures emits as `.await` inside a synchronous Rc<dyn Fn> (rustc E0728, measured on gunbc#14944 at
+// 681b79b, three errors, one per closure), because function types carry no effects; plain functions
+// over a data record emit as the async functions they are.
+//
+// sole_constructor: the only expression that builds a SlotStore is file_slot_store below (seal per
+// file on the seed route; residuals f13 coproduct variants and f19 parameter defaults, so the record
+// is non-generic and never a variant arm). The seal is on CONSTRUCTION only: a field read is not
+// module-private, so any holder can read `store.root` (declared in
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module). A SlotStore is
+// not an identity; identity lives one level up, in a per-store sealed record whose declaring module
+// derives the root from its own declaration (gunbc.roadmap.roadmap_attempt_worktree_claim_root
+// WorktreeClaimStore).
+//
+// It inhabits std.durable_compare_and_set (the outcomes and observations are that module's own); it
+// is not an ArtifactStore (a pure content-addressed fold) nor a StorageSurface (cache capacity
+// policy): neither models a generation-checked create-new slot. The windowed and retained operations
+// are not carried: no holder of this value uses them, and a holder that does adds the function with
+// its first consumer (DESIGN section 3c).
+type SlotStore sole_constructor {
+  root: NonEmptyStr
+}
+
+fn slot_observe(store: SlotStore, key: NonEmptyStr) -> CasSlotObservation<NonEmptyStr> {
+  observe_cas_slot_state(root: store.root, key: key)
+}
+
+fn slot_commit(store: SlotStore, publication: CasGenerationPublication, verified: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {
+  file_compare_and_set(root: store.root, publication: publication, verified: verified)
+}
+
+fn slot_keys(store: SlotStore) -> CasSlotKeys {
+  cas_slot_keys(root: store.root)
+}
+
+// THE ONE SLOT STORE BUILDER, AND IT TAKES A ROOT. It is public because a per-store declaring module
+// has to build the SlotStore its sealed record holds, and the seal is per file. Its only non-witness callers
+// are those per-store mints, each passing a root it derived from its own declaration:
+// gunbc.roadmap.roadmap_attempt_worktree_claim_root worktree_claim_store,
+// gunbc.roadmap.roadmap_session_attempt_slots_root session_attempt_slots_store,
+// gunbc.dispatch_credential_acquisition credential_acquisition_store and
+// gunbc.compute.compute_attempt_slots_root compute_seat_store. Holding a SlotStore from it is not holding any of
+// those stores: none of the four records can be spelled outside its module.
+// That this builder is reachable from every module, with a literal path, is a declared residual and NOT a
+// discharged one: gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module (its
+// restoring capability is ambient filesystem authority removed, a language-level lane).
+fn file_slot_store(root: NonEmptyStr) -> SlotStore {
+  SlotStore { root: root }
+}
+
+// The listing outcome of one store's OWN directory, before any store record is minted. The
+// Listed arm carries the root whose listing the Filesystem answered for: readiness is evidence
+// that THIS directory was observed, not a caller assertion (DESIGN section 4b).
+type SlotStoreAdmission
+  = SlotStoreListed { root: NonEmptyStr }
+  | SlotStoreRefused { detail: String }
+
+// THE ONE LIST-THEN-FOLD for every sealed slot store (DESIGN section 6b root generalization: a
+// repeated rule gets ONE implementation; four stores folded this body verbatim before it moved
+// here). List `root`, fold the listing into a SlotStoreAdmission, and the caller mints its own
+// sealed record on Listed. `member` is the store's declaration name as spelled in its own module
+// (the member label of its OwnedDirectoryTarget declaration, e.g. the AttemptSlotsMember as
+// String), so the refusal says WHICH store was not admitted. Sharing costs no seal strength:
+// this exposes nothing `file_slot_store` does not already expose (a public path-taking builder),
+// and the sealed store record still has exactly one mint, in its own module -- the per-file seal
+// is where the store record lives, and that is untouched. A store whose directory must be
+// ensured before the fold (a store whose target is a fresh owned directory) passes through
+// gunbc.durable_cas_file_store's OWN ensure path first and calls this only for the readiness
+// evidence; no store gets a second copy of this fold.
+fn listed_slot_store(member: String, root: NonEmptyStr) -> SlotStoreAdmission {
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => SlotStoreRefused { detail: join(["the ", member, " store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => SlotStoreRefused { detail: join(["the ", member, " store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => SlotStoreListed { root: root }
+  }
+}

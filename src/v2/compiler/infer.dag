@@ -56,7 +56,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
-import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
@@ -908,7 +908,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 }
 
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
-// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_bindings,
+// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_resolutions,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
 // whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
 // the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
@@ -1237,10 +1237,22 @@ fn infer_projection_receiver(
       match inferred_facts_resolved_type(facts: base_facts) {
         Violates { diagnostic: _ } => ReceiverTypeUnderived
         Holds { value: receiver_type } =>
-          infer_projection_receiver_of_type(receiver_type: receiver_type, declarations: resolved.resolved_declarations)
+          infer_projection_receiver_of_type(
+            receiver_type: infer_type_alias_normalized_at(t: receiver_type, bodies: resolved.resolved_declarations, bindings: resolved.symbol_index),
+            declarations: resolved.resolved_declarations
+          )
       }
   }
 }
+
+// THE RECEIVER IS READ THROUGH THE ONE ALIAS RULE (infer_type_alias_normalized_at), as the match scrutinee is
+// (infer_match_coproduct_of_type): a transparent alias and its expansion are one type, so `h.digest` with
+// `h: Hash` and `type Hash = Fnv1a64Structural` reads Fnv1a64Structural's fields. Read raw, the payload the index
+// returns for Hash is the alias declaration, whose body is a reference and declares no fields, so a correct
+// program refused as infer_reason_field_not_declared_on_receiver (gunbc.recurring_failure_mode
+// type_alias_identity_decided_by_spelling_at_each_check; v2.test.claim.compiler.lambda_alias_field_key). A
+// lambda input framed by a generic instance was already typed at the alias's expansion, because the generic
+// matcher normalizes before it binds; this is the plain-binder sibling of that read.
 
 // THE RECEIVER'S DECLARATION AND INSTANTIATION, FROM ITS ESTABLISHED TYPE. A plain declaration
 // reference binds nothing; an application binds the head's declared type parameters to its arguments
@@ -1324,7 +1336,7 @@ fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
 // no types.
 //
 // THE PATH, NEVER THE LEAF. The deleted scope walk (infer_parameter_scope_search, superseded by
-// resolve's recorded lexical bindings, ResolvedTree.occurrence_bindings) recorded what a leaf-name answer
+// resolve's recorded lexical bindings, ResolvedTree.occurrence_resolutions) recorded what a leaf-name answer
 // costs: `fn positive(x: Int)` beside `fn f(x: Pos)` grounded every `x` in `f` as `Int`, a type
 // fabricated from an unrelated declaration. symbol_index_lookup is asked for the whole declaring
 // path, and it is the GUARDED read: a path with more than one bound declaring answers Absent, so a
@@ -4701,14 +4713,22 @@ fn infer_resolved_payload(resolved: ResolvedTree, path: QualifiedName) -> Option
   }
 }
 
+// A STORED COPRODUCT IS ITSELF THE DECLARATION. Its variant tags are authored edges, and v2.std.node_query
+// named_child_lookup reads them on every node kind, so `type RustcSpanRead = RustcSpanRead { .. } | ..`
+// (extdeps.rust.cargo_diagnostic) would hand back its own variant for the leaf `RustcSpanRead`. Asking a
+// coproduct for a member named like the declaration is the wrong question, so it is not asked.
 fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Node {
-  match qualified_name_last_segment(qn: identity) {
-    Absent => declared
-    Present { value: leaf } =>
-      match find_named_child(root: declared, name: leaf) {
-        Accepted { value: inner, diagnostics: _ } => inner
-        Rejected { diagnostics: _ } => declared
-      }
+  if node_is_coproduct(node: declared) {
+    declared
+  } else {
+    match qualified_name_last_segment(qn: identity) {
+      Absent => declared
+      Present { value: leaf } =>
+        match find_named_child(root: declared, name: leaf) {
+          Accepted { value: inner, diagnostics: _ } => inner
+          Rejected { diagnostics: _ } => declared
+        }
+    }
   }
 }
 

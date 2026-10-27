@@ -89,6 +89,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.plumbing
 import gunbc.compute.work_request { DeclaredOutput, CheckoutRoot }
+import gunbc.compute.compute_attempt_slots_root { compute_seat_path, ComputeFlatSeat }
 import gunbc.compute.work_provider_local {
   ComputeExec,
   ComputeExecFailed,
@@ -244,7 +245,7 @@ fn fleet_scratch_listing() -> String {
 // than inferred from a directory diff. The second half is the departure WitnessScratchRoot buys: the
 // staging tree the capture installs into must NOT be the fleet's frame scratch, so it may not sit
 // under the frame-scratch prefix even though both live under /tmp.
-fn production_paths_stay_inside_root(layout: ComputeLayout, root: String) -> Bool {
+fn production_paths_stay_inside_root(layout: ComputeLayout, instance: HostDashboardInstance, root: String) -> Bool {
   let under = join([root, "/"], "")
   layout.root.starts_with(prefix: under)
     && layout.work_dir.starts_with(prefix: under)
@@ -256,7 +257,7 @@ fn production_paths_stay_inside_root(layout: ComputeLayout, root: String) -> Boo
     && layout.target_dir.starts_with(prefix: under)
     && layout.log_path.starts_with(prefix: under)
     && layout.consumption_path.starts_with(prefix: under)
-    && layout.attempts_dir.starts_with(prefix: under)
+    && (compute_seat_path(instance: instance, seat: ComputeFlatSeat) as String).starts_with(prefix: under)
     && !layout.staging_dir.starts_with(prefix: materialization_store_frame_root_prefix)
 }
 
@@ -452,7 +453,7 @@ fn wet_capture_case(write_output: Bool, second_output_present: Bool) -> WetCaptu
     let removed = shell.Remove.RecursiveForce(path: root as FilePath).success
     let paths_contained = match layout_opt {
       Absent => false
-      Present { value: layout } => production_paths_stay_inside_root(layout: layout, root: root)
+      Present { value: layout } => production_paths_stay_inside_root(layout: layout, instance: instance, root: root)
     }
     let contained = paths_contained && removed && root_is_gone(root: root)
     let verdict_text = match verdict {
