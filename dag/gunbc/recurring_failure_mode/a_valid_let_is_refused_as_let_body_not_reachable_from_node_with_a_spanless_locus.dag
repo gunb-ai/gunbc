@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_valid_let_is_refused_as_let_body_not_reachable_from_node_with_a_spanless_locus
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_valid_let_is_refused_as_let_body_not_reachable_from_node_with_a_spanless_locus: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_valid_let_is_refused_as_let_body_not_reachable_from_node_with_a_spanless_locus" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "v2 body lowering reaches a let's body from the let's own grammar position on every route a valid module uses, so no accepted v1 module is refused with body_lowering_reason_let_body_not_reachable_from_node; and a refusal that does fire carries the textual extent of the let it refused" } },
+
+  receipts: [
+    "**v2 normalize REFUSES an unchanged, valid module with body_lowering_reason_let_body_not_reachable_from_node, and the refusal's locus is a NodeLocus with no textual extent.** INVALID STATE: a module the seed accepts and executes is refused by v2's own front end. That refusal names no declaration and no position. HARM: every consumer that runs the v2 front end over the module refuses it as a whole, and none can say where: the generated roster import sweep (v2.workflow.roster_import_sweep, RefusalNormalizeRefused: 'REFUSE <path> normalize-refused'), the namespace-wave binding census, and native resolve. A wave then has to hand-apply what its generator should have placed, and the cause stays unlocated. Emitted by v2.compiler.body_lowering_fold body_lower_let_expr when body_lower_unwrap_captured finds the let's shell.",
+    "RECEIPT 2026-10-25 (warm-pike-481, PR #15126, the sha256_hex_of_text home wave). MODULE: test.claim.host_custody_export_receipt_witness (dag/test/claim/host_custody_export_receipt_witness.dag), unchanged at source commit 0d417c2534599c28374754d63e807ac4a0e3b7e7. ROUTE: a probe running exactly the sweep's front end -- tokenize_prepared, parse_module_prepared, normalize_with(source: NormalizeWithIsolatedAllocator, spans: the parse artifact's span index) -- under `gunbc run --function normalize_refusal_probe_exit --arg path=<module>`. It prints one diagnostic: reason body_lowering_reason_let_body_not_reachable_from_node, at a NodeLocus. SEED: gunbc built from that commit in a private target dir on srv1, sha256 2a23190f68eb04303201b641bdd8c546d75372bb209fa928588446082c417252, re-hashed OK after the run. The same probe on dag/gunbc/oracle_oci/api.dag and dag/gunbc/machine_intake/mtjade1_access_observation.dag prints body_lowering_reason_uses_clause_unmodeled, which is the D13 frontier (gunbc.recurring_failure_mode uses_clause_has_no_carrier) and not this class. The wave hand-applied `import std.content_hash { sha256_hex_of_text }` to all three, as ruled by tidy-ant-251.",
+    "RUNG FOUND AT: below the ladder, as ruled by tidy-ant-251: a valid program refused at the front end, with the refusal's location missing. CEILING: structurally guaranteed -- the let body's position is a grammar fact, read positionally or refused at a located extent. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: as stated in the standing; it is climbable now but unbuilt, and goes to the first free binding/front-end slot (tidy-ant-251). The discriminating RED is the unchanged module above, refused today. The positive control that pairs with it is OWED, not run here: the same probe accepting a module whose let the seed and v2 both read the same way."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "v2.compiler.body_lowering_fold", decl_name: "body_lower_let_expr", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.host_custody_export_receipt_witness", decl_name: "live_tree_disposition", field: WholeDeclaration },
+  ],
+}
