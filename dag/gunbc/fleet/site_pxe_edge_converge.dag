@@ -1797,10 +1797,10 @@ fn site_pxe_edge_placement_for(target: SshTarget, context: FleetSshExecutionCont
         match site_pxe_edge_installer_image(media: noble_numbat_2404_3_live_server_amd64) {
           Absent => PlacementRefused { step: "installer image", reason: "the media row's digest is not a sha256 digest" }
           Present { value: image } =>
-            match first_where(xs: flat_map(pins, p => match p {
+            match flat_map(pins, p => match p {
               SitePxeEdgeChainPinned { chain: c } => if c.architecture == X86_64 && site_pxe_edge_withheld_only_on_members(architecture: c.architecture, standings: standings) { [c] } else { [] }
               SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
-            }), keep: c => true) {
+            }).first() {
               Absent => PlacementNotNeeded
               Present { value: chain } => place_site_pxe_edge_ubuntu_chain(target: target, context: context, chain: chain, image: image)
             }
