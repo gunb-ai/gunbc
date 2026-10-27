@@ -5,21 +5,21 @@ module test.claim.path_predicate_bash_lowering_witness
 //
 // WHY THIS FILE EXISTS. The lowering below is the only route from std.path_intent's typed
 // PathPredicate / DirnameAscent to a bash test command. Before this change its assertions lived in
-// three tests in test.claim.proc_self_cgroup_witness (`cgroup_locate_cond_preserves_predicate_shape_holds`,
+// tests in test.claim.proc_self_cgroup_witness (`cgroup_locate_cond_preserves_predicate_shape_holds`,
 // `cgroup_locate_body_preserves_ascent_holds`, `nearest_ancestor_predicate_uses_regular_file_peak_holds`),
 // which reached it through `bash_nearest_ancestor_locate_cond_command` / `…_body_command` -- the
 // located-assign emitters whose only production consumer was deleted as a §3c bridge with no caller.
 // Deleting those tests and citing the surviving ones instead would have been dishonest: measured
-// tree-wide, the ONLY other place any test asserts on these emitted bytes is
-// v2.workflow.orchestration_while_emit `orch_while_path_kind_discriminates_regular_directory_missing_holds`,
-// and that module sits outside `witness_discovery_scan_dirs`, so CI never runs it. A mutation of the
+// tree-wide, the ONLY other place any test asserted on these emitted bytes was
+// v2.workflow.orchestration_while_emit `orch_while_path_kind_discriminates_regular_directory_missing_holds`
+// (module since deleted by #14688), and that module sat outside `witness_discovery_scan_dirs`, so CI never ran it. A mutation of the
 // `PathEntryKind` arm below would then have turned nothing red anywhere. So the claims are ported to a
 // discovered directory and run for real; the deletion is safe only because this file is in it.
 //
 // WHAT IS PINNED IS THE OPERATOR'S OWN TEXT, not a paraphrase: every expected string is the bytes the
 // token tables in v2.extdeps.languages.bash_orch_if produce, and the composite `[ -n "$d" ] && … &&
 // ! [ -f "$d/memory.peak" ]` below is the same condition the (unrun) while-loop golden in
-// v2.workflow.orchestration_while_emit carries. Per DESIGN section 4b, a claim whose forbidden state
+// v2.workflow.orchestration_while_emit (since deleted by #14688) used to carry. Per DESIGN section 4b, a claim whose forbidden state
 // is expressible nowhere it runs is a decoration: each assertion here fails on a specific mutation,
 // and the pairwise distinctness is what stops a lowering that lost the kind from passing by emitting
 // one bracket for every EntryKind.
@@ -89,8 +89,8 @@ test fn path_entry_kind_lowers_one_operator_per_kind() -> Bool {
       == "[ ! -e \"$d/memory.peak\" ]")
 }
 
-// The distinctness half, separated from the pins above so a mutation that keeps one pin but collapses
-// two kinds is reported as the collapse and not as a wrong constant.
+// The distinctness half, separated from the pins above so a mutation that keeps a pin but collapses
+// kinds onto each other is reported as the collapse and not as a wrong constant.
 test fn path_entry_kind_operators_are_pairwise_distinct() -> Bool {
   let regular = lowered(predicate: PathEntryKind { path: peak_path, kind: RegularFile })
   let directory = lowered(predicate: PathEntryKind { path: peak_path, kind: Directory })
@@ -133,8 +133,8 @@ test fn the_ascent_guard_lowers_a_double_ampersand_chain() -> Bool {
     == "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && ! [ -f \"$d/memory.peak\" ]"
 }
 
-// Or is the other and-or operator the same lowering carries; if it shared `&&`'s spelling the two
-// arms would be interchangeable and no consumer of Or could be trusted.
+// Or is the other and-or operator the same lowering carries; if it shared `&&`'s spelling, an Or
+// arm and an And arm would be interchangeable and no consumer of Or could be trusted.
 test fn path_or_lowers_double_pipe_not_double_ampersand() -> Bool {
   lowered(
     predicate: Or {
@@ -146,7 +146,7 @@ test fn path_or_lowers_double_pipe_not_double_ampersand() -> Bool {
 }
 
 // THE ASCENT. Pinning what the deleted `cgroup_locate_body_preserves_ascent_holds` pinned, through the
-// model that stays: one command-substitution assignment to the ascent target from `dirname` of the
+// model that stays: a command-substitution assignment to the ascent target from `dirname` of the
 // walked variable. Refusal cases matter as much as the accepted one, because the target and the name
 // both go through the POSIX-name rule.
 test fn dirname_ascent_lowers_a_dirname_command_substitution() -> Bool {
@@ -161,7 +161,7 @@ test fn dirname_ascent_lowers_a_dirname_command_substitution() -> Bool {
 // THE GUARD THE DELETED TEST COULD NOT REACH. An ascent target and a walked variable both go through
 // the POSIX-name rule before any byte is emitted, because both are interpolated RAW into
 // `target=$(dirname "$name")` -- a value like `d;rm -rf /` would otherwise land in the emitted
-// program. Split into two assertions so a regression in one check is not masked by the other.
+// program. Split into separate assertions so a regression in either check is not masked by the other.
 fn refused(model: Outcome<TargetModel>) -> Bool {
   match model {
     Rejected { diagnostics: _ } => true

@@ -25,7 +25,9 @@ import gunbc.machine_intake.megarac_kvm_still {
   megarac_kvm_observer_start,
   KvmJournalWord, kvm_journal_event_words,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir
+}
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
 import gunbc.host.megarac_operation_standing { MegaRacOperation, MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach }

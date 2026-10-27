@@ -1,5 +1,7 @@
 module gunbc.bmc.bmc_converge
 
+import std.integer { int_to_decimal_string }
+import std.nat { nat_to_decimal_string }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.bmc.capability {
   BmcFirmwareIntent,
@@ -242,13 +244,13 @@ fn bmc_firmware_intent_mismatch_reason(
 ) -> String {
   concat(
     "bmc firmware observation does not satisfy declared track: required major ",
-    required.major_version as String,
+    nat_to_decimal_string(value: required.major_version),
     ", observed major ",
-    observed.version.major as String,
+    nat_to_decimal_string(value: observed.version.major),
     " minor ",
-    observed.version.minor as String,
+    nat_to_decimal_string(value: observed.version.minor),
     " patch ",
-    observed.version.patch as String,
+    nat_to_decimal_string(value: observed.version.patch),
   )
 }
 
@@ -514,7 +516,7 @@ fn bmc_fan_durability_refusal_reason(
     } =>
       concat(
         "caller-asserted definition linkages cannot qualify durable lifetime (count ",
-        count as String,
+        int_to_decimal_string(value: count),
         ")",
       )
     DurabilityEvidenceMissing { admission: admission, boundary: _ } =>
@@ -562,7 +564,7 @@ fn bmc_fan_durability_refusal_reason(
     DurabilityRequirementDuplicate { boundary: _, count: count } =>
       concat(
         "bmc fan durability requirement duplicated for boundary (count ",
-        count as String,
+        int_to_decimal_string(value: count),
         ")",
       )
     DurabilityPerturbationTargetMismatch {

@@ -1,5 +1,6 @@
 module gunbc.live_deploy.deployed_tree_observation
 
+import std.integer { int_to_decimal_string }
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { list_append, string_concat_join, trim }
@@ -276,7 +277,7 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
     TreeLegNotAttempted { leg: leg, reason: why } =>
       join(["the ", leg, " leg was never attempted, so the host was not asked: ", why], "")
     TreeCommandFailed { leg: leg, exit_code: code, stderr: err } =>
-      join(["the ", leg, " leg ran and failed (exit ", code as String, "): ", err], "")
+      join(["the ", leg, " leg ran and failed (exit ", int_to_decimal_string(value: code), "): ", err], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
     TreeStatusUnreadable { detail: d } =>

@@ -21761,7 +21761,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                obligation_rows.push(row.clone());", "\n",
       "            \}", "\n",
       "        \}", "\n",
-      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_binding_census), one line each, in", "\n",
+      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_resolution_census), one line each, in", "\n",
       "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.", "\n",
       "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() \{", "\n",
       "            println!(\"\{\}\", line);", "\n",

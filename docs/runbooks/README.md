@@ -19,3 +19,6 @@ A new runbook must be linked from this index in the same PR that adds it — the
 - [mtcollins1 stable SSH host key: mint, deliver, anchor](mtcollins1-ssh-host-key-mint.md) — operator/merry-fox-82 procedure for the option-A per-boot host key: mint + Secret Manager upload (stdin only, Q1), SecretRef pin, public-half transcription into the anchored row, gated live-boot readback and the matching that discharges it.
 - [srv3 OS install actuation (prefix:os-install-actuated)](srv3-os-install-actuate.md) — runnable
   gunbc prep + operator-gated NBD-proxy virtual-media serve, boot-once CD, and post-install subsumption checks.
+- [GCP IAM root ceremony — `iam_bootstrap_apply`](gcp-iam-root-ceremony-apply.md) — operator procedure
+  for the one repair a `ROOT CEREMONY CELLS MISSING` refusal names, and the gate that unblocks the
+  approval-gated bootstrap delta (e.g. the `approval-apns-auth-key` accessor cell for srv1).
