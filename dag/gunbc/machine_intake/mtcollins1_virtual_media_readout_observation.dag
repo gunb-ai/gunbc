@@ -406,12 +406,14 @@ fn protocol_in(xs: List<RedfishVirtualMediaTransferProtocol>, x: RedfishVirtualM
 // asked questions through folds, and the witness uses the same doors rather than re-implementing
 // them, so a wrong door fails both sides at once.
 //
-// ladder_status returns Int?, NOT Int. An absent row must not come back as a number: -1 (or 0, or
+// ladder_status returns HttpStatus?, NOT HttpStatus, and keeps the row's type: a caller cannot ask
+// about a value the HTTP authority would refuse (4010), because the comparators take HttpStatus too.
+// It is Optional because An absent row must not come back as a number: -1 (or 0, or
 // any other sentinel) is indistinguishable from a real status at the call site, so a witness
 // written with != would go GREEN when the row was deleted -- an absent read standing in for an
 // answer, which is the exact failure this module exists to make unwritable. The caller has to
 // match on Present, and a missing probe then fails the match rather than passing the comparison.
-fn ladder_status(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Int? {
+fn ladder_status(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> HttpStatus? {
   match first_where(readout.ladder, r => r.path == path) {
     Present { value: row } => optional_present(value: row.status)
     Absent => optional_absent()
@@ -427,7 +429,7 @@ fn ladder_answered(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Bool {
   }
 }
 
-fn ladder_answered_with(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+fn ladder_answered_with(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: HttpStatus) -> Bool {
   match ladder_status(readout: readout, path: path) {
     Present { value: seen } => seen == status
     Absent => false
@@ -436,7 +438,7 @@ fn ladder_answered_with(readout: B0VirtualMediaReadout, path: NonEmptyStr, statu
 
 // "NOT THIS STATUS, AND ONLY IF IT WAS PROBED AT ALL" -- the form the != assertions in the witness
 // need, so that deleting a row fails the test instead of satisfying it.
-fn ladder_answered_not(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+fn ladder_answered_not(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: HttpStatus) -> Bool {
   match ladder_status(readout: readout, path: path) {
     Present { value: seen } => seen != status
     Absent => false
@@ -553,21 +555,23 @@ fn b0_serves_no_redfish_premise_still_holds(readout: B0VirtualMediaReadout) -> B
 
 // THE CHALLENGE TEXT, EXPOSED FOR THE WITNESS: a refusal receipt that does not carry what the
 // controller offered is not usable by whoever resumes the read.
-fn b0_challenge_of(readout: B0VirtualMediaReadout) -> NonEmptyStr {
+// Only the refused arm has a challenge; the others answer Absent rather than a made-up string.
+fn b0_challenge_of(readout: B0VirtualMediaReadout) -> NonEmptyStr? {
   match readout.transfer_protocol_readout {
-    ReadoutRefusedUnauthenticated { challenge: challenge } => challenge
-    ReadoutRead { protocols: _ } => "read"
-    ReadoutNeverAttempted => "never attempted"
+    ReadoutRefusedUnauthenticated { challenge: challenge } => optional_present(value: challenge)
+    ReadoutRead { protocols: _ } => optional_absent()
+    ReadoutNeverAttempted => optional_absent()
   }
 }
 
 // THE CAUSE TEXT, EXPOSED FOR THE WITNESS for the same reason: the arms must be separable by their
 // stated reasons, not only by their constructor names.
-fn b0_route_cause(route: BmcMediaRouteAdmission) -> NonEmptyStr {
+// Only the unsettled arm has a cause; a selected route answers Absent rather than a slug.
+fn b0_route_cause(route: BmcMediaRouteAdmission) -> NonEmptyStr? {
   match route {
-    RouteUnsettledUnread { cause: cause } => cause
-    DirectRedfishHttps => "direct-redfish-https"
-    NfsRelayThroughHolder => "nfs-relay-through-holder"
+    RouteUnsettledUnread { cause: cause } => optional_present(value: cause)
+    DirectRedfishHttps => optional_absent()
+    NfsRelayThroughHolder => optional_absent()
   }
 }
 
