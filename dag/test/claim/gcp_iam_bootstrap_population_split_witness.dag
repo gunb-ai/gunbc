@@ -5,7 +5,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, GcpPolicy, gcp_cells_bindings, gcp_cell_in }
 import gunbc.auth.gcp_iam_converge {
-  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, SecretPolicy, SecretPolicyReading,
+  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, SecretPolicy, SecretPolicyReading,
   cell_preimage, fleet_roster_grants, gcp_iam_converge_grant_set_secrets, gcp_iam_converge_grant_sets,
   gcp_iam_converge_targets, grant_set_secrets, iam_observe_service_account, plan_grant_set,
 }
@@ -16,7 +16,7 @@ import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, Ap
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, BootstrapApplyRole,
   iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over, iam_bootstrap_delta_bindings_over,
-  iam_bootstrap_resource_key, iam_bootstrap_role_name, secret_iam_owner, SecretIamOwner, BootstrapRostered,
+  iam_bootstrap_resource_key, ceremony_cell_phrase, iam_bootstrap_role_name, secret_iam_owner, SecretIamOwner, BootstrapRostered,
   iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_journal_cells, delta_owned,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta {
@@ -26,11 +26,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   bootstrap_delta_over, roster_subjects, subject_cells, observer_reach,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { root_cell_repair_ceremony }
-import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// ── WHAT THESE CLAIMS ARE ABOUT ──────────────────────────────────────────────────────────────
+import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over, BootstrapJournalBucket, BootstrapTrustRootTags, iam_bootstrap_stage_order, iam_bootstrap_stage_owed, CeremonySubjectReading, ceremony_unestablished_cell_phrases, ceremony_owned_proof_refusal, iam_bootstrap_ceremony_owned_cells }
 // The side chat's three structural findings on gunbc#14360 (relayed by warm-crane-219, 2026-10-19), each
 // at the interface it names:
 //   1. the root ceremony binds only root cells: one derivation, split into a ceremony population and a
@@ -287,4 +283,100 @@ test fn the_apns_accessor_cell_reaches_gcp_through_the_converge_grant_set_plan()
         BootstrapSecret { secret } => (secret as String) != (apns_secret_id as String) || !gcp_cell_in(c: b.cell, xs: apns_cells())
         _ => true
       })
+}
+
+
+// ── THE 2026-10-27 CEREMONY THAT WENT GREEN WITHOUT WRITING ITS OWN CELLS ─────────
+// fleet-converge run 40458649201 refused ROOT CEREMONY CELLS MISSING on five cells (the two WIF pool
+// observe cells, iam-bootstrap's observe cell, and the two journal-bucket cells) while the ceremony at
+// receipt iam-ceremony-20261027T055742Z had exited 0 with 10 of 12 stage receipts and no setIamPolicy
+// anywhere in the REST log. The fork: the delta folded the owner relation, the ceremony folded the
+// stage row. These claims weld the two sides to the ONE population and to the stage row, and pin the
+// ceremony's post-run proof to fail closed (DESIGN section 5: a cell the ceremony cannot show bound is
+// NOT established -- an absent or unreadable policy is not a green).
+
+fn stage_wires(stages: List<IamBootstrapStage>) -> List<String> {
+  map(stages, s => iam_bootstrap_stage_wire(stage: s))
+}
+
+// THE FOLDED ROW COVERS EVERY OWED STAGE, IN ORDER. The row is a single-line membership literal
+// (#14608: the host parser silently does not admit multi-line membership rows), so the row drifting
+// away from the owed set is exactly the 2026-10-27 channel: trust-root-tags and journal-bucket ran
+// nothing, wrote no receipt, and cost no refusal because every check folded over the row itself.
+test fn the_folded_stage_row_covers_every_owed_stage_in_order() -> Bool {
+  let owed = filter(iam_bootstrap_stage_order, s => iam_bootstrap_stage_owed(stage: s))
+  count(owed) == count(iam_bootstrap_stages)
+    && stage_wires(stages: owed) == stage_wires(stages: iam_bootstrap_stages)
+}
+
+// THE TWO STAGES THE INCIDENT RUN LOST ARE OWED, so a row that drops them fails the claim above
+// rather than the ceremony.
+test fn trust_root_tags_and_journal_bucket_are_owed_stages() -> Bool {
+  iam_bootstrap_stage_owed(stage: BootstrapTrustRootTags)
+    && iam_bootstrap_stage_owed(stage: BootstrapJournalBucket)
+}
+
+// ONE STAGE OWNS THE BUCKET AND THE CELLS ON IT: the journal stage declares its cells through the
+// model's single journal population (not a copied list), so the stage that creates the bucket is the
+// stage that binds them, and the ceremony's proof reads the same population back.
+test fn the_journal_stage_declares_the_journal_cells_it_makes_readable() -> Bool {
+  let declared = iam_bootstrap_stage_bindings(stage: BootstrapJournalBucket)
+  count(declared) == count(iam_bootstrap_journal_cells())
+    && all(iam_bootstrap_journal_cells(), b => any(declared, d => d.cell.role == b.cell.role && d.cell.member == b.cell.member))
+    && all(declared, b => any(iam_bootstrap_ceremony_owned_cells(), c => c.cell.role == b.cell.role && c.cell.member == b.cell.member))
+}
+
+// THE PROOF FOLDS EXACTLY THE POPULATION THE DELTA BLAMES THIS CEREMONY FOR: the cells whose owner
+// relation says IamBootstrapApply. If the two sides ever derive from different lists again, this is
+// the claim that goes red -- which is the meaning fork that let the ceremony green over five cells.
+test fn the_post_run_proof_population_is_the_deltas_root_cell_population() -> Bool {
+  let proved = iam_bootstrap_ceremony_owned_cells()
+  count(proved) > 0
+    && all(proved, b => any(iam_bootstrap_root_ceremony_bindings(), c => c.cell.role == b.cell.role && c.cell.member == b.cell.member && iam_bootstrap_resource_key(resource: c.resource) == iam_bootstrap_resource_key(resource: b.resource)))
+    && count(proved) == count(iam_bootstrap_root_ceremony_bindings())
+}
+
+// THE PROOF REFUSES, IN THE DELTA'S OWN WORDS, WHEN A CELL IT OWNS IS NOT BOUND (both sides call the
+// cell through ceremony_cell_phrase, so one fact is one string); a fully bound reading is silent.
+test fn the_proof_names_an_unbound_cell_with_the_shared_phrase() -> Bool {
+  let cell = iam_bootstrap_journal_cells().first()
+  match cell {
+    Present { value: b } => {
+      let bound = CeremonySubjectReading { subject: b.resource, reading: PolicyObserved { policy: GcpPolicy { bindings: gcp_cells_bindings(cs: [b.cell]), etag: "w", version: 1 } } }
+      let unbound = CeremonySubjectReading { subject: b.resource, reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "w", version: 1 } } }
+      count(ceremony_unestablished_cell_phrases(readings: [bound])) == 0
+      && ceremony_owned_proof_refusal(readings: [bound]) == ""
+      && ceremony_owned_proof_refusal(readings: [unbound]) != ""
+      && count(filter(ceremony_unestablished_cell_phrases(readings: [unbound]), p => p == ceremony_cell_phrase(b: b))) == 1
+    }
+    Absent => false
+  }
+}
+
+// FAIL CLOSED: an unreadable policy and a never-read subject are both NOT established -- "no evidence
+// of absence" never means "present" (DESIGN section 5).
+test fn unreadable_or_unread_policies_are_not_established() -> Bool {
+  let cell = iam_bootstrap_journal_cells().first()
+  match cell {
+    Present { value: b } => {
+      let unreadable = CeremonySubjectReading { subject: b.resource, reading: PolicyUnreadable { cause: "403" } }
+      count(ceremony_unestablished_cell_phrases(readings: [unreadable])) == 1
+      && count(ceremony_unestablished_cell_phrases(readings: [])) == count(iam_bootstrap_ceremony_owned_cells())
+      && count(filter(ceremony_unestablished_cell_phrases(readings: [unreadable]), p => p == concat(ceremony_cell_phrase(b: b), " (policy unreadable: 403)"))) == 1
+    }
+    Absent => false
+  }
+}
+
+// AN ABSENT POLICY RESOURCE IS NOT ESTABLISHED either (the bucket stage must have created it first).
+test fn an_absent_policy_is_not_established() -> Bool {
+  let cell = iam_bootstrap_journal_cells().first()
+  match cell {
+    Present { value: b } => {
+      let absent_reading = CeremonySubjectReading { subject: b.resource, reading: PolicyResourceAbsent }
+      count(ceremony_unestablished_cell_phrases(readings: [absent_reading])) == 1
+        && ceremony_owned_proof_refusal(readings: [absent_reading]) != ""
+    }
+    Absent => false
+  }
 }

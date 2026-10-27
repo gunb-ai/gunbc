@@ -81,13 +81,15 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
+data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+
 // A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. `data iam_bootstrap_stages` is the run's
 // folded row and stays a single-line literal (#14608: the host parser silently does not admit multi-line
 // membership rows -- that is exactly how trust-root-tags and journal-bucket vanished on 2026-10-27: the
 // run executed 10 stages, wrote no receipt for the other two, and cost no refusal, because every in-run
 // check folded over the row itself). THE CLAIMS ARE WHAT PIN THE ROW TO THIS PREDICATE: every owed
 // stage must appear, in order, or the witness refuses (test.claim.
-// gcp_iam_bootstrap_journal_first_use_witness the_folded_stage_row_covers_every_owed_stage). The
+// gcp_iam_bootstrap_population_split_witness the_folded_stage_row_covers_every_owed_stage_in_order). The
 // populations here are the SAME ones the capability stage writes and the post-run proof folds, so a
 // stage whose work is declared cannot quietly drop out of a run.
 fn iam_bootstrap_stage_owed(stage: IamBootstrapStage) -> Bool {
@@ -624,7 +626,7 @@ fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<Ded
   match stage {
     BootstrapCapabilities => iam_bootstrap_root_ceremony_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
     BootstrapServices => []  BootstrapIdentities => []  BootstrapTrustRootTags => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
-    BootstrapJournalBucket => []  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
+    BootstrapJournalBucket => iam_bootstrap_journal_cells()  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
 }
 
@@ -772,7 +774,15 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     })
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
     BootstrapCapabilities => iam_bootstrap_execute_bindings(bindings: iam_bootstrap_stage_bindings(stage: stage), token: token)
-    BootstrapJournalBucket => iam_bootstrap_ensure_journal_bucket(bucket: iam_bootstrap_journal_bucket, token: token)
+    BootstrapJournalBucket => {
+      // THE BUCKET AND THE CELLS ON IT ARE ONE STAGE'S WORK: the cells it declares (model
+      // iam_bootstrap_journal_cells, the same population the post-run proof and the delta's root-cell
+      // check fold) are bound after the bucket exists, so a run that creates the bucket without making
+      // it readable by iam-observe and writable by iam-bootstrap is refused by its own stage rather
+      // than left to the next fleet-converge.
+      let created = iam_bootstrap_ensure_journal_bucket(bucket: iam_bootstrap_journal_bucket, token: token)
+      if created != "" { created } else { iam_bootstrap_execute_bindings(bindings: iam_bootstrap_stage_bindings(stage: BootstrapJournalBucket), token: token) }
+    }
     BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
     BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
