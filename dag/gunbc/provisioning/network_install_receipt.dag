@@ -1,0 +1,447 @@
+module gunbc.provisioning.network_install_receipt
+
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
+import extdeps.ietf.http_semantics { http_status_is_success }
+import std.algebra { FreeSemigroup, non_empty_to_list, skip }
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkDisk, LsblkPart, LsblkLvm, LsblkCrypt, LsblkLoop, LsblkRom, LsblkOtherType }
+import extdeps.toolchain.types { Architecture }
+import extdeps.os.ubuntu_autoinstall { subiquity_installed_autoinstall_record_path }
+import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, dhcp_processor_architecture_from_code, uefi_processor_architecture }
+import extdeps.provisioning.network_boot {
+  NetworkBootLoaderMember,
+  NetworkBootLoaderVerifier,
+  LoaderConfiguration,
+  FirstStageLoader,
+  SecondStageLoader,
+  KernelImage,
+  InitrdImage,
+  network_boot_loader_member_is_authenticated,
+}
+import gunbc.network_boot_delivery { ControlledNetworkTrustObservation }
+import gunbc.secure_boot_observation { SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved, SecureBootRefused }
+import gunbc.provisioning.provisioning_arm { AttemptBinding }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgePinnedChain,
+  SitePxeEdgeInstallBinding,
+  site_pxe_edge_pinned_members,
+  site_pxe_edge_binding_mac,
+  site_pxe_edge_grub_mac_path,
+  site_pxe_edge_seed_path,
+}
+
+// THE INSTALLED-TO-DISK RECEIPT OF ONE NETWORK INSTALL (phase 3 of gunbc.plans.network_install_architecture_rows,
+// section 7: the measured option-93 class, the served members, the installer reaching autoinstall, and the
+// installed disk). It is the provisioning consumer's terminal, not the boot's (gunbc.host.boot_attempt
+// TerminalObserved: the terminal is the consumer's fact). The fold is pure: the readings are SUPPLIED at this
+// boundary, read by the edge (its dnsmasq and HTTP logs) and by the installed host, and the readers are the
+// phase-3 run's, enrolled below as the frontier this module's consumer discharges.
+//
+// WHAT MAKES IT AN INSTALL BY THIS ATTEMPT, and not an OS that was already on the disk or the live installer
+// still running: the host carries the client's MAC, its running root filesystem sits on a whole disk (the casper live
+// root is an overlay or a loop device), that filesystem was created after the attempt started and before the
+// reading, and THE INSTALLER COMPLETED: its record on the installed root (subiquity writes the autoinstall file for
+// repeating the install there when it installs a system, extdeps.os.ubuntu_autoinstall
+// subiquity_installed_autoinstall_record_path) was written inside the same window. A formatted disk without that
+// record is an install that did not finish, not one that did. Each is a typed gap when it fails, and the receipt is
+// minted only when none does.
+//
+// WHAT TIES IT TO THE ATTEMPT, AND WHAT DOES NOT: the client MAC and the two times, start to reading. No reading
+// carries an identity minted for this attempt, because the seed carries none (its meta-data instance-id is derived
+// from the MAC alone, gunbc.provisioning.public_nocloud_seed), so two attempts on one unit inside one window are not
+// told apart. The standing is exactly that, and the frontier row below names the reading that would narrow it.
+//
+// TRUST IS TYPED PER FETCHED FILE (section 5 of the plan). Secure Boot is MEASURED on the unit
+// (gunbc.secure_boot_observation SecureBootObservation): enabled, each chain member whose upstream verifier
+// authenticates it (extdeps.provisioning.network_boot NetworkBootLoaderVerifier) is authenticated by that
+// verifier; disabled, the signature chain was not enforced and every member rests on the controlled
+// onboarding network. The grub configuration, the initrd and the seed rest on that network either way.
+// An unmeasured Secure Boot state withholds the receipt: the trust statement would otherwise be a guess.
+
+// The DHCP processor architecture (option 93) the edge logged for one client's request, as the integer
+// code read off the wire. The code is projected through the IANA registry rows here, never by the reader.
+type InstallClientClassReading
+  = ClientClassRead { client: Eui48Address, code: Int }
+  | ClientClassUnread { why: NonEmptyStr }
+
+// What the edge logged as delivered. A TFTP delivery is carried by client MAC, but dnsmasq's TFTP log names
+// the client's address, and in proxy mode the router assigned it: the reader joins that address to a MAC
+// through the same client's ProxyDHCP log line (log-dhcp is rendered by gunbc.site_pxe_edge), and a delivery
+// it cannot join is not a delivery to this client, never one assumed. An HTTP response names only its path, because the seed server authenticates
+// no client and the seed is public (gunbc.fleet.site_pxe_edge_converge, the install surface): the MAC in a
+// seed's path routes it, so the receipt reads the seed fetch as "this MAC's seed was served", never as
+// "this client fetched it". Served means a success-class status under RFC 9110 (extdeps.ietf.http_semantics). The
+// host-side reading is what ties the install to the client.
+type InstallFetchReading
+  = TftpDelivered { client: Eui48Address, served_path: NonEmptyStr }
+  | HttpServed { path: NonEmptyStr, status: HttpStatus }
+
+// One block device under the root filesystem, as lsblk --inverse reports it: its kernel name and its TYPE
+// (extdeps.tools.util_linux_lsblk).
+type InstalledRootDevice { name: NonEmptyStr, kind: LsblkDeviceType }
+
+// The installed host's root filesystem as the host reports it: the mount source; the block devices under it from
+// the root's own device down to the whole disk; that disk's serial when it reports one; and the filesystem's own
+// creation time (ext4 records it in its superblock). A root with no block device under it (the live installer's
+// overlay) is Unbacked; Unread when the host did not answer or the filesystem records no creation time.
+type InstalledRootReading
+  = InstalledRootRead { source: NonEmptyStr, chain: FreeSemigroup<InstalledRootDevice>, disk_serial: NonEmptyStr?, created_at: EpochMs }
+  | InstalledRootUnbacked { source: NonEmptyStr }
+  | InstalledRootUnread { why: NonEmptyStr }
+
+// The installer's record on the installed root (the cited path), with the time the host reports it was written.
+// Absent when the installed root has no such file; Unread when the host did not answer.
+type InstallerRecordReading
+  = InstallerRecordRead { written_at: EpochMs }
+  | InstallerRecordAbsent
+  | InstallerRecordUnread { why: NonEmptyStr }
+
+type InstalledHostReading {
+  interface_macs: List<Eui48Address>
+  root: InstalledRootReading
+  installer_record: InstallerRecordReading
+  secure_boot: SecureBootObservation
+  observed_at: EpochMs
+}
+
+type NetworkInstallReadings {
+  client_class: InstallClientClassReading
+  fetches: List<InstallFetchReading>
+  host: InstalledHostReading
+}
+
+// WHAT THE ATTEMPT WAS: whom it covered, the pinned chain the edge served, the install binding (its MAC is
+// the seed's, so the routing MAC and the seed cannot name two clients), when it started, and the controlled
+// onboarding ground the unauthenticated files rest on.
+type NetworkInstallSubject {
+  attempt: AttemptBinding
+  chain: SitePxeEdgePinnedChain
+  binding: SitePxeEdgeInstallBinding
+  started_at: EpochMs
+  ground: ControlledNetworkTrustObservation
+}
+
+type InstallFileTrust
+  = AuthenticatedUnderSecureBoot { served_path: NonEmptyStr, verifier: NetworkBootLoaderVerifier }
+  | RestsOnControlledNetwork { served_path: NonEmptyStr, ground: ControlledNetworkTrustObservation }
+
+// Enforced or not, as measured; the two are the only states a minted receipt can carry.
+type InstallSecureBootStanding
+  = SecureBootEnforced
+  | SecureBootNotEnforced
+
+type NetworkInstallGap
+  = ClientClassNotMeasured { why: NonEmptyStr }
+  | ClientClassReadForOtherClient { read: Eui48Address }
+  | ClientClassCodeUnrecognized { code: Int }
+  | ClientClassNotTheChains { measured: DhcpProcessorArchitecture, chain: Architecture }
+  | ChainArchitectureHasNoUefiClass { chain: Architecture }
+  | MemberNotDelivered { served_path: NonEmptyStr }
+  | SeedNotServed { path: NonEmptyStr }
+  | HostDoesNotCarryClientMac { client: Eui48Address }
+  | InstalledRootNotRead { why: NonEmptyStr }
+  | InstalledRootNotOnBlockDevice { source: NonEmptyStr }
+  | InstalledRootOnNonDiskDevice { device: InstalledRootDevice }
+  | InstalledRootChainEndsBeforeDisk { last: InstalledRootDevice }
+  | InstalledRootPredatesAttempt { created_at: EpochMs, started_at: EpochMs }
+  | InstalledRootPostdatesReading { created_at: EpochMs, observed_at: EpochMs }
+  | InstallerRecordNotRead { why: NonEmptyStr }
+  | InstallerRecordNotOnInstalledRoot { path: NonEmptyStr }
+  | InstallerRecordPredatesAttempt { written_at: EpochMs, started_at: EpochMs }
+  | InstallerRecordPostdatesReading { written_at: EpochMs, observed_at: EpochMs }
+  | SecureBootNotMeasured { observation: SecureBootObservation }
+
+type NetworkInstallReceipt
+  = InstalledToDisk {
+      subject: NetworkInstallSubject
+      client_class: DhcpProcessorArchitecture
+      root_chain: FreeSemigroup<InstalledRootDevice>
+      root_disk_serial: NonEmptyStr?
+      root_created_at: EpochMs
+      installer_record_at: EpochMs
+      secure_boot: InstallSecureBootStanding
+      trust: FreeSemigroup<InstallFileTrust>
+      observed_at: EpochMs
+    }
+  | InstallNotEstablished {
+      subject: NetworkInstallSubject
+      gaps: FreeSemigroup<NetworkInstallGap>
+    }
+
+fn network_install_client(subject: NetworkInstallSubject) -> Eui48Address {
+  site_pxe_edge_binding_mac(binding: subject.binding)
+}
+
+// THE PATH THIS CLIENT READS FOR A MEMBER. Under an install binding GRUB reads its per-MAC configuration
+// (grub.cfg-01-<mac>, which the edge renders for that binding), so the chain's loader-configuration member
+// is expected at the client's path; every other member at its own.
+fn network_install_expected_tftp_path(subject: NetworkInstallSubject, member: NetworkBootLoaderMember) -> NonEmptyStr {
+  match member.role {
+    LoaderConfiguration => site_pxe_edge_grub_mac_path(mac: network_install_client(subject: subject))
+    FirstStageLoader => member.served_path
+    SecondStageLoader => member.served_path
+    KernelImage => member.served_path
+    InitrdImage => member.served_path
+  }
+}
+
+fn network_install_seed_user_data_path(subject: NetworkInstallSubject) -> NonEmptyStr {
+  concat(site_pxe_edge_seed_path(mac: network_install_client(subject: subject)), "/user-data") as NonEmptyStr
+}
+
+fn network_install_chain_members(subject: NetworkInstallSubject) -> List<NetworkBootLoaderMember> {
+  map(site_pxe_edge_pinned_members(chain: subject.chain), m => m.member)
+}
+
+// EACH CHECK ANSWERS WITH WHAT IT ESTABLISHED OR WITH ITS GAPS, never both and never a default: the fold
+// mints from the established values and nothing else, so an unmeasured reading cannot reach the receipt.
+type ClassCheck
+  = ClassMeasured { class: DhcpProcessorArchitecture }
+  | ClassGap { gap: NetworkInstallGap }
+
+type RootCheck
+  = RootEstablished { chain: FreeSemigroup<InstalledRootDevice>, disk_serial: NonEmptyStr?, created_at: EpochMs }
+  | RootGaps { gaps: FreeSemigroup<NetworkInstallGap> }
+
+type InstallerCheck
+  = InstallerCompleted { recorded_at: EpochMs }
+  | InstallerGaps { gaps: FreeSemigroup<NetworkInstallGap> }
+
+type SecureBootCheck
+  = SecureBootMeasured { standing: InstallSecureBootStanding }
+  | SecureBootGap { gap: NetworkInstallGap }
+
+fn network_install_class_check(subject: NetworkInstallSubject, reading: InstallClientClassReading) -> ClassCheck {
+  match reading {
+    ClientClassUnread { why: w } => ClassGap { gap: ClientClassNotMeasured { why: w } }
+    ClientClassRead { client: c, code: code } =>
+      if mac_addresses_are_equal(left: c, right: network_install_client(subject: subject)) == false {
+        ClassGap { gap: ClientClassReadForOtherClient { read: c } }
+      } else {
+        match dhcp_processor_architecture_from_code(code: code) {
+          Absent => ClassGap { gap: ClientClassCodeUnrecognized { code: code } }
+          Present { value: measured } => match uefi_processor_architecture(arch: subject.chain.architecture) {
+            Absent => ClassGap { gap: ChainArchitectureHasNoUefiClass { chain: subject.chain.architecture } }
+            Present { value: expected } =>
+              if measured == expected { ClassMeasured { class: measured } } else { ClassGap { gap: ClientClassNotTheChains { measured: measured, chain: subject.chain.architecture } } }
+          }
+        }
+      }
+  }
+}
+
+fn network_install_delivered(subject: NetworkInstallSubject, fetches: List<InstallFetchReading>, path: NonEmptyStr) -> Bool {
+  any(fetches, f => match f {
+    TftpDelivered { client: c, served_path: p } => p == path && mac_addresses_are_equal(left: c, right: network_install_client(subject: subject))
+    HttpServed { path: _, status: _ } => false
+  })
+}
+
+fn network_install_seed_served(fetches: List<InstallFetchReading>, path: NonEmptyStr) -> Bool {
+  any(fetches, f => match f {
+    TftpDelivered { client: _, served_path: _ } => false
+    HttpServed { path: p, status: s } => p == path && http_status_is_success(status: s)
+  })
+}
+
+fn network_install_fetch_gaps(subject: NetworkInstallSubject, fetches: List<InstallFetchReading>) -> List<NetworkInstallGap> {
+  let seed = network_install_seed_user_data_path(subject: subject)
+  flat_map(network_install_chain_members(subject: subject), m => {
+    let path = network_install_expected_tftp_path(subject: subject, member: m)
+    if network_install_delivered(subject: subject, fetches: fetches, path: path) { [] } else { [MemberNotDelivered { served_path: path }] }
+  })
+    + (if network_install_seed_served(fetches: fetches, path: seed) { [] } else { [SeedNotServed { path: seed }] })
+}
+
+fn network_install_mac_gaps(subject: NetworkInstallSubject, host: InstalledHostReading) -> List<NetworkInstallGap> {
+  if any(host.interface_macs, m => mac_addresses_are_equal(left: m, right: network_install_client(subject: subject))) { [] } else { [HostDoesNotCarryClientMac { client: network_install_client(subject: subject) }] }
+}
+
+// AN INSTALLED ROOT SITS ON A DISK: every device under it is a disk, a partition, an LVM volume or a dm-crypt
+// mapping, and the last is the whole disk. A loop device (the live installer's squashfs), an optical drive, or any
+// type lsblk reports beyond these is not an install to disk, and its link is named.
+fn network_install_root_device_admitted(kind: LsblkDeviceType) -> Bool {
+  match kind {
+    LsblkDisk => true
+    LsblkPart => true
+    LsblkLvm => true
+    LsblkCrypt => true
+    LsblkLoop => false
+    LsblkRom => false
+    LsblkOtherType { word: _ } => false
+  }
+}
+
+fn network_install_root_chain_gaps(chain: FreeSemigroup<InstalledRootDevice>) -> List<NetworkInstallGap> {
+  let last = fold(chain.tail, init: chain.head, f: (acc, d) => d)
+  map(filter(non_empty_to_list(xs: chain), d => network_install_root_device_admitted(kind: d.kind) == false), d => InstalledRootOnNonDiskDevice { device: d })
+    + (match last.kind {
+      LsblkDisk => []
+      LsblkPart => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkLvm => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkCrypt => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkLoop => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkRom => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkOtherType { word: _ } => [InstalledRootChainEndsBeforeDisk { last: last }]
+    })
+}
+
+fn network_install_root_check(subject: NetworkInstallSubject, host: InstalledHostReading) -> RootCheck {
+  match host.root {
+    InstalledRootUnread { why: w } => RootGaps { gaps: FreeSemigroup { head: InstalledRootNotRead { why: w }, tail: [] } }
+    InstalledRootUnbacked { source: s } => RootGaps { gaps: FreeSemigroup { head: InstalledRootNotOnBlockDevice { source: s }, tail: [] } }
+    InstalledRootRead { source: _, chain: c, disk_serial: serial, created_at: t } => {
+      let gaps = network_install_root_chain_gaps(chain: c)
+        + (if t < subject.started_at { [InstalledRootPredatesAttempt { created_at: t, started_at: subject.started_at }] } else { [] })
+        + (if t > host.observed_at { [InstalledRootPostdatesReading { created_at: t, observed_at: host.observed_at }] } else { [] })
+      match gaps.first() {
+        Absent => RootEstablished { chain: c, disk_serial: serial, created_at: t }
+        Present { value: g } => RootGaps { gaps: FreeSemigroup { head: g, tail: skip(xs: gaps, n: 1) } }
+      }
+    }
+  }
+}
+
+fn network_install_installer_check(subject: NetworkInstallSubject, host: InstalledHostReading) -> InstallerCheck {
+  match host.installer_record {
+    InstallerRecordUnread { why: w } => InstallerGaps { gaps: FreeSemigroup { head: InstallerRecordNotRead { why: w }, tail: [] } }
+    InstallerRecordAbsent => InstallerGaps { gaps: FreeSemigroup { head: InstallerRecordNotOnInstalledRoot { path: subiquity_installed_autoinstall_record_path }, tail: [] } }
+    InstallerRecordRead { written_at: t } => {
+      let gaps = (if t < subject.started_at { [InstallerRecordPredatesAttempt { written_at: t, started_at: subject.started_at }] } else { [] })
+        + (if t > host.observed_at { [InstallerRecordPostdatesReading { written_at: t, observed_at: host.observed_at }] } else { [] })
+      match gaps.first() {
+        Absent => InstallerCompleted { recorded_at: t }
+        Present { value: g } => InstallerGaps { gaps: FreeSemigroup { head: g, tail: skip(xs: gaps, n: 1) } }
+      }
+    }
+  }
+}
+
+fn network_install_secure_boot_check(host: InstalledHostReading) -> SecureBootCheck {
+  match host.secure_boot {
+    SecureBootEnabled => SecureBootMeasured { standing: SecureBootEnforced }
+    SecureBootDisabled => SecureBootMeasured { standing: SecureBootNotEnforced }
+    SecureBootUnobserved { reason: _ } => SecureBootGap { gap: SecureBootNotMeasured { observation: host.secure_boot } }
+    SecureBootRefused { refusal: _ } => SecureBootGap { gap: SecureBootNotMeasured { observation: host.secure_boot } }
+  }
+}
+
+fn network_install_member_trust(subject: NetworkInstallSubject, member: NetworkBootLoaderMember, secure_boot: InstallSecureBootStanding) -> InstallFileTrust {
+  let path = network_install_expected_tftp_path(subject: subject, member: member)
+  match secure_boot {
+    SecureBootEnforced =>
+      if network_boot_loader_member_is_authenticated(member: member) {
+        AuthenticatedUnderSecureBoot { served_path: path, verifier: member.verifier }
+      } else {
+        RestsOnControlledNetwork { served_path: path, ground: subject.ground }
+      }
+    SecureBootNotEnforced => RestsOnControlledNetwork { served_path: path, ground: subject.ground }
+  }
+}
+
+// One entry per chain member in chain order, then the seed. Nonempty because the chain is.
+fn network_install_trust(subject: NetworkInstallSubject, secure_boot: InstallSecureBootStanding) -> FreeSemigroup<InstallFileTrust> {
+  let members = map(network_install_chain_members(subject: subject), m => network_install_member_trust(subject: subject, member: m, secure_boot: secure_boot))
+  let seed = RestsOnControlledNetwork { served_path: network_install_seed_user_data_path(subject: subject), ground: subject.ground }
+  FreeSemigroup {
+    head: network_install_member_trust(subject: subject, member: subject.chain.members.head.member, secure_boot: secure_boot),
+    tail: skip(xs: members, n: 1) + [seed],
+  }
+}
+
+fn root_check_gaps(check: RootCheck) -> List<NetworkInstallGap> {
+  match check {
+    RootEstablished { chain: _, disk_serial: _, created_at: _ } => []
+    RootGaps { gaps: gs } => non_empty_to_list(xs: gs)
+  }
+}
+
+fn installer_check_gaps(check: InstallerCheck) -> List<NetworkInstallGap> {
+  match check {
+    InstallerCompleted { recorded_at: _ } => []
+    InstallerGaps { gaps: gs } => non_empty_to_list(xs: gs)
+  }
+}
+
+fn secure_boot_check_gaps(check: SecureBootCheck) -> List<NetworkInstallGap> {
+  match check {
+    SecureBootMeasured { standing: _ } => []
+    SecureBootGap { gap: g } => [g]
+  }
+}
+
+// The gaps in the fold's order when one check is known to have failed: whatever precedes it, its own gaps, then
+// whatever follows. Nonempty because the failed check's gaps are.
+fn network_install_gaps_around(before: List<NetworkInstallGap>, failed: FreeSemigroup<NetworkInstallGap>, after: List<NetworkInstallGap>) -> FreeSemigroup<NetworkInstallGap> {
+  let tail = non_empty_to_list(xs: failed) + after
+  match before.first() {
+    Absent => FreeSemigroup { head: failed.head, tail: failed.tail + after }
+    Present { value: g } => FreeSemigroup { head: g, tail: skip(xs: before, n: 1) + tail }
+  }
+}
+
+// THE FOLD. Every gap is reported, in a fixed order (class, deliveries, host MAC, root, installer record, Secure Boot), so the same
+// readings always give the same receipt. Each check either established its value or carries its own gaps, and the
+// receipt is minted only on the one path where every check established and no delivery or MAC gap exists.
+fn network_install_receipt(subject: NetworkInstallSubject, readings: NetworkInstallReadings) -> NetworkInstallReceipt {
+  let class = network_install_class_check(subject: subject, reading: readings.client_class)
+  let root = network_install_root_check(subject: subject, host: readings.host)
+  let installer = network_install_installer_check(subject: subject, host: readings.host)
+  let sb = network_install_secure_boot_check(host: readings.host)
+  let middle = network_install_fetch_gaps(subject: subject, fetches: readings.fetches) + network_install_mac_gaps(subject: subject, host: readings.host)
+  match class {
+    ClassGap { gap: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: middle + root_check_gaps(check: root) + installer_check_gaps(check: installer) + secure_boot_check_gaps(check: sb) } }
+    ClassMeasured { class: c } => match root {
+      RootGaps { gaps: gs } => InstallNotEstablished { subject: subject, gaps: network_install_gaps_around(before: middle, failed: gs, after: installer_check_gaps(check: installer) + secure_boot_check_gaps(check: sb)) }
+      RootEstablished { chain: chain, disk_serial: serial, created_at: t } => match installer {
+        InstallerGaps { gaps: gs } => InstallNotEstablished { subject: subject, gaps: network_install_gaps_around(before: middle, failed: gs, after: secure_boot_check_gaps(check: sb)) }
+        InstallerCompleted { recorded_at: recorded } => match sb {
+          SecureBootGap { gap: g } => InstallNotEstablished { subject: subject, gaps: network_install_gaps_around(before: middle, failed: FreeSemigroup { head: g, tail: [] }, after: []) }
+          SecureBootMeasured { standing: st } => match middle.first() {
+            Present { value: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: skip(xs: middle, n: 1) } }
+            Absent => InstalledToDisk {
+              subject: subject,
+              client_class: c,
+              root_chain: chain,
+              root_disk_serial: serial,
+              root_created_at: t,
+              installer_record_at: recorded,
+              secure_boot: st,
+              trust: network_install_trust(subject: subject, secure_boot: st),
+              observed_at: readings.host.observed_at,
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The production route this module provides and nothing yet executes, counted in
+// gunbc.census_closure_frontier.
+data network_install_receipt_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "network_install_receipt"),
+    reason: "no run reads the edge's dnsmasq and HTTP logs or the installed host for a real network install, so the fold is evaluated only by its witness over supplied readings",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the phase-3 network install run of gunbc.plans.network_install_architecture_rows reads the edge and the installed host on a real attempt and mints this receipt from those readings; a witness over supplied readings does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstalledRootRead"),
+    reason: "the receipt names the disk under the installed root (its lsblk chain and serial) but does not compare it with the disk the attempt selected, because the install binding's public seed uses the direct layout and carries no target-disk selection; on a multi-disk unit the installer's own choice is recorded, not checked",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the install binding carries the seed's target-disk selection (the generalized seed of #15246 binds one per attempt) and the receipt refuses a root whose disk is not that selection's"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstallerRecordRead"),
+    reason: "the installer's record ties the install to the attempt by the client MAC and the start-to-reading window only: the seed carries no identity minted per attempt (its instance-id is derived from the MAC), so the record cannot name the attempt that wrote it and two attempts on one unit inside one window are not told apart",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the install binding's seed carries an identity derived from the attempt that the installer leaves on the installed root, and the receipt refuses an installed host whose record names another attempt"
+    )
+  ),
+]

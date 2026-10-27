@@ -24,6 +24,10 @@ on:
         description: Base branch of that pull request
         required: true
         type: string
+      base_sha:
+        description: Base commit (40-hex) of that pull request
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -91,7 +95,9 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
       - name: Converge the stage0 mirrors to the seed's own fixed point
-        run: target/release/claim_executor --regen-round-cost --source-root dag --source-root src/v2
+        run: target/release/claim_executor --regen-round-cost --base-mirror --source-root dag --source-root src/v2
+        env:
+          HEAL_BASE_MIRROR_COMMIT: ${{ github.event.pull_request.base.sha || inputs.base_sha }}
       - name: Refuse when the stage0 round wrote a file the seed-build writer owns
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

@@ -39,8 +39,9 @@ import product.fabric.serving_recipe {
   ServingUnitCost, UnitCostQuoted, UnitCostEstimated, UnitCostThroughputUnread, UnitCostHourlyUnavailable, serving_cost_per_million_tokens,
   ServingSelectionQuote, SelectionQuoteEstablished, SelectionQuoteRefusedEstimated, SelectionQuoteRefusedUnavailable, serving_unit_cost_for_selection,
   ServingSettingStanding, SettingOperatorPolicy, SettingReading, ServingSettingStandings, ServingThroughput, ThroughputOperatorReading,
-  ServingStartRoute, StartFromPlacedWeights, StartFromObjectStoreObserved, StartRouteUnread,
-  ServingStartSource, StartSourcePlaced, StartSourceObserved, StartSourcePlacementMissing, StartSourceUnread, serving_start_source,
+  ServingStartRoute, StartFromPlacedWeights, StartFromObjectStoreObserved, StartFromHubPinned, StartRouteUnread,
+  ServingStartSource, StartSourcePlaced, StartSourceObserved, StartSourceHubPinned, StartSourcePlacementMissing, StartSourceUnread, serving_start_source,
+  ServingWeightsSource, WeightsPinnedAtHub,
   ServingCacheSizing, CacheNone, CacheFractionOfHost, serving_cache_bytes,
 }
 import test.claim.fabric.provider_use_fixture {
@@ -50,6 +51,8 @@ import gunbc.harness.harness_reasoning_wire { Qwen3_8_27bOnNinfer }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog, nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog }
 import gunbc.serving.rented_ninfer_source { rented_qwen3_8_27b_nvfp4_weights_placement }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_release }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
+import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading }
 import extdeps.external_authority { TranscribedUncited, CitedFigureStanding }
 import extdeps.procps.kill { procps_kill_standing }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
@@ -583,13 +586,31 @@ test fn an_estimate_carries_every_uncited_obligation_it_rests_on_through_to_the_
 
 // ── start route and cache adapt ──────────────────────────────────────────────────────────────
 
-test fn flash_next_starts_from_the_object_store_only_with_no_hub_fallback() -> Bool {
+// 2026-10-25: the flash row STARTS from its Hub-pinned checkpoint, so its start source is the pinned
+// arm — no fallback re-resolution, and the standing is an OBSERVED reading (the srv1 launcher's own
+// download behavior), not an operator ruling. The object-store arm below keeps the old expectation for
+// any recipe still observing one.
+test fn flash_next_starts_from_the_pinned_hub_revision_only_with_no_hub_fallback() -> Bool {
   match serving_start_source(recipe: serving_recipe_flash_next_lab_vllm) {
-    StartSourceObserved { store: _, hub_fallback: fb, standing: sd } =>
-      !fb && (match sd {
-        SettingOperatorPolicy { ruling: _ } => true
-        SettingReading { standing: _ } => false
-      })
+    StartSourceHubPinned { checkpoint: c, hub_fallback: fb, standing: sd } =>
+      !fb
+        && (c.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
+        && (match sd {
+          SettingReading { standing: _ } => true
+          SettingOperatorPolicy { ruling: _ } => false
+        })
+    _ => false
+  }
+}
+
+test fn flash_next_weights_are_pinned_at_the_hub_with_the_engine_reported_quantization() -> Bool {
+  match serving_recipe_flash_next_lab_vllm.model.source {
+    WeightsPinnedAtHub { checkpoint: c, quantization: q } =>
+      (c.revision as String) == (qwen3_8_flash_next_manifest.revision as String)
+        && (match q {
+          Present { value: v } => (v as String) == (srv1_serving_startup_reading.weight_quantization as String)
+          Absent => false
+        })
     _ => false
   }
 }

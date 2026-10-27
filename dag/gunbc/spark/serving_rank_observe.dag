@@ -13,11 +13,8 @@ import extdeps.nvidia.cuda_driver {
   CudaQueryOutcome, CudaQueryUnparsed, cuda_device_attribute_argv, cuda_attribute_outcome, cuda_probe_device_ordinal,
 }
 import extdeps.nvidia.gpu_direct_rdma { GpuDirectRdmaCapability, gpu_direct_rdma_capability }
-import extdeps.docker.cli {
-  docker_container_inspect_command, docker_logs_command,
-  docker_container_inspect_names_no_such_container,
-  docker_exec_command, DockerEnvAssignment,
-}
+import extdeps.docker.cli { docker_container_inspect_command, docker_logs_command, docker_container_inspect_names_no_such_container, docker_exec_command }
+import extdeps.docker.create_spec { DockerEnvAssignment }
 import extdeps.docker.container_inspect {
   ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
   container_inspect_from_stdout,

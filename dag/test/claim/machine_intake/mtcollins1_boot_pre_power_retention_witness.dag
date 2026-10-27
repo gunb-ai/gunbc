@@ -35,7 +35,9 @@ import std.optional { Present }
 import std.upsert_decision { Absent }
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_45, mtcollins1_boot_run_40082618814_hpm_check_artifact_path }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+import gunbc.host.boot_attempt { AttemptRunId, AttemptIdentityUnavailable }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   mtcollins1_boot_mc_info_path,
   mtcollins1_boot_fru_print_path,
   mtcollins1_pre_power_retention_of,
@@ -44,8 +46,17 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   pre_power_read_failure_reason,
   PrePowerRetained,
   PrePowerNotRetained,
-  AttemptRunId,
-  AttemptIdentityUnavailable,
+}
+
+// THE ROW THE PATHS ARE DERIVED FROM. The adapter builds every retained path from the ROW's own
+// prefix and endpoint (cut 4d-ii); the witness drives the mtcollins1 row, whose prefix keeps these
+// assertions byte-identical to the mtcollins1 literals they were written against.
+fn mc_path_of(run: NonEmptyStr) -> NonEmptyStr {
+  mtcollins1_boot_mc_info_path(row: mtcollins1_boot_row_value, run_attempt: run)
+}
+
+fn fru_path_of(run: NonEmptyStr) -> NonEmptyStr {
+  mtcollins1_boot_fru_print_path(row: mtcollins1_boot_row_value, run_attempt: run)
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -59,10 +70,10 @@ fn eq_size(a: ByteSize, b: ByteSize) -> Bool {
 // bytes -- and a DIFFERENT run id yields a DIFFERENT key, or two runs would overwrite each other's
 // capture and only one would survive the upload.
 test fn each_retention_is_keyed_to_the_run_that_wrote_it() -> Bool {
-  (mtcollins1_boot_mc_info_path(run_attempt: "40082618814") as String) == "artifacts/mtcollins1-boot-mc-info-40082618814.txt"
-    && (mtcollins1_boot_fru_print_path(run_attempt: "40082618814") as String) == "artifacts/mtcollins1-boot-fru-print-0-40082618814.txt"
-    && (mtcollins1_boot_mc_info_path(run_attempt: "1") as String) != (mtcollins1_boot_mc_info_path(run_attempt: "2") as String)
-    && (mtcollins1_boot_fru_print_path(run_attempt: "1") as String) != (mtcollins1_boot_fru_print_path(run_attempt: "2") as String)
+  (mc_path_of("40082618814") as String) == "artifacts/mtcollins1-boot-mc-info-40082618814.txt"
+    && (fru_path_of("40082618814") as String) == "artifacts/mtcollins1-boot-fru-print-0-40082618814.txt"
+    && (mc_path_of("1") as String) != (mc_path_of("2") as String)
+    && (fru_path_of("1") as String) != (fru_path_of("2") as String)
 }
 
 // THE RUN UPLOADS THEM: both paths sit under the boot's upload prefix (mtcollins1_boot_artifact_glob).
@@ -71,8 +82,8 @@ test fn each_retention_is_keyed_to_the_run_that_wrote_it() -> Bool {
 test fn both_retentions_sit_under_the_run_upload_prefix() -> Bool {
   let prefix = "artifacts/mtcollins1-boot-"
   string_contains(s: mtcollins1_boot_artifact_glob, pattern: prefix)
-    && string_contains(s: mtcollins1_boot_mc_info_path(run_attempt: "42") as String, pattern: prefix)
-    && string_contains(s: mtcollins1_boot_fru_print_path(run_attempt: "42") as String, pattern: prefix)
+    && string_contains(s: mc_path_of("42") as String, pattern: prefix)
+    && string_contains(s: fru_path_of("42") as String, pattern: prefix)
 }
 
 // THE SIZE IS THE CONTENT'S OWN. The fold mints the ByteSize from the verbatim bytes through
@@ -126,8 +137,8 @@ test fn the_two_failure_stages_keep_their_own_cause_and_verb() -> Bool {
 // path fn, so the gate cannot drift between them.
 test fn without_the_run_identity_nothing_is_read_and_the_variable_is_named() -> Bool {
   let missing = AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "absent" }
-  let gate_mc = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mtcollins1_boot_mc_info_path)
-  let gate_fru = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mtcollins1_boot_fru_print_path)
+  let gate_mc = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: mc_path_of)
+  let gate_fru = mtcollins1_boot_pre_power_retained(attempt: missing, path_of: fru_path_of)
   let mc_ok = match gate_mc { PrePowerNotRetained { reason: why } => string_contains(s: why, pattern: "GITHUB_RUN_ID") && string_contains(s: why, pattern: "run identity")  _ => false }
   let fru_ok = match gate_fru { PrePowerNotRetained { reason: why } => string_contains(s: why, pattern: "GITHUB_RUN_ID")  _ => false }
   mc_ok && fru_ok
@@ -140,10 +151,10 @@ test fn without_the_run_identity_nothing_is_read_and_the_variable_is_named() -> 
 // third. The lines are pairwise DISTINCT, so no arm can collapse into another.
 test fn a_missing_retention_says_its_own_why_on_the_receipt() -> Bool {
   let run = AttemptRunId { run_id: "43" }
-  let never_ran = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Absent, run: run, path_of: mtcollins1_boot_mc_info_path)
-  let not_read = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: pre_power_read_failure_reason(capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "Unable to send RAW command: Invalid data field in request") } }, run: run, path_of: mtcollins1_boot_fru_print_path)
-  let write_failed = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "43"), read_ok: false, content: "", stage: "written" as NonEmptyStr, error: "disk full")
-  let unwritten = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: write_failed }, run: run, path_of: mtcollins1_boot_mc_info_path)
+  let never_ran = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Absent, run: run, path_of: mc_path_of)
+  let not_read = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: pre_power_read_failure_reason(row: mtcollins1_boot_row_value, capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "Unable to send RAW command: Invalid data field in request") } }, run: run, path_of: fru_path_of)
+  let write_failed = mtcollins1_pre_power_retention_of(path: mc_path_of("43"), read_ok: false, content: "", stage: "written" as NonEmptyStr, error: "disk full")
+  let unwritten = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: write_failed }, run: run, path_of: mc_path_of)
   string_contains(s: never_ran, pattern: "mc-info=not retained: the attempt ended before the pre-power phase ran")
     && string_contains(s: not_read, pattern: "fru=not retained: fru print 0 failed: BMC read failed at ipmi lanplus 192.168.1.228 (2026-10-25T12:00:00Z, exit 1): Unable to send RAW command: Invalid data field in request")
     && !string_contains(s: not_read, pattern: "read back")
@@ -164,12 +175,12 @@ test fn a_missing_retention_says_its_own_why_on_the_receipt() -> Bool {
 // stand-in. Three different answers render THREE different receipts, which is what makes this
 // discriminate: nothing that returns a fixed string can pass it.
 test fn a_failed_ipmitool_reports_its_own_stderr_on_the_receipt() -> Bool {
-  let refused = pre_power_read_failure_reason(capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "RAKP 2 HMAC is invalid")
-  let line_refused = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: refused } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_mc_info_path)
-  let lost = pre_power_read_failure_reason(capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 124, stderr: "Timeout while waiting for response")
-  let line_lost = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: lost } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_fru_print_path)
-  let plain = pre_power_read_failure_reason(capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 2, stderr: "Unable to send RAW command: Invalid data field in request\n(second line never quoted)")
-  let line_plain = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: plain } }, run: AttemptRunId { run_id: "45" }, path_of: mtcollins1_boot_mc_info_path)
+  let refused = pre_power_read_failure_reason(row: mtcollins1_boot_row_value, capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 1, stderr: "RAKP 2 HMAC is invalid")
+  let line_refused = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: refused } }, run: AttemptRunId { run_id: "45" }, path_of: mc_path_of)
+  let lost = pre_power_read_failure_reason(row: mtcollins1_boot_row_value, capture: "fru print 0", at: "2026-10-25T12:00:00Z", exit_code: 124, stderr: "Timeout while waiting for response")
+  let line_lost = pre_power_retention_receipt_line(prefix: "fru" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: lost } }, run: AttemptRunId { run_id: "45" }, path_of: fru_path_of)
+  let plain = pre_power_read_failure_reason(row: mtcollins1_boot_row_value, capture: "mc info", at: "2026-10-25T12:00:00Z", exit_code: 2, stderr: "Unable to send RAW command: Invalid data field in request\n(second line never quoted)")
+  let line_plain = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: PrePowerNotRetained { reason: plain } }, run: AttemptRunId { run_id: "45" }, path_of: mc_path_of)
   // X from the tool survives, verbatim, in the receipt line...
   string_contains(s: line_refused, pattern: "RAKP 2 HMAC is invalid")
     && string_contains(s: line_lost, pattern: "Timeout while waiting for response")
@@ -212,8 +223,8 @@ test fn the_gate_reads_back_the_committed_capture_and_the_line_reports_both_ends
 // and never degrade into "the phase never ran".
 test fn a_retention_written_then_lost_is_named_as_that() -> Bool {
   let run = AttemptRunId { run_id: "44" }
-  let kept = mtcollins1_pre_power_retention_of(path: mtcollins1_boot_mc_info_path(run_attempt: "44"), read_ok: true, content: ipmitool_hpm_check_bmc0_45, stage: "written" as NonEmptyStr, error: "")
-  let line = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: kept }, run: run, path_of: mtcollins1_boot_mc_info_path)
+  let kept = mtcollins1_pre_power_retention_of(path: mc_path_of("44"), read_ok: true, content: ipmitool_hpm_check_bmc0_45, stage: "written" as NonEmptyStr, error: "")
+  let line = pre_power_retention_receipt_line(prefix: "mc-info" as NonEmptyStr, executed: Present { value: kept }, run: run, path_of: mc_path_of)
   string_contains(s: line, pattern: "written at artifacts/mtcollins1-boot-mc-info-44.txt but not on disk at conclusion")
     && !string_contains(s: line, pattern: "read back at conclusion")
     && !string_contains(s: line, pattern: "before the pre-power phase ran")

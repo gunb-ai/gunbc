@@ -5058,9 +5058,12 @@ mod compiler_tests {
             by_parent,
         );
         env_value.unit_variant_index_observed = observed;
-        crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
-            std::rc::Rc::new(env_value),
-            "Alpha".to_string(),
+        matches!(
+            crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
+                std::rc::Rc::new(env_value),
+                "Alpha".to_string()
+            ),
+            crate::v1_compiler_infer_env::TypeRefMeasureBinding::TypeRefMeasureBound
         )
     }
 
@@ -5891,6 +5894,115 @@ mod compiler_tests {
                 && !control.contains("more than one module of this closure declares"),
             "a sole declarer resolves by spelling:\n{control}"
         );
+    }
+
+    // A std.nat NAT BEYOND THE 64-BIT RANGE REFUSES ON BOTH ROUTES, EXECUTED (review 85900). std.nat Nat
+    // realizes as the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), and a
+    // grounded natural cast onto the kernel Int is realized as the identity
+    // (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged), so that
+    // identity is safe only while no Nat past i64::MAX can be produced. THE FIXTURE is real std.nat Nat
+    // arithmetic. INTERPRETER: v1_interpreter::run refuses `+` and `*` past the range with IntegerOverflow,
+    // and an in-range Nat computes 4. EMITTED: the fixture is compiled to Rust by compile_sources, built as
+    // a crate and run; past the range the program exits non-zero with an overflow message, in range it
+    // prints 4. No emitted text is searched. Live: it builds a crate (minutes), so the receipts lane runs it.
+    #[test]
+    #[ignore = "live-corpus: builds and runs an emitted crate (minutes per run); the receipts lane runs these with --ignored, the required unit run does not"]
+    fn nat_beyond_the_64_bit_range_refuses_on_both_routes() {
+        let root = workspace_root();
+        let fixture = "module test.fixture.nat_overflow_probe\n\nimport std.nat { Nat }\n\nfn nat_at_i64_max() -> Nat {\n  9223372036854775807\n}\n\nfn past_by_addition() -> Nat {\n  nat_at_i64_max() + 1\n}\n\nfn past_by_multiplication() -> Nat {\n  nat_at_i64_max() * 2\n}\n\nfn in_range() -> Nat {\n  2 + 2\n}\n";
+        let dag_root = root.join("dag").to_string_lossy().to_string();
+        let closure = || {
+            resolve_source_closure(
+                vec![(
+                    "dag/test/fixture/nat_overflow_probe.dag".to_string(),
+                    fixture.to_string(),
+                )],
+                &[dag_root.as_str()],
+            )
+        };
+        let resolved =
+            crate::v1_compiler_compile::compile_to_resolved(std::rc::Rc::new(closure().into()));
+        let graph = resolved
+            .graph
+            .clone()
+            .expect("the std.nat fixture must resolve");
+        for (entry, op) in [("past_by_addition", "+"), ("past_by_multiplication", "*")] {
+            match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), entry) {
+                Err(crate::v1_interpreter::InterpError::IntegerOverflow { op: o, .. })
+                    if o == op => {}
+                other => panic!(
+                    "the interpreter must refuse {entry} with IntegerOverflow on {op}, got {:?}",
+                    other
+                ),
+            }
+        }
+        match crate::v1_interpreter::run(&graph, resolved.source_indices.clone(), "in_range") {
+            Ok(crate::v1_interpreter::Value::Int(4)) => {}
+            other => panic!(
+                "the interpreter must compute an in-range Nat, got {:?}",
+                other
+            ),
+        }
+        let emitted = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(closure().into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        assert!(
+            emitted
+                .files
+                .iter()
+                .any(|f| f.path.contains("test_fixture_nat_overflow_probe")),
+            "the std.nat fixture must be emitted, diagnostics {:?}",
+            emitted.diagnostics
+        );
+        let dir = std::env::temp_dir().join(format!("nat_overflow_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create the workspace root");
+        let rust_crate = emitted
+            .rust_crates
+            .front()
+            .expect("one emitted Rust crate")
+            .clone();
+        crate::cli_run::write_emitted_workspace(
+            &emitted.files,
+            &emitted.emitted_edges,
+            &emitted.rust_crates,
+            &dir,
+            &rust_crate.crate_name,
+        )
+        .expect("the emitted workspace must be written by the one workspace writer");
+        std::fs::create_dir_all(dir.join("src/bin")).expect("create bin dir");
+        std::fs::write(dir.join("src/bin/nat_probe.rs"), String::from("fn main() {\n    use v1_compiled::test_fixture_nat_overflow_probe as p;\n    let v = match std::env::args().nth(1).as_deref() {\n        Some(\"add\") => p::past_by_addition(),\n        Some(\"mul\") => p::past_by_multiplication(),\n        _ => p::in_range(),\n    };\n    println!(\"{v}\");\n}\n").replace("v1_compiled", &rust_crate.crate_name)).expect("write probe bin");
+        let build = std::process::Command::new("cargo")
+            .args(["build", "--release", "--offline", "--bin", "nat_probe"])
+            .current_dir(&dir)
+            .env("CARGO_TARGET_DIR", dir.join("target"))
+            .output()
+            .expect("cargo must be on PATH");
+        assert!(
+            build.status.success(),
+            "the emitted crate must build:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        );
+        let probe = dir.join("target/release/nat_probe");
+        for arm in ["add", "mul"] {
+            let out = std::process::Command::new(&probe)
+                .arg(arm)
+                .output()
+                .expect("run the emitted probe");
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            assert!(!out.status.success() && stderr.contains("overflow"), "the emitted program must refuse {arm} past i64::MAX with an overflow panic; status {:?}, stdout {}, stderr {}", out.status, String::from_utf8_lossy(&out.stdout), stderr);
+        }
+        let ok = std::process::Command::new(&probe)
+            .output()
+            .expect("run the emitted probe");
+        assert!(
+            ok.status.success() && String::from_utf8_lossy(&ok.stdout).trim() == "4",
+            "the emitted program must compute an in-range Nat; status {:?}, stdout {}",
+            ok.status,
+            String::from_utf8_lossy(&ok.stdout)
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // A DECLARATION'S MEMBERS ARE NOT ITS TYPE ARGUMENTS (v1.compiler.emit_rust
