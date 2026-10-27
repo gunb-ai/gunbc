@@ -1,0 +1,89 @@
+module v2.test.claim.lens_application_source_span_refusal_witness
+
+import v2.compiler.source_root_eval { native_lane_file_refusal_index, native_test_context_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import std.algebra { Cons, Empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.test.claim.resolve.namespace_candidate_rule { NcrVerdict, ncr_outcome_in, ncr_read, ncr_verdict_is_resolved, ncr_verdict_of, ncr_verdict_refuses_with }
+import v2.std.text { String }
+import v2.std.node { Symbol }
+
+// SourceSpan HAS ONE HOME, std.types. v2.lens.application once declared an empty second SourceSpan
+// (a nickname, deleted with its only users), so an import of it from there must refuse and an
+// import of it from std.types must resolve. SOURCES ARE SUPPLIED AND THE ROUTE IS REAL: the fixture
+// modules are source text handed to native_test_context_from_ingest and resolved by the production
+// resolver. The stand-in v2.lens.application declares `Lens` only, so the sibling control that
+// imports `Lens` from it resolves: the refusal is about the missing NAME, not the module.
+//
+// PAIRING OBLIGATION, stated divergence: that the REAL v2.lens.application lacks SourceSpan is not
+// read here (no corpus read in a claim). It is read by the pinned claim_batch run recorded in the
+// PR that landed this: the same import fixture exits 0 at the parent and 1 at the deletion head.
+
+data lasf_types_source: String = "module std.types\n\ntype SourceSpan = SpanHere | SpanThere\n"
+
+data lasf_home_source: String = "module v2.lasf_lens\n\ntype Lens = LensOnly | LensOther\n"
+
+data lasf_red_source: String = "module v2.lasf_red\n\nimport v2.lasf_lens { SourceSpan }\n\nfn lasf_red(p: SourceSpan) -> SourceSpan { p }\n"
+
+data lasf_name_control_source: String = "module v2.lasf_name_control\n\nimport v2.lasf_lens { Lens }\n\nfn lasf_name_control(p: Lens) -> Lens { p }\n"
+
+data lasf_types_control_source: String = "module v2.lasf_types_control\n\nimport std.types { SourceSpan }\n\nfn lasf_types_control(p: SourceSpan) -> SourceSpan { p }\n"
+
+data lasf_ingest: SourceRootIngest = Cons {
+  head: ncr_read(source: lasf_types_source, id: ^lasf_types_artifact, unit: ^lasf_types_cu, path: "dag/std/types.dag"),
+  tail: Cons {
+    head: ncr_read(source: lasf_home_source, id: ^lasf_home_artifact, unit: ^lasf_home_cu, path: "dag/lasf_lens.dag"),
+    tail: Cons {
+      head: ncr_read(source: lasf_red_source, id: ^lasf_red_artifact, unit: ^lasf_red_cu, path: "dag/lasf_red.dag"),
+      tail: Cons {
+        head: ncr_read(source: lasf_name_control_source, id: ^lasf_name_control_artifact, unit: ^lasf_name_control_cu, path: "dag/lasf_name_control.dag"),
+        tail: Cons { head: ncr_read(source: lasf_types_control_source, id: ^lasf_types_control_artifact, unit: ^lasf_types_control_cu, path: "dag/lasf_types_control.dag"), tail: Empty }
+      }
+    }
+  }
+}
+
+// ONE NULLARY PRODUCER, FORCED ONCE (the reason v2.test.claim.resolve.namespace_candidate_rule
+// NcrOutcomes states): a per-claim front end would be re-entered once per claim.
+type LasfOutcomes
+  = LasfContextRefused
+  | LasfDecided {
+      red: NcrVerdict
+      name_control: NcrVerdict
+      types_control: NcrVerdict
+    }
+
+fn lasf_outcomes() -> LasfOutcomes {
+  match native_test_context_from_ingest(ingest: lasf_ingest) {
+    Rejected { diagnostics: _ } => LasfContextRefused
+    Accepted { value: context, diagnostics: _ } => {
+      let index = native_lane_file_refusal_index(refusals: context.file_refusals)
+      LasfDecided {
+        red: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_red")),
+        name_control: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_name_control")),
+        types_control: ncr_verdict_of(outcome: ncr_outcome_in(context: context, index: index, ingest: lasf_ingest, module_name: "v2.lasf_types_control"))
+      }
+    }
+  }
+}
+
+test fn importing_source_span_from_lens_application_refuses() -> Bool {
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: v, name_control: _, types_control: _ } => ncr_verdict_refuses_with(v: v, reason: ^resolve_reason_unbound_symbol)
+  }
+}
+
+test fn importing_a_declared_name_from_the_same_module_resolves() -> Bool {
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: _, name_control: v, types_control: _ } => ncr_verdict_is_resolved(v: v)
+  }
+}
+
+test fn importing_source_span_from_std_types_resolves() -> Bool {
+  match lasf_outcomes() {
+    LasfContextRefused => false
+    LasfDecided { red: _, name_control: _, types_control: v } => ncr_verdict_is_resolved(v: v)
+  }
+}
