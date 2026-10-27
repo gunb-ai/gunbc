@@ -29,17 +29,19 @@ import gunbc.rung_drop { RungDrop }
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.recurring_failure_mode { RecurringFailureMode }
 import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.guarantee_stall { GuaranteeStall }
+import gunbc.guarantee_stall.roster { guarantee_stall_roster }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE INHABITANCE PAIRING FOR v2.test.claim.derived_roster, OVER THE REPOSITORY'S TWO REAL LEDGERS
+// THE INHABITANCE PAIRING FOR v2.test.claim.derived_roster, OVER THE REPOSITORY'S REAL LEDGERS
 // (gunbc.source_layout layout_derived_rosters). It reads the live tree on purpose: the claim is that
 // the native derivation and the seed's agree on THIS corpus.
 //
-// THE ORACLE IS THE SEED. This file is evaluated by the seed, so `rung_drop_roster` and
-// `recurring_failure_mode_roster` below are the seed's own in-memory rosters
+// THE ORACLE IS THE SEED. This file is evaluated by the seed, so `rung_drop_roster`,
+// `recurring_failure_mode_roster` and `guarantee_stall_roster` below are the seed's own in-memory rosters
 // (v1_compiler.cli_run.derived_row_roster acquire_dir_files), while the text compared against them is
 // the v2 derivation's (v2.compiler.module_acquisition population_member, the route the native census
 // reads). The two meet at identity grain: the v2 roster's member at position i is a row file, and that
@@ -81,9 +83,22 @@ fn native_members(name: String) -> List<String> {
   }
 }
 
-fn agrees_with_seed(name: String, directory: String, seed_identities: List<String>) -> Bool {
+// THE DECLARATION NAME IS PART OF THE AGREEMENT, not only the list entries. Each test below imports
+// the seed's roster by a literal name; the native module must declare that same name, or an importer
+// resolving on the seed finds nothing natively. The seed's GUARANTEE_STALL row once spelled
+// `all_guarantee_stalls` while the native rule derives `guarantee_stall_roster`, and a members-only
+// comparison stayed green across that fork (review 86347).
+fn native_declares(name: String, declaration: String) -> Bool {
+  match population_member(layout: repository_storage_layout(), bindings: repository_bindings(), name: name) {
+    PopulationMemberRefused { cause: _ } => false
+    PopulationMemberRead { member: member } => member.content.contains(substring: concat("data ", declaration, ": "))
+  }
+}
+
+fn agrees_with_seed(name: String, declaration: String, directory: String, seed_identities: List<String>) -> Bool {
   let members = native_members(name: name)
-  length(xs: members) > 0
+  native_declares(name: name, declaration: declaration)
+    && length(xs: members) > 0
     && length(xs: members) == length(xs: seed_identities)
     && for_all(xs: zip_map(a: members, b: seed_identities, f: fn(stem, identity) { row_file_spells(directory: directory, stem: stem, identity: identity) }), predicate: fn(ok) { ok })
 }
@@ -96,9 +111,16 @@ fn failure_mode_identity(r: RecurringFailureMode) -> String {
   r.identity as String
 }
 
+// A GuaranteeStall carries no identity field; its subject is the one string every row spells
+// literally in its own file, and no two rows share one.
+fn guarantee_stall_identity(s: GuaranteeStall) -> String {
+  s.subject
+}
+
 test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
   agrees_with_seed(
     name: "gunbc.rung_drop.roster",
+    declaration: "rung_drop_roster",
     directory: "dag/gunbc/rung_drop",
     seed_identities: list_map(xs: rung_drop_roster, f: rung_drop_identity)
   )
@@ -107,8 +129,18 @@ test fn the_native_rung_drop_roster_agrees_with_the_seeds() -> Bool {
 test fn the_native_recurring_failure_mode_roster_agrees_with_the_seeds() -> Bool {
   agrees_with_seed(
     name: "gunbc.recurring_failure_mode.roster",
+    declaration: "recurring_failure_mode_roster",
     directory: "dag/gunbc/recurring_failure_mode",
     seed_identities: list_map(xs: recurring_failure_mode_roster, f: failure_mode_identity)
+  )
+}
+
+test fn the_native_guarantee_stall_roster_agrees_with_the_seeds() -> Bool {
+  agrees_with_seed(
+    name: "gunbc.guarantee_stall.roster",
+    declaration: "guarantee_stall_roster",
+    directory: "dag/gunbc/guarantee_stall",
+    seed_identities: list_map(xs: guarantee_stall_roster, f: guarantee_stall_identity)
   )
 }
 

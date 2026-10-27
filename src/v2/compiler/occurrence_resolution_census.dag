@@ -1,0 +1,462 @@
+module v2.compiler.occurrence_resolution_census
+
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key }
+import std.optional { Optional, Present, Absent }
+import std.occurrence_identity { OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrenceSynthetic, OccurrencePending }
+import std.types { List, Map }
+import v2.std.source_position { SourceLineCol }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node { Node, Symbol, symbol_lexeme, Edge, ArrowSignatureOrderEdge, edge_is_core, Arrow, TypeNode, Authored, StructuralLabel, Positional }
+import v2.compiler.emit_produced { module_bodies_in_tree, module_body_member_edges }
+import v2.compiler.symbol_index_fill { symbol_index_binder_type_or_target }
+import v2.compiler.type_declaration_use_census { type_ref_text, ref_text, as_arrow_return }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
+import v2.compiler.resolve {
+  ResolvedTree, OccurrenceResolution, OccurrenceResolutionRecord, OccurrenceResolutionEntry, occurrence_resolution_duplicates, ResolvedReferenceIdentity,
+  ResolvedToKernelSymbol, ResolvedToDeclaration,
+  BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType, BoundByGeneratedReference,
+  AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
+}
+
+// THE PER-MODULE BINDING CENSUS: one row for every reference occurrence resolve recorded, read off the
+// ONE binding record (v2.compiler.resolve ResolvedTree.occurrence_resolutions), never re-derived. It is the
+// census the NAMESPACE-XL waves are driven from (operator ruling 2026-10-15: every name the corpus uses
+// is an ordinary declaration reached by import) -- the BoundAmbient rows are what is left to move -- and
+// the per-occurrence half of the namespace-wave binding diff
+// (gunbc.instruments.namespace_wave_binding_diff), which joins a base run's rows to a head run's.
+//
+// THE KEY IS (module, authored spelling, ordinal), where the ordinal counts this spelling's recorded
+// occurrences in the module in OCCURRENCE order. The occurrence id itself is graph-scoped and is not
+// comparable across two compilations; the ordinal is, for exactly the edits a wave makes: inserting an
+// import adds no reference occurrence of a body name, so it shifts no ordinal. Any other edit that adds
+// or removes an occurrence of a spelling shifts that spelling's ordinals, and the diff reports it as an
+// occurrence that Appeared or Vanished and refuses -- the key's stability is enforced there, not assumed.
+
+type BindingSourceClass
+  = SourceLexicalBinder
+  | SourceParameter
+  | SourceTypeParameter
+  | SourceDeclared
+  | SourceAmbient { table: AmbientBindingTable }
+  | SourceExpectedType
+  | SourceGeneratedReference
+
+type OccurrenceResolutionCensusRow {
+  module: String
+  authored: String
+  ordinal: Int
+  source: BindingSourceClass
+  target: String
+  locus: Optional<SourceLineCol>
+}
+
+// What one module contributed: its rows, the occurrences resolve recorded with two different bindings (a resolver defect the
+// exactly-one-source control refuses on), and the occurrences whose authored spelling did not read
+// (reported, never keyed under a guessed spelling).
+type OccurrenceResolutionContribution {
+  module: String
+  rows: List<OccurrenceResolutionCensusRow>
+  duplicate_records: Int
+  unreadable_spellings: Int
+  unrecorded_references: Int
+  unrecorded_paths: List<String>
+  unanswered_declared_order: List<String>
+  declarations: List<OccurrenceBindingDeclaration>
+}
+
+// A module-level callable the module declares, with its signature rendered by the type census's own
+// reference text (type_declaration_use_census ref_text): a declared parameter or return type is the path
+// of the declaration it resolves to, a kernel atom its name, an applied or composite type `<structural>`.
+type OccurrenceBindingDeclaration {
+  name: String
+  signature: String
+}
+
+// THE ONE SET-ASIDE CATEGORY OF THE EXACTLY-ONE-SOURCE CONTROL, named, typed and counted, never a silent
+// skip (tidy-ant-251's ruling on PR #14112). An Arrow's declared order (^arrow_signature_order_edge) is
+// a list introduction, so its first positional child is a compiler-generated reference to
+// std.algebra.FreeMonoid; resolve carries the whole edge unwalked (resolve_arrow_node_admitted,
+// resolve_type_params_conj: the binder atoms are labels, not references), so nothing answers that head.
+// It is a reference NO ONE RESOLVES, printed as `binding_unanswered <module> <path> <ordinal> declared_order`
+// -- the ordinal is the head's position among the module's declared-order heads in walk order, so two
+// heads in one module are two rows and a reader's count stays per occurrence -- and
+// not refused. Every other unrecorded reference still refuses. It dissolves when resolve answers the
+// head through resolve_generated_declaration_reference, which waits on N2b's provider acquisition
+// (#14266) so that answering it does not newly refuse closures that lack std.algebra.
+type UnrecordedSplit {
+  other: List<String>
+  declared_order: List<String>
+}
+
+fn ambient_binding_table_label(table: AmbientBindingTable) -> String {
+  match table {
+    AmbientKernelTypeSpelling => "kernel_type_spelling"
+    AmbientKernelCanonicalSymbol => "kernel_canonical_symbol"
+    AmbientPrimitiveAuthority => "primitive_authority"
+    AmbientCollectionRoster => "collection_roster"
+  }
+}
+
+fn binding_source_label(source: BindingSourceClass) -> String {
+  match source {
+    SourceLexicalBinder => "lexical"
+    SourceParameter => "parameter"
+    SourceTypeParameter => "type_parameter"
+    SourceDeclared => "declared"
+    SourceAmbient { table: t } => "ambient:" + ambient_binding_table_label(table: t)
+    SourceExpectedType => "expected_type"
+    SourceGeneratedReference => "generated"
+  }
+}
+
+fn resolved_identity_target(identity: ResolvedReferenceIdentity) -> String {
+  match identity {
+    ResolvedToKernelSymbol { symbol: s } => "kernel:" + symbol_lexeme(sym: s)
+    ResolvedToDeclaration { path: p } => qualified_name_to_dotted_string(qn: p)
+  }
+}
+
+// A lexical binder's target is its class, not its site: the site is an occurrence id, which two
+// compilations do not share. A lexical binding that changed WHICH binder answered still changes the
+// source or the ordinal of something the diff sees only when the spelling's population moves; this
+// census does not claim to observe a lexical re-binding that keeps both.
+fn occurrence_resolution_source(binding: OccurrenceResolution) -> BindingSourceClass {
+  match binding {
+    BoundByLexicalBinder { binding: _ } => SourceLexicalBinder
+    BoundToParameter { path: _ } => SourceParameter
+    BoundToTypeParameter { canonical: _ } => SourceTypeParameter
+    BoundToDeclaration { identity: _ } => SourceDeclared
+    BoundAmbient { table: t, identity: _ } => SourceAmbient { table: t }
+    BoundByExpectedType { identity: _ } => SourceExpectedType
+    BoundByGeneratedReference { identity: _ } => SourceGeneratedReference
+  }
+}
+
+fn occurrence_resolution_target(binding: OccurrenceResolution) -> String {
+  match binding {
+    BoundByLexicalBinder { binding: _ } => "lexical"
+    BoundToParameter { path: p } => qualified_name_to_dotted_string(qn: p)
+    BoundToTypeParameter { canonical: c } => symbol_lexeme(sym: c)
+    BoundToDeclaration { identity: i } => resolved_identity_target(identity: i)
+    BoundAmbient { table: _, identity: i } => resolved_identity_target(identity: i)
+    BoundByExpectedType { identity: i } => resolved_identity_target(identity: i)
+    BoundByGeneratedReference { identity: i } => resolved_identity_target(identity: i)
+  }
+}
+
+type BindingCensusFold {
+  ordinals: Map<String, Int>
+  rows: List<OccurrenceResolutionCensusRow>
+  unreadable: Int
+}
+
+// The locus the census walk recorded for an occurrence (v2.compiler.source_root_eval native_census_binding_loci), Absent when none.
+fn binding_census_locus(loci: Map<OccurrenceId, SourceLineCol>, id: OccurrenceId) -> Optional<SourceLineCol> {
+  map_lookup(m: loci, key: id)
+}
+
+// THE ENCODING BOUNDARY of a locus: `<line>:<byte column>`, or `-` for an occurrence the span index does not record.
+// Absence is the Optional's Absent arm everywhere else; this is the one place it becomes text, and a reader parses `-`
+// back to Absent at its own single boundary.
+fn occurrence_resolution_locus_text(locus: Optional<SourceLineCol>) -> String {
+  match locus {
+    Present { value: lc } => to_string(lc.line) + ":" + to_string(lc.byte_column.value)
+    Absent => "-"
+  }
+}
+
+fn occurrence_resolution_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceResolutionContribution {
+  let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_resolutions), key: fn(id) { id.value }, order: int_total_order())
+  let split = unrecorded_split_walk(tree: tree, n: tree.root, order_head: false, acc: UnrecordedSplit { other: [], declared_order: [] })
+  let unrecorded = split.other
+  let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
+    match map_lookup(m: tree.occurrence_resolutions, key: id) {
+      Absent => acc
+      Present { value: record } => binding_census_step(module: module, acc: acc, record: record, locus: binding_census_locus(loci: loci, id: id))
+    }
+  })
+  OccurrenceResolutionContribution {
+    module: module,
+    rows: folded.rows,
+    duplicate_records: length(xs: tree.duplicate_binding_records),
+    unreadable_spellings: folded.unreadable,
+    unrecorded_references: length(xs: unrecorded),
+    unrecorded_paths: unrecorded,
+    unanswered_declared_order: split.declared_order,
+    declarations: occurrence_binding_declarations(tree: tree)
+  }
+}
+
+// THE MODULE'S DECLARED CALLABLES, in member (source) order -- a list read off the module body, never a
+// host map, so the order is deterministic. Only a member whose target is an Arrow is a callable.
+fn occurrence_binding_declarations(tree: ResolvedTree) -> List<OccurrenceBindingDeclaration> {
+  fold_list(xs: occurrence_binding_member_edges(tree: tree), empty: [], cons: fn(acc, edge) { occurrence_binding_declaration_step(acc: acc, edge: edge) })
+}
+
+fn occurrence_binding_declaration_step(acc: List<OccurrenceBindingDeclaration>, edge: Edge) -> List<OccurrenceBindingDeclaration> {
+  match edge.label {
+    Authored { name: n } =>
+      match edge.target.kind {
+        TypeNode { connective: Arrow } =>
+          list_snoc_item(xs: acc, item: OccurrenceBindingDeclaration {
+            name: symbol_lexeme(sym: n),
+            signature: "(" + occurrence_binding_declaration_params(arrow: edge.target) + ") -> " + ref_text(t: as_arrow_return(arrow: edge.target))
+          })
+        _ => acc
+      }
+    StructuralLabel { label: _ } => acc
+    Positional => acc
+  }
+}
+
+fn occurrence_binding_member_edges(tree: ResolvedTree) -> List<Edge> {
+  fold_list(xs: module_bodies_in_tree(node: tree.root, acc: []), empty: [], cons: fn(acc, b) {
+    fold_list(xs: module_body_member_edges(body: b), empty: acc, cons: fn(a, e) { list_snoc_item(xs: a, item: e) })
+  })
+}
+
+fn occurrence_binding_domain_members(domain: Edge) -> List<Edge> {
+  domain.target.children
+}
+
+fn occurrence_binding_declaration_params(arrow: Node) -> String {
+  match list_at_optional(xs: arrow.children, index: 0) {
+    Absent => ""
+    Present { value: domain_edge } => occurrence_binding_params_text(members: occurrence_binding_domain_members(domain: domain_edge))
+  }
+}
+
+fn occurrence_binding_params_text(members: List<Edge>) -> String {
+  fold_list(xs: members, empty: "", cons: fn(acc, m) { occurrence_binding_params_join(acc: acc, text: occurrence_binding_param_text(edge: m)) })
+}
+
+fn occurrence_binding_params_join(acc: String, text: String) -> String {
+  if text == "" { acc } else if acc == "" { text } else { acc + ", " + text }
+}
+
+fn occurrence_binding_param_text(edge: Edge) -> String {
+  match edge.label {
+    Authored { name: p } => symbol_lexeme(sym: p) + ": " + ref_text(t: type_ref_text(n: symbol_index_binder_type_or_target(target: edge.target)))
+    StructuralLabel { label: _ } => ""
+    Positional => ""
+  }
+}
+
+// THE OTHER HALF OF EXACTLY ONE SOURCE PER OCCURRENCE: a declaration reference in the resolved tree
+// carrying a minted occurrence that the record does not hold. resolve_atom_bound is the one producer of
+// a resolved corpus reference and writes the record as it mints, so this is zero unless some other
+// door minted a reference without passing through it -- which is the defect it exists to name.
+// Each one is named by the path it references, so the refusal says which reference escaped the record.
+fn unrecorded_split_walk(tree: ResolvedTree, n: Node, order_head: Bool, acc: UnrecordedSplit) -> UnrecordedSplit {
+  let here = if declaration_reference_unrecorded(tree: tree, n: n) {
+    match declaration_reference_path_optional(node: n) {
+      Present { value: p } =>
+        if order_head {
+          UnrecordedSplit { other: acc.other, declared_order: list_snoc_item(xs: acc.declared_order, item: qualified_name_to_dotted_string(qn: p) + "\t" + to_string(length(xs: acc.declared_order))) }
+        } else {
+          UnrecordedSplit { other: list_snoc_item(xs: acc.other, item: qualified_name_to_dotted_string(qn: p)), declared_order: acc.declared_order }
+        }
+      Absent => acc
+    }
+  } else {
+    acc
+  }
+  unrecorded_split_edges(tree: tree, edges: n.children, in_order: false, first: true, acc: here)
+}
+
+// in_order: these are the children of a declared-order node, whose FIRST positional child is its head.
+fn unrecorded_split_edges(tree: ResolvedTree, edges: List<Edge>, in_order: Bool, first: Bool, acc: UnrecordedSplit) -> UnrecordedSplit {
+  match edges {
+    Empty => acc
+    Cons { head: e, tail: rest } =>
+      unrecorded_split_edges(
+        tree: tree,
+        edges: rest,
+        in_order: in_order,
+        first: false,
+        acc: if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
+          unrecorded_split_order(tree: tree, order: census_edge_target(e: e), acc: acc)
+        } else {
+          unrecorded_split_walk(tree: tree, n: census_edge_target(e: e), order_head: in_order && first, acc: acc)
+        }
+      )
+  }
+}
+
+fn unrecorded_split_order(tree: ResolvedTree, order: Node, acc: UnrecordedSplit) -> UnrecordedSplit {
+  let here = if declaration_reference_unrecorded(tree: tree, n: order) {
+    match declaration_reference_path_optional(node: order) {
+      Present { value: p } => UnrecordedSplit { other: list_snoc_item(xs: acc.other, item: qualified_name_to_dotted_string(qn: p)), declared_order: acc.declared_order }
+      Absent => acc
+    }
+  } else {
+    acc
+  }
+  unrecorded_split_edges(tree: tree, edges: order.children, in_order: true, first: true, acc: here)
+}
+
+// A typed door to an edge's target: the seed's Rust emitter does not carry the element type of a
+// Cons-destructured List<Edge> to a field access on it (no field 'target' on type 'T').
+fn census_edge_target(e: Edge) -> Node {
+  e.target
+}
+
+fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
+  match declaration_reference_path_optional(node: n) {
+    Absent => false
+    Present { value: _ } =>
+      match n.occurrence_id {
+        OccurrenceMinted { id: id } => !map_contains_key(m: tree.occurrence_resolutions, key: id)
+        OccurrenceProjected { id: id, caused_by: _ } => !map_contains_key(m: tree.occurrence_resolutions, key: id)
+        OccurrenceSynthetic => false
+        OccurrencePending { caused_by: _ } => false
+      }
+  }
+}
+
+// ONLY MODULE-LEVEL BINDINGS ARE ROWS: a declaration the author reached, or a stopgap table. A frame
+// binder (lexical, parameter, type parameter) wins the ancestor chain before any import is consulted, so
+// no wave's import can re-bind it, and counting its occurrences would shift the ordinals of a spelling
+// that is also a module-level name for no reason the diff cares about.
+fn occurrence_resolution_is_module_level(binding: OccurrenceResolution) -> Bool {
+  match binding {
+    BoundByLexicalBinder { binding: _ } => false
+    BoundToParameter { path: _ } => false
+    BoundToTypeParameter { canonical: _ } => false
+    BoundToDeclaration { identity: _ } => true
+    BoundAmbient { table: t, identity: _ } => ambient_table_is_module_level(table: t)
+    // An elided head is bound by the expected type's head after alias unfolding, so a wave that retargets
+    // an alias moves it while the annotation's own row stays put: it is a row of its own.
+    BoundByExpectedType { identity: _ } => true
+    // A generated reference is a binding the compiler wrote; a wave that lowers a name to one (ruling H3:
+    // `none` to std.optional Absent) moves exactly this population, so it is a row of its own.
+    BoundByGeneratedReference { identity: _ } => true
+  }
+}
+
+// Every stopgap table answers a module-level name. Written as its own match because the seed's Rust
+// emitter rendered the all-wildcard pattern `BoundAmbient { table: _, identity: _ }` as the bare unit
+// path `OccurrenceResolution::BoundAmbient` (E0533 in the emitted crate, PR #14112), and binding the
+// table keeps the pattern a struct pattern.
+// Workaround row: gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x); delete when the emitter keeps the braces.
+fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
+  match table {
+    AmbientKernelTypeSpelling => true
+    AmbientKernelCanonicalSymbol => true
+    AmbientPrimitiveAuthority => true
+    AmbientCollectionRoster => true
+  }
+}
+
+fn binding_census_step(module: String, acc: BindingCensusFold, record: OccurrenceResolutionRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
+  if occurrence_resolution_is_module_level(binding: record.binding) {
+    binding_census_module_level_step(module: module, acc: acc, record: record, locus: locus)
+  } else {
+    acc
+  }
+}
+
+fn binding_census_module_level_step(module: String, acc: BindingCensusFold, record: OccurrenceResolutionRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
+  match record.authored {
+    Absent => BindingCensusFold { ordinals: acc.ordinals, rows: acc.rows, unreadable: acc.unreadable + 1 }
+    Present { value: qn } =>
+      let spelling = qualified_name_to_dotted_string(qn: qn)
+      let ordinal = match map_lookup(m: acc.ordinals, key: spelling) {
+        Present { value: k } => k
+        Absent => 0
+      }
+      BindingCensusFold {
+        ordinals: map_insert(acc.ordinals, spelling, ordinal + 1),
+        rows: list_snoc_item(xs: acc.rows, item: OccurrenceResolutionCensusRow {
+          module: module,
+          authored: spelling,
+          ordinal: ordinal,
+          source: occurrence_resolution_source(binding: record.binding),
+          target: occurrence_resolution_target(binding: record.binding),
+          locus: locus
+        }),
+        unreadable: acc.unreadable
+      }
+  }
+}
+
+// ONE PRINTED LINE PER ROW, the shape the host-side readers split on. Tab-separated so a dotted path or
+// a kernel symbol never collides with the separator.
+fn occurrence_resolution_census_line(row: OccurrenceResolutionCensusRow) -> String {
+  "binding" + occurrence_resolution_row_fields(row: row)
+}
+
+// A row's fields after its kind word; a complete row and a partial row (binding_partial) share them.
+fn occurrence_resolution_row_fields(row: OccurrenceResolutionCensusRow) -> String {
+  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target + "\t" + occurrence_resolution_locus_text(locus: row.locus)
+}
+
+fn occurrence_resolution_contribution_lines(c: OccurrenceResolutionContribution) -> List<String> {
+  let bound = fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_resolution_census_line(row: row)) })
+  let rows = fold_list(xs: c.declarations, empty: bound, cons: fn(acc, d) { list_snoc_item(xs: acc, item: "binding_declaration\t" + c.module + "\t" + d.name + "\tfn\t" + d.signature) })
+  list_snoc_item(
+    xs: fold_list(
+      xs: c.unanswered_declared_order,
+      empty: fold_list(xs: c.unrecorded_paths, empty: rows, cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unrecorded\t" + c.module + "\t" + p) }),
+      cons: fn(acc, p) { list_snoc_item(xs: acc, item: "binding_unanswered\t" + c.module + "\t" + p + "\tdeclared_order") }
+    ),
+    item: "binding_module\t" + c.module + "\t" + to_string(length(xs: c.rows)) + "\t" + to_string(c.duplicate_records) + "\t" + to_string(c.unreadable_spellings) + "\t" + to_string(c.unrecorded_references)
+  )
+}
+
+// THE PARTIAL OBSERVATION OF A MODULE WHOSE RESOLVE REFUSED: the bindings its accepted sites recorded
+// (v2.compiler.resolve ResolveWalkRefused.partial), keyed exactly as a resolved module's rows -- per
+// spelling, ordinal by occurrence order among the recorded, readable module-level occurrences -- and
+// printed as their own kind, binding_partial, which no reader can mistake for a complete module: the
+// module still prints binding_unreached and stays refused.
+//
+// Its VALIDITY is carried here, in the observation channel, never in resolve, with the exactly-one-source
+// semantics a resolved module already has (v2.compiler.resolve occurrence_resolution_duplicates): a repeat
+// EQUAL to the first record is one occurrence recorded twice and dedupes; a record that DISAGREES makes
+// the whole partial observation unusable, so its rows are withheld and only the count is printed; an
+// occurrence whose authored spelling did not read is counted, never keyed under a guessed spelling.
+// Every refused module that recorded anything prints exactly one
+//   binding_partial_module <module> <rows> <conflicting> <unreadable>
+// and a reader admits nothing from a module whose conflicting field is not 0.
+//
+// The ordinal is NOT an ordinal over every authored occurrence (it is assigned after the
+// module-level filter, over what the refused walk reached), so a count or ordinal match between two
+// compilations does not establish which occurrence corresponds to which. Every row therefore ends with its
+// source locus (`<line>:<byte column>`, v2.compiler.source_root_eval native_census_binding_loci), the provenance
+// a cross-compilation correspondence is verified on; a reader joins on it, never on the ordinal.
+type OccurrenceResolutionPartial {
+  module: String
+  rows: List<OccurrenceResolutionCensusRow>
+  conflicting: Int
+  unreadable: Int
+}
+
+fn occurrence_resolution_partial(module: String, entries: List<OccurrenceResolutionEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceResolutionPartial {
+  let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
+    if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
+  })
+  let conflicting = map_support_keys(m: fold_list(xs: occurrence_resolution_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
+  let ids = list_sort_by_key(xs: map_support_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
+  let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
+    match map_lookup(m: records, key: id) {
+      Absent => acc
+      Present { value: record } => binding_census_step(module: module, acc: acc, record: record, locus: binding_census_locus(loci: loci, id: id))
+    }
+  })
+  OccurrenceResolutionPartial {
+    module: module,
+    rows: if length(xs: conflicting) == 0 { folded.rows } else { [] },
+    conflicting: length(xs: conflicting),
+    unreadable: folded.unreadable
+  }
+}
+
+fn occurrence_resolution_partial_lines(module: String, entries: List<OccurrenceResolutionEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> List<String> {
+  let p = occurrence_resolution_partial(module: module, entries: entries, loci: loci)
+  list_snoc_item(
+    xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_resolution_row_fields(row: row)) }),
+    item: "binding_partial_module\t" + module + "\t" + to_string(length(xs: p.rows)) + "\t" + to_string(p.conflicting) + "\t" + to_string(p.unreadable)
+  )
+}

@@ -1,6 +1,7 @@
 module v2.test.claim.namespace_step0_canary_v2_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent }
 import std.content_hash {
   Fnv1a64Structural,
   Sha256Digest,
@@ -1113,15 +1114,15 @@ test fn a_partition_refusal_is_not_repaired_by_a_later_member() -> Bool {
 // row would make the differential an answer chosen by an implementation detail, so it refuses.
 fn duplicated_census() -> List<CompileDiagnosticCensusRow> {
   [
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 7 }
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 7, rendered_pair: Absent {} }
   ]
 }
 
 fn distinct_census() -> List<CompileDiagnosticCensusRow> {
   [
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/b.dag", blocking: true, count: 7 }
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/b.dag", blocking: true, count: 7, rendered_pair: Absent {} }
   ]
 }
 
@@ -1148,8 +1149,8 @@ test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
   !differential_is_undefined(outcome: step0_histogram_differential(
     pre: distinct_census(),
     post: [
-      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3 },
-      CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: false, count: 7 }
+      CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: true, count: 3, rendered_pair: Absent {} },
+      CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/a.dag", blocking: false, count: 7, rendered_pair: Absent {} }
     ]
   ))
 }
@@ -1167,17 +1168,17 @@ test fn the_same_class_and_subject_at_two_severities_are_two_buckets() -> Bool {
 
 fn increase_pair_pre() -> List<CompileDiagnosticCensusRow> {
   [
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 3 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 9 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/vanishes.dag", blocking: false, count: 4 }
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 3, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 9, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/vanishes.dag", blocking: false, count: 4, rendered_pair: Absent {} }
   ]
 }
 
 fn increase_pair_post() -> List<CompileDiagnosticCensusRow> {
   [
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 11 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 2 },
-    CompileDiagnosticCensusRow { diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/appears.dag", blocking: false, count: 6 }
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shared.dag", blocking: true, count: 11, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/shrinks.dag", blocking: true, count: 2, rendered_pair: Absent {} },
+    CompileDiagnosticCensusRow {diagnostic_class: "UnresolvedName" as NonEmptyStr, subject_name: "dag/w/appears.dag", blocking: false, count: 6, rendered_pair: Absent {} }
   ]
 }
 
