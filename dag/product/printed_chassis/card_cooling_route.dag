@@ -7,6 +7,10 @@ import product.printed_chassis.chassis_clearances {ChassisGap, Measured, NeedsMe
 import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_end_face, a16_duct_design, a16_blower_duct_design, blower_reach_behind, um}
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
+import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
+import std.measure {Watt, watt, watt_count, millilitre_per_second, millilitre_per_second_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, celsius_delta_count}
+import extdeps.physics.dry_air {dry_air_at_20c}
+import product.printed_chassis.exhaust_thermal {exhaust_rise}
 
 // ═══ WHERE THE BLOWER CAN LIVE WHEN THE OPERATOR ALLOWS 70 mm BEHIND THE PLUG END ═══
 //
@@ -515,4 +519,187 @@ fn largest_planform_per_home() -> List<String> {
    join(["what the BFB1012M actually asks for: across the slot ", to_string(value: longest_face_edge(b: b) / 1000),
          " mm; up the end face ", to_string(value: shortest_face_edge(b: b) / 1000),
          " mm; behind the end ", to_string(value: plane_on_end_run_back(b: b, d: d) / 1000), " mm"], "")]
+}
+
+// ================================================================================================
+// THE END-CAP SCROLL: THE OPERATOR'S REFERENCE SHAPE, AS A HOME
+// ================================================================================================
+//
+// The operator proposed a shape on 2026-10-27 and named it as a reference design (gunbc.design_ruling
+// a16_end_cap_scroll_is_the_operators_reference_design): a small centrifugal blower sitting AT the card's
+// plug end, its wheel axis PERPENDICULAR to the card face so it takes air in sideways, with a short curved
+// scroll turning that flow straight into the heatsink's end. Its wheel diameter is about the card's height,
+// and it stays roughly within that height, a little behind the end and a little to one side.
+//
+// WHY THIS SHAPE IS THE ONE WORTH MODELLING, DERIVED AND NOT ASSERTED. The BFB1012M homes fail on planform:
+// laid flat on the end it puts 97.2 mm across a 40.64 mm pitch, beside the row it needs 98.4 mm across a
+// lane whose widest reading is '60mm', and over the row it needs 137-143 mm of a 120 mm interior. The scroll's
+// trick is that it spends the ONE dimension the chassis has in quantity -- the card's own 97.84 mm end-face
+// height -- as its wheel diameter, and spends almost nothing of the two dimensions that are short. A wheel
+// of diameter D, seen from the end, is a disc in the end-face plane: D up the card's height, D across the
+// slot, and the wheel's own width plus the scroll's height behind the end. That is a different trade, and
+// it is the reason the operator's picture is not merely a smaller fan.
+//
+// WHAT THIS SECTION DOES NOT CLAIM. There is no vendor, no model number and no datasheet behind the scroll:
+// it is hypothetical_blower_shape, a shape the corpus may reason about and may NOT buy, and nothing here
+// says such a part exists at any particular size, price, flow or pressure. The airflow it must deliver is
+// derived from the board's own power row and the specific heat of the air the corpus already cites, and the
+// temperature it is allowed to reach is NOT in the corpus -- it is an obligation on the operator, so the
+// derivation is given as a function of that delta rather than as a number dressed up as settled.
+
+// The scroll's own wall allowance, in micrometres: printed PLA, one wall thick, on both faces of the scroll
+// and one wall between the intake and the card's end face. It is the same 2 mm the duct design already
+// carries (a16_duct_design wall), reused rather than invented: one authority for "how thick a wall is".
+fn scroll_wall(d: GpuDuctDesign) -> Int { um(m: d.wall) }
+
+// How far behind the end the scroll reaches, for a given wheel diameter: the wheel's width (which the scroll
+// housing must wrap, plus a wall each side of it) plus the curved turn. This repository does NOT know the
+// wheel's width-to-diameter ratio -- no datasheet behind the shape -- so it is a declared design parameter
+// with a name, and the fit answer is given as a function of it. `wheel_width_over_diameter` is the honest
+// place to put the assumption, so the witness can vary it instead of hiding it.
+fn scroll_run_back_um(wheel_diameter_um: Int, wheel_width_over_diameter: Int, d: GpuDuctDesign) -> Int {
+  // wheel_width_over_diameter is a percent, so the arithmetic stays in Int without a division by zero risk.
+  let wheel_width = wheel_diameter_um * wheel_width_over_diameter / 100
+  wheel_width + 2 * scroll_wall(d: d)
+}
+
+// THE LARGEST WHEEL THAT FITS, in each direction, given the readings of 2026-10-27. Three caps, and the
+// answer is the least of them:
+//
+//   the card's own height   the wheel must stay within the end face or it overhangs into the slot above, and
+//                           nothing was read above the row -- the operator's 120 mm is floor-to-lid at an
+//                           unnamed place, which does not settle what sits above a card's plug end;
+//   the slot and the 46 mm  the wheel spans the slot, so it may reach only as far across as the flat-on-end
+//                           housing may: pitch + 2 * the declared side lane, or the pair span for two ducted
+//                           cards, whichever is less (the same cap flat_on_end_housing_length_cap derives);
+//   the declared rear bound the scroll's depth behind the end must fit the operator's 70 mm, which through
+//                           scroll_run_back_um caps the wheel's WIDTH, and so its diameter.
+//
+// Each is reported with its origin, and the wheel is capped by the LEAST of them. `wheel_width_over_diameter`
+// is the assumption that moves the third cap, so it is a parameter and the witness sweeps it.
+fn scroll_max_wheel_diameter_um(wheel_width_over_diameter: Int, d: GpuDuctDesign) -> ShapeExtent {
+  let by_height = um(m: a16_end_face.face_length)
+  let by_span = flat_on_end_housing_length_cap()
+  let rear_room = gap_room_um(g: card_end_rear_fan_clearance)
+  let wall = scroll_wall(d: d)
+  // depth behind the end <= rear room, so wheel width <= rear room - 2 walls, so D <= that * 100 / ratio.
+  let by_depth_um = if wheel_width_over_diameter <= 0 { 0 } else { (rear_room - 2 * wall) * 100 / wheel_width_over_diameter }
+  let cap = smaller_i(a: smaller_i(a: by_height, b: by_span), b: by_depth_um)
+  let which = if cap == by_height {
+    "the card's own 97.84 mm end-face height; nothing was read above the row, so a wheel may not overhang into the slot above"
+  } else if cap == by_span {
+    "what two ducted cards leave across the slot: one 40.64 mm pitch plus the 'between the two cards is 46mm' gap, spent as a pair of overhangs"
+  } else {
+    "the operator's declared 70 mm behind the plug end, through the wheel's width in the scroll housing"
+  }
+  ShapeExtent { at_most: shape_um(m: cap), capped_by: which, measured: true }
+}
+
+// WHICH SIDE EACH CARD'S INTAKE FACES, per card in the row. A scroll takes air in along its wheel axis --
+// sideways, in this home -- and it cannot take it in through the card beside it, nor through the chassis
+// wall it is against. So the intake faces the free side, and the two cards in one row have opposite free
+// sides: the card nearer the wall faces away from the wall (into the gap between the cards), and the card
+// with '60mm until it touches the heatsink' faces out into that lane. Both intakes therefore face the SAME
+// region, the space between them, which is the honest consequence of the operator's numbers and the thing
+// to watch on the fit print: two sideways intakes 46 mm apart, drinking from the same air.
+fn scroll_intake_facing(card_index: Int, card_count: Int) -> String {
+  if card_count <= 0 {
+    "no cards: nothing to face"
+  } else if card_index < 0 || card_index >= card_count {
+    "no such card in the row"
+  } else if card_count == 1 {
+    "the free lane, whichever side has it: the readings give '60mm until it touches the heatsink' on one side and 'a few mm' on the other, and a sideways intake cannot drink through a wall"
+  } else if card_index == 0 {
+    "toward the wall, away from it: intake faces the free lane the operator read as '60mm until it touches the heatsink'"
+  } else {
+    "toward the wall side: intake faces the inter-card gap, because the wall side is 'a few mm' and cannot be drunk through -- so both cards drink the same air between them"
+  }
+}
+
+// THE ANSWER FOR THE OPERATOR'S SHAPE, as text: the largest wheel under the readings, at the wheel-width
+// ratio the design assumes, per home, and where each card's intake faces.
+fn scroll_fit_report(wheel_width_over_diameter: Int) -> List<String> {
+  let d = a16_wall_design()
+  [join(["the operator's end-cap scroll, at a wheel width/diameter ratio of ", to_string(value: wheel_width_over_diameter),
+         " percent, fits a wheel ", extent_display(e: scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d))], ""),
+   join(["  at that diameter it reaches ", to_string(value: scroll_run_back_um(wheel_diameter_um: measure_count(m: scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d).at_most), wheel_width_over_diameter: wheel_width_over_diameter, d: d) / 1000),
+         " mm behind the end, against the 70 mm the operator declared"], ""),
+   join(["  card 0 (nearest the wall): ", scroll_intake_facing(card_index: 0, card_count: 2)], ""),
+   join(["  card 1 (the heatsink side): ", scroll_intake_facing(card_index: 1, card_count: 2)], ""),
+   "  and the shape is hypothetical: no vendor, no model, no datasheet. Nothing here says a part exists; it says what size the chassis would accept if one does."]
+}
+
+// ================================================================================================
+// THE AIRFLOW THE A16 NEEDS -- AND WHY IT IS A FUNCTION AND NOT A NUMBER
+// ================================================================================================
+//
+// The board is PassiveThermalSolution (extdeps.gpu.nvidia_a16 nvidia_a16_board_facts.thermal): it carries no
+// fan of its own, so whatever moves its heat is THIS design's job. What the datasheet row does NOT carry is
+// an airflow requirement -- line 23 of that module says so in as many words ("no airflow requirement"; the
+// airflow-direction row states only which way the heat sink can be blown through). So a CFM figure written
+// here as if it were transcribed would be invented, and that is the exact move 4d forbids.
+//
+// What CAN be derived is the flow that carries the board's own cited power away, given a temperature rise
+// somebody is willing to accept. Q = m_dot * cp * dT, with m_dot from the density and specific heat the
+// corpus already cites (extdeps.physics.dry_air dry_air_at_20c), inverted for the volume flow. The board
+// power is cited (250 W default and maximum, 235 W MaxQ, 195 W minimum); cp and density are cited; the
+// ALLOWABLE RISE is neither -- it is the operator's decision, so it is an argument and the answer is given
+// as a curve over it, not a single number. The obligation is named below so nobody reads the curve as settled.
+//
+// Two things this leaves OUT, both honest rather than convenient: it assumes all the board's heat goes into
+// the air this duct moves, which ignores the conduction into the board and the radiation off the fins that
+// exhaust_thermal lists as unmodelled couplings, and it is free-air flow at the fan's inlet, which is not
+// the flow the scroll will actually deliver against the scroll's own pressure drop. Both push the required
+// free-air figure UP, never down, so reading these numbers as a minimum is the safe direction to read them.
+
+// Volume flow in mL/s needed to carry `heat_watts` away at a rise of `rise_k` kelvin, using only cited
+// properties: rho [g/m3] * V [mL/s] / 1000 = m_dot [mg/s], and Q [W] = m_dot [mg/s] * 1e-6 [kg/mg] * cp * dT.
+// Rounded UP, because a flow rounded down under-delivers.
+fn required_flow_ml_per_s(heat_watts: Int, rise_k: Int) -> Int {
+  let rho = gram_per_cubic_metre_count(d: dry_air_at_20c.density)
+  let cp = joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp)
+  let denom = rho * cp * rise_k / 1000
+  if denom <= 0 { 0 } else { (heat_watts * 1000000 + denom - 1) / denom }
+}
+
+// The same, checked back through the corpus's own forward function: exhaust_rise at the flow this returns
+// must give a rise no greater than asked. That is the witness, and it is why the derivation above is allowed
+// to exist next to exhaust_thermal instead of duplicating it.
+fn required_flow_rise_check(heat_watts: Int, rise_k: Int) -> Bool {
+  let flow = millilitre_per_second(count: required_flow_ml_per_s(heat_watts: heat_watts, rise_k: rise_k))
+  match exhaust_rise(heat: watt(count: heat_watts), flow: flow) {
+    Present { value: d } => celsius_delta_count(delta: d) <= rise_k
+    Absent => false
+  }
+}
+
+// The A16's own power rows, read rather than quoted: the default and the maximum are what the duct must be
+// sized against, MaxQ and the minimum are what it is sized against when the operator caps the card.
+fn a16_power_points_w() -> List<String> {
+  let bp = nvidia_a16_board_facts.board_power
+  [join(["default ", to_string(value: watt_count(w: bp.default)), " W"], ""),
+   join(["maximum ", to_string(value: watt_count(w: bp.maximum)), " W"], ""),
+   join(["minimum ", to_string(value: watt_count(w: bp.minimum)), " W"], "")]
+}
+
+// THE CURVE, at the board's maximum, over the rises an operator might accept. Each row says what it is: the
+// flow, and the standing of the rise that produced it. The 15 K and 20 K rows are where a card blown through
+// a printed scroll usually lands; the 5 K row is what a quiet build would want; none of them is a claim
+// about where the A16's junction will actually sit, which needs the installed measurement exhaust_thermal
+// already asks for.
+fn airflow_required_at_rises() -> List<String> {
+  let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
+  let rises = [5, 10, 15, 20, 30]
+  map(rises, k => join(["at ", to_string(value: k), " K of rise across the whole air path, one A16 at its maximum ",
+                        to_string(value: watts), " W needs at least ", to_string(value: required_flow_ml_per_s(heat_watts: watts, rise_k: k)),
+                        " mL/s of free air (", to_string(value: required_flow_ml_per_s(heat_watts: watts, rise_k: k) * 2 / 60),
+                        " CFM to two digits) -- the rise is an operator allowance, not a reading"], ""))
+}
+
+// WHAT THE BFB1012M ACTUALLY MOVES, for comparison, and the standing of that figure: a transcribed free-air
+// rating from the listing, at zero static pressure, which is not the flow it will deliver in a scroll.
+fn bfb1012m_flow_context() -> String {
+  let flow = millilitre_per_second_count(f: delta_bfb1012m_rating.free_air_flow)
+  join(["the BFB1012M is rated at ", to_string(value: flow), " mL/s free air -- ", to_string(value: flow * 2 / 60),
+        " CFM to two digits, at zero static pressure and with the listing's standing (TranscribedUncited, not an instrument reading). Against the curve above it says whether a scroll of the size the chassis accepts could move the heat at all"], "")
 }
