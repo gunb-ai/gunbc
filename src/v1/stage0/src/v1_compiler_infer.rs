@@ -13361,12 +13361,6 @@ pub fn infer_call_arguments_generic_pass(
             } else {
                 ar_inferred.clone()
             };
-            {
-                let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
-                let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
-                let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
-                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} chain={} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone()), type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone()), diag_chain(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), 2), st.subst.iter().map(|(k,v)| format!("{}={}",k,type_node_label(v.clone(),scope.type_env.source_indices.clone()))).collect::<Vec<_>>());
-            }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
             } else {
@@ -26153,46 +26147,6 @@ pub fn param_is_generic_decl(
     }
 }
 
-// A generic parameter binds only on EVIDENCE: a type, not a stand-in for one. A candidate
-// whose own head is a type variable -- reached by unwrapping the resolutions a resolved node
-// carries, which is what the verdict's container arm stops short of -- is the ABSENCE of a
-// type, and binding a parameter to it (above all T := T, a copy of itself) is what keeps the
-// parameter unsolved while letting the emitter print a panic for the cast it then checks. An
-// argument that carries no element, an unresolved lambda return, a variable standing in for a
-// container's slot: all of them contribute nothing here, leaving the slot open for a later
-// argument or the second pass.
-fn generic_binding_candidate_is_evidence(candidate: Rc<Node>, source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
-    let mut cursor = candidate;
-    loop {
-        match cursor.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _ }) => return false,
-            Some(InferredNode::Resolved { node }) => {
-                if node.clone() == cursor {
-                    break;
-                }
-                cursor = node;
-            }
-            _ => break,
-        }
-    }
-    crate::v1_compiler_infer_types::is_fully_resolved(cursor.clone(), source_indices.clone())
-}
-
-fn diag_chain(n: Rc<Node>, depth: u32) -> String {
-    let head = match n.inferred.clone().as_deref() {
-        None => "None".to_string(),
-        Some(x) => {
-            let t = format!("{:?}", x);
-            t.chars().take(70).collect::<String>()
-        }
-    };
-    let kids: Vec<String> = if depth == 0 { vec![] } else { n.children.iter().map(|c| diag_chain(c.clone(), depth - 1)).collect() };
-    let kid_txt = if kids.is_empty() { "".to_string() } else { format!(" kids=[{}]", kids.join(" | ")) };
-    format!("{{inf={} conn={:?} nc={} ann={} label={} {}}}", head, n.connective, n.children.len(), n.type_annotation.is_some(), type_node_label(n.clone(), EMPTY_SI.with(|m| m.clone())), kid_txt)
-}
-
-thread_local! { static EMPTY_SI: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(HashMap::new()); }
-
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -26220,24 +26174,9 @@ pub fn unify_generics(
                 __found
             })
         {
-            // A generic parameter binds only on evidence: a type whose own type positions are all
-            // resolved. An argument that carries a type variable -- an empty-list accumulator's
-            // element, an unresolved lambda return, another call's own parameter -- is the ABSENCE
-            // of evidence, not evidence of a type; binding the parameter to it (above all to a
-            // copy of itself, T := T) fixes the parameter first and keeps it against the argument
-            // that would actually solve it. Such an argument contributes nothing, leaving the slot
-            // open for a later argument or the second pass, and stays out of the substitution
-            // rather than being emitted unsolved.
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    if generic_binding_candidate_is_evidence(
-                        actual.clone(),
-                        source_indices.clone(),
-                    ) {
-                        v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
-                    } else {
-                        acc.clone()
-                    }
+                    v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())
                 }
                 Some(_) => acc.clone(),
             }

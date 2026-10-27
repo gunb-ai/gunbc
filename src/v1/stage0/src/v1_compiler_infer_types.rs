@@ -1490,7 +1490,6 @@ pub fn unify_template(
                 if (v1_rt::map_get(&subst, var_id.clone()) != std::option::Option::None) {
                     subst.clone()
                 } else {
-                    eprintln!("DIAGTMPL var={:?} concrete={} selfbind={}", var_id.clone(), type_node_label(concrete.clone(), source_indices.clone()), type_node_label(concrete.clone(), source_indices.clone()) == var_id.clone());
                     v1_rt::rc_map_insert(subst.clone(), var_id.clone(), concrete.clone())
                 }
             }
