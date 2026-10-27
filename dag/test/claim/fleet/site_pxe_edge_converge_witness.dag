@@ -13,7 +13,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64 }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64 }
 import std.decl_ref { decl_ref }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
@@ -60,6 +60,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainPinned,
   SitePxeEdgeChainUnpinned,
   SitePxeEdgePinnedChain,
+  SitePxeEdgePinnedMember,
   site_pxe_edge_chain_pins,
   site_pxe_edge_arm64_ipxe_chain_pin,
   site_pxe_edge_ubuntu_chain_pin,
@@ -147,6 +148,11 @@ import gunbc.fleet.site_pxe_edge_converge {
   PlacementRefused,
   PlacementVerified,
   site_pxe_edge_withheld_only_on_members,
+  site_pxe_edge_chain_media,
+  ChainMediaOne,
+  ChainMediaRefused,
+  ChainMediaNone,
+  ChainMediaMixed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -996,4 +1002,46 @@ test fn placement_does_not_cross_architectures() -> Bool {
   let arm = SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "snponly.efi", reason: "No such file" }, tail: [] } }
   site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [arm]) == false
     && site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: []) == false
+}
+
+// THE IMAGE IS THE CHAIN'S OWN MEDIA (review 86920): placement and the install surface read which ISO holds the
+// members off the members' sources, never a point release named at the dispatch site.
+test fn the_amd64_chain_names_its_own_iso() -> Bool {
+  match amd64_chain() {
+    Present { value: c } => match site_pxe_edge_chain_media(chain: c) {
+      ChainMediaOne { media: md } => md == noble_numbat_2404_3_live_server_amd64
+      ChainMediaRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// RED: one member re-sourced from another ISO leaves the chain with no single image, named by both media.
+test fn a_chain_mixing_two_isos_has_no_image() -> Bool {
+  match amd64_chain() {
+    Present { value: c } => {
+      let swapped = SitePxeEdgePinnedChain {
+        architecture: c.architecture,
+        members: FreeSemigroup {
+          head: c.members.head,
+          tail: map(c.members.tail, m => match m.source {
+            VerifiedMediaSource { media: _, source: src, pin: pn, digest: d } => if (m.member.served_path as String) == "vmlinuz" { SitePxeEdgePinnedMember { member: m.member, source: VerifiedMediaSource { media: noble_numbat_2404_5_live_server_arm64, source: src, pin: pn, digest: d } } } else { m }
+            IpxeBuildSource { build: _ } => m
+            RenderedSource { content: _, digest: _ } => m
+          }),
+        },
+        citation: c.citation,
+      }
+      site_pxe_edge_chain_media(chain: swapped) == ChainMediaRefused { cause: ChainMediaMixed { first: noble_numbat_2404_3_live_server_amd64, other: noble_numbat_2404_5_live_server_arm64 } }
+    }
+    Absent => false
+  }
+}
+
+// RED: the iPXE chain has no media member, so it has no image to place.
+test fn the_ipxe_chain_has_no_install_media() -> Bool {
+  match arm_chain(pin: pinned(digest: digest_a)).first() {
+    Present { value: c } => site_pxe_edge_chain_media(chain: c) == ChainMediaRefused { cause: ChainMediaNone }
+    Absent => false
+  }
 }

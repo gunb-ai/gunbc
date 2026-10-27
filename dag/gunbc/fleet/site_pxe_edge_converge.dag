@@ -98,7 +98,6 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
-  noble_numbat_2404_3_live_server_amd64,
   UbuntuNetworkBootChain,
   UbuntuNetworkBootMember,
   UbuntuNetworkBootMemberSource,
@@ -1784,6 +1783,48 @@ fn place_site_pxe_edge_ubuntu_chain(target: SshTarget, context: FleetSshExecutio
       }
 }
 
+// THE ONE ISO A CHAIN'S MEDIA MEMBERS ARE TAKEN FROM, read off the members' own sources (review 86920): the chain's
+// pins already say which media each member was extracted from, so placement and the install surface take the image
+// from there and never name a point release of their own. A chain with no media member, or with members from two
+// media, has no single image and refuses.
+type SitePxeEdgeChainMediaRefusal
+  = ChainMediaNone
+  | ChainMediaMixed { first: UbuntuInstallMediaArtifactRow, other: UbuntuInstallMediaArtifactRow }
+
+type SitePxeEdgeChainMedia
+  = ChainMediaOne { media: UbuntuInstallMediaArtifactRow }
+  | ChainMediaRefused { cause: SitePxeEdgeChainMediaRefusal }
+
+fn site_pxe_edge_chain_media(chain: SitePxeEdgePinnedChain) -> SitePxeEdgeChainMedia {
+  let medias = flat_map(site_pxe_edge_pinned_members(chain: chain), m => match m.source {
+    VerifiedMediaSource { media: md, source: _, pin: _, digest: _ } => [md]
+    IpxeBuildSource { build: _ } => []
+    RenderedSource { content: _, digest: _ } => []
+  })
+  match medias.first() {
+    Absent => ChainMediaRefused { cause: ChainMediaNone }
+    Present { value: first } => match first_where(xs: medias, keep: md => md != first) {
+      Absent => ChainMediaOne { media: first }
+      Present { value: other } => ChainMediaRefused { cause: ChainMediaMixed { first: first, other: other } }
+    }
+  }
+}
+
+fn site_pxe_edge_chain_media_refusal_text(cause: SitePxeEdgeChainMediaRefusal) -> String {
+  match cause {
+    ChainMediaNone => "the chain has no member taken from install media"
+    ChainMediaMixed { first: a, other: b } => join(["the chain's members come from two install media: ", ubuntu_install_media_filename(artifact: a) as String, " and ", ubuntu_install_media_filename(artifact: b) as String], "")
+  }
+}
+
+// The pinned x86 chain, whose media the install surface serves as the installer image.
+fn site_pxe_edge_x86_pinned_chain(pins: List<SitePxeEdgeChainPin>) -> SitePxeEdgePinnedChain? {
+  flat_map(pins, p => match p {
+    SitePxeEdgeChainPinned { chain: c } => if c.architecture == X86_64 { [c] } else { [] }
+    SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
+  }).first()
+}
+
 // WHICH CHAIN PLACEMENT RUNS FOR: apply mode with privilege held, a pinned Ubuntu chain whose ONLY causes are its own
 // members (unplaced or differing). A chain withheld for any other cause is not placed into, and the ARM chain's
 // committed iPXE image is placed by a separate, operator-approved step.
@@ -1794,16 +1835,18 @@ fn site_pxe_edge_placement_for(target: SshTarget, context: FleetSshExecutionCont
       if site_pxe_edge_probe_held(probe: privilege) == false {
         PlacementNotAttempted { reason: "administrator privilege not held" }
       } else {
-        match site_pxe_edge_installer_image(media: noble_numbat_2404_3_live_server_amd64) {
-          Absent => PlacementRefused { step: "installer image", reason: "the media row's digest is not a sha256 digest" }
-          Present { value: image } =>
-            match flat_map(pins, p => match p {
-              SitePxeEdgeChainPinned { chain: c } => if c.architecture == X86_64 && site_pxe_edge_withheld_only_on_members(architecture: c.architecture, standings: standings) { [c] } else { [] }
-              SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
-            }).first() {
-              Absent => PlacementNotNeeded
-              Present { value: chain } => place_site_pxe_edge_ubuntu_chain(target: target, context: context, chain: chain, image: image)
+        match flat_map(pins, p => match p {
+          SitePxeEdgeChainPinned { chain: c } => if c.architecture == X86_64 && site_pxe_edge_withheld_only_on_members(architecture: c.architecture, standings: standings) { [c] } else { [] }
+          SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } => []
+        }).first() {
+          Absent => PlacementNotNeeded
+          Present { value: chain } => match site_pxe_edge_chain_media(chain: chain) {
+            ChainMediaRefused { cause: why } => PlacementRefused { step: "installer image", reason: site_pxe_edge_chain_media_refusal_text(cause: why) }
+            ChainMediaOne { media: md } => match site_pxe_edge_installer_image(media: md) {
+              Absent => PlacementRefused { step: "installer image", reason: "the media row's digest is not a sha256 digest" }
+              Present { value: image } => place_site_pxe_edge_ubuntu_chain(target: target, context: context, chain: chain, image: image)
             }
+          }
         }
       }
   }
@@ -1888,8 +1931,13 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
     Present { value: i } => site_edge_served_path_collisions(roster: i.roster)
   }
   let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, roster: first_onboarding_known_client_mac, servable: servable, collisions: collisions, dnsmasq_binary: binary, privilege: privilege)
-  let image = site_pxe_edge_installer_image(media: noble_numbat_2404_3_live_server_amd64)
-  let image_standing = match image {
+  let image_media = match site_pxe_edge_x86_pinned_chain(pins: pins) {
+    Absent => ChainMediaRefused { cause: ChainMediaNone }
+    Present { value: c } => site_pxe_edge_chain_media(chain: c)
+  }
+  let image_standing = match image_media {
+    ChainMediaRefused { cause: why } => InstallerImageUnplaced { reason: site_pxe_edge_chain_media_refusal_text(cause: why) }
+    ChainMediaOne { media: md } => match site_pxe_edge_installer_image(media: md) {
     Absent => InstallerImageUnplaced { reason: "the media row's digest is not a sha256 digest" }
     Present { value: im } =>
       if length(site_pxe_edge_install_bindings) == 0 {
@@ -1900,6 +1948,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
           TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: site_pxe_edge_installer_image_path(image: im), success: r.success, line: r.stdout)
         })
       }
+    }
   }
   let installs = match inputs {
     Absent => map(site_pxe_edge_install_bindings, b => InstallWithheld { mac: site_pxe_edge_binding_mac(binding: b), refusals: FreeSemigroup { head: InstallChainNotServable, tail: [] } })
