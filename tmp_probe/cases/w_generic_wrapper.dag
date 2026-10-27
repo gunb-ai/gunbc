@@ -1,0 +1,16 @@
+module tprobe.w_generic_wrapper
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map, FreeMonoid }
+
+// CONTROL for the binder-identity edge: inside a GENERIC caller, binding the callee's T to the
+// caller's in-scope U is legitimate evidence. Must keep typing as List<U> and compile.
+fn push_one<U>(xs: List<U>, item: U) -> List<U> {
+  list_push(xs: xs, item: item)
+}
+
+fn probe_case(seed: List<NonEmptyStr>) -> Int {
+  let pushed = push_one(xs: seed, item: "z" as NonEmptyStr)
+  count(pushed)
+}

@@ -1,0 +1,14 @@
+module tprobe.w2_generic_wrapper_distinct
+
+import std.types { String, Int, Bool, List, NonEmptyStr }
+import std.list { distinct_by_key, duplicated_by_key }
+import std.algebra { list_push, list_map, FreeMonoid }
+
+fn distinct_ours<U>(xs: List<U>, key: fn(U) -> String) -> List<U> {
+  distinct_by_key(xs: xs, key: key)
+}
+
+fn probe_case(seed: List<NonEmptyStr>) -> Int {
+  let kept = distinct_ours(xs: seed, key: fn(k) { k as String })
+  count(kept)
+}
