@@ -59,6 +59,16 @@ fn docker_ce_apt_source_line(repo: DockerCeAptRepo) -> String {
   )
 }
 
+// THE TWO ABSOLUTE PATHS THE BOOTSTRAP WRITES INTO, declared rather than spelled at each use. Both were
+// string literals inside the script below, which is the reason a second consumer could not reuse this
+// module's data: gunbc.runner.runner_gpu_container_toolchain models the same installation as typed actions
+// and needs the keyring DIRECTORY to create it and the sources LIST to write it. Naming them here keeps one
+// spelling shared by the script and the legs, so they cannot drift — a leg that dearmored into a different
+// directory than the one it created, or wrote sources somewhere apt does not read, would fail on a host
+// rather than in review, which is the expensive direction.
+data docker_ce_keyrings_directory: NonEmptyStr = "/etc/apt/keyrings"
+data docker_ce_sources_list_path: NonEmptyStr = "/etc/apt/sources.list.d/docker.list"
+
 // The docker-ce apt-repo bootstrap — install the keyrings dir, curl+dearmor the cited
 // download.docker.com gpg key, write the deb source line, apt-get update, apt-get
 // install docker-ce and docker-ce-rootless-extras — is rendered as a POSIX shell
@@ -97,7 +107,7 @@ fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyS
       "set -e",
       join(
         map(
-          sudo_elevate_argv(command: coreutils_install_directory_argv(mode: docker_ce_keyrings_directory_mode, path: "/etc/apt/keyrings")),
+          sudo_elevate_argv(command: coreutils_install_directory_argv(mode: docker_ce_keyrings_directory_mode, path: docker_ce_keyrings_directory as String)),
           w => posix_single_quote(spelling: w),
         ),
         " ",
@@ -111,7 +121,7 @@ fn docker_ce_repo_install_script(repo: DockerCeAptRepo, packages: List<NonEmptyS
         " ",
       ),
       join(["gpg --show-keys --with-colons ", repo.keyring_path as String, " | grep -q ", repo.keyring_fingerprint as String, " || { echo 'DockerKeyringFingerprintRefusal: fetched key does not match pinned fingerprint ", repo.keyring_fingerprint as String, "' >&2; exit 1; }"], ""),
-      join(["echo '", docker_ce_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", "/etc/apt/sources.list.d/docker.list"]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"], ""),
+      join(["echo '", docker_ce_apt_source_line(repo: repo), "' | ", join(map(sudo_elevate_argv(command: ["tee", docker_ce_sources_list_path as String]), w => posix_single_quote(spelling: w)), " "), " >/dev/null"], ""),
       join(
         map(
           sudo_elevate_argv(command: ["apt-get", "update", "-q"]),

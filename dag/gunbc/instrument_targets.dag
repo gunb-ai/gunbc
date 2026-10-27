@@ -914,6 +914,27 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+// THE CREDENTIAL ACQUISITION ROWS THAT NEED A USER SYSTEMD MANAGER. test.claim.dispatch_credential_acquisition_witness
+// starts real transient units through `systemd-run --user` in fourteen rows, which no session container or remote
+// build runner can host. The wire function probes the manager first (a refusal is no observation, exit 2), then runs
+// those rows and answers 0 only if all held. Dispatched to the fleet's self-hosted runners (instrument_dispatch_labels),
+// never a merge gate. Kept beyond gunbc#14972: it is the only route that executes these rows at all.
+fn credential_acquisition_systemd_rows_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "credential-acquisition-systemd-rows" } }
+}
+
+fn credential_acquisition_systemd_rows_entry() -> String {
+  "dag/test/claim/dispatch_credential_acquisition_witness.dag"
+}
+
+fn credential_acquisition_systemd_rows_function() -> String {
+  "credential_acquisition_systemd_rows_wire"
+}
+
+fn credential_acquisition_systemd_rows_binding() -> TargetBinding {
+  TargetBinding { target: credential_acquisition_systemd_rows_label() producer: CliWireProgramProducer { entry: credential_acquisition_systemd_rows_entry() function: credential_acquisition_systemd_rows_function() } }
+}
+
 fn roster_import_sweep_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
 }
@@ -1209,6 +1230,51 @@ fn brand_mark_assets_binding() -> TargetBinding {
   TargetBinding { target: brand_mark_assets_label() producer: NativeClaimProgramProducer { entry: brand_mark_assets_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b): the pinned OpenResty run
+// with gunbc.serving.router_proxy_config's emitted configuration by the NativeClaimDriver program
+// gunbc.instruments.router_proxy_falsifier, through extdeps.docker.cli_service DockerCli (ruling
+// gunbc.design_ruling native_claim_route_admits_the_docker_cli). It needs a docker daemon, so it is not a
+// merge gate; it is dispatched on the fleet (gunbc.instruments.instrument_dispatch_workflow) at the head
+// under test, and a runner with no daemon answers no observation.
+// `gunbc test //gunbc/instruments:router-proxy-falsifier`.
+fn router_proxy_falsifier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "router-proxy-falsifier" } }
+}
+
+fn router_proxy_falsifier_entry() -> String {
+  "dag/gunbc/instruments/router_proxy_falsifier.dag"
+}
+
+fn router_proxy_falsifier_binding() -> TargetBinding {
+  TargetBinding { target: router_proxy_falsifier_label() producer: NativeClaimProgramProducer { entry: router_proxy_falsifier_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+// ONE RUN OF THE SERVING BENCHMARK ON ITS CELL (work item node://adhoc-ffb4b5c7-4a5): the NativeClaimDriver
+// program gunbc.instruments.serving_benchmark_run starts the engine, the gpu-bench kit and the nvidia-smi
+// samplers through extdeps.docker.cli_service DockerCli (ruling gunbc.design_ruling
+// native_claim_route_admits_the_docker_cli) and admits the run against its version. It needs the cell's
+// GPUs and a GPU-capable docker daemon, so it is dispatched on the fleet and never a merge gate; every
+// missing capability answers no observation. `gunbc test //gunbc/instruments:serving-benchmark-run`.
+fn serving_benchmark_run_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "serving-benchmark-run" } }
+}
+
+fn serving_benchmark_run_entry() -> String {
+  "dag/gunbc/instruments/serving_benchmark_run.dag"
+}
+
+// Wall budget for one short run on the srv3 pair, from calm-crab-645's estimate for that cell: the engine
+// loading its weights (minutes), four cold ~200k-token primes at ~2 min each, one warm-up and two measured
+// rounds of four 1,024-token turns at ~2.3 min each. About 25 min of work; the budget is 60 min so that a
+// slow load reads as a run that finished late, not one that was cut, and a stalled one is still cut.
+fn serving_benchmark_run_deadline() -> Millisecond {
+  millisecond(count: 3600000)
+}
+
+fn serving_benchmark_run_binding() -> TargetBinding {
+  TargetBinding { target: serving_benchmark_run_label() producer: NativeClaimProgramProducer { entry: serving_benchmark_run_entry() deadline: serving_benchmark_run_deadline() } }
+}
+
 fn value_position_block_nests_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "value-position-block-nests" } }
 }
@@ -1412,12 +1478,13 @@ fn instrument_targets() -> List<Label> {
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
+    credential_acquisition_systemd_rows_label(),
     known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
   ]
 }
 
@@ -1434,12 +1501,13 @@ fn instrument_bindings() -> List<TargetBinding> {
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
+    credential_acquisition_systemd_rows_binding(),
     known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 
