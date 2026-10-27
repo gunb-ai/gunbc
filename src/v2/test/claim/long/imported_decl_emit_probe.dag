@@ -476,7 +476,7 @@ fn probe_bundle() -> Optional<ProbeBundle> {
             Present { value: tree } =>
               closure_resolve_member(
                 lm: lm,
-                tree: tree,
+                roots: shared.roots,
                 member_module: probe_qn(dotted: "v2.test.probe_b"),
                 symbol_index: emit_idx,
                 index: idx,
