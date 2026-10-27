@@ -7,6 +7,7 @@ import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkDisk, LsblkPart, LsblkLvm, LsblkCrypt, LsblkLoop, LsblkRom, LsblkOtherType }
 import extdeps.toolchain.types { Architecture }
 import extdeps.provisioning.dhcp_client_arch { DhcpProcessorArchitecture, dhcp_processor_architecture_from_code, uefi_processor_architecture }
 import extdeps.provisioning.network_boot {
@@ -68,11 +69,17 @@ type InstallFetchReading
   = TftpDelivered { client: Eui48Address, served_path: NonEmptyStr }
   | HttpServed { path: NonEmptyStr, status: HttpStatus }
 
-// The installed host's root filesystem as the host reports it: the mount source and the filesystem's own
-// creation time (ext4 records it in its superblock). Unread when the host did not answer or the filesystem
-// does not record one.
+// One block device under the root filesystem, as lsblk --inverse reports it: its kernel name and its TYPE
+// (extdeps.tools.util_linux_lsblk).
+type InstalledRootDevice { name: NonEmptyStr, kind: LsblkDeviceType }
+
+// The installed host's root filesystem as the host reports it: the mount source; the block devices under it from
+// the root's own device down to the whole disk; that disk's serial when it reports one; and the filesystem's own
+// creation time (ext4 records it in its superblock). A root with no block device under it (the live installer's
+// overlay) is Unbacked; Unread when the host did not answer or the filesystem records no creation time.
 type InstalledRootReading
-  = InstalledRootRead { source: NonEmptyStr, created_at: EpochMs }
+  = InstalledRootRead { source: NonEmptyStr, chain: FreeSemigroup<InstalledRootDevice>, disk_serial: NonEmptyStr?, created_at: EpochMs }
+  | InstalledRootUnbacked { source: NonEmptyStr }
   | InstalledRootUnread { why: NonEmptyStr }
 
 type InstalledHostReading {
@@ -119,6 +126,8 @@ type NetworkInstallGap
   | HostDoesNotCarryClientMac { client: Eui48Address }
   | InstalledRootNotRead { why: NonEmptyStr }
   | InstalledRootNotOnBlockDevice { source: NonEmptyStr }
+  | InstalledRootOnNonDiskDevice { device: InstalledRootDevice }
+  | InstalledRootChainEndsBeforeDisk { last: InstalledRootDevice }
   | InstalledRootPredatesAttempt { created_at: EpochMs, started_at: EpochMs }
   | InstalledRootPostdatesReading { created_at: EpochMs, observed_at: EpochMs }
   | SecureBootNotMeasured { observation: SecureBootObservation }
@@ -127,7 +136,8 @@ type NetworkInstallReceipt
   = InstalledToDisk {
       subject: NetworkInstallSubject
       client_class: DhcpProcessorArchitecture
-      root_source: NonEmptyStr
+      root_chain: FreeSemigroup<InstalledRootDevice>
+      root_disk_serial: NonEmptyStr?
       root_created_at: EpochMs
       secure_boot: InstallSecureBootStanding
       trust: FreeSemigroup<InstallFileTrust>
@@ -170,7 +180,7 @@ type ClassCheck
   | ClassGap { gap: NetworkInstallGap }
 
 type RootCheck
-  = RootEstablished { source: NonEmptyStr, created_at: EpochMs }
+  = RootEstablished { chain: FreeSemigroup<InstalledRootDevice>, disk_serial: NonEmptyStr?, created_at: EpochMs }
   | RootGaps { gaps: FreeSemigroup<NetworkInstallGap> }
 
 type SecureBootCheck
@@ -223,17 +233,45 @@ fn network_install_mac_gaps(subject: NetworkInstallSubject, host: InstalledHostR
   if any(host.interface_macs, m => mac_addresses_are_equal(left: m, right: network_install_client(subject: subject))) { [] } else { [HostDoesNotCarryClientMac { client: network_install_client(subject: subject) }] }
 }
 
-// A /dev node is a block device's path under devtmpfs; the live installer's root is an overlay whose mount
-// source is not one.
+// AN INSTALLED ROOT SITS ON A DISK: every device under it is a disk, a partition, an LVM volume or a dm-crypt
+// mapping, and the last is the whole disk. A loop device (the live installer's squashfs), an optical drive, or any
+// type lsblk reports beyond these is not an install to disk, and its link is named.
+fn network_install_root_device_admitted(kind: LsblkDeviceType) -> Bool {
+  match kind {
+    LsblkDisk => true
+    LsblkPart => true
+    LsblkLvm => true
+    LsblkCrypt => true
+    LsblkLoop => false
+    LsblkRom => false
+    LsblkOtherType { word: _ } => false
+  }
+}
+
+fn network_install_root_chain_gaps(chain: FreeSemigroup<InstalledRootDevice>) -> List<NetworkInstallGap> {
+  let last = fold(chain.tail, init: chain.head, f: (acc, d) => d)
+  map(filter(non_empty_to_list(xs: chain), d => network_install_root_device_admitted(kind: d.kind) == false), d => InstalledRootOnNonDiskDevice { device: d })
+    + (match last.kind {
+      LsblkDisk => []
+      LsblkPart => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkLvm => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkCrypt => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkLoop => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkRom => [InstalledRootChainEndsBeforeDisk { last: last }]
+      LsblkOtherType { word: _ } => [InstalledRootChainEndsBeforeDisk { last: last }]
+    })
+}
+
 fn network_install_root_check(subject: NetworkInstallSubject, host: InstalledHostReading) -> RootCheck {
   match host.root {
     InstalledRootUnread { why: w } => RootGaps { gaps: FreeSemigroup { head: InstalledRootNotRead { why: w }, tail: [] } }
-    InstalledRootRead { source: s, created_at: t } => {
-      let gaps = (if starts_with(s: s as String, prefix: "/dev/") { [] } else { [InstalledRootNotOnBlockDevice { source: s }] })
+    InstalledRootUnbacked { source: s } => RootGaps { gaps: FreeSemigroup { head: InstalledRootNotOnBlockDevice { source: s }, tail: [] } }
+    InstalledRootRead { source: _, chain: c, disk_serial: serial, created_at: t } => {
+      let gaps = network_install_root_chain_gaps(chain: c)
         + (if t < subject.started_at { [InstalledRootPredatesAttempt { created_at: t, started_at: subject.started_at }] } else { [] })
         + (if t > host.observed_at { [InstalledRootPostdatesReading { created_at: t, observed_at: host.observed_at }] } else { [] })
       match gaps.first() {
-        Absent => RootEstablished { source: s, created_at: t }
+        Absent => RootEstablished { chain: c, disk_serial: serial, created_at: t }
         Present { value: g } => RootGaps { gaps: FreeSemigroup { head: g, tail: skip(xs: gaps, n: 1) } }
       }
     }
@@ -272,16 +310,9 @@ fn network_install_trust(subject: NetworkInstallSubject, secure_boot: InstallSec
   }
 }
 
-fn class_check_gaps(check: ClassCheck) -> List<NetworkInstallGap> {
-  match check {
-    ClassMeasured { class: _ } => []
-    ClassGap { gap: g } => [g]
-  }
-}
-
 fn root_check_gaps(check: RootCheck) -> List<NetworkInstallGap> {
   match check {
-    RootEstablished { source: _, created_at: _ } => []
+    RootEstablished { chain: _, disk_serial: _, created_at: _ } => []
     RootGaps { gaps: gs } => non_empty_to_list(xs: gs)
   }
 }
@@ -293,29 +324,37 @@ fn secure_boot_check_gaps(check: SecureBootCheck) -> List<NetworkInstallGap> {
   }
 }
 
-// THE FOLD. Every gap is reported, in a fixed order (class, deliveries, host MAC, root, Secure Boot), so the
-// same readings always give the same receipt; the receipt is minted only when there is none.
+// The gaps in the fold's order when one check is known to have failed: whatever precedes it, its own gaps, then
+// whatever follows. Nonempty because the failed check's gaps are.
+fn network_install_gaps_around(before: List<NetworkInstallGap>, failed: FreeSemigroup<NetworkInstallGap>, after: List<NetworkInstallGap>) -> FreeSemigroup<NetworkInstallGap> {
+  let tail = non_empty_to_list(xs: failed) + after
+  match before.first() {
+    Absent => FreeSemigroup { head: failed.head, tail: failed.tail + after }
+    Present { value: g } => FreeSemigroup { head: g, tail: skip(xs: before, n: 1) + tail }
+  }
+}
+
+// THE FOLD. Every gap is reported, in a fixed order (class, deliveries, host MAC, root, Secure Boot), so the same
+// readings always give the same receipt. Each check either established its value or carries its own gaps, and the
+// receipt is minted only on the one path where every check established and no delivery or MAC gap exists.
 fn network_install_receipt(subject: NetworkInstallSubject, readings: NetworkInstallReadings) -> NetworkInstallReceipt {
   let class = network_install_class_check(subject: subject, reading: readings.client_class)
   let root = network_install_root_check(subject: subject, host: readings.host)
   let sb = network_install_secure_boot_check(host: readings.host)
-  let gaps = class_check_gaps(check: class)
-    + network_install_fetch_gaps(subject: subject, fetches: readings.fetches)
-    + network_install_mac_gaps(subject: subject, host: readings.host)
-    + root_check_gaps(check: root)
-    + secure_boot_check_gaps(check: sb)
-  match gaps.first() {
-    Present { value: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: skip(xs: gaps, n: 1) } }
-    Absent => match class {
-      ClassGap { gap: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: [] } }
-      ClassMeasured { class: c } => match root {
-        RootGaps { gaps: gs } => InstallNotEstablished { subject: subject, gaps: gs }
-        RootEstablished { source: s, created_at: t } => match sb {
-          SecureBootGap { gap: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: [] } }
-          SecureBootMeasured { standing: st } => InstalledToDisk {
+  let middle = network_install_fetch_gaps(subject: subject, fetches: readings.fetches) + network_install_mac_gaps(subject: subject, host: readings.host)
+  match class {
+    ClassGap { gap: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: middle + root_check_gaps(check: root) + secure_boot_check_gaps(check: sb) } }
+    ClassMeasured { class: c } => match root {
+      RootGaps { gaps: gs } => InstallNotEstablished { subject: subject, gaps: network_install_gaps_around(before: middle, failed: gs, after: secure_boot_check_gaps(check: sb)) }
+      RootEstablished { chain: chain, disk_serial: serial, created_at: t } => match sb {
+        SecureBootGap { gap: g } => InstallNotEstablished { subject: subject, gaps: network_install_gaps_around(before: middle, failed: FreeSemigroup { head: g, tail: [] }, after: []) }
+        SecureBootMeasured { standing: st } => match middle.first() {
+          Present { value: g } => InstallNotEstablished { subject: subject, gaps: FreeSemigroup { head: g, tail: skip(xs: middle, n: 1) } }
+          Absent => InstalledToDisk {
             subject: subject,
             client_class: c,
-            root_source: s,
+            root_chain: chain,
+            root_disk_serial: serial,
             root_created_at: t,
             secure_boot: st,
             trust: network_install_trust(subject: subject, secure_boot: st),
@@ -335,6 +374,13 @@ data network_install_receipt_frontier_rows: List<FrontierRow> = [
     reason: "no run reads the edge's dnsmasq and HTTP logs or the installed host for a real network install, so the fold is evaluated only by its witness over supplied readings",
     dissolution: unbound_dissolution(
       description: "dissolves when the phase-3 network install run of gunbc.plans.network_install_architecture_rows reads the edge and the installed host on a real attempt and mints this receipt from those readings; a witness over supplied readings does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.provisioning.network_install_receipt", decl_name: "InstalledRootRead"),
+    reason: "the receipt names the disk under the installed root (its lsblk chain and serial) but does not compare it with the disk the attempt selected, because the install binding's public seed uses the direct layout and carries no target-disk selection; on a multi-disk unit the installer's own choice is recorded, not checked",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the install binding carries the seed's target-disk selection (the generalized seed of #15246 binds one per attempt) and the receipt refuses a root whose disk is not that selection's"
     )
   ),
 ]

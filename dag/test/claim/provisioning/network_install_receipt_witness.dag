@@ -8,6 +8,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.ietf.http_semantics { http_not_found }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.tools.util_linux_lsblk { LsblkDisk, LsblkPart, LsblkLoop }
 import extdeps.toolchain.types { X86_64 }
 import extdeps.provisioning.dhcp_client_arch { UefiX86_64, UefiArm64 }
 import extdeps.provisioning.network_boot { FirmwareSignatureDatabase, ShimVendorCertificate, ShimLockProtocol }
@@ -39,6 +40,9 @@ import gunbc.provisioning.network_install_receipt {
   HttpServed,
   InstalledHostReading,
   InstalledRootRead,
+  InstalledRootReading,
+  InstalledRootUnbacked,
+  InstalledRootDevice,
   InstalledRootUnread,
   InstallFileTrust,
   AuthenticatedUnderSecureBoot,
@@ -54,6 +58,8 @@ import gunbc.provisioning.network_install_receipt {
   HostDoesNotCarryClientMac,
   InstalledRootNotRead,
   InstalledRootNotOnBlockDevice,
+  InstalledRootOnNonDiskDevice,
+  InstalledRootChainEndsBeforeDisk,
   InstalledRootPredatesAttempt,
   InstalledRootPostdatesReading,
   SecureBootNotMeasured,
@@ -134,10 +140,19 @@ fn all_fetches() -> List<InstallFetchReading> {
   ]
 }
 
+// The installed root as lsblk --inverse reads it: the direct layout's root partition, then the whole disk.
+data root_partition: InstalledRootDevice = InstalledRootDevice { name: "nvme0n1p2", kind: LsblkPart }
+
+data root_disk: InstalledRootDevice = InstalledRootDevice { name: "nvme0n1", kind: LsblkDisk }
+
+fn disk_root(created_at: EpochMs) -> InstalledRootReading {
+  InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [root_disk] }, disk_serial: Present { value: "S4EWNX0R123456" }, created_at: created_at }
+}
+
 fn installed_host(secure_boot: SecureBootObservation) -> InstalledHostReading {
   InstalledHostReading {
     interface_macs: [other_client, client],
-    root: InstalledRootRead { source: "/dev/mapper/ubuntu--vg-ubuntu--lv", created_at: formatted },
+    root: disk_root(created_at: formatted),
     secure_boot: secure_boot,
     observed_at: read_at,
   }
@@ -161,7 +176,7 @@ fn receipt_of(r: NetworkInstallReadings) -> NetworkInstallReceipt? {
 fn gaps_of(r: NetworkInstallReadings) -> List<NetworkInstallGap> {
   match receipt_of(r: r) {
     Present { value: InstallNotEstablished { subject: _, gaps: gs } } => non_empty_to_list(xs: gs)
-    Present { value: InstalledToDisk { subject: _, client_class: _, root_source: _, root_created_at: _, secure_boot: _, trust: _, observed_at: _ } } => []
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, secure_boot: _, trust: _, observed_at: _ } } => []
     Absent => []
   }
 }
@@ -174,9 +189,10 @@ fn gaps_of(r: NetworkInstallReadings) -> List<NetworkInstallGap> {
 // configuration, the initrd and the seed rest on the controlled onboarding network.
 test fn a_complete_install_under_secure_boot_is_installed_to_disk_with_typed_trust() -> Bool {
   match receipt_of(r: good(secure_boot: SecureBootEnabled)) {
-    Present { value: InstalledToDisk { subject: _, client_class: c, root_source: s, root_created_at: t, secure_boot: sb, trust: tr, observed_at: o } } =>
+    Present { value: InstalledToDisk { subject: _, client_class: c, root_chain: ch, root_disk_serial: serial, root_created_at: t, secure_boot: sb, trust: tr, observed_at: o } } =>
       c == UefiX86_64
-        && s == "/dev/mapper/ubuntu--vg-ubuntu--lv"
+        && non_empty_to_list(xs: ch) == [root_partition, root_disk]
+        && serial == Present { value: "S4EWNX0R123456" }
         && t == formatted
         && o == read_at
         && sb == SecureBootEnforced
@@ -196,7 +212,7 @@ test fn a_complete_install_under_secure_boot_is_installed_to_disk_with_typed_tru
 // every file rests on the controlled network.
 test fn secure_boot_off_puts_every_file_on_the_controlled_network() -> Bool {
   match receipt_of(r: good(secure_boot: SecureBootDisabled)) {
-    Present { value: InstalledToDisk { subject: _, client_class: _, root_source: _, root_created_at: _, secure_boot: sb, trust: tr, observed_at: _ } } =>
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, secure_boot: sb, trust: tr, observed_at: _ } } =>
       sb == SecureBootNotEnforced
         && length(non_empty_to_list(xs: tr)) == 6
         && all(non_empty_to_list(xs: tr), t => match t {
@@ -265,27 +281,27 @@ test fn a_seed_answered_404_was_not_served() -> Bool {
 }
 
 test fn a_host_without_the_clients_mac_is_not_this_install() -> Bool {
-  let host = InstalledHostReading { interface_macs: [other_client], root: InstalledRootRead { source: "/dev/sda2", created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [other_client], root: disk_root(created_at: formatted), secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [HostDoesNotCarryClientMac { client: client }]
 }
 
-// The live installer still running: casper's root is an overlay.
+// The live installer still running: casper's root is an overlay, with no block device under it.
 test fn the_live_installers_overlay_root_is_not_installed_to_disk() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "overlay", created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootUnbacked { source: "overlay" }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootNotOnBlockDevice { source: "overlay" }]
 }
 
 // An OS already on the disk before the attempt started is not this attempt's install.
 test fn a_root_filesystem_older_than_the_attempt_is_not_this_install() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/sda2", created_at: 1780000000000 }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1780000000000), secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootPredatesAttempt { created_at: 1780000000000, started_at: started }]
 }
 
 test fn a_root_filesystem_newer_than_its_reading_is_refused() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/sda2", created_at: 1790009999999 }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1790009999999), secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootPostdatesReading { created_at: 1790009999999, observed_at: read_at }]
 }
@@ -305,4 +321,20 @@ test fn every_gap_is_reported_in_order() -> Bool {
     InstalledRootNotRead { why: "ssh refused" },
     SecureBootNotMeasured { observation: SecureBootUnobserved { reason: "ssh refused" } },
   ]
+}
+
+// The live installer's squashfs is a /dev node too (a loop device) and is mounted during the attempt: the device
+// kind, not the path, refuses it, and the chain never reaches a disk (review 86916).
+test fn a_loop_backed_root_is_not_installed_to_disk() -> Bool {
+  let loop0 = InstalledRootDevice { name: "loop0", kind: LsblkLoop }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/loop0", chain: FreeSemigroup { head: loop0, tail: [] }, disk_serial: Absent, created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootOnNonDiskDevice { device: loop0 }, InstalledRootChainEndsBeforeDisk { last: loop0 }]
+}
+
+// A root over a partition whose disk the reading did not reach is not established on a disk.
+test fn a_chain_that_stops_before_the_disk_is_refused() -> Bool {
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [] }, disk_serial: Absent, created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootChainEndsBeforeDisk { last: root_partition }]
 }
