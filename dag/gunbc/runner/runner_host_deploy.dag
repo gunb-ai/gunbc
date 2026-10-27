@@ -377,9 +377,13 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // converges it: enable-linger for the host's job_user, then a readback that logind records Linger=yes AND the
 // manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
 // host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
-// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels);
-// then gunbc#14972's systemd credential rows select on that label. The label is not derived here yet because it
-// would claim a user manager srv4 is known not to have.
+// on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels)
+// -- DONE: gunbc_user_session_label, added to the job composition by runner_user_session_labels_for and stripped
+// from any caller-spelled or offer-spelled half, so this row is its only authority; srv4's readback held on main
+// (fleet-converge run 40270496735 at 8353c21c84a: enable_linger=ok, linger=yes, bus=present, receipt
+// /srv/gunbc/converge/runner-user-session-srv4.json), which is what makes the label true of srv4 rather than a
+// claim; then gunbc#14972's systemd credential rows select on that label (the runs-on selector step, to land once
+// every host in that pool reads ready -- until then a row for a host without the label would strand its runs-on).
 data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
 
 fn runner_job_user_session_on(host: HostIdentity) -> Bool {

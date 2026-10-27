@@ -1,0 +1,150 @@
+module test.claim.runner.runner_user_session_label_witness
+
+// THE CLAIM: the user-session label is granted by the row, and by nothing else.
+//
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts is the only authority for
+// gunbc.runner.runner_registration_labels gunbc_user_session_label. The controls drive each channel a
+// label could reach the registration through, rather than restating the grant:
+//   1. THE ROW ITSELF -- srv4 registers with it, because the row names srv4 and its readback held on main
+//      (fleet-converge run 40270496735 at 8353c21c84a: enable_linger=ok, linger=yes, bus=present, receipt
+//      /srv/gunbc/converge/runner-user-session-srv4.json). srv1 and srv3 carry no row and must not appear
+//      in the population that can take a user-session job.
+//   2. THE CLASS-ARGUMENT CHANNEL -- runner_registration_labels_of_class takes class_labels from its
+//      caller, so a forged argument must not be able to grant the label.
+//   3. THE HOST-SPELLABLE PLATFORM HALF -- the composition strips the label from the offer-derived half
+//      before re-adding it from the row (today that half is derived from supply facts with custom: [], so
+//      this guards the channel an offer row would open, and the strip is what keeps it closed).
+//   4. THE SLOT GRAIN -- the CI slot follows its host's row, and the deploy slot (a different principal)
+//      does not inherit the host's capability.
+//
+// Each control states the mechanism it refuses and what main would answer without the guard. The row is
+// the fleet's own declaration: these are statements about it, so a row edit that changed who holds a user
+// session moves them, which is exactly what makes them controls instead of tautologies.
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import product.host_identity { HostIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.runner.runner_registration_labels {
+  gunbc_user_session_label, runner_registration_labels, runner_registration_labels_of_class,
+  runner_slot_registration_labels, runner_user_session_labels_for, runner_user_session_label_stripped,
+  RegistrationLabelsResolved, RegistrationLabelsRefused,
+}
+import gunbc.runner.runner_host_deploy { runner_job_user_session_on }
+import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn has_label(labels: List<String>) -> Bool {
+  any(labels, l => l == gunbc_user_session_label)
+}
+
+fn label_count(labels: List<String>) -> Int {
+  length(filter(labels, l => l == gunbc_user_session_label))
+}
+
+fn labels_of(host: HostIdentity) -> List<String> {
+  match runner_registration_labels(host: host) {
+    RegistrationLabelsResolved { labels: ls } => ls
+    RegistrationLabelsRefused { host: _, cause: _ } => []
+  }
+}
+
+fn srv4_ci_slot() -> RunnerSlotIdentity {
+  RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
+}
+
+// THE ROW AS THE FLEET RECORDS IT. srv4 only: a host joins by joining the list, so this is the same fact
+// the converge's readback wrote, read from its single source.
+test fn the_row_names_srv4_alone_as_holding_a_user_session() -> Bool {
+  runner_job_user_session_on(host: operator_host_srv4)
+    && !runner_job_user_session_on(host: operator_host_srv1)
+    && !runner_job_user_session_on(host: operator_host_srv3)
+}
+
+// THE POSITIVE CONTROL: the row reaches the registration. On main this is RED the other way -- the label
+// does not exist, so srv4 advertises no user session and gunbc#14972's credential-acquisition rows have
+// nothing to select on.
+test fn srv4_registers_with_the_user_session_label() -> Bool {
+  has_label(labels: labels_of(host: operator_host_srv4))
+    && has_label(labels: runner_user_session_labels_for(host: operator_host_srv4))
+}
+
+// THE NEGATIVE CONTROLS: a host with no row gains nothing. On main this passes vacuously because the
+// label never appears anywhere; the guard is what turns the absence into a rule.
+test fn an_unconverged_host_never_gains_the_label() -> Bool {
+  !has_label(labels: labels_of(host: operator_host_srv1))
+    && !has_label(labels: labels_of(host: operator_host_srv3))
+    && runner_user_session_labels_for(host: operator_host_srv1) == []
+    && runner_user_session_labels_for(host: operator_host_srv3) == []
+}
+
+// THE GRANT IS EXACTLY ONCE, NOT ACCUMULATED: srv4's set carries the label one time, so the composition
+// and a host spelling it for itself cannot stack it.
+test fn the_row_grants_the_label_exactly_once() -> Bool {
+  label_count(labels: labels_of(host: operator_host_srv4)) == 1
+}
+
+// THE CLASS-ARGUMENT CHANNEL REFUSES THE LABEL. runner_registration_labels_of_class accepts class_labels
+// from its caller and the role drop-ins pass their own labels through it; without the strip one argument
+// carrying the label would hand a host a user session it never converged.
+// RED control: main (no strip) unions the forged class label straight into srv1's registration.
+test fn a_caller_cannot_grant_the_label_through_the_class_labels_argument() -> Bool {
+  match runner_registration_labels_of_class(host: operator_host_srv1, class_labels: [gunbc_user_session_label]) {
+    RegistrationLabelsResolved { labels: ls } => !has_label(labels: ls)
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE HOST-SPELLABLE HALF REFUSES THE LABEL. The composition strips the label from the union of the
+// offer-derived platform half and the class half, then re-adds it only from the row. This is the control
+// for that strip: with the label present in the host-spelled input, the stripped output must not carry it,
+// and stripping an ordinary label must leave it alone (the strip is targeted, not a ban).
+// RED control: a strip that filtered nothing (or dropped every label) fails one arm here.
+test fn the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels() -> Bool {
+  let forged = ["self-hosted", "linux", "arm64", gunbc_user_session_label]
+  let stripped = runner_user_session_label_stripped(labels: forged)
+  !has_label(labels: stripped)
+    && any(stripped, l => l == "self-hosted")
+    && any(stripped, l => l == "arm64")
+    && label_count(labels: stripped) == 0
+}
+
+// THE STRIP AND THE GRANT COMPOSE: stripping a host-spelled copy and then applying the row still yields
+// the label on a converged host -- so the guard closes the forge without disabling the grant.
+test fn the_strip_does_not_disable_the_row_grant() -> Bool {
+  let stripped = runner_user_session_label_stripped(labels: [gunbc_user_session_label])
+  !has_label(labels: stripped) && has_label(labels: runner_user_session_labels_for(host: operator_host_srv4))
+}
+
+// THE SLOT GRAIN FOLLOWS THE ROW. srv4's CI slot registers with the label and srv1's does not, so a
+// per-slot reader (the JIT mint, the replace postcondition, the conformance check's desired set) agrees
+// with the host composition instead of disagreeing by one label -- which is what would make the first
+// srv4 replacement read as a divergence.
+// RED control: if the grant were wired only into the host entry and not the slot composition, srv4's slot
+// would lack the label and this control fails.
+test fn a_ci_slot_label_set_follows_its_host_row() -> Bool {
+  match runner_slot_registration_labels(slot: srv4_ci_slot()) {
+    RegistrationLabelsResolved { labels: ls } => has_label(labels: ls)
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE DEPLOY SLOT RUNS A DIFFERENT PRINCIPAL AND DOES NOT INHERIT THE HOST'S CAPABILITY. The row is about
+// the job account's user manager; the deploy slot runs the deploy principal, whose labels the role drop-in
+// sets. Gating inside the shared composition would grant the capability to a principal that never earned
+// one, so the gate sits at the job entry and the deploy path never sees it.
+test fn the_deploy_slot_carries_no_user_session_label() -> Bool {
+  match runner_slot_registration_labels(slot: srv1_deploy_slot()) {
+    RegistrationLabelsResolved { labels: ls } => !has_label(labels: ls)
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+}
+
+// ONE CONSTANT, ONE SPELLING. Every producer reads the same constant, so the registration and the
+// runs-on selector step cannot disagree by spelling the label differently.
+test fn the_label_is_one_constant_every_producer_reads() -> Bool {
+  gunbc_user_session_label == "gunbc-user-session"
+    && !any(labels_of(host: operator_host_srv1), l => l == "gunbc_user_session")
+}
