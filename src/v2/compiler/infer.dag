@@ -908,7 +908,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 }
 
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
-// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_bindings,
+// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_resolutions,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
 // whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
 // the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
@@ -1336,7 +1336,7 @@ fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
 // no types.
 //
 // THE PATH, NEVER THE LEAF. The deleted scope walk (infer_parameter_scope_search, superseded by
-// resolve's recorded lexical bindings, ResolvedTree.occurrence_bindings) recorded what a leaf-name answer
+// resolve's recorded lexical bindings, ResolvedTree.occurrence_resolutions) recorded what a leaf-name answer
 // costs: `fn positive(x: Int)` beside `fn f(x: Pos)` grounded every `x` in `f` as `Int`, a type
 // fabricated from an unrelated declaration. symbol_index_lookup is asked for the whole declaring
 // path, and it is the GUARDED read: a path with more than one bound declaring answers Absent, so a

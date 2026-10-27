@@ -1,0 +1,50 @@
+gunbc.machine_intake.mtcollins1_virtual_media_readout_observation mtcollins1_virtual_media_readout_probe
+  (B0 of gunbc.plans.boot_origin_bmc_media; work item adhoc-b4222c87-d37)
+
+WHAT THIS IS. An OUT-OF-BAND, READ-ONLY, UNAUTHENTICATED capture of the media-admission surface of
+the mtcollins1 BMC (Ampere Mt. Collins, MegaRAC at 0.45) at 192.168.1.228:443. Every request below
+is an HTTP GET issued from the observer's own network position. NOTHING was sent to the controller:
+no POST, PATCH, PUT, DELETE, no account creation, no media action, no session creation. In-band
+ipmitool was NOT used (operator ruling 2026-09-18: fleet observation is out-of-band and
+least-privilege). No BMC credential was fetched, held or sent -- see AUTHORITY at the bottom.
+
+ONE COMMAND, RUN AS ONE PASS. Path ladder over the same TCP connection target; -k because the BMC
+serves a self-signed certificate; the status code is the observation, so curl ran WITHOUT
+--fail-with-body (the admitted exception recorded at extdeps.bmc.http
+redfish_http_hardwired_transport_note: when the status is the consumed answer, omitting the flag is
+required, and 404 must not be coerced into success).
+
+  for p in /redfish /redfish/v1 /redfish/v1/ /redfish/v1/Systems /redfish/v1/Managers \
+           /redfish/v1/Managers/Self /redfish/v1/Managers/Self/VirtualMedia \
+           /redfish/v1/Systems/1 /redfish/v1/Systems/1/VirtualMedia /redfish/v1/Chassis \
+           /redfish/v1/SessionService /redfish/v1/AccountService /api/session \
+           /api/settings/media/general / ; do
+    code=$(timeout 15 curl -sk -m 10 -D hdr -o body -w "%{http_code}" "https://192.168.1.228$p")
+    printf '%s %s\n' "$code" "$p"
+  done
+
+  timeout 15 curl -sk -m 10 -D redfish_ServiceRoot_headers.txt -o redfish_ServiceRoot.json \
+      https://192.168.1.228/redfish/v1/
+  timeout 15 curl -sk -m 10 -D redfish_VirtualMedia_401_headers.txt -o /dev/null \
+      https://192.168.1.228/redfish/v1/Managers/Self/VirtualMedia
+
+FILES.
+  surface-ladder.txt                      the status ladder, one line per path, with Server and
+                                          WWW-Authenticate as the controller rendered them
+  redfish_ServiceRoot.json                the service root body, verbatim
+  redfish_ServiceRoot_headers.txt         its response headers, verbatim
+  redfish_VirtualMedia_401_headers.txt    the headers of the 401 on the Managers/Self VirtualMedia
+                                          collection GET
+
+AUTHORITY (who authenticated as what): NOBODY. No principal was asserted; every request here is
+anonymous. THE PINNED READ-ONLY BMC CREDENTIAL WAS NOT READ AND NOT USED. It lives in Secret
+Manager under a grant pinned to the fleet-converge runner identity (extdeps.cloud.gcp.secret_manager
+secret_version_payload_read, dispatched only from CI); the observing container has no ADC, no
+workload-identity token and no Secret Manager grant, so the credential axis is out of reach from
+here and is recorded as a typed gap in
+gunbc.machine_intake.mtcollins1_virtual_media_readout_observation, not papered over.
+
+SECRETS. No token, password, cookie or Authorization value is in this directory. The captured
+headers carry only the controller's own challenge headers (WWW-Authenticate: Basic / X-Auth-Token,
+realm names only) and CORS/Link announcements. `grep -iE 'set-cookie|authorization' ` over the
+captured header files returns nothing.
