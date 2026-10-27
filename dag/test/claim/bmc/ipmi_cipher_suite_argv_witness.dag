@@ -386,7 +386,10 @@ test fn suite_3_is_sha1_with_aes_and_suite_17_is_sha256_with_aes() -> Bool {
 
 // RED: an ID the table does not list has no suite, so no route can carry a guessed one.
 test fn an_id_outside_the_table_has_no_suite() -> Bool {
-  ipmi_cipher_suite_of_id(id: 18) == Absent && ipmi_cipher_suite_of_id(id: 128) == Absent && ipmi_cipher_suite_of_id(id: -1) == Absent
+  all([18, 19, 128, 255], id => match ipmi_cipher_suite_of_id(id: id) {
+    Absent => true
+    Present { value: _ } => false
+  })
 }
 
 // ── REDs: a suite on the route must change the argv ─────────────────────────────────────────────
