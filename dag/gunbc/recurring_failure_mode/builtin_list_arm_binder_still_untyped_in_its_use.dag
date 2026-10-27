@@ -13,6 +13,6 @@ data builtin_list_arm_binder_still_untyped_in_its_use: RecurringFailureMode = Re
     "CEILING: structurally guaranteed. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: infer types a Cons arm binder from a builtin List<T> scrutinee at the scrutinee's instantiation, and a builtin call's argument position accepts the binder's use, SUFFICIENT FOR the `let head_text: String = head` re-bind in native_serve_wire_parse to be deleted with the module still resolving. The cause (typing vs builtin-call scope admission) is not yet separated; the first step is to read which of the two refuses.",
   ],
   evidence: [
-    DeclarationRef { module_path: "gunbc.native_serve_probe", decl_name: "native_serve_wire_parse", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.native_serve_probe_plan", decl_name: "native_serve_wire_parse", field: WholeDeclaration },
   ],
 }

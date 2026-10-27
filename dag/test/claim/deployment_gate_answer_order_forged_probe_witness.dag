@@ -1,0 +1,85 @@
+module test.claim.deployment_gate_answer_order_forged_probe_witness
+
+import std.types { String, Bool, Int }
+import extdeps.filesystem.filesystem_io
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_count_at_key,
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ORDER OF THE ANSWER, ENROLLED AS EXECUTED REDS. Each claim is keyed (class + subject + blocking) and
+// paired with a control that NAMES every sealed record and confined mint and builds and calls none, so a
+// refusal is attributable to the forgery and not to importing the module. CensusNotRunnable reads
+// negative, so an unrunnable census fails the claim. Classes are the ones measured for the sibling probe
+// (test.claim.deployment_gate_evidence_forged_probe_witness): a foreign literal of a sealed record is
+// SoleConstructorViolation keyed by the type; a foreign call to a confined mint is
+// ConstructorCallAdmissionRefused keyed by the callee.
+data probe_dir: String = "dag/test/probe/"
+
+fn probe_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(filesystem_read(path: probe_dir + "deployment_gate_answer_order_forged_probe.dag").content)
+}
+
+fn control_census() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(control_source)
+}
+
+fn refusals(c: CompileDiagnosticCensus, class: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: class, subject_name: subject, blocking: true)
+  }
+}
+
+data control_source: String = "module probe_deployment_gate_answer_order_control\nimport std.types { String }\nimport gunbc.auth.deployment_gate_authorization { BrokerAdmission, ReviewClearance, ReviewRequest, admit_broker_answer, clear_review, review_request_of }\nimport gunbc.fleet.deployment_gate_answer { observe_gate_installation_for_route, observe_rule_ownership_for_route, observe_environment_protection_for_route }\nfn label() -> String { \"control names the sealed records and the confined mints, builds none and calls none\" }\n"
+
+test fn a_source_that_only_names_the_order_tokens_forges_none() -> Bool {
+  refusals(c: control_census(), class: "SoleConstructorViolation", subject: "BrokerAdmission") == 0
+    && refusals(c: control_census(), class: "SoleConstructorViolation", subject: "ReviewClearance") == 0
+    && refusals(c: control_census(), class: "SoleConstructorViolation", subject: "ReviewRequest") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "admit_broker_answer") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "clear_review") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "review_request_of") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_gate_installation_for_route") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_rule_ownership_for_route") == 0
+    && refusals(c: control_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_environment_protection_for_route") == 0
+}
+
+test fn a_foreign_admission_literal_is_refused_at_the_record() -> Bool {
+  refusals(c: probe_census(), class: "SoleConstructorViolation", subject: "BrokerAdmission") >= 1
+}
+
+test fn a_foreign_clearance_literal_is_refused_at_the_record() -> Bool {
+  refusals(c: probe_census(), class: "SoleConstructorViolation", subject: "ReviewClearance") >= 1
+}
+
+test fn a_foreign_review_request_literal_is_refused_at_the_record() -> Bool {
+  refusals(c: probe_census(), class: "SoleConstructorViolation", subject: "ReviewRequest") >= 1
+}
+
+test fn a_foreign_call_to_the_broker_admission_mint_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "admit_broker_answer") >= 1
+}
+
+test fn a_foreign_call_to_the_clearance_mint_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "clear_review") >= 1
+}
+
+test fn a_foreign_call_to_the_review_request_mint_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "review_request_of") >= 1
+}
+
+test fn a_foreign_call_to_the_installation_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_gate_installation_for_route") >= 1
+}
+
+test fn a_foreign_call_to_the_ownership_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_rule_ownership_for_route") >= 1
+}
+
+test fn a_foreign_call_to_the_protection_wrapper_is_refused_at_the_callee() -> Bool {
+  refusals(c: probe_census(), class: "ConstructorCallAdmissionRefused", subject: "observe_environment_protection_for_route") >= 1
+}

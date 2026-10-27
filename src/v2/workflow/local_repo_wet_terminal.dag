@@ -8,7 +8,7 @@ import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_q
 import v2.workflow.floor_terminal_ledger {
   ClaimAttemptTerminal, ClaimExpectation, ExpectedToHold,
   ClaimTerminalRow, ClaimDisposition, claim_disposition, Passed,
-  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+  Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict, PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict, RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict, NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict, SubjectUnresolvedBeforeVerdict,
 }
 import v2.workflow.wet_evidence {
   WetEvidenceRequirement, LocalRepoCoResidentRequirement,
@@ -319,8 +319,79 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // with the attempt's CaptureWork and without a git commit; a clean checkout of a different commit
 // refuses as CaptureAbsent; valid bytes claiming this HEAD stored under another basename also
 // refuse as CaptureAbsent. Hermetic claims supply porcelain, standing, and SubmissionCaptureObservation.
+// TWO CLAIM-BATCH PARSE-GATE MEMBERS (test.claim.claim_batch_parse_gate_witness, Charter 4). They
+// plant a module pair under a mktemp directory in target/, run the already-built seed claim_batch
+// over it with gunbc.WitnessBin.Run, and remove the directory: the admitted effect is a temp
+// directory plus ONE CHILD PROCESS OF THE SEED BINARY the floor already built, and that child is a
+// read-only walk. That child is the one thing this lane's membership property does not already
+// state, so it is stated here as a distinct effect rather than folded into the sentences above: a
+// member whose verdict depends on target/release/claim_batch existing reaches no verdict where the
+// binary is absent, which is the reachability risk every member carries. The refusal row passes only
+// the planted root; the control must also walk the dag root so gunbc.output_policy resolves, which
+// is irreducible while a verdict needs that module and puts the control over the per-row wall budget
+// that nothing on this lane arms (gunbc.guarantee_stall local_repo_wet_lane_per_row_wall_budget_unarmed_stall).
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "fan_policy_phase_early_failure_specimen_leaves_no_residue" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "fan_policy_phase_early_failure_specimen_leaves_no_residue",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "a_modeled_refusal_makes_the_boot_ineligible_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "a_modeled_refusal_makes_the_boot_ineligible_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "a_real_writer_refusal_makes_the_boot_ineligible_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "a_real_writer_refusal_makes_the_boot_ineligible_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "a_real_writer_taken_series_leaves_the_boot_eligible_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "a_real_writer_taken_series_leaves_the_boot_eligible_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "a_host_off_unestablished_receipt_leaves_the_boot_eligible_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "a_host_off_unestablished_receipt_leaves_the_boot_eligible_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "a_real_writer_host_off_series_is_unestablished_and_boots_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "a_real_writer_host_off_series_is_unestablished_and_boots_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "the_tail_admits_only_an_exact_first_line_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "the_tail_admits_only_an_exact_first_line_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "the_committed_yml_tail_admits_only_an_exact_first_line_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "the_committed_yml_tail_admits_only_an_exact_first_line_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "an_observed_reading_leaves_the_boot_eligible_by_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "an_observed_reading_leaves_the_boot_eligible_by_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.machine_intake.fan_observe_local_wet", function: "fan_policy_phase_fetch_status_folds_three_arms_by_real_execution" },
+      entry: "dag/test/claim/machine_intake/fan_observe_local_wet.dag",
+      function: "fan_policy_phase_fetch_status_folds_three_arms_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness", function: "the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_publish_realization_wet_witness.dag",
@@ -329,10 +400,10 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
     },
     WetScheduledClaim {
       identity: WitnessIdentity {
-        module_path: "test.claim.examples.blackjack_shuffle_wet_witness_test",
+        module_path: "test.claim.examples.blackjack_shuffle_wet_witness",
         function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       },
-      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness_test.dag",
+      entry: "dag/test/claim/examples/blackjack_shuffle_wet_witness.dag",
       function: "wet_entropy_seeded_shuffle_is_standard_deck_permutation_by_real_execution",
       expectation: ExpectedToHold {},
     },
@@ -358,6 +429,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
       function: "a_capture_claiming_this_head_stored_under_another_basename_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_standalone_repository_at_the_attempt_worktree_is_refused_by_the_git_trust_wall",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "a_commit_step_settled_at_another_head_leaves_the_capture_owed_not_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness", function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness.dag",
+      function: "no_commit_step_record_leaves_a_misaddressed_capture_owed_not_absent",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -712,6 +801,120 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_exit_drain_wet_witness", function: "a_collected_workers_exit_is_read_from_the_spool_alone" },
       entry: "dag/test/claim/roadmap/roadmap_belt_exit_drain_wet_witness.dag",
       function: "a_collected_workers_exit_is_read_from_the_spool_alone",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_shared_repository_posture_writers_reach_the_repository_when_run" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_shared_repository_posture_writers_reach_the_repository_when_run",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_subtree_regroup_builders_leave_the_granted_modes_on_an_existing_tree",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_pruned_subtrees_are_never_touched_and_a_colliding_ref_name_always_is",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_sticky_bit_lands_where_the_model_puts_it_and_still_lets_the_worker_work",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_maintenance_pair_repacks_and_leaves_a_packed_refs_file",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_builder_wet_witness", function: "the_posture_argv_words_are_executable_shapes" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_builder_wet_witness.dag",
+      function: "the_posture_argv_words_are_executable_shapes",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_posture_step_reaches_the_repository_and_refuses_a_partial_posture",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_apply_migration_step_grants_a_tree_and_refuses_one_it_has_not",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_reaches_the_file_git_appends_to_and_stops_at_the_files_git_only_replaces",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_migration_step_leaves_the_confined_interior_exactly_as_it_found_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_spawn_grants_the_attempt_entry_and_refuses_to_start_the_unit_without_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "a_linked_worktree_commit_writes_the_derived_write_set_and_nothing_confined",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_grant_is_what_changes_the_tree_and_the_tree_can_carry_a_commit",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_a_committed_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_a_committed_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_an_unborn_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_an_unborn_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_admits_a_detached_head_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_admits_a_detached_head_repository",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_headless_dot_git_skeleton" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_headless_dot_git_skeleton",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_plain_directory" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_plain_directory",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.worker_git_subtree_apply_spawn_wet_witness", function: "the_premise_gate_refuses_a_directory_nested_in_a_repository" },
+      entry: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag",
+      function: "the_premise_gate_refuses_a_directory_nested_in_a_repository",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -1705,33 +1908,27 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store" },
+      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
+      function: "a_google_enrolment_writes_replays_and_then_refuses_its_revoked_key_through_the_real_store",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.approval_google_enrolment_wet_witness", function: "the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas" },
+      entry: "dag/test/claim/approval_google_enrolment_wet_witness.dag",
+      function: "the_subject_pin_create_or_read_rereads_the_first_subject_after_a_lost_cas",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.approval_device_routes_wet_witness", function: "a_bound_realization_passes_the_read_past_the_gate" },
       entry: "dag/test/claim/approval_device_routes_wet_witness.dag",
       function: "a_bound_realization_passes_the_read_past_the_gate",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness", function: "the_code_slot_is_written_before_delivery_by_real_execution" },
-      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness.dag",
-      function: "the_code_slot_is_written_before_delivery_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.approval_device_enrolment_code_wet_witness", function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution" },
-      entry: "dag/test/claim/approval_device_enrolment_code_wet_witness.dag",
-      function: "the_minted_enrolment_code_carries_128_bits_as_32_lowercase_hex_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness", function: "the_root_refuses_before_minting_on_this_host_by_real_execution" },
-      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness.dag",
-      function: "the_root_refuses_before_minting_on_this_host_by_real_execution",
-      expectation: ExpectedToHold {}
-    },
-    WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.approval_ntfy_access_readback_wet_witness", function: "the_helper_output_decodes_as_an_outcome_by_real_execution" },
-      entry: "dag/test/claim/approval_ntfy_access_readback_wet_witness.dag",
-      function: "the_helper_output_decodes_as_an_outcome_by_real_execution",
+      identity: WitnessIdentity { module_path: "test.claim.approval_decision_store_wet_witness", function: "the_store_lists_only_the_open_unexpired_request_by_real_execution" },
+      entry: "dag/test/claim/approval_decision_store_wet_witness.dag",
+      function: "the_store_lists_only_the_open_unexpired_request_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -2182,6 +2379,48 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_file_store_wet_witness", function: "w_refused_acquire_body_writes_a_marker_when_called_directly" },
       entry: "dag/test/claim/durable_exclusive_hold_file_store_wet_witness.dag",
       function: "w_refused_acquire_body_writes_a_marker_when_called_directly",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_hold_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_nonholder_release_without_completion_evidence_refuses_and_leaves_the_hold_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "evidence_for_another_holder_or_a_moved_generation_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "an_operator_release_without_a_permitting_grant_for_this_hold_refuses_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_on_matching_completion_evidence_frees_the_hold_and_reads_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_by_a_permitted_operator_grant_frees_the_hold_and_reads_back_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_nonholder_release_committed_after_the_slot_moved_is_lost_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", function: "a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution" },
+      entry: "dag/test/claim/durable_exclusive_hold_nonholder_release_wet_witness.dag",
+      function: "a_release_for_one_slot_refuses_against_another_slot_at_the_same_holder_and_generation_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -3181,6 +3420,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encodes_to_one_unwrapped_line_of_the_exact_length",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "the_committed_chainloader_encoding_digests_to_the_value_derived_from_the_image",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.base64_tool_real_execution_witness", function: "a_missing_file_is_the_real_unreadable_arm" },
+      entry: "dag/test/claim/base64_tool_real_execution_witness.dag",
+      function: "a_missing_file_is_the_real_unreadable_arm",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.seeded_filler_real_execution", function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution" },
       entry: "dag/test/claim/seeded_filler_real_execution.dag",
       function: "a_seeded_filler_is_exactly_its_size_and_reproducible_by_real_execution",
@@ -3346,6 +3603,214 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.session_activation_ensure_wet_witness", function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does" },
       entry: "dag/test/claim/roadmap/session_activation_ensure_wet_witness.dag",
       function: "an_unreadable_or_foreign_placement_is_refused_whatever_the_unit_does",
+      expectation: ExpectedToHold {}
+    },
+    // THE THREE WET ROUTES FOR THE BUILD-OUTPUT CAPTURE (Charter 2, review 82782). WITHOUT THESE
+    // ROWS NOTHING EXECUTES THE FILE: this schedule IS the route, and a wet witness that is written
+    // but not scheduled is a declaration no consumer runs -- DESIGN 3c's dangling row, and the
+    // exact incomplete triple chunk_06's header says nothing will refuse. Each row EXECUTES
+    // production's compute_return_outputs wet against a real temp checkout and the real
+    // /usr/bin/git, so the effects are shell.Mktemp.DirWithTemplate, shell.Remove.RecursiveForce, the Filesystem
+    // list/read/write verbs, and -- through production's own compute_exec --
+    // gunbc.WitnessBin.Run. Triple enrollment as for host_capacity_wet_witness: these rows,
+    // the gunbc.ci.ci_layer_roots row for output_capture_absence_wet_witness.dag, and the
+    // v2.workflow.floor_route_gap rows.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_returns_the_blob_git_hash_object_itself_printed",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_refuses_an_absent_output_with_gits_own_exit_and_stderr",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.output_capture_absence_wet_witness", function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it" },
+      entry: "dag/test/claim/compute/output_capture_absence_wet_witness.dag",
+      function: "the_wet_route_stops_at_the_first_absent_output_and_stages_nothing_after_it",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_parse_gate_witness", function: "a_parseable_imported_module_reaches_a_real_pass_verdict" },
+      entry: "dag/test/claim/claim_batch_parse_gate_witness.dag",
+      function: "a_parseable_imported_module_reaches_a_real_pass_verdict",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "an_entry_with_a_closure_error_exits_1_with_a_fail_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_unobserved_exit_witness", function: "a_nonexistent_entry_exits_2_with_a_located_refusal" },
+      entry: "dag/test/claim/claim_batch_unobserved_exit_witness.dag",
+      function: "a_nonexistent_entry_exits_2_with_a_located_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_emission_candidate_set_witness", function: "single_field_ambiguous_literal_emits_the_refusal" },
+      entry: "dag/test/claim/record_emission_candidate_set_witness.dag",
+      function: "single_field_ambiguous_literal_emits_the_refusal",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_emission_candidate_set_witness", function: "multi_field_ambiguous_literal_refuses_with_located_diagnostic" },
+      entry: "dag/test/claim/record_emission_candidate_set_witness.dag",
+      function: "multi_field_ambiguous_literal_refuses_with_located_diagnostic",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_fully_rendered_ledger_is_coherent" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_fully_rendered_ledger_is_coherent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_withheld_row_is_named_as_missing" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_withheld_row_is_named_as_missing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "the_rung_drop_ledger_is_covered_without_a_projection_index" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "the_rung_drop_ledger_is_covered_without_a_projection_index",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_non_ledger_artifact_cannot_report_coherent" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_non_ledger_artifact_cannot_report_coherent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "the_gate_diagnostic_names_the_missing_identity" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "the_gate_diagnostic_names_the_missing_identity",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_difference_that_drops_no_row_is_not_reported_incoherent" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_difference_that_drops_no_row_is_not_reported_incoherent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_rendered_declaration_parses_back_to_the_same_identities" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_rendered_declaration_parses_back_to_the_same_identities",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_coherent_artifact_declares_no_repair" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_coherent_artifact_declares_no_repair",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_declaration_matching_the_inference_agrees" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_declaration_matching_the_inference_agrees",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_repair_that_under_declares_is_caught_in_the_inferred_direction" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_repair_that_under_declares_is_caught_in_the_inferred_direction",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_declaration_that_over_claims_is_caught_in_the_declared_direction" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_declaration_that_over_claims_is_caught_in_the_declared_direction",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_trailer_missing_its_identity_yields_no_declaration" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_trailer_missing_its_identity_yields_no_declaration",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_coherent_artifact_still_declares_that_it_was_judged" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_coherent_artifact_still_declares_that_it_was_judged",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "an_absent_declaration_judges_nothing" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "an_absent_declaration_judges_nothing",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "a_repairing_declaration_reports_both_numerator_and_denominator" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "a_repairing_declaration_reports_both_numerator_and_denominator",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "an_unjudgeable_ledger_refuses_rather_than_skipping" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "an_unjudgeable_ledger_refuses_rather_than_skipping",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "one_judged_ledger_does_not_license_a_commit_over_an_unjudged_one" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "one_judged_ledger_does_not_license_a_commit_over_an_unjudged_one",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.ledger_row_coherence", function: "an_unjudgeable_non_ledger_artifact_does_not_stop_the_line" },
+      entry: "dag/test/claim/ledger_row_coherence.dag",
+      function: "an_unjudgeable_non_ledger_artifact_does_not_stop_the_line",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "an_exit_failure_with_code_2_exits_2_and_prints_unobserved" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "an_exit_failure_with_code_2_exits_2_and_prints_unobserved",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "an_exit_failure_with_code_1_still_exits_1_and_prints_fail" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "an_exit_failure_with_code_1_still_exits_1_and_prints_fail",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_exit_two_unobserved_witness", function: "a_held_claim_exits_0_and_prints_pass" },
+      entry: "dag/test/claim/claim_batch_exit_two_unobserved_witness.dag",
+      function: "a_held_claim_exits_0_and_prints_pass",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "v2.test.claim.body_lowering.map_literal", function: "ml_the_key_law_names_both_occurrences_holds" },
+      entry: "src/v2/test/claim/body_lowering/map_literal.dag",
+      function: "ml_the_key_law_names_both_occurrences_holds",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_a_coproduct_and_a_record_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_a_coproduct_and_a_record_is_refused",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.record_escapes_declared_optional_return_witness", function: "w_an_equality_between_unrelated_records_is_refused" },
+      entry: "dag/test/claim/record_escapes_declared_optional_return_witness.dag",
+      function: "w_an_equality_between_unrelated_records_is_refused",
       expectation: ExpectedToHold {}
     }
   ]
@@ -3531,6 +3996,7 @@ fn local_repo_wet_identity_passed_on_candidate(
               PanickedBeforeVerdict => false
               NotAttemptedAfterAbort => false
               ObservationUnreadableBeforeVerdict => false
+              SubjectUnresolvedBeforeVerdict => false
             }
         }
     }

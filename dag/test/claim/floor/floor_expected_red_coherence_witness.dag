@@ -4,7 +4,6 @@ import std.algebra { count_where, length, list_flat_map }
 import std.types { Bool, Int, List, String }
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.workflow.floor_expected_red {
-  floor_expected_red_chunk_belt_recapture_wet_red,
   floor_expected_red_chunk_pair_serving_authority_wet_red,
   floor_expected_red_chunk_cursor_dispatch_credential_wet_red,
   floor_expected_red_roster,
@@ -161,7 +160,6 @@ test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
 // where the module asked for it, not fabricated cheaper.
 
 data wet_red_chunks_under_test: List<List<String>> = [
-  floor_expected_red_chunk_belt_recapture_wet_red(),
   floor_expected_red_chunk_pair_serving_authority_wet_red(),
   floor_expected_red_chunk_cursor_dispatch_credential_wet_red(),
 ]
@@ -206,7 +204,7 @@ test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to
     }
   )
   let roster = floor_expected_red_roster()
-  // the three chunks are disjoint and together are what this roster added: no identity may appear in
+  // the chunks are disjoint and together are what this roster added: no identity may appear in
   // two of them, or two owners' fixes would disagree about one row. Asserted over the chunks
   // themselves, which is where a duplicate could be introduced.
   (count_where(xs: wet_reds_under_test, predicate: fn(q) {
@@ -223,7 +221,7 @@ test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to
        }) == 0)
     // and the roster really carries each of them -- the enrolment took effect. Compared against the
     // length of the population under test rather than a number typed here: if a leaf deletes its
-    // chunk, the three chunk functions imported above stop existing and the module refuses to compile,
+    // chunk, the chunk functions imported above stop existing and the module refuses to compile,
     // which is the refusal that should fire. A literal 7 here would instead be a fact about the roster
     // that nobody owns, and it would go red for the wrong reason when the roster legitimately grows.
     && (count_where(xs: wet_reds_under_test, predicate: fn(q) {
@@ -231,8 +229,8 @@ test fn each_enrolled_wet_red_is_a_scheduled_claim_the_schedule_still_expects_to
        }) == length(xs: wet_reds_under_test))
 }
 
-// THE DRY-LANE HOLD STILL WINS, AND THE ENROLMENT IS LOAD-BEARING WHERE IT SHOULD BE. Five of the
-// seven identities also hold a `FloorRouteGapExpectation` (the hermetic route has no arm for the `Dir`
+// THE DRY-LANE HOLD STILL WINS, AND THE ENROLMENT IS LOAD-BEARING WHERE IT SHOULD BE. Some of the
+// enrolled identities also hold a `FloorRouteGapExpectation` (the hermetic route has no arm for the `Dir`
 // operation, so on that lane the claim refuses before it can run). `native_route_reference_for` checks
 // `route_gap` FIRST, and that order is the whole reason adding these rows does not change one reading
 // on the dry lane: a claim that has not run there must be reported as refused, not excused. Flip the

@@ -16,7 +16,7 @@ import gunbc.host.host_phase_status {
   host_phase_cells_for_enrollment,
   host_phase_cell_verdict,
 }
-import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, EnrollmentAdmission }
 import gunbc.fleet.fleet_converge_cli { ConvergeCliReceipt, converge_cli_receipt_converged }
 
 // THE fleet-atomic-convergence-verdict fold (operator directive 2026-08-08): ONE verdict
@@ -130,13 +130,28 @@ fn host_standing_is_converged(s: HostConvergenceStanding) -> Bool {
 type FleetConvergenceVerdict
   = FleetConverged { host_count: Int }
   | FleetNotConverged { standings: List<HostConvergenceStanding> }
+  | FleetEnrollmentRefused { refusals: List<EnrollmentAdmission> }
 
 // The atomic fold: converged only when EVERY enrolled host converges at BOTH grains.
 // The not-converged arm carries every host's full standing rather than a count, so the
 // blocking cells are readable without re-deriving anything — the verdict IS the work
 // list. An empty enrollment refuses convergence (a fleet of zero hosts is an observation
-// gap, not a converged fleet).
+// gap, not a converged fleet). A refused enrollment (gunbc.fleet.fleet_enrollment fleet_enrollment_refusals) is
+// never in `enrollments`, so it would otherwise vanish from the verdict: it stops the line instead, naming
+// each refused host and its pair, ahead of any convergence reading.
 fn fleet_convergence_verdict(
+  enrollments: List<HostEnrollmentIntent>,
+  refusals: List<EnrollmentAdmission>,
+  receipts: List<ConvergeCliReceipt>,
+) -> FleetConvergenceVerdict {
+  if length(refusals) > 0 {
+    FleetEnrollmentRefused { refusals: refusals }
+  } else {
+    fleet_convergence_verdict_of_admitted(enrollments: enrollments, receipts: receipts)
+  }
+}
+
+fn fleet_convergence_verdict_of_admitted(
   enrollments: List<HostEnrollmentIntent>,
   receipts: List<ConvergeCliReceipt>,
 ) -> FleetConvergenceVerdict {

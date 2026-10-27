@@ -1,5 +1,6 @@
 module test.claim.run_disposition_witness
 
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
 import std.measure { hardware_thread_count }
@@ -169,7 +170,7 @@ data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn cancelled_run(event: String) -> WorkflowRunRecord {
   WorkflowRunRecord {
-    run_id: 33037610090,
+    run_id: GitHubWorkflowRunId { value: 33037610090 },
     event: event,
     head_branch: "main",
     status: "completed",
@@ -255,7 +256,7 @@ test fn w_RED_supersessions_leave_the_verdict_bearing_denominator() -> Bool {
 test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
   let green = classify_run(
     record: WorkflowRunRecord {
-      run_id: 1, event: superseding_policy_event, head_branch: "b",
+      run_id: GitHubWorkflowRunId { value: 1 }, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "success",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -263,7 +264,7 @@ test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
   )
   let red = classify_run(
     record: WorkflowRunRecord {
-      run_id: 2, event: superseding_policy_event, head_branch: "b",
+      run_id: GitHubWorkflowRunId { value: 2 }, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "failure",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -284,7 +285,7 @@ test fn w_RED_reaching_a_verdict_and_losing_one_are_two_questions() -> Bool {
 test fn w_RED_an_in_flight_run_is_classified_by_status_not_conclusion() -> Bool {
   let running = classify_run(
     record: WorkflowRunRecord {
-      run_id: 3, event: superseding_policy_event, head_branch: "b",
+      run_id: GitHubWorkflowRunId { value: 3 }, event: superseding_policy_event, head_branch: "b",
       status: "in_progress", conclusion: "",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -303,7 +304,7 @@ test fn w_RED_an_in_flight_run_is_classified_by_status_not_conclusion() -> Bool 
 test fn w_RED_an_unknown_conclusion_survives_as_its_own_spelling() -> Bool {
   let d = classify_run(
     record: WorkflowRunRecord {
-      run_id: 4, event: superseding_policy_event, head_branch: "b",
+      run_id: GitHubWorkflowRunId { value: 4 }, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "evicted",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -353,7 +354,7 @@ test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
     spec: superseding_policy(),
     pending: ReplaceExistingPending,
     record: WorkflowRunRecord {
-      run_id: 5, event: superseding_policy_event, head_branch: "b",
+      run_id: GitHubWorkflowRunId { value: 5 }, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "startup_failure",
       created_at_epoch_s: 1, run_started_at_epoch_s: 2, updated_at_epoch_s: 3
     },
@@ -382,7 +383,7 @@ test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
 // creation, which is exactly the shape cancellation_execution_standing refuses to call started.
 fn pending_shaped_run(event: String) -> WorkflowRunRecord {
   WorkflowRunRecord {
-    run_id: 7, event: event, head_branch: "b",
+    run_id: GitHubWorkflowRunId { value: 7 }, event: event, head_branch: "b",
     status: "completed", conclusion: "cancelled",
     created_at_epoch_s: 1000, run_started_at_epoch_s: 1000, updated_at_epoch_s: 1200
   }

@@ -1,7 +1,7 @@
 module gunbc.rung_drop.fleet_build_job_membership_new_witness_eval_step_cost
 
 import std.types { String, List, NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_build_job_membership_rows }
 
@@ -31,15 +31,13 @@ data fleet_build_job_membership_new_witness_eval_step_cost: RungDrop = RungDrop 
 
   declared: "2026-09-30",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "gunbc.fleet.fleet_workflow_steps constructing only the steps a consumer demands, so demanding the build-job list does not construct the sibling release-bins steps at the cost it does today",
     },
-    population: fleet_build_job_membership_new_witness_eval_step_cost_population,
+    population: population_from_list(xs: fleet_build_job_membership_new_witness_eval_step_cost_population),
     restoration_trigger: "THE CAPABILITY: gunbc.fleet.fleet_workflow_steps constructs only the steps a consumer demands -- building the build-job admission step and establishing its membership does not construct the sibling release-bins steps (key, lookup, outcome, pack). WHAT THAT MUST BE SUFFICIENT FOR: test.claim.workflow_dispatch_input_witness the_build_job_carries_the_reset_observer_dispatch_admission measures under the NewWitnessTier budget v2.workflow.required_floor claim_ceiling_eval_step_budget derives, on the acceptance path, still running the real fleet_converge_build_job_own_steps and still asserting structural membership. Supplying the list, narrowing the claim to the step's id, moving the bill to another claim, deleting the identity or raising the budget retires nothing.",
-  }
+  } }
 }

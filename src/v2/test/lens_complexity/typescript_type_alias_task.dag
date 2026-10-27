@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   Unavailable,
   WholeFile
 }
-import v2.std.node { Atom, ComputationNode, Edge, Loop, LoopBoundEdge, Node, Positional, Symbol, TypeNode, core_edge_label }
+import v2.std.node { Atom, ComputationNode, Edge, Loop, LoopBoundEdge, Node, Positional, Symbol, TypeNode, core_edge_label, NotADeclaration }
 import v2.std.witness { Witness }
 
 type LensComplexityClaim {
@@ -30,8 +30,8 @@ data ts_task_complexity_measure: Node = Node {
 data ts_task_complexity_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: ts_task_type_alias_emitted() },
-    Edge { label: core_edge_label(marker: LoopBoundEdge), target: ts_task_complexity_measure }
+    Edge { label: Positional, target: ts_task_type_alias_emitted(), declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: LoopBoundEdge), target: ts_task_complexity_measure, declaration: NotADeclaration }
   ],
   occurrence_id: OccurrenceSynthetic
 }

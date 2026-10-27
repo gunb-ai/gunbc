@@ -6,6 +6,9 @@ import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_label, guarantee_run
 import gunbc.rung_climb {
   ClimbBlocker,
   AwaitsOneGrounding,
+  GroundingAuthority,
+  GroundingDeclared,
+  GroundingUndeclared,
   ClimbableButUnbuilt,
   climb_blocker_label,
   TriggerAdmission,
@@ -66,9 +69,11 @@ import gunbc.lifecycle_bounded_referent { DashboardWorkItemReferent, dashboard_w
 // the one gunbc#10206 made for gunbc.recurring_failure_mode and it is made here for the same
 // measured reason: every row PR appended at the same two points -- the declaration tail and the
 // roster tail -- so row lanes conflicted with each other BY CONSTRUCTION, and no amount of timing
-// changes that. Appending a stall now writes a new file and one roster line. The direction is
-// forced by acyclicity rather than chosen: a row module imports GuaranteeStall from here, so the
-// enumeration cannot live here.
+// changes that. Appending a stall now writes a new file and nothing else: the roster is DERIVED
+// from the files of that directory that declare a GuaranteeStall under their own stem
+// (`v1_compiler.cli_run.derived_row_roster` `GUARANTEE_STALL`), so the roster tail is gone too. The
+// direction is forced by acyclicity rather than chosen: a row module imports GuaranteeStall from
+// here, so the enumeration cannot live here.
 
 // A POPULATION MAY BE HONESTLY UNCOUNTABLE, and that must be a state rather than an empty list.
 // DESIGN itself carries rows whose exposure is unbounded and says so; rendering those as
@@ -88,7 +93,7 @@ type StallPopulation
 // SEPARATING THEM IS WHAT MAKES THE STALE READING UNAVAILABLE. While both halves shared one
 // `String`, "node://adhoc-a3b0e05f-374 lands: the wall materializes the operation" reads as a
 // trigger whose satisfaction condition is a NODE REACHING DONE -- and three such nodes reached
-// done with their conditions unmet, which `gunbc.guarantee_stall.roster` records with its dated
+// done with their conditions unmet, which `gunbc.guarantee_stall.roster_pins` records with its dated
 // reading. A row split this way cannot be read that way: the capability stands alone, and the node
 // is beside it as who was asked and never as evidence that the climb happened.
 //

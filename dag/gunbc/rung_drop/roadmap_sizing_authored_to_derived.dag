@@ -1,7 +1,8 @@
 module gunbc.rung_drop.roadmap_sizing_authored_to_derived
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 
 // WHAT FELL, STATED AS THE LOSS AND NOT AS THE EDIT. gunbc.roadmap.roadmap_forecast keys its cycle-time
@@ -85,28 +86,13 @@ data roadmap_sizing_authored_to_derived: RungDrop = RungDrop {
 
   declared: "2026-09-10",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: ReplacementStaged {
       replacement: "gunbc.roadmap.roadmap_sizing derive_task_sizing, whose SizingNotDerivable arm is the honest stub standing where the authored intricacy/volume fields used to be",
     },
-    population: [
-    "gunbc.roadmap.roadmap_forecast schedule_forecast",
-    "gunbc.roadmap.roadmap_forecast build_node_forecast",
-    "gunbc.roadmap.roadmap_forecast path_to_node",
-    "gunbc.roadmap.roadmap_forecast calibration_gaps",
-    "gunbc.roadmap.roadmap_forecast observation_for_link",
-    "gunbc.roadmap.roadmap_presentation sizing_fact",
-    "gunbc.roadmap.roadmap_spawner sizing_json_members",
-    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps",
-    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows",
-    "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration",
-    "test.claim.roadmap.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals",
-    "test.claim.roadmap.roadmap_authority.witness_active_sizes_are_intentional_and_nonuniform"
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "gunbc.roadmap.roadmap_forecast schedule_forecast", tail: ["gunbc.roadmap.roadmap_forecast build_node_forecast", "gunbc.roadmap.roadmap_forecast path_to_node", "gunbc.roadmap.roadmap_forecast calibration_gaps", "gunbc.roadmap.roadmap_forecast observation_for_link", "gunbc.roadmap.roadmap_presentation sizing_fact", "gunbc.roadmap.roadmap_spawner sizing_json_members", "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refuses_with_located_counted_calibration_gaps", "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_gap_count_matches_refusal_rows", "test.claim.roadmap.roadmap_forecast_witness.witness_live_graph_refusal_is_only_calibration", "test.claim.roadmap.roadmap_forecast_witness.witness_live_calibration_keeps_small_sample_intervals", "test.claim.roadmap.roadmap_authority.witness_active_sizes_are_intentional_and_nonuniform"] } },
     restoration_trigger: "a sizing derivation that reads a task and answers from it UNDER A DECLARED POLICY: given a gunbc.roadmap.roadmap_sizing SizingSubject -- title, description, exit criterion -- derive_task_sizing returns an Intricacy and a Volume on the real acceptance path, with an executed discriminating control in which two materially different subjects receive different cells, and gunbc.roadmap.roadmap_forecast calibrates and projects from those derived cells end to end. AND the derivation states the policy its estimate is a function of, and the answer carries the standing that distinguishes an inference from an observation -- because a size read off a task description is a judgement about work nobody has performed yet, so it is a DERIVED ESTIMATE and never a measurement. INPUT SENSITIVITY ALONE DOES NOT SATISFY THIS TRIGGER. A constant answer leaves the capability dead, and so does any rule that merely varies with the input without grounding what it varies on: a deriver mapping title-contains-compiler to high/medium and everything else to medium/medium would produce different cells for materially different subjects, partition the calibration population and project end to end, while leaving the defect this drop exists about exactly where it was -- an ordinal guess nothing observed and nothing could contradict, now spelled as code. The drop retires when the guess is replaced by a stated method that says what it is a judgement FROM, not when the guess acquires a parameter."
-  }
+  } }
 }

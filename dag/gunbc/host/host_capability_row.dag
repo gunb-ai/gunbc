@@ -1,0 +1,94 @@
+// THE HOST-GRAIN CAPABILITY ROW: the per-release capability row a host's controller runs, resolved by
+// LOOKUP from the release the controller CURRENTLY RUNS -- never a per-unit datum, and never the build
+// named by a historical probe receipt.
+//
+// THE CURRENT RELEASE COMES FROM THE OPERATION EVIDENCE, folded by gunbc.host.megarac_operation_standing's
+// megarac_current_build(evidence:, endpoint:), not from the access observation. The access observation is a
+// PROBE RECEIPT: it records what the controller reported at one instant, and it is immutable audit
+// evidence (endpoint, board, surfaces, raw response). Before this change the boot path read
+// observation.identity.firmware off it, so a unit reflashed from 0.32 to 0.45.3 kept being asked about
+// 0.32 -- the standing was the original observation and nothing in the boot path consulted the reflash. The
+// operation evidence is the authority that records a reflash, because that is where a reading and a
+// transition get recorded; the fold returns whichever build is known to be running now.
+//
+// A capability row is a fact about a vendor FIRMWARE RELEASE -- the release catalog lives in
+// gunbc.host.bmc_release_capability_catalog, whose release identities come from extdeps.bmc.megarac --
+// keyed by the exact release identity (family + raw version) and true of every unit running that build.
+// It is not a fact about one unit. This module bridges the two grains: it asks the OPERATION EVIDENCE
+// which build the controller at this endpoint runs now (the access observation supplies the endpoint and
+// nothing else) and resolves the catalog row for that build. A reflash changes which build the evidence
+// establishes, so the next lookup resolves the new build's row -- or refuses, if that build is not yet
+// catalogued. Nothing per-unit edits.
+//
+// The answer is TYPED at the host grain as THREE states: the catalog answered (its own lookup sum,
+// carried), the controller's access was never observed, or no current release is established for the
+// endpoint. No arm collapses to a default row, and no arm reads the stale historical firmware back into
+// the answer.
+
+module gunbc.host.host_capability_row
+
+import extdeps.bmc.access_profile {
+  BmcAccessObservation,
+  BmcAccessObservationStanding,
+  BmcAccessObserved,
+  BmcAccessUnobserved,
+  BmcObservedIdentity,
+}
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import gunbc.host.megarac_operation_standing {
+  MegaRacOperationEvidence,
+  MegaRacCurrentBuild,
+  CurrentBuildRead,
+  CurrentBuildKnownUnread,
+  CurrentBuildUnobserved,
+  megarac_current_build,
+}
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseCapabilityLookup,
+  megarac_release_capability_row_for,
+}
+
+// WHAT THE HOST LAYER KNOWS ABOUT A RELEASE LOOKUP: the catalog's own answer, CARRIED and not copied,
+// plus the two states only THIS layer can be in -- the controller was never observed at all, and the
+// controller was observed but nothing says which build it runs. The catalog's three per-release arms are
+// REUSED as they are, because a second sum naming the same three facts would have to be hand-edited in
+// step every time the catalog grows an arm, and nothing but a human would notice the drift: a type name
+// establishes nothing (DESIGN §2, net concepts must not grow by re-invention; §3, no second name for one
+// concept). No arm here is a default row. There is deliberately no "the catalog entry contradicts its own
+// evidence" arm: review 81366 derives each entry's release from the artifact its standing carries, so
+// such an entry has no constructor and surfaces as the catalog's own Uncatalogued arm, whose repair ("go
+// read the build") is the repair that actually applies.
+type HostCapabilityRowStanding
+  = HostCapabilityRowResolved { lookup: MegaRacReleaseCapabilityLookup }
+  // The controller's access is not observed at all: there is no reported build to look up.
+  | HostCapabilityRowUnobserved { endpoint: BmcControllerEndpoint }
+  // NO CURRENT RELEASE IS ESTABLISHED FOR THIS CONTROLLER: the operation evidence records no reading and
+  // no transition at this endpoint. The historical firmware on the probe receipt is NOT read back as a
+  // fallback -- that is the exact stale-build behaviour this arm exists to make unreachable (DESIGN.md
+  // Sec 5: a failure arm refuses, never widens).
+  | HostCapabilityRowNoCurrentRelease { endpoint: BmcControllerEndpoint }
+
+// THE LOOKUP. Two facts, from two authorities: the ACCESS says which controller this is, and the OPERATION
+// EVIDENCE says which build that controller runs now. Only the second is allowed to answer the release
+// question -- the access is consulted for the endpoint and for nothing else, which is what stops a stale
+// probe receipt from pinning a reflashed unit to its old build.
+//
+// The endpoint comes from the observation, so an unobserved controller cannot be answered from the evidence
+// either: there is no endpoint to key the fold on. That is why the access stays a parameter rather than
+// being dropped: it is the identity source, it is simply not the release source.
+fn host_capability_row(
+  evidence: MegaRacOperationEvidence,
+  access: BmcAccessObservationStanding,
+) -> HostCapabilityRowStanding {
+  match access {
+    BmcAccessUnobserved { endpoint: endpoint } => HostCapabilityRowUnobserved { endpoint: endpoint }
+    BmcAccessObserved { observation: observation } =>
+      match megarac_current_build(evidence: evidence, endpoint: observation.endpoint) {
+        // WHICH BUILD RUNS NOW, read from the evidence that records the controller's readings and reflashes.
+        CurrentBuildKnownUnread { transition: t } => HostCapabilityRowResolved { lookup: megarac_release_capability_row_for(firmware: t.to) }
+        CurrentBuildRead { reading: r } => HostCapabilityRowResolved { lookup: megarac_release_capability_row_for(firmware: r.identity.firmware) }
+        CurrentBuildUnobserved => HostCapabilityRowNoCurrentRelease { endpoint: observation.endpoint }
+      }
+  }
+}
+

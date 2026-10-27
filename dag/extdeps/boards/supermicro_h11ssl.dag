@@ -2,22 +2,28 @@ module extdeps.boards.supermicro_h11ssl
 
 import std.types { List, NonEmptyStr }
 import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
   Bandwidth, bandwidth, Gigabyte, gigabyte, MegatransfersPerSecond, megatransfers_per_second,
 }
-import extdeps.boards.types { HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
+import extdeps.boards.types { BaseboardCatalogRow, HeldManualRevision, DimmPopulation, PopulationSupported, PopulationUnsupported, admit_population }
 import extdeps.vendor.supermicro { supermicro }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
-  CitedFigureStanding, TranscribedUncited,
+  CitedFigureStanding, CitedToAuthority, TranscribedUncited, FactCitation,
 }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.bmc.aspeed_ast2500 { AspeedAst2500CatalogRow, aspeed_ast2500_catalog }
+import extdeps.bmc.endpoint { SupermicroAten }
+import extdeps.bmc.supermicro { supermicro_bmc_resources_authority }
 import extdeps.uri { Uri, Https }
+import std.algebra { FreeSemigroup }
+import extdeps.board_soc { BoardSocEdge }
+import extdeps.cpu.amd { amd_epyc_7001_soc_family, amd_epyc_7002_soc_family }
 
 // AUTHORITY. "H11SSL-I/C/NC USER'S MANUAL", Revision 1.1, released November 18, 2019, copyright
 // Super Micro Computer, Inc. (title page), 130 PDF pages. Held copy: sha256
@@ -69,12 +75,20 @@ data supermicro_h11ssl_board_authority: BoardAuthorityRef = BoardAuthorityRef {
   }
 }
 
-// NO BaseboardCatalogRow. That row requires a BmcFirmwareFamily, a closed OpenBmc | AmiMegaRac,
-// and the manual states neither: it says only "ATEN IPMI from ASPEED AST 2500 BMC" (p.15). Picking
-// an arm would fabricate a firmware family, so the row is withheld until the closed enum gains a
-// vendor-firmware arm or an authority names the family.
-data supermicro_h11ssl_bmc_firmware_family_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "Manual p.15 names 'ATEN IPMI' on an AST2500 and no firmware family. Ground against Supermicro's BMC firmware release notes for H11SSL REV 2.0, or an on-wire identification receipt, before a BaseboardCatalogRow is minted.",
+// THE BMC FIRMWARE FAMILY. The manual (p.15) says only "ATEN IPMI from ASPEED AST 2500 BMC"; the
+// family is Supermicro's own X11/H11-generation BMC firmware, which Supermicro states is built on the
+// AST2500 for X11/H11/H12 boards (extdeps.bmc.supermicro's anchor, its bmc-resources page). The on-wire
+// identification on both H11SSL units (Manager Oem key "Supermicro", Get Device ID manufacturer 10876)
+// is the observing layer's receipt, gunbc.machine_intake.supermicro_bmc_reading.
+data supermicro_h11ssl_bmc_firmware_family_standing: CitedFigureStanding = CitedToAuthority {
+  authority: supermicro_bmc_resources_authority,
+}
+
+data supermicro_h11ssl_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
+  model: supermicro_h11ssl_board_authority,
+  model_label: "Supermicro H11SSL-i/C/NC",
+  vendor: supermicro,
+  bmc_firmware: SupermicroAten,
 }
 
 // ---- Processor (Preface p.3, p.15, p.18). The manual does not name the EPYC 7702P.
@@ -93,8 +107,28 @@ data supermicro_h11ssl_cpu_support: List<H11sslCpuSupport> = [
   H11sslCpuSupport { family: Epyc7002, socket_label: "SP3", sockets: 1, revision_condition: BoardMajorRevisionAtLeast { major: 2 } },
 ]
 
+// THE BOARD -> SoC EDGE. The manual's CPU-support rows (p.15, supermicro_h11ssl_cpu_support) name
+// EPYC 7001 and EPYC 7002 on socket 'SP3', the latter conditioned on board revision 2.x. The edge
+// is a COMPATIBILITY roster, as BoardSocEdge says: it bounds what may be installed. The revision
+// condition is stated by supermicro_h11ssl_cpu_support and is not re-encoded here; an unrevised
+// board admitting a 7002 is the roster's upper bound, which is why smpro_facility_of_families
+// reads the families and not the installed part.
+data supermicro_h11ssl_board_soc_edge: BoardSocEdge = BoardSocEdge {
+  board: supermicro_h11ssl_board_authority,
+  soc_families: FreeSemigroup {
+    head: amd_epyc_7001_soc_family,
+    tail: [amd_epyc_7002_soc_family],
+  },
+  citations: [
+    FactCitation {
+      fact: decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_cpu_support"),
+      authority: extdeps_external_authority_anchor,
+    },
+  ],
+}
+
 data supermicro_h11ssl_socket_contact_count_standing: CitedFigureStanding = TranscribedUncited {
-  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so no CpuSocket is minted. Ground against AMD's SP3 socket documentation (4094-contact LGA is NOT read from this manual) before extdeps.cpu gains an SP3 row.",
+  read_obligation: "The manual states the socket as 'SP3' and never its contact count or termination, so nothing about the socket's figures is read from this manual. The SP3 CpuSocket lives in extdeps.cpu.amd (amd_socket_sp3) carrying socket_sp3_standing, TranscribedUncited until AMD's or the socket vendor's SP3 documentation grounds it.",
 }
 
 data supermicro_h11ssl_epyc_7702p_standing: CitedFigureStanding = TranscribedUncited {
@@ -228,6 +262,21 @@ data supermicro_h11ssl_pcie_slots: List<PcieSlot> = [
   PcieSlot { designator: "SLOT6", lanes: 16 },
 ]
 
+// PHYSICAL ORDER AND PITCH ARE NOT IN THE TEXT. The manual's text gives each slot's name and
+// width (p.42) and nothing about where it sits; the layout figure (pp.12-13) is an image. Whether a
+// dual-slot card in one slot covers or starves its neighbour depends on exactly that, so it stays an
+// obligation here rather than being assumed from the numbering.
+data supermicro_h11ssl_slot_geometry_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Read the physical order of SLOT1-SLOT6 and their pitch from the rendered layout figure (pp.12-13) or a measured unit; the text layer carries names and widths only.",
+}
+
+// The BIOS bifurcation menu (p.75) labels the slots 'CPU2 SLOT1' and 'CPU1 SLOT2' through 'CPU1 SLOT6',
+// verbatim. Which root complex or die each slot hangs off is not stated, so these labels are recorded
+// as the manual's spelling and not read as a topology.
+data supermicro_h11ssl_bios_slot_labels: List<NonEmptyStr> = [
+  "CPU2 SLOT1", "CPU1 SLOT2", "CPU1 SLOT3", "CPU1 SLOT4", "CPU1 SLOT5", "CPU1 SLOT6",
+]
+
 // J23, PCI-E 3.0 x4 M-key, 2280 and 22110 (pp.15,41).
 data supermicro_h11ssl_m2_lanes: Nat = 4
 
@@ -281,6 +330,17 @@ data supermicro_h11ssl_fan_current_standing: CitedFigureStanding = TranscribedUn
   read_obligation: "Manual p.39 states no per-header current limit; ground against the Supermicro H11SSL datasheet or the board's fan-header silkscreen rating before any fan-load budget.",
 }
 // Fan speed is set by BMC Thermal Management; with it enabled 'use all 4-pin fans' (p.39).
+
+// ---- Cooling zones (p.16, p.39). The feature list states 'Dual cooling zones' (p.16), and p.39
+// lists the seven headers. NEITHER PAGE SAYS WHICH HEADER BELONGS TO WHICH ZONE, so the assignment
+// is not a fact of this manual and is not authored here: a consumer that needs it reads the standing
+// below and refuses until it is grounded. A mapping observed on a unit (which header's duty moves when
+// one zone's duty is written) is that unit's receipt, in the observing layer.
+data supermicro_h11ssl_cooling_zone_count: Nat = 2
+
+data supermicro_h11ssl_header_zone_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The manual states two cooling zones (p.16) and seven headers (p.39) but not which header is in which zone. Ground it in Supermicro documentation for this board's BMC, or record a per-unit observation as a receipt; do not infer it from the header names.",
+}
 
 // ---- Power (pp.44-45).
 type H11sslAtxSignal = Atx3v3 | AtxNeg12V | AtxGround | AtxPsOn | Atx5V | AtxPwrOk | Atx5Vsb | Atx12V | AtxReservedNc
@@ -428,3 +488,9 @@ data supermicro_h11ssl_family_mechanical: SupermicroH11sslMechanical = Supermicr
   dimms_per_channel: 1,
   lan_ports: [Lan1, Lan2],
 }
+
+// DESIGN section 3c declared frontier, for the cooling-zone count, the zone and slot-geometry
+// standings and the BIOS slot labels.
+data supermicro_h11ssl_zone_and_slot_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a fleet placement model reads supermicro_h11ssl_header_zone_standing and supermicro_h11ssl_slot_geometry_standing and refuses to derive zone reach or slot adjacency on an H11SSL host while either is uncited. SUFFICIENT FOR: the standings have a consumer that acts on them; until then they are recorded obligations." as NonEmptyStr
+)

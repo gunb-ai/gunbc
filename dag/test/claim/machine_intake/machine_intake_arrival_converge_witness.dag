@@ -6,7 +6,7 @@ import std.scoped_authorization { AttemptIdentity }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { length }
 import extdeps.crypto.mac { MacKeyId }
-import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
@@ -50,7 +50,7 @@ import gunbc.machine_intake.prior_life_boundary {
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
   prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
 }
-import std.content_hash { content_hash_equal, content_hash_of_value }
+import std.content_hash { content_hash_equal, content_hash_of_value, sha256_hex_of_text }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import test.claim.machine_intake.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
 import gunbc.auth.standing_operator_grant {
@@ -148,7 +148,7 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
           AccessDiscoverReceipt { receipt: a } =>
             (a.access.endpoint.host as String) == "192.168.1.246"
               && (a.access.firmware.raw_version as String) == "2.11.104000"
-              && (match a.access.family { AmiMegaRac => true  OpenBmc => false })
+              && (match a.access.family { AmiMegaRac => true  OpenBmc => false  SupermicroAten => false })
               && (match a.access.controller_clock { ControllerClockRendered { rendering: t } => (t as String) == "2000-03-02T10:39:54-05:00"  ControllerClockUnread { cause: _ } => false })
               && (a.route.endpoint.host as String) == "192.168.1.246"
               && route_is_redfish_write_candidate_on_manager_read(route: a.route)
@@ -853,7 +853,7 @@ test fn w_a_step_with_two_census_rows_refuses() -> Bool {
 // ── run controls, over real step outcomes from mtjade1's real read ─────────────────────────────
 
 fn real_access(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
-  access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
+  access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read, locked: none)
 }
 
 fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> AccessDiscoverEstablished? {
@@ -1017,7 +1017,7 @@ fn mtjade1_grant_with_foreign_interlock() -> StandingOperatorGrant {
     ruling: StandingDestructiveAuthorization {
       ruling_text: g.ruling.ruling_text,
       effect_subject: g.ruling.effect_subject,
-      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant") },
+      interlock: InterlockedBy { hold: decl_ref(module_path: "gunbc.machine_intake.arrival_converge", decl_name: "grant_discharges_bmc_secure_account_write") },
     },
     scope: g.scope,
     effects: g.effects,
@@ -1187,6 +1187,7 @@ test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dr
           apply: Present { value: apply },
           capability: none,
         ),
+        locked: none,
       ) {
         ArrivalRunFolded { verdict: v } =>
           match v {
@@ -1628,7 +1629,7 @@ test fn w_access_discover_refuses_a_read_bound_to_another_unit() -> Bool {
 // unit it is not bound to, refuses AccessDiscover; IdentityBindProvisional and PriorLifeBoundary are
 // then never executed and are NotReached, each blocked by that AccessDiscover instance.
 test fn w_a_refused_access_leaves_identity_bind_not_reached_blocked_by_it() -> Bool {
-  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() }) {
+  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() }, locked: none) {
     ArrivalRunFolded { verdict: v } => match v {
       RunStopped { ledger: l, at: at } =>
         declaration_ref_eq(a: at.step_identity, b: access_discover_step_ref)

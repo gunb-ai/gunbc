@@ -26,7 +26,7 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.algebra { Empty, list_append, length, fold_list, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -62,6 +62,7 @@ import v2.std.grammar {
 }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_bind_let_separator_present,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   InfixToken,
   canonical_operation_op_add,
@@ -146,6 +147,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import std.host_text { chars }
 
@@ -900,7 +902,7 @@ fn c_atom(id: Symbol) -> Node {
 }
 
 fn c_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -1117,6 +1119,7 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^c_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^c_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: StatementSequenced {
       return_token: ^c_token_kw_return,
       statement_terminator: ^c_token_semicolon

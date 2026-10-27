@@ -64,7 +64,29 @@ import gunbc.live_deploy.member_identity {
   decide_member, release_member_roster, MemberDecision, ConvergedMember, ReleaseTarget,
   DirectoryRoot, DirectoryRootIdentity, RootAt, DirectoryRootStanding, RootConverged, RootModeRepairable, MemberRefusedOnHost,
   EffectDerivation, EffectsDerived, EffectsRefused, derive_member_plan, effect_labels, plan_mutation_count,
+  // WORKER-ROOT-EQUIVALENT-3 members: the two new ConvergedMember variants and their identities.
+  GitWorkerSubtree, GitWorkerSubtreeAt, SubtreeConverged, SubtreeNeedsRegroup,
+  RepositorySharedPosture, RepositorySharedPostureAt, RepositorySharedPostureIdentity,
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
+
+// WORKER-ROOT-EQUIVALENT-3: the instance rows and the single-home posture/subtree builders. These come
+// from the dashboard-instance module (which imports NO live_deploy module -- cycle-safe; five other
+// live_deploy modules already import it), so the roster gate reads the instance's declared worker account
+// and the posture document is laid out by the same function the emitter hashes.
+import gunbc.roadmap.roadmap_dashboard_instance {
+  HostDashboardInstance, WorkerDedicatedAccount, WorkerIsServiceUser,
+  dashboard_instance_for_id, DashboardInstanceForId, DashboardInstanceIdUnknown,
+  dashboard_git_worker_directory_children, dashboard_git_worker_subtree_path,
+  dashboard_git_worker_subtree_confined_children, dashboard_git_worker_subtree_walk_depth,
+  dashboard_git_subtree_readback_is_granted,
+  dashboard_git_worker_posture_readback_keys, DashboardGitConfigPosturePair,
+  dashboard_git_shared_repository_posture_document, dashboard_git_shared_repository_posture_desired_document,
+  dashboard_git_maintenance_service_unit_path, dashboard_git_maintenance_timer_unit_path,
+}
+import extdeps.git { git_local_config_get_command }
+import extdeps.tools.findutils { find_subtree_mode_readback_command }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_shared_group_name }
 
 // THE HOST'S SIDE OF THE RECONCILE, read by the evaluator that plans the deploy so the decision and
 // the mutation are one evaluation (operator direction, 2026-09-06: one semantic evaluation per
@@ -233,14 +255,28 @@ fn observe_executable(arm: ObservationArm, path: String) -> ObservedMember {
 // The emitter verifies the source against this digest again immediately before the copy, so a build
 // that changes between planning and actuation stops the line rather than installing under a stale
 // identity (gunbc.live_deploy.emit emit_release_member_effects).
-data release_executable_source_path: String = "target/release/gunbc"
+data release_executable_source_path: String = concat(cargo_default_release_dir_rel, "/gunbc")
 
 fn desired_executable() -> ObservedMember {
   observe_executable(arm: OnTheHostItself, path: release_executable_source_path)
 }
 
 // THE UNIT FILE: the installed document's content hash.
-fn unit_document_leg(arm: ObservationArm, path: String) -> Leg {
+//
+// ONE LEG, TWO STANDING POLICIES OVER ABSENCE, because two members read unit documents for different
+// reasons. observe_unit_file has ALREADY established presence via entry_presence before calling, so a
+// document missing at read time contradicts the listing -- that IS a refusal, with the contradiction
+// named. The repository-shared-posture member has no such prior: the two maintenance units are
+// installed BY THAT MEMBER, so on a host that never ran it absence is the expected standing, the same
+// re-writable standing as an unset config key -- it moves the digest and the member re-asserts. A
+// single policy could not serve both: forcing the refusal policy is what killed the re-root's first
+// fresh-lab deploy (absent units refused the plan), and forcing the standing policy would let the
+// serve unit's listing-and-read contradiction pass as a standing.
+type UnitDocumentAbsence
+  = AbsentContradictsListing
+  | AbsentIsTheStanding
+
+fn unit_document_leg(arm: ObservationArm, path: String, absent: UnitDocumentAbsence) -> Leg {
   match arm {
     OnTheHostItself => {
       let parent = path_parent(path: path)
@@ -253,10 +289,22 @@ fn unit_document_leg(arm: ObservationArm, path: String) -> Leg {
         read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
       ) {
         FilesystemFileRead { path: _, content } => LegOut { stdout: content }
-        FilesystemFileAbsent(_) => LegRefused { cause: join([path, " vanished between listing and read"], "") }
-        FilesystemFileIndeterminate { cause } => LegRefused { cause: cause }
-        FilesystemFileObservationsDisagree { path: _, cause } => LegRefused { cause: cause }
-        FilesystemFileSubjectRefused { directory: _, name: _, cause } => LegRefused { cause: cause }
+        FilesystemFileAbsent(_) => match absent {
+          AbsentContradictsListing => LegRefused { cause: join([path, " vanished between listing and read"], "") }
+          AbsentIsTheStanding => LegOut { stdout: posture_missing_sentinel }
+        }
+        FilesystemFileIndeterminate { cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
+        FilesystemFileObservationsDisagree { path: _, cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
+        FilesystemFileSubjectRefused { directory: _, name: _, cause } => match absent {
+          AbsentContradictsListing => LegRefused { cause: cause }
+          AbsentIsTheStanding => LegRefused { cause: join(["reading ", path, ": ", cause], "") }
+        }
       }
     }
     OverTransport { transport } => remote_leg(transport: transport, argv: ["cat", "--", path], leg: join(["reading ", path], ""))
@@ -269,7 +317,7 @@ fn observe_unit_file(arm: ObservationArm, spec: DeploymentSpec) -> ObservedMembe
   match entry_presence(arm: arm, path: path) {
     EntryPresenceIndeterminate { cause } => MemberUnobservable { member: UnitFile, cause: cause }
     EntryAbsent => MemberAbsentOnHost { member: UnitFile }
-    EntryPresent => match unit_document_leg(arm: arm, path: path) {
+    EntryPresent => match unit_document_leg(arm: arm, path: path, absent: AbsentContradictsListing) {
       LegRefused { cause } => MemberUnobservable { member: UnitFile, cause: cause }
       LegOut { stdout: document } =>
         MemberObserved { identity: UnitFileAt { file: UnitFileIdentity { unit: unit, document: content_hash_atom(value: document as NonEmptyStr) } } }
@@ -294,7 +342,7 @@ fn observe_oidc_config_file(arm: ObservationArm, spec: DeploymentSpec) -> Observ
       match entry_presence(arm: arm, path: path) {
         EntryPresenceIndeterminate { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
         EntryAbsent => MemberAbsentOnHost { member: OidcConfigFile }
-        EntryPresent => match unit_document_leg(arm: arm, path: path) {
+        EntryPresent => match unit_document_leg(arm: arm, path: path, absent: AbsentContradictsListing) {
           LegRefused { cause } => MemberUnobservable { member: OidcConfigFile, cause: cause }
           LegOut { stdout: document } =>
             MemberObserved { identity: OidcConfigAt { file: OidcConfigFileIdentity {
@@ -574,12 +622,280 @@ fn desired_tree(candidate: CandidateRelease) -> MemberIdentity {
 fn deployment_member_roster(spec: DeploymentSpec) -> List<ConvergedMember> {
   concat(
     concat(
-      release_member_roster(),
-      map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+      concat(
+        release_member_roster(),
+        map(deployment_directory_demands(spec: spec), t => DirectoryRoot { path: owned_directory_path(t: t) as String as NonEmptyStr }),
+      ),
+      deployment_git_worker_subtree_members(spec: spec),
     ),
-    deployment_oidc_config_members(spec: spec),
+    concat(
+      deployment_oidc_config_members(spec: spec),
+      deployment_repository_shared_posture_members(spec: spec),
+    ),
   )
 }
+
+// THE WORKER-ROOT-EQUIVALENT-3 MEMBERS, GATED ON THE WORKER BEING A SEPARATE ACCOUNT. These exist
+// because a SECOND POSIX identity -- the dedicated gunbc-worker -- has to be able to COMMIT into the
+// instance's repository, and committing writes loose objects into existing fan-out directories, refs and
+// reflogs. When the worker IS the service user (srv1_live, WorkerIsServiceUser) there is no second
+// identity to grant to: the service user already owns the tree, and these members would be asserting a
+// group-writeness nobody consumes -- worse, they would put writes into srv1_live's plan that its prod
+// posture does not want. So the gate is exactly the discriminator: dedicated -> these members ride the
+// roster; service-user -> the roster is byte-for-byte what it was before this slice (the prod-untouched
+// claim). The path is derived from the instance row, never from a caller-supplied string, so no spec can
+// claim a subtree by spelling one.
+fn deployment_dedicated_worker_instance(spec: DeploymentSpec) -> Optional<HostDashboardInstance> {
+  match dashboard_instance_for_id(instance_id: spec.instance_id as String) {
+    DashboardInstanceForId { instance } =>
+      match instance.worker {
+        WorkerDedicatedAccount => Present { value: instance }
+        WorkerIsServiceUser => none
+      }
+    DashboardInstanceIdUnknown { instance_id: _ } => none
+  }
+}
+
+fn deployment_git_worker_subtree_members(spec: DeploymentSpec) -> List<ConvergedMember> {
+  match deployment_dedicated_worker_instance(spec: spec) {
+    none => []
+    Present { value: instance } =>
+      map(
+        dashboard_git_worker_directory_children,
+        child => GitWorkerSubtree {
+          path: dashboard_git_worker_subtree_path(instance: instance, child: child) as NonEmptyStr,
+          child: child,
+        },
+      )
+  }
+}
+
+fn deployment_repository_shared_posture_members(spec: DeploymentSpec) -> List<ConvergedMember> {
+  match deployment_dedicated_worker_instance(spec: spec) {
+    none => []
+    Present { value: instance } => [RepositorySharedPosture { path: instance.repo_root as NonEmptyStr }]
+  }
+}
+
+// ONE SUBTREE, READ AS ITS INTERIORS: the model's own bounded walk (extdeps.tools.findutils
+// find_subtree_mode_readback_command, the same command the migration's readback and the claims use) run
+// under the deploy principal, then decided by the model's OWN grantedness fold
+// dashboard_git_subtree_readback_is_granted -- so the observer, the apply and the claims cannot drift
+// into disagreeing about what "granted" means, because they call the same function. THE STANDING IS
+// BINARY ON PURPOSE: converged when the fold passes, needs-regroup when it does not -- INCLUDING a
+// receipt that came back empty or a top not yet created, because the fix for "absent" and for
+// "present-but-wrong" is the same idempotent re-group + additive sweep, and the sweep fragment runs
+// AFTER the sibling DirectoryRoot's install created the top (fragment injection order). Only a read that
+// could not be attempted at all (transport refused, process not spawned) is MemberUnobservable: that
+// refuses the derivation rather than silently planning a re-group on a host we could not look at.
+//
+// THE GROUP IS THE DECLARED TOKEN: the fold compares find's `%g` against fleet_posix_worker_shared_group_name,
+// the one row production grants and proves under. This is the PRODUCTION route (DESIGN 3 pairing): a wet
+// witness that groups a throwaway tree to a token its own host resolves passes that token to the fold
+// directly, and keeps this production spelling executed so the substituted value is never the only route.
+fn observe_git_worker_subtree(arm: ObservationArm, instance: HostDashboardInstance, path: String, child: NonEmptyStr) -> ObservedMember {
+  let member = GitWorkerSubtree { path: path as NonEmptyStr, child: child }
+  match subtree_readback_leg(arm: arm, instance: instance, child: child) {
+    SubtreeReadUnobservable { cause } => MemberUnobservable { member: member, cause: cause }
+    SubtreeReadOut { receipt } =>
+      if dashboard_git_subtree_readback_is_granted(child: child, group: fleet_posix_worker_shared_group_name, receipt: receipt) {
+        MemberObserved { identity: GitWorkerSubtreeAt { path: path as NonEmptyStr, child: child, standing: SubtreeConverged } }
+      } else {
+        MemberObserved { identity: GitWorkerSubtreeAt { path: path as NonEmptyStr, child: child, standing: SubtreeNeedsRegroup { observed: subtree_receipt_note(receipt: receipt) } } }
+      }
+  }
+}
+
+type SubtreeRead
+  = SubtreeReadOut { receipt: String }
+  | SubtreeReadUnobservable { cause: String }
+
+// THE LOCAL ARM runs find directly (the deploy principal is the instance's directory owner, which is a
+// member of the attempt group and can already read every entry -- so this needs no privilege the deploy
+// does not have; a find that cannot read a dir prints what it can and exits nonzero, and an unreadable
+// top is simply a not-yet-granted tree, decided by the fold, not an unobservable). The REMOTE ARM sends
+// the same argv through the transport; if the transport refuses a token (the portable-allowlist refusal)
+// the read is honestly unobservable rather than faked.
+fn subtree_readback_leg(arm: ObservationArm, instance: HostDashboardInstance, child: NonEmptyStr) -> SubtreeRead {
+  let command = find_subtree_mode_readback_command(
+    target: dashboard_git_worker_subtree_path(instance: instance, child: child),
+    pruned: dashboard_git_worker_subtree_confined_children(child: child),
+    depth: dashboard_git_worker_subtree_walk_depth,
+  )
+  match arm {
+    OnTheHostItself =>
+      match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause } => SubtreeReadUnobservable { cause: cause as String }
+        ProcessRan { observation: o } => SubtreeReadOut { receipt: o.stdout }
+      }
+    OverTransport { transport } =>
+      match run_typed_argv_transport(argv: command.arguments, transport: transport) {
+        TypedArgvExecRefused { reason } => SubtreeReadUnobservable { cause: reason }
+        TypedArgvExecConverged { result: r } => SubtreeReadOut { receipt: r.stdout }
+      }
+  }
+}
+
+// A BOUNDED NOTE about what the receipt said, for the refusal text and the stale-plan fingerprint. A
+// converged vs needs-regroup distinction does not need the WHOLE find printout (which could be thousands
+// of fan-out lines) carried into a fingerprint -- it needs enough to say, in a refusal, roughly how much
+// the host held. The line count and whether the top appeared is that summary; it is derived, not a
+// copy of the raw bytes.
+fn subtree_receipt_note(receipt: String) -> NonEmptyStr {
+  let lines = filter(split(s: receipt, delimiter: "\n"), l => trim(s: l) != "")
+  join(["lines=", to_string(value: length(lines))], "") as NonEmptyStr
+}
+
+// THE REPOSITORY POSTURE, READ AS ONE DOCUMENT. The same five things the deploy writes -- three local
+// config keys and the two maintenance unit files -- are read back from the host in the order that builds
+// the document (git asks for each key via extdeps.git's typed read, mirroring repo_local_git_config's
+// ConfigLocalGetInRepo read; the two unit files are read through the SAME leg the UnitFile member uses),
+// laid out by the shared dashboard_git_shared_repository_posture_document, and hashed to one digest.
+// Comparing that digest to the desired digest (declared pairs + declared unit serializations, hashed the
+// same way) decides the standing. If a key is missing, git reports a different value, a unit drifted on
+// disk, or an extra unit appeared, the digest moves and the member re-asserts -- all five at once, because
+// they are one obligation. A read that cannot be attempted at all is MemberUnobservable.
+//
+// WHY READ EVERYTHING RATHER THAN TRUSTING A WRITER: writing and believing is the failure this slice
+// exists to kill. The posture member's readback is independent of the write -- the observer does not know
+// or care whether a prior deploy wrote the keys; it asks git and the filesystem and decides from the
+// answer, exactly like the UnitFile member does not trust that a unit is installed because a step ran.
+fn observe_repository_shared_posture(arm: ObservationArm, instance: HostDashboardInstance) -> ObservedMember {
+  let member = RepositorySharedPosture { path: instance.repo_root as NonEmptyStr }
+  let repo = instance.repo_root as FilePath
+  // THE REPOSITORY IS ESTABLISHED PRESENT FIRST, by the corpus rule (extdeps.filesystem.filesystem_io):
+  // absence is a SUCCESSFUL PARENT LISTING without the entry -- never a failed read of the child, and
+  // here, decisively, never git's exit code. The re-root's first fresh-lab deploy is the case this
+  // establishes: on a fresh instance the source repository DOES NOT EXIST YET (the same apply clones
+  // it later in the script stage, after the artifact stage that carries the clone), so every leg below
+  // would have been reading a path with no repository in it. Absence is not unobservable: it is the
+  // member's ordinary MemberAbsentOnHost, which the generic Create arm decides as
+  // AssertRepositorySharedPosture -- a step the emitted script already runs AFTER the step that creates
+  // the repository. A present-but-unreadable repository (exit 128 from git inside it) stays honestly
+  // unobservable through the config legs; only a parent listing that itself failed is refused here.
+  match entry_presence(arm: arm, path: repo as String) {
+    EntryPresenceIndeterminate { cause } => MemberUnobservable { member: member, cause: join(["listing the parent of ", repo as String, " to establish the repository: ", cause], "") }
+    EntryAbsent => MemberAbsentOnHost { member: member }
+    EntryPresent => {
+      let key_reads = map(dashboard_git_worker_posture_readback_keys(), key =>
+        posture_config_leg(arm: arm, repo: repo, key: key))
+      let service_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_service_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
+      let timer_leg = unit_document_leg(arm: arm, path: dashboard_git_maintenance_timer_unit_path(instance: instance) as String, absent: AbsentIsTheStanding)
+      match posture_document_from_legs(key_legs: key_reads, service_leg: service_leg, timer_leg: timer_leg) {
+      PostureReadUnobservable { cause } => MemberUnobservable { member: member, cause: cause }
+      PostureReadOut { document } =>
+        MemberObserved { identity: RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
+          path: instance.repo_root as NonEmptyStr,
+          document: content_hash_atom(value: document as NonEmptyStr),
+        } } }
+      }
+    }
+  }
+}
+
+type PostureRead
+  = PostureReadOut { document: String }
+  | PostureReadUnobservable { cause: String }
+
+// ONE CONFIG-KEY READBACK, carrying the key it read so the pairs assemble from the legs alone (the legs
+// are mapped over dashboard_git_worker_posture_readback_keys, which is the declared order, so the observed
+// document lays out exactly like the desired one and differs only in content). A key git reports is its
+// value; a key git does not report is the sentinel -- a MISSING key is a real, re-writable standing, not a
+// refusal, and it moves the digest; only a transport refusal or a process that never spawned is
+// unobservable.
+type PostureConfigLeg
+  = PostureConfigPair { key: NonEmptyStr, value: String }
+  | PostureConfigUnobservable { cause: String }
+
+data posture_missing_sentinel: String = "\u{0}absent"
+
+// BOTH ARMS read through argv (extdeps.git's git_config_local_get_command -- the READ whose write mirror
+// the posture's config step is). The local arm runs it under the deploy principal (the instance owner,
+// which already owns and can read its repository config, so this asks for no privilege the deploy lacks);
+// the remote arm sends the same argv through the transport and is honestly unobservable on a transport
+// refusal, never a faked "missing".
+// THE REPOSITORY IS ESTABLISHED PRESENT BEFORE ANY LEG RUNS (see observe_repository_shared_posture),
+// so this leg never has to guess existence from git's exit code. git's documented outcome vocabulary
+// then splits cleanly: exit 0 is the value; exit 1 is THE KEY UNSET -- a real, re-writable standing,
+// the sentinel; ANY OTHER nonzero exit is a failed read of a repository the filesystem says is there
+// (128: not a repository, unreadable config, ...), and a failed read is unobservable, never a silent
+// "unset". Conflating them is the class: at the re-root's first fresh-lab deploy, `git config` died
+// with 128 because the repository did not exist yet, and every key was being recorded as "unset"
+// while the units beside it refused -- one half lying, the other refusing, the plan dead either way.
+fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> PostureConfigLeg {
+  let command = git_local_config_get_command(repo: repo, key: key as String)
+  let read_failure_cause = join(["git config --get ", key as String, " at ", repo as String], "")
+  match arm {
+    OnTheHostItself =>
+      match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause } => PostureConfigUnobservable { cause: join([read_failure_cause, ": ", cause], "") }
+        ProcessRan { observation: o } =>
+          if o.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: o.stdout) } }
+          else if o.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(o.exit_code)], "") } }
+      }
+    OverTransport { transport } =>
+      match run_typed_argv_transport(argv: command.arguments, transport: transport) {
+        TypedArgvExecRefused { reason } => PostureConfigUnobservable { cause: join([read_failure_cause, ": ", reason], "") }
+        TypedArgvExecConverged { result: r } =>
+          if r.exit_code == 0 { PostureConfigPair { key: key, value: trim(s: r.stdout) } }
+          else if r.exit_code == 1 { PostureConfigPair { key: key, value: posture_missing_sentinel } }
+          else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(r.exit_code)], "") } }
+      }
+  }
+}
+
+fn posture_document_from_legs(
+  key_legs: List<PostureConfigLeg>,
+  service_leg: Leg,
+  timer_leg: Leg,
+) -> PostureRead {
+  match collect_posture_pairs(key_legs: key_legs) {
+    PosturePairsRefused { cause } => PostureReadUnobservable { cause: cause }
+    PosturePairs { pairs } => match service_leg {
+      LegRefused { cause } => PostureReadUnobservable { cause: cause }
+      LegOut { stdout: service_document } => match timer_leg {
+        LegRefused { cause } => PostureReadUnobservable { cause: cause }
+        LegOut { stdout: timer_document } => PostureReadOut { document: dashboard_git_shared_repository_posture_document(
+          pairs: pairs, service_unit_document: service_document, timer_unit_document: timer_document) }
+      }
+    }
+  }
+}
+
+type PosturePairs
+  = PosturePairs { pairs: List<DashboardGitConfigPosturePair> }
+  | PosturePairsRefused { cause: String }
+
+fn collect_posture_pairs(key_legs: List<PostureConfigLeg>) -> PosturePairs {
+  fold(
+    key_legs,
+    init: PosturePairs { pairs: [] } as PosturePairs,
+    f: (acc, leg) => match acc {
+      PosturePairsRefused { cause: _ } => acc
+      PosturePairs { pairs } => match leg {
+        PostureConfigUnobservable { cause } => PosturePairsRefused { cause: cause }
+        PostureConfigPair { key, value } => PosturePairs { pairs: concat(pairs, [DashboardGitConfigPosturePair { key: key, value: value }]) }
+      }
+    },
+  )
+}
+
+fn desired_git_worker_subtree(instance: HostDashboardInstance, child: NonEmptyStr) -> MemberIdentity {
+  GitWorkerSubtreeAt {
+    path: dashboard_git_worker_subtree_path(instance: instance, child: child) as NonEmptyStr,
+    child: child,
+    standing: SubtreeConverged,
+  }
+}
+
+fn desired_repository_shared_posture(instance: HostDashboardInstance) -> MemberIdentity {
+  RepositorySharedPostureAt { posture: RepositorySharedPostureIdentity {
+    path: instance.repo_root as NonEmptyStr,
+    document: content_hash_atom(value: dashboard_git_shared_repository_posture_desired_document(instance: instance) as NonEmptyStr),
+  } }
+}
+
 
 fn deployment_oidc_config_members(spec: DeploymentSpec) -> List<ConvergedMember> {
   match tracker_web_oidc_serve_placement(instance_id: spec.instance_id) {
@@ -700,6 +1016,19 @@ fn desired_member_identity(
       TrackerWebOidcPlacementUnbound { instance_id: _, reason: _ } => none
       TrackerWebOidcPlacementMissingRealization { instance_id: _, environment: _ } => none
     }
+    // The desired standing of a git-worker subtree is "converged" -- the declared state it is meant to
+    // hold. The declared PATH is derived from the instance row (never from the member's own field), so the
+    // comparison is against what the model means, not what a caller spelled. A member that reaches here on
+    // a non-dedicated instance is a roster defect (nothing put it there), and the closed-world answer is
+    // none -- no desired identity, so nothing can be planned for it.
+    GitWorkerSubtree { path: _, child } => match deployment_dedicated_worker_instance(spec: spec) {
+      none => none
+      Present { value: instance } => Present { value: desired_git_worker_subtree(instance: instance, child: child) }
+    }
+    RepositorySharedPosture { path: _ } => match deployment_dedicated_worker_instance(spec: spec) {
+      none => none
+      Present { value: instance } => Present { value: desired_repository_shared_posture(instance: instance) }
+    }
   }
 }
 
@@ -718,6 +1047,17 @@ fn observed_member_on_host(
     ServiceProcess => observe_service_process(spec: spec, transport: transport)
     DirectoryRoot { path } => observe_owned_directory(arm: arm, spec: spec, path: path)
     OidcConfigFile => observe_oidc_config_file(arm: arm, spec: spec)
+    // The observation reads the host; the instance row is looked up, not supplied, and a member on a
+    // non-dedicated instance is a roster defect. Refusing to observe it (unobservable, so the derivation
+    // refuses rather than silently planning) is the closed-world arm.
+    GitWorkerSubtree { path, child } => match deployment_dedicated_worker_instance(spec: spec) {
+      none => MemberUnobservable { member: member, cause: "git-worker subtree on a non-dedicated-worker instance" }
+      Present { value: instance } => observe_git_worker_subtree(arm: arm, instance: instance, path: path as String, child: child)
+    }
+    RepositorySharedPosture { path: _ } => match deployment_dedicated_worker_instance(spec: spec) {
+      none => MemberUnobservable { member: member, cause: "repository shared posture on a non-dedicated-worker instance" }
+      Present { value: instance } => observe_repository_shared_posture(arm: arm, instance: instance)
+    }
   }
 }
 
@@ -774,6 +1114,10 @@ fn deployment_effect_plan(spec: DeploymentSpec, candidate: CandidateRelease, tra
       RootAt { root: _ } =>
         desired_executable_is_another_member(desired_bin: desired_bin)
       OidcConfigAt { file: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      GitWorkerSubtreeAt { path: _, child: _, standing: _ } =>
+        desired_executable_is_another_member(desired_bin: desired_bin)
+      RepositorySharedPostureAt { posture: _ } =>
         desired_executable_is_another_member(desired_bin: desired_bin)
     }
   }

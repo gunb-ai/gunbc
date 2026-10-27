@@ -1,11 +1,19 @@
 module gunbc.census_closure_frontier
 
+import gunbc.fleet.fleet_known_hosts_anchor { remote_word_quoting_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 import gunbc.host.host_assimilation_program { host_assimilation_program_frontier_rows }
 import std.roster_frontier { FrontierRow, concat_frontier_row_groups }
 import gunbc.resolver_cost_frontier { resolver_cost_frontier_rows }
+import gunbc.serving.router_proxy_scaffold { router_proxy_frontier_rows }
 import gunbc.auth.privileged_effect_census { human_intervention_frequency_frontier_rows }
 import gunbc.ci.deploy_route_requirement { deploy_route_requirement_frontier_rows }
+import gunbc.machine_intake.bmc_recovery_route_frontier {
+  bmc_recovery_route_consumer_frontier_rows,
+  bmc_recovery_route_onboarding_consumer_frontier_rows,
+  bmc_recovery_route_pairing_frontier_rows,
+}
+import gunbc.machine_intake.h11ssl_x86_bringup_frontier { h11ssl_x86_bringup_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
 import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
@@ -36,10 +44,8 @@ import gunbc.public_workload_census {
 }
 import gunbc.ci_workflow_source_read { ci_workflow_scan_producer_frontier_rows }
 import gunbc.review_sheet_identity { review_sheet_identity_consumer_frontier_rows }
+import gunbc.durable_exclusive_hold_file_store { durable_hold_nonholder_release_consumer_frontier_rows }
 import gunbc.review_sheet_converge_cli { review_sheet_whole_estate_consumer_frontier_rows }
-import gunbc.review_sheet_formula_observation { review_sheet_formula_observation_consumer_frontier_rows }
-import gunbc.review_sheet_header_init { review_sheet_header_init_consumer_frontier_rows }
-import gunbc.review_sheet_batch_actuator { review_sheet_batch_write_consumer_frontier_rows }
 import gunbc.sheets_bootstrap_converge { sheets_bootstrap_project_consumer_frontier_rows }
 import extdeps.pricing.github_actions { actions_allowance_consumer_frontier_rows }
 import gunbc.roadmap.roadmap_dispatch_destination { attempt_admission_subject_frontier_rows }
@@ -54,14 +60,18 @@ import extdeps.router.verizon_cr1000a {
   cr1000a_expires_in_ui_text_frontier_rows,
 }
 import extdeps.tools.sha256sum { sha256_verify_native_transport_frontier_rows }
+import gunbc.githooks.githooks_pre_push_frontier { githooks_pre_push_concat_body_frontier_rows }
 import gunbc.fleet.mtcollins_firmware_converge { hpm_check_converge_reader_frontier_rows }
+import gunbc.host.anchored_host_transport { anchored_host_transport_frontier_rows }
 import extdeps.linux.usb_gadget { configfs_attr_write_realization_frontier_rows, configfs_rmdir_absent_as_converged_frontier_rows }
 import gunbc.cloudflare.r2_token_mint { cloudflare_r2_token_mint_frontier_rows }
 import extdeps.cloudflare.account_api_tokens { cloudflare_account_api_tokens_frontier_rows }
 import extdeps.cloudflare.r2 { cloudflare_r2_frontier_rows }
 import gunbc.cloudflare.boot_origin { cloudflare_boot_origin_frontier_rows }
 import gunbc.network_boot_delivery { network_boot_delivery_frontier_rows }
-import gunbc.site_uefi_arm64_pxe_edge { site_uefi_arm64_pxe_edge_frontier_rows }
+import gunbc.site_pxe_edge { site_pxe_edge_frontier_rows }
+import gunbc.provisioning.public_nocloud_seed { public_nocloud_seed_frontier_rows }
+import gunbc.provisioning.network_install_receipt { network_install_receipt_frontier_rows }
 import product.supplier.cloudflare_r2 { cloudflare_r2_supplier_frontier_rows }
 import extdeps.backblaze.b2 { backblaze_b2_frontier_rows }
 import extdeps.cloud.gcp.storage { gcs_storage_frontier_rows }
@@ -78,13 +88,13 @@ import gunbc.serving.serving_provision_derivation { serving_provision_derivation
 import gunbc.cloudflare.r2_permission_group_observe { cloudflare_permission_group_observation_frontier_rows }
 import gunbc.where_refinement_predicate_vocabulary { http_status_where_clause_names_declaration_frontier_rows }
 import gunbc.arm_ci_seller_census { arm_ci_seller_census_later_consumer_frontier_rows }
-import gunbc.approve_ios_enrolment_machine { approve_ios_enrolment_state_generator_frontier_rows }
 import std.machine_word { machine_word_consumer_frontier_rows }
 import product.data_class { data_class_frontier_rows }
 import product.data_category { data_category_frontier_rows }
 
 import product.fabric.job_admission { job_admission_frontier_rows }
 import gunbc.review_sheet_projection { buyer_review_ensure_projection_frontier_rows }
+import gunbc.realization_census_sheet { realization_census_sheet_frontier_rows }
 import gunbc.network_boot_manifest_broker { network_boot_manifest_broker_frontier_rows }
 import gunbc.github_app_acquisition {
   github_app_human_step_frontier_rows,
@@ -98,11 +108,11 @@ import gunbc.instruments.github_app_acquire {
 fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
   [
     resolver_cost_frontier_rows,
+    router_proxy_frontier_rows,
     review_sheet_whole_estate_consumer_frontier_rows,
-    review_sheet_formula_observation_consumer_frontier_rows,
-    review_sheet_header_init_consumer_frontier_rows,
-    review_sheet_batch_write_consumer_frontier_rows,
+    realization_census_sheet_frontier_rows,
     review_sheet_identity_consumer_frontier_rows,
+    durable_hold_nonholder_release_consumer_frontier_rows,
     sheets_bootstrap_project_consumer_frontier_rows,
     actions_allowance_consumer_frontier_rows,
     data_class_frontier_rows,
@@ -111,6 +121,7 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     hetzner_money_rate_frontier_rows,
     mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
+    remote_word_quoting_frontier_rows,
     memory_swap_unlimited_convention_frontier_rows,
     hostconfig_containerconfig_anemic_leaves_frontier_rows,
     network_settings_bare_strings_frontier_rows,
@@ -151,7 +162,9 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     cloudflare_r2_frontier_rows,
     cloudflare_boot_origin_frontier_rows,
     network_boot_delivery_frontier_rows,
-    site_uefi_arm64_pxe_edge_frontier_rows,
+    site_pxe_edge_frontier_rows,
+    public_nocloud_seed_frontier_rows,
+    network_install_receipt_frontier_rows,
     cloudflare_r2_supplier_frontier_rows,
     backblaze_b2_frontier_rows,
     gcs_storage_frontier_rows,
@@ -162,9 +175,9 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     colo_types_frontier_rows,
     job_admission_frontier_rows,
     arm_ci_seller_census_later_consumer_frontier_rows,
-    approve_ios_enrolment_state_generator_frontier_rows,
     runner_canary_executed_evidence_frontier,
     network_boot_manifest_broker_frontier_rows,
+    anchored_host_transport_frontier_rows,
     machine_word_consumer_frontier_rows,
     tracker_web_oauth_frontier_rows,
     rented_ninfer_source_consumer_frontier_rows,
@@ -176,6 +189,11 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     rented_allocation_host_enrollment_frontier_rows,
     serving_provision_derivation_frontier_rows,
     host_assimilation_program_frontier_rows,
+    githooks_pre_push_concat_body_frontier_rows,
+    bmc_recovery_route_consumer_frontier_rows(),
+    bmc_recovery_route_onboarding_consumer_frontier_rows(),
+    bmc_recovery_route_pairing_frontier_rows(),
+    h11ssl_x86_bringup_frontier_rows,
   ]
 }
 

@@ -4,7 +4,8 @@ import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.compile_diagnostic_census { census_blocking_rows, CensusObserved, CensusNotRunnable }
-import gunbc.compile_census_probe { blocking_class_count_for }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_exit}
+import std.process { ProcessExit }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -38,8 +39,8 @@ fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
 // UNRESOLVED-FIELD REFUSAL CONTROL (callable path): both branches empty leaves the element unsolved,
 // and the lambda parameter keeps that identity, so reading `.label` refuses instead of deferring.
 // Goes red if the callable-parameter binding erases empty_list_element to callable_param.
-test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> Bool {
-  blocking_class_count_for(source: red_both_branches_empty_source, wanted_class: "InternalError") >= 1
+test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: red_both_branches_empty_source, wanted_class: "InternalError"), holds: fn(n) { n >= 1 }))
 }
 
 test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool {

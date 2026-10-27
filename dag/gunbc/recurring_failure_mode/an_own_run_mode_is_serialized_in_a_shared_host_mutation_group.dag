@@ -4,12 +4,12 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data an_own_run_mode_is_serialized_in_a_shared_host_mutation_group: RecurringFailureMode = RecurringFailureMode {
   identity: "an_own_run_mode_is_serialized_in_a_shared_host_mutation_group" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "steps carry a declared effect scope and the domain is derived from it." }, trigger_capability: "steps carry a declared effect scope and the domain is derived from it." } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "steps carry a declared effect scope and the domain is derived from it." } },
 
   receipts: [
     "INVALID STATE: a fleet-converge mode whose effects are confined to its own run (runner workspace, own artifacts) is mapped to ExecutorDomain, so it queues in the executor host's mutation group behind work that really mutates the host.",

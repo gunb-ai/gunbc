@@ -36,24 +36,23 @@ pub fn absurd<T: Clone>(n: Never) -> T {
     match n.clone() {}
 }
 
-pub fn pure_dag_seam_unreachable() -> i64 {
+pub fn pure_dag_seam_unreachable() -> Never {
     v1_rt::pure_dag_seam_unreachable()
 }
 
-pub fn pure_dag_seam_unreachable_float() -> f64 {
-    if (v1_rt::pure_dag_seam_unreachable() == 0) {
-        0.0
-    } else {
-        0.0
-    }
+#[allow(unreachable_code)]
+pub fn pure_dag_seam_unreachable_int() -> i64 {
+    absurd(v1_rt::pure_dag_seam_unreachable())
 }
 
+#[allow(unreachable_code)]
+pub fn pure_dag_seam_unreachable_float() -> f64 {
+    absurd(v1_rt::pure_dag_seam_unreachable())
+}
+
+#[allow(unreachable_code)]
 pub fn pure_dag_seam_unreachable_string() -> String {
-    if (v1_rt::pure_dag_seam_unreachable() == 0) {
-        "".to_string()
-    } else {
-        "".to_string()
-    }
+    absurd(v1_rt::pure_dag_seam_unreachable())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

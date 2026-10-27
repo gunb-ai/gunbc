@@ -253,7 +253,6 @@ type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
   | OperatorObserved { note: NonEmptyStr, observed_at: Optional<LogicalTime> }
-  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
 
 type CacheEvidence {
   field: NonEmptyStr

@@ -1,6 +1,8 @@
 module gunbc.ci.run_attempt_census
 
 import std.types { String, NonEmptyStr, Bool, Int, Timestamp }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
+import std.optional { Optional, Present, Absent }
 import std.page_fold { PageFoldOutcome, PagesClosed, PagesRefused, page_fold_refusal_key }
 
 // WHETHER A WORKFLOW RUN EXECUTED, AND WHETHER THE CENSUS THAT SAYS SO IS CLOSED.
@@ -54,7 +56,8 @@ fn attempt_executed(a: AttemptExecution) -> Bool {
 // ── Whether a zero-everywhere result can mean anything ──────────────────────────────────────
 
 type ZeroClaimStanding
-  = ZeroClaimDiscriminating { control_run_id: Int, control_job_count: Int }
+  = ZeroClaimDiscriminating { control_run_id: GitHubWorkflowRunId, control_job_count: Int }
+  | ZeroClaimNoControlRun { control_job_count: Int }
   | ZeroClaimIndistinguishable
 
 // THE SHARPEST RULE IN THIS MODULE. A census reporting "no attempt executed" is worthless without
@@ -62,14 +65,17 @@ type ZeroClaimStanding
 // "this read always returns 0" produce identical output. The session that measured 12-of-12 zero
 // had no such control; the reviewer's boundary probe supplied one -- a run with FIVE attempt-1
 // jobs -- and that single non-zero is what made the zeros evidence rather than a tautology.
-fn zero_claim_standing(observations: List<AttemptExecution>, control_run_ids: List<Int>) -> ZeroClaimStanding {
+fn zero_claim_standing(observations: List<AttemptExecution>, control_run_ids: List<GitHubWorkflowRunId>) -> ZeroClaimStanding {
   fold(observations, init: ZeroClaimIndistinguishable, f: fn(acc, o) {
     match acc {
       ZeroClaimDiscriminating { control_run_id: r, control_job_count: c } =>
         ZeroClaimDiscriminating { control_run_id: r, control_job_count: c }
+      ZeroClaimNoControlRun { control_job_count: c } => ZeroClaimNoControlRun { control_job_count: c }
       ZeroClaimIndistinguishable => match o {
-        AttemptExecuted { job_count } =>
-          ZeroClaimDiscriminating { control_run_id: first_or_zero(xs: control_run_ids), control_job_count: job_count }
+        AttemptExecuted { job_count } => match first_run(xs: control_run_ids) {
+          Present { value: r } => ZeroClaimDiscriminating { control_run_id: r, control_job_count: job_count }
+          Absent => ZeroClaimNoControlRun { control_job_count: job_count }
+        }
         AttemptDidNotExecute => ZeroClaimIndistinguishable
         AttemptUnobserved { detail: _ } => ZeroClaimIndistinguishable
       }
@@ -77,8 +83,14 @@ fn zero_claim_standing(observations: List<AttemptExecution>, control_run_ids: Li
   })
 }
 
-fn first_or_zero(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: fn(acc, x) { if acc == 0 { x } else { acc } })
+// The first control run, or Absent: a list with no control names no run, so no run id is invented.
+fn first_run(xs: List<GitHubWorkflowRunId>) -> GitHubWorkflowRunId? {
+  fold(xs, init: Absent, f: fn(acc, x) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: x }
+    }
+  })
 }
 
 // ── Whether the population is closed ────────────────────────────────────────────────────────
@@ -96,7 +108,7 @@ fn first_or_zero(xs: List<Int>) -> Int {
 type CensusRefusal
   = PagesUnclosed { fold_refusal_key: NonEmptyStr }
   | DuplicateRunIdsObserved { duplicate_count: Int, unique_observed: Int }
-  | FilterDisagreed { requested: NonEmptyStr, observed: NonEmptyStr, run_id: Int }
+  | FilterDisagreed { requested: NonEmptyStr, observed: NonEmptyStr, run_id: GitHubWorkflowRunId }
   | ProviderTotalUnstable { first_total: Int, second_total: Int }
   | ProviderTotalUnreconciled { provider_total: Int, unique_observed: Int }
   | CensusReadRefused { detail: String }
@@ -117,7 +129,7 @@ type CensusObservation {
   provider_total_recheck: Int
   filter_requested: NonEmptyStr
   filter_violation: NonEmptyStr?
-  filter_violation_run_id: Int
+  filter_violation_run_id: GitHubWorkflowRunId
   read_succeeded: Bool
   read_detail: String
   frozen_upper: Timestamp
@@ -127,7 +139,7 @@ type CensusObservation {
 // cannot be reconciled, an unstable total cannot be matched, a disagreeing filter makes the
 // population the wrong population, duplicates prove pagination moved, and only then does a count
 // comparison mean anything. Reversing any pair would let a later arm answer for an earlier one.
-fn admit_census_over_fold(fold: PageFoldOutcome<Int>, o: CensusObservation) -> CensusOutcome {
+fn admit_census_over_fold(fold: PageFoldOutcome<GitHubWorkflowRunId>, o: CensusObservation) -> CensusOutcome {
   match fold {
     PagesRefused { refusal } => CensusRefused { cause: PagesUnclosed { fold_refusal_key: page_fold_refusal_key(r: refusal) } }
     PagesClosed { subject: _, pages_read: _, items: _ } => admit_census(o: o)
@@ -185,7 +197,7 @@ fn census_refusal_text(c: CensusOutcome) -> String {
       DuplicateRunIdsObserved { duplicate_count, unique_observed } =>
         join(["CensusDuplicateRunIds: ", to_string(duplicate_count), " duplicate id(s) across ", to_string(unique_observed), " unique; duplicates prove pagination moved under the read, so the page set is not one observation"], "")
       FilterDisagreed { requested, observed, run_id } =>
-        join(["CensusFilterDisagreed: requested ", requested as String, " but run ", to_string(run_id), " reports ", observed as String, "; the provider disagreed with its own filter, so this is the wrong population rather than an incomplete one"], "")
+        join(["CensusFilterDisagreed: requested ", requested as String, " but run ", github_workflow_run_id_wire_text(id: run_id), " reports ", observed as String, "; the provider disagreed with its own filter, so this is the wrong population rather than an incomplete one"], "")
       ProviderTotalUnstable { first_total, second_total } =>
         join(["CensusProviderTotalUnstable: identical queries reported ", to_string(first_total), " then ", to_string(second_total), "; no census can close against a moving denominator"], "")
       ProviderTotalUnreconciled { provider_total, unique_observed } =>

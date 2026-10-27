@@ -103,7 +103,7 @@ import std.syntax {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
-  OperatorSpec, SyntaxSpec
+  OperatorSpec, PrefixOperatorSpec, PostfixOperatorSpec, SyntaxSpec
 }
 
 import extdeps.languages.dag.syntax { dag_parse_environment }
@@ -1328,6 +1328,38 @@ fn find_operator_bp(ops: List<OperatorSpec>, symbol: String) -> BindingPower? {
     Present { value: BindingPower { left: op.left_bp, right: op.right_bp } }
   } else {
     none
+  }
+}
+
+// The declared binding power of a prefix (unary) operator, read from the language's
+// PrefixOperatorSpec rows beside the infix rows find_operator_bp reads. `parse_prefix` asks this
+// instead of carrying a hand-written literal: the literal it used to carry (12) admitted every
+// infix row at or above it, so `-1 - 2` and `!a * b` parsed with the prefix covering the tail.
+fn find_prefix_binding_power(ops: List<PrefixOperatorSpec>, symbol: String) -> Int? {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    Present { value: first(matching).value.binding_power }
+  } else {
+    none
+  }
+}
+
+// Whether the language's DECLARED PostfixOperatorSpec row admits consuming this postfix operator
+// at `min_bp` -- the same read `find_prefix_binding_power` gives the prefix arms, for the sibling
+// arms. Before these rows existed, each postfix arm of `try_postfix` carried its threshold as a
+// literal (`21 < min_bp` for call and index, `13 < min_bp` for `as`); the `as` literal is precisely
+// the misalignment the v1-vs-v2 agreement claim would otherwise have caught: 13 sits below the
+// additive rows, so v1 read `a + b as T` as `(a + b) as T` while v2's structurally closed postfix
+// production read `a + (b as T)`, and it admitted `(-a) as T` once the prefix power moved above it.
+// NO ROW, NO CONSUME: a language that declares no row for a symbol does not have that postfix
+// operator, so the layer declines to consume it and the ordinary downstream refusal reports the
+// leftover token -- the same refusal discipline `parse_prefix` applies to an undeclared prefix row.
+fn declared_postfix_gate_admits(ops: List<PostfixOperatorSpec>, symbol: String, min_bp: Int) -> Bool {
+  let matching = ops |> filter(op => op.symbol == symbol)
+  if matching |> count > 0 {
+    min_bp <= first(matching).value.binding_power
+  } else {
+    false
   }
 }
 
@@ -4959,10 +4991,20 @@ fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
   let r = expect(tokens: r.tokens, expected: ExpectEq)
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
 
+  // The initializer's line rule is the rule every sibling `=` position already follows (the
+  // `=` of a type alias, of an expression-bodied `fn`, and of `let` all skip_newlines here):
+  // after the `=`, the initializer is the expression production with newlines skipped, and a
+  // stream whose next real token cannot START an expression -- another `data`, EOF -- refuses
+  // at that token exactly as before. The data site alone fed the post-`=` token straight into
+  // expression parsing, so a continuation-line initializer refused at its leading Newline:
+  // emergent, declared by no grammar, and the v2 grammar route (whose data rule declares no
+  // line condition) admitted it -- the #14608 divergence. Controls that pin this:
+  // v2.test.claim.parse.data_initializer_layout_parse; the class is
+  // gunbc.recurring_failure_mode.v2_grammar_admits_a_continuation_line_data_initializer_the_host_route_refuses.
   let r = if ctx.heads_only {
-    parse_data_value_heads_only(tokens: r.tokens, ctx: ctx)
+    parse_data_value_heads_only(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   } else {
-    parse_expr(tokens: r.tokens, ctx: ctx)
+    parse_expr(tokens: skip_newlines(tokens: r.tokens), ctx: ctx)
   }
   if has_err(err: r.err) { return ItemResult { item: named_dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
 
@@ -5553,17 +5595,30 @@ fn parse_prefix(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
   let span = token_span(tok: tok)
+  let text = match tok { Present { value: t } => t.text  Absent => "" }
   match sh {
-    Present { value: ShBang } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
-    }
-    Present { value: ShMinus } => {
-      let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: 12)
-      if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-      parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
-    }
+    Present { value: ShBang } =>
+      // The operand parses at the DECLARED prefix binding power, read from the same
+      // SyntaxSpec table the infix gate reads -- never a literal. A language whose rows declare no
+      // prefix row for this symbol does not have this prefix operator, and parse_primary answers
+      // with its ordinary expected-expression error rather than a hand-written power.
+      match find_prefix_binding_power(ops: ctx.env.syntax_spec.prefix_operators, symbol: text) {
+        Absent => parse_primary(tokens: tokens, ctx: ctx)
+        Present { value: bp } => {
+          let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: bp)
+          if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Not }, children: [r.expr], inferred: none, span: span))
+        }
+      }
+    Present { value: ShMinus } =>
+      match find_prefix_binding_power(ops: ctx.env.syntax_spec.prefix_operators, symbol: text) {
+        Absent => parse_primary(tokens: tokens, ctx: ctx)
+        Present { value: bp } => {
+          let r = parse_expr_bp(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, min_bp: bp)
+          if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+          parsed_expr_result(from: entry, tokens: r.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprUnaryOp { op: Neg }, children: [r.expr], inferred: none, span: span))
+        }
+      }
     _ => parse_primary(tokens: tokens, ctx: ctx)
   }
 }
@@ -5751,6 +5806,55 @@ fn is_variant_pattern_start(name: String) -> Bool {
   }
 }
 
+// `x is V` IS A PARSE-LEVEL DESUGAR TO THE EXISTING MATCH AND ADDS NO SEED SEMANTICS: it is exactly
+// `match x { V => true  _ => false }`, built from the node kinds `match` already builds, so infer,
+// emit and every later stage see an ordinary match and no new node, typing rule or realization.
+// v2 lowers the same source to the same Match (v2.compiler.body_lowering_fold body_lower_is_node); the
+// differential control compiler_tests is_arm_seed_lowering_agrees_with_explicit_match holds the seed
+// half and v2.test.claim.is_surface the v2 half. V must be a constructor spelling: a lowercase name would parse as a Bind pattern and
+// answer true for every value, so it refuses here rather than lowering to a catch-all.
+fn parse_is_arm_test(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, span: SourceSpan) -> PostfixResult {
+  let r = parse_dotted_ident(tokens: token_stream_advance(stream: tokens, n: 1), env: ctx.env)
+  if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: ctx, err: r.err } }
+  let name = r.name
+  if !is_variant_pattern_start(name: name) {
+    return PostfixResult {
+      expr: lhs,
+      changed: false,
+      tokens: r.tokens,
+      ctx: ctx,
+      err: Present { value: parse_error(msg: concat("`is` must name a constructor (an uppercase arm spelling), got '", name, "'"), span: r.span) }
+    }
+  }
+  let at = ConsumedWindow { from: lhs_from, to: r.tokens }
+  let yes_mint = mint_parsed_node_identity(ctx: ctx, at: at)
+  let yes_arm_mint = mint_parsed_node_identity(ctx: yes_mint.ctx, at: at)
+  let no_mint = mint_parsed_node_identity(ctx: yes_arm_mint.ctx, at: at)
+  let no_arm_mint = mint_parsed_node_identity(ctx: no_mint.ctx, at: at)
+  let match_mint = mint_parsed_node_identity(ctx: no_arm_mint.ctx, at: at)
+  let yes_arm = make_arm_node(
+    occurrence_identity: yes_arm_mint.identity,
+    pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [], parent_identity: VariantParentBeforeInference },
+    guard: none,
+    body: make_expr_node(occurrence_identity: yes_mint.identity, expr_data: ExprLiteral { value: LitBool { value: true } }, children: [], inferred: none, span: span),
+    span: span
+  )
+  let no_arm = make_arm_node(
+    occurrence_identity: no_arm_mint.identity,
+    pattern: Wildcard,
+    guard: none,
+    body: make_expr_node(occurrence_identity: no_mint.identity, expr_data: ExprLiteral { value: LitBool { value: false } }, children: [], inferred: none, span: span),
+    span: span
+  )
+  PostfixResult {
+    expr: make_expr_node(occurrence_identity: match_mint.identity, expr_data: ExprMatch, children: [lhs, yes_arm, no_arm], inferred: none, span: span),
+    changed: true,
+    tokens: r.tokens,
+    ctx: match_mint.ctx,
+    err: none
+  }
+}
+
 fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: TokenStream, min_bp: Int) -> PostfixResult {
   let tok = token_stream_first(stream: tokens)
   let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
@@ -5758,7 +5862,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
   match sh {
     Present { value: ShLParen } => {
 
-      if 21 < min_bp {
+      if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "(", min_bp: min_bp) {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         let r = parse_call_args(tokens: tokens, ctx: ctx)
@@ -5770,7 +5874,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
     }
     Present { value: ShIdent } => {
       if tok.value.text == "as" {
-        if 13 < min_bp {
+        if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "as", min_bp: min_bp) {
           PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
         } else {
           let r = parse_type_expr(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
@@ -5778,13 +5882,19 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
           let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
           PostfixResult { expr: make_expr_node(occurrence_identity: minted.identity, expr_data: ExprCast, children: [lhs, r.type_expr], inferred: none, span: span), changed: true, tokens: r.tokens, ctx: minted.ctx, err: none }
         }
+      } else if tok.value.text == "is" {
+        if 13 < min_bp {
+          PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+        } else {
+          parse_is_arm_test(tokens: tokens, ctx: ctx, lhs: lhs, lhs_from: lhs_from, span: span)
+        }
       } else {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShLBracket } => {
 
-      if 21 < min_bp {
+      if !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "[", min_bp: min_bp) {
         PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       } else {
         if is_constraint_bracket(tokens: tokens) {
@@ -5800,7 +5910,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
       match lhs.expr_data {
         ExprVar { binding_kind: _ } => {
           let n = expr_var_name_at(texpr: lhs, source_indices: ctx.source_indices)
-          if is_uppercase_start(name: n) && 14 <= min_bp {
+          if is_uppercase_start(name: n) && !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "{", min_bp: min_bp) {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: n) {
@@ -5814,7 +5924,7 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, lhs_from: Toke
         }
         ExprFieldAccess { summary: _ } => {
           let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
-          if is_uppercase_start(name: last_seg) && 14 <= min_bp {
+          if is_uppercase_start(name: last_seg) && !declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "{", min_bp: min_bp) {
             PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
           } else {
             if is_uppercase_start(name: last_seg) {
@@ -6089,14 +6199,14 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, l
     }
     let tokens = skip_continuation_newlines(tokens: tokens, env: ctx.env)
 
-    if tok_is_lparen(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
+    if tok_is_lparen(tok: token_stream_first(stream: tokens)) && declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "(", min_bp: min_bp) {
       let r = parse_call_args(tokens: tokens, ctx: ctx)
       if has_err(err: r.err) { return ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let span = token_span(tok: token_stream_first(stream: tokens))
       let minted = mint_parsed_node_identity(ctx: r.ctx, at: ConsumedWindow { from: lhs_from, to: r.tokens })
       let new_lhs = make_call_expr(occurrence_identity: minted.identity, lhs: lhs, args: r.args, span: span, source_indices: ctx.source_indices)
       parse_expr_loop_no_brace(tokens: r.tokens, ctx: parse_context_record_absorbed(ctx: minted.ctx, absorbed: lhs, into: minted.identity), lhs: new_lhs, lhs_from: lhs_from, min_bp: min_bp)
-    } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && 21 >= min_bp {
+    } else if tok_is_lbracket(tok: token_stream_first(stream: tokens)) && declared_postfix_gate_admits(ops: ctx.env.syntax_spec.postfix_operators, symbol: "[", min_bp: min_bp) {
       let span = token_span(tok: token_stream_first(stream: tokens))
       let r = parse_index_or_slice(tokens: tokens, ctx: ctx, base: lhs, base_from: lhs_from, span: span)
       if has_err(err: r.err) { return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6216,7 +6326,7 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   let tokens = skip_newlines(tokens: tokens)
   if tok_is_rbrace(tok: token_stream_first(stream: tokens)) || tok_is_eof(tok: token_stream_first(stream: tokens)) {
     StmtsResult { stmts: acc, tokens: tokens, ctx: ctx, err: none }
-  } else if looks_like_arm_start(tokens: tokens) {
+  } else if looks_like_arm_start(tokens: tokens, ctx: ctx) {
     StmtsResult { stmts: acc, tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = parse_stmt(tokens: tokens, ctx: ctx)
@@ -6225,70 +6335,41 @@ fn parse_match_arm_stmts(tokens: TokenStream, ctx: ParseContext, acc: List<Node>
   }
 }
 
-// WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, AND THE ANSWER WAS KEYED ON THE FIRST SEGMENT OF
-// THE NEXT PATTERN. parse_match_arm_stmts consumes statements until looks_like_arm_start says the
-// next tokens open a new arm. That predicate recognised only a bare `_` and an UPPERCASE-start
-// leaf, so a NAMESPACE-QUALIFIED pattern -- whose first token is the lowercase module head, v1 in
-// v1.std.core.ExprStringInterp -- answered false, the body kept consuming, swallowed the next arm
-// pattern as one more statement, and the parse died on the following FatArrow. The reported span
-// is the ARROW, several lines below the arm that actually ended, which is why four separate
-// reproductions of the surrounding shapes all parsed and the trigger had to be bisected. MINIMAL
-// REPRODUCTION, every clause load-bearing: an unbraced arm body containing a `let`, followed by an
-// arm whose pattern is DOTTED. Remove the let and the body is a single expression that never
-// enters the statement loop; make the next pattern `_` or an uppercase leaf and the predicate
-// already answers true. MEASURED: on the namespace-cut branch, where qualifying every pattern
-// turns this from rare into ordinary, exactly one corpus file of 3875 reaches it --
-// src/v1/05_emit.dag -- and it is invalid under the parser that branch itself carries, surviving
-// only because its built binary predates its own committed mirror. So this is not a cut-branch
-// accommodation: it is a grammar gap the cut merely made reachable, and it fails LOUDLY at
-// preparation, the cheap failure discipline. The scan requires the TERMINAL segment to be
-// uppercase and the arrow to follow the path (or its brace group), so a lowercase dotted
-// expression ending a body is unaffected -- and an expression statement genuinely followed by a
-// FatArrow was never a legal parse.
-
-fn arm_start_after_qualified_path(tokens: TokenStream, offset: Int) -> Bool {
-  if !peek_is_expected_at(tokens: tokens, offset: offset, expected: ExpectDot) {
+// WHERE AN UNBRACED ARM BODY ENDS IS DECIDED HERE, BY THE ARM GRAMMAR ITSELF. parse_match_arm_stmts
+// consumes statements until the next tokens open a new arm, and an arm opens exactly where
+// parse_match_arm would read one: a pattern (parse_pattern), an optional guard
+// (parse_optional_guard), then `=>`. So this predicate runs those two parsers and asks for the arrow,
+// and the parse it answers for cannot disagree with the parse that follows.
+//
+// IT WAS A HAND-WRITTEN PREDICATE OVER THE FIRST TOKENS, and each pattern form it did not spell was a
+// silent mis-parse. It recognised `_`, an uppercase leaf (bare or braced) and a dotted path ending
+// uppercase, so a lowercase BINDER arm (`other => other`), a literal arm (`0 =>`, `"s" =>`, `none =>`)
+// and a guarded arm all read as one more statement of the body before them. In an unbraced body that
+// holds a `let`, the next arm was swallowed. With a nested match as the last statement, the outer
+// arm was re-parented into the inner match: the outer match lost it and refused
+// non-exhaustive, while the inner match gained it. Where the swallowed arm still type-checks in
+// its new home, nothing refuses at all (DESIGN section 5). It had already been widened once, for the
+// dotted form (the namespace-cut reproduction recorded on this boundary's history). This repair
+// generalises it to the rule every leaf was an instance of. Without the `let` the body is one
+// expression that never enters the statement loop, which is why the shape needs both.
+//
+// A statement that genuinely begins like a pattern does not answer true: an expression statement
+// is followed by a newline or an operator, never by `=>`, and a pattern followed by `=>` was never a
+// legal statement. parse_pattern answers Wildcard WITHOUT consuming on a token that opens no
+// pattern, so an unmoved stream is "no pattern here", not the wildcard.
+fn looks_like_arm_start(tokens: TokenStream, ctx: ParseContext) -> Bool {
+  let pattern = parse_pattern(tokens: tokens, ctx: ctx)
+  if has_err(err: pattern.err) {
+    false
+  } else if token_stream_position(stream: pattern.tokens) == token_stream_position(stream: tokens) {
     false
   } else {
-    match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset + 1)) {
-      Present { value: seg } =>
-        if !is_ident_shape(shape: seg.shape) {
-          false
-        } else if is_uppercase_start(name: seg.text) {
-          if peek_is_fat_arrow_at(tokens: tokens, offset: offset + 2) {
-            true
-          } else if peek_is_expected_at(tokens: tokens, offset: offset + 2, expected: ExpectLBrace) {
-            scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: offset + 3), depth: 1)
-          } else {
-            arm_start_after_qualified_path(tokens: tokens, offset: offset + 2)
-          }
-        } else {
-          arm_start_after_qualified_path(tokens: tokens, offset: offset + 2)
-        }
-      Absent => false
+    let guard = parse_optional_guard(tokens: pattern.tokens, ctx: pattern.ctx)
+    if has_err(err: guard.err) {
+      false
+    } else {
+      peek_is_fat_arrow_at(tokens: guard.tokens, offset: 0)
     }
-  }
-}
-
-fn looks_like_arm_start(tokens: TokenStream) -> Bool {
-  let tok = token_stream_first(stream: tokens)
-  let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
-  match sh {
-    Present { value: ShIdent } => {
-      let n = tok.value.text
-      if n == "_" {
-        peek_is_fat_arrow_at(tokens: tokens, offset: 1)
-      } else if !is_uppercase_start(name: n) {
-        arm_start_after_qualified_path(tokens: tokens, offset: 1)
-      } else if peek_is_fat_arrow_at(tokens: tokens, offset: 1) {
-        true
-      } else if peek_is_expected_at(tokens: tokens, offset: 1, expected: ExpectLBrace) {
-        scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: tokens, n: 2), depth: 1)
-      } else {
-        false
-      }
-    }
-    _ => false
   }
 }
 
@@ -6296,35 +6377,6 @@ fn peek_is_fat_arrow_at(tokens: TokenStream, offset: Int) -> Bool {
   match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset)) {
     Present { value: t } => is_fat_arrow_shape(shape: t.shape)
     Absent => false
-  }
-}
-
-fn peek_is_expected_at(tokens: TokenStream, offset: Int, expected: ExpectedToken) -> Bool {
-  match token_stream_first(stream: token_stream_advance(stream: tokens, n: offset)) {
-    Present { value: t } => token_matches_expected(token: t, expected: expected)
-    Absent => false
-  }
-}
-
-fn scan_for_fat_arrow_after_braces(remaining: TokenStream, depth: Int) -> Bool {
-  if depth <= 0 {
-    match token_stream_first(stream: remaining) {
-      Present { value: t } => is_fat_arrow_shape(shape: t.shape)
-      Absent => false
-    }
-  } else {
-    match token_stream_first(stream: remaining) {
-      Present { value: t } => {
-        if is_lbrace_shape(shape: t.shape) {
-          scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: remaining, n: 1), depth: depth + 1)
-        } else if is_rbrace_shape(shape: t.shape) {
-          scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: remaining, n: 1), depth: depth - 1)
-        } else {
-          scan_for_fat_arrow_after_braces(remaining: token_stream_advance(stream: remaining, n: 1), depth: depth)
-        }
-      }
-      Absent => false
-    }
   }
 }
 

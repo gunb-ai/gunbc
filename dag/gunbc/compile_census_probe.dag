@@ -2,79 +2,254 @@ module gunbc.compile_census_probe
 
 import std.types { Bool, Int, List, String }
 import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_total_count }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_subject, census_any_count_for_class, census_blocking_count_for_class }
+import std.process { ProcessExit, ExitFailure, ExitSuccess }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_rows, census_rows_of_class, census_blocking_rows_of_class, census_blocking_rows_of_class_at_subject, census_total_count }
 
-// THE SINGLE HOME for "compile this source string and count what it refused". Both of these
-// were declared locally in test.claim.algebra_receiver_alias_witness, and a second witness
-// needed the same two facts -- copying them would have made one concept answer from two
-// authorities, which is the fork DESIGN section 3 exists to prevent. They live here rather than
-// inside gunbc.compile_diagnostic_census because they join that census to
-// guarantee_probe_corpus's subject lookup, and the census module must not gain an edge to the
-// probe corpus to serve a helper neither of them owns.
+// THE SINGLE HOME for "compile this source string and ask what it refused". These were declared
+// locally in test.claim.algebra_receiver_alias_witness, and a second witness needed the same facts --
+// copying them would have made one concept answer from two authorities, which is the fork DESIGN §3
+// exists to prevent. They live here rather than inside gunbc.compile_diagnostic_census because they
+// join that census to guarantee_probe_corpus's subject lookup, and the census module must not gain an
+// edge to the probe corpus to serve a helper neither of them owns.
 //
-// BOTH FAILURE ARMS RETURN -1, NEVER 0. A not-runnable census is not "nothing was blocking":
-// callers here assert `== 0` for an accepted source, so an arm returning 0 on failure would
-// make a census that never ran indistinguishable from a clean compile, and every acceptance
-// witness would green by vacancy.
+// A CENSUS THAT NEVER RAN IS NOT A COUNT -- AT THE PROBE SURFACE EITHER. These probes used to answer
+// `Int`, folding the builtin's `CensusNotRunnable { cause }` into `-1`. That put "no observation" on
+// the same axis as an observed count, so a caller comparing against a number could satisfy its
+// expectation with a run that never happened: this file's own history shows `-1` compared against
+// `0 - 1`, which reads a refusal as the witness for "no blocking rows". The distinction was already
+// TYPED upstream -- gunbc.compile_diagnostic_census `CompileDiagnosticCensus = CensusObserved |
+// CensusNotRunnable` -- and that module's header records why an accessor answering `[]` on the
+// refusal arm was deleted rather than annotated. Handing the union through unchanged is the same
+// repair one layer out: "observed n" and "could not run, because <cause>" are two spellings, and
+// neither is writable as the other. The carrier is REUSED, not re-declared: minting a second
+// Observed|NotRunnable here would nick-name the axis (§2, "net concepts must not grow by
+// re-invention").
 
-fn blocking_subject_count_for(source: String, wanted_class: String, wanted_subject: String) -> Int {
-  match census_blocking_count_for_subject(census: compile_dag_diagnostic_census(source), wanted_class: wanted_class, wanted_subject: wanted_subject) {
-    Present { value: n } => n
-    Absent => 0 - 1
-  }
-}
-
-// THE ROWS, not just the counts. A claim of the form 'the probe differs from its control by exactly
-// the target key' cannot be made from counts alone -- equal totals can hide an offsetting pair of
-// changes -- so the caller needs the rows and hands them to the SHARED comparator
-// (gunbc.compile_diagnostic_census::censuses_differ_by_exactly_the_target_key), which is where
-// 'exactly the target key' is defined once for the whole tree. This module owns 'compile a source
-// string and report what it saw'; the comparator owns 'what counts as a one-key difference'.
-// A source that does not run at all yields `none`: absence is reported as absence rather than as an
-// empty row list, so a broken fixture can never look like a clean compile.
+// THE PROBES, typed. Each hands through the builtin's union. The three selector probes consume the
+// row selections from their single home, gunbc.compile_diagnostic_census (census_blocking_rows_of_class,
+// census_blocking_rows_of_class_at_subject) -- the very functions guarantee_probe_corpus's Int?
+// selectors fold, so the selection has one authority and the two surfaces cannot drift; what this
+// module adds over that home is only the union's SHAPE: the same rows re-wrapped as `CensusObserved`,
+// and the refusal arm handing the builtin's cause text through verbatim. This module adds no words of
+// its own to a cause, so a claim quoting a cause quotes the compiler, not this module's idea of it.
+// THE ROWS, when there are any -- the accessor for claims that inspect rows rather than a count.
+// It kept its `ProbeCensusRows?` shape on purpose: absent rows already meant "there are no rows to
+// inspect" AND "the census never ran" at once, and callers already had to match the Optional, so this
+// is the one probe surface that was never in-band. It stays a name at the surface rather than leaking
+// the coproduct, because the claims that use it want the list or nothing. The refusal arm answers
+// `none` here, exactly as guarantee_probe_corpus's `Int?` selectors do: absence is already the
+// honest answer a rows-inspecting claim can pattern-match on.
 type ProbeCensusRows {
   rows: List<CompileDiagnosticCensusRow>
 }
 
 fn census_rows_for(source: String) -> ProbeCensusRows? {
-  match compile_dag_diagnostic_census(source) {
+  match total_rows_census(source: source) {
     CensusObserved { rows: rows } => Present { value: ProbeCensusRows { rows: rows } }
     CensusNotRunnable { cause: _ } => none
   }
 }
 
-fn total_blocking_count_for(source: String) -> Int {
+// THE WHOLE CENSUS, blocking filter NOT applied -- the source for the row inspecting probes.
+fn total_rows_census(source: String) -> CompileDiagnosticCensus {
   match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => 0 - 1
+    CensusObserved { rows: rows } => CensusObserved { rows: rows }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
 }
 
-// A CLASS THAT REFUSES, COUNTED WITHOUT NAMING A SUBJECT. blocking_subject_count_for is the right
-// question when a probe asserts WHICH declaration was refused; it is the wrong one when the class
-// itself is the whole assertion and the subject the census derives is an implementation detail of
-// the diagnostic's fields. Asking through any_class_count_for instead would answer at ANY severity,
-// so a wall silently downgraded from blocking to advisory would keep this green -- which is exactly
-// the vacancy the -1 arms exist to prevent, arrived at from the severity axis rather than the
-// runnability one. This asks the BLOCKING projection for rows of a class, and nothing about the
-// subject.
-fn blocking_class_count_for(source: String, wanted_class: String) -> Int {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted_class) {
-    Present { value: n } => n
-    Absent => 0 - 1
+fn total_blocking_census(source: String) -> CompileDiagnosticCensus {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => CensusObserved { rows: census_blocking_rows(rows: rows) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
 }
 
-// AN ADVISORY DIAGNOSTIC IS INVISIBLE TO THE TWO ABOVE, and that is not a gap in them: both
-// read the BLOCKING projection, which is the right question for a construct that refuses. A
-// diagnostic carried at SeverityNonError never appears there, so a witness asserting on one
-// through blocking_subject_count_for would read 0 and green by vacancy -- the same shape the
-// -1 arms exist to prevent, arrived at from the other side. This asks the census for rows of
-// a class at ANY severity instead.
-fn any_class_count_for(source: String, wanted_class: String) -> Int {
-  match census_any_count_for_class(census: compile_dag_diagnostic_census(source), wanted: wanted_class) {
-    Present { value: n } => n
-    Absent => 0 - 1
+fn blocking_class_census(source: String, wanted_class: String) -> CompileDiagnosticCensus {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      CensusObserved { rows: census_blocking_rows_of_class(rows: rows, wanted: wanted_class) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
   }
 }
+
+fn any_class_census(source: String, wanted_class: String) -> CompileDiagnosticCensus {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => CensusObserved { rows: census_rows_of_class(rows: rows, wanted: wanted_class) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+fn blocking_subject_census(source: String, wanted_class: String, wanted_subject: String) -> CompileDiagnosticCensus {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      CensusObserved { rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: wanted_class, wanted_subject: wanted_subject) }
+    CensusNotRunnable { cause: cause } => CensusNotRunnable { cause: cause }
+  }
+}
+
+// THE VERDICT A CLAIM RETURNS. `holds` is the comparison the claim means -- a caller writes
+// `census_verdict(c, fn(n) { n >= 1 })` or `fn(n) { n == 0 }` and cannot write a verdict for a count it
+// never observed: the predicate is only ever handed an observed number. The verdict is a SUM, not a
+// rendered exit code -- CensusHeld, CensusDisagreed (an observation ran and the comparison did not hold,
+// a finding), or CensusUnobserved (the census refused to run, carrying the builtin's cause verbatim). The
+// three states are what a claim actually distinguishes; writing them as ProcessExit { code: 1 | 2 } made
+// the distinction a hand-typed integer that `census_verdict_all` then had to RE-DERIVE by reading codes
+// back off (review 84025: "census_verdict_all ranks integers"). The integer is a rendering of the verdict
+// for the process boundary, produced in exactly one place by `census_exit`; it is not where the verdict
+// lives. A claim now matches on CensusDisagreed / CensusUnobserved by constructor, and adding a fourth
+// verdict state makes every consumer that inspects a verdict refuse to compile until it says what the new
+// state means -- which a code comparison never forced.
+type CensusVerdict
+  = CensusHeld {}
+  | CensusDisagreed { reason: String }
+  | CensusUnobserved { cause: String }
+
+// THE ORDERING LIVES ON THE TYPE, by constructor match -- false AND unknown = false (Kleene): a definite
+// observation that disagreed (CensusDisagreed) outranks a probe that could not run (CensusUnobserved), so
+// a probe failing to execute cannot bury a real finding; a claim where nothing definite was observed and
+// something could not run is unobserved. There is no integer here and no comparison of rendered labels:
+// each arm names itself, so the ranking cannot silently stop selecting an arm that gets renamed.
+fn census_verdict_worse(a: CensusVerdict, b: CensusVerdict) -> CensusVerdict {
+  match a {
+    CensusDisagreed { reason: _ } => a
+    CensusUnobserved { cause: _ } =>
+      match b {
+        CensusDisagreed { reason: _ } => b
+        CensusUnobserved { cause: _ } => a
+        CensusHeld {} => a
+      }
+    CensusHeld {} => b
+  }
+}
+
+// THE WORST OF SEVERAL VERDICTS, and the FIRST one of the winning class names itself -- so the result does
+// not depend on input order for which reason a reader sees, only for which of several same-class refusals
+// speaks. Folded with the constructor ordering above; no code is ever read.
+fn worst_census_verdict(verdicts: List<CensusVerdict>) -> CensusVerdict {
+  fold(
+    xs: verdicts,
+    init: CensusHeld {},
+    f: fn(acc, v) { census_verdict_worse(a: acc, b: v) }
+  )
+}
+
+
+// THE ONE PROCESS BOUNDARY. Held succeeds; a Disagreed finding is exit 1 naming its reason; an Unobserved
+// refusal is exit 2 with the builtin's cause worded `not evaluated: census not runnable: <cause>` -- Code
+// 2 is the label contract's "no observation" (DESIGN "Building & checks"). This is the sole place the
+// integer appears. TODAY the harness renders any claim's ExitFailure as a FAIL row (cli_run.rs:
+// `ClaimOutcome::ExitFailure { .. } => CiWitnessVerdict::Failed`); it does NOT yet map a returned code 2
+// onto a UNOBSERVED verdict line. That mapping is a named follow-up in claim_batch's own lane (sunny-bear,
+// on gunbc#14539's axis); this PR deliberately does not touch the harness. Until that follow-up lands, a
+// refused census still PRINTS as a FAIL row and is separated from a real finding only by its reason and
+// its exit code -- so the honest scope is "a refused census REFUSES with its cause and exit code 2, and is
+// distinguished from a finding by both," NOT "never FAIL." That is why the reason carries the whole cause:
+// it is the only thing distinguishing the two arms while the harness still collapses them to FAIL.
+fn census_exit(verdict: CensusVerdict) -> ProcessExit {
+  match verdict {
+    CensusHeld {} => ExitSuccess
+    CensusDisagreed { reason: reason } => ExitFailure { code: 1, reason: reason }
+    CensusUnobserved { cause: cause } =>
+      ExitFailure { code: 2, reason: concat("not evaluated: census not runnable: ", cause) }
+  }
+}
+
+fn census_verdict(census: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
+  match census {
+    CensusObserved { rows: rows } => {
+      let observed = census_total_count(rows: rows)
+      // The reason must begin on the label's own line (the parser takes a newline after `reason:` as a
+      // missing expression), so the sentence is built where it can be read whole.
+      let reason = concat("census observed ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; the observation ran and disagreed, which is a finding, not a missing run"))
+      if holds(observed) {
+        CensusHeld {}
+      } else {
+        CensusDisagreed { reason: reason }
+      }
+    }
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+  }
+}
+
+// SEVERAL PROBES AND PREMISES, ONE VERDICT, with the ranking a mixed run must obey -- now carried by the
+// type (census_verdict_worse / worst_census_verdict above), not by re-reading exit codes. A claim where
+// nothing definite was observed and something could not run is CensusUnobserved. `census_premise` carries
+// the Bool conjuncts a probe claim mixes in, each naming itself on failure: an unnamed `&&` term that
+// stopped holding tells a reader nothing about which premise to go look at, and a probe claim whose
+// premise silently vanished is the same missing-evidence class this module exists to close.
+fn census_verdict_all(verdicts: List<CensusVerdict>) -> ProcessExit {
+  census_exit(verdict: worst_census_verdict(verdicts: verdicts))
+}
+
+fn census_premise(name: String, holds: Bool) -> CensusVerdict {
+  if holds {
+    CensusHeld {}
+  } else {
+    CensusDisagreed { reason: concat("premise did not hold: ", name) }
+  }
+}
+
+fn census_int_text(n: Int) -> String {
+  to_string(n)
+}
+
+
+// A CLAIM WHOSE ORACLE IS THE SUM OF TWO CENSUSES. Used to be written as `probe(a) + probe(b) >= 1`,
+// which the sentinel made unsound in both directions: two refusals summed to a confident `-2`, and ONE
+// refusal plus one observed count answered as though the missing half had run. Both censuses must have
+// run for the sum to mean anything, so a refusal on EITHER is a refusal of the claim, naming itself --
+// not a smaller number.
+fn census_sum_verdict(first: CompileDiagnosticCensus, second: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
+  match first {
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+    CensusObserved { rows: first_rows } =>
+      match second {
+        CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+        CensusObserved { rows: second_rows } => {
+          // Both arms OBSERVED, so the counts here are counts; there is no sentinel to guard against,
+          // which is the whole point of matching the union instead of subtracting Ints.
+          let observed = census_total_count(rows: first_rows) + census_total_count(rows: second_rows)
+          if holds(observed) {
+            CensusHeld {}
+          } else {
+            CensusDisagreed { reason: concat("census pair observed a total of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
+          }
+        }
+      }
+  }
+}
+
+// A CLAIM WHOSE ORACLE IS THE DIFFERENCE OF TWO CENSUSES -- the red-minus-control shape. The old
+// spelling `probe(red) - probe(control) == 1` let a refusal masquerade as data in BOTH slots: the
+// sentinel is a legal operand, so `-1 - 0` answered the delta question with an observation that
+// happened in only one of the two compiles. Both must have run; a refusal on either refuses the
+// claim with its own cause, so the pair is judged as a pair.
+fn census_delta_verdict(red: CompileDiagnosticCensus, control: CompileDiagnosticCensus, holds: fn(Int) -> Bool) -> CensusVerdict {
+  match red {
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+    CensusObserved { rows: red_rows } =>
+      match control {
+        CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
+        CensusObserved { rows: control_rows } => {
+          let observed = census_total_count(rows: red_rows) - census_total_count(rows: control_rows)
+          if holds(observed) {
+            CensusHeld {}
+          } else {
+            CensusDisagreed { reason: concat("census pair observed a delta of ", concat(census_int_text(n: observed), " where the claim's comparison did not hold; both censuses ran, so this is a finding, not a missing run")) }
+          }
+        }
+      }
+  }
+}
+
+// THE "IT MUST HAVE RUN" VERDICT, for the claims whose conjunct was literally `probe(...) != 0 - 1` --
+// an assertion that the census did not return the sentinel. Under the typed probes there is no sentinel
+// to compare against, and the honest spelling of that conjunct is the one here: the census observed
+// something, whatever it was. Refusal still refuses, which is all the conjunct ever wanted to detect.
+fn census_ran(census: CompileDiagnosticCensus) -> CensusVerdict {
+  census_verdict(census: census, holds: fn(n) { true })
+}
+
+
+

@@ -37,10 +37,22 @@ import gunbc.runner.runner_slot_cap_converge {
   SlotCapOutcome,
   SlotCapsLeftInPlace,
   SlotCapsRestartedAndRead,
+  SlotCapsSelfAtDesired,
+  SlotCapsSelfDeferred,
   SlotCapsRefused,
+  SlotCapsHolderLedgerRefused,
   slot_cap_standing,
   slot_cap_live_of_show,
   slot_cap_outcome_settled,
+  slot_cap_outcome_host_settled,
+  slot_cap_outcome_wire,
+  slot_cap_holder_verdict,
+  slot_cap_holder_deferral_outcome,
+  HolderDeferralLedger,
+  LedgerFresh,
+  LedgerCount,
+  LedgerUnwritable,
+  slot_cap_holder_deferral_bound,
 }
 import gunbc.runner.runner_host_file_converge {
   runner_host_cap_files,
@@ -65,6 +77,7 @@ import gunbc.runner.runner_host_file_converge {
   ManagerReloaded,
   ManagerReloadRefused,
   runner_host_cap_phase_settled,
+  runner_host_cap_phase_text,
   CapPhaseWithheld,
   CapPhaseNotOwed,
   RunnerSlotPopulation,
@@ -99,6 +112,9 @@ fn at_desired_live() -> SlotCapLive {
     control_group: "/system.slice/actions-runner@srv3-01.service",
     cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
     cgroup_swap_max: Present { value: "0\n" },
+    // The shared standing reads TWO files (max+swap); a literal built for it has no high row observed,
+    // and the shared fold never reads this field. The holder fold reads it, and builds its own reading.
+    cgroup_memory_high: none,
   }
 }
 
@@ -111,6 +127,7 @@ fn old_shape_live() -> SlotCapLive {
     control_group: "/system.slice/actions-runner@srv3-01.service",
     cgroup_memory_max: Present { value: "27917287424\n" },
     cgroup_swap_max: Present { value: "34359738368\n" },
+    cgroup_memory_high: none,
   }
 }
 
@@ -160,6 +177,7 @@ test fn a_readback_mismatch_refuses() -> Bool {
     control_group: "/system.slice/actions-runner@srv3-01.service",
     cgroup_memory_max: Present { value: concat(to_string(byte_size_count(b: desired().memory_max)), "\n") },
     cgroup_swap_max: Present { value: "0\n" },
+    cgroup_memory_high: none,
   }
   plan_withheld_naming(p: host_cap_plan(standings: [standing_of(u: unit(n: "01"), live: disagree)], files: CapFilesSettled, pending_reloads: HostNoReloadPending, retirement_cause: none, extras: []), needle: "disagree")
     && !slot_cap_outcome_settled(o: SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" })
@@ -230,6 +248,7 @@ fn live_with(cg: String, mm: String?, sw: String?) -> SlotCapLive {
     control_group: cg,
     cgroup_memory_max: mm,
     cgroup_swap_max: sw,
+    cgroup_memory_high: none,
   }
 }
 
@@ -268,7 +287,7 @@ test fn the_cgroup_row_ignores_a_sibling_near_match_and_reads_the_escaped_path()
   }
 }
 
-fn ran_with(rl: RunnerHostManagerReload, slots: List<SlotCapOutcome>) -> RunnerHostCapPhase { CapPhaseRan { files: [], reload: rl, slots: slots } }
+fn ran_with(rl: RunnerHostManagerReload, slots: List<SlotCapOutcome>) -> RunnerHostCapPhase { CapPhaseRan { files: [], reload: rl, slots: slots, certified: [] } }
 
 // RED (review 5567170735, 1a): a cap-file plan that could not be made is Unreadable, never a difference:
 // it withholds (no drain, no write) and says so, where it used to reduce to `true` and drain and write.
@@ -395,7 +414,7 @@ test fn an_unread_fabric_member_counts_as_pending() -> Bool {
 // RED (3): a STOPPED unit whose loaded caps are stale is NeedRestart (its next start would run them), not
 // a left-in-place stopped unit; a stopped unit at desired is Stopped.
 test fn a_stopped_unit_with_stale_loaded_caps_needs_a_restart() -> Bool {
-  let stale = SlotCapLive { unit_memory_max: "100", unit_swap_max: "0", unit_memory_high: "90", unit_tasks_max: "16384", control_group: "", cgroup_memory_max: none, cgroup_swap_max: none }
+  let stale = SlotCapLive { unit_memory_max: "100", unit_swap_max: "0", unit_memory_high: "90", unit_tasks_max: "16384", control_group: "", cgroup_memory_max: none, cgroup_swap_max: none, cgroup_memory_high: none }
   match slot_cap_standing(live: stale, desired: desired()) {
     SlotCapsNeedRestart { detail: _ } => true
     SlotCapsStopped => false
@@ -579,4 +598,154 @@ test fn a_non_fabric_not_found_inactive_extra_with_a_cgroup_withholds() -> Bool 
   let show = masked_show_reload(load: "not-found", active: "inactive", cgroup: "/system.slice/x", reload: "no")
   length(runner_host_cap_extras(desired_units: [unit(n: "01")], retired_units: [], population: extras_population_with(extra_show: show, as_fabric: false))) == 1
     && plan_withheld_naming(p: extras_plan_with(extra_show: show, as_fabric: false), needle: "actions-runner@srv3-06.service")
+}
+
+// ==================== THE BRACKET HOLDER: NEVER CLAIMED CONVERGED ON ITS SAY-SO ====================
+// THE WALL THIS PR BUILDS ON, AND THE ASSUMPTION IT REFUSES TO MAKE. srv3's converge job runs ON a slot it
+// manages, and a slot cannot stop/start the job running on it -- so the holder's caps can only be applied by
+// the one host-wide daemon-reload. Whether a reload applies MemoryMax/MemoryHigh to a RUNNING unit's live
+// cgroup is NOT assumed: srv1 and srv2 prove nothing here, because they received their caps through the
+// stop/start bracket. So the holder counts as converged ONLY when memory.max, memory.swap.max and memory.high
+// all read back from its LIVE cgroup equal the desired values; anything else is typed deferred, named loudly
+// on the wire, never reported converged -- and the next pass, dispatched from a DIFFERENT slot, brackets it
+// through the normal stop/start route. (Fleet slot ruling, parent 2026-10-24.)
+
+// THE READER'S THREE ROWS, AT THE VALUES THE FLEET WANTS. The drop-in sets all three, so all three must
+// return; a reading that only carries the shared standing's max+swap pair is NOT a converged holder.
+fn holder_live(max: String, swap: String, high: String?) -> SlotCapLive {
+  SlotCapLive {
+    unit_memory_max: to_string(byte_size_count(b: desired().memory_max)),
+    unit_swap_max: to_string(byte_size_count(b: desired().memory_swap_max)),
+    unit_memory_high: to_string(byte_size_count(b: desired().memory_high)),
+    unit_tasks_max: to_string(desired().tasks_max),
+    control_group: "/system.slice/actions-runner@srv3-02.service",
+    cgroup_memory_max: Present { value: concat(max, "\n") },
+    cgroup_swap_max: Present { value: concat(swap, "\n") },
+    cgroup_memory_high: high,
+  }
+}
+
+fn holder_at_desired_rows() -> SlotCapLive {
+  holder_live(max: to_string(byte_size_count(b: desired().memory_max)), swap: to_string(byte_size_count(b: desired().memory_swap_max)), high: Present { value: concat(to_string(byte_size_count(b: desired().memory_high)), "\n") })
+}
+
+test fn a_holder_whose_live_cgroup_reads_back_at_desired_is_converged_and_settled() -> Bool {
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: holder_at_desired_rows(), desired: desired(), ledger: LedgerFresh) {
+    SlotCapsSelfAtDesired { unit: u } => (u as String) == "actions-runner@srv3-02.service" && slot_cap_outcome_settled(o: SlotCapsSelfAtDesired { unit: u })
+    _ => false
+  }
+}
+
+// RED (the parent's named claim): the holder is NOT read back -- here it carries only the max+swap pair the
+// shared standing reads, with no memory.high row at all -- so it is DEFERRED, is not settled, and the wire
+// says so; and a deferred holder alone still lets the host's reload proceed (the run-level fold), because
+// the deferral is an obligation for the NEXT pass, not a reason to withhold this host's caps.
+test fn a_holder_not_read_back_is_deferred_never_converged_yet_never_bars_the_host() -> Bool {
+  let owed = holder_live(max: to_string(byte_size_count(b: desired().memory_max)), swap: to_string(byte_size_count(b: desired().memory_swap_max)), high: none)
+  let def = slot_cap_holder_verdict(unit: unit(n: "02"), live: owed, desired: desired(), ledger: LedgerFresh)
+  match def {
+    SlotCapsSelfDeferred { unit: u, detail: _ } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && !slot_cap_outcome_settled(o: def)
+        && slot_cap_outcome_host_settled(o: def)
+        && string_contains(s: slot_cap_outcome_wire(o: def), pattern: "DEFERRED-SELF")
+        && string_contains(s: slot_cap_outcome_wire(o: def), pattern: "actions-runner@srv3-02.service")
+    _ => false
+  }
+}
+
+// RED: max read back at the OLD host-wide value (the srv3 observed-owed shape) is owed, not converged --
+// the deferred detail names what was read against what was wanted, so the operator sees WHY.
+test fn a_holder_reading_stale_values_is_deferred_naming_the_disagreement() -> Bool {
+  let stale = holder_live(max: "27917287424", swap: "34359738368", high: Present { value: concat(to_string(byte_size_count(b: desired().memory_high)), "\n") })
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: stale, desired: desired(), ledger: LedgerFresh) {
+    SlotCapsSelfDeferred { unit: u, detail: d } =>
+      (u as String) == "actions-runner@srv3-02.service" && !slot_cap_outcome_settled(o: SlotCapsSelfDeferred { unit: u, detail: d })
+        && string_contains(s: d, pattern: "27917287424") && string_contains(s: d, pattern: to_string(byte_size_count(b: desired().memory_max)))
+    _ => false
+  }
+}
+
+// RED: an unreadable holder reading (no cgroup rows at all) is deferred too, not converged: the absence of
+// evidence is never evidence of application. (The unread shape the shared parser produces for a dead unit.)
+test fn an_unreadable_holder_is_deferred_not_converged() -> Bool {
+  let unread = SlotCapLive { unit_memory_max: "", unit_swap_max: "", unit_memory_high: "", unit_tasks_max: "", control_group: "", cgroup_memory_max: none, cgroup_swap_max: none, cgroup_memory_high: none }
+  match slot_cap_holder_verdict(unit: unit(n: "02"), live: unread, desired: desired(), ledger: LedgerFresh) {
+    SlotCapsSelfDeferred { unit: u, detail: _ } => (u as String) == "actions-runner@srv3-02.service" && !slot_cap_outcome_settled(o: SlotCapsSelfDeferred { unit: u, detail: "x" })
+    _ => false
+  }
+}
+
+// THE RUN STILL SETTLES AROUND A DEFERRED HOLDER. A pass that restarted every bracketed slot and left the
+// holder deferred is a converged run minus one named obligation: the reload proceeds, the phase settles,
+// and the deferred unit is still LISTED on the wire (the text fold reads the per-unit settledness, so an
+// operator sees the outstanding name). Swap in a REFUSED slot and the run-level fold bars: deferral is
+// specific, not a blanket pass.
+test fn a_ran_phase_with_a_deferred_holder_settles_and_lists_the_debt() -> Bool {
+  let deferred = SlotCapsSelfDeferred { unit: unit(n: "02"), detail: "memory.high not read back" }
+  runner_host_cap_phase_settled(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRestartedAndRead { unit: unit(n: "01") }, deferred]))
+    && !slot_cap_outcome_settled(o: deferred)
+    && string_contains(s: runner_host_cap_phase_text(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRestartedAndRead { unit: unit(n: "01") }, deferred])), pattern: "actions-runner@srv3-02.service")
+    && !runner_host_cap_phase_settled(phase: ran_with(rl: ManagerReloaded, slots: [SlotCapsRefused { unit: unit(n: "01"), step: "live-readback", reason: "x" }]))
+}
+
+// THE BOUND, CLAIMED (DESIGN §4b meta-obligation 2 / §5, review 86146): a deferral must name its
+// next-rung trigger AND be countable. The host ledger (runner_host_cap_bracket) carries the count;
+// this fold turns each count into a typed verdict: under the bound, deferred with the pass number;
+// AT the bound, a REFUSAL -- red, unsettled at both levels, obligation held -- because a holder that
+// has been deferred across the bound's worth of passes means the next rung was never taken (placement
+// is stuck on this slot, or the reload does not apply caps to live cgroups: only an operator, with
+// set-property as break-glass, stands between this and a bracket from another slot).
+fn owed_live() -> SlotCapLive {
+  holder_live(max: "27917287424", swap: "34359738368", high: Present { value: "34359738368\n" })
+}
+
+test fn the_first_deferral_counts_pass_one_of_the_bound() -> Bool {
+  match slot_cap_holder_deferral_outcome(ledger: LedgerFresh, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
+    SlotCapsSelfDeferred { unit: u, detail: d } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && string_contains(s: d, pattern: "pass 1 of 3")
+        && string_contains(s: d, pattern: "DIFFERENT slot")
+    _ => false
+  }
+}
+
+test fn the_last_deferral_before_the_bound_still_defers_and_says_so() -> Bool {
+  match slot_cap_holder_deferral_outcome(ledger: LedgerCount { prior: slot_cap_holder_deferral_bound - 1 }, unit: unit(n: "02"), live: owed_live(), desired: desired()) {
+    SlotCapsSelfDeferred { unit: _, detail: d } => string_contains(s: d, pattern: concat("pass ", to_string(slot_cap_holder_deferral_bound), " of ", to_string(slot_cap_holder_deferral_bound)))
+    _ => false
+  }
+}
+
+// RED AT THE BOUND: no more green deferral. Refused, unsettled at both levels, and the reason says
+// how many passes were spent and what the operator's options are.
+test fn a_holder_deferred_past_the_bound_is_refused_not_deferred() -> Bool {
+  let r = slot_cap_holder_deferral_outcome(ledger: LedgerCount { prior: slot_cap_holder_deferral_bound }, unit: unit(n: "02"), live: owed_live(), desired: desired())
+  match r {
+    SlotCapsRefused { unit: u, step: s, reason: why } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && s == "holder-live-read"
+        && !slot_cap_outcome_settled(o: r)
+        && !slot_cap_outcome_host_settled(o: r)
+        && string_contains(s: why, pattern: "3 consecutive passes")
+        && string_contains(s: why, pattern: "break-glass")
+    _ => false
+  }
+}
+
+// AN UNREADABLE LEDGER IS RED, NOT A FREE PASS (review 86323, finding 1; DESIGN §5: an uncounted
+// degradation is a hard reject). The file that cannot be read is never rewritten by the pass that
+// failed to read it, so a deferral here would be read back forever and the bound above could never
+// fire. The fold refuses, naming the cause; the bracket pass then RESETS the ledger (loud counted step).
+test fn an_unreadable_ledger_refuses_instead_of_deferring_forever() -> Bool {
+  let r = slot_cap_holder_deferral_outcome(ledger: LedgerUnwritable { cause: "not a JSON document" }, unit: unit(n: "02"), live: owed_live(), desired: desired())
+  match r {
+    SlotCapsHolderLedgerRefused { unit: u, cause: why } =>
+      (u as String) == "actions-runner@srv3-02.service"
+        && !slot_cap_outcome_settled(o: r)
+        && !slot_cap_outcome_host_settled(o: r)
+        && string_contains(s: why, pattern: "not a JSON document")
+        && string_contains(s: why, pattern: "resets the ledger")
+    _ => false
+  }
 }

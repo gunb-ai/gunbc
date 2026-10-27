@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.browser_ready_labels_fleet_route_stall
 
 import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // THE READINESS-LABEL CONVERGE'S PRODUCTION FLEET ROUTE EXECUTES NOWHERE — A PRE-EXISTING STALL,
 // NOT AN EVENT (review round on gunbc#13401; the side chat's ruling: a gap that never held is a
@@ -23,7 +23,7 @@ data browser_ready_labels_fleet_route_stall: GuaranteeStall = GuaranteeStall {
   current: MechanicallyPreventable,
   ceiling: StructurallyGuaranteed,
   blocker: AwaitsOneGrounding {
-    grounding: "the shared host-effect FleetSsh argv and argv+stdin realization, plus a safe daemon-reload realization",
+    grounding: GroundingUndeclared,
   },
   population: BoundedPopulation { members: [
     "gunbc.runner.runner_browser_toolchain::browser_ready_labels_converge_wet over browser_ready_labels_production_target",

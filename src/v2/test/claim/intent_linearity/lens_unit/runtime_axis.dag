@@ -23,7 +23,8 @@ import v2.std.node {
   Positional,
   Transform,
   TypeNode,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -36,11 +37,11 @@ fn loop_over(child: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: child },
+      Edge { label: Positional, target: child, declaration: NotADeclaration },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^runtime_axis_measure_atom } }, children: [])
-      }
+        target: node_synthetic(kind: TypeNode { connective: Atom { identity: ^runtime_axis_measure_atom } }, children: []), declaration: NotADeclaration
+}
     ]
   )
 }

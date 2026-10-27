@@ -8,7 +8,7 @@ import gunbc.commit_workflow {
 }
 import std.algebra { list_append }
 import v2.std.integer { Int }
-import v2.std.decl_index { DeclFact, decl_facts, logical_qualified_name_from_module }
+import v2.std.decl_index { DeclFact, decl_facts, qualified_name_from_module }
 import v2.lens.registry { LensModulePathV0, Bound, Unbound }
 import v2.lens.enforcement.contract {
   LensContract, EnrollmentDiscoveryReceipt, lens_contract_registry
@@ -59,7 +59,7 @@ fn enforcement_prepush_witness_entries() -> List<ScheduleWitnessEntry> {
 
 fn self_module_prefix_for(module_path: LensModulePathV0) -> String {
   match module_path {
-    Bound { path } => logical_qualified_name_from_module(module_name: path, name: "")
+    Bound { path } => qualified_name_from_module(module_name: path, name: "")
     Unbound => "unbound-lens-module-path:"
   }
 }

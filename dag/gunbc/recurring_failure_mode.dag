@@ -168,7 +168,7 @@ module gunbc.recurring_failure_mode
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { DeclarationRef }
 import gunbc.guarantee_rung { GuaranteeRung, guarantee_rung_index }
-import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
+import gunbc.rung_climb { ClimbBlocker, AwaitsOneGrounding, GroundingAuthority, GroundingDeclared, GroundingUndeclared, ClimbableButUnbuilt, TriggerAdmission, TriggerAdmitted, trigger_capability_admission }
 
 // WHERE A CLASS STANDS ON THE GUARANTEE LADDER, TYPED (DESIGN section 4b, the ledger rule's rung
 // found at / ceiling / next trigger). The rung and trigger vocabulary is gunbc.guarantee_rung and

@@ -3,7 +3,7 @@ module gunbc.guarantee_stall.compute_cold_reserve_durable_commit_stall
 import std.types { String, List }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // A STALL, NOT A DROP (DESIGN section 4b(2)): WAVE-0 can drive a unit cold through
 // gunbc.compute.work_provider_local compute_run_unit and can name the durable store and staging
@@ -21,7 +21,7 @@ data compute_cold_reserve_durable_commit_stall: GuaranteeStall = GuaranteeStall 
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "an executing host with a declared compute ledger"
+    grounding: GroundingUndeclared
   },
   population: BoundedPopulation {
     members: [

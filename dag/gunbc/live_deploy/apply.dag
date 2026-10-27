@@ -118,7 +118,7 @@ import gunbc.live_deploy.tailnet_door_cutover_host {
 }
 import gunbc.fabric.fabric_storage_binding { fabric_state_storage_binding }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
-import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, SidecarReplied, SidecarReplyFailed }
+import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
 import gunbc.auth.approval_device_crypto_realization { DeviceCryptoExpectation, DeviceCryptoGate, DeviceCryptoGateOpen, DeviceCryptoGateRefused, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.live_deploy.member_identity { MemberObserved, ExecutableIdentity }
 import gunbc.live_deploy.member_observe { observe_executable, OnTheHostItself, deployment_effect_plan, deployment_identity_readback, IdentityReadbackConverged, IdentityReadbackDrift, IdentityReadbackRefused }
@@ -985,25 +985,11 @@ fn approval_broker_liveness_poll(
   }
 }
 
-// THE SIDECAR IS READ BACK THE WAY THE BROKER WILL USE IT: the digest of the binary INSTALLED in the locus
-// (observed from the host, not taken from the packed artifact) is the expectation, and a request to the running
-// sidecar must come back with a receipt echo that joins it. A sidecar running some other binary, a down sidecar and
-// a receipt of another revision are each a refusal here, before the broker is trusted to route device requests.
-// The readback's expectation is the broker's own gate result, never a second construction of the requirement: a refused
-// gate yields none (the broker would answer 503 on every device route), an open one yields exactly the requirement the
-// broker's route gate opened on, joined to the digest observed on the host.
-fn device_crypto_readback_expectation(gate: DeviceCryptoGate, deployed_digest: NonEmptyStr) -> DeviceCryptoExpectation? {
-  match gate {
-    DeviceCryptoGateRefused { status: _, reason: _ } => none
-    DeviceCryptoGateOpen { requirement: q } => Present { value: DeviceCryptoExpectation { requirement: q, deployed_digest: deployed_digest } }
-  }
-}
-
 fn device_crypto_sidecar_readback_exit(spec: DeploymentSpec, candidate: CandidateRelease) -> ProcessExit {
   let installed = device_crypto_sidecar_binary_path(spec: spec, revision: RevisionBoundAtEmission { revision: candidate.revision })
   match observe_executable(arm: OnTheHostItself, path: installed) {
     MemberObserved { identity: ExecutableIdentity { digest: d } } =>
-      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d as NonEmptyStr) {
+      match device_crypto_readback_expectation(gate: device_crypto_gate(r: approval_device_crypto_realization), deployed_digest: d.hex) {
         Absent => exit_failure(reason: "device-crypto sidecar readback: the broker's own realization is not bound, so it would answer 503 on every device route")
         Present { value: expectation } =>
           match device_crypto_sidecar_readback(expectation: expectation) {
@@ -1045,7 +1031,7 @@ fn approval_broker_dark_install_readback_exit(spec: DeploymentSpec, candidate: C
     StageAdmitted { stage: _ } => device_crypto_sidecar_readback_exit(spec: spec, candidate: candidate)
     StageRefused { stage: _, cause: c } =>
       exit_failure(reason: join([
-        "approval broker dark install: the unit was written but stage 2 (prove-release) refuses: ",
+        "approval broker install: the unit was written but the release readback (prove-release) refuses: ",
         cutover_refusal_reason(c: c) as String,
       ], ""))
   }

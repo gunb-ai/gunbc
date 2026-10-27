@@ -1,6 +1,7 @@
 module gunbc.rung_climb
 
 import std.types { String }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashboard_node_uri }
 
 // THE REFERENT-FREE CORE OF A DESIGN section 4b(2) NEXT-RUNG TRIGGER, shared by every carrier that
@@ -21,13 +22,29 @@ import gunbc.dashboard_node_uri { dashboard_node_uri_scheme, text_spells_a_dashb
 // contradiction; test.claim.rung_climb_witness enrols that as a RED the compiler must refuse.
 // AwaitsOneGrounding carries the authority it waits on: a stall that cannot name what it is
 // waiting for is not waiting, it is unbuilt, and the two rank differently for work.
+//
+// THE CAPABILITY LIVES IN ONE PLACE, THE TRIGGER (section 4b: the trigger names the capability
+// restored). The blocker therefore carries only a TYPED REFERENCE to the awaited authority, never a
+// second prose statement of the same capability: two texts for one climb were two answers that
+// could disagree, and 34 rows had already diverged.
+type GroundingAuthority
+  = GroundingDeclared { reference: DeclarationRef }
+  | GroundingUndeclared
+
 type ClimbBlocker
-  = AwaitsOneGrounding { grounding: String }
+  = AwaitsOneGrounding { grounding: GroundingAuthority }
   | ClimbableButUnbuilt
+
+fn grounding_authority_label(g: GroundingAuthority) -> String {
+  match g {
+    GroundingDeclared { reference: r } => declaration_ref_display_key(ref: r)
+    GroundingUndeclared => "the trigger capability, not yet declared"
+  }
+}
 
 fn climb_blocker_label(b: ClimbBlocker) -> String {
   match b {
-    AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", g)
+    AwaitsOneGrounding { grounding: g } => concat("awaits one grounding: ", grounding_authority_label(g: g))
     ClimbableButUnbuilt => "climbable now but unbuilt"
   }
 }

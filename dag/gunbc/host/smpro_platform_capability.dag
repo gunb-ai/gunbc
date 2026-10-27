@@ -1,0 +1,365 @@
+// AMPERE SMpro ACCESS IS A PLATFORM CAPABILITY, not a controller fact and not a MegaRAC reading.
+//
+// SMpro is the Ampere SoC's own out-of-band register interface (the master-write-read path into the
+// RAS error registers). It is present on Ampere Altra-family silicon and ABSENT on any other
+// machine: an x86 board has no SMpro to read, so the capability is ABSENT for it, not an empty
+// reading and not a refused one. That distinction is the point of this owner — a machine whose
+// platform does not carry SMpro is still a valid controlled machine, and the absence must be readable
+// as a platform fact rather than mistaken for a failed probe.
+//
+// The reading itself is re-homed here from the boot diagnostic bundle (gunbc.machine_intake
+// .mtcollins1_boot_diagnostic_bundle) because the bundle's own SmproReading is consumed by more than
+// the bundle: the MegaRAC boot diagnostic bundle carries an SMpro field, and it must not mint the
+// type in its own public surface. Both the bundle and the MegaRAC module import the type from here.
+// The raw pass observation it wraps still comes from the observation module this reads through.
+//
+// NO PLAUSIBLE OUTPUT IS FABRICATED (DESIGN.md §5). An earlier version of this module keyed the
+// standing on the platform ARCHITECTURE: `Aarch64 => Present`. That fabricated an output for every
+// ARM machine that is not Ampere silicon — an AWS Graviton or an NVIDIA Grace board is aarch64 with
+// no SMpro interface at all — and it turned a machine with NO reading into
+// `Absent { platform: "the SMpro pass was not taken" }`, which asserts the platform carries SMpro and
+// the pass was merely skipped when the truth is it never carried it. A missing reading is not evidence
+// about the facility. The facility is a fact about the board's SoC FAMILY, read from the bound board's
+// SoC edge (gunbc.host.board_platform_facts) against the cited carrying set in extdeps.cpu.ampere,
+// and the architecture is not its subject.
+//
+// THE KEY IS THE TYPED SoC FAMILY — not a free string (that would be a second, untyped authority
+// beside extdeps.cpu.types.SoCFamily) and not an architecture (wrong subject, above). And
+// UNESTABLISHED IS ITS OWN ARM, NEVER COLLAPSED INTO NOT_CARRIED: "the board admits no SoC family, so
+// nothing is known about the silicon" is not "the family lacks SMpro". Collapsing those two is exactly
+// the defect the architecture key produced.
+module gunbc.host.smpro_platform_capability
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, non_empty_to_list }
+import gunbc.machine_intake.ampere_smpro_observation {
+  SmproPassObservation, SmproPassSubject, SmproSite, SmproSiteRefusal, SmproSiteStanding,
+  SmproSiteAdmitted, SmproSiteRefused,
+}
+import gunbc.machine_intake.bmc_secure { BmcSecureRefusalCause }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.cpu.types { SoCFamily }
+import extdeps.cpu.ampere { ampere_soc_family_carries_smpro }
+import extdeps.bmc.access_profile { BmcAccessObservationStanding }
+import gunbc.host.board_platform_facts { host_board_soc_families }
+
+// AN SMpro READING: the pass that was taken (every probe kept whole with its raw observation,
+// including when none of them was answered), or the typed fact that no pass was taken and why.
+// The platform capability below stands on top of this reading. These three names — SmproReading,
+// SmproProbed, SmproNotTaken — are constructed by the boot diagnostic bundles and their witnesses and
+// by mtcollins1's row; they record WHETHER A PASS WAS TAKEN, which is orthogonal to whether the
+// platform could carry one, and they are kept exactly as they are.
+type SmproReading
+  = SmproProbed { observation: SmproPassObservation }
+  | SmproNotTaken { reason: NonEmptyStr }
+
+// THE STANDING OF THE SMpro FACILITY ON A HOST'S PLATFORM. Three answers, and they are genuinely
+// three: the family is named and carries the facility; the family is named and does not; the family
+// is not established at all.
+type SmproFacilityStanding
+  = // The board's SoC family is one of the Ampere families the upstream cites as carrying SMpro
+    // (extdeps.cpu.ampere.ampere_smpro_carrying_soc_families, cited to
+    // extdeps.ampere.altra_ssif_patch). This is what licenses an SMpro read on the platform — it says
+    // nothing yet about whether a reading was taken; SmproReading carries that.
+    SmproFacilityCarried { family: SoCFamily }
+  // The board's SoC family is named and is NOT among the cited carrying families: a real family,
+  // negatively answered by the cited set. An x86 machine answers here — and still binds its BMC
+  // control route and remains a valid controlled machine, because this fact is not a precondition of
+  // control.
+  | SmproFacilityNotCarried { family: SoCFamily }
+  // The host's board admits no SoC family, so NOTHING is known about the silicon. Not Carried, and
+  // not Carried either: there is no family to answer about. The SMpro pass is not taken, and the
+  // reason says the family is unknown rather than claiming the platform lacks the facility.
+  | SmproFacilityUnestablished { cause: SmproUnestablishedCause }
+
+// WHY THE PLATFORM IS NOT ESTABLISHED, as a CLOSED SET rather than a sentence. Review 81287 F5: a
+// NonEmptyStr reason is uncheckable prose -- a witness can only assert it is non-empty or compare it
+// byte-for-byte against a literal, so neither the type system nor the test suite can tell "no board row
+// is bound" from "the roster is mixed", and a wrong cause reads exactly like a right one. Each arm
+// carries the FACT that made the verdict unknowable; the renderer below is the only place words appear.
+//
+// One set serves the facility, platform and subject arms: they are the same kind of fact -- something
+// upstream of the verdict is missing -- and three overlapping cause vocabularies would be parallel
+// representation. The control arms exist because a SUBJECT needs a bound route as well as a carrying
+// platform, and which of the two is missing is the operator's actual question.
+type SmproUnestablishedCause
+  = // The access standing was never observed, so there is no controller record to reach a board through.
+    AccessUnobserved { endpoint: BmcControllerEndpoint }
+  // The access was observed but reaches no board row with a SoC edge: no hardware authority to ask.
+  | NoBoardRowBound { endpoint: BmcControllerEndpoint }
+  // The roster MIXES carrying and non-carrying families and nothing selects one. The counts ride along
+  // as NUMBERS rather than being folded into the sentence: they are what a witness asserts (one mixed
+  // family of two is a different finding from one of nine, and a rule that miscounted the roster would
+  // go red on the numbers instead of printing a plausible paragraph). The renderer below does print
+  // them, via the kernel's to_string, because telling the operator WHICH roster shape refused is the
+  // point of the diagnostic -- the numbers are the evidence, not an ornament.
+  | MixedRosterWithoutInstalledSelection { total: Int, carrying: Int }
+  // A subject needs a bound route; the secured account refused, and which refusal it was rides through
+  // as the cause rather than being summarised into a sentence.
+  | ControlRouteNotSecured { cause: BmcSecureRefusalCause }
+  // The observed controller and the secured account name different endpoints, so no route is bound.
+  | ControlEndpointMismatch { observed: BmcControllerEndpoint, secured: BmcControllerEndpoint }
+
+// HOW A BOARD'S ADMITTED FAMILIES SPLIT AGAINST THE CITED CARRYING SET. Two counts, not one boolean,
+// because three situations have to stay distinguishable: every admitted family carries, none does, and
+// the roster MIXES the two. The third is not a yes and not a no — it is the compatibility roster saying
+// "this board may ship with silicon that has the interface and silicon that does not", which answers
+// nothing about the machine in front of us.
+type SmproAdmittedCounts {
+  total: Int,
+  carrying: Int,
+}
+
+// THE SMpro FACILITY OF A MACHINE, READ FROM ITS BOUND BOARD'S SoC FAMILY (through
+// gunbc.host.board_platform_facts, so the board authority stays the owner of the silicon) AND THE
+// UPSTREAM-CITED CARRYING SET. Never from the architecture: aarch64 does not carry SMpro by being
+// aarch64, and the answer for an aarch64 family the cited set does not name is NotCarried.
+//
+// The access observation is the input because it is what binds a host to its board identity; the
+// board, not the controller, is the hardware authority.
+fn smpro_facility(access: BmcAccessObservationStanding) -> SmproFacilityStanding {
+  // THE ACCESS STANDING IS ASKED BEFORE THE BOARD, because host_board_soc_families returns none for
+  // TWO different facts (review 81322): an access that was never observed, and an observed controller
+  // whose board reaches no row. Collapsing them made an unobserved controller read as "no board row is
+  // bound", pointing an operator at a missing board row when the real gap is that nobody has ever
+  // looked at the controller -- a wrong located diagnostic, DESIGN.md Sec 5. The two arms are also not
+  // interchangeable downstream: AccessUnobserved is fixed by taking an observation, NoBoardRowBound by
+  // binding a board authority, and only the second is a board-authority defect.
+  match access {
+    BmcAccessUnobserved { endpoint: e } =>
+      SmproFacilityUnestablished { cause: AccessUnobserved { endpoint: e } }
+    BmcAccessObserved { observation: o } => match host_board_soc_families(access: access) {
+      Absent => SmproFacilityUnestablished { cause: NoBoardRowBound { endpoint: o.endpoint } }
+      Present { value: fs } => smpro_facility_of_families(families: fs)
+    }
+  }
+}
+
+// THE SAME VERDICT OVER AN EXPLICIT FAMILY SET — one implementation, reached two ways. The
+// production path above resolves the families through the board authority; this one takes them
+// directly, so a witness can ask about a family (an aarch64 family the cited set does not name, a
+// family the set names, and no family at all) without minting a board row per question.
+fn smpro_facility_of_families(families: FreeSemigroup<SoCFamily>) -> SmproFacilityStanding {
+  let c = smpro_admitted_counts(families: families)
+  // THE LEAD IS THE CARRIER'S OWN HEAD. `first_soc_family` -- a first() over a List whose Absent had to
+  // be answered here three times, plus an empty-roster refusal cause and a rendered sentence for it --
+  // is DELETED with them (review 81501). BoardSocEdge.soc_families is a FreeSemigroup, so a non-empty
+  // roster is the only shape that can be written and reached this function: the type carries the
+  // constraint, so the check that restated it was a second representation of it (DESIGN Sec 5, and the
+  // ruling nonemptiness_is_constructed_or_proved).
+  let lead = families.head
+  if c.carrying == c.total {
+    // UNANIMOUS YES: whatever is in the slot, it carries the interface.
+    SmproFacilityCarried { family: lead }
+  } else if c.carrying == 0 {
+    // UNANIMOUS NO: every family the board admits is negatively answered by the cited set.
+    SmproFacilityNotCarried { family: lead }
+  } else {
+    // MIXED ROSTER. The board's edge is a COMPATIBILITY roster -- what may be installed -- so it does
+    // not say which silicon is in the slot, and no SMpro question about THIS machine is answerable from
+    // it. Not Carried (the roster does contain carrying silicon) and not Carried (it also contains
+    // silicon that has no such interface). An installed-family observation would settle it; none exists
+    // in the corpus yet, so the honest answer is that we do not know -- never the optimistic arm.
+    SmproFacilityUnestablished {
+      cause: MixedRosterWithoutInstalledSelection { total: c.total, carrying: c.carrying },
+    }
+  }
+}
+
+// THE ADMITTED FAMILIES SPLIT BY THE CITED CARRYING SET, as a count rather than a boolean. The board's
+// SoC edge bounds what MAY be installed -- a compatibility roster -- so it is not evidence about which
+// silicon is IN the slot. Answering Carried because ANY rostered family carries SMpro would license an
+// SMpro read on a machine whose actual silicon does not have the interface, which is the same class of
+// error as keying on the architecture: it reads a possibility as a fact about this machine.
+fn smpro_admitted_counts(families: FreeSemigroup<SoCFamily>) -> SmproAdmittedCounts {
+  // Counted over the list the carrier unfolds to; the carrier remains the authority on the shape.
+  let roster = non_empty_to_list(xs: families)
+  let carrying = roster |> filter(f => ampere_soc_family_carries_smpro(family: f))
+  SmproAdmittedCounts { total: count(roster), carrying: count(carrying) }
+}
+
+// THE MACHINE'S SMpro FACT AS CARRIED ON THE MANAGED ROW, and the reason it is shaped this way rather
+// than as one always-present site standing: an SMpro site is an OBSERVATION OF AN INTERFACE, so it can
+// only exist where the interface exists. When the field was a bare SmproSiteStanding (Admitted |
+// Refused), an x86 machine could only be represented by FABRICATING an Ampere site -- either claiming a
+// reading of an interface it has never had, or claiming a refusal to read one. Both are lies about the
+// platform, and the refusal form is the subtler one: "refused" implies the pass existed and was declined.
+//
+// So the site hangs off the platform verdict and only Carried owes it. That makes "an x86 machine is a
+// valid controlled machine" representable at all: it answers NotCarried, carries no site, and still
+// binds its BMC control route and stays managed.
+type SmproPlatformStanding
+  // The platform carries SMpro AND its site was ADMITTED -- the arm holds the admitted site itself, not
+  // a standing that might or might not be one. The only arm with an endpoint to join against the secured
+  // one, because it is the only arm that claims a read.
+  = SmproPlatformCarried { family: SoCFamily, site: SmproSite }
+  // The platform carries the interface but the site is not admissible, WITH THE CAUSE. This arm exists
+  // because the alternative was `Carried { site: SmproSiteStanding }` plus a Bool validator that rejected
+  // the refused case at runtime: a validator standing in for a sum type that was never declared, which
+  // DESIGN §5 makes the blocking form ("making it unwritable -- correctness by construction, not
+  // validation"). A refused site cannot be written into the carried arm any more, so there is nothing
+  // left for a validator to catch.
+  | SmproPlatformSiteRefused { family: SoCFamily, cause: SmproSiteRefusal }
+  // A named family the cited set answers negatively: NO site exists and none is owed. There is no
+  // endpoint to compare, because nothing was read and nothing was claimed.
+  | SmproPlatformNotCarried { family: SoCFamily }
+  // The silicon is unknown -- no family bound, or a compatibility roster that mixes carrying and
+  // non-carrying families with no installed-silicon observation to select one. No site, and no claim
+  // that the platform lacks the interface either.
+  | SmproPlatformUnestablished { cause: SmproUnestablishedCause }
+
+// THE PLATFORM STANDING FOR A MACHINE, from its board's SoC families plus (only where the platform
+// carries) the SMpro site standing. Kept as one fn so a consumer never assembles the arms by hand and
+// never has to decide what to pass for `site` on a platform that has no interface -- which is exactly
+// the decision that produced the fabricated field.
+fn smpro_platform_standing(
+  access: BmcAccessObservationStanding,
+  site: SmproSiteStanding,
+) -> SmproPlatformStanding {
+  match smpro_facility(access: access) {
+    SmproFacilityCarried { family: family } => platform_arm_for(family: family, site: site)
+    SmproFacilityNotCarried { family: family } => SmproPlatformNotCarried { family: family }
+    SmproFacilityUnestablished { cause: reason } => SmproPlatformUnestablished { cause: reason }
+  }
+}
+
+// THE PLATFORM ARM A SITE BELONGS IN. The only place a site standing is turned into a platform standing,
+// so the split into Carried / SiteRefused happens once, here, by pattern on the standing -- which is why
+// no validator is needed downstream: a refused site lands in the arm that names a cause, and the carried
+// arm can only ever hold an admitted site.
+fn platform_arm_for(family: SoCFamily, site: SmproSiteStanding) -> SmproPlatformStanding {
+  match site {
+    SmproSiteAdmitted { site: s } => SmproPlatformCarried { family: family, site: s }
+    SmproSiteRefused { cause: c } => SmproPlatformSiteRefused { family: family, cause: c }
+  }
+}
+
+// WHICH CONTROLLER ENDPOINT, IF ANY, OWES THE SECURED-ENDPOINT JOIN. Only the Carried arm read
+// something, so only that arm has an endpoint to hold against the secured one. The old shape asked
+// "which host is the SMpro site on?" for EVERY machine, which quietly required every machine to have a
+// site -- the requirement that made an x86 managed host impossible.
+// WHAT THE PLATFORM ARM OBLIGES THE ADMISSION JOIN TO CHECK, decided PER ARM.
+//
+// THIS REPLACES smpro_platform_controller_host, which answered "which endpoint did you read?" and mapped
+// THREE different arms to `none`. Collapsing them into one Optional and then answering the `Absent`
+// branch `true` was a SILENT WIDEN (review 81478; DESIGN Sec 5: "a failure arm refuses, never widens"),
+// because those three arms are not the same fact:
+//   NotCarried        -- an x86 family the cited set answers negatively. No site exists, none is owed.
+//                        This is the arm the manager ruled must be admitted (blocker 2), and it is the
+//                        only one of the three that may join the roster.
+//   SiteRefused       -- the platform DOES carry the interface and the read came back refusing. A failed
+//                        read, not an absent interface. Main refused it (smpro_controller_host mapped
+//                        SmproSiteRefused to none and the conjunction was false), and it still must.
+//   Unestablished     -- the silicon itself is unknown. Nothing was read and nothing is claimed about
+//                        what the board admits; a roster is not a place to guess.
+// An Option cannot tell those apart, so the model names them separately and each gets its own answer.
+// Nothing here is a Bool either: a true/false over coproduct arms is the predicate the review policy
+// strikes, and the refused arm carries the cause so a refusal stays checkable rather than anonymous.
+type SmproPlatformJoinObligation
+  = SmproJoinOwesEndpoint { host: NonEmptyStr }
+  | SmproJoinNoEndpointOwed
+  | SmproJoinRefused { cause: SmproJoinRefusal }
+
+// THE TWO WAYS A PLATFORM REFUSES THE JOIN, kept distinct because their repairs point at different
+// people: a refused site is fixed by re-reading the board over the secured route (an operator), an
+// unestablished silicon is fixed by binding a board row or reading the installed family (an intake
+// gap). One arm would make an operator chase a site that was never the problem.
+type SmproJoinRefusal
+  = SmproJoinSiteRefused { cause: SmproSiteRefusal }
+  | SmproJoinPlatformUnestablished { cause: SmproUnestablishedCause }
+
+fn smpro_platform_join_obligation(
+  standing: SmproPlatformStanding,
+) -> SmproPlatformJoinObligation {
+  match standing {
+    // The only arm that claims a read, so the only one with an endpoint to hold against the secured one.
+    SmproPlatformCarried { family: _, site: s } => SmproJoinOwesEndpoint { host: s.endpoint.host }
+    // An absent interface owes nothing -- and this is the ONE arm admission may pass without a site.
+    SmproPlatformNotCarried { family: _ } => SmproJoinNoEndpointOwed
+    // Two FAILED reads refuse. Not widened, not defaulted, each carrying why.
+    SmproPlatformSiteRefused { family: _, cause: cause } =>
+      SmproJoinRefused { cause: SmproJoinSiteRefused { cause: cause } }
+    SmproPlatformUnestablished { cause: cause } =>
+      SmproJoinRefused { cause: SmproJoinPlatformUnestablished { cause: cause } }
+  }
+}
+
+// (The well-formedness validator that used to sit here is GONE: SmproPlatformCarried holds an admitted
+// SmproSite directly and a refused site has its own arm, so the state it rejected cannot be built. DESIGN
+// §5 -- correctness by construction, not validation.)
+
+// WHY NO SMpro PASS SUBJECT EXISTS, in the machine's own words. The old path collapsed
+// not-licensed to 'no subject' and the boot diagnostic then rendered 'this host has no bound controller
+// to read SMpro through' -- FALSE for a machine whose controller is bound and whose platform simply
+// does not carry the interface. Every refusal reason here names the actual cause.
+type SmproSubjectOutcome
+  // Only a genuine subject: the mint's own refusals are their own arms below, never folded in here.
+  = SmproSubjectMinted { subject: SmproPassSubject }
+  | SmproSubjectNotCarried { family: SoCFamily }
+  | SmproSubjectUnestablished { cause: SmproUnestablishedCause }
+  | SmproSubjectSiteRefused { cause: SmproSiteRefusal }
+  // The site is evidence about a DIFFERENT controller than the bound one: both endpoints survive, since
+  // naming them is the whole value of the refusal.
+  | SmproSubjectEndpointMismatch { bound: BmcControllerEndpoint, site: BmcControllerEndpoint }
+
+// (No `subject_exists`/`is_platform_cause` Bool helpers here. They were two more ways to collapse a
+// five-arm outcome into a bit -- the predicate-dissolution rule -- and neither had a consumer: a caller
+// that needs to act on the outcome matches on it, which is also the only way to keep the CAUSE. Add a
+// disposition before minting one, do not add a convenience projection.)
+
+// THE HUMAN-READABLE CAUSE, so the boot path renders WHY rather than inventing one. Sourced from the
+// arms, never assembled from a host name or from the absence of a controller.
+fn smpro_subject_absence_reason(outcome: SmproSubjectOutcome) -> NonEmptyStr {
+  match outcome {
+    SmproSubjectMinted { subject: _ } => "an SMpro pass subject was minted; there is no absence to explain"
+    SmproSubjectNotCarried { family: family } =>
+      join(["the platform does not carry the SMpro interface: the bound board's SoC family ",
+        (family.name as String),
+        " is not among the cited SMpro-carrying families, so there is no pass to take"], "") as NonEmptyStr
+    SmproSubjectUnestablished { cause: reason } =>
+      join(["no SMpro pass was taken: ", smpro_unestablished_cause_text(cause: reason)], "") as NonEmptyStr
+    SmproSubjectSiteRefused { cause: cause } =>
+      join(["the platform carries SMpro and a controller is bound, but the SMpro site was refused: ",
+        smpro_site_refusal_text(cause: cause)], "") as NonEmptyStr
+    SmproSubjectEndpointMismatch { bound: bound, site: site } =>
+      join(["the platform carries SMpro and a controller is bound, but the SMpro site is evidence about ",
+        (site.host as String), ", not the bound controller ", (bound.host as String)], "") as NonEmptyStr
+  }
+}
+
+// THE OPERATOR-READABLE CAUSE, assembled once from the typed arms. This is the only place these
+// sentences exist: producers construct a cause and callers ask for text, so a wrong cause can never be
+// dressed up as a plausible sentence, and a witness asserts the CAUSE rather than a substring of it.
+fn smpro_unestablished_cause_text(cause: SmproUnestablishedCause) -> String {
+  match cause {
+    AccessUnobserved { endpoint: e } =>
+      join(["the controller ", (e.host as String),
+        " has no access observation, so no board can be reached to ask what silicon it carries"], "")
+    NoBoardRowBound { endpoint: e } =>
+      join(["the controller ", (e.host as String),
+        " is observed but reaches no board row, so there is no hardware authority to ask what silicon is installed"], "")
+    MixedRosterWithoutInstalledSelection { total: total, carrying: carrying } =>
+      join(["the bound board's compatibility roster mixes SMpro-carrying and non-carrying SoC families (",
+        to_string(value: carrying), " of ", to_string(value: total),
+        " families carry it) and no installed-silicon observation selects one, so this machine's platform is unknown"], "")
+    ControlRouteNotSecured { cause: _ } =>
+      "no control route is bound because the secured account refused the binding"
+    ControlEndpointMismatch { observed: o, secured: sec } =>
+      join(["no control route is bound: the observed controller ", (o.host as String),
+        " and the secured account ", (sec.host as String), " name different endpoints"], "")
+  }
+}
+
+// WHY THE SITE ITSELF WAS REFUSED, in words. Named per refusal cause rather than rendered from the
+// machine's identity, so the boot path can quote the actual cause.
+fn smpro_site_refusal_text(cause: SmproSiteRefusal) -> String {
+  match cause {
+    SiteHasNoTargets => "the SMpro site declares no targets"
+    SiteControlNotATarget { socket: _ } => "the site's control socket is not one of its targets"
+    SiteControlAmbiguous { socket: _, matches: _ } => "more than one target claims the control socket"
+    SiteSocketRepeated { socket: _ } => "a socket appears twice among the site's targets"
+    SiteAddressRepeated { seven_bit_address: _ } => "a 7-bit address appears twice among the site's targets"
+  }
+}
+
+

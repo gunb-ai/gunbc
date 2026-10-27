@@ -16,13 +16,13 @@ import std.optional { Absent, Optional, Present }
 import std.types { List }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import v2.lens.module_graph { ModuleDeclarationFact, module_declaration_facts_at_live }
-import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, logical_qualified_name_from_module }
+import v2.std.decl_index { DeclFact, ItemKind, decl_facts_at, qualified_name_from_module }
 import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
 // to exactly one declaration_identity in decl_facts over a declared module, or refuses with one of
 // five typed arms — module absent, declaration absent, field absent, ambiguous, or resolved.
-// Qualified-name join uses logical_qualified_name_from_module — the same strip-v2. rule as
+// Qualified-name join uses qualified_name_from_module — the same key (the module's own name, `v2.` included) as
 // decl_facts rows. Module membership reads module_declaration_facts — the containment-tree module
 // census, not text scan. Ambiguity is its own arm: two or more decl_facts rows for one logical
 // qualified name returns DeclarationRefAmbiguous with every candidate identity BEFORE any fact.node
@@ -56,7 +56,7 @@ fn declaration_identity_from_fact(fact: DeclFact) -> DeclarationIdentity {
 }
 
 fn declaration_ref_target_qualified_name(ref: DeclarationRef) -> String {
-  logical_qualified_name_from_module(
+  qualified_name_from_module(
     module_name: ref.module_path as String,
     name: ref.decl_name as String
   )
@@ -136,14 +136,22 @@ fn resolve_declaration_ref(
 
 // THE KEYED ROUTE, for a caller whose subject is the live tree rather than a fixture population.
 // It differs from the fold above in WHERE the two narrowings happen and nowhere else: the host
-// index answers both by key, so asking about one citation costs one lookup instead of one whole
-// corpus minted into interpreter values and then folded down to the same rows.
+// index answers both by key, so asking about a set of citations costs one keyed read of the pool
+// instead of one whole corpus minted into interpreter values and then folded down to the same rows.
 //
 // A caller holding a FIXTURE population still uses the three-argument form — this one names the
 // live tree by its roots, which a fixture cannot be handed as.
-fn resolve_declaration_ref_live(
+//
+// ONE READ PER FOLD, NOT PER REFERENCE. `live_facts` is the keyed read's answer for EVERY reference
+// the caller's fold holds, read once at that fold; each reference is then joined against it by its
+// own key (decl_facts_matching_qualified_name), which returns exactly the rows a one-key read would
+// have, multiplicity included. A fold that asked the pool once per reference re-walked it per
+// reference wherever no census provider was registered (DESIGN section 2: share the read at the
+// demands' common ancestor; never cache the later asks).
+fn resolve_declaration_ref_live_over(
   ref: DeclarationRef,
-  pool_roots: List<String>
+  pool_roots: List<String>,
+  live_facts: List<DeclFact>
 ) -> DeclarationRefResolution {
   resolve_declaration_ref_over(
     ref: ref,
@@ -151,10 +159,30 @@ fn resolve_declaration_ref_live(
       pool_roots: pool_roots,
       module_path: ref.module_path as String
     ),
-    matches: decl_facts_at(
-      pool_roots: pool_roots,
-      qualified_name: declaration_ref_target_qualified_name(ref: ref)
+    matches: decl_facts_matching_qualified_name(
+      qn: declaration_ref_target_qualified_name(ref: ref),
+      facts: live_facts
     )
+  )
+}
+
+// The keyed read for a population of references: every row any of them names, read once.
+fn declaration_ref_live_facts(refs: List<DeclarationRef>, pool_roots: List<String>) -> List<DeclFact> {
+  decl_facts_at(
+    pool_roots: pool_roots,
+    qualified_names: list_map(xs: refs, f: fn(r) { declaration_ref_target_qualified_name(ref: r) }),
+    type_names: []
+  )
+}
+
+fn resolve_declaration_ref_live(
+  ref: DeclarationRef,
+  pool_roots: List<String>
+) -> DeclarationRefResolution {
+  resolve_declaration_ref_live_over(
+    ref: ref,
+    pool_roots: pool_roots,
+    live_facts: declaration_ref_live_facts(refs: [ref], pool_roots: pool_roots)
   )
 }
 
@@ -194,13 +222,6 @@ fn declaration_ref_resolves(
   )
 }
 
-// The keyed twin: same question, asked of the live tree by key rather than of a minted population.
-fn declaration_ref_resolves_live(ref: DeclarationRef, pool_roots: List<String>) -> Bool {
-  declaration_ref_resolution_is_resolved(
-    resolution: resolve_declaration_ref_live(ref: ref, pool_roots: pool_roots)
-  )
-}
-
 fn cited_declaration_ref_refusal_count(
   refs: List<DeclarationRef>,
   facts: List<DeclFact>,
@@ -216,9 +237,14 @@ fn cited_declaration_ref_refusal_count_live(
   refs: List<DeclarationRef>,
   pool_roots: List<String>
 ) -> Int {
+  let live_facts = declaration_ref_live_facts(refs: refs, pool_roots: pool_roots)
   count_where(
     xs: refs,
-    predicate: fn(r) { !declaration_ref_resolves_live(ref: r, pool_roots: pool_roots) }
+    predicate: fn(r) {
+      !declaration_ref_resolution_is_resolved(
+        resolution: resolve_declaration_ref_live_over(ref: r, pool_roots: pool_roots, live_facts: live_facts)
+      )
+    }
   )
 }
 
@@ -309,13 +335,14 @@ fn declaration_ref_resolution_census_live(
   refs: List<DeclarationRef>,
   pool_roots: List<String>
 ) -> DeclarationRefResolutionCensus {
+  let live_facts = declaration_ref_live_facts(refs: refs, pool_roots: pool_roots)
   fold(
     refs,
     init: empty_declaration_ref_resolution_census,
     f: fn(acc, ref) {
       declaration_ref_census_absorb(
         acc: acc,
-        resolution: resolve_declaration_ref_live(ref: ref, pool_roots: pool_roots)
+        resolution: resolve_declaration_ref_live_over(ref: ref, pool_roots: pool_roots, live_facts: live_facts)
       )
     }
   )

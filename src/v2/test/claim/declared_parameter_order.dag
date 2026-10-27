@@ -44,6 +44,7 @@ import v2.std.node { positional_child_target_nodes,
   ArrowSignatureOrderEdge,
   edge_is_core,
   StructuralLabel,
+  NotADeclaration
 }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.text { String }
@@ -161,7 +162,7 @@ fn dpo_with_order(arrow: Node, labels: List<Symbol>, keep: Bool) -> Node {
     children: fold(arrow.children, init: [], f: fn(acc, e) {
       if edge_is_core(e: e, marker: ArrowSignatureOrderEdge) {
         if keep {
-          concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels) }])
+          concat(acc, [Edge { label: e.label, target: dpo_order_list(labels: labels), declaration: e.declaration }])
         } else {
           acc
         }
@@ -200,7 +201,7 @@ fn dpo_canonical_domain(arrow: Node) -> Node {
         if acc.done {
           DpoDomainWalk { done: true, edges: concat(acc.edges, [e]) }
         } else {
-          DpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target) }]) }
+          DpoDomainWalk { done: true, edges: concat(acc.edges, [Edge { label: Positional, target: canonicalize_node_for_content_hash(n: e.target), declaration: NotADeclaration }]) }
         }
       Authored { name: _ } => DpoDomainWalk { done: acc.done, edges: concat(acc.edges, [e]) }
     }
@@ -219,7 +220,7 @@ fn dpo_canonical_domain(arrow: Node) -> Node {
 fn dpo_application(arrow: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: arrow }],
+    children: [Edge { label: Positional, target: arrow, declaration: NotADeclaration }],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -351,7 +352,7 @@ test fn dpo_binding_refuses_an_arrow_without_order() -> Bool {
 fn dpo_plan_slots(arrow: Node) -> List<Symbol> {
   match application_binding_plan(
     arrow: arrow,
-    actuals: [Edge { label: Positional, target: arrow }, Edge { label: Positional, target: arrow }]
+    actuals: [Edge { label: Positional, target: arrow, declaration: NotADeclaration }, Edge { label: Positional, target: arrow, declaration: NotADeclaration }]
   ) {
     ApplicationBound { slots: slots } => fold(slots, init: [], f: fn(acc, sl) { concat(acc, [sl.label]) })
     ApplicationBindingRefused { reason: _, at: _ } => []

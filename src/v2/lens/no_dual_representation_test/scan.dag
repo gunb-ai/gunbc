@@ -11,7 +11,7 @@ import v2.std.data_index {
   literal_fingerprint_num_lexeme
 }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.node { positional_child_target_nodes,
+import v2.std.node { node_same_occurrence, positional_child_target_nodes,
   Atom,
   ComputationNode,
   Conj,
@@ -23,7 +23,8 @@ import v2.std.node { positional_child_target_nodes,
   Transform,
   TypeNode,
   fold_node,
-  node_synthetic
+  node_synthetic,
+  NotADeclaration
 }
 import v2.std.compilers.body_lowering {
   ApplicationSlots,
@@ -113,7 +114,7 @@ data sym_lit_1_name: String = "1"
 data sym_add: Symbol = ^add
 
 fn pos_edge(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 fn atom_node(sym: Symbol) -> Node {
@@ -292,7 +293,7 @@ fn body_alpha_equivalent_to_single_arg_call(
       param: param,
       arg_name: arg
     )
-    rhs == inlined
+    node_same_occurrence(a: rhs, b: inlined)
   }
 }
 
@@ -393,7 +394,8 @@ fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Nod
                   output: e.target,
                   param: param,
                   arg_name: arg_name
-                )
+                ),
+                declaration: e.declaration
               }
             )
           }

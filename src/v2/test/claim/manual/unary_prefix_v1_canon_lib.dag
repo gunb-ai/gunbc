@@ -1,0 +1,152 @@
+module v2.test.claim.manual.unary_prefix_v1_canon_lib
+
+// v1 SIDE of the unary-prefix agreement (v2.test.claim.manual.unary_prefix_v1_v2_agreement).
+// Split into its own module because one file importing BOTH v1.std.core and v2.std.node collides
+// on the bare type names Node and Symbol (the checker resolves them to v2.std.node), so each
+// parser's walker lives in its own lib and the agreement claim imports only these two libs.
+//
+// THE CLAIM'S CANONICAL SHAPE lives here and in the v2 lib, and is the CONTRACT between them:
+//   I(a,b) an infix application over operands a, b
+//   P(x)   a prefix application over operand x
+//   l      a leaf (literal or variable reference)
+// Only nesting is compared: the defect IS nesting (whether the prefix covers the infix tail), and
+// collapsing leaves keeps the two walkers' vocabulary identical without exposing either parser's
+// leaf representation. Operator identity is pinned elsewhere: the shape probes carry per-parser
+// expectations read off each language's own operator table, and the value claim pins the numbers.
+//
+// For the arms this claim runs (operands are literals and variables only), the seed parser records
+// an infix node as ExprBinOp with the two operands as children, and a prefix node as ExprUnaryOp
+// with one child (v1.compiler.parse, the same reads unary_prefix_v1_shape_probe walks).
+
+import std.types { Bool, Int, String, List }
+import std.optional { Absent, Present }
+import extdeps.languages.dag.syntax { dag_parse_environment }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table, ParseWithTableResult }
+import v1.std.core {
+  build_newline_index,
+  empty_intern_table,
+  BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  ExprData, ExprBinOp, ExprUnaryOp, ExprLiteral, ExprVar, ExprElaboratedLiteral, ExprError,
+  ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet, ExprRecordLit,
+  ExprListLit, ExprLambda, ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex,
+  ExprSlice, ExprReturn, NoExprData,
+  Not, Neg, UnaryOpKind, Node,
+}
+
+fn canon_v1_source(body: String) -> String {
+  let sig = match body {
+    "!a && b" => "a: Bool, b: Bool"
+    "!a || b" => "a: Bool, b: Bool"
+    "!a * b" => "a: Bool, b: Bool"
+    "!a |> f" => "a: Bool, b: Bool"
+    "!a.b" => "a: Bool, b: Bool"
+    _ => "a: Int, b: Int"
+  }
+  concat("module probe.unary_prefix.canon\n\nfn probe_case(", sig, ") -> Int {\n  ", body, "\n}\n")
+}
+
+// v1's parse, via the production seed parser unmodified; the fn member node carries the body
+// expression (src/v1/02_parse.dag, `body: Present { value: r.expr }`).
+fn v1_canon(body: String) -> String {
+  let file = "probe_unary_prefix_canon_v1.dag"
+  let src = canon_v1_source(body: body)
+  let parsed = parse_with_table(
+    tokens: tokenize(source: src, file: file, env: dag_parse_environment),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: src)),
+    intern_table: empty_intern_table(),
+  )
+  match parsed.result.module {
+    Absent => "<v1-refused>"
+    Present { value: m } =>
+      match m.children |> first {
+        Absent => "<v1-nomember>"
+        Present { value: item } =>
+          match item.body {
+            Absent => "<v1-nobody>"
+            Present { value: b } => canon_shape_v1(node: b)
+          }
+      }
+  }
+}
+
+// THE CANONICAL SHAPE, keyed on node KIND (not arity alone) so the dot, pipe and cast arms are not
+// collapsed to a leaf -- a walker that flattened `.`/`|>`/`as` to `l` would let the two parsers
+// "agree" on a wrong tree. Contract with the v2 lib (measured, not guessed: the shape probes read
+// these node kinds off each parser at this head -- v1 ExprBinOp/ExprUnaryOp/ExprCast/ExprFieldAccess/
+// ExprMethodCall; v2 head-labelled Transforms and the CONJ a dot lowers to):
+//   I(a,b) infix over operands a, b      (v1 ExprBinOp, 2 children; v2 Transform arity 3, operator head)
+//   P(x)   prefix over operand x         (v1 ExprUnaryOp, 1 child;   v2 Transform arity 2, minus/bang head)
+//   C(x)   a cast of principal operand x (v1 ExprCast, first child is the value; v2 Transform `as` head)
+//   F(x)   a field access on principal x  (v1 ExprFieldAccess, child is the object; v2 CONJ, first child is the object)
+//   M(x)   a pipe/method on principal x  (v1 ExprMethodCall, child is the receiver; v2 Transform `pipe` head)
+//   l      a leaf (literal or variable)
+// C/F/M keep ONLY the principal operand: the cast target type, the field name and the pipe's right
+// side are identifiers the two parsers represent differently (v1 carries them in variant data, v2 in
+// trailing operand atoms), and the DEFECT is prefix scope, not those positions. An unexpected shape
+// is "?", never a silent leaf, so a future parse that changes these node kinds fails rather than passes.
+fn canon_shape_v1(node: Node) -> String {
+  match node.expr_data {
+    ExprBinOp { op: _, algebra_field: _, operand: _ } =>
+      if node.children |> count == 2 {
+        concat("I(", node.children |> map(p => canon_shape_v1(node: p)) |> join(separator: ","), ")")
+      } else {
+        "?"
+      }
+    ExprUnaryOp { op: _ } =>
+      if node.children |> count == 1 {
+        concat("P(", node.children |> map(p => canon_shape_v1(node: p)) |> join(separator: ","), ")")
+      } else {
+        "?"
+      }
+    ExprCast =>
+      if node.children |> count == 2 {
+        concat("C(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
+    ExprFieldAccess { summary: _ } =>
+      if node.children |> count == 1 {
+        concat("F(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
+    ExprMethodCall { method_semantics: _ } =>
+      if node.children |> count == 1 {
+        concat("M(", canon_first_child_v1(node: node), ")")
+      } else {
+        "?"
+      }
+    // A RECORD LITERAL: v1's parser builds ExprRecordLit with the field inits as children
+    // (src/v1/02_parse.dag parse_record_literal_named), each init a FieldInit node whose single
+    // child is the value (00_core.dag make_field_init_node, ChildRole "value" at position 0). The
+    // v2 side lowers the same literal to a CONJ spine and its walker prints F(F(l)) for one field
+    // (measured, PR-body receipt): the record itself is one F, each field init another. Same
+    // reasoning as F above: field VALUES stay visible (nesting is the defect), field NAMES are
+    // dropped (v1 carries them in the init node's name, v2 in trailing atoms). An empty record is
+    // "?" rather than "F()", never a silent leaf: no arm here spells one, and "?" on a shape the
+    // contract does not carry is the failure this walker exists to make loud.
+    ExprRecordLit { parent_enum: _ } =>
+      if node.children |> count == 0 {
+        "?"
+      } else {
+        concat("F(", node.children |> map(f => canon_field_init_v1(node: f)) |> join(separator: ","), ")")
+      }
+    _ => "l"
+  }
+}
+
+fn canon_field_init_v1(node: Node) -> String {
+  if node.children |> count == 1 {
+    concat("F(", canon_first_child_v1(node: node), ")")
+  } else {
+    "?"
+  }
+}
+
+fn canon_first_child_v1(node: Node) -> String {
+  match node.children |> first {
+    Present { value: c } => canon_shape_v1(node: c)
+    Absent => "?"
+  }
+}

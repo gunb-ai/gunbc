@@ -3,28 +3,11 @@ import std.optional { Absent, Optional, Present }
 
 
 import std.types { String, List, Bool, Int }
-import gunbc.rung_drop { TypedDeclaration, AuthoredProse }
-import std.algebra { fold_list, length, list_head, list_map }
+import gunbc.rung_drop { rung_drop_population, Enumerated, DerivedBy, DeclaredBy, NotYetCounted }
+import std.algebra { fold_list, length, list_head, list_map, non_empty_to_list }
 import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  ArgvRowClassification,
-  ArgvRowMaterialized,
-  ArgvRowExpressionResidue,
-  ArgvRowExecutablePositionRefused,
-  ArgvRowExecutableClosedUnevaluated,
-  ArgvRowOtherRefusal,
-  operation_argv_row_classify,
-  operation_argv_ref_label,
-  ShellTransportOperationRow,
-  operation_argv_bind_text,
-  operation_argv_classify,
-  operation_argv_refusal_label,
-  operation_argv_row_bindings,
-}
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, ArgvRowClassification, ArgvRowMaterialized, ArgvRowExpressionResidue, ArgvRowExecutablePositionRefused, ArgvRowExecutableClosedUnevaluated, ArgvRowOtherRefusal, operation_argv_row_classify, operation_argv_ref_label, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_classify, operation_argv_refusal_label, operation_argv_row_bindings, shell_materialize_operation_argv }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -148,9 +131,12 @@ data operation_argv_input_reading_executable_operations: List<ArgvClassifiedOper
 
 fn operation_argv_closed_unevaluated_executable_operations() -> List<ArgvClassifiedOperation> {
   list_map(
-    xs: match operation_argv_closed_unevaluated_executable_unjudged.declaration {
-      TypedDeclaration { previous: _, temporary: _, reason: _, population: p, restoration_trigger: _ } => p
-      AuthoredProse { legacy: _, authored: _ } => []
+    xs: match rung_drop_population(d: operation_argv_closed_unevaluated_executable_unjudged) {
+      Present { value: Enumerated { members: m } } => non_empty_to_list(xs: m)
+      Present { value: DerivedBy { label: _ } } => []
+      Present { value: DeclaredBy { declaration: _ } } => []
+      Present { value: NotYetCounted { cause: _ } } => []
+      Absent => []
     },
     f: fn(label) { ArgvClassifiedOperation { operation: label, reason: operation_argv_reason_catalog } }
   )

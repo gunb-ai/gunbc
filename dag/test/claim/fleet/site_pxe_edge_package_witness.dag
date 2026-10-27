@@ -1,0 +1,118 @@
+module test.claim.fleet.site_pxe_edge_package_witness
+
+import std.types { Bool, List, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.package_managers.dpkg { DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
+import gunbc.fleet.site_pxe_edge_converge {
+  PackageActionNone, PackageActionInstall, PackageActionRefuse,
+  PackageBinaryDigestRead, PackageBinaryDigestUnread,
+  PackageHeld, PackageObservedMissing, PackageInstalledAndReadBack, PackageUndecidable,
+  PlacementNotNeeded,
+  SitePxeEdgeRun, SitePxeEdgeApply, SitePxeEdgeObserveOnly, SitePxeEdgeProbeHeld, SitePxeEdgeProbeNotAttempted,
+  PostActivationDigestHeld, PostActivationNotRead,
+  site_pxe_edge_package_action,
+  site_pxe_edge_package_readback_failure,
+  site_pxe_edge_package_install_argv,
+  site_pxe_edge_package_remove_argv,
+  site_pxe_edge_rollback_steps,
+  site_pxe_edge_package_outcome_settled,
+  site_pxe_edge_package_authority,
+  site_pxe_edge_run_succeeded,
+  HttpLegNotNeeded,
+}
+import std.algebra { string_contains }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE dnsmasq-base ENSURE STEP, authorized by operator escalation msg_af2a60f0. Pure folds over supplied
+// dpkg verdicts; the executing route of the same step is the fleet converge entry, which cannot run
+// without srv4 (see the receipt that dispatch writes).
+
+test fn an_installed_package_is_left_alone() -> Bool {
+  match site_pxe_edge_package_action(state: DpkgPackageInstalled) { PackageActionNone => true PackageActionInstall => false PackageActionRefuse { reason: _ } => false }
+}
+
+test fn a_package_dpkg_does_not_know_is_installed() -> Bool {
+  match site_pxe_edge_package_action(state: DpkgPackageUnknown) { PackageActionInstall => true PackageActionNone => false PackageActionRefuse { reason: _ } => false }
+}
+
+test fn a_package_in_config_files_state_is_installed_again() -> Bool {
+  match site_pxe_edge_package_action(state: DpkgPackageNotInstalled { status: "Status: deinstall ok config-files" }) { PackageActionInstall => true PackageActionNone => false PackageActionRefuse { reason: _ } => false }
+}
+
+test fn an_undecidable_dpkg_answer_never_authorizes_the_install() -> Bool {
+  match site_pxe_edge_package_action(state: DpkgQueryUndecidable { reason: "x" }) { PackageActionRefuse { reason: r } => r == "x" PackageActionNone => false PackageActionInstall => false }
+}
+
+test fn readback_accepts_installed_with_a_hashed_binary() -> Bool {
+  match site_pxe_edge_package_readback_failure(state: DpkgPackageInstalled, binary: PackageBinaryDigestUnread { reason: "r" }) { Present { value: _ } => true Absent => false }
+}
+
+test fn readback_refuses_a_package_dpkg_still_does_not_know() -> Bool {
+  match site_pxe_edge_package_readback_failure(state: DpkgPackageUnknown, binary: PackageBinaryDigestUnread { reason: "r" }) { Present { value: _ } => true Absent => false }
+}
+
+test fn readback_refuses_a_half_configured_package() -> Bool {
+  match site_pxe_edge_package_readback_failure(state: DpkgPackageNotInstalled { status: "Status: install ok half-configured" }, binary: PackageBinaryDigestUnread { reason: "r" }) { Present { value: _ } => true Absent => false }
+}
+
+test fn the_install_argv_is_the_exact_non_removing_row_for_dnsmasq_base_only() -> Bool {
+  match site_pxe_edge_package_install_argv() {
+    Present { value: argv } => argv == ["env", "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive", "NEEDRESTART_MODE=l", "apt-get", "--yes", "--no-install-recommends", "--no-remove", "install", "dnsmasq-base"]
+    Absent => false
+  }
+}
+
+test fn the_remove_argv_names_the_same_package_and_keeps_needrestart_listing() -> Bool {
+  match site_pxe_edge_package_remove_argv() {
+    Present { value: argv } => argv == ["env", "LC_ALL=C", "DEBIAN_FRONTEND=noninteractive", "NEEDRESTART_MODE=l", "apt-get", "--yes", "remove", "dnsmasq-base"]
+    Absent => false
+  }
+}
+
+test fn the_staged_rollback_runs_unit_then_files_then_reload_then_package() -> Bool {
+  map(site_pxe_edge_rollback_steps(), r => r.step) == ["disable --now unit", "remove unit and config", "remove tftp root", "daemon-reload", "apt-get remove dnsmasq-base"]
+}
+
+test fn the_step_cites_its_escalation() -> Bool {
+  string_contains(s: site_pxe_edge_package_authority, pattern: "msg_af2a60f0")
+}
+
+test fn only_a_held_or_read_back_package_is_settled() -> Bool {
+  site_pxe_edge_package_outcome_settled(outcome: PackageHeld { binary: PackageBinaryDigestUnread { reason: "r" } })
+    && site_pxe_edge_package_outcome_settled(outcome: PackageInstalledAndReadBack { binary: PackageBinaryDigestUnread { reason: "r" } })
+    && site_pxe_edge_package_outcome_settled(outcome: PackageObservedMissing) == false
+    && site_pxe_edge_package_outcome_settled(outcome: PackageUndecidable { reason: "r" }) == false
+}
+
+test fn an_apply_run_with_an_unsettled_package_does_not_succeed() -> Bool {
+  site_pxe_edge_run_succeeded(run: SitePxeEdgeRun {
+    mode: SitePxeEdgeApply,
+    package: PackageObservedMissing,
+    chains: [],
+    gate_causes: [],
+    installs: [],
+    placement: PlacementNotNeeded,
+    files: [],
+    activation: SitePxeEdgeProbeHeld,
+    unit_active: SitePxeEdgeProbeHeld,
+    post_activation: PostActivationDigestHeld,
+    http: HttpLegNotNeeded,
+  }) == false
+}
+
+test fn an_observe_run_with_an_undecidable_package_does_not_succeed() -> Bool {
+  site_pxe_edge_run_succeeded(run: SitePxeEdgeRun {
+    mode: SitePxeEdgeObserveOnly,
+    package: PackageUndecidable { reason: "r" },
+    chains: [],
+    gate_causes: [],
+    installs: [],
+    placement: PlacementNotNeeded,
+    files: [],
+    activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
+    unit_active: SitePxeEdgeProbeHeld,
+    post_activation: PostActivationNotRead { reason: "observe-only" },
+    http: HttpLegNotNeeded,
+  }) == false
+}

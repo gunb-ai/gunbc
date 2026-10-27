@@ -11,14 +11,14 @@ import std.optional { Absent, Present, optional_absent, optional_present }
 import std.types { Map }
 import v2.compiler.body_lowering_fold { type_declaration_modifiers_covering_no_modules }
 import v2.compiler.infer { ConstructIsRecord, ConstructIsVariantArm, ConstructNotARecord, ConstructVariantArmIdentityUnavailable, ConstructVariantArmIdentityContested, ConstructVariantArmBodyUnavailable, infer, infer_record_construct_read, inferred_facts_resolved_type }
-import v2.compiler.resolve { empty_module_outcome_index, BoundByLexicalBinder, LexicalBinding, LexicalDeclared, OccurrenceBindingRecord, ResolvedTree }
+import v2.compiler.resolve { empty_module_outcome_index, BoundByLexicalBinder, LexicalBinding, LexicalDeclared, OccurrenceResolutionRecord, ResolvedTree }
 import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_type_atom_node }
 import v2.std.diagnostic { Accepted, Rejected, Some, diagnostics_has_reason }
 import v2.std.integer { integer_int_type_node }
 import v2.std.list_introduction { list_introduction_head_path, lower_list_introduction }
 import v2.std.logic { Bool }
 import v2.std.member_declaration_kind { no_member_declaration_kinds }
-import v2.std.node { positional_child_target_nodes, Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode }
+import v2.std.node { positional_child_target_nodes, Authored, Branch, ComputationNode, Conj, Edge, Instantiation, Node, Positional, TypeNode, NotADeclaration }
 import v2.std.node_query { construct_node }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional }
 import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, SymbolIndex, VariantArmPayload, empty_symbol_index, symbol_index_bind_at, symbol_index_declaring_path_of, symbol_index_insert, symbol_index_mark_declared_payload, symbol_index_mark_module_root }
@@ -42,7 +42,8 @@ fn nvar_field_payload() -> Node {
     children: [
       Edge {
         label: Authored { name: ^code },
-        target: integer_int_type_node()
+        target: integer_int_type_node(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -120,13 +121,13 @@ fn nvar_tree(root: Node, index: SymbolIndex) -> ResolvedTree {
 fn nvar_tree_with_bindings(
   root: Node,
   index: SymbolIndex,
-  bindings: Map<OccurrenceId, OccurrenceBindingRecord>
+  bindings: Map<OccurrenceId, OccurrenceResolutionRecord>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: index,
     resolved_declarations: index,
-    occurrence_bindings: bindings,
+    occurrence_resolutions: bindings,
     duplicate_binding_records: [],
     module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
@@ -151,7 +152,7 @@ fn nvar_minted_id(n: Node) -> Optional<OccurrenceId> {
   }
 }
 
-fn nvar_poison_arm_refs(rust: Node, c: Node) -> Map<OccurrenceId, OccurrenceBindingRecord> {
+fn nvar_poison_arm_refs(rust: Node, c: Node) -> Map<OccurrenceId, OccurrenceResolutionRecord> {
   match nvar_minted_id(n: rust) {
     Absent => empty_map()
     Present { value: rust_id } =>
@@ -159,9 +160,9 @@ fn nvar_poison_arm_refs(rust: Node, c: Node) -> Map<OccurrenceId, OccurrenceBind
         Absent => empty_map()
         Present { value: c_id } =>
           map_insert(
-            map_insert(empty_map(), rust_id, OccurrenceBindingRecord { authored: optional_absent(), binding: BoundByLexicalBinder { binding: nvar_payload_as_declared_binding() } }),
+            map_insert(empty_map(), rust_id, OccurrenceResolutionRecord { authored: optional_absent(), binding: BoundByLexicalBinder { binding: nvar_payload_as_declared_binding() } }),
             c_id,
-            OccurrenceBindingRecord { authored: optional_absent(), binding: BoundByLexicalBinder { binding: nvar_payload_as_declared_binding() } }
+            OccurrenceResolutionRecord { authored: optional_absent(), binding: BoundByLexicalBinder { binding: nvar_payload_as_declared_binding() } }
           )
       }
   }
@@ -268,9 +269,9 @@ fn nvar_branch_of(then_arm: Node, else_arm: Node, id: Int) -> Node {
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_token_kw_true) },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: dag_type_atom_node(identity: ^dag_token_kw_true), declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ],
     occurrence_id: nvar_id(n: id)
   }
@@ -297,7 +298,7 @@ fn nvar_failure_construct() -> Node {
   construct_node(
     reference: nvar_ref(path: nvar_failure_alias(), id: 8),
     field_edges: [
-      Edge { label: Authored { name: ^code }, target: dag_int_literal_fixture_one() }
+      Edge { label: Authored { name: ^code }, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ],
     source: Node {
       kind: ComputationNode { behavior: Branch },

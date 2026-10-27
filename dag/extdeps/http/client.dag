@@ -2,6 +2,7 @@ module extdeps.http.client
 import std.resources { Network }
 
 import std.types { NonEmptyStr, Bool, List, Unit, Int }
+import std.nat { Nat }
 import std.measure { Second, second_count }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -78,6 +79,42 @@ fn http_client_get_with_status_argv(url: NonEmptyStr, max_time: Second) -> List<
     url as String,
     "-w",
     "\n%\{http_code\}",
+  ]
+}
+
+// curl(1) --retry / --retry-delay words, rendered here from std.measure carriers. Together with the
+// caller's per-request --max-time they bound how long a polling wait can last; a caller must not
+// spell them as string literals (DESIGN.md §3: an argv carries a literal it should receive as a
+// parameter).
+fn http_client_retry_flag(attempts: Nat) -> NonEmptyStr {
+  to_string(attempts) as NonEmptyStr
+}
+
+fn http_client_retry_delay_flag(delay: Second) -> NonEmptyStr {
+  to_string(second_count(s: delay)) as NonEmptyStr
+}
+
+// A readiness poll for a caller that runs curl AS A CONTAINER ENTRYPOINT (curlimages/curl): the curl
+// ARGUMENTS only, no program word — the image is the program. The body is discarded (-o /dev/null),
+// every transport error is retried (--retry-all-errors: a connection refused while the server boots
+// is curl 7, which plain --retry would not retry), and the status code is the whole of stdout
+// (-w '%{http_code}'), so the caller compares it exactly. attempts x delay + max_time is the bound
+// on the wait; all three arrive as carriers from the caller's policy.
+fn http_client_probe_status_arguments(url: NonEmptyStr, attempts: Nat, delay: Second, max_time: Second) -> List<String> {
+  [
+    "-sS",
+    "-o",
+    "/dev/null",
+    "-w",
+    "%\{http_code\}",
+    "--retry",
+    http_client_retry_flag(attempts: attempts) as String,
+    "--retry-delay",
+    http_client_retry_delay_flag(delay: delay) as String,
+    "--retry-all-errors",
+    "--max-time",
+    http_client_max_time_flag(max_time: max_time) as String,
+    url as String,
   ]
 }
 
@@ -356,6 +393,34 @@ service http.Client {
     exit {
       0 => Unit
       nonzero => String "curl POST from stdin did not complete"
+    }
+    mock_response {
+      0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"
+    }
+  }
+
+  // PostStdinWithinRetryingRefused IS PostStdinWithin FOR A SERVER THAT MAY STILL BE BINDING: curl itself retries a REFUSED
+// connection (--retry-connrefused, curl(1)) once a second (--retry-delay 1) until the caller's startup window closes
+// (--retry-max-time) or the retry count, which is that same window in seconds, is spent. The window is the caller's input,
+// derived from the server's own declared startup bound, never a literal here; no caller-side sleep, and a refusal past the
+// window is still exit 7 for the caller to classify. curl retries only transient transfer errors besides the refusal, so
+// an ANSWER (any HTTP status the server gives) is not retried by this flag set except the transient statuses curl(1) lists.
+  operation PostStdinWithinRetryingRefused {
+    requires Network
+    input { url: NonEmptyStr, request_body: String, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr, startup_seconds: NonEmptyStr }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      body: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}", "--retry-connrefused", "--retry", "{startup_seconds}", "--retry-delay", "1", "--retry-max-time", "{startup_seconds}", "-X", "POST", "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
+      stdin: request_body
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST from stdin did not complete within the startup window"
     }
     mock_response {
       0 => { exit_code: 7, success: false, body: "", stderr: "hermetic: no live HTTP endpoint" } "hermetic: a transport that never connects, so a caller answers unreachable rather than fabricating a reply"

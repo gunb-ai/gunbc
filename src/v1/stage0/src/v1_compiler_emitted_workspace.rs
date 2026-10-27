@@ -277,12 +277,7 @@ pub fn emitted_workspace_realization(
                     },
                 )
             } else {
-                emitted_workspace_realization_of(
-                    files.clone(),
-                    edges.clone(),
-                    rust_crate.clone(),
-                    bin_name.clone(),
-                )
+                emitted_workspace_realization_of(files, edges, rust_crate.clone(), bin_name)
             }
         }
     }
@@ -392,7 +387,7 @@ pub fn emitted_workspace_realization_of(
     std::option::Option::None => Rc::new(EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused {
     cause: Rc::new(EmittedWorkspaceRealizationRefusal::EmittedWorkspaceEntryAbsent),
 }),
-    Some(entry) => match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_build(basenames.clone(), edges.clone(), rust_crate.crate_name.clone(), bin_name.clone())).clone() {
+    Some(entry) => match (*crate::gunbc_emitted_crate_workspace::emitted_workspace_build(basenames, edges, rust_crate.crate_name.clone(), bin_name)).clone() {
     EmittedWorkspaceBuildOutcome::EmittedWorkspaceBuildRefused { cause: c, .. } => Rc::new(EmittedWorkspaceRealization::EmittedWorkspaceRealizationRefused {
     cause: Rc::new(EmittedWorkspaceRealizationRefusal::EmittedWorkspacePlanRefused {
     cause: c.clone(),

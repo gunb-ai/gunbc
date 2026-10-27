@@ -45,7 +45,7 @@ import gunbc.crate_partition {
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-import std.algebra { Empty, fold_list, length, empty_map, map_insert }
+import std.algebra { Empty, fold_list, length, empty_map, map_insert, collection_concat_shape, collection_count_shape, collection_map_shape, list_push }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
@@ -277,6 +277,7 @@ fn stage0_std_primitive_modules() -> List<String> {
     "std_dissolution",
     "std_disposition",
     "std_error_primitives",
+    "std_float",
     "std_emit_model",
     "std_measure",
     "std_decimal",
@@ -517,6 +518,7 @@ fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
 fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   [
     stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
+    stage0_module_dag_edge(from: "std_error_primitives", to: "std_float"),
     stage0_module_dag_edge(from: "std_nat", to: "std_algebra"),
     stage0_module_dag_edge(from: "std_node", to: "std_induction"),
     stage0_module_dag_edge(from: "std_syntax", to: "std_node"),

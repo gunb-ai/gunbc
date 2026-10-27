@@ -1,31 +1,41 @@
 module gunbc.host.host_reset_subject_roster
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.oob_boot_handoff {
   OobBootHandoffAdmission,
-  oob_boot_handoff_admission,
-  oob_handoff_is_admitted,
+  oob_boot_handoff_admission_for_row, oob_handoff_is_admitted,
 }
 import gunbc.host.managed_host {
   ManagedHost,
-  ManagedHostBinding,
-  ManagedHostBindingStanding,
-  ManagedHostAccessUnobserved,
-  ManagedHostBound,
-  ManagedHostEndpointMismatch,
-  ManagedHostNotSecured,
   ManagedHostMembership,
   OrdinaryMember,
   MemberUnderDeclaredDrop,
-  managed_host_binding,
   managed_host_memberships,
 }
+import gunbc.host.bmc_control_binding {
+  BmcControlStanding,
+  BmcControlBound,
+  BmcControlBoundRoute,
+  BmcControlAccessUnobserved,
+  BmcControlNotSecured,
+  BmcControlEndpointMismatch,
+  bmc_control_binding,
+}
 import gunbc.machine_intake.subject { MachineIntakeSubject }
-import std.decl_ref { DeclarationRef }
+import gunbc.rung_drop { RungDrop }
+import gunbc.host.megarac_operation_standing { MegaRacOperationEvidence }
 import gunbc.host.host_reset_boot_selection { reset_boot_selection }
+import gunbc.host.virtual_media_boot_selection {
+  VirtualMediaBootSelectionRefusal,
+  VirtualMediaBootSelectionAdmitted,
+  VirtualMediaBootSelectionRefused,
+}
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
+import gunbc.host.host_reset_return { host_roster_contains }
+import gunbc.host.managed_host_unit_hold { UnitHoldAdmission, UnitHoldUndecided, UnitHoldNotRequired, UnitHoldSubjectAdmitted, admit_unit_hold_subject }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
 // DERIVED SUBSET of gunbc.host.managed_host managed_hosts() rather than a list anyone maintains.
@@ -38,68 +48,106 @@ import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 // naming authority underneath both: every identity here comes from gunbc.fleet.fleet_intent_network.
 //
 // MEMBERSHIP IS THE ADMISSION THE ACTUATION ARM ALREADY PERFORMS, AND NOTHING THE RUN DOES NOT USE.
-// A managed host is a reset subject exactly when gunbc.host.managed_host managed_host_binding binds its
-// secured account to an access observation of the same controller, gunbc.host.host_reset_boot_selection
-// gives it a reset selection, and oob_boot_handoff_admission -- the fold
-// gunbc.machine_intake.oob_boot_handoff runs before it writes anything to a controller -- admits the
-// observation against its capability row. The admitted subject carries the binding and the
-// selection, and the run reads both from it, so a roster member can never fail dispatch for want of
-// a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
+// A managed host is a reset subject exactly when gunbc.host.bmc_control_binding bmc_control_binding
+// binds its secured standing to an access observation of the same controller,
+// gunbc.host.host_reset_boot_selection gives it a reset selection, and
+// gunbc.machine_intake.oob_boot_handoff oob_boot_handoff_admission_for_row -- the fold that module runs
+// before it writes anything to a controller -- admits the observation against THE CAPABILITY ROW OF THE
+// RELEASE THE SELECTION WAS ADMITTED ON, which the subject carries. Not the release the observation
+// reports: the observation's identity.firmware is the PROBED receipt, and consulting it here is the
+// reflash-staleness defect the side chat held on (boot admitted on 0.45.3 while the handoff still read
+// the historical 0.32 row). The admitted
+// subject carries the row and the bound route, and the run reads both from it, so a roster member can
+// never fail dispatch for want of a fact the roster did not check. AdmittedResetSubject is sole_constructor, so admit_reset_subject is
 // its only mint and no module can hand the run a subject that skipped this admission.
 type AdmittedResetSubject sole_constructor {
-  binding: ManagedHostBinding
+  host: ManagedHost
+  route: BmcControlBoundRoute
   boot_selection: IpmiBootSelection
+  // THE CAPABILITY ROW THE RESET SELECTION WAS ADMITTED ON, carried from the one resolution pass
+  // (gunbc.host.virtual_media_boot_selection decide_virtual_media_boot_selection). host_reset_return_run
+  // hands THIS row to the handoff admission; the access observation keeps only its own facts (endpoint,
+  // route, receipt binding). Re-resolving the row from observation.identity.firmware at the handoff is
+  // the reflash-staleness defect (the side-chat finding: boot admitted on 0.45.3, handoff reading the
+  // historical 0.32 row), and it cannot be re-opened from here without deliberately discarding this.
+  capability_row: BmcFirmwareReleaseCapabilityRow
+  // THE UNIT-HOLD ADMISSION THIS SUBJECT WAS ADMITTED UNDER, minted once by
+  // gunbc.host.managed_host_unit_hold admit_unit_hold_subject (that module's single mint of
+  // AdmittedUnitHoldSubject) in admit_reset_subject, and nowhere else. The run takes its hold and judges its
+  // proof from THIS value (gunbc.host.host_reset_return_run reset_unit_hold_gate and host_reset_return_wet),
+  // never by asking the policy again from candidate.host. Before this field, the reset admission minted a
+  // subject without ever consulting the hold, and the run's gate held the only reading, so a gate that skipped
+  // the hold still type-checked against a fully admitted subject. Now a subject cannot be admitted without its
+  // hold decision, and a host with none is ResetSubjectHoldUndecided, never a subject.
+  hold: UnitHoldAdmission
 }
 
 type ResetSubjectAdmission
   = ResetSubjectAdmitted { subject: AdmittedResetSubject }
-  | ResetSubjectUnbound { standing: ManagedHostBindingStanding }
-  | ResetSubjectNoSelection { host: HostIdentity }
+  | ResetSubjectUnbound { standing: BmcControlStanding }
+  | ResetSubjectNoSelection { host: HostIdentity, cause: VirtualMediaBootSelectionRefusal }
   | ResetSubjectControllerNotAdmitted { admission: OobBootHandoffAdmission }
+  // No unit hold decision exists for the host (gunbc.host.managed_host_unit_hold UnitHoldUndecided): it is
+  // not a reset subject, rather than a subject driven as if it needed no hold.
+  | ResetSubjectHoldUndecided { host: HostIdentity }
 
-fn admit_reset_subject(host: ManagedHost) -> ResetSubjectAdmission {
-  match managed_host_binding(host: host) {
-    ManagedHostBound { binding: b } =>
-      match reset_boot_selection(host: host) {
-        Absent => ResetSubjectNoSelection { host: host.host }
-        Present { value: selection } => {
-          let admission = oob_boot_handoff_admission(observation: b.observation, capability_row: host.capability_row)
+fn admit_reset_subject(evidence: MegaRacOperationEvidence, host: ManagedHost) -> ResetSubjectAdmission {
+  match bmc_control_binding(observed: host.access, secured: host.secure) {
+    BmcControlBound { route: route } =>
+      match reset_boot_selection(evidence: evidence, host: host) {
+        VirtualMediaBootSelectionRefused { cause: c } => ResetSubjectNoSelection { host: host.host, cause: c }
+        VirtualMediaBootSelectionAdmitted { selection: selection, capability_row: row } => {
+          // THE SAME ROW THE SELECTION WAS DECIDED FROM answers the handoff's capability questions --
+          // one resolution, carried, not a second lookup the observation's firmware could redirect.
+          let admission = oob_boot_handoff_admission_for_row(
+            observation: bmc_control_route_observation(route: route), capability_row: row)
           if oob_handoff_is_admitted(admission: admission) {
-            ResetSubjectAdmitted { subject: AdmittedResetSubject { binding: b, boot_selection: selection } }
+            let hold = admit_unit_hold_subject(host: host)
+            match hold {
+              UnitHoldUndecided { host: x } => ResetSubjectHoldUndecided { host: x }
+              UnitHoldNotRequired { host: _ } =>
+                ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row, hold: hold } }
+              UnitHoldSubjectAdmitted { subject: _ } =>
+                ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row, hold: hold } }
+            }
           } else {
             ResetSubjectControllerNotAdmitted { admission: admission }
           }
         }
       }
-    ManagedHostAccessUnobserved { endpoint: e } => ResetSubjectUnbound { standing: ManagedHostAccessUnobserved { endpoint: e } }
-    ManagedHostNotSecured { cause: c } => ResetSubjectUnbound { standing: ManagedHostNotSecured { cause: c } }
-    ManagedHostEndpointMismatch { observed: o, secured: sc } =>
-      ResetSubjectUnbound { standing: ManagedHostEndpointMismatch { observed: o, secured: sc } }
+    BmcControlAccessUnobserved { endpoint: e } => ResetSubjectUnbound { standing: BmcControlAccessUnobserved { endpoint: e } }
+    BmcControlNotSecured { cause: c } => ResetSubjectUnbound { standing: BmcControlNotSecured { cause: c } }
+    BmcControlEndpointMismatch { observed: o, secured: sc } =>
+      ResetSubjectUnbound { standing: BmcControlEndpointMismatch { observed: o, secured: sc } }
   }
 }
 
 // THE FOLD RUNS OVER EVERY HOST IT IS GIVEN, ADMITTED OR NOT, so the filter has something to refuse: a
 // roster assembled from already-admitted hosts would make its own filter unreachable.
-fn admitted_reset_subjects(hosts: List<ManagedHost>) -> List<AdmittedResetSubject> {
+fn admitted_reset_subjects(evidence: MegaRacOperationEvidence, hosts: List<ManagedHost>) -> List<AdmittedResetSubject> {
   fold(
     hosts,
     init: [],
-    f: (acc, h) => match admit_reset_subject(host: h) {
+    f: (acc, h) => match admit_reset_subject(evidence: evidence, host: h) {
       ResetSubjectAdmitted { subject: s } => concat(acc, [s])
       ResetSubjectUnbound { standing: _ } => acc
-      ResetSubjectNoSelection { host: _ } => acc
+      ResetSubjectNoSelection { host: _, cause: _ } => acc
       ResetSubjectControllerNotAdmitted { admission: _ } => acc
+      ResetSubjectHoldUndecided { host: _ } => acc
     },
   )
 }
 
-fn reset_subject_roster_of(hosts: List<ManagedHost>) -> List<NonEmptyStr> {
-  map(admitted_reset_subjects(hosts: hosts), s => s.binding.host.host as NonEmptyStr)
+fn reset_subject_roster_of(
+  evidence: MegaRacOperationEvidence,
+  hosts: List<ManagedHost>,
+) -> List<NonEmptyStr> {
+  map(admitted_reset_subjects(evidence: evidence, hosts: hosts), s => s.host.host as NonEmptyStr)
 }
 
 type ResetRosterEntry
   = OrdinaryResetRosterHost { host: NonEmptyStr }
-  | ResetRosterHostUnderDeclaredDrop { host: NonEmptyStr, drop: DeclarationRef }
+  | ResetRosterHostUnderDeclaredDrop { host: NonEmptyStr, drop: RungDrop }
 
 fn reset_roster_hosts(entries: List<ResetRosterEntry>) -> List<NonEmptyStr> {
   map(entries, e => match e {
@@ -113,7 +161,7 @@ type ResetSubjectLookup
   | ResetSubjectAdmittedOrdinary { subject: AdmittedResetSubject }
   | ResetSubjectAdmittedUnderDeclaredDrop {
       subject: AdmittedResetSubject
-      drop: DeclarationRef
+      drop: RungDrop
       standing_subject: MachineIntakeSubject
       current_subject: MachineIntakeSubject
     }
@@ -127,12 +175,12 @@ fn reset_lookup_subject(lookup: ResetSubjectLookup) -> AdmittedResetSubject? {
   }
 }
 
-fn reset_roster_entries_of(m: ManagedHostMembership) -> List<ResetRosterEntry> {
+fn reset_roster_entries_of(evidence: MegaRacOperationEvidence, m: ManagedHostMembership) -> List<ResetRosterEntry> {
   match m {
     OrdinaryMember { host: h } =>
-      map(reset_subject_roster_of(hosts: [h]), name => OrdinaryResetRosterHost { host: name })
+      map(reset_subject_roster_of(evidence: evidence, hosts: [h]), name => OrdinaryResetRosterHost { host: name })
     MemberUnderDeclaredDrop { drop: d, standing_subject: _, current_subject: _, host: h } =>
-      map(reset_subject_roster_of(hosts: [h]), name => ResetRosterHostUnderDeclaredDrop { host: name, drop: d })
+      map(reset_subject_roster_of(evidence: evidence, hosts: [h]), name => ResetRosterHostUnderDeclaredDrop { host: name, drop: d })
   }
 }
 
@@ -142,23 +190,32 @@ fn reset_roster_entries_of(m: ManagedHostMembership) -> List<ResetRosterEntry> {
 // a non-member. The refusal that DOES have to be loud is one level up, in
 // gunbc.host.host_reset_return reset_dispatch_options, where an unmintable observer pairing refuses the
 // whole option list rather than quietly shrinking it.
-fn reset_subject_roster() -> List<ResetRosterEntry> {
-  fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, reset_roster_entries_of(m: m)))
+fn reset_subject_roster(evidence: MegaRacOperationEvidence) -> List<ResetRosterEntry> {
+  fold(managed_host_memberships(), init: [], f: (acc, m) => concat(acc, reset_roster_entries_of(evidence: evidence, m: m)))
 }
 
-// THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts, and this is the one place the two
-// rosters legitimately meet: an observer needs a runner to run on, which is exactly what fleet_hosts()
-// means. Derived from that authority rather than spelled, so enrolling or retiring an executor host
-// moves the observer set with it.
-fn reset_observer_peer_roster() -> List<NonEmptyStr> {
-  map(fleet_hosts(), h => h as NonEmptyStr)
+// THE PEERS THAT MAY OBSERVE A RESET are the executor fleet hosts THAT ARE NOT RESET SUBJECTS, and this is
+// the one place the two rosters legitimately meet: an observer needs a runner to run on, which is exactly
+// what fleet_hosts() means. Derived from that authority rather than spelled, so enrolling or retiring an
+// executor host moves the observer set with it.
+//
+// WHY WHOLE-ROSTER EXCLUSION AND NOT "MINUS THE ONE SUBJECT". A machine cannot observe its own reset, so a
+// subject is never its own observer; the question is only whether it may observe ANOTHER subject's.
+// gunbc.fleet.fleet_converge_workflow
+// fleet_converge_reset_subject_mutation_concurrency_group_expression keys the reset job's concurrency group
+// by SUBJECT, so two distinct subjects hold two groups and their resets run concurrently. A subject
+// mid-reset is down and cannot watch another, so any subject-roster host is excluded from every pairing.
+// A host both enrolled as a runner executor and admitted as a reset subject (mtcollins1) therefore stays
+// an executor and is simply never an observer.
+fn reset_observer_peer_roster(subjects: List<NonEmptyStr>) -> List<NonEmptyStr> {
+  filter(map(fleet_hosts(), h => h as NonEmptyStr), h => host_roster_contains(roster: subjects, host: h) == false)
 }
 
 // THE ADMITTED SUBJECT FOR ONE LABEL, so a caller that resolved a subject reaches its binding and
 // selection without re-walking the roster in its own vocabulary. Absent means the label names no
 // admitted subject, which a caller must treat as a refusal and never as a host it may drive with
 // defaults.
-fn reset_subject_for(host: NonEmptyStr) -> ResetSubjectLookup {
+fn reset_subject_for(evidence: MegaRacOperationEvidence, host: NonEmptyStr) -> ResetSubjectLookup {
   fold(
     managed_host_memberships(),
     init: ResetSubjectNotAdmitted,
@@ -168,15 +225,15 @@ fn reset_subject_for(host: NonEmptyStr) -> ResetSubjectLookup {
       ResetSubjectNotAdmitted =>
         match m {
           OrdinaryMember { host: h } =>
-            fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) {
+            fold(admitted_reset_subjects(evidence: evidence, hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
+              if (s.host.host as String) == (host as String) {
                 ResetSubjectAdmittedOrdinary { subject: s }
               } else {
                 inner
               })
           MemberUnderDeclaredDrop { drop: d, standing_subject: standing, current_subject: current, host: h } =>
-            fold(admitted_reset_subjects(hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
-              if (s.binding.host.host as String) == (host as String) {
+            fold(admitted_reset_subjects(evidence: evidence, hosts: [h]), init: ResetSubjectNotAdmitted, f: (inner, s) =>
+              if (s.host.host as String) == (host as String) {
                 ResetSubjectAdmittedUnderDeclaredDrop {
                   subject: s,
                   drop: d,

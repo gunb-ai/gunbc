@@ -1,7 +1,9 @@
 module test.claim.modeled_filesystem_witness
 
 import gunbc.build_cache.build_cache_instance { ProcessIdentity }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, FilePath }
+import std.algebra { trim }
+import extdeps.shell
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Read, Write, ServiceOpTree, NamespacePosition,
@@ -27,7 +29,8 @@ import gunbc.durable_exclusive_hold_file_store {
 }
 import gunbc.host.managed_host_unit_hold { boot_run_owner }
 import gunbc.filesystem_model {
-  ModeledFilesystem, ModeledFile, filesystem_bindings, filesystem_operation,
+  ModeledFilesystem, ModeledFile, ModeledPathStat, filesystem_bindings, filesystem_ownership_bindings, filesystem_operation,
+  owner_only_directory_mode,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -71,7 +74,7 @@ fn filesystem_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<Modele
 }
 
 fn empty_hold_store() -> ModeledFilesystem {
-  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [], refused_reads: [] }
+  ModeledFilesystem { directories: ["/", "/var", "/var/lib", "/var/lib/gunbc", hold_root as String], files: [], refused_reads: [], stats: [] }
 }
 
 fn route_operations(route: List<DispatchRecord>) -> List<String> {
@@ -127,7 +130,7 @@ fn store_holds_one_slot(fs: ModeledFilesystem) -> Bool {
 // admit_filesystem_failure_kind, decodes it to FilesystemAlreadyExists -- the same projection a host
 // io::Error reaches.
 test fn a_create_exclusive_write_over_an_existing_file_is_already_exists() -> Bool {
-  let seeded = ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/slot", content: "held" }], refused_reads: [] }
+  let seeded = ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/slot", content: "held" }], refused_reads: [], stats: [] }
   match evaluate_in_witness_frame(
     frame: filesystem_frame(initial: seeded),
     subject: fn(_scope) {
@@ -154,6 +157,7 @@ test fn a_listing_is_sorted_immediate_children() -> Bool {
     directories: ["/", "/d", "/d/sub", "/d/sub/deeper"],
     files: [ModeledFile { path: "/d/b", content: "" }, ModeledFile { path: "/d/a", content: "" }, ModeledFile { path: "/d/sub/c", content: "" }],
     refused_reads: [],
+    stats: [],
   }
   match evaluate_in_witness_frame(
     frame: filesystem_frame(initial: fs),
@@ -188,6 +192,89 @@ test fn a_file_operation_answered_as_a_shell_run_refuses() -> Bool {
   ) {
     WitnessRefused { diagnostic } =>
       string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "needs FileObserved")
+    _ => false
+  }
+}
+
+
+// ─── OWNER-ONLY CREATION AND THE STAT READBACK ──────────────────────────────────────────────────
+// The fleet-ssh mux directory's whole contract runs over these three operations: create at 0700 or
+// fail if the name exists, then read the mode and owner back. The frame grants shell.Mkdir and
+// shell.Stat beside Filesystem, and the creating principal is a lens, like the working directory.
+fn shell_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
+  Grant {
+    verb: verb
+    root: NamespacePosition { tree: ServiceOpTree { service: service }, path: [] }
+    binding: ModeledRealization { realization: realization_identity as String }
+    lifecycle: LifecycleByConstruction
+  }
+}
+
+fn ownership_frame(initial: ModeledFilesystem) -> WitnessEvaluationFrame<ModeledFilesystem> {
+  WitnessEvaluationFrame {
+    envelope: Envelope {
+      frame: Frame { name: "modeled-filesystem-witness", kind: SharedStateFrame }
+      grants: [shell_grant(service: "shell.Mkdir", verb: Read), shell_grant(service: "shell.Mkdir", verb: Write), shell_grant(service: "shell.Stat", verb: Read), shell_grant(service: "shell.Stat", verb: Write)]
+    }
+    rest_fixtures: []
+    realization: Present { value: OperationRealization {
+      identity: realization_identity,
+      initial: initial,
+      epoch: virtual_clock_origin(),
+      bindings: filesystem_ownership_bindings(get: fn(fs) { fs }, put: fn(fs, next) { next }, cwd: fn(fs) { "/" }, principal: fn(fs) { "runner" }),
+      advance: fn(fs, now) { fs },
+    } }
+  }
+}
+
+fn temp_only() -> ModeledFilesystem {
+  ModeledFilesystem { directories: ["/", "/tmp"], files: [ModeledFile { path: "/tmp/f", content: "" }], refused_reads: [], stats: [ModeledPathStat { path: "/tmp", mode: owner_only_directory_mode, owner: "root" }] }
+}
+
+// CREATED, THEN READ BACK AS stat PRINTS IT: "700" (no leading zero) and the creating principal; the
+// pre-existing parent reads back the owner the world states for it, not the creator.
+test fn an_owner_only_directory_reads_back_its_mode_and_its_creator() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: ownership_frame(initial: temp_only()),
+    subject: fn(_scope) {
+      let made = shell.Mkdir.NewOwnerOnly(path: "/tmp/mux" as FilePath)
+      let mode = shell.Stat.ModeOf(path: "/tmp/mux" as FilePath)
+      let owner = shell.Stat.OwnerOf(path: "/tmp/mux" as FilePath)
+      let parent = shell.Stat.OwnerOf(path: "/tmp" as FilePath)
+      made.success && mode.success && trim(s: mode.stdout) == "700" && owner.success && trim(s: owner.stdout) == "runner"
+        && parent.success && trim(s: parent.stdout) == "root"
+    }
+  ) {
+    WitnessReturned { value } => value
+    _ => false
+  }
+}
+
+// THE CREATE IS EXCLUSIVE: an existing directory, an existing file and a missing parent each fail, and
+// none of them records a mode -- so success is proof this process created the directory.
+test fn an_owner_only_mkdir_fails_on_an_existing_name_or_a_missing_parent() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: ownership_frame(initial: temp_only()),
+    subject: fn(_scope) {
+      !shell.Mkdir.NewOwnerOnly(path: "/tmp" as FilePath).success
+        && !shell.Mkdir.NewOwnerOnly(path: "/tmp/f" as FilePath).success
+        && !shell.Mkdir.NewOwnerOnly(path: "/absent/mux" as FilePath).success
+        && !shell.Stat.ModeOf(path: "/absent/mux" as FilePath).success
+    }
+  ) {
+    WitnessReturned { value, state } => value && match state { Present { value: fs } => count(fs.stats) == 1 Absent => false }
+    _ => false
+  }
+}
+
+// AN EXISTING PATH WHOSE MODE NOBODY STATED IS NOT GIVEN ONE: stat of it is a harness fault, so the
+// evaluation refuses instead of reading an invented "700" or owner.
+test fn stat_of_a_path_with_no_recorded_mode_refuses() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: ownership_frame(initial: temp_only()),
+    subject: fn(_scope) { shell.Stat.ModeOf(path: "/tmp/f" as FilePath).success }
+  ) {
+    WitnessRefused { diagnostic } => string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "records no mode or owner")
     _ => false
   }
 }

@@ -7,34 +7,35 @@ import v2.extdeps.languages.rust {
   rust_enum_general_decl_productions_only_translation_rules
 }
 import v2.extdeps.languages.rust_fixtures { rust_semantic_decl_target_model_staging }
-import v2.std.compilers.semantic_decl_emission {
-  TargetSemanticDeclSurfaceProjection,
+import v2.std.compilers.semantic_decl_emission { ConformancesTargetDefault,
   semantic_decl_emission_from_target,
   target_semantic_enum_surface_from_coproduct
 }
+import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclConformances, TargetSemanticDeclSurfaceProjection }
 import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
-import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 import std.algebra { Empty }
 
 fn bool_coproduct() -> Node {
   Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Authored { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } },
-      Edge { label: Authored { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } }
+      Edge { label: Authored { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration },
+      Edge { label: Authored { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
 }
 
-// A bare enum surface wrapped by the declaration route's own leading-column function (no imports, no header), so the
-// claims join rules over the surface emit_semantic_type_decl builds and not a hand-built variant of it.
+// A bare enum surface wrapped by the declaration route's own leading-column function (no docs, imports or header), so
+// the claims join rules over the surface emit_semantic_type_decl builds and not a hand-built variant of it.
 fn parity_enum_surface(
   projection: TargetSemanticDeclSurfaceProjection,
   name: Symbol,
   params: List<Symbol>,
   coproduct: Node,
+  conformances: TargetSemanticDeclConformances,
   type_binding: fn(Node) -> Outcome<Symbol>
 ) -> Outcome<Node> {
   bind_outcome(
@@ -43,9 +44,10 @@ fn parity_enum_surface(
       name: name,
       params: params,
       coproduct: coproduct,
+      conformances: conformances,
       type_binding: type_binding
     ),
-    f: fn(bare) { emit_surface_with_leading_columns(projection: projection, imports: [], header: [], surface: bare) }
+    f: fn(bare) { emit_surface_with_leading_columns(projection: projection, docs: [], imports: [], header: [], surface: bare) }
   )
 }
 
@@ -72,6 +74,7 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
         name: ^Bool,
         params: Empty,
         coproduct: bool_coproduct(),
+        conformances: ConformancesTargetDefault,
         type_binding: produced_type_binding(target: rust_semantic_decl_target_model_staging())
       ) {
         Accepted { value: surface, diagnostics: _ } =>

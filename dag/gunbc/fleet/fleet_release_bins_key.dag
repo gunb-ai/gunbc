@@ -45,6 +45,8 @@ import gunbc.ci.ci_release_bins { ci_floor_required_artifact_names, ci_floor_inv
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.ci.ci_spec { ci_release_pack_build_line, ci_release_bins_archive_name }
 import gunbc.ci.ci_failure_class { floor_attempt_command_log_filename, wrap_command_with_floor_attempt_receipt }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
+import gunbc.claim_executor_cli { claim_executor_relative_path }
 
 // THE RELEASE-BINS PACK IS A CONTENT-ADDRESSED MATERIALIZATION, KEYED BEFORE IT IS BUILT (operator
 // ruling 2026-09-27, route B chosen by eager-owl-205: the fleet-converge build job is the keyed
@@ -224,7 +226,7 @@ fn compiler_pair_release_product() -> ReleaseBinsProduct {
     build_line: repo_self_build_command(bins: ci_floor_invoked_bins),
     diagnostics: BuildLogMember { member: "build_diagnostics", source: floor_attempt_command_log_filename },
     sidecars: [compiler_pair_checker_inputs_sidecar],
-    sidecar_writer: ["./target/release/claim_executor", "--write-checker-inputs"],
+    sidecar_writer: [concat("./", claim_executor_relative_path()), "--write-checker-inputs"],
   }
 }
 data release_bins_admitted_producer_ref: String = "refs/heads/main"
@@ -836,10 +838,10 @@ fn release_bins_member_checks(site: ReleaseBinsVerifySite, dir: Node, product: R
 
 fn release_bins_promote_all(dir: Node, product: ReleaseBinsProduct) -> List<Node> {
   concat([
-    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: "target/release")]),
-    in_dir(dir: rooted(file: "target/release"), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: "target/release/")]))),
-  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: "target/release/")]))))
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), rooted(file: cargo_default_release_dir_rel)]),
+    in_dir(dir: rooted(file: cargo_default_release_dir_rel), command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [rooted(file: join([cargo_default_release_dir_rel, "/"], ""))]))),
+  ], map(product.sidecars, f => in_dir(dir: dir, command: cmd(ws: [lit(t: "cp"), lit(t: "-p"), lit(t: f), rooted(file: join([cargo_default_release_dir_rel, "/"], ""))]))))
 }
 
 fn release_bins_verify_pack(site: ReleaseBinsVerifySite, archive: Node, manifest: Node, dir: Node, product: ReleaseBinsProduct) -> List<Node> {
@@ -1146,13 +1148,13 @@ fn release_bins_pack_statements(product: ReleaseBinsProduct) -> List<Node> {
     [
       bash_build_with_redir_to_file(
         inner: bash_build_subshell_from_stmts(stmts: [bash_build_and_then(
-          left: cmd(ws: [lit(t: "cd"), rooted(file: "target/release")]),
+          left: cmd(ws: [lit(t: "cd"), rooted(file: cargo_default_release_dir_rel)]),
           right: cmd(ws: concat([lit(t: "sha256sum")], map(release_bins_pack_members(product: product), n => lit(t: n)))),
         )]),
         path: staged(file: release_bins_manifest_name),
       ),
       cmd(ws: concat(
-        [lit(t: "tar"), lit(t: "-czf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), rooted(file: "target/release")],
+        [lit(t: "tar"), lit(t: "-czf"), staged(file: ci_release_bins_archive_name), lit(t: "-C"), rooted(file: cargo_default_release_dir_rel)],
         map(release_bins_pack_members(product: product), n => lit(t: n)),
       )),
       cmd(ws: [lit(t: "cp"), temp(file: join([release_bins_preimage_name, ".expected"], "")), staged(file: release_bins_preimage_name)]),
@@ -1169,7 +1171,7 @@ fn release_bins_diagnostics_capture(product: ReleaseBinsProduct) -> List<Node> {
     NoBuildDiagnostics => []
     BuildLogMember { member: m, source: src } => [
       or_refuse(check: test_words(ws: [lit(t: "-s"), rooted(file: src)]), r: BuildDiagnosticsMissing { file: src }),
-      cmd(ws: [lit(t: "cp"), rooted(file: src), rooted(file: join(["target/release/", m], ""))]),
+      cmd(ws: [lit(t: "cp"), rooted(file: src), rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))]),
     ]
   }
 }
@@ -1178,7 +1180,7 @@ fn release_bins_diagnostics_capture(product: ReleaseBinsProduct) -> List<Node> {
 // requires each to exist non-empty: a product that declares a sidecar and finds none refuses.
 fn release_bins_sidecar_capture(product: ReleaseBinsProduct) -> List<Node> {
   concat(release_bins_sidecar_writes(product: product), map(product.sidecars, f => or_refuse(
-    check: test_words(ws: [lit(t: "-s"), rooted(file: join(["target/release/", f], ""))]),
+    check: test_words(ws: [lit(t: "-s"), rooted(file: join([cargo_default_release_dir_rel, "/", f], ""))]),
     r: SidecarMissing { file: f },
   )))
 }
@@ -1189,7 +1191,7 @@ fn release_bins_sidecar_capture(product: ReleaseBinsProduct) -> List<Node> {
 fn release_bins_sidecar_writes(product: ReleaseBinsProduct) -> List<Node> {
   match length(xs: product.sidecar_writer) == 0 {
     true => []
-    false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join(["target/release/", f], ""))])))
+    false => map(product.sidecars, f => cmd(ws: concat(map(product.sidecar_writer, w => lit(t: w)), [rooted(file: join([cargo_default_release_dir_rel, "/", f], ""))])))
   }
 }
 
@@ -1226,8 +1228,8 @@ fn release_bins_consumer_statements(product: ReleaseBinsProduct) -> List<Node> {
         product: product,
       ), [
         cmd(ws: concat(
-          [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-          map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+          [rooted(file: claim_executor_relative_path()), lit(t: "--verify-build-artifacts")],
+          map(product.roster, m => rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))),
         )),
       ]]),
     ),
@@ -1323,8 +1325,8 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
     ),
     [
       cmd(ws: concat(
-        [rooted(file: "target/release/claim_executor"), lit(t: "--verify-build-artifacts")],
-        map(product.roster, m => rooted(file: join(["target/release/", m], ""))),
+        [rooted(file: claim_executor_relative_path()), lit(t: "--verify-build-artifacts")],
+        map(product.roster, m => rooted(file: join([cargo_default_release_dir_rel, "/", m], ""))),
       )),
       cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: canonical ", product.kind, " pack verified and promoted"], ""))]),
     ],

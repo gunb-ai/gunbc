@@ -8,11 +8,11 @@ import extdeps.clock {
   clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused, epoch_secs_of_millis,
 }
 import extdeps.auth.jws {
-  jws_rs256_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
+  JwsRs256, jws_signing_input, jws_compact_serialization, JwsSerialized, JwsSignatureNotOctets,
   JwsEncoded, JwsEncodeNotOctets,
   JwsSigningKeyRef, HostKeyFile, JwsSigned, JwsSignRefused,
 }
-import gunbc.jws_signer_realize { jws_rs256_sign }
+import gunbc.jws_signer_realize { jws_sign }
 import extdeps.auth.jwt { JwtCompactSerialization }
 import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.github.effect { GitHubOrganizationRef }
@@ -37,7 +37,7 @@ import extdeps.github.git_database
 import extdeps.github.git_database { GitRefWire, GitRefDeletedBody }
 import extdeps.github.org_actions
 import extdeps.github.org_actions { OrgRunnerGroupWire }
-import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList }
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowJobRunList, GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import extdeps.github.actions_artifacts
 import extdeps.github.actions_artifacts { ActionsArtifactList }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared, gunbai_ci_app_pem_secret }
@@ -55,6 +55,7 @@ import extdeps.github.app { GitHubInstallationTokenPermissions, github_installat
 import extdeps.github.effect { contents_write, pull_requests_write }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id, gunbai_bot_host_signing_key }
 import gunbc.repository { gunbc_repository }
+import std.integer { int_to_decimal_string }
 
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
@@ -137,14 +138,16 @@ type JitMintPerformance
   | JitMintTokenForAnotherInstallation { app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
 
 fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
-  match jws_rs256_signing_input(
+  match jws_signing_input(
+    alg: JwsRs256,
+    kid: none,
     payload_json: github_app_jwt_claims_json(app_id: dispatch_app_id, now_epoch_secs: now_epoch_secs),
   ) {
     JwsEncodeNotOctets { observed: o } =>
       AppJwtUnsigned { detail: concat("the signing input carried a member outside octet range: ", to_string(o)) }
     JwsEncoded { text: jws_signing_text } => {
       let signing_input = jws_signing_text as NonEmptyStr
-      match jws_rs256_sign(signing_input: signing_input, key: key) {
+      match jws_sign(alg: JwsRs256, signing_input: signing_input, key: key) {
         JwsSignRefused { detail: d } => AppJwtUnsigned { detail: d }
         JwsSigned { signature: sig } =>
           match jws_compact_serialization(signing_input: signing_input, signature: sig) {
@@ -390,8 +393,8 @@ type WorkflowRunRead sole_constructor {
   run: RestResult<WorkflowRun>
 }
 
-fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunRead uses net: Network {
-  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+fn read_run_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunRead uses net: Network {
+  let read = github.WorkflowRuns.GetRun(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
   WorkflowRunRead {
     run: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.run }
@@ -404,8 +407,8 @@ type WorkflowAttemptJobsRead sole_constructor {
   jobs: RestResult<WorkflowJobRunList>
 }
 
-fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
-  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String, attempt_number: attempt)
+fn read_attempt_jobs_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId, attempt: Int) -> WorkflowAttemptJobsRead uses net: Network {
+  let read = github.WorkflowRuns.ListAttemptJobs(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id), attempt_number: attempt)
   WorkflowAttemptJobsRead {
     jobs: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.result }
@@ -426,7 +429,7 @@ type WorkflowJobLogRead sole_constructor {
 }
 
 fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, job_id: Int) -> WorkflowJobLogRead uses net: Network {
-  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: job_id as String)
+  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: int_to_decimal_string(value: job_id))
   WorkflowJobLogRead {
     job_id: job_id,
     log: match read {
@@ -440,8 +443,8 @@ type WorkflowRunArtifactsRead sole_constructor {
   listed: RestResult<ActionsArtifactList>
 }
 
-fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: Int) -> WorkflowRunArtifactsRead uses net: Network {
-  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: run_id as String)
+fn list_run_artifacts_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, run_id: GitHubWorkflowRunId) -> WorkflowRunArtifactsRead uses net: Network {
+  let read = github.Artifacts.ListWorkflowRunArtifacts(auth_token: token.token, owner: owner as String, repo: repo as String, run_id: github_workflow_run_id_wire_text(id: run_id))
   WorkflowRunArtifactsRead {
     listed: match read {
       RestAnswered { answer } => RestAnswered { answer: answer.result }
@@ -456,7 +459,7 @@ type ArtifactArchiveRead sole_constructor {
 }
 
 fn download_artifact_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, artifact_id: Int) -> ArtifactArchiveRead uses net: Network {
-  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: artifact_id as String)
+  let read = github.Artifacts.DownloadArtifact(auth_token: token.token, owner: owner as String, repo: repo as String, artifact_id: int_to_decimal_string(value: artifact_id))
   ArtifactArchiveRead {
     artifact_id: artifact_id,
     archive: match read {
@@ -514,7 +517,7 @@ fn update_runner_group_workflows_with(token: ControllerInstallationToken, organi
 // repository and the one permission the publication needs (contents: write), so a leaked token is
 // that and nothing else for one hour.
 //
-// THE KEY HANDOFF IS A FILE, THE SMALLER HONEST ARM. jws_rs256_sign signs from a HostKeyFile through
+// THE KEY HANDOFF IS A FILE, THE SMALLER HONEST ARM. jws_sign signs from a HostKeyFile through
 // openssl reading a file; a JwsSigningKeyRef arm for an in-memory Secret would be a new signer
 // realization (openssl would still need the bytes through a pipe or a file). So the Secret Manager
 // payload is written 0600 (Filesystem.WriteOwnerOnly, create-new) under the caller-named runner

@@ -1,10 +1,11 @@
 module v2.test.claim.emit.semantic_decl_target_refusal
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.cpp { cpp_target_model }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode }
+import v2.std.node { Conj, Disj, Edge, Authored, Node, Symbol, TypeNode, NotADeclaration }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.text { String }
 import std.algebra { Empty }
@@ -19,7 +20,7 @@ fn sdtr_empty_conj() -> Node {
 }
 
 fn sdtr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Authored { name: name }, target: sdtr_empty_conj() }
+  Edge { label: Authored { name: name }, target: sdtr_empty_conj(), declaration: NotADeclaration }
 }
 
 fn sdtr_bool_coproduct() -> Node {
@@ -31,7 +32,7 @@ fn sdtr_bool_coproduct() -> Node {
 }
 
 fn sdtr_unwired_target_refuses() -> Bool {
-  match emit_semantic_type_decl(header: [], imports: [], members: [], 
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: [], members: [], 
     name: ^Bool,
     params: Empty,
     node: sdtr_bool_coproduct(),

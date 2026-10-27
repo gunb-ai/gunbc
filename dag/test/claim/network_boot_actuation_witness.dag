@@ -1,0 +1,482 @@
+module test.claim.network_boot_actuation_witness
+
+import std.types { Bool, String, EpochMs, List, NonEmptyStr }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { decl_ref }
+import extdeps.bmc.types { BootTargetPxe, BootTargetCd }
+import gunbc.os_install_mechanism { PxeHttpInstall, VirtualMediaInstall }
+import std.measure { finite_byte_size, positive_measure_count }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_5_live_server_arm64 }
+import gunbc.provisioning.ubuntu_network_origin_observation {
+  pinned_artefact,
+  ubuntu_origin_read_obligation,
+  ubuntu_network_origin,
+  ubuntu_noble_arm64_initrd_pin,
+}
+import gunbc.provisioning.provisioning_arm {
+  DeliveryStrategy,
+  PxeOrUefiHttp,
+  VirtualMedia,
+  DeliveryEvidence,
+  VirtualMediaUnavailable,
+  FirmwareAlreadyReady,
+  ArmedPxeOrUefiHttp,
+  provisioning_arm_consumer_ref,
+  AttemptBinding,
+  ProvisioningArm,
+  VirtualMediaStanding,
+  VirtualMediaAvailable,
+  provisioning_arm_derive,
+  ArmedVirtualMedia,
+}
+import gunbc.provisioning.network_boot_actuation {
+  NetworkBootActuation,
+  ArmActuationPxe,
+  ArmActuationVirtualMedia,
+  ArmActuationWithheld,
+  network_boot_arm_actuator_steps,
+  network_boot_attempt_actuation,
+  network_boot_attempt_actuation_consumer_ref,
+}
+import gunbc.provisioning.provisioning_arm { ArmRefused, SeedBindingRefused }
+import gunbc.provisioning.altra_autoinstall_seed { TargetNotAdmitted, UnitKeyUnbound }
+import gunbc.machine_intake.subject { BoardSerialAbsent }
+import gunbc.firmware_network_boot_standing { Unobserved }
+import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
+import std.optional { Present, Absent }
+import extdeps.toolchain.types { Aarch64 }
+import extdeps.firmware.ipxe { ipxe_arm64_efi_snponly }
+import extdeps.bmc.types { BootTargetHdd, BootTargetUefiHttp }
+import extdeps.provisioning.network_boot { UefiHttpBoot }
+import extdeps.uri { uri_https }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority, TranscribedUncited }
+import gunbc.machine_intake.subject { UnitKey }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainUnpinned,
+  site_pxe_edge_arm64_ipxe_chain_pin,
+  SitePxeEdgeChainloaderPinned,
+  SitePxeEdgeSecureBootStanding,
+  SecureBootObserved,
+  SecureBootVerdictBooted,
+  site_pxe_edge_chainloader_build_receipt,
+  SitePxeEdgeCommittedArtifact,
+}
+import gunbc.firmware_network_boot_standing {
+  FirmwareNetworkBootStanding,
+  FirmwareBootObservation,
+  BootOption,
+  BootOrderEntry,
+  BootOrderObserved,
+  BootOptionsObserved,
+  NicsObserved,
+  SecureBootDisabled,
+  BiosVersionObserved,
+  firmware_boot_observation,
+  firmware_network_boot_standing,
+  boot_option,
+  boot_order_entry,
+}
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+// REMAINING COUPLING, owed to #14306: the seed binding is sole_constructor, so the only honest fixture is
+// the one its own producer builds. Every other fixture below is owned by this witness.
+import test.claim.altra_autoinstall_seed_witness {
+  built_seed_and_binding,
+  build_seed_fixture,
+  network_posture,
+  network_posture_alt_netplan,
+  clean_packages,
+  one_key,
+  locked_console,
+  seeded_handle,
+  virtual_media_strategy,
+  target_altra,
+  unit_a_key,
+  attempt_one,
+  serial_selector,
+  bay_population,
+  target_refused_by_unbound_key,
+}
+import gunbc.provisioning.altra_autoinstall_seed { bind_altra_autoinstall_seed, Bound, BindRefused, select_target_disk }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn fixture_origin() -> UbuntuNetworkOrigin? {
+  ubuntu_noble_arm64_network_origin()
+}
+
+fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+  match built_seed_and_binding() {
+    Present { value: built } => Present { value: built.binding }
+    Absent => Absent
+  }
+}
+
+// FIRMWARE STANDINGS COME FROM S0'S REAL PRODUCER. NeedsPreparation and Ready are sealed (their payload
+// records are call-walled to S0's own entries), so a witness here cannot spell them by hand; the only
+// honest fixture is a supplied BMC observation run through firmware_network_boot_standing, and the
+// inhabitance test below owes the claim that each observation really yields the shape its name says.
+data fixture_authority: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority { uri: uri_https(locator: "example.invalid/witness-fixture-not-fleet-fact") },
+}
+
+data fixture_epoch: EpochMs = 1765000000000
+
+fn observation_of(options: List<BootOption>, order: List<BootOrderEntry>) -> FirmwareBootObservation {
+  firmware_boot_observation(
+    boot_order: BootOrderObserved { devices: order },
+    boot_options: BootOptionsObserved { options: options },
+    nics: NicsObserved { nics: ["eth0"] },
+    secure_boot: SecureBootDisabled,
+    bios_version: BiosVersionObserved { version: "1.08" },
+  )
+}
+
+fn standing_of(observation: FirmwareBootObservation) -> FirmwareNetworkBootStanding {
+  firmware_network_boot_standing(
+    observation: observation,
+    authority: fixture_authority,
+    observed_at: fixture_epoch,
+    boot_mode: UefiHttpBoot,
+  )
+}
+
+fn disk_option() -> BootOption { boot_option(reference: "0003", kind: BootTargetHdd, label: "NVMe0", enabled: true) }
+fn http_option() -> BootOption { boot_option(reference: "0001", kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true) }
+fn disk_entry() -> BootOrderEntry { boot_order_entry(reference: "0003", label: "NVMe0") }
+fn http_entry() -> BootOrderEntry { boot_order_entry(reference: "0001", label: "UEFI IPv4 HTTP") }
+
+// An enabled network option exists but the order heads with the disk: S0 answers a redirect.
+fn fixture_firmware_needs_boot_next() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(options: [disk_option(), http_option()], order: [disk_entry()]))
+}
+
+// A different unit enumerating its network option under another reference: S0 binds the redirect to THAT
+// reference, so the standing differs in the route payload. (A unit with no network option at all is a
+// Refused standing in S0 -- the stack attribute is not bindable -- so it cannot serve as a second
+// NeedsPreparation.)
+fn fixture_firmware_needs_other() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(
+    options: [disk_option(), boot_option(reference: "0002", kind: BootTargetUefiHttp, label: "UEFI IPv4 HTTP", enabled: true)],
+    order: [disk_entry()],
+  ))
+}
+
+fn fixture_firmware_ready() -> FirmwareNetworkBootStanding {
+  standing_of(observation_of(options: [http_option(), disk_option()], order: [http_entry(), disk_entry()]))
+}
+
+data digest_a: ContentHash = Sha256Hash(Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" })
+
+fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainPin {
+  site_pxe_edge_arm64_ipxe_chain_pin(pin: SitePxeEdgeChainloaderPinned {
+    build: site_pxe_edge_chainloader_build_receipt(
+      embedded_revision: "ipxe-fixture-revision",
+      built_from_commit: "fixture-commit",
+      build_target: ipxe_arm64_efi_snponly,
+      architecture: Aarch64,
+      artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64.efi", digest: digest_a },
+      installed_filename: "snponly.efi",
+      secure_boot: secure_boot,
+    )
+  })
+}
+
+fn pinned() -> SitePxeEdgeChainPin {
+  pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: "fixture: booted" })
+}
+
+fn media_available() -> VirtualMediaStanding {
+  VirtualMediaAvailable { capability_observation: decl_ref(module_path: "fixture.bmc", decl_name: "virtual_media") }
+}
+
+fn evidence_with(firmware: FirmwareNetworkBootStanding, chain: SitePxeEdgeChainPin, virtual_media: VirtualMediaStanding) -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: firmware,
+    chain: chain,
+    virtual_media: virtual_media,
+    origin: fixture_origin(),
+    seed: fixture_seed(),
+  }
+}
+
+fn full_evidence() -> DeliveryEvidence {
+  evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: media_available())
+}
+
+fn attempt(unit: String) -> AttemptBinding {
+  AttemptBinding { unit: unit as UnitKey, attempt: "attempt-1" }
+}
+
+fn arm_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> ProvisioningArm {
+  provisioning_arm_derive(strategy: strategy, evidence: evidence, attempt: attempt(unit: unit))
+}
+
+fn actuate(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> NetworkBootActuation {
+  network_boot_arm_actuator_steps(arm: arm_for(strategy: strategy, evidence: evidence, unit: unit))
+}
+
+// A second, genuinely different origin: same producer, kernel pin with another digest.
+fn other_origin() -> UbuntuNetworkOrigin? {
+  match pinned_artefact(
+    sha256_hex: "c4567593bda98a0723d9234603ec51d6ec7ee0553e1f36793a9da3956a68183e",
+    digest_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+    size: finite_byte_size(count: positive_measure_count(predecessor: 18581402)),
+    size_standing: TranscribedUncited { read_obligation: ubuntu_origin_read_obligation(media: noble_numbat_2404_5_live_server_arm64) },
+  ) {
+    Present { value: k } => match ubuntu_noble_arm64_initrd_pin() {
+      Present { value: i } => ubuntu_network_origin(
+        media: noble_numbat_2404_5_live_server_arm64,
+        installer_size: finite_byte_size(count: positive_measure_count(predecessor: 3825512447)),
+        kernel: k,
+        initrd: i,
+      )
+      Absent => Absent
+    }
+    Absent => Absent
+  }
+}
+
+fn evidence_with_origin(origin: UbuntuNetworkOrigin?) -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: fixture_firmware_needs_boot_next(),
+    chain: pinned(),
+    virtual_media: media_available(),
+    origin: origin,
+    seed: fixture_seed(),
+  }
+}
+
+fn is_withheld(a: NetworkBootActuation) -> Bool {
+  match a {
+    ArmActuationWithheld { attempt: _, shape: _ } => true
+    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => false
+    ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: _, origin: _, seed: _ } => false
+  }
+}
+
+test fn a_pxe_arm_names_the_pxe_mechanism_and_target() -> Bool {
+  match actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha") {
+    ArmActuationPxe { attempt: _, mechanism: m, boot_target: t, chain: _, firmware: _, origin: _, seed: _ } =>
+      m == PxeHttpInstall && t == BootTargetPxe
+    _ => false
+  }
+}
+
+test fn a_virtual_media_arm_names_the_virtual_media_mechanism_and_target() -> Bool {
+  match actuate(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha") {
+    ArmActuationVirtualMedia { attempt: _, mechanism: m, boot_target: t, media_observation: _, origin: _, seed: _ } =>
+      m == VirtualMediaInstall && t == BootTargetCd
+    _ => false
+  }
+}
+
+test fn the_actuation_carries_exactly_what_the_pxe_arm_bound() -> Bool {
+  let arm = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+  match arm.shape {
+    ArmedPxeOrUefiHttp { chain: c, firmware: f, origin: o, seed: s } =>
+      match network_boot_arm_actuator_steps(arm: arm) {
+        ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: c2, firmware: f2, origin: o2, seed: s2 } =>
+          c == c2 && f == f2 && o == o2 && s == s2 && f != FirmwareAlreadyReady
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn the_actuation_carries_exactly_what_the_media_arm_bound() -> Bool {
+  let arm = arm_for(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
+  match arm.shape {
+    ArmedVirtualMedia { media_observation: m, origin: o, seed: s } =>
+      match network_boot_arm_actuator_steps(arm: arm) {
+        ArmActuationVirtualMedia { attempt: _, mechanism: _, boot_target: _, media_observation: m2, origin: o2, seed: s2 } =>
+          m == m2 && o == o2 && s == s2
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// The review's test: arms differing ONLY in origin must not yield one actuation.
+test fn two_pxe_arms_differing_only_in_origin_yield_different_actuations() -> Bool {
+  let base = actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+  let other = actuate(strategy: PxeOrUefiHttp, evidence: evidence_with_origin(origin: other_origin()), unit: "unit-alpha")
+  !is_withheld(a: base) && !is_withheld(a: other) && base != other
+}
+
+test fn two_media_arms_differing_only_in_origin_yield_different_actuations() -> Bool {
+  let other_e = evidence_with_origin(origin: other_origin())
+  let base = actuate(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
+  let other = actuate(strategy: VirtualMedia, evidence: other_e, unit: "unit-alpha")
+  !is_withheld(a: base) && !is_withheld(a: other) && base != other
+}
+
+test fn two_pxe_arms_differing_only_in_chainloader_yield_different_actuations() -> Bool {
+  let other_e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pin_with(secure_boot: SecureBootObserved { verdict: SecureBootVerdictBooted, evidence: "fixture: other" }), virtual_media: media_available())
+  actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+    != actuate(strategy: PxeOrUefiHttp, evidence: other_e, unit: "unit-alpha")
+}
+
+test fn a_ready_firmware_standing_carries_no_preparation_route() -> Bool {
+  let e = evidence_with(firmware: fixture_firmware_ready(), chain: pinned(), virtual_media: media_available())
+  match actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha") {
+    ArmActuationPxe { attempt: _, mechanism: _, boot_target: _, chain: _, firmware: FirmwareAlreadyReady, origin: _, seed: _ } => true
+    _ => false
+  }
+}
+
+test fn an_unobserved_arm_is_withheld_not_actuated_as_the_other_strategy() -> Bool {
+  let e = evidence_with(firmware: Unobserved { unanswered: [] }, chain: pinned(), virtual_media: media_available())
+  is_withheld(a: actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha"))
+}
+
+test fn a_refused_arm_is_withheld_not_actuated_as_the_other_strategy() -> Bool {
+  let e = evidence_with(firmware: fixture_firmware_needs_boot_next(), chain: pinned(), virtual_media: VirtualMediaUnavailable { cause: "catalog row lacks the capability" })
+  is_withheld(a: actuate(strategy: VirtualMedia, evidence: e, unit: "unit-alpha"))
+}
+
+// The unit label is the ONLY difference: the expected side is the same arm re-attempted under another
+// label with its attempt rewritten to the first label's, so any label-dependent field in the result
+// (not only `attempt`) separates the two sides.
+fn same_actuation_for(strategy: DeliveryStrategy, evidence: DeliveryEvidence, unit: String) -> Bool {
+  actuate(strategy: strategy, evidence: evidence, unit: unit) == relabel(a: actuate(strategy: strategy, evidence: evidence, unit: "unit-alpha"), unit: unit)
+}
+
+fn relabel(a: NetworkBootActuation, unit: String) -> NetworkBootActuation {
+  match a {
+    ArmActuationPxe { attempt: t, mechanism: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s } =>
+      ArmActuationPxe { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, mechanism: m, boot_target: b, chain: c, firmware: f, origin: o, seed: s }
+    ArmActuationVirtualMedia { attempt: t, mechanism: m, boot_target: b, media_observation: mo, origin: o, seed: s } =>
+      ArmActuationVirtualMedia { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, mechanism: m, boot_target: b, media_observation: mo, origin: o, seed: s }
+    ArmActuationWithheld { attempt: t, shape: sh } =>
+      ArmActuationWithheld { attempt: AttemptBinding { unit: unit as UnitKey, attempt: t.attempt }, shape: sh }
+  }
+}
+
+test fn the_projection_does_not_depend_on_the_unit_label() -> Bool {
+  same_actuation_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "owen")
+    && same_actuation_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "mtcollins1")
+    && same_actuation_for(strategy: VirtualMedia, evidence: full_evidence(), unit: "owen")
+    && same_actuation_for(strategy: VirtualMedia, evidence: full_evidence(), unit: "srv4")
+}
+
+test fn the_attempt_is_carried_through_as_data() -> Bool {
+  let arm = arm_for(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-bravo")
+  match network_boot_arm_actuator_steps(arm: arm) {
+    ArmActuationPxe { attempt: a, mechanism: _, boot_target: _, chain: _, firmware: _, origin: _, seed: _ } => a == arm.attempt
+    _ => false
+  }
+}
+
+test fn the_two_strategies_project_different_actuations() -> Bool {
+  actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+    != actuate(strategy: VirtualMedia, evidence: full_evidence(), unit: "unit-alpha")
+}
+
+test fn the_s5_frontier_names_this_declaration() -> Bool {
+  provisioning_arm_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}
+
+// The seed is sealed: the only way to a second binding is the owner's binder, fed a seed whose documented
+// axis (the netplan source) differs. If either side refuses to bind, this is FALSE: a refusal never counts as
+// covering seed-varies.
+fn alt_seed_binding() -> AltraAutoinstallSeedBinding? {
+  match build_seed_fixture(network: network_posture_alt_netplan, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra) {
+    Present { value: seed } =>
+      match bind_altra_autoinstall_seed(seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
+        Bound { binding: b } => Present { value: b }
+        BindRefused { blocker: _ } => Absent
+      }
+    Absent => Absent
+  }
+}
+
+test fn two_pxe_arms_differing_only_in_seed_yield_different_actuations() -> Bool {
+  match alt_seed_binding() {
+    Absent => false
+    Present { value: alt } => {
+      let e = DeliveryEvidence {
+        firmware: fixture_firmware_needs_boot_next(),
+        chain: pinned(),
+        virtual_media: media_available(),
+        origin: fixture_origin(),
+        seed: Present { value: alt },
+      }
+      let base = actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+      let other = actuate(strategy: PxeOrUefiHttp, evidence: e, unit: "unit-alpha")
+      !is_withheld(a: base) && !is_withheld(a: other) && base != other
+    }
+  }
+}
+
+fn evidence_without_seed() -> DeliveryEvidence {
+  DeliveryEvidence {
+    firmware: fixture_firmware_needs_boot_next(),
+    chain: pinned(),
+    virtual_media: media_available(),
+    origin: fixture_origin(),
+    seed: Absent,
+  }
+}
+
+// The evidence carries NO seed; the armed result can only have come from the binder call inside the entry.
+test fn the_attempt_entry_arms_with_the_seed_the_binder_minted() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } => {
+      let got = network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: evidence_without_seed(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_altra,
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      )
+      !is_withheld(a: got) && got == actuate(strategy: PxeOrUefiHttp, evidence: full_evidence(), unit: "unit-alpha")
+    }
+  }
+}
+
+test fn a_refused_binding_withholds_the_attempt_instead_of_arming_it() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } =>
+      is_withheld(a: network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: full_evidence(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_refused_by_unbound_key(),
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ))
+  }
+}
+
+test fn a_refused_binding_carries_the_binders_blocker_typed() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: built } =>
+      match network_boot_attempt_actuation(
+        strategy: PxeOrUefiHttp,
+        evidence: full_evidence(),
+        attempt: attempt(unit: "unit-alpha"),
+        seed: built.seed,
+        target: target_refused_by_unbound_key(),
+        unit_key: unit_a_key,
+        intake_attempt: attempt_one,
+        selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      ) {
+        ArmActuationWithheld { attempt: _, shape: ArmRefused { cause: SeedBindingRefused { blocker: TargetNotAdmitted { cause: UnitKeyUnbound { cause: BoardSerialAbsent } } } } } => true
+        _ => false
+      }
+  }
+}
+
+test fn the_attempt_entry_frontier_names_the_install_attempt_step() -> Bool {
+  network_boot_attempt_actuation_consumer_ref() == decl_ref(module_path: "gunbc.provisioning.network_boot_install_attempt", decl_name: "network_boot_install_attempt_step")
+}

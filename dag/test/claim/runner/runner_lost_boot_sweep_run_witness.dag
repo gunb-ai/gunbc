@@ -26,9 +26,16 @@ import gunbc.runner.runner_jit_deregistration {
   LostBootSweep, LostBootSweepSelected, LostBootSweepRefused, lost_boot_sweep, deregistration_name, deregistration_app, deregistration_installation,
   JitDeregistration, JitDeregistrationRefused, DeregistrationAuthorityForAnotherInstallation, SlotLostBoot,
 }
+import gunbc.host.host_effect { FleetSsh }
+import gunbc.host.host_bound_transport { HostBoundTransport, HostBoundTransportRefused, HostBoundTransportResolved, host_bound_transport_of }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
+import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
+import gunbc.host.host_operation_exec { HostOperationObserved, HostOperationRefused }
 import gunbc.runner.runner_lost_boot_sweep_run {
+  BootIdReadVerdict, BootIdReadEstablished, BootIdReadUnreadable, boot_id_read_verdict,
   LostBootCurrentInput, LostBootCurrentPresent, LostBootCurrentRefused, lost_boot_current_input, lost_boot_current_from_capture,
-  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence, lost_boot_observe_current_boot,
+  CurrentBootObservation, CurrentBootObserved, CurrentBootUnobserved, mint_current_boot_evidence, lost_boot_observe_current_boot, lost_boot_observed_over,
   sweep_host_standing, SweepHostBound, SweepHostNotManaged,
   sweep_report_lines, sweep_all_deregistered, deregistration_line, lost_boot_sweep_host_env_name, 
 }
@@ -170,7 +177,7 @@ test fn a_missing_or_foreign_current_boot_observation_refuses() -> Bool {
   }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootUnobserved { cause: "x" }) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
     LostBootCurrentPresent { host: _, boot: _ } => false
-  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(host: "mtcollins1")) {
+  }) && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: lost_boot_observe_current_boot(transport: none)) {
     LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "unobserved")
     LostBootCurrentPresent { host: _, boot: _ } => false
   })
@@ -534,6 +541,104 @@ test fn an_observed_boot_capture_plans_exactly_the_stale_registration() -> Bool 
           count(sel.subjects) == 1 && (map(sel.subjects, x => deregistration_name(subject: x).value as String)) == [unit(m: m, id: old_boot_id, index: 0)]
             && sel.untouched == [unit(m: m, id: capture_boot_id, index: 0)]
         _ => false
+      }
+  }
+}
+
+// ── F3: the host-read current-boot observer ─────────────────────────────────────────────────────
+
+fn verdict_cause(v: BootIdReadVerdict) -> String {
+  match v {
+    BootIdReadUnreadable { cause: c } => c
+    BootIdReadEstablished { boot: _ } => ""
+  }
+}
+
+fn read_out(stdout: String, success: Bool) -> BootIdReadVerdict {
+  boot_id_read_verdict(host: "mtcollins1", read: HostOperationObserved { stdout: stdout, success: success, stderr: none })
+}
+
+// The host's answer, newline included, is the boot it names; the id is the one it printed.
+test fn a_host_boot_id_read_establishes_that_boot() -> Bool {
+  match read_out(stdout: concat(new_boot_id, "\n"), success: true) {
+    BootIdReadEstablished { boot: b } => (b.boot_id as String) == new_boot_id
+    BootIdReadUnreadable { cause: _ } => false
+  }
+}
+
+// REDS: a failed exit, a refused operation, empty stdout and a non-uuid each leave the boot unobserved with its
+// own cause; none becomes a boot.
+test fn a_failed_refused_or_malformed_boot_id_read_establishes_no_boot() -> Bool {
+  string_contains(s: verdict_cause(v: read_out(stdout: new_boot_id, success: false)), pattern: "exited unsuccessfully")
+    && string_contains(s: verdict_cause(v: read_out(stdout: "", success: true)), pattern: "not a uuid")
+    && string_contains(s: verdict_cause(v: read_out(stdout: "not-a-boot", success: true)), pattern: "not a uuid")
+    && string_contains(s: verdict_cause(v: boot_id_read_verdict(host: "mtcollins1", read: HostOperationRefused { operation: "ProcfsReadBootId", reason: "no transport" })), pattern: "was refused")
+}
+
+// No transport is no observation: the production wet entry holds none today, so the sweep stays gated.
+test fn no_transport_leaves_the_current_boot_unobserved() -> Bool {
+  match lost_boot_observe_current_boot(transport: none) {
+    CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "no host-bound transport")
+    CurrentBootObserved { evidence: _ } => false
+  }
+}
+
+// THE PAIRING CLAIM: the real observer's continuation runs over the REAL host-bound transport to
+// mtcollins1 and its own mint produces the evidence the join consumes. Host-bound transport replaces the
+// old bare LocalShell (which named no managed host -- the defect #14738 closed): the evidence's host is
+// read from the bound transport, so the only way to mint mtcollins1's evidence is to hold a transport to
+// mtcollins1. The read outcome is the supplied boundary of the hermetic witnesses (the production route is
+// lost_boot_observe_current_boot, whose only continuation this is); deleting the dispatch in
+// lost_boot_observed_over makes this fail, and the full production dispatch over the bound transport is
+// the claim below.
+test fn the_real_observer_route_mints_evidence_the_join_consumes() -> Bool {
+  match mtcollins1_bound_transport() {
+    Absent => false
+    Present { value: b } =>
+      match lost_boot_observed_over(bound: b, read: HostOperationObserved { stdout: concat(new_boot_id, "\n"), success: true, stderr: none }) {
+        CurrentBootObserved { evidence: e } =>
+          e.host == "mtcollins1"
+            && (match lost_boot_current_from_capture(host: "mtcollins1" as NonEmptyStr, capture: closed(install_exit: "0", machine: "aarch64"), observed: CurrentBootObserved { evidence: e }) {
+              LostBootCurrentRefused { cause: c } => string_contains(s: c, pattern: "now on boot") && string_contains(s: c, pattern: (e.boot.boot_id as String))
+              LostBootCurrentPresent { host: _, boot: _ } => false
+            })
+        CurrentBootUnobserved { cause: _ } => false
+      }
+  }
+}
+
+// THE PAIRING CLAIM (host-bound, #14738): the real observer runs the real operation over a host-bound
+// transport and names the bound host in what it reads. The hermetic FleetSsh context has no reachable
+// mtcollins1, so the real read is unsuccessful and its cause names the bound host; only the dispatch over
+// the bound transport can produce that cause (the no-transport arm names no host), so deleting the
+// dispatch makes this fail. The mint over a successful read is the claim above.
+test fn the_real_observer_route_reads_over_the_bound_transport_as_its_host() -> Bool {
+  match mtcollins1_bound_transport() {
+    Absent => false
+    Present { value: b } =>
+      match lost_boot_observe_current_boot(transport: Present { value: b }) {
+        CurrentBootUnobserved { cause: c } => string_contains(s: c, pattern: "boot id read on mtcollins1")
+        CurrentBootObserved { evidence: e } => e.host == "mtcollins1"
+      }
+  }
+}
+
+// The host-bound transport to mtcollins1, built the way production builds the target (fleet_locus_ssh_target)
+// over the hermetic sealed context, then joined to its managed host by host_bound_transport_of.
+fn mtcollins1_bound_transport() -> HostBoundTransport? admit_callers: [
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_real_observer_route_reads_over_the_bound_transport_as_its_host"),
+  decl_ref(module_path: "test.claim.runner.runner_lost_boot_sweep_run_witness", decl_name: "the_real_observer_route_mints_evidence_the_join_consumes"),
+] {
+  match fleet_ssh_execution_context_hermetic_witness_fixture() {
+    Absent => none
+    Present { value: ctx } =>
+      match fleet_locus_ssh_target(host: operator_host_mtcollins1) {
+        SshTargetRefused { endpoint: _, refusal: _ } => none
+        SshTargetResolved { target: t } =>
+          match host_bound_transport_of(transport: FleetSsh { target: t, context: ctx }) {
+            HostBoundTransportRefused { cause: _ } => none
+            HostBoundTransportResolved { bound: b } => Present { value: b }
+          }
       }
   }
 }

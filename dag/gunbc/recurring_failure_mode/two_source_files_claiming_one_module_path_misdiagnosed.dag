@@ -34,6 +34,6 @@ data two_source_files_claiming_one_module_path_misdiagnosed: RecurringFailureMod
   evidence: [
     DeclarationRef { module_path: "v2.cli.repository_layout", decl_name: "repository_tree_of_root_argument", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.source_root_read", decl_name: "source_root_read", field: WholeDeclaration },
-    DeclarationRef { module_path: "v2.compiler.self_host.closure_emission", decl_name: "closure_census_duplicate_module_outcome", field: WholeDeclaration },
+    DeclarationRef { module_path: "v2.compiler.self_host.closure_emission", decl_name: "closure_duplicate_module_diagnostics", field: WholeDeclaration },
   ],
 }

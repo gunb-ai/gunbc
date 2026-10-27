@@ -84,6 +84,7 @@ fn int_literal_projection_unwired(p: TargetValueExpressionProjection) -> TargetV
     match_form: p.match_form,
     bool_literal_form: p.bool_literal_form,
     int_literal_form: IntLiteralUnwired,
+    list_introduction_form: p.list_introduction_form,
     block_evaluation_mode: p.block_evaluation_mode
   }
 }

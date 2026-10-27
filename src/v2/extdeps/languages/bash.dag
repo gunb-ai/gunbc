@@ -54,6 +54,7 @@ import v2.std.node {
   Positional,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 import v2.std.witness { Holds, Violates, Witness }
 import std.host_text { chars }
@@ -73,7 +74,7 @@ fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
       match token {
         BoundToken { binding: binding, token_class: _ } =>
           Cons {
-            head: Edge { label: Positional, target: bash_word_atom(id: binding) },
+            head: Edge { label: Positional, target: bash_word_atom(id: binding), declaration: NotADeclaration },
             tail: Empty
           }
         FixedToken { token_class: _ } => Empty
@@ -232,7 +233,7 @@ data bash_emitted_command: Node = bash_conj_emitted_from_tokens(
 )
 
 fn bash_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn bash_translation_rules_node() -> Node {

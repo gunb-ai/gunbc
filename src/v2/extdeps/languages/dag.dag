@@ -108,7 +108,7 @@ import v2.std.compilers.lexing {
   lex_rule_set_token_class_map,
   lex_rule_set_keyword_class_map,
 }
-import v2.std.node {
+import v2.std.node { node_equal_ignoring_provenance,
   host_text_type_node,
   symbol_lexeme,
   symbol_type_node,
@@ -142,12 +142,14 @@ import v2.std.node {
   edge_is_production,
   production_edge_label,
   ConstructTagEdge,
+  NotADeclaration
 }
 import v2.std.node_query { binder_edge, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, find_named_child, named_child_lookup, find_labeled_child }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   lex_rules_literal_for_class,
   char_kernel_type_node,
   symbol_kernel_type_node,
+  ListIntroductionUnwired,
   IntLiteralDecimal,
   ProducedDeclUnwired,
   CanonicalOperation,
@@ -170,6 +172,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   canonical_operation_op_ge,
   canonical_operation_op_eq,
   canonical_operation_op_ne,
+  canonical_operation_op_not,
   target_model_canonical_operation_wire_node,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node,
@@ -449,6 +452,8 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
     outcome_accepted(canonical_operation_op_div())
   } else if surface_token == ^dag_token_kw_as {
     outcome_accepted(canonical_operation_op_coerce())
+  } else if surface_token == ^dag_token_bang {
+    outcome_accepted(canonical_operation_op_not())
   } else {
     outcome_rejected(
       dag_surface_operator_canonicalization_miss_diagnostic(surface_token: surface_token)
@@ -747,6 +752,7 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_keyword_lex_rule(token_class: ^dag_token_kw_false, text: "false"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_where, text: "where"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_as, text: "as"),
+      dag_keyword_lex_rule(token_class: ^dag_token_kw_is, text: "is"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_return, text: "return"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_nominal_opaque, text: "nominal_opaque"),
       dag_keyword_lex_rule(token_class: ^dag_token_kw_sole_constructor, text: "sole_constructor"),
@@ -832,7 +838,8 @@ fn dag_grammar_atom(id: Symbol) -> Node {
 fn dag_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: target
+    target: target,
+    declaration: NotADeclaration
   }
 }
 
@@ -844,7 +851,7 @@ fn dag_surface_edge_label(edge: Symbol) -> EdgeLabel {
 }
 
 fn dag_surface_edge(edge: Symbol, target: Node) -> Edge {
-  Edge { label: dag_surface_edge_label(edge: edge), target: target }
+  Edge { label: dag_surface_edge_label(edge: edge), target: target, declaration: NotADeclaration }
 }
 
 fn dag_surface_edge_is(e: Edge, edge: Symbol) -> Bool {
@@ -854,7 +861,8 @@ fn dag_surface_edge_is(e: Edge, edge: Symbol) -> Bool {
 fn dag_positional_edge(target: Node) -> Edge {
   Edge {
     label: Positional,
-    target: target
+    target: target,
+    declaration: NotADeclaration
   }
 }
 
@@ -1395,6 +1403,7 @@ fn dag_binding_name_keyword_tokens() -> List<Symbol> {
     ^dag_token_kw_false,
     ^dag_token_kw_where,
     ^dag_token_kw_as,
+    ^dag_token_kw_is,
     ^dag_token_kw_return,
     ^dag_token_kw_nominal_opaque,
     ^dag_token_kw_sole_constructor
@@ -1918,6 +1927,16 @@ fn dag_grammar_postfix_as_suffix_expr() -> GrammarExpr {
   )
 }
 
+// `x is V` is a postfix step beside the cast: the arm V is spelled as one name and is only a
+// SOURCE SPELLING here. Resolving it against x's type declaration is elaboration's work, and the
+// resolved arm it produces has no row in this grammar, so no source text can spell it.
+fn dag_grammar_postfix_is_suffix_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_terminal(token_class: ^dag_token_kw_is),
+    right: dag_grammar_binding_name_terminal()
+  )
+}
+
 // An index suffix `[e]` is a postfix step beside the dotted and cast ones, so `xs[i]` is ONE
 // postfix expression. Before it the suffix did not exist and `xs[i]` parsed as `xs` followed by the
 // list literal `[i]`, two juxtaposed expressions that lowering read as the first alone or as a
@@ -1952,7 +1971,10 @@ fn dag_grammar_postfix_expr_expr() -> GrammarExpr {
         left: dag_grammar_postfix_dot_suffix_expr(),
         right: dag_grammar_choice(
           left: dag_grammar_postfix_as_suffix_expr(),
-          right: dag_grammar_postfix_index_suffix_expr()
+          right: dag_grammar_choice(
+            left: dag_grammar_postfix_is_suffix_expr(),
+            right: dag_grammar_postfix_index_suffix_expr()
+          )
         )
       )
     )
@@ -4193,14 +4215,14 @@ fn dag_grammar_surface_production_type_node() -> Node {
 }
 
 fn dag_grammar_production_emits(production: GrammarProduction, n: Node) -> Bool {
-  production.emitted == n
+  node_equal_ignoring_provenance(a: production.emitted, b: n)
 }
 
 // The namespace graft's module-body marker is a surface identity atom of the same kind: it
 // occupies the grammar_production_identity_node_projection slot a production's emitted atom
 // occupies, so it shares that declared type.
 fn dag_grammar_production_member_declared_type(n: Node) -> Optional<Node> {
-  if (n == namespace_graft_module_body_marker_node())
+  if (node_equal_ignoring_provenance(a: n, b: namespace_graft_module_body_marker_node()))
     || (dag_grammar_root().productions |> any(fn(production) { dag_grammar_production_emits(production: production, n: n) })) {
     optional_present(value: dag_grammar_surface_production_type_node())
   } else {
@@ -4841,7 +4863,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // A SPELLING ROW IS A SEPARATE FACT FROM BEING A KERNEL ATOM. `spelling` and `declarations` say that
 // v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
 // to nothing, to the kernel type. Int and Bool carry them. Int's two declarations stand until its
-// de-fork lane consolidates them (docs/plans/dag-v2-defork-audit.md), and its row follows that lane
+// de-fork lane consolidates them (`gunbc.plans.dag_v2_defork_audit`), and its row follows that lane
 // rather than choosing. Bool's lane has landed: std.types Bool is its one declaration, and its row
 // names that declaration as what the v2 carrier bool_node carries, keyed by identity rather than by
 // bool_node's module.
@@ -4971,8 +4993,8 @@ fn dag_free_monoid_free_monoid_inhabitance() -> AlgebraInhabitanceDecl {
   let inhabitant = Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic) },
-      Edge { label: Positional, target: dag_free_monoid_row_element() }
+      Edge { label: Positional, target: declaration_reference_node(qn: qualified_name_from_dotted_string(dotted: "std.algebra.FreeMonoid"), occurrence_id: OccurrenceSynthetic), declaration: NotADeclaration },
+      Edge { label: Positional, target: dag_free_monoid_row_element(), declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -5162,11 +5184,13 @@ fn dag_loop_body_from_literal(lit: Node) -> Node {
     children: [
       Edge {
         label: Positional,
-        target: lit
+        target: lit,
+        declaration: NotADeclaration
       },
       Edge {
         label: core_edge_label(marker: LoopBoundEdge),
-        target: dag_loop_measure_node()
+        target: dag_loop_measure_node(),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -5231,7 +5255,7 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
 fn dag_symbol_literal_node(name: Node, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_caret } },
-    children: [Edge { label: Authored { name: ^symbol_literal_name_field }, target: name }],
+    children: [Edge { label: Authored { name: ^symbol_literal_name_field }, target: name, declaration: NotADeclaration }],
     occurrence_id: occurrence_id
   }
 }
@@ -5326,7 +5350,8 @@ fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_i
     children: [
       Edge {
         label: Authored { name: ^integer_literal_magnitude_field },
-        target: integer_decimal_magnitude_node(magnitude: magnitude)
+        target: integer_decimal_magnitude_node(magnitude: magnitude),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: occurrence_id
@@ -5368,7 +5393,8 @@ fn dag_float_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurre
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: occurrence_id
@@ -5746,7 +5772,8 @@ fn dag_string_text_node(token_class: Symbol, value: String, occurrence_id: NodeO
           kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: value) } },
           children: [],
           occurrence_id: OccurrenceSynthetic
-        }
+        },
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: occurrence_id
@@ -6123,14 +6150,16 @@ fn dag_arrow_with_body_node(
       signature.domain,
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: return_type_binding)
+        target: dag_type_atom_node(identity: return_type_binding),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: return_type_binding)
+        target: dag_type_atom_node(identity: return_type_binding),
+        declaration: NotADeclaration
       },
       signature.order,
-      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body }
+      Edge { label: core_edge_label(marker: ArrowBodyEdge), target: body, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -6176,14 +6205,16 @@ fn dag_binary_body_node(operator: Node, left_binding: Symbol, right_binding: Sym
   Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge { label: Positional, target: operator },
+      Edge { label: Positional, target: operator, declaration: NotADeclaration },
       Edge {
         label: Positional,
-        target: dag_fixture_operand_reference_node(binding: left_binding, occurrence: 1)
+        target: dag_fixture_operand_reference_node(binding: left_binding, occurrence: 1),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_fixture_operand_reference_node(binding: right_binding, occurrence: 2)
+        target: dag_fixture_operand_reference_node(binding: right_binding, occurrence: 2),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -6198,11 +6229,13 @@ fn dag_add_arrow_signature_node() -> Node {
       signature.domain,
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        target: dag_type_atom_node(identity: ^dag_binding_type_int),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_type_int)
+        target: dag_type_atom_node(identity: ^dag_binding_type_int),
+        declaration: NotADeclaration
       },
       signature.order
     ],
@@ -6264,9 +6297,9 @@ fn dag_pick_if_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Branch },
     children: [
-      Edge { label: Positional, target: condition },
-      Edge { label: Positional, target: then_arm },
-      Edge { label: Positional, target: else_arm }
+      Edge { label: Positional, target: condition, declaration: NotADeclaration },
+      Edge { label: Positional, target: then_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: else_arm, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -6373,9 +6406,9 @@ fn dag_match_body_from_arms(
   Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge { label: Positional, target: scrutinee },
-      Edge { label: Positional, target: true_arm },
-      Edge { label: Positional, target: false_arm }
+      Edge { label: Positional, target: scrutinee, declaration: NotADeclaration },
+      Edge { label: Positional, target: true_arm, declaration: NotADeclaration },
+      Edge { label: Positional, target: false_arm, declaration: NotADeclaration }
     ],
     occurrence_id: OccurrenceSynthetic
   }
@@ -6693,15 +6726,18 @@ fn dag_field_access_body_node() -> Node {
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_token_dot)
+        target: dag_type_atom_node(identity: ^dag_token_dot),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_param_r)
+        target: dag_type_atom_node(identity: ^dag_binding_param_r),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: ^dag_binding_rec_v)
+        target: dag_type_atom_node(identity: ^dag_binding_rec_v),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -6740,15 +6776,18 @@ fn dag_bind_let_body_from_parts(
     children: [
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: key_binding)
+        target: dag_type_atom_node(identity: key_binding),
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: value
+        target: value,
+        declaration: NotADeclaration
       },
       Edge {
         label: Positional,
-        target: dag_type_atom_node(identity: body_binding)
+        target: dag_type_atom_node(identity: body_binding),
+        declaration: NotADeclaration
       }
     ],
     occurrence_id: OccurrenceSynthetic
@@ -6871,6 +6910,7 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       false_token: ^dag_token_kw_false
     },
     int_literal_form: IntLiteralDecimal { literal_token: ^dag_token_int_literal },
+    list_introduction_form: ListIntroductionUnwired,
     block_evaluation_mode: dag_block_evaluation_mode()
   }
 }
@@ -7339,7 +7379,7 @@ fn dag_round_trip_atom(s: Symbol) -> Node {
 }
 
 fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
@@ -7568,6 +7608,14 @@ fn dag_surface_kw_then_ident_rest_from_captured(captured: Node) -> Optional<Node
         Accepted { value: rest, diagnostics: _ } => Present { value: rest }
       }
   }
+}
+
+// A NAME AND THE TOKEN THAT DECLARED IT. dag_surface_kw_then_ident_from_captured reads the name; the
+// occurrence is that name token's, so a declaration edge keyed by the name can say where it was declared
+// (v2.std.node edge_declared).
+type DeclaredName {
+  name: Symbol
+  occurrence: NodeOccurrenceIdentity
 }
 
 fn dag_surface_kw_then_ident_from_captured(captured: Node) -> Optional<Symbol> {
@@ -8203,11 +8251,13 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
   }
 }
 
+// No qualified-name production under the module root is its own fact, not a child lookup: it refuses
+// with its own reason rather than borrowing v2.std.node_query's named_child_missing.
 fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
     ParseSubtreeAbsent =>
       outcome_rejected(Diagnostic {
-        reason: ^named_child_missing,
+        reason: ^module_root_qualified_name_production_absent,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

@@ -4,7 +4,7 @@ import std.types { Int, List, String, Bool, NonEmptyStr }
 import std.list { distinct_by_key }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 import gunbc.recurring_failure_mode {
   RecurringFailureMode, RungReading, RungUnread, RungRead, RungStanding, AtCeiling, BelowCeiling,
   RungPosition, FoundOnRung, FoundBelowTheLadder, UnreadCause,
@@ -120,28 +120,28 @@ fn unread_cause_row(label: String) -> String {
 data control_below_ceiling_with_a_trigger: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   trigger_capability: "control capability restored",
 }
 
 data control_below_ceiling_blank_capability: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: Mitigatable },
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   trigger_capability: "",
 }
 
 data control_current_at_ceiling_yet_below: RungStanding = BelowCeiling {
   current: FoundOnRung { rung: StructurallyGuaranteed },
   ceiling: StructurallyGuaranteed,
-  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   trigger_capability: "control capability restored",
 }
 
 data control_below_the_ladder_to_a_ceiling: RungStanding = BelowCeiling {
   current: FoundBelowTheLadder,
   ceiling: Mitigatable,
-  blocker: AwaitsOneGrounding { grounding: "control grounding" },
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
   trigger_capability: "control capability restored",
 }
 

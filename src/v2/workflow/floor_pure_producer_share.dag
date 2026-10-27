@@ -113,7 +113,7 @@ type CallSiteDemandCause
 // the projection rule would decline at a finer grain -- never one the fold without this rule would
 // have declined -- so it is a missed refusal with a located population, not a widening; its
 // next-rung trigger is the dependency read
-// set of demand-engine M1 (docs/plans/demand-engine-program.md), which carries every projection a
+// set of demand-engine M1 (`gunbc.plans.demand_engine_program`), which carries every projection a
 // consumer reads off a value rather than only the immediate one.
 //   ProjectionFieldNameUnreadable -- the call is a field access's base, and reading the field's
 //                                    name failed: a projection of unknown grain.
@@ -1393,8 +1393,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "a_block_with_a_second_statement_is_refused_not_accepted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_list_literal_call_argument_conserves_every_element_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_named_argument_label_is_conserved_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "a_repeated_spelling_with_one_copy_dropped_is_exactly_one_row_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "a_statement_let_binder_is_reported_dropped_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_repeated_spelling_is_conserved_with_no_row_holds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "a_statement_let_binder_is_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_string_literal_is_conserved_by_its_value_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "caret_symbol_payloads_are_conserved_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "dotted_spine_segments_keep_their_own_occurrence_holds", standing: ActiveFillDebt },
@@ -1426,8 +1426,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
       SingleClaimFillDebtClaim { claim: "a_dropping_body_lowering_member_is_observed_dropped_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "a_field_projection_on_a_call_result_in_an_operand_is_admitted_holds", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "an_operator_expression_call_argument_is_admitted_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "an_operator_expression_in_an_if_arm_is_admitted_holds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "explaining_one_of_two_same_spelled_drops_leaves_the_other_refused_holds", standing: ActiveFillDebt }
+      SingleClaimFillDebtClaim { claim: "an_operator_expression_in_an_if_arm_is_admitted_holds", standing: ActiveFillDebt }
     ]
   },
   SingleClaimFillDebtModule {

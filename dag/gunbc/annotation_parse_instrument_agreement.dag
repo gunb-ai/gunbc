@@ -12,6 +12,7 @@ import gunbc.emit_stage_blocking_population_census {
   PristineAtRevision,
   LocallyPerturbed
 }
+import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 // TWO LANES RAN ONE COMMAND ON ONE COMMIT AND GOT OPPOSITE VERDICTS, AND BOTH WERE RIGHT.
 //
@@ -135,7 +136,7 @@ data measured_revision: CommitSha = "b6003a45e58a5775022f911cc4aabb2ad475da8b"
 // gunbc`, roughly three and a half minutes on a session container.
 data source_build: CompilerBuild = CompilerBuild {
   observed_on: "session quick-lynx-237 (measured by this receipt's author)" as NonEmptyStr,
-  path: "target/release/gunbc" as NonEmptyStr,
+  path: concat(cargo_default_release_dir_rel, "/gunbc") as NonEmptyStr,
   content_digest: "md5:e5f35d562fe512cbb965e8b39adc7937" as NonEmptyStr,
   byte_length: byte_size(count: 25936008),
   provenance: BuiltFromRevision { revision: measured_revision, working_tree_dirty: false }

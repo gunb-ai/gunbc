@@ -1,7 +1,8 @@
 module gunbc.rung_drop.native_fault_experiment_off_pull_requests
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-10-06, operator-approved (CI short-term relief, docs/plans/ci-end-to-end-accounting.md).
@@ -17,22 +18,19 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // THE TRIGGER IS THE CAPABILITY, NOT THE ARTIFACT. Re-enabling the step on pull requests retires
 // nothing by itself; what restores the rung is the experiment running exactly when it can matter.
 
-data native_fault_experiment_off_pull_requests_population: List<String> = [
-  "pull_request runs of the emit-build lane of gunbc.witness.compiler_gate_workflow, for //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli: the fault-and-restoration rebuild is skipped, so a fingerprint alias or replayed cached verdict standing in for a real compile of the emitted crate is caught at merge_group, not per push",
-]
+data native_fault_experiment_off_pull_requests_population: FreeSemigroup<String> = FreeSemigroup { head: "pull_request runs of the emit-build lane of gunbc.witness.compiler_gate_workflow, for //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli: the fault-and-restoration rebuild is skipped, so a fingerprint alias or replayed cached verdict standing in for a real compile of the emitted crate is caught at merge_group, not per push", tail: [] }
 
 data native_fault_experiment_off_pull_requests: RungDrop = RungDrop {
   identity: "native_fault_experiment_off_pull_requests" as NonEmptyStr,
   subject: "the emitted-crate discriminating red (fault injection and byte-exact restoration) is not executed on pull_request runs of emit-build",
   declared: "2026-10-06",
-  standing: Standing,
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "programme item R2 (owner: session snappy-ibex-32): the fault experiment keyed on its inputs so it runs only when they change"
     },
-    population: native_fault_experiment_off_pull_requests_population,
+    population: Enumerated { members: native_fault_experiment_off_pull_requests_population },
     restoration_trigger: "THE CAPABILITY: the fault experiment runs whenever its instrument, producer, build wiring, cache or toolchain inputs change. WHAT THAT MUST BE SUFFICIENT FOR: no pull request that changes any of those inputs merges without the experiment having run on its head -- not merely that it runs at merge_group, and not that the step is re-added to every pull request. Re-adding the per-push run does not retire this row."
-  }
+  } }
 }

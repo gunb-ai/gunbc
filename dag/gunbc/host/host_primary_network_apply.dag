@@ -1,0 +1,686 @@
+module gunbc.host.host_primary_network_apply
+
+import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
+import std.algebra { trim }
+import std.measure { Second, second, second_count }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import product.host_identity { HostIdentity }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { argv_words }
+import extdeps.netplan.netplan {
+  netplan_config_dir, NetplanRenderer, SystemdNetworkd, NetworkManager,
+  netplan_try_argv, netplan_try_ready_stamp_path, netplan_try_confirmation_line, netplan_empty_document_rendering,
+  NetplanDocumentRendered, NetplanDocumentRefused, netplan_document_rendering_wire,
+  NetplanTryOutcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending, netplan_try_outcome,
+}
+import extdeps.systemd { StandardInputProperty, StandardOutputProperty }
+import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, systemd_run_transient_unit_command, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_option_words_refused_cause_detail }
+import extdeps.systemd.systemctl { systemctl_stop_argv }
+import extdeps.iproute2.ip_show { ip_show_link_args, ip_show_ipv4_addr_args, ip_show_ipv4_default_route_args }
+import gunbc.file_access { FileTreeScope }
+import gunbc.runner.runner_host_file_converge {
+  FleetHostFileSubject, FleetHostFileDesired,
+  FleetHostFileConvergeMode, FleetHostFilesObserveOnly, FleetHostFilesApply,
+  LegElevated, run_fleet_host_leg, observe_fleet_host_file_content, elevated_argv,
+  plan_fleet_host_file, apply_fleet_host_file, fleet_host_file_outcome_settled, runner_host_file_outcome_wire,
+  administrator_ssh_target, observe_fleet_host_administrator_privilege,
+  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+}
+import gunbc.typed_remote_file_write {
+  RemoteFileModeOwnerReadWrite, RemoteFileViaNonInteractiveSudo, NoValidation,
+  typed_remote_file_write_seal, converge_typed_remote_file, TypedRemoteFileConverged, TypedRemoteFileConvergenceRefused,
+  typed_remote_file_step, TypedRemoteFileStepRan, TypedRemoteFileStepArgvRefused, TypedRemoteFileStepLegRefused,
+}
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_converge_executor_subject_split {
+  fleet_converge_split_read, SplitPrecheck, SplitOk, SplitRefused, SplitRefusalReason, SelfSubject, SubjectAbsent, ExecutorIdentityAbsent,
+  fleet_converge_split_refusal_marker, fleet_converge_split_refusal_line,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.ci.ci_spec { host_primary_network_receipt_path }
+import gunbc.host.host_primary_network {
+  HostPrimaryNetworkDesired, PrimaryNetworkRow, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
+  primary_network_row_for, primary_network_netplan_file, primary_network_netplan_file_name,
+  primary_network_cloud_init_guard,
+  PrimaryNetworkIpReads, PrimaryEffectiveVerdict, PrimaryEffectiveHolds, PrimaryEffectiveUnjudged, primary_effective_verdict, primary_effective_refusal,
+  NetplanDirectoryListing, NetplanDirectoryListed, NetplanDirectoryUnread, netplan_yaml_names,
+  PrimaryNetworkObservation, PrimaryNetplanSwap,
+  plan_primary_network, primary_network_plan_wire,
+}
+
+// CONVERGING A HOST'S PRIMARY NETWORK WITHOUT LOSING ITS ONLY UPLINK, AS TYPED LEGS ONLY.
+//
+// Every step below is one argv leg or one typed file write, run from an observer host over the fleet
+// SSH edge as the administrator; nothing is a shell program on the target. The ordering is the
+// whole safety argument:
+//
+//  1. STAGE IN /run/netplan, NOT /etc/netplan. netplan reads /run/netplan beside /etc/netplan and a
+//     /run file shadows a same-named /etc file (extdeps.netplan.netplan netplan_empty_document_rendering),
+//     so the owned file plus an empty shadow for every foreign file make the merged configuration the
+//     row's while /etc/netplan is untouched. /run is wiped at boot, so a reboot or power loss inside
+//     the try window boots the configuration the host had before.
+//  2. TRY. A transient unit runs `netplan try` with its stdin connected to a FIFO and its stdout to a
+//     file. systemd opens a StandardInput=file: FIFO read-only (systemd v255 src/core/exec-invoke.c
+//     setup_input: O_RDWR only when stdout or stderr names the same path), which blocks until a
+//     writer exists, so a second transient unit holds the FIFO's write end for longer than the try
+//     can run: the try's stdin then blocks without data, as netplan's confirmation loop needs
+//     (netplan_try_confirmation_line).
+//  3. READ BACK FROM THE OBSERVER. After the ready stamp and the renderer's own online wait, the
+//     running network is judged against the row (gunbc.host.host_primary_network
+//     primary_effective_verdict). Every administrator leg is a password session with ControlPath none
+//     (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_password_client_options), so a leg that answers
+//     after the try applied is a fresh connection across the new network. And the observer is not
+//     the target (PrimaryReadbackVantage): a leg from the target to itself is delivered locally and
+//     succeeds with the uplink dead.
+//  4. PERSIST, THEN CONFIRM. Only a holding readback writes the population into /etc/netplan (the
+//     owned file first, through the host-file core, then the foreign files removed), which is inert
+//     until the next generate, and only then writes the confirmation line into the FIFO.
+//  5. READ THE VERDICT AND CLEAN UP. The outcome is netplan's own (netplan_try_outcome over the
+//     unit's stdout); the /run shadows are removed and the FIFO holder stopped, whatever happened.
+//
+// A try that is never confirmed reverts by its own timeout; netplan restores the running network,
+// the old network carries the observer's legs again, and the same cleanup removes the /run shadows.
+// A confirmation that arrives after the timeout leaves /etc/netplan holding the population whose
+// effect the readback had just held, with the running network reverted to an equal effect.
+
+data primary_network_run_dir: NonEmptyStr = "/run/gunbc-primary-network" as NonEmptyStr
+data primary_network_netplan_run_dir: NonEmptyStr = "/run/netplan" as NonEmptyStr
+data primary_network_try_unit: NonEmptyStr = "gunbc-primary-network-try" as NonEmptyStr
+data primary_network_try_stdin_unit: NonEmptyStr = "gunbc-primary-network-try-stdin" as NonEmptyStr
+
+// Long enough for the ready poll and the online wait below plus the readback, persist and
+// confirmation legs; the FIFO holder outlives it by a minute.
+data primary_network_try_timeout: Second = second(count: 300)
+
+fn primary_network_try_stdin_hold() -> Second {
+  second(count: second_count(s: primary_network_try_timeout) + 60)
+}
+
+fn run_path(name: String) -> String {
+  join([primary_network_run_dir as String, "/", name], "")
+}
+
+fn primary_network_try_fifo() -> String { run_path(name: "try.fifo") }
+fn primary_network_try_out() -> String { run_path(name: "try.out") }
+
+fn netplan_run_path(name: String) -> String {
+  join([primary_network_netplan_run_dir as String, "/", name], "")
+}
+
+data primary_network_netplan_run_scope: FileTreeScope = FileTreeScope { root_path: "/run/netplan" as NonEmptyStr }
+
+// ── The staged population ────────────────────────────────────────────────────────────────────────
+
+type StagedNetplanFile {
+  name: NonEmptyStr
+  content: String
+}
+
+// The owned file under its own name, and an empty document under each foreign name it shadows; the
+// empty document is the emitter's too, so a refusal there refuses the staging.
+type StagedNetplanPopulation
+  = StagedNetplanReady { files: List<StagedNetplanFile> }
+  | StagedNetplanRefused { cause: NonEmptyStr }
+
+fn primary_network_staged_population(r: PrimaryNetworkRow, foreign: List<String>) -> StagedNetplanPopulation {
+  match netplan_empty_document_rendering() {
+    NetplanDocumentRefused { path: _, reason: _ } => StagedNetplanRefused { cause: netplan_document_rendering_wire(r: netplan_empty_document_rendering()) as NonEmptyStr }
+    NetplanDocumentRendered { text: empty } =>
+      StagedNetplanReady { files: concat(
+        [StagedNetplanFile { name: primary_network_netplan_file_name, content: r.netplan_text }],
+        map(foreign, f => StagedNetplanFile { name: f as NonEmptyStr, content: empty }),
+      ) }
+  }
+}
+
+// ── The two transient units ──────────────────────────────────────────────────────────────────────
+
+type PrimaryTryLaunch
+  = PrimaryTryLaunchArgv { argv: List<String> }
+  | PrimaryTryLaunchRefused { cause: NonEmptyStr }
+
+fn primary_try_launch_of(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command: List<String>) -> PrimaryTryLaunch {
+  match systemd_run_transient_unit_command(unit: unit, properties: properties, command_argv: command) {
+    SystemdRunCommandRefused { cause: c } => PrimaryTryLaunchRefused { cause: systemd_run_option_words_refused_cause_detail(cause: c) as NonEmptyStr }
+    SystemdRunCommandReady { command: c } => PrimaryTryLaunchArgv { argv: argv_words(command: c) }
+  }
+}
+
+fn primary_network_stdin_holder_launch() -> PrimaryTryLaunch {
+  primary_try_launch_of(
+    unit: primary_network_try_stdin_unit,
+    properties: [NamedUnitSetting { property: StandardOutputProperty, value: join(["file:", primary_network_try_fifo()], "") as NonEmptyStr }],
+    command: ["sleep", to_string(second_count(s: primary_network_try_stdin_hold()))],
+  )
+}
+
+fn primary_network_try_launch() -> PrimaryTryLaunch {
+  primary_try_launch_of(
+    unit: primary_network_try_unit,
+    properties: [
+      NamedUnitSetting { property: StandardInputProperty, value: join(["file:", primary_network_try_fifo()], "") as NonEmptyStr },
+      NamedUnitSetting { property: StandardOutputProperty, value: join(["file:", primary_network_try_out()], "") as NonEmptyStr },
+    ],
+    command: netplan_try_argv(timeout: primary_network_try_timeout),
+  )
+}
+
+fn primary_network_wait_online_argv(renderer: NetplanRenderer) -> List<String> {
+  match renderer {
+    SystemdNetworkd => ["/usr/lib/systemd/systemd-networkd-wait-online", "--any", "--timeout=60"]
+    NetworkManager => ["nm-online", "-q", "-t", "60"]
+  }
+}
+
+// Bounded polls, one leg each: thirty two-second waits for the ready stamp, and forty ten-second
+// waits for the verdict, which outlast the try's timeout.
+data primary_network_ready_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+data primary_network_ready_poll_wait: Second = second(count: 2)
+data primary_network_verdict_polls: List<Int> = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+data primary_network_verdict_poll_wait: Second = second(count: 10)
+
+// THE WORST-CASE WALL TIME OF ONE APPLY, as the phases it can spend: the try's own timeout, and
+// every bounded poll at its wait plus one leg's connect deadline. A step that hosts the apply is
+// given at least this, so a run is never cancelled with a try in flight and its shadows unremoved.
+data primary_network_leg_allowance: Second = second(count: 10)
+
+fn primary_network_apply_phase_budgets() -> List<Second> {
+  [
+    primary_network_try_timeout,
+    second(count: length(primary_network_ready_polls) * (second_count(s: primary_network_ready_poll_wait) + second_count(s: primary_network_leg_allowance))),
+    second(count: length(primary_network_verdict_polls) * (second_count(s: primary_network_verdict_poll_wait) + second_count(s: primary_network_leg_allowance))),
+  ]
+}
+
+// ── Legs ─────────────────────────────────────────────────────────────────────────────────────────
+
+// THE EXECUTOR IS NEVER THE SUBJECT, by gunbc.fleet.fleet_converge_executor_subject_split's one
+// predicate (the runner identity, slot names included, against the named subject). The host-file
+// modes refuse a self-subject because their drain would wait on its own slot; this mode refuses it
+// because a readback from the subject to itself is delivered locally and passes with the uplink dead.
+// One predicate, and this mode's own reason in its refusal.
+fn primary_network_split_refusal(reason: SplitRefusalReason) -> String {
+  match reason {
+    SelfSubject { executor_runner_name: n, subject_host: h } =>
+      join(["host_primary_network: ", fleet_converge_split_refusal_marker, ": the executor runner (", n, ") is on the subject ", h, ", where a readback is delivered locally and never crosses the uplink it would confirm. Dispatch with host (an observer) != subject_host."], "")
+    SubjectAbsent => fleet_converge_split_refusal_line(reason: reason)
+    ExecutorIdentityAbsent => fleet_converge_split_refusal_line(reason: reason)
+  }
+}
+
+type PrimaryLegRead
+  = PrimaryLegAnswered { exit_code: Int, stdout: String }
+  | PrimaryLegUnreached { cause: NonEmptyStr }
+
+fn primary_leg(subject: FleetHostFileSubject, context: FleetSshExecutionContext, command: List<String>) -> PrimaryLegRead
+{
+  match run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: command }) {
+    TypedArgvExecRefused { reason: why } => PrimaryLegUnreached { cause: join([join(command, " "), ": ", why], "") as NonEmptyStr }
+    TypedArgvExecConverged { result: r } => PrimaryLegAnswered { exit_code: r.exit_code, stdout: r.stdout }
+  }
+}
+
+fn primary_leg_stdout(read: PrimaryLegRead) -> String? {
+  match read {
+    PrimaryLegUnreached { cause: _ } => none
+    PrimaryLegAnswered { exit_code: c, stdout: o } => if c == 0 { Present { value: o } } else { none }
+  }
+}
+
+fn primary_leg_cause(read: PrimaryLegRead, what: String) -> String {
+  match read {
+    PrimaryLegUnreached { cause: c } => c as String
+    PrimaryLegAnswered { exit_code: c, stdout: o } => join([what, " exit=", to_string(c), " ", trim(s: o)], "")
+  }
+}
+
+// A leg whose only answer is its exit status: none when it held, the cause when it did not.
+fn primary_step(subject: FleetHostFileSubject, context: FleetSshExecutionContext, what: String, command: List<String>) -> String?
+{
+  let read = primary_leg(subject: subject, context: context, command: command)
+  match primary_leg_stdout(read: read) {
+    Present { value: _ } => none
+    Absent => Present { value: primary_leg_cause(read: read, what: what) }
+  }
+}
+
+fn primary_steps(subject: FleetHostFileSubject, context: FleetSshExecutionContext, steps: List<PrimaryStepArgv>) -> String?
+{
+  fold(steps, init: none, f: (acc, st) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => primary_step(subject: subject, context: context, what: st.what, command: st.argv)
+    }
+  )
+}
+
+type PrimaryStepArgv {
+  what: String
+  argv: List<String>
+}
+
+fn observe_primary_effective(subject: FleetHostFileSubject, context: FleetSshExecutionContext, d: HostPrimaryNetworkDesired) -> PrimaryEffectiveVerdict
+{
+  let links = primary_leg(subject: subject, context: context, command: concat(["ip"], ip_show_link_args))
+  let addrs = primary_leg(subject: subject, context: context, command: concat(["ip"], ip_show_ipv4_addr_args))
+  let route = primary_leg(subject: subject, context: context, command: concat(["ip"], ip_show_ipv4_default_route_args))
+  match primary_leg_stdout(read: links) {
+    Absent => PrimaryEffectiveUnjudged { cause: primary_leg_cause(read: links, what: "ip link") as NonEmptyStr }
+    Present { value: l } =>
+      match primary_leg_stdout(read: addrs) {
+        Absent => PrimaryEffectiveUnjudged { cause: primary_leg_cause(read: addrs, what: "ip addr") as NonEmptyStr }
+        Present { value: a } =>
+          match primary_leg_stdout(read: route) {
+            Absent => PrimaryEffectiveUnjudged { cause: primary_leg_cause(read: route, what: "ip route") as NonEmptyStr }
+            Present { value: r } => primary_effective_verdict(d: d, reads: PrimaryNetworkIpReads { links: l, ipv4_addresses: a, ipv4_default_route: r })
+          }
+      }
+  }
+}
+
+fn observe_netplan_directory(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> NetplanDirectoryListing
+{
+  let read = primary_leg(subject: subject, context: context, command: ["ls", "-1", "-A", "--", netplan_config_dir as String])
+  match primary_leg_stdout(read: read) {
+    Absent => NetplanDirectoryUnread { cause: primary_leg_cause(read: read, what: "ls /etc/netplan") as NonEmptyStr }
+    Present { value: o } => NetplanDirectoryListed { names: netplan_yaml_names(listing_stdout: o) }
+  }
+}
+
+fn observe_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow) -> PrimaryNetworkObservation
+{
+  PrimaryNetworkObservation {
+    effective: observe_primary_effective(subject: subject, context: context, d: r.desired),
+    directory: observe_netplan_directory(subject: subject, context: context),
+    owned: observe_fleet_host_file_content(subject: subject, context: context, file: primary_network_netplan_file(r: r)),
+  }
+}
+
+fn stage_run_file(subject: FleetHostFileSubject, context: FleetSshExecutionContext, f: StagedNetplanFile) -> String?
+{
+  match converge_typed_remote_file(
+    target: subject.target,
+    context: context,
+    admission: typed_remote_file_write_seal(path: netplan_run_path(name: f.name as String) as FilePath, content: f.content, allowed_scope: primary_network_netplan_run_scope),
+    mode: RemoteFileModeOwnerReadWrite,
+    privilege: RemoteFileViaNonInteractiveSudo,
+    validation: NoValidation,
+  ) {
+    TypedRemoteFileConverged { converged: _ } => none
+    TypedRemoteFileConvergenceRefused { step: st, reason: why } => Present { value: join([f.name as String, " step=", st, " ", why], "") }
+  }
+}
+
+fn stage_run_population(subject: FleetHostFileSubject, context: FleetSshExecutionContext, files: List<StagedNetplanFile>) -> String?
+{
+  fold(files, init: none, f: (acc, file) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => stage_run_file(subject: subject, context: context, f: file)
+    }
+  )
+}
+
+fn write_through_host_file_core(subject: FleetHostFileSubject, context: FleetSshExecutionContext, files: List<FleetHostFileDesired>) -> String?
+{
+  fold(files, init: none, f: (acc, file) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        let outcome = apply_fleet_host_file(subject: subject, context: context, planned: plan_fleet_host_file(subject: subject, context: context, file: file))
+        if fleet_host_file_outcome_settled(outcome: outcome) { none } else { Present { value: join([file.subject as String, " ", runner_host_file_outcome_wire(outcome: outcome)], "") } }
+      }
+    }
+  )
+}
+
+// The first poll that answers wins; a poll that does not answer waits and polls again.
+fn poll_until(subject: FleetHostFileSubject, context: FleetSshExecutionContext, polls: List<Int>, wait: Second, command: List<String>) -> String?
+{
+  fold(polls, init: none, f: (acc, _n) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        let read = primary_leg(subject: subject, context: context, command: command)
+        match primary_leg_stdout(read: read) {
+          Present { value: o } => Present { value: o }
+          Absent => {
+            let _w = primary_leg(subject: subject, context: context, command: ["sleep", to_string(second_count(s: wait))])
+            none
+          }
+        }
+      }
+    }
+  )
+}
+
+fn read_try_outcome(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> NetplanTryOutcome
+{
+  fold(primary_network_verdict_polls, init: NetplanTryOutcomePending, f: (acc, _n) =>
+    match acc {
+      NetplanTryOutcomePending => {
+        let read = primary_leg(subject: subject, context: context, command: ["cat", "--", primary_network_try_out()])
+        let o = match primary_leg_stdout(read: read) { Present { value: text } => netplan_try_outcome(stdout: text)  Absent => NetplanTryOutcomePending }
+        match o {
+          NetplanTryOutcomePending => {
+            let _w = primary_leg(subject: subject, context: context, command: ["sleep", to_string(second_count(s: primary_network_verdict_poll_wait))])
+            NetplanTryOutcomePending
+          }
+          NetplanTryAccepted => o
+          NetplanTryReverted => o
+          NetplanTryRefusedNotRevertable => o
+        }
+      }
+      NetplanTryAccepted => acc
+      NetplanTryReverted => acc
+      NetplanTryRefusedNotRevertable => acc
+    }
+  )
+}
+
+fn netplan_try_outcome_wire(o: NetplanTryOutcome) -> String {
+  match o {
+    NetplanTryAccepted => "accepted"
+    NetplanTryReverted => "reverted"
+    NetplanTryRefusedNotRevertable => "refused-not-revertable"
+    NetplanTryOutcomePending => "pending"
+  }
+}
+
+// A TRY IS SETTLED ONLY ON netplan's OWN TERMINAL LINE. Until the unit's stdout carries accepted,
+// reverted or refused, netplan may still be waiting on its stdin or running its revert, and removing
+// the /run shadows or stopping the FIFO holder under it would change what that revert does: a holder
+// stopped early hands the try an end-of-file stdin, which reverts at once rather than at its timeout.
+// So nothing is cleaned up on an unsettled try; the run reports the try undecided instead.
+type PrimaryTrySettlement
+  = TrySettled { outcome: NetplanTryOutcome }
+  | TryUnsettled
+
+fn primary_try_settlement(o: NetplanTryOutcome) -> PrimaryTrySettlement {
+  match o {
+    NetplanTryAccepted => TrySettled { outcome: o }
+    NetplanTryReverted => TrySettled { outcome: o }
+    NetplanTryRefusedNotRevertable => TrySettled { outcome: o }
+    NetplanTryOutcomePending => TryUnsettled
+  }
+}
+
+// The cleanup a settlement admits: the shadows and the holder after a terminal outcome, nothing before.
+fn primary_network_cleanup_plan(settlement: PrimaryTrySettlement, staged: List<StagedNetplanFile>) -> List<PrimaryStepArgv> {
+  match settlement {
+    TryUnsettled => []
+    TrySettled { outcome: _ } => primary_network_cleanup_steps(staged: staged)
+  }
+}
+
+// THE CONFIRMATION IS WRITTEN ONLY WHEN THE WRITE SAYS SO. A leg that ran is not a newline delivered:
+// timeout's 124, dd's own failure or sudo's refusal each mean the try never heard it.
+type PrimaryConfirmWrite
+  = ConfirmWritten
+  | ConfirmWriteFailed { cause: NonEmptyStr }
+
+fn primary_confirm_write(exit_code: Int, stderr: String) -> PrimaryConfirmWrite {
+  if exit_code == 0 { ConfirmWritten } else {
+    ConfirmWriteFailed { cause: join(["the confirmation write exited ", to_string(exit_code), " ", trim(s: stderr)], "") as NonEmptyStr }
+  }
+}
+
+fn primary_network_cleanup_steps(staged: List<StagedNetplanFile>) -> List<PrimaryStepArgv> {
+  [
+    PrimaryStepArgv { what: "remove /run/netplan shadows", argv: concat(["rm", "-f", "--"], map(staged, f => netplan_run_path(name: f.name as String))) },
+    PrimaryStepArgv { what: "stop the stdin holder", argv: systemctl_stop_argv(unit: primary_network_try_stdin_unit) },
+  ]
+}
+
+// ── The apply ────────────────────────────────────────────────────────────────────────────────────
+
+type PrimaryApplyRollback
+  = RollbackNothingLaunched
+  | RollbackSettled { outcome: NetplanTryOutcome, cleanup: String? }
+  | RollbackUndecided
+
+type PrimaryNetworkApplyOutcome
+  = PrimaryApplyObservedOnly { plan: UpsertDecision<PrimaryNetplanSwap> }
+  | PrimaryApplyNotOwed
+  | PrimaryApplyRefused { plan: UpsertDecision<PrimaryNetplanSwap> }
+  | PrimaryApplyStopped { step: NonEmptyStr, cause: NonEmptyStr, rollback: PrimaryApplyRollback }
+  | PrimaryApplyConfirmed { outcome: NetplanTryOutcome, cleanup: String?, after: UpsertDecision<PrimaryNetplanSwap> }
+
+fn primary_apply_outcome_settled(o: PrimaryNetworkApplyOutcome) -> Bool {
+  match o {
+    PrimaryApplyObservedOnly { plan: p } => match p { Noop => true  Apply { plan: _ } => true  Refuse { reason: _ } => false }
+    PrimaryApplyNotOwed => true
+    PrimaryApplyRefused { plan: _ } => false
+    PrimaryApplyStopped { step: _, cause: _, rollback: _ } => false
+    PrimaryApplyConfirmed { outcome: o2, cleanup: c, after: a } =>
+      (match o2 { NetplanTryAccepted => true  NetplanTryReverted => false  NetplanTryRefusedNotRevertable => false  NetplanTryOutcomePending => false })
+        && (match c { Absent => true  Present { value: _ } => false })
+        && (match a { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false })
+  }
+}
+
+fn cleanup_wire(c: String?) -> String {
+  match c { Absent => "clean"  Present { value: why } => join(["RESIDUE ", why], "") }
+}
+
+fn primary_apply_outcome_wire(o: PrimaryNetworkApplyOutcome) -> String {
+  match o {
+    PrimaryApplyObservedOnly { plan: p } => join(["observe-only plan=", primary_network_plan_wire(p: p)], "")
+    PrimaryApplyNotOwed => "settled, nothing to apply"
+    PrimaryApplyRefused { plan: p } => join(["refused plan=", primary_network_plan_wire(p: p)], "")
+    PrimaryApplyStopped { step: s, cause: c, rollback: r } =>
+      join(["STOPPED step=", s as String, " ", c as String, " rollback=", match r {
+        RollbackNothingLaunched => "nothing-launched"
+        RollbackSettled { outcome: t, cleanup: cl } => join(["try-", netplan_try_outcome_wire(o: t), " cleanup=", cleanup_wire(c: cl)], "")
+        RollbackUndecided => "UNDECIDED: netplan's own outcome was never read; the /run shadows and the stdin holder are left in place so its timeout and revert run untouched, and the target must be read before another apply"
+      }], "")
+    PrimaryApplyConfirmed { outcome: t, cleanup: cl, after: a } =>
+      join(["confirmed try=", netplan_try_outcome_wire(o: t), " cleanup=", cleanup_wire(c: cl), " after=", primary_network_plan_wire(p: a)], "")
+  }
+}
+
+fn stopped_before_launch(step: String, cause: String) -> PrimaryNetworkApplyOutcome {
+  PrimaryApplyStopped { step: step as NonEmptyStr, cause: cause as NonEmptyStr, rollback: RollbackNothingLaunched }
+}
+
+// A try that will not be confirmed is left to its own timeout; the verdict is read once the old
+// network carries the legs again, and the shadows are removed only once that verdict is terminal.
+type PrimaryTryEnd
+  = TryEndSettled { outcome: NetplanTryOutcome, cleanup: String? }
+  | TryEndUndecided
+
+fn settle_try(subject: FleetHostFileSubject, context: FleetSshExecutionContext, staged: List<StagedNetplanFile>) -> PrimaryTryEnd
+{
+  let settlement = primary_try_settlement(o: read_try_outcome(subject: subject, context: context))
+  match settlement {
+    TryUnsettled => TryEndUndecided
+    TrySettled { outcome: o } => TryEndSettled { outcome: o, cleanup: primary_steps(subject: subject, context: context, steps: primary_network_cleanup_plan(settlement: settlement, staged: staged)) }
+  }
+}
+
+fn rollback_of_try_end(e: PrimaryTryEnd) -> PrimaryApplyRollback {
+  match e {
+    TryEndUndecided => RollbackUndecided
+    TryEndSettled { outcome: o, cleanup: c } => RollbackSettled { outcome: o, cleanup: c }
+  }
+}
+
+fn stopped_in_try(subject: FleetHostFileSubject, context: FleetSshExecutionContext, staged: List<StagedNetplanFile>, step: String, cause: String) -> PrimaryNetworkApplyOutcome
+{
+  PrimaryApplyStopped { step: step as NonEmptyStr, cause: cause as NonEmptyStr, rollback: rollback_of_try_end(e: settle_try(subject: subject, context: context, staged: staged)) }
+}
+
+// The owned file is written first, so a removal that fails leaves extra files beside it, never none.
+fn remove_foreign_netplan_files(subject: FleetHostFileSubject, context: FleetSshExecutionContext, foreign: List<String>) -> String?
+{
+  if length(foreign) == 0 { none } else {
+    primary_step(subject: subject, context: context, what: "remove foreign netplan files", command: concat(["rm", "-f", "--"], map(foreign, f => join([netplan_config_dir as String, "/", f], ""))))
+  }
+}
+
+fn persist_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, staged: List<StagedNetplanFile>, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+{
+  match write_through_host_file_core(subject: subject, context: context, files: [primary_network_netplan_file(r: r)]) {
+    Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "persist-owned", cause: why)
+    Absent =>
+      match remove_foreign_netplan_files(subject: subject, context: context, foreign: foreign) {
+        Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "persist-foreign", cause: why)
+        Absent =>
+          match typed_remote_file_step(
+            target: subject.target,
+            context: context,
+            raws: elevated_argv(command: ["timeout", "10", "dd", join(["of=", primary_network_try_fifo()], ""), "status=none"]),
+            stdin_payload: netplan_try_confirmation_line,
+          ) {
+            TypedRemoteFileStepArgvRefused => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: "the confirmation argv is not portable")
+            TypedRemoteFileStepLegRefused { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)
+            TypedRemoteFileStepRan { result: written } =>
+              match primary_confirm_write(exit_code: written.exit_code, stderr: written.stderr) {
+                ConfirmWriteFailed { cause: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "confirm", cause: why as String)
+                ConfirmWritten =>
+                  match settle_try(subject: subject, context: context, staged: staged) {
+                    TryEndUndecided => PrimaryApplyStopped { step: "verdict" as NonEmptyStr, cause: "the confirmation was written but netplan's outcome was never read" as NonEmptyStr, rollback: RollbackUndecided }
+                    TryEndSettled { outcome: o, cleanup: c } =>
+                      PrimaryApplyConfirmed { outcome: o, cleanup: c, after: plan_primary_network(d: r.desired, observation: observe_primary_network(subject: subject, context: context, r: r)) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn try_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+{
+  match primary_network_staged_population(r: r, foreign: foreign) {
+    StagedNetplanRefused { cause: c } => stopped_before_launch(step: "render", cause: c as String)
+    StagedNetplanReady { files: staged } => try_staged_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
+  }
+}
+
+fn try_staged_and_confirm(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, staged: List<StagedNetplanFile>, foreign: List<String>) -> PrimaryNetworkApplyOutcome
+{
+  let d = r.desired
+  match primary_network_stdin_holder_launch() {
+    PrimaryTryLaunchRefused { cause: c } => stopped_before_launch(step: "stdin-holder-argv", cause: c as String)
+    PrimaryTryLaunchArgv { argv: holder } =>
+      match primary_network_try_launch() {
+        PrimaryTryLaunchRefused { cause: c } => stopped_before_launch(step: "try-argv", cause: c as String)
+        PrimaryTryLaunchArgv { argv: try_argv } =>
+          match primary_steps(subject: subject, context: context, steps: [
+            PrimaryStepArgv { what: "run dir", argv: ["install", "-d", "-m", "700", primary_network_run_dir as String] },
+            PrimaryStepArgv { what: "netplan run dir", argv: ["install", "-d", "-m", "755", primary_network_netplan_run_dir as String] },
+            PrimaryStepArgv { what: "clear try files", argv: ["rm", "-f", "--", primary_network_try_fifo(), primary_network_try_out(), netplan_try_ready_stamp_path as String] },
+            PrimaryStepArgv { what: "fifo", argv: ["mkfifo", "-m", "600", primary_network_try_fifo()] },
+          ]) {
+            Present { value: why } => stopped_before_launch(step: "prepare", cause: why)
+            Absent =>
+              match stage_run_population(subject: subject, context: context, files: staged) {
+                Present { value: why } => {
+                  let _cleanup = primary_steps(subject: subject, context: context, steps: primary_network_cleanup_steps(staged: staged))
+                  stopped_before_launch(step: "stage", cause: why)
+                }
+                Absent =>
+                  match primary_steps(subject: subject, context: context, steps: [
+                    PrimaryStepArgv { what: "launch stdin holder", argv: holder },
+                    PrimaryStepArgv { what: "launch try", argv: try_argv },
+                  ]) {
+                    Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "launch", cause: why)
+                    Absent =>
+                      match poll_until(subject: subject, context: context, polls: primary_network_ready_polls, wait: primary_network_ready_poll_wait, command: ["test", "-e", netplan_try_ready_stamp_path as String]) {
+                        Absent => stopped_in_try(subject: subject, context: context, staged: staged, step: "ready", cause: "the try never touched its ready stamp")
+                        Present { value: _ } =>
+                          match primary_step(subject: subject, context: context, what: "online", command: primary_network_wait_online_argv(renderer: d.renderer)) {
+                            Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "online", cause: why)
+                            Absent =>
+                              match primary_effective_refusal(v: observe_primary_effective(subject: subject, context: context, d: d)) {
+                                Present { value: why } => stopped_in_try(subject: subject, context: context, staged: staged, step: "readback", cause: why as String)
+                                Absent => persist_and_confirm(subject: subject, context: context, r: r, staged: staged, foreign: foreign)
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn apply_primary_network(subject: FleetHostFileSubject, context: FleetSshExecutionContext, r: PrimaryNetworkRow, mode: FleetHostFileConvergeMode) -> PrimaryNetworkApplyOutcome
+{
+  let plan = plan_primary_network(d: r.desired, observation: observe_primary_network(subject: subject, context: context, r: r))
+  match mode {
+    FleetHostFilesObserveOnly => PrimaryApplyObservedOnly { plan: plan }
+    FleetHostFilesApply =>
+      match plan {
+        Refuse { reason: _ } => PrimaryApplyRefused { plan: plan }
+        Noop =>
+          match write_through_host_file_core(subject: subject, context: context, files: [primary_network_cloud_init_guard()]) {
+            Present { value: why } => stopped_before_launch(step: "cloud-init-guard", cause: why)
+            Absent => PrimaryApplyNotOwed
+          }
+        Apply { plan: swap } =>
+          match write_through_host_file_core(subject: subject, context: context, files: [primary_network_cloud_init_guard()]) {
+            Present { value: why } => stopped_before_launch(step: "cloud-init-guard", cause: why)
+            Absent => try_and_confirm(subject: subject, context: context, r: r, foreign: swap.foreign)
+          }
+      }
+  }
+}
+
+// ── The CI entry ─────────────────────────────────────────────────────────────────────────────────
+
+data host_primary_network_attempt_raw: String = "host-primary-network-converge-ci"
+
+// ONE SUBJECT PER RUN, NAMED BY THE DISPATCH, and never the host the run executes on. A host without a
+// row refuses with its standing; the apply mode is the operator's to choose.
+fn host_primary_network_ci_wet(mode: FleetHostFileConvergeMode) -> ProcessExit
+{
+  match fleet_converge_split_read() {
+    SplitRefused { reason: why } => exit_failure(reason: primary_network_split_refusal(reason: why))
+    SplitOk { executor_runner_name: _, subject_host: raw_host } =>
+      match primary_network_row_for(host: raw_host as HostIdentity) {
+        PrimaryRowUnmodeled { host: h } => exit_failure(reason: join(["host_primary_network: ", h as String, " has no primary network row"], ""))
+        PrimaryRowAwaitingRead { change: _, read_obligation: o } => exit_failure(reason: join(["host_primary_network: ", raw_host, " was moved by hand and not read; owed: ", o as String], ""))
+        PrimaryRowRenderRefused { host: h, cause: c } => exit_failure(reason: join(["host_primary_network: ", h as String, ": ", c as String], ""))
+        PrimaryRowDeclared { row: r } => {
+          let d = r.desired
+                  match administrator_ssh_target(host: d.host) {
+                    SshTargetRefused { endpoint: e, refusal: why } => exit_failure(reason: ssh_target_refusal_text(endpoint: e, refusal: why))
+                    SshTargetResolved { target: target } =>
+                      match prepare_fleet_ssh_agent_context(attempt_raw: host_primary_network_attempt_raw) {
+                        FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+                        FleetSshContextReady { context: context, receipt: context_receipt } => {
+                          let subject = FleetHostFileSubject { host: d.host, target: target }
+                          let outcome = match observe_fleet_host_administrator_privilege(subject: subject, context: context) {
+                            AdministratorPrivilegeRefused { reason: why } => stopped_before_launch(step: "privilege", cause: why)
+                            AdministratorPrivilegeAvailable => apply_primary_network(subject: subject, context: context, r: r, mode: mode)
+                          }
+                          let body = join([
+                            "host_primary_network probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, " host=", d.host as String, "\n",
+                            context_receipt,
+                            "outcome ", primary_apply_outcome_wire(o: outcome), "\n",
+                          ], "")
+                          let w = Filesystem.Write(path: host_primary_network_receipt_path, content: body)
+                          if !w.success { exit_failure(reason: join(["host_primary_network: receipt write failed: ", w.error, "\n", body], "")) }
+                          else if !primary_apply_outcome_settled(o: outcome) { exit_failure(reason: body) }
+                          else { ExitSuccess }
+                        }
+                      }
+                  }
+        }
+      }
+  }
+}
+
+fn host_primary_network_observe_ci_wet() -> ProcessExit
+{
+  host_primary_network_ci_wet(mode: FleetHostFilesObserveOnly)
+}
+
+fn host_primary_network_converge_ci_wet() -> ProcessExit
+{
+  host_primary_network_ci_wet(mode: FleetHostFilesApply)
+}

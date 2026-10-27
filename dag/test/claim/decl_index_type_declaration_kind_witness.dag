@@ -1,0 +1,125 @@
+module test.claim.decl_index_type_declaration_kind_witness
+
+import std.types { List }
+import v2.std.decl_index { DataItem, DeclFact, FnItem, OtherItem, ServiceItem, TypeItem, decl_facts_at }
+import v2.std.decl_facts_skeleton { decl_facts_matching_qualified_name }
+import std.algebra { fold_list, length }
+import v2.std.text { String }
+
+// THE KIND OF A DECLARATION IS THE KIND OF ITS DECLARATION FORM. A type declaration reads TypeItem
+// whether it is a record, a coproduct or an alias; v2.std.decl_index decl_facts_at is the keyed read
+// every position-matching consumer asks. Before the repair an alias (`type List<element> =
+// FreeMonoid<element>`) read OtherItem, because item_kind derived TypeItem from the connective and an
+// alias carries none, so the type-declarer seam that filters TypeItem never saw List, Map or Set.
+//
+// EACH CLAIM ASSERTS A NON-EMPTY READ AND THAT EVERY ROW IS OF THE KIND, so a name that resolves to
+// nothing cannot pass vacuously. THE CONTROLS ARE THE OTHER KIND: a fn reads FnItem and is not a
+// TypeItem, and an alias is not read as FnItem.
+
+data decl_kind_roots: List<String> = ["dag", "src/v2"]
+
+// ONE READ PER CLAIM. A claim reads the pool once with every key it asks about and counts each
+// key's rows from that read (decl_facts_matching_qualified_name), so a key answers with exactly the
+// rows a one-key read would give, and no claim walks the pool more than once.
+fn kind_read(qns: List<String>) -> List<DeclFact> {
+  decl_facts_at(pool_roots: decl_kind_roots, qualified_names: qns, type_names: [])
+}
+
+fn rows_of(facts: List<DeclFact>, qn: String) -> List<DeclFact> {
+  decl_facts_matching_qualified_name(qn: qn, facts: facts)
+}
+
+fn type_count(rows: List<DeclFact>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(n, f) {
+      match f.kind {
+        TypeItem => n + 1
+        FnItem => n
+        DataItem => n
+        ServiceItem => n
+        OtherItem => n
+      }
+    }
+  )
+}
+
+fn fn_count(rows: List<DeclFact>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(n, f) {
+      match f.kind {
+        FnItem => n + 1
+        TypeItem => n
+        DataItem => n
+        ServiceItem => n
+        OtherItem => n
+      }
+    }
+  )
+}
+
+fn reads_as_type(qn: String) -> Bool {
+  let rows = rows_of(facts: kind_read(qns: [qn]), qn: qn)
+  length(xs: rows) > 0 && type_count(rows: rows) == length(xs: rows)
+}
+
+test fn alias_list_reads_type_item() -> Bool { reads_as_type(qn: "std.types.List") }
+test fn alias_map_reads_type_item() -> Bool { reads_as_type(qn: "std.types.Map") }
+test fn alias_set_reads_type_item() -> Bool { reads_as_type(qn: "std.types.Set") }
+test fn alias_with_a_where_clause_reads_type_item() -> Bool { reads_as_type(qn: "std.types.NonEmptyStr") }
+test fn record_reads_type_item() -> Bool { reads_as_type(qn: "std.types.SourceSpan") }
+test fn coproduct_reads_type_item() -> Bool { reads_as_type(qn: "std.optional.Optional") }
+
+test fn fn_reads_fn_item_and_not_type_item() -> Bool {
+  let rows = rows_of(facts: kind_read(qns: ["std.algebra.length"]), qn: "std.algebra.length")
+  fn_count(rows: rows) == length(xs: rows)
+    && length(xs: rows) > 0
+    && type_count(rows: rows) == 0
+}
+
+test fn an_alias_is_not_read_as_a_fn() -> Bool {
+  let rows = rows_of(facts: kind_read(qns: ["std.types.List"]), qn: "std.types.List")
+  length(xs: rows) > 0 && fn_count(rows: rows) == 0
+}
+
+// A DATA DECLARATION OF A v2.* MODULE IS KEYED UNDER ITS OWN MODULE NAME. cool-moth-104 measured
+// std.algebra kernel_algebra_profile keyed and v2.lens.enforcement.standing_intent whole_corpus_scope
+// not: the stripped key filed the second under `lens.enforcement...`, so a read by its authored
+// qualified name found nothing. Both are data; only one module carries the layer prefix.
+fn data_count(rows: List<DeclFact>) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(n, f) {
+      match f.kind {
+        DataItem => n + 1
+        TypeItem => n
+        FnItem => n
+        ServiceItem => n
+        OtherItem => n
+      }
+    }
+  )
+}
+
+test fn data_in_a_v2_module_is_keyed_under_its_own_module_name() -> Bool {
+  let own = "v2.lens.enforcement.standing_intent.whole_corpus_scope"
+  let stripped = "lens.enforcement.standing_intent.whole_corpus_scope"
+  let facts = kind_read(qns: [own, stripped])
+  data_count(rows: rows_of(facts: facts, qn: own)) == 1
+    && data_count(rows: rows_of(facts: facts, qn: stripped)) == 0
+}
+
+test fn data_in_a_non_v2_module_is_keyed_as_before() -> Bool {
+  let qn = "std.algebra.kernel_algebra_profile"
+  data_count(rows: rows_of(facts: kind_read(qns: [qn]), qn: qn)) == 1
+}
+
+test fn the_two_trees_share_no_key_for_integer() -> Bool {
+  let facts = kind_read(qns: ["v2.std.integer.Int", "std.integer.Int"])
+  length(xs: rows_of(facts: facts, qn: "v2.std.integer.Int")) == 1
+    && length(xs: rows_of(facts: facts, qn: "std.integer.Int")) == 1
+}

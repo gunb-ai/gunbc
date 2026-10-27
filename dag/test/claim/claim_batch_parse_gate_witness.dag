@@ -1,0 +1,143 @@
+module test.claim.claim_batch_parse_gate_witness
+
+import std.types { Bool, String, FilePath, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.shell
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHY THIS IS WET. The property is the EXIT STATUS and OUTPUT SHAPE of the `claim_batch` process
+// when a module its entry imports does not parse: exit 1 (the observation did not hold), a located
+// `module index refused` refusal (file:line:col, printed relative to the child's workdir), and NO PASS/FAIL verdict line. That is an external effect which
+// is the subject, so no in-process assertion can observe it, and a Rust integration test would sit
+// off the merge path (gunbc.rung_drop rust_unit_tests_off_the_merge_path), green by vacancy.
+//
+// THE UNPARSABLE SOURCE IS PLANTED, NEVER COMMITTED. A committed unparsable `.dag` under a source
+// root poisons every run that walks that root; one outside the roots is still walked by anything
+// that enumerates fixtures. It is written into a mktemp directory under target/ and handed to the
+// child as its own --source-root, so no other process can see it. The control plants a PARSEABLE
+// twin of the same module into its own directory, so the two differ only in whether the library
+// parses: a control that also passes `--source-root dag` proves the RED is the library and not the
+// root set.
+//
+// WHAT THIS DOES NOT PIN. Today the walk refuses with exit 1 for an unparsable module INSIDE the
+// entry's closure and for one OUTSIDE it alike (fail-closed over-reporting). The owning row,
+// gunbc.recurring_failure_mode parse_refusal_exits_as_failed_observation, names the split by
+// reachability as its next trigger; this witness pins the closure case, which stays exit 1 under
+// that split.
+
+data parse_gate_entry_source: String = "module probe.parse_gate_entry
+
+import probe.parse_gate_lib { parse_gate_lib_value }
+
+test fn parse_gate_entry_holds() -> Bool {
+  parse_gate_lib_value()
+}
+"
+
+data parse_gate_unparsable_lib_source: String = "module probe.parse_gate_lib
+
+fn parse_gate_lib_value() -> Bool {
+  true
+"
+
+data parse_gate_parseable_lib_source: String = "module probe.parse_gate_lib
+
+fn parse_gate_lib_value() -> Bool {
+  true
+}
+"
+
+type PlantedParseGate
+  = PlantedParseGateReady { dir: String }
+  | PlantedParseGateUnwritable { detail: String }
+
+fn plant_parse_gate(root: String, lib_source: String) -> PlantedParseGate {
+  let dir = shell.Mktemp.DirWithTemplate(
+    template: concat(root, "/target/parse-gate-planted-XXXXXX") as FilePath,
+  )
+  if !dir.success {
+    PlantedParseGateUnwritable { detail: "mktemp under target/ failed" }
+  } else {
+    let d = dir.path as String
+    let e = Filesystem.Write(path: concat(d, "/parse_gate_entry.dag"), content: parse_gate_entry_source)
+    let l = Filesystem.Write(path: concat(d, "/parse_gate_lib.dag"), content: lib_source)
+    if e.success && l.success {
+      PlantedParseGateReady { dir: d }
+    } else {
+      PlantedParseGateUnwritable { detail: join(["fixture write failed: ", e.error, l.error], "") }
+    }
+  }
+}
+
+// The refusal fires in the module-index walk, before any policy module is resolved, so the RED needs
+// only the planted root: walking `dag` as well cost ~42s of wall the refusal never reads. The control reaches
+// a verdict, and a verdict needs `gunbc.output_policy`, which resolves only from `dag`; that walk is
+// the control's irreducible cost.
+fn parse_gate_refusal_args(dir: String) -> List<String> {
+  [
+    "--source-root", dir,
+    "--entry", concat(dir, "/parse_gate_entry.dag"),
+    "--function", "parse_gate_entry_holds"
+  ]
+}
+
+fn parse_gate_verdict_args(dir: String) -> List<String> {
+  [
+    "--source-root", "dag",
+    "--source-root", dir,
+    "--entry", concat(dir, "/parse_gate_entry.dag"),
+    "--function", "parse_gate_entry_holds"
+  ]
+}
+
+// The refusal arm. An entry importing an unparsable module must exit 1, name that module's file in
+// a located refusal, and print no verdict line: a PASS or FAIL here would be a verdict computed
+// over a corpus the walk could not read.
+test fn an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_parse_gate(root: root, lib_source: parse_gate_unparsable_lib_source) {
+    PlantedParseGateUnwritable { detail: _ } => false
+    PlantedParseGateReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: parse_gate_refusal_args(dir: dir)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 1
+        && string_contains(s: result.stderr, pattern: "module index refused")
+        && string_contains(s: result.stderr, pattern: "target/parse-gate-planted-")
+        && string_contains(s: result.stderr, pattern: "/parse_gate_lib.dag:4:7")
+        && !string_contains(s: result.stdout, pattern: "PASS")
+        && !string_contains(s: result.stdout, pattern: "FAIL")
+    }
+  }
+}
+
+// The positive control. The same entry over a PARSEABLE twin of the library must reach a real
+// verdict: exit 0 and a PASS line. Without it the row above is satisfiable by a binary that
+// refuses everything, including a healthy corpus.
+test fn a_parseable_imported_module_reaches_a_real_pass_verdict() -> Bool {
+  let root = git.Inspect.Toplevel().path
+  match plant_parse_gate(root: root, lib_source: parse_gate_parseable_lib_source) {
+    PlantedParseGateUnwritable { detail: _ } => false
+    PlantedParseGateReady { dir } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: concat(root, "/target/release/claim_batch"),
+        args: parse_gate_verdict_args(dir: dir)
+      )
+      let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
+      cleaned.success
+        && result.exit_code == 0
+        && string_contains(s: result.stdout, pattern: "PASS")
+        && !string_contains(s: result.stderr, pattern: "module index refused")
+    }
+  }
+}

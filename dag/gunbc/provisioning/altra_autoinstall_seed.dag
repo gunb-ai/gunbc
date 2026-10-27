@@ -86,13 +86,7 @@ import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.decl_ref { decl_ref }
 import std.optional { Optional, Absent, Present }
-import std.content_hash {
-  Fnv1a64Structural,
-  content_hash_atom,
-  content_hash_combine_structural,
-  content_hash_eq_structural,
-  content_hash_tagged_structural,
-}
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_eq_structural, content_hash_tagged_structural, sha256_hex_of_text }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.debian.debconf {
   DebconfAnswerKind,
@@ -128,6 +122,7 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudNet,
   StoragePolicyDirectLayout,
   UbuntuAutoinstallPayload,
+  AutoinstallSshServer,
 }
 // THE RENDERER IS THE ONE THE FLEET ALREADY BOOTS FROM. (review: merry-fox-82, HOLD section 1) This module
 // does not emit YAML and does not imitate the cloud-config writer: it builds the upstream payload record and
@@ -148,7 +143,7 @@ import extdeps.storage.types {
   storage_device_serial,
 }
 import extdeps.toolchain.types { Aarch64, Architecture }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import extdeps.provisioning.network_boot {
   ClientNetworkBootMode,
   LegacyBiosPxe,
@@ -2881,9 +2876,7 @@ fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstall
         },
         locale: seed_locale_wire(locale: seed.locale),
         keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
-        install_openssh_server: openssh_is_installed(intents: seed.install_packages),
-        ssh_authorized_keys: seed.entry.authorised_keys,
-        ssh_password_auth: false,
+        ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
         storage_policy: StoragePolicyDirectLayout,
       } }
     Absent => Absent
@@ -3035,10 +3028,10 @@ fn package_intent_names(intent: PackageIntent, wanted: NonEmptyStr) -> Bool {
 // beside them. Two fields that must agree is two fields that can disagree, and this one would disagree in the
 // worst direction: a payload claiming an SSH server the seed never installs leaves the board unreachable by
 // the only channel a headless box has.
-fn openssh_is_installed(intents: List<PackageIntent>) -> Bool {
+fn openssh_server_section(intents: List<PackageIntent>, authorised_keys: List<SshPublicKey>) -> Optional<AutoinstallSshServer> {
   match first_intent_named(intents: intents, wanted: "openssh-server" as NonEmptyStr) {
-    Absent => false
-    Present { value: _ } => true
+    Absent => Absent
+    Present { value: _ } => Present { value: AutoinstallSshServer { authorized_keys: authorised_keys, password_auth: false } }
   }
 }
 
@@ -3227,6 +3220,7 @@ fn bmc_firmware_family_diagnostic(family: BmcFirmwareFamily) -> NonEmptyStr {
   match family {
     OpenBmc => "openbmc"
     AmiMegaRac => "amr-megrac"
+    SupermicroAten => "supermicro-aten"
   }
 }
 

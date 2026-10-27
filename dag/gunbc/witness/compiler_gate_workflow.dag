@@ -250,7 +250,7 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
 // repository, so a merge-blocking fact there is one the model cannot see or regenerate.
 
 // FORK CODE DOES NOT RUN ON THE FLEET. The clause is heal's authorship (gunbc.heal_workflow
-// heal_same_repository_clause), and the checkout below is an attacker-authored head sha on a runner
+// heal_same_repository_clause), and the checkout below is an attacker-authored tree (the merge ref carries the head's content) on a runner
 // that persists between jobs. The guard is scoped to pull_request events: merge_group and
 // workflow_dispatch carry no pull_request context, so an unscoped clause would read null and SKIP the
 // lane -- and a skipped required lane never reports, which stalls the merge queue for good. The
@@ -260,9 +260,16 @@ fn compiler_gate_fleet_job_condition() -> String {
   join(["github.event_name != 'pull_request' || ", heal_same_repository_clause], "")
 }
 
-// A pull-request run judges the pull request HEAD, not GitHub's merge result; the composed revision
-// is the merge_group run's subject. On push, merge_group and dispatch the expression is empty and
-// checkout falls back to the triggering sha.
+// A pull-request run judges GitHub's MERGE REF (github.sha is refs/pull/N/merge on pull_request): the
+// composed tree of the pull request and the base as of the event. It used to judge the PR head, on the
+// premise that the composed revision was the merge_group run's subject; main has no merge queue, so
+// nothing ever built the composed tree and two individually green pull requests broke main (#14539,
+// #14675). The merge ref is also the revision that supplies this workflow file, so the instruction and
+// the tree it runs are paired by construction (recurring_failure_mode
+// instruction_and_subject_resolved_from_different_revisions). THE RESIDUE: the merge ref is computed
+// when the event fires, so a commit landing on the base afterwards is not in it and does not retrigger
+// the run. This narrows the window from never-composed to composed-at-event-time; it does not close it
+// (rung: mitigatable). On push, merge_group and dispatch github.sha is already the triggering commit.
 fn compiler_gate_fleet_checkout_step() -> Step {
   UsesStep {
     name: Present { value: "Checkout the commit this lane judges" },
@@ -798,4 +805,4 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
   }
 }
 
-data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["event", "pull_request", "head", "sha"] }
+data compiler_gate_checkout_ref: Expression = ContextAccess { context: Github, path: ["sha"] }

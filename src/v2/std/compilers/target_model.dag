@@ -15,10 +15,11 @@ import v2.std.compilers.lexing { AnnotationRule, KeywordPattern, LexPattern, Lex
 import v2.std.find_witness { CandidateSet, PreservationPredicate, UniqueOnly, find_witness }
 import v2.std.passing_candidate_fold { ManyPassingCandidates, NoPassingCandidate, OnePassingCandidate, PassingCandidateFold }
 import v2.std.type_binder { cast_target_optional, type_annotation_optional, type_param_names, kinded_type_param_kind_optional }
-import v2.std.node { BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node }
+import v2.std.node { node_same_occurrence, BranchConditionSlot, BranchElseSlot, BranchThenSlot, branch_slot_target, MatchArmSlot, MatchScrutineeSlot, child_slot_edge, match_role_slots, match_slot_target, BindBinderSlot, BindBodySlot, BindValueSlot, bind_slot_target, positional_child_target_nodes, StructuralLabel, LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, Arrow, ComputationBody, DirectAtomBody, FunctionValueBody, RecordConstructBody, DeclarationReferenceBody, ParameterReferenceBody, LexicalReferenceBody, UnsupportedArrowBody, classify_arrow_body_form, ArrowBodyEdges, Atom, Branch, ComputationNode, Conj, Connective, Disj, Edge, EdgeDiscipline, Instantiation, LabeledEdges, LoopBoundEdges, Match, Authored, NoEdges, Node, NodeFold, Positional, PositionalEdges, Symbol, Transform, TypeNode, all_edges_named, all_edges_positional, connective_edge_discipline, content_hash, fold_node, match_arm_children_conform_skip_first, name_occurrences, node_rebuild, symbol_intern_lexeme, symbol_lexeme, MatchArmBodyEdge, MatchArmPatternEdge, core_edge, core_occurrences, edge_is_core, production_edge_label, Bind, Loop, Value, PositionalPlusNamedMarkerEdges, PositionalPrefixThenLabeledEdges, fold_list_node, NotADeclaration }
 import v2.std.witness { StructuralPropertyWitness, map_get_checked }
 import v2.std.anonymous_binder { is_anonymous_param_label }
 import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, arrow_domain_named_param_bindings, find_arrow_body_child, find_named_child, named_child_lookup, node_labeled_child_edges, nullary_inhabitant_by_discriminant, is_wildcard_pattern_identity, pattern_wildcard_name, find_core_child, find_labeled_child, construct_field_edges, construct_tag_optional }
+import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
 import v2.std.integer { integer_decimal_magnitude_node_to_int }
@@ -732,7 +733,7 @@ fn produced_decl_ordered_params(arrow: Node, domain: Node) -> Outcome<List<Edge>
 // binder here is a wall the reader already holds; it still refuses typed rather than dropping one.
 fn produced_decl_domain_binder(arrow: Node, domain: Node, label: Symbol) -> Outcome<Edge> {
   match named_child_lookup(root: domain, name: label) {
-    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Authored { name: label }, target: t })
+    NamedChildFound { target: t } => outcome_accepted(value: Edge { label: Authored { name: label }, target: t, declaration: NotADeclaration })
     NamedChildMissing =>
       outcome_rejected(
         d: produced_decl_render_diagnostic(reason: ^produced_decl_render_parameter_order_malformed, node: arrow)
@@ -988,7 +989,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_fixed } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_class },
@@ -996,7 +998,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1011,7 +1014,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: ^concrete_syntax_token_kind_bound } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_class },
@@ -1019,7 +1023,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: c } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           },
           Edge {
             label: Authored { name: ^concrete_syntax_token_field_binding },
@@ -1027,7 +1032,8 @@ fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
               kind: TypeNode { connective: Atom { identity: b } },
               children: [],
               occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
           }
         ],
         occurrence_id: OccurrenceSynthetic
@@ -1638,6 +1644,7 @@ type TargetValueExpressionKind
   | TargetValueExprRecordConstruct
   | TargetValueExprFieldAccess
   | TargetValueExprMatch
+  | TargetValueExprListIntroduction
 
 type TargetValueExpression {
   kind: TargetValueExpressionKind
@@ -1969,6 +1976,16 @@ type TargetIntLiteralShape
   = IntLiteralUnwired
   | IntLiteralDecimal { literal_token: Symbol }
 
+// A LIST LITERAL IS SPELLED BY THE TARGET'S OWN REALIZATION OF std.algebra FreeMonoid, never by a
+// second list vocabulary here: `ListIntroductionDelimited` names the token classes of the target's
+// delimited, separated sequence literal (Rust: `vec![a, b]`, the literal of the Vec that
+// TargetCollectionReprVec already realizes FreeMonoid as). A target that has not declared the class is
+// `ListIntroductionUnwired`, and a list introduction reaching its token fold refuses typed and located
+// at the authored literal -- never dropped, never a guessed spelling.
+type TargetListIntroductionShape
+  = ListIntroductionUnwired
+  | ListIntroductionDelimited { open: Symbol, separator: Symbol, close: Symbol }
+
 type TargetValueExpressionProjection {
   binding_ref_form: TargetBindingRefShape
   primitive_apply_form: TargetPrimitiveApplyShape
@@ -1983,6 +2000,7 @@ type TargetValueExpressionProjection {
   match_form: TargetMatchShape
   bool_literal_form: TargetBoolLiteralShape
   int_literal_form: TargetIntLiteralShape
+  list_introduction_form: TargetListIntroductionShape
   block_evaluation_mode: BlockEvaluationMode
 }
 
@@ -2246,7 +2264,8 @@ fn target_model_canonical_operation_roster_edge(
 ) -> Edge {
   Edge {
     label: Authored { name: name },
-    target: target_model_canonical_operation_wire_node(operation: operation)
+    target: target_model_canonical_operation_wire_node(operation: operation),
+    declaration: NotADeclaration
   }
 }
 
@@ -2392,7 +2411,7 @@ fn target_model_canonical_operation_wire_child_member_type(
   match acc {
     Present { value: _ } => acc
     Absent =>
-      if child_edge.target == n {
+      if node_same_occurrence(a: child_edge.target, b: n) {
         target_model_canonical_operation_wire_child_declared_type(wire: wire, edge: child_edge)
       } else {
         acc
@@ -2408,7 +2427,7 @@ fn target_model_canonical_operation_roster_member_type(
   match acc {
     Present { value: _ } => acc
     Absent =>
-      if roster_edge.target == n {
+      if node_same_occurrence(a: roster_edge.target, b: n) {
         optional_present(value: target_model_canonical_operation_type_node())
       } else {
         fold_list(
@@ -3750,6 +3769,67 @@ fn int_literal_shape_to_node(shape: TargetIntLiteralShape) -> Node {
   }
 }
 
+fn decode_list_introduction_shape_bundle(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  match bundle.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_value_expr_list_introduction_unwired {
+        outcome_accepted(ListIntroductionUnwired)
+      } else {
+        outcome_rejected(
+          target_value_expr_diagnostic(
+            reason: ^target_value_expr_list_introduction_form_malformed,
+            node: bundle
+          )
+        )
+      }
+    TypeNode { connective: Conj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Disj } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Arrow } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    TypeNode { connective: Instantiation } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+    ComputationNode { behavior: _ } => decode_list_introduction_shape_bundle_otherwise(bundle: bundle)
+  }
+}
+
+fn decode_list_introduction_shape_bundle_otherwise(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_open),
+    f: fn(open) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_separator),
+        f: fn(separator) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_close),
+            f: fn(close) {
+              outcome_accepted(ListIntroductionDelimited { open: open, separator: separator, close: close })
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn decode_vep_parent_list_introduction(bundle: Node) -> Outcome<TargetListIntroductionShape> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_list_introduction),
+    f: decode_list_introduction_shape_bundle
+  )
+}
+
+fn list_introduction_shape_to_node(shape: TargetListIntroductionShape) -> Node {
+  match shape {
+    ListIntroductionUnwired => target_model_type_atom_node(identity: ^target_value_expr_list_introduction_unwired)
+    ListIntroductionDelimited { open: o, separator: p, close: c } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(name: ^target_value_expr_field_open, target: target_model_type_atom_node(identity: o)),
+          target_model_named_edge(name: ^target_value_expr_field_separator, target: target_model_type_atom_node(identity: p)),
+          target_model_named_edge(name: ^target_value_expr_field_close, target: target_model_type_atom_node(identity: c))
+        ]
+      )
+  }
+}
+
 fn decode_vep_parent_bool_literal(bundle: Node) -> Outcome<TargetBoolLiteralShape> {
   bind_outcome(
     o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_bool_literal),
@@ -3779,6 +3859,9 @@ fn decode_vep_chain_match(
           bind_outcome(
             o: decode_vep_parent_int_literal(bundle: bundle),
             f: fn(int_literal_form) {
+          bind_outcome(
+            o: decode_vep_parent_list_introduction(bundle: bundle),
+            f: fn(list_introduction_form) {
           decode_vep_chain_block_eval(
             bundle: bundle,
             binding_ref_form: binding_ref_form,
@@ -3793,7 +3876,10 @@ fn decode_vep_chain_match(
             field_access_form: field_access_form,
             match_form: match_form,
             bool_literal_form: bool_literal_form,
-            int_literal_form: int_literal_form
+            int_literal_form: int_literal_form,
+            list_introduction_form: list_introduction_form
+          )
+            }
           )
             }
           )
@@ -3824,7 +3910,8 @@ fn decode_vep_chain_block_eval(
   field_access_form: TargetFieldAccessShape,
   match_form: TargetMatchShape,
   bool_literal_form: TargetBoolLiteralShape,
-  int_literal_form: TargetIntLiteralShape
+  int_literal_form: TargetIntLiteralShape,
+  list_introduction_form: TargetListIntroductionShape
 ) -> Outcome<TargetValueExpressionProjection> {
   bind_outcome(
     o: decode_vep_parent_block_eval(bundle: bundle),
@@ -3844,6 +3931,7 @@ fn decode_vep_chain_block_eval(
           match_form: match_form,
           bool_literal_form: bool_literal_form,
           int_literal_form: int_literal_form,
+          list_introduction_form: list_introduction_form,
           block_evaluation_mode: block_evaluation_mode
         }
       )
@@ -4950,7 +5038,7 @@ fn source_atom_string(value: Node) -> SourceAtomValue {
 }
 
 fn target_model_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
@@ -5258,6 +5346,127 @@ fn target_value_expression_int_literal_to_concrete_tokens(
         o: target_value_expression_int_literal_lexeme_from_wire(wire: expr.node),
         f: fn(lexeme) {
           outcome_accepted(Cons { head: BoundToken { token_class: t, binding: lexeme }, tail: Empty })
+        }
+      )
+  }
+}
+
+// THE WIRE CARRIES THE LITERAL'S OWN SOURCE OCCURRENCE, as the integer literal's does: a target that
+// has not declared `list_introduction_form` refuses AT the authored list, so the refusal names it.
+// The elements are the wire's positional children, in order; `[]` is the atom alone.
+fn target_value_expression_list_introduction(
+  elements: List<TargetValueExpression>,
+  source: Node
+) -> TargetValueExpression {
+  TargetValueExpression {
+    kind: TargetValueExprListIntroduction,
+    node: Node {
+      kind: TypeNode {
+        connective: Atom { identity: ^target_value_expression_list_introduction_atom }
+      },
+      children: fold(
+        elements,
+        init: Empty,
+        f: fn(acc, element) {
+          list_snoc_item(xs: acc, item: Edge { label: Positional, target: element.node, declaration: NotADeclaration })
+        }
+      ),
+      occurrence_id: source.occurrence_id
+    }
+  }
+}
+
+fn target_value_expression_list_introduction_elements_from_wire(wire: Node) -> Outcome<List<TargetValueExpression>> {
+  if !all_edges_positional(children: wire.children) {
+    outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+  } else {
+    fold(
+      positional_child_target_nodes(node: wire),
+      init: Accepted { value: Empty, diagnostics: None },
+      f: fn(acc, element_wire) {
+        match acc {
+          Rejected { diagnostics: r } => acc
+          Accepted { value: elements, diagnostics: d } =>
+            bind_outcome(
+              o: target_value_expression_reify_from_wire(wire: element_wire),
+              f: fn(element) { outcome_accepted(list_snoc_item(xs: elements, item: element)) }
+            )
+        }
+      }
+    )
+  }
+}
+
+// Right fold: each element prepends [separator] ++ its tokens onto the tokens already built to its
+// right, so every token is copied once (list_append is linear in its left operand). The separator
+// before the first element is the one extra token, dropped by the match on the result.
+fn target_value_expression_list_introduction_element_tokens(
+  elements: List<TargetValueExpression>,
+  separator: Symbol,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: fold_list_right(
+      xs: elements,
+      empty: Accepted { value: Empty, diagnostics: None },
+      snoc: fn(acc, element) {
+        match acc {
+          Rejected { diagnostics: r } => acc
+          Accepted { value: rest, diagnostics: d } =>
+            bind_outcome(
+              o: target_value_expression_to_concrete_tokens(expr: element, projection: projection, catalog: catalog),
+              f: fn(element_tokens) {
+                outcome_accepted(
+                  list_append(
+                    left: Cons { head: FixedToken { token_class: separator }, tail: element_tokens },
+                    right: rest
+                  )
+                )
+              }
+            )
+        }
+      }
+    ),
+    f: fn(separated) {
+      match separated {
+        Cons { head: _, tail: element_tokens } => outcome_accepted(element_tokens)
+        Empty => outcome_accepted(Empty)
+      }
+    }
+  )
+}
+
+fn target_value_expression_list_introduction_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match projection.list_introduction_form {
+    ListIntroductionUnwired =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_list_introduction_form_unwired, node: expr.node)
+      )
+    ListIntroductionDelimited { open: open, separator: separator, close: close } =>
+      bind_outcome(
+        o: target_value_expression_list_introduction_elements_from_wire(wire: expr.node),
+        f: fn(elements) {
+          bind_outcome(
+            o: target_value_expression_list_introduction_element_tokens(
+              elements: elements,
+              separator: separator,
+              projection: projection,
+              catalog: catalog
+            ),
+            f: fn(element_tokens) {
+              outcome_accepted(
+                list_append(
+                  left: Cons { head: FixedToken { token_class: open }, tail: element_tokens },
+                  right: Cons { head: FixedToken { token_class: close }, tail: Empty }
+                )
+              )
+            }
+          )
         }
       )
   }
@@ -5927,7 +6136,7 @@ fn target_value_expr_match_arm_wire(arm: TargetValueExprMatchArmSlot) -> Node {
 
 fn target_value_expr_match_arm_edges(arms: List<TargetValueExprMatchArmSlot>) -> List<Edge> {
   fold(arms, init: Empty, f: fn(acc, arm) {
-    list_snoc_item(xs: acc, item: Edge { label: Positional, target: target_value_expr_match_arm_wire(arm: arm) })
+    list_snoc_item(xs: acc, item: Edge { label: Positional, target: target_value_expr_match_arm_wire(arm: arm), declaration: NotADeclaration })
   })
 }
 
@@ -6774,6 +6983,13 @@ fn target_value_expression_reify_from_wire(wire: Node) -> Outcome<TargetValueExp
         outcome_accepted(
           TargetValueExpression {
             kind: TargetValueExprCallableApply,
+            node: wire
+          }
+        )
+      } else if atom_id == ^target_value_expression_list_introduction_atom {
+        outcome_accepted(
+          TargetValueExpression {
+            kind: TargetValueExprListIntroduction,
             node: wire
           }
         )
@@ -8336,6 +8552,7 @@ fn target_value_expr_bool_literal_value_from_expression(
     TargetValueExprRecordConstruct => optional_absent()
     TargetValueExprFieldAccess => optional_absent()
     TargetValueExprMatch => optional_absent()
+    TargetValueExprListIntroduction => optional_absent()
   }
 }
 
@@ -8522,6 +8739,7 @@ fn target_value_expression_bool_literal_to_concrete_tokens(
     TargetValueExprRecordConstruct => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprFieldAccess => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprMatch => target_value_expression_emit_unsupported_kind(expr: expr)
+    TargetValueExprListIntroduction => target_value_expression_emit_unsupported_kind(expr: expr)
   }
 }
 
@@ -9323,6 +9541,12 @@ fn target_value_expression_to_concrete_tokens(
         projection: projection,
         catalog: catalog
       )
+    TargetValueExprListIntroduction =>
+      target_value_expression_list_introduction_to_concrete_tokens(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
     TargetValueExprSymbolToOwnedString => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprCharUnicodeScalar => target_value_expression_emit_unsupported_kind(expr: expr)
     TargetValueExprStringLiteral => target_value_expression_emit_unsupported_kind(expr: expr)
@@ -9684,6 +9908,10 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: ^target_value_expr_field_int_literal,
         target: int_literal_shape_to_node(shape: projection.int_literal_form)
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_list_introduction,
+        target: list_introduction_shape_to_node(shape: projection.list_introduction_form)
       ),
       target_model_named_edge(
         name: ^target_value_expr_field_block_eval,
@@ -10547,7 +10775,8 @@ fn target_function_signature_realization_catalog_edge(
 ) -> Edge {
   Edge {
     label: Positional,
-    target: target_function_signature_realization_to_node(row: row)
+    target: target_function_signature_realization_to_node(row: row),
+    declaration: NotADeclaration
   }
 }
 
@@ -11018,7 +11247,8 @@ fn target_type_expr_surface_edge(surface: Symbol) -> Edge {
       kind: TypeNode { connective: Atom { identity: surface } },
       children: [],
       occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
   }
 }
 
@@ -11132,7 +11362,8 @@ fn target_type_expr_kind_edge(kind: TargetTypeExprKind) -> Edge {
       },
       children: [],
       occurrence_id: OccurrenceSynthetic
-}
+},
+declaration: NotADeclaration
   }
 }
 
@@ -11143,7 +11374,7 @@ fn target_type_expr_positional_edges(children: List<Node>) -> List<Edge> {
     cons: fn(acc, child) {
       list_snoc_item(
         xs: acc,
-        item: Edge { label: Positional, target: child }
+        item: Edge { label: Positional, target: child, declaration: NotADeclaration }
       )
     }
   )
@@ -11243,7 +11474,7 @@ fn target_type_expr_field_slot_edges(fields: List<TargetTypeExprFieldSlot>) -> L
   fold(fields, init: Empty, f: fn(acc, field) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: field.label }, target: field.type_expr }
+      item: Edge { label: Authored { name: field.label }, target: field.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -11252,7 +11483,7 @@ fn target_type_expr_arrow_param_slot_edges(params: List<TargetTypeExprArrowParam
   fold(params, init: Empty, f: fn(acc, param) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: param.label }, target: param.type_expr }
+      item: Edge { label: Authored { name: param.label }, target: param.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -11261,7 +11492,7 @@ fn target_type_expr_variant_slot_edges(variants: List<TargetTypeExprVariantSlot>
   fold(variants, init: Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
-      item: Edge { label: Authored { name: variant.label }, target: variant.type_expr }
+      item: Edge { label: Authored { name: variant.label }, target: variant.type_expr, declaration: NotADeclaration }
     )
   })
 }
@@ -11675,7 +11906,8 @@ fn target_type_expr_arrow_emitted_named(
       right: Cons {
         head: Edge {
           label: Authored { name: ^target_type_expr_field_codomain },
-          target: output
+          target: output,
+          declaration: NotADeclaration
         },
         tail: Empty
       }
@@ -13900,7 +14132,8 @@ fn target_use_site_ownership_catalog_positional_edge(
 ) -> Edge {
   Edge {
     label: Positional,
-    target: target_use_site_ownership_realization_to_node(row: row)
+    target: target_use_site_ownership_realization_to_node(row: row),
+    declaration: NotADeclaration
   }
 }
 
@@ -15712,6 +15945,44 @@ fn target_project_record_construct(
   }
 }
 
+// A LIST INTRODUCTION IS RECOGNIZED BY ITS OWN READER, v2.std.list_introduction
+// list_introduction_elements_optional, the one authority the producer (body lowering) and infer
+// share, so this gate cannot disagree with them about which Transform heads a list.
+fn target_project_list_introduction(
+  arrow: Node,
+  body: Node,
+  element_nodes: List<Node>,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  bind_outcome(
+        o: fold(
+          element_nodes,
+          init: Accepted { value: Empty, diagnostics: None },
+          f: fn(acc, element_node) {
+            match acc {
+              Rejected { diagnostics: r } => acc
+              Accepted { value: elements, diagnostics: d } =>
+                bind_outcome(
+                  o: target_value_expr_project_body_subexpression(
+                    arrow: arrow,
+                    node: element_node,
+                    target: target,
+                    source_bool_form: source_bool_form,
+                    handle_transform: handle_transform
+                  ),
+                  f: fn(element) { outcome_accepted(list_snoc_item(xs: elements, item: element)) }
+                )
+            }
+          }
+        ),
+        f: fn(elements) {
+          outcome_accepted(target_value_expression_list_introduction(elements: elements, source: body))
+        }
+      )
+}
+
 fn target_value_expr_field_access_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
@@ -16300,7 +16571,18 @@ fn target_value_expr_project_body_subexpression(
           handle_transform: handle_transform
         )
       } else {
-        handle_transform(arrow, node, target)
+        match list_introduction_elements_optional(node: node) {
+          Present { value: elements } =>
+            target_project_list_introduction(
+              arrow: arrow,
+              body: node,
+              element_nodes: elements,
+              target: target,
+              source_bool_form: source_bool_form,
+              handle_transform: handle_transform
+            )
+          Absent => handle_transform(arrow, node, target)
+        }
       }
     ComputationNode { behavior: Branch } =>
       target_project_branch_bool_if_else(
@@ -16684,7 +16966,18 @@ fn target_project_arrow_body_by_kind(
             handle_transform: handle_transform
           )
         } else {
-          handle_transform(arrow, body, target)
+          match list_introduction_elements_optional(node: body) {
+            Present { value: elements } =>
+              target_project_list_introduction(
+                arrow: arrow,
+                body: body,
+                element_nodes: elements,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              )
+            Absent => handle_transform(arrow, body, target)
+          }
         }
       ComputationNode { behavior: Branch } =>
         target_project_branch_bool_if_else(

@@ -2,7 +2,7 @@ module gunbc.guarantee_stall.self_host_wet_route_receipt_lifetime_stall
 
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 // FLOOR-ROUTE-GAP RESTART (dashboard node adhoc-9d3b5efe-296). This is a stall rather than a
 // retired drop: the required floor still observes the self-host behavioral witnesses at the
@@ -28,7 +28,7 @@ data self_host_wet_route_receipt_lifetime_stall: GuaranteeStall = GuaranteeStall
   current: Mitigatable,
   ceiling: MechanicallyPreventable,
   blocker: AwaitsOneGrounding {
-    grounding: "a receipt lifecycle that binds one complete wet observation to the exact candidate and keeps production, publication, and consumption inside the declared freshness boundary without weakening that boundary",
+    grounding: GroundingUndeclared,
   },
   population: BoundedPopulation {
     members: [

@@ -169,7 +169,7 @@ test fn a_moved_resolver_module_refuses() -> Bool {
     semantic_source_digest: base.semantic_source_digest,
     source_set_digest: base.source_set_digest,
     compiler_artifact_digest: base.compiler_artifact_digest,
-    resolver_identity: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId"),
+    resolver_identity: decl_ref(module_path: "std.observation", decl_name: "AttemptOccurrenceId"),
     resolver_policy: base.resolver_policy,
     occurrence_transport_digest: base.occurrence_transport_digest,
     declaration_index_digest: base.declaration_index_digest
@@ -479,7 +479,7 @@ test fn every_identity_input_moves_the_content_address() -> Bool {
     && lbo_address_moves(other: lbo_with_artifact(d: lbo_digest(label: "cccccccccccccccc")))
     && lbo_address_moves(other: lbo_with_transport(d: lbo_digest(label: "dddddddddddddddd")))
     && lbo_address_moves(other: lbo_with_decl_index(d: lbo_digest(label: "eeeeeeeeeeeeeeee")))
-    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.observation", decl_name: "OccurrenceId")))
+    && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.observation", decl_name: "AttemptOccurrenceId")))
     && lbo_address_moves(other: lbo_with_resolver(reference: decl_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceIdAllocator")))
     && lbo_address_moves(other: lbo_with_resolver(reference: decl_field_ref(module_path: "std.occurrence_identity", decl_name: "OccurrenceId", field_name: "value")))
     && lbo_address_moves(other: lbo_with_policy(policy: NamespaceOnlyPolicy))

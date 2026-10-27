@@ -1,0 +1,3421 @@
+module gunbc.instruments.known_red_derivation
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
+import std.process { ExitSuccess, ExitFailure }
+import std.optional { Absent, Optional, Present }
+import std.logic { Bool }
+import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.decl_ref { DeclarationRef, decl_ref }
+// `list_member` is the sanctioned custom-equality membership, not `std.algebra.contains`: the seed
+// intercepts `contains` and discards its `eq` argument (declared at `std.list`'s own header, tracked by
+// `gunbc.list_membership_operation_gap`), so `contains(xs:, item:, eq:)` silently falls back to whole-
+// struct structural equality. Dedup here compares `KnownRedSubject`s whose `origin` differs between the
+// wet schedule and the roster, so that fallback never collapsed a dual-membership identity and a claim
+// enrolled AND scheduled was dispatched twice. `list_member` runs `xs.any`, which does honour its
+// predicate, so the comparison below is the one actually executed.
+import std.list { list_member }
+import std.execution_mode { ExecutionMode, Hermetic, Wet }
+import std.measure { byte_size, ByteSize }
+import std.shell_stream_capture { BoundedTail }
+import std.integer { int_to_decimal_string }
+import gunbc.cli_wire { CliWirePrintable, CliWireResponse }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemReadRefused, FilesystemReadSucceeded, filesystem_read_outcome }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.output_policy { ExpectSuccess }
+import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.rung_drop.v1_required_lanes_withdrawn { v1_required_lanes_withdrawn }
+import gunbc.instruments.host_prelude {
+  ClaimRun,
+  WitnessBinReadiness,
+  WitnessBinRefusalReason,
+  claim_batch_claims_argv,
+  // Declared rather than left to same-package resolution: this is the builder whose argv the fold's parsed
+  // stdout is matched against, so a reader of the import list should not have to guess that the dispatch and
+  // the gate share it (review 83981).
+  claim_batch_claims_argv_route,
+  gunbc_claims_readiness,
+  witness_bin_release_path
+}
+import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+import v2.workflow.floor_terminal_ledger {
+  BudgetRefused,
+  ClaimAttemptTerminal,
+  ClaimSafetyOutcome,
+  ClaimDisposition,
+  ClaimExpectation,
+  ClaimObservation,
+  ClaimTerminalRow,
+  ExpectedRed,
+  ExpectedToHold,
+  Failed,
+  HostToolUnresolvedBeforeVerdict,
+  KnownRedHeld,
+  KnownRedNowPassing,
+  LedgerBinding,
+  LedgerFinalized,
+  LedgerPublication,
+  CompletedPastSafetyLimit,
+  LedgerReconciliation,
+  NoMockResponse,
+  NotAttempted,
+  NotAttemptedAfterAbort,
+  ObservationUnrepresentable,
+  OpaqueHostCallUnbounded,
+  ObservedVerdict,
+  Panicked,
+  Passed,
+  RepositorySnapshot,
+  Returned,
+  RouteGap,
+  RuntimeErrored,
+  SafetyInterrupted,
+  SubjectUnresolvedCause,
+  TerminalLedger,
+  UnpublishedWorkingTree,
+  claim_disposition,
+  incoherent_ledger_rows,
+  ledger_is_complete
+}
+import v2.workflow.floor_route_gap { FilesystemRemoval, FloorRouteGapGround, UnpublishedMockCase }
+import v2.workflow.wet_evidence { WetScheduledClaim }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
+// THE NAME→PATH AUTHORITY, IMPORTED RATHER THAN RE-IMPLEMENTED. `module_file` is the rule,
+// `repository_storage_layout` binds it to this repository's storage policy (gunbc.source_layout), and
+// `repository_path_of_module_file` spells the repository-relative path. Re-deriving the dotted-name rule
+// here would put a second layout authority in an instrument (DESIGN 3).
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
+
+// THE KNOWN-RED LIST, DERIVED FROM RUNS THAT ACTUALLY RAN (Charter 4).
+//
+// THE QUESTION. `gunbc test known-red-derivation` prints the TYPED list of expected-to-hold claims that
+// FAIL, at the head read from the checkout it is invoked from. Until now the words naming that list
+// existed only as vocabulary: `ClaimDisposition.KnownRedHeld` and `KnownRedNowPassing`
+// (`v2.workflow.floor_terminal_ledger`) had no producer deriving either from an executed outcome. The
+// only `ClaimDisposition` any real run minted at this commit was `Unaccounted`-shaped, from the wet
+// lane's own fold, and the ledger's wire functions were called by nothing outside their own tests.
+//
+// WHY A DERIVATION AND NOT A LIST. Three things are read and nothing is transcribed:
+//   - the SUBJECTS come from mapping `local_repo_wet_schedule()` (the executing lane's one accessor, the
+//     same rows `gunbc.claim_coverage_census_live` #14368 joins for its source census — read, never
+//     enumerated a second time in-tree) and `floor_expected_red_roster()` (the single enrollment
+//     authority, DESIGN 3);
+//   - each row's EXPECTATION is derived from enrollment, not asserted: enrolled in the roster means
+//     `ExpectedRed`, otherwise `ExpectedToHold`. That is the pair the ledger exists to keep apart —
+//     "the witness answered false" and "the witness was expected to answer false" are two facts, and
+//     their conjunction is what makes a red HELD rather than merely failing;
+//   - the DISPOSITION is computed by that authority's own `claim_disposition`, on a `ClaimTerminalRow`
+//     built the way the wet lane builds it. No disposition literal is written here as a conclusion.
+// So the two classes are detectable rather than declared: an enrolled identity whose executed verdict is
+// true is a stale enrolment (`KnownRedNowPassing`) and refuses the run; an identity that fails without
+// being enrolled is an unaccounted red and refuses the run. A list of known-red names typed into this
+// file could tell neither lie — `measure()` against `measure()` is a change detector, DESIGN 5's
+// rejection — and a second roster-of-record would fork the authority, DESIGN 3's rejection.
+//
+// WHY THE WET LANE IS THE SUBJECT AND THE FLOOR IS A PRINTED GAP. No job executes the required-floor
+// population at this commit: `gunbc.rung_drop.v1_required_lanes_withdrawn` withdraws the lane that did,
+// and reviving that path would hand the corpus back to the v1 lane. So the floor is reported HERE as an
+// uncovered subject carrying its cause and the ABSENCE of a count, rather than being quietly missing from
+// a table a reader trusts. Its roster is still executed as a subject, because the roster is the
+// enrollment authority and an enrolled claim that passes is exactly the finding worth printing.
+//
+// WHAT WOULD MAKE THIS A DECORATION, AND THE ARM THAT REFUSES EACH.
+//   - SPAWN OMITTED. A run whose child never ran looks exactly like a clean empty derivation. The
+//     reconciliation joins the printed population against the owed population BY IDENTITY in BOTH
+//     directions (`LedgerReconciliation`: planned-without-terminal, terminal-without-planned,
+//     duplicated — three sets, deliberately a record and not a coproduct, so two defects that cancel in
+//     the totals cannot both hide), and a schedule with no verdict line anywhere is
+//     `LocalRepoWetExecutorNotInvoked`. Delete the spawn and the instrument goes red. That is the
+//     anti-hollow arm.
+//   - COUNTS AS CRITERIA. Completeness is `ledger_is_complete`, an identity join; row counts are printed
+//     as a CONSEQUENCE of the join, never compared to a number written in this file.
+//   - SILENT DROPS. A subject whose entry file is absent, or whose argv the harness refuses, is carried
+//     as a typed `KnownRedSubjectDefect` and printed, never filtered. A real one was found this way (a
+//     schedule row whose entry suffix pointed at a file that did not exist) and repaired in
+//     `v2.workflow.local_repo_wet_terminal` `local_repo_wet_schedule`; the arms stay live because the
+//     defect is the schedule's to grow into again, and `known_red_subject_defect_text` prints the
+//     identity that named it whenever it does.
+//   - A RECEIPT AGAINST A COMMIT IT DID NOT RUN ON. The head is read from the repository
+//     (`git.Inspect.HeadCommit`) and echoed into every printed row; it is never a parameter.
+//
+// THE SEAM, AND WHY IT IS WHERE IT IS. `known_red_fold` is PURE: head, subjects, and the verdict lines a
+// child printed go in; the derivation comes out. Nothing in it touches a service or a process.
+// `known_red_collect_at` is the only arm that spawns. That split is what makes the REDs authorable without
+// breaking a claim on a branch: a supplied verdict-line set drives the whole real fold, so a controlled
+// enrolled-red identity can be made to fail and then to pass and the two-way claim is executed rather
+// than asserted. The live run stays separate from those arms on purpose — the arms prove the join, the
+// live run reports main.
+//
+// WHAT IT IS NOT. Not a CI gate, not a skip list, not a second authority over known-red debt, and not the
+// owner of the floor's coverage: it records the floor as uncovered and cites the withdrawal. Building the
+// missing floor artifact writers is a different lane (C4-D).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ──────────────────────────────────────── envelope ────────────────────────────────────────
+//
+// THE POOLING WALL, PRICED RATHER THAN ASSERTED. Measured at head 773988269737de0a6eab891c9410f962baf6b90e
+// on a 128-core host inside a 25769803776-byte cgroup: the whole 582-claim executable population in ONE
+// pooled `claim_batch --claim-run --wet` child over `witness_layer_roots()` crossed 24 GB resident — the
+// envelope — and was killed; a 503-claim pooled child reached VmHWM 9 117 380 kB at t=330 s and was still
+// climbing when stopped. Per-entry resolve alone costs 8-12 GB and 6-8 min (the module index is 7011
+// modules and each entry's closure is typechecked). Children of 64 claims ran 529-747 s each. So the cap
+// is a chunking rule, not a comment: at most `known_red_max_claims_per_child` claims per child, children
+// SERIAL (the `gunbc.instruments.cheap_gate_pool` pattern), and never one unbounded union whose closure
+// grows with the corpus. Raising the cap is a deliberate edit, priced against the receipt above.
+data known_red_max_claims_per_child: Int = 64
+
+// THE CHILD'S RETAINED STDERR, TYPED AND ACTUALLY PAID FOR. stderr carries only the harness's OWN
+// diagnostics here — its argv refusal, its death rattle — because the verdict payload (PASS/FAIL per
+// witness) arrives on stdout and is parsed from there; a claim's failure reason is never a stderr line. So
+// the tail is a bounded diagnostic window, wide enough to hold the harness's whole refusal message (its
+// entry-path refusal names every offending --entry) without retaining a corpus of noise: the transport's
+// 16 KiB default truncates the longest refusal I have observed, and an unbounded capture would let one
+// child's crash log hold its bytes resident in the instrument host. It is handed to the capture transport
+// as a `ByteSize`, so the carrier is what the transport consumes — the width is applied, not described.
+data known_red_stderr_tail: ByteSize = byte_size(count: 65536)
+
+// THE VERDICT WORDS, IN ONE PLACE. The prefix functions below read these, the decoder's predicates
+// read the arm markers, and `known_red_print_authorities` ties both to the file that prints them -- so the
+// spelling of a verdict has exactly one author (DESIGN §3) and is checked against `claim_batch.rs` on every
+// run (review 83992).
+data known_red_word_pass: String = "PASS"
+data known_red_word_fail: String = "FAIL"
+data known_red_word_panicked: String = "PANICKED"
+// The word the transport (#14539, after gunbc's own label contract) prints for an outcome that NEVER REACHED
+// A VERDICT because the run never happened on the needed route or the group's entry never resolved: hermetic
+// route gaps and entry-resolve failures. It is a distinct word, not FAIL, so a reader of stdout can tell "the
+// claim honestly said false" from "the claim was never asked"; the instrument decodes it to the same
+// before-verdict terminals but it must be spelled from here once, like the others.
+data known_red_word_unobserved: String = "UNOBSERVED"
+
+fn known_red_pass_prefix() -> String {
+  concat(known_red_word_pass, " ")
+}
+
+fn known_red_fail_prefix() -> String {
+  concat(known_red_word_fail, " ")
+}
+
+// `PANICKED ` is a verdict line the way PASS and FAIL are: `claim_batch` prints it from its own arm
+// (`PANICKED {f} (the host unwound during evaluation: {P})`) when the host unwound, and a subject whose only
+// line is this one was ATTEMPTED and lost its way -- which is a different fact from 'printed nothing' and
+// must not collapse into it.
+fn known_red_panicked_prefix() -> String {
+  concat(known_red_word_panicked, " ")
+}
+
+// `UNOBSERVED ` is recognized the way PASS, FAIL and PANICKED are: `claim_batch` prints it (#14539) from the
+// two arms whose run never happened -- a hermetic route with no arm for the operation, and an entry that
+// failed to resolve. Those lines are verdict lines FOR THE INSTRUMENT (they must be seen, decoded, and filed
+// as the before-verdict terminals), even though their whole point is that no verdict exists. Dropping them
+// at recognition is what would make the arms dead.
+fn known_red_unobserved_prefix() -> String {
+  concat(known_red_word_unobserved, " ")
+}
+
+// The cause printed for the floor subject, spelled FROM the withdrawal row rather than invented here: the
+// row is the authority for why there is no floor execution to cite, and naming it lets a reader go check
+// instead of trusting this sentence.
+fn known_red_floor_uncovered_cause() -> String {
+  concat(
+    "no job executes the required-floor population at this commit; rung drop ",
+    concat(
+      v1_required_lanes_withdrawn.identity,
+      concat(
+        " (subject: ",
+        concat(v1_required_lanes_withdrawn.subject, "; reviving it would hand the corpus back to the v1 lane")
+      )
+    )
+  )
+}
+
+fn known_red_int_text(n: Int) -> String {
+  int_to_decimal_string(value: n)
+}
+
+// ──────────────────────────────────── vocabulary ────────────────────────────────────
+
+// THE SUBJECT POPULATIONS THIS INSTRUMENT OWES. `WetLane` is the lane it executes; `RequiredFloor` is
+// the lane it reports as uncovered with its cause. Both names are printed; only one is run.
+type KnownRedSubjectPopulation
+  = WetLane
+  | RequiredFloor
+
+fn known_red_subject_population_name(p: KnownRedSubjectPopulation) -> String {
+  match p {
+    WetLane => "WetLane"
+    RequiredFloor => "RequiredFloor"
+  }
+}
+
+// THE ROUTE A POPULATION'S EXPECTATION GOVERNS. A population is not merely a label printed on a receipt;
+// it determines the one route on which its claims may be asked, because an expectation stated for one
+// route is not an answer on another. The value is `std.execution_mode`'s own -- the axis the harness
+// parses -- rather than a boolean this module invents, so the mapping cannot silently collapse the axis's
+// third variant. `WetLane` is executed by this instrument on the live-host route; `RequiredFloor` is the
+// roster's own coverage gap, which is stated hermetically (its expectation is that the claim does NOT
+// pass when nothing host-shaped is standing behind it).
+fn known_red_subject_population_execution_mode(p: KnownRedSubjectPopulation) -> ExecutionMode {
+  match p {
+    WetLane => Wet
+    RequiredFloor => Hermetic
+  }
+}
+
+// ONE SUBJECT, FROM WHICHEVER AUTHORITY ENUMERATED IT. `entry` is carried because the child is invoked by
+// (entry, function) pair, and because a missing entry must be reported against the identity that named
+// it. The expectation is NOT a field: it is derived from enrollment (see `known_red_expectation_of`), so
+// no row can claim to be a known-red by carrying a flag.
+type KnownRedSubject {
+  identity: WitnessIdentity
+  entry: KnownRedEntryPlacement
+  function: String
+  origin: KnownRedSubjectPopulation
+}
+
+// WHERE A SUBJECT'S CLAIM FILE IS, AS THE LAYOUT RULE SAID IT IS. A coproduct and not a `String`, because
+// the alternative — encoding 'the rule could not place this name' inside the path the rule was supposed to
+// produce — makes the discriminator in-band: the absence of a file is then the only thing that distinguishes
+// 'the name has no place' from 'the file at its place is missing', so the first is printed as the second and
+// the typed cause the rule returned is thrown away. That is the §5 in-band encoding, and the earlier draft
+// of this instrument did exactly it (`"underivable:" ++ name`). Here an unplaceable name is not a path that
+// happens to be missing, it is a case with no path in it, and it is never handed to a child as argv.
+type KnownRedEntryPlacement
+  = Placed { path: String }
+  | Underivable { name: String, cause: String }
+
+// A subject this instrument is required to execute and could not prepare, as a typed reason. The value of
+// the type is the difference between "this identity is not in the population" and "this identity was
+// dropped on the way to the child" — the second is the bug class this file exists to make loud.
+type KnownRedSubjectDefect
+  = WetEntryFileAbsent { identity: WitnessIdentity, entry: String }
+  | RosterNameUnderivable { identity: WitnessIdentity, name: String, cause: String }
+  | ClaimArgvRefused { identity: WitnessIdentity, entry: String, function: String }
+
+// ONE PRINTED ROW. `head` is carried IN the row rather than only in a banner because a disposition is
+// attributable to a commit or it is nothing: a known-red list without its SHA is prose. `disposition` is
+// what the authority's projection said, not what this file hoped.
+// THE ROW CARRIES THE TERMINAL, NOT 'DID A LINE COME BACK'. The field here used to be
+// `Optional<ClaimObservation>`, which answers one question — was a readable Bool printed — and collapses
+// every arm of `ClaimOutcome` that is not a returned Bool into the SAME `Absent` as 'no line at all'. That
+// collapse is what let a claim which CRASHED before deciding be credited as a known red which FAILED: the
+// fold saw a line, and a line was enough. `ClaimAttemptTerminal` is the ledger module's own union; storing
+// it means `claim_disposition` — which already distinguishes all seven arms — is the only thing that
+// decides a disposition, and 'printed a line' stays separately expressible via `known_red_no_line_cause`.
+type KnownRedDerivationRow {
+  identity: WitnessIdentity
+  head: String
+  entry: KnownRedEntryPlacement
+  origin: KnownRedSubjectPopulation
+  expectation: ClaimExpectation
+  terminal: ClaimAttemptTerminal
+  disposition: ClaimDisposition
+}
+
+// THE ONE PLACE that spells 'no child printed a verdict line for this identity'. Comparing a terminal's
+// `halted_by` against this is how `known_red_row_was_observed` tells a genuine not-attempted apart from a
+// printed terminal, so the cause string has exactly one author.
+data known_red_no_line_cause: String = "no verdict line from any child"
+
+// THE ONE PLACE that spells 'a line came back and no arm of the decoder owns its shape'. It is a DIFFERENT
+// fact from 'no line came back' and must never share a cause string with it: the first says the harness
+// never spoke about this claim, the second says the harness spoke in a way this file does not understand --
+// which is a `claim_batch` print arm that drifted from the decoder, and the thing to fix. Both are
+// `NotAttempted`, because neither is a verdict, and `claim_disposition` therefore refuses to project a
+// Held/Failed/Passed from either.
+data known_red_undecodable_cause: String = "printed line decoded to no claim arm" 
+
+// THE TWO ABORTED ARMS, DISTINCT FROM EACH OTHER (review 83992). Both are `NotAttempted` — the ledger's
+// arm for 'the claim answered nothing' — and the seed groups them (`expected_red_arm` places
+// `Panicked | NotAttempted` in `Aborted`), so they share an arm legitimately. What they may NOT share is
+// the cause: 'the harness refused to attempt this behind a host it never mints' and 'the harness could
+// not resolve the entry the group was built from' name different things to fix, and both previously
+// received the WHOLE LINE as `halted_by`, which filed an unlocated blob where the seed's own doc says the
+// field holds the identity that stopped the line (`cli_run.rs`, `ClaimOutcome::NotAttempted`).
+data known_red_entry_resolve_cause: String = "entry resolve failed"
+
+// THE PREFIX THAT MAKES THE ENTRY CAUSE DISTINCT at every comparison site. A row whose `halted_by` starts
+// with this was aborted by the resolver; a row whose `halted_by` names an identity was aborted behind a
+// host. No other cause in this file begins with these words, which the witness asserts.
+fn known_red_entry_resolve_halted_by(entry: String) -> String {
+  concat(known_red_entry_resolve_cause, ": ", entry)
+}
+
+
+fn known_red_row_qualified(r: KnownRedDerivationRow) -> String {
+  witness_identity_qualified_name(identity: r.identity)
+}
+
+// THE ONLY TWO DISPOSITIONS THIS INSTRUMENT PRINTS AS FINDINGS, named by the ledger rather than by
+// here. Everything else the projection can return — a panic, a runtime error, an unreadable observation,
+// an attempt that never happened — is printed under its own name and is never folded into a failure: a
+// claim that never executed did not fail.
+fn known_red_is_held(d: ClaimDisposition) -> Bool {
+  d == KnownRedHeld
+}
+
+fn known_red_is_stale(d: ClaimDisposition) -> Bool {
+  d == KnownRedNowPassing
+}
+
+// ──────────────────────────── the populations, read from their authorities ────────────────────────────
+
+fn known_red_subject_qualified(s: KnownRedSubject) -> String {
+  witness_identity_qualified_name(identity: s.identity)
+}
+
+// THE WET POPULATION, READ. One map over the accessor's own rows. No identity, no entry path, and no
+// count is written here, and the row shape is the accessor's own `WetScheduledClaim`.
+fn known_red_wet_subjects() -> List<KnownRedSubject> {
+  map(
+    local_repo_wet_schedule(),
+    row =>
+      KnownRedSubject {
+        identity: row.identity,
+        entry: Placed { path: row.entry },
+        function: row.function,
+        origin: WetLane
+      }
+  )
+}
+
+// THE ENROLLED POPULATION, READ THROUGH THE ONE AUTHORITY. `floor_expected_red` is the single roster of
+// known-red claims (DESIGN 3: a second roster would fork it), and it names each entry by qualified
+// identity, so the split at the LAST '.' recovers the (module, function) pair `WitnessIdentity` carries.
+// A roster identity's claim lives in `src/<module_path with dots as slashes>.dag` — the same rule 502 of
+// the 503 schedule rows satisfy exactly, so applying it here adopts the corpus's convention instead of
+// inventing a second one.
+fn known_red_roster_subjects() -> List<KnownRedSubject> {
+  map(
+    floor_expected_red_roster(),
+    q =>
+      KnownRedSubject {
+        identity: known_red_identity_of(q),
+        entry: known_red_roster_entry(module_path: known_red_parts(q).module_path),
+        function: known_red_function_of(q),
+        origin: RequiredFloor
+      }
+  )
+}
+
+type KnownRedQualifiedNameParts {
+  module_path: String
+  function: String
+}
+
+fn known_red_parts(q: String) -> KnownRedQualifiedNameParts {
+  known_red_parts_step(parts: split(s: q, delimiter: "."), acc: "")
+}
+
+// Accumulate the module path and cut at the last dot. Written as an explicit step because the stdlib's
+// split is the only text tool this file reaches for, and the function name must be the WHOLE remainder
+// after the final dot — no prefix guessing, no lookup table.
+fn known_red_parts_step(parts: List<String>, acc: String) -> KnownRedQualifiedNameParts {
+  match parts {
+    Empty => KnownRedQualifiedNameParts { module_path: acc, function: "" }
+    Cons { head: h, tail: t } =>
+      match t {
+        Empty => KnownRedQualifiedNameParts { module_path: acc, function: h }
+        Cons { head: _, tail: _ } => known_red_parts_step(parts: t, acc: known_red_dotted(left: acc, right: h))
+      }
+  }
+}
+
+fn known_red_dotted(left: String, right: String) -> String {
+  if left == "" {
+    right
+  } else {
+    concat(left, concat(".", right))
+  }
+}
+
+fn known_red_module_of(q: String) -> String {
+  known_red_parts(q).module_path
+}
+
+fn known_red_function_of(q: String) -> String {
+  known_red_parts(q).function
+}
+
+fn known_red_identity_of(q: String) -> WitnessIdentity {
+  WitnessIdentity { module_path: known_red_module_of(q), function: known_red_function_of(q) }
+}
+
+// THE ENTRY A ROSTER ROW POINTS AT, DERIVED BY THE ONE AUTHORITY THAT OWNS THE NAME→PATH RULE.
+// `floor_expected_red` records a qualified NAME and no path (its own header: 'no file paths in the data').
+// An earlier draft of this instrument probed the witness roots for 'the first root that holds it', which is
+// a second, guessing authority: it can match a wrong file (a stale `test.claim.foo` left in the other tree
+// would be executed and reported as the roster's subject), and it made the answer depend on filesystem
+// accident rather than on the policy. The repository's storage policy is `gunbc.source_layout` (module
+// `a.b.c` lives at `<root(a)>/b/c.dag`, with the `v2` namespace bound to src/v2 and elided, everything else
+// to dag/), and the rule that reads those rows is `v2.compiler.source_authority` `module_file`, bound to
+// the tree directories by `v2.cli.repository_layout` — the adapter that exists for exactly this meeting of
+// the two vocabularies. This instrument therefore ASKS and never guesses: the derived path is what the
+// subject carries, and when the filesystem says that path does not exist the subject is carried as
+// `WetEntryFileAbsent`. Absence is a finding about the roster, not a licence to try a different path.
+fn known_red_roster_entry(module_path: String) -> KnownRedEntryPlacement {
+  known_red_derived_entry(name: module_path)
+}
+
+fn known_red_derived_entry(name: String) -> KnownRedEntryPlacement {
+  match module_file(layout: repository_storage_layout(), name: name) {
+    ModuleFileDerived { file: f } => Placed { path: repository_path_of_module_file(file: f) }
+    ModuleNameUnderivable { name: n, cause: c } => known_red_placement_underivable(name: n, cause: c)
+  }
+}
+
+// THE SUBJECTS A CHILD MAY BE ASKED TO RUN -- the single gateway from the owed population into the dispatch
+// path. This is a derivation, not a filter the author controls: the harness's own argv builder refuses an
+// ENTIRE batch when any --entry does not exist (its message: '... which does not exist; refusing'). So a
+// defective identity is carried as owed-and-defective and never handed over -- and that is only honest if
+// the run SAYS SO, which is what `DispatchedPopulationNotComplete` is for: every well-formed subject must
+// appear in exactly one child's claims, or the run quietly asked for less than it owed.
+//
+// A SUBJECT THE DISPATCH PATH IS ALLOWED TO SEE. The previous draft projected an unplaced entry to `""`
+// and let that string travel into the packer, the argv builder, and the 'was it asked' join — which made
+// the unplaced case writable again, exactly the in-band encoding the type was introduced to prevent (an
+// `--entry ""` reaching the harness, or a caller skipping a filter, would have quietly revived it). There is
+// no extractor from a placement to a path any more. A path exists only inside this record, and the ONLY
+// producer of one is `known_red_dispatchable`: it matches on the placement, and the `Underivable` arm
+// returns nothing. Packing, argv, and the dispatched join below therefore cannot be handed an unplaced
+// subject — not 'are checked so they aren't', but 'the value does not exist to hand them'.
+type KnownRedPlacedSubject {
+  identity: WitnessIdentity
+  path: String
+  function: String
+  // THE LANE THAT OWES THIS SUBJECT, carried through placement so the dispatch can key the ROUTE by it.
+  // `origin` is decided by which population first claims the identity (the wet schedule's row, or the
+  // `floor_expected_red` roster) and is preserved by the identity dedup; a subject's expectation is
+  // governed by exactly one roster, and each roster governs one route, so the lane — not a fixed flag —
+  // decides whether the child is asked wet or hermetic.
+  lane: KnownRedSubjectPopulation
+}
+
+fn known_red_dispatchable(subjects: List<KnownRedSubject>) -> List<KnownRedPlacedSubject> {
+  fold(
+    xs: subjects,
+    init: [],
+    f: (acc, s) =>
+      if !known_red_is_well_formed(subject: s) {
+        acc
+      } else {
+        match s.entry {
+          Placed { path: p } =>
+            list_snoc_item(
+              xs: acc,
+              item: KnownRedPlacedSubject { identity: s.identity, path: p, function: s.function, lane: s.origin }
+            )
+          Underivable { name: _, cause: _ } => acc
+        }
+      }
+  )
+}
+
+// THE IDENTITY A DISPATCHED CHILD WAS ASKED ABOUT, keyed on the identity rather than on a string claim that
+// might coincidentally match: the reconciliation's owed-but-never-dispatched check asks whether this
+// identity appears among the claims a child actually carried.
+fn known_red_placed_identity_claim(placed: KnownRedPlacedSubject) -> ClaimRun {
+  ClaimRun { entry: placed.path, function: placed.function }
+}
+
+fn known_red_placement_underivable(name: String, cause: String) -> KnownRedEntryPlacement {
+  Underivable { name: name, cause: cause }
+}
+
+// WHAT THE PRINTED LIST SAYS WHERE THE ENTRY WOULD HAVE GONE. The unplaced case prints the authority's OWN
+// cause text: the point of the coproduct is that the cause survives to the row, so a reader of the list can
+// tell 'this identity has a name the layout rule cannot place' from 'the file at its place is missing'
+// without consulting this file's source.
+fn known_red_entry_print(entry: KnownRedEntryPlacement) -> String {
+  match entry {
+    Placed { path: p } => p
+    Underivable { name: n, cause: c } => concat("<name not placeable: ", concat(n, concat(" -- ", concat(c, ">"))))
+  }
+}
+
+// THE POPULATION THE INSTRUMENT OWES: the union of what the executing lane schedules and what the roster
+// enrols, de-duplicated BY IDENTITY. The two populations are disjoint today; that is an outcome of the
+// join rather than an assumption baked into the code, and if the roster ever enrols a scheduled claim the
+// union collapses to one row for it rather than two dispositions.
+fn known_red_subjects() -> List<KnownRedSubject> {
+  known_red_dedup(rest: concat(known_red_wet_subjects(), known_red_roster_subjects()), seen: [])
+}
+
+fn known_red_same_identity(a: WitnessIdentity, b: WitnessIdentity) -> Bool {
+  a.module_path == b.module_path && a.function == b.function
+}
+
+// MEMBERSHIP ON IDENTITY, NOT ON THE WHOLE SUBJECT. The two populations carry the SAME identity with
+// DIFFERENT `origin` (a claim both wet-scheduled and enrolled appears once per source), so the collapse
+// test must compare `identity` only. It goes through `list_member` deliberately: the `contains` here would
+// take an `eq` the seed discards, leaving structural equality over `KnownRedSubject` — which includes
+// `origin` — and so it would keep both copies and dispatch the claim twice. That is the fleet's
+// `duplicated 7`: the seven Group-C identities that are both scheduled and enrolled. `list_member` runs
+// `xs.any`, whose predicate is honoured, so the comparison that executes is the one written here.
+fn known_red_seen(seen: List<KnownRedSubject>, s: KnownRedSubject) -> Bool {
+  list_member(xs: seen, x: s, eq: fn(a, b) { known_red_same_identity(a: a.identity, b: b.identity) })
+}
+
+fn known_red_dedup(rest: List<KnownRedSubject>, seen: List<KnownRedSubject>) -> List<KnownRedSubject> {
+  match rest {
+    Empty => seen
+    Cons { head: h, tail: t } =>
+      if known_red_seen(seen: seen, s: h) {
+        known_red_dedup(rest: t, seen: seen)
+      } else {
+        known_red_dedup(rest: t, seen: list_snoc_item(xs: seen, item: h))
+      }
+  }
+}
+
+// ENROLLMENT IS A LOOKUP INTO THE AUTHORITY. Nothing in this file can make a row a known-red: only the
+// roster carrying the identity's qualified name can, and that lookup is what sets the expectation.
+fn known_red_is_enrolled(s: KnownRedSubject) -> Bool {
+  contains(
+    xs: floor_expected_red_roster(),
+    item: known_red_subject_qualified(s: s),
+    eq: fn(a, b) { a == b }
+  )
+}
+
+// THE EXPECTATION, DERIVED. Enrolled means the authority has declared this identity a known-red, which is
+// the ledger's `ExpectedRed`; unenrolled is `ExpectedToHold`. Feeding `claim_disposition` the pair
+// (expectation, observed verdict) is what produces `KnownRedHeld` / `KnownRedNowPassing` — this file
+// never writes either conclusion, it only supplies the two inputs the authority requires.
+fn known_red_expectation_of(s: KnownRedSubject) -> ClaimExpectation {
+  if known_red_is_enrolled(s: s) {
+    ExpectedRed
+  } else {
+    ExpectedToHold
+  }
+}
+
+// ─────────────────────────── the executed children (the only arm that spawns) ───────────────────────────
+
+// ONE CHILD'S OUTCOME, CARRIED NOT ASSERTED. This is a COPRODUCT, not a record with a flag: a child that
+// never started cannot spell `exit_code`, `stdout` or `stderr` at all, so the fabricated success value a
+// boolean-tagged record would have to carry (exit 0 for a process that never existed) is unwritable here
+// rather than merely unrecommended — DESIGN 5's correctness by construction. `stdout` is kept verbatim
+// because the verdict parse is a function of it; a parse that could not be pointed at what the child
+// printed would be a transcription with extra steps. `exit_code` is read, not decoration: a child that
+// exited non-zero and printed no verdict lines is its own refusal (see `ChildExitedNonzeroWithoutVerdicts`).
+type KnownRedChildRun
+  = Invoked {
+      claims: List<ClaimRun>,
+      exit_code: Int,
+      stdout: String,
+      stderr: String
+    }
+  | NotStarted {
+      claims: List<ClaimRun>,
+      cause: String
+    }
+
+// THE CHUNKING WALL IN CODE, CUT ON ENTRY BOUNDARIES. Two constraints, and the second is why this is not
+// a `take(cap)` over the subject list: (a) no child carries more claims than the envelope above can pay
+// for, so the run never becomes one unbounded union whose closure grows with the corpus; and (b) an
+// ENTRY IS NEVER SPLIT ACROSS CHILDREN, because claim_batch re-derives a whole module closure for every
+// --entry it is handed — a split entry pays that resolve once per child that carries it. The positional
+// cut this replaces split 8 of the 132 entries the schedule owes, re-paying eight full resolves per run
+// for no reason but the shape of the loop. Children still run serially: each is a cold process, and
+// per-child cost is the line item that killed the pooled run.
+//
+// The cap is a packing wall, NOT a truncation: a single entry owning more claims than the cap gets its own
+// child rather than being cut (cutting it would re-pay exactly the resolve the grouping exists to avoid).
+// No entry in the schedule owes that many at this commit, and the run prints its largest child so the
+// number is observed, never transcribed.
+// THE CHUNKING, AND THE ROUTE EACH CHUNK RUNS ON. `lane` travels with the chunk because the route is a
+// property of the CHILD, not of an individual claim: `claim_batch` takes one `--wet` flag for a whole
+// invocation, so every claim a child runs must be on the route that child was given. Keying the entry
+// groups by `(entry, lane)` — not by `entry` alone — makes that a structural fact: the two populations can
+// never be packed into one child, so a wet-schedule claim and a roster-only claim that happen to resolve to
+// the same file cannot drag each other onto the wrong route. (Measured: at the current tree no entry is
+// claimed by both populations, so this splits nothing today; the key is the invariant, not an optimization.)
+fn known_red_chunks(placed: List<KnownRedPlacedSubject>) -> List<KnownRedChildPlan> {
+  known_red_pack_groups(
+    groups: known_red_entry_groups(placed: placed),
+    current: [],
+    current_lane: WetLane,
+    out: []
+  )
+}
+
+// ALL OF ONE ENTRY'S CLAIMS ON ONE ROUTE, TOGETHER, in the order the lane owes them. The entry is the unit
+// of resolution and the lane is the unit of route, so together they are the unit of packing.
+type KnownRedEntryGroup {
+  entry: String
+  lane: KnownRedSubjectPopulation
+  claims: List<ClaimRun>
+}
+
+// ONE CHILD'S WORK: a run's worth of claims, and the route that run is asked on. The route is carried next
+// to the claims precisely so it cannot be decided later, from a claim the packer no longer has in hand.
+type KnownRedChildPlan {
+  lane: KnownRedSubjectPopulation
+  claims: List<ClaimRun>
+}
+
+fn known_red_entry_groups(placed: List<KnownRedPlacedSubject>) -> List<KnownRedEntryGroup> {
+  fold(xs: placed, init: [], f: (acc, x) => known_red_group_add(groups: acc, placed_subject: x))
+}
+
+fn known_red_group_add(groups: List<KnownRedEntryGroup>, placed_subject: KnownRedPlacedSubject) -> List<KnownRedEntryGroup> {
+  // A FIELD ACCESS, NOT A PROJECTION FROM A PLACEMENT: this function cannot be handed an unplaced subject
+  // at all, because `KnownRedPlacedSubject` is only produced by `known_red_dispatchable`, whose
+  // `Underivable` arm adds nothing. So there is no empty-string entry that could be packed, and no
+  // `--entry ""` that could reach the harness.
+  let path = placed_subject.path
+  let lane = placed_subject.lane
+  let claim = ClaimRun { entry: path, function: placed_subject.function }
+  if known_red_has_entry(groups: groups, entry: path, lane: lane) {
+    map(
+      groups,
+      g =>
+        if g.entry == path && g.lane == lane {
+          KnownRedEntryGroup { entry: g.entry, lane: g.lane, claims: list_snoc_item(xs: g.claims, item: claim) }
+        } else {
+          g
+        }
+    )
+  } else {
+    list_snoc_item(xs: groups, item: KnownRedEntryGroup { entry: path, lane: lane, claims: [claim] })
+  }
+}
+
+fn known_red_has_entry(groups: List<KnownRedEntryGroup>, entry: String, lane: KnownRedSubjectPopulation) -> Bool {
+  any(xs: groups, predicate: fn(g) { g.entry == entry && g.lane == lane })
+}
+
+fn known_red_pack_groups(
+  groups: List<KnownRedEntryGroup>,
+  current: List<ClaimRun>,
+  current_lane: KnownRedSubjectPopulation,
+  out: List<KnownRedChildPlan>
+) -> List<KnownRedChildPlan> {
+  match groups {
+    Empty =>
+      if length(xs: current) > 0 {
+        list_snoc_item(xs: out, item: KnownRedChildPlan { lane: current_lane, claims: current })
+      } else {
+        out
+      }
+    Cons { head: g, tail: t } =>
+      if length(xs: current) > 0
+        && (g.lane != current_lane
+          || length(xs: current) + length(xs: g.claims) > known_red_max_claims_per_child
+          || known_red_child_has_name_clash(current: current, incoming: g.claims)) {
+        known_red_pack_groups(
+          groups: t,
+          current: g.claims,
+          current_lane: g.lane,
+          out: list_snoc_item(xs: out, item: KnownRedChildPlan { lane: current_lane, claims: current })
+        )
+      } else if length(xs: current) == 0 {
+        // FRESH START TAKES THE GROUP'S OWN LANE. `known_red_chunks` seeds `current_lane` at `WetLane` only
+        // because the fold needs some value before the first group is seen; it is NOT a default route. On an
+        // empty accumulator the child being begun belongs to THIS group, so its route is `g.lane` — a
+        // roster-only group arriving first must not inherit the `WetLane` seed and be asked `--wet`.
+        known_red_pack_groups(
+          groups: t,
+          current: g.claims,
+          current_lane: g.lane,
+          out: out
+        )
+      } else {
+        known_red_pack_groups(groups: t, current: concat(current, g.claims), current_lane: current_lane, out: out)
+      }
+  }
+}
+
+// THE COST SHAPE THE RUN OBSERVES OF ITSELF, printed so the envelope claim above can be checked against a
+// receipt instead of a promise: how many children, and how large the largest one got. Both are read off
+// the chunks, never written down.
+fn known_red_largest_child_claims(placed: List<KnownRedPlacedSubject>) -> Int {
+  fold(
+    xs: known_red_chunks(placed: placed),
+    init: 0,
+    f: (acc, c) => if length(xs: c.claims) > acc { length(xs: c.claims) } else { acc }
+  )
+}
+
+fn known_red_entries_owed(placed: List<KnownRedPlacedSubject>) -> Int {
+  length(xs: known_red_entry_groups(placed: placed))
+}
+
+// THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the gate: a binary that is
+// unenrolled, unbuilt, absent, empty, or not executable is a refusal the caller can NAME, not a child that
+// silently never started. `witness_bin_release_path` is the same path the gate checked, and
+// `claim_batch_claims_argv_route` is the same builder the gate's pooled call uses, so what is parsed below
+// is exactly what was executed and the receipt cannot be filed against a different binary. THE ROUTE IS THE
+// PLAN'S, NOT THE BUILDER'S DEFAULT: the wet lane is asked `--wet`, the `floor_expected_red` roster's own
+// subjects on the hermetic route (the roster's governing route), so no subject is ever run on a route its
+// expectation does not govern. `Invoked` still carries only the claims, because verdict matching is by
+// `(entry, function)` and the lane was the spawn-time decision it no longer needs.
+fn known_red_run_child(root: String, plan: KnownRedChildPlan) -> KnownRedChildRun {
+  let result = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "claim_batch"),
+    args: claim_batch_claims_argv_route(
+      source_roots: witness_layer_roots(),
+      claims: plan.claims,
+      mode: known_red_subject_population_execution_mode(p: plan.lane)
+    ),
+    stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
+  )
+  Invoked {
+    claims: plan.claims,
+    exit_code: result.exit_code,
+    stdout: result.stdout,
+    // THE TRUNCATION FLAG IS SPOKEN, NOT DISCARDED. A cause text printed as if it were the harness's whole
+    // message would misrepresent the evidence when the tail was cut, so the fact travels with the text.
+    stderr: known_red_stderr_text(
+      text: result.stderr,
+      truncated: result.stderr_truncated,
+      total: result.stderr_total_bytes
+    )
+  }
+}
+
+fn known_red_stderr_text(text: String, truncated: Bool, total: Int) -> String {
+  if truncated {
+    concat(text, concat(" …[stderr truncated by the capture policy; ",
+      concat(known_red_int_text(n: total), " bytes total]")))
+  } else {
+    text
+  }
+}
+
+// A CHILD THAT COULD NOT BE STARTED IS CARRIED AS ONE, with its refusal text and nothing else, so the
+// absence reaches the reconciliation instead of becoming an empty list that reads as a clean run. It has
+// no exit code to report, and the type is what makes that say-so impossible.
+fn known_red_uninvoked_child(claims: List<ClaimRun>, cause: String) -> KnownRedChildRun {
+  NotStarted { claims: claims, cause: cause }
+}
+
+fn known_red_collect_at(root: String, placed: List<KnownRedPlacedSubject>) -> List<KnownRedChildRun> {
+  let chunks = known_red_chunks(placed: placed)
+  let readiness = gunbc_claims_readiness()
+  if known_red_readiness_is_ready(r: readiness) {
+    map(chunks, c => known_red_run_child(root: root, plan: c))
+  } else {
+    map(
+      chunks,
+      c =>
+        known_red_uninvoked_child(
+          claims: c.claims,
+          cause: concat("witness binary refused: ", known_red_readiness_reason_name(r: readiness))
+        )
+    )
+  }
+}
+
+// THE READINESS DISCRIMINATION, spelled rather than swallowed. `WitnessBinReadiness` is the host
+// prelude's own sum; the refusal is named so a printed cause can be traced to a gate rather than to a
+// guess about why nothing ran.
+fn known_red_readiness_is_ready(r: WitnessBinReadiness) -> Bool {
+  match r {
+    WitnessBinReady { path: _ } => true
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+  }
+}
+
+fn known_red_readiness_reason_name(r: WitnessBinReadiness) -> String {
+  match r {
+    WitnessBinReady { path: p } => concat("ready at ", p)
+    WitnessBinRefused { bin_name: b, path: p, reason: reason } =>
+      concat(
+        b,
+        concat(
+          " at ",
+          concat(
+            p,
+            concat(": ", known_red_refusal_reason_name(reason: reason))
+          )
+        )
+      )
+  }
+}
+
+fn known_red_refusal_reason_name(reason: WitnessBinRefusalReason) -> String {
+  match reason {
+    WitnessBinNotEnrolled => "not-enrolled"
+    WitnessBinBuildFailed => "build-failed"
+    WitnessBinArtifactAbsent => "artifact-absent"
+    WitnessBinArtifactNotExecutable => "artifact-not-executable"
+    WitnessBinArtifactEmpty => "artifact-empty"
+  }
+}
+
+// ─────────────────────────────────── the verdict parse ───────────────────────────────────
+
+// The lines `claim_batch` prints per claim are `PASS <function>` and `FAIL <function> [cause]`. Matching
+// is on the exact prefix AND the whole first token after it: no substring match, because a claim whose
+// name extends another's must never inherit its verdict.
+// EVERY LINE THE TRANSPORT PRINTED AS A CLAIM OUTCOME, kept WITH ITS DUPLICATES.
+//
+// TWO THINGS THIS DOES THAT 'FILTER THE FAIL LINES' DID NOT. It keeps `PANICKED`: the transport prints that
+// line from its own arm, the filter dropped it, and so a claim that unwound the host was invisible rather
+// than being the distinct terminal the ledger has an arm for. And it does NOT deduplicate — this list is the
+// only witness to how many times a child answered about one claim, and the join is where multiplicity is
+// decided. Collapsing here is what made a child that answered twice indistinguishable from one that answered
+// once (so `terminal_duplicated` could never fire), and made a line printed about a claim nobody enrolled
+// simply absent from the universe of things checked.
+fn known_red_verdict_lines(stdout: String) -> List<String> {
+  filter(
+    xs: split(s: stdout, delimiter: "\n"),
+    predicate: fn(l) {
+      starts_with(s: l, prefix: known_red_pass_prefix())
+        || starts_with(s: l, prefix: known_red_fail_prefix())
+        || starts_with(s: l, prefix: known_red_panicked_prefix())
+        || starts_with(s: l, prefix: known_red_unobserved_prefix())
+    }
+  )
+}
+
+// A `FAIL` FOR THIS CLAIM, WITH ONE EXCLUSION THAT IS THE WHOLE POINT: the harness also prints
+// `FAIL <fn> (…)` for outcomes in which the claim NEVER REACHED ITS SUBJECT — a hermetic route with no arm
+// for the operation it needs, an entry that failed to resolve, a host tool that could not be grounded.
+// Those lines say "this is a route gap and not a verdict" in the harness's own words
+// (`src/v1/stage0/src/bin/claim_batch.rs`), and counting one as an observed false would let the instrument
+// report a claim it never evaluated as a HELD known-red — a fabricated verdict, the exact defect class this
+// module exists to refuse. A never-reached line is therefore not a fail for the claim: the route gap and the
+// entry-resolve go to their before-verdict terminals (`RouteGap`, `NotAttempted`), which the ledger files as
+// no-observation, never as a held red. The genuinely-evaluated falses keep their meaning: bare `FAIL <fn>`,
+// and `FAIL <fn> (returned ProcessExit::ExitFailure, code N: <reason>)`, which is how a claim that ran and
+// honestly refused prints (its reason channel is load-bearing for the wet real-execution reds). Since #14539
+// the transport prints the route gap and the entry resolve under a distinct word, `UNOBSERVED`, not `FAIL`;
+// the decoder recognises that word and dispatches its bracketed tail through the SAME body classifier, so the
+// two arms stay live rather than going dead-by-not-matching. A bare `UNOBSERVED <fn>` with no bracketed tail
+// (the subject-unresolved print, whose harness line is not one of this instrument's classification arms) is a
+// no-observation and stays `Absent`.
+// THE VERDICT LINE, DECODED INTO THE LEDGER'S OWN TERMINAL — NOT INTO 'DID IT FAIL'.
+//
+// WHY THIS REPLACED A BOOLEAN. The reader here used to ask whether a line existed for a function and, if
+// one did, whether it said FAIL. `claim_batch` prints one line per claim from a match over NINE
+// `ClaimOutcome` arms (`src/v1/stage0/src/bin/claim_batch.rs`), and only two of them are verdicts. Under
+// the old reader a runtime error, a panic, a non-Bool return, a budget refusal, an unresolved host tool and
+// a not-attempted report each produced a `FAIL <fn> (...)` line, each counted as an observed false, and —
+// for an enrolled identity — each printed as a HELD KNOWN RED. A claim that died before deciding was
+// therefore credited as the known red doing its job. `claim_disposition` already separates those outcomes
+// into `RuntimeErroredBeforeVerdict`, `PanickedBeforeVerdict`, `ObservationUnreadableBeforeVerdict`, … with
+// the same 'no observation' exit contract; the distinction was being destroyed at the first read.
+//
+// THE AUTHORITY FOR EVERY FORM IS THE TRANSPORT ITSELF, and the mapping mirrors `expected_red_arm` in
+// `src/v1/stage0/src/cli_run.rs` — the seed's own interpretation of the same print — so instrument and
+// seed cannot drift on what a line means. The forms, verbatim from the transport:
+//   PASS <f>                                                              Returned { ObservedVerdict true }
+//   FAIL <f>                                                              Returned { ObservedVerdict false }
+//   FAIL <f> (returned ProcessExit::ExitFailure, code C: R)               Returned { ObservedVerdict false }
+//   FAIL <f> (returned `G`, not Bool; --claim-run entries must return Bool)
+//                                                                         Returned { ObservationUnrepresentable }
+//   FAIL <f> (runtime error [T]: M)                                       RuntimeErrored { message }
+//   PANICKED <f> (the host unwound during evaluation: P)                  Panicked { payload }
+//   FAIL <f> (reported as not-attempted behind H, which this path never mints)
+//                                                                         NotAttempted { halted_by }
+//   FAIL <f> (host tool unresolved: "N" (probed: P))                      HostToolUnresolved { name, probed }
+//   UNOBSERVED <f> (hermetic route has no arm for OP: L — ... not a verdict)  RouteGap { operation, ground }
+//   FAIL <f> (<k> budget <B>ms EXCEEDED; cost=...)                        BudgetRefused { safety }
+//   UNOBSERVED <f> (entry resolve failed: E)                              NotAttempted { halted_by }
+//
+// THE WORDING EACH ARM PRINTS, IN ONE PLACE, CHECKED AGAINST THE FILE THAT PRINTS IT (review 83992).
+//
+// This instrument used to hold private copies of `claim_batch`'s phrasing: the decoder keyed on strings
+// that only `src/v1/stage0/src/bin/claim_batch.rs` was authoritative for, and nothing linked the two. That
+// is DESIGN §6's "a second path beside a modeled route" — the harness's wording had a second, undeclared
+// description. Two things change, and they change together:
+//
+//   (1) each dispatch marker is a `data` constant below, read by the predicate that keys on it AND by the
+//       table the run checks, so the string has exactly one author (§3); and
+//   (2) the run reads the two Rust files through the modeled `Filesystem.Read` route (readonly, a
+//       committed checkout input, so it is a real read in hermetic mode too) and refuses with exit 2 if
+//       any marker has moved out of the file that is supposed to print it.
+//
+// So a reworded print arm stops the run with the marker attached rather than silently reclassifying claims
+// — the same fail-closed direction as `Absent`, now applied to the wording itself and not only to a whole
+// unrecognized line. The generalization (a typed outcome wire from `claim_batch` through `gunbc.cli_wire`,
+// which would delete this decoder) is declared, with its trigger, in
+// `known_red_transport_decoder_dissolution` at the foot of this section.
+data known_red_marker_exit_failure: String = "(returned ProcessExit::ExitFailure, code "
+data known_red_marker_not_bool: String = "(returned `"
+data known_red_marker_not_bool_tail: String = "not Bool; --claim-run entries must return Bool)"
+data known_red_marker_runtime_error: String = "(runtime error ["
+data known_red_marker_panicked: String = "(the host unwound during evaluation: "
+data known_red_marker_not_attempted: String = "(reported as not-attempted behind "
+data known_red_marker_not_attempted_tail: String = ", which this path never mints"
+data known_red_marker_host_tool: String = "(host tool unresolved: "
+data known_red_marker_probed: String = "(probed: "
+data known_red_marker_route_gap: String = "(hermetic route has no arm for "
+data known_red_marker_entry_resolve: String = "(entry resolve failed: "
+// Rendered by `ClaimOutcome::budget_figure_phrase` and the hermetic ground labels, both in `cli_run.rs` —
+// `claim_batch` prints them through that renderer rather than spelling them, which is why their source is
+// the renderer's file and not the transport's.
+data known_red_marker_budget_word: String = " budget "
+data known_red_marker_budget_exceeded: String = "ms EXCEEDED; cost="
+data known_red_marker_budget_unmeasured: String = "cost=UNMEASURED"
+data known_red_marker_ground_unpublished_mock: String = "no published mock case for a corpus-governed service"
+data known_red_marker_ground_filesystem_removal: String = "filesystem removal has no mock arm"
+// The third member of the closed ground set, from `effect_refusal_ground_label`. It was absent from this
+// file entirely: a NoMockResponse gap fell through the two tests below into a default, so the ledger
+// recorded a ground the transport never printed.
+data known_red_marker_ground_no_mock_response: String = "operation declares no mock_response"
+
+data known_red_transport_source_claim_batch: String = "src/v1/stage0/src/bin/claim_batch.rs"
+data known_red_transport_source_cli_run: String = "src/v1/stage0/src/cli_run.rs"
+
+// AN ARM THE TRANSPORT PRINTS WITH A VERDICT WORD IN FRONT OF IT. Tying the PAIR rather than the fragment
+// is what makes the check able to see a re-labelled arm: `#14539` moved the route-gap and entry-resolve arms
+// from `FAIL {} (…)` to `UNOBSERVED {} (…)` and my fragment check still PASSED, because the bracketed text
+// was untouched -- while the classifier, which keys on the `FAIL ` prefix, had silently stopped seeing those
+// lines at all. A row that silently stops being classified is the failure this instrument must not have, so
+// an arm is tied only when the word and the marker appear together, as one literal, in the file that prints
+// them.
+type KnownRedPrintedArm {
+  word: String
+  marker: String
+}
+
+// THE TIE: which file prints which marker. Grouped by source so the fold reads each file once.
+type KnownRedPrintAuthority {
+  source: String
+  markers: List<String>
+  arms: List<KnownRedPrintedArm>
+}
+
+// The pair as the transport spells it: `<WORD> {} <marker>`, from the harness's own format literal.
+fn known_red_printed_arm_literal(arm: KnownRedPrintedArm) -> String {
+  concat(arm.word, " {} ", arm.marker)
+}
+
+data known_red_print_authorities: List<KnownRedPrintAuthority> = [
+  KnownRedPrintAuthority {
+    source: known_red_transport_source_claim_batch,
+    markers: [
+      // The verdict words, tied as the harness's own format literals and built from the same
+      // constants the prefix functions read, so 'PASS' has exactly one author. `UNOBSERVED` is tied too:
+      // after #14539 it is the word two of the classification arms (hermetic route gap, entry resolve) are
+      // printed under, so a reword of it must fail here like any other verdict word would.
+      concat(known_red_word_pass, " {}"),
+      concat(known_red_word_fail, " {}"),
+      concat(known_red_word_panicked, " {}"),
+      concat(known_red_word_unobserved, " {}"),
+      known_red_marker_exit_failure,
+      known_red_marker_not_bool,
+      known_red_marker_not_bool_tail,
+      known_red_marker_runtime_error,
+      known_red_marker_panicked,
+      known_red_marker_not_attempted,
+      known_red_marker_not_attempted_tail,
+      known_red_marker_host_tool,
+      known_red_marker_probed,
+      known_red_marker_route_gap,
+      known_red_marker_entry_resolve
+    ],
+    arms: [
+      // THE ARMS THAT DECIDE A CLASSIFICATION, tied as word+marker pairs. These are the ones the classifier
+      // reads: if a word moves off one of these arms, the row it describes stops being seen, so the pair is
+      // what has to be present -- not the bracketed fragment on its own.
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_exit_failure },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_not_bool },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_runtime_error },
+      KnownRedPrintedArm { word: known_red_word_panicked, marker: known_red_marker_panicked },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_not_attempted },
+      KnownRedPrintedArm { word: known_red_word_fail, marker: known_red_marker_host_tool },
+      KnownRedPrintedArm { word: known_red_word_unobserved, marker: known_red_marker_route_gap },
+      KnownRedPrintedArm { word: known_red_word_unobserved, marker: known_red_marker_entry_resolve }
+    ]
+  },
+  KnownRedPrintAuthority {
+    source: known_red_transport_source_cli_run,
+    markers: [
+      known_red_marker_budget_word,
+      known_red_marker_budget_exceeded,
+      known_red_marker_budget_unmeasured,
+      known_red_marker_ground_unpublished_mock,
+      known_red_marker_ground_filesystem_removal,
+      known_red_marker_ground_no_mock_response
+    ],
+    // No arm pairs here: the budget and ground fragments are printed MID-literal, inside the message the
+    // harness builds for an arm this file already ties by word (`FAIL {} (…)`), so there is no word adjacent
+    // to them to tie. They stay fragment-tied, which is the honest strength of the check for a tail.
+    arms: []
+  }
+]
+
+// THE SOURCE READ, THROUGH THE MODELED ROUTE. `Filesystem.Read` is the repo's own readonly read authority
+// (`extdeps.filesystem.filesystem_io`) and answers a scalar `{content, success, error}`; the typed
+// `FilesystemReadSucceeded | FilesystemReadRefused` shape comes only from `filesystem_read_outcome`, which
+// that module declares as THE fold for it (matching the variants off the raw op is not even writable). The
+// interpreter treats a readonly read of a path proven under the checkout root as INPUT ACCESS, not a host
+// effect (`v1_interpreter.rs`, the hermetic carve-out) -- so this is a real read of the real file in
+// hermetic mode too, which is what makes the tie honest rather than a fixture replaying yesterday's answer.
+fn known_red_transport_source_content(source: String) -> Optional<String> {
+  let read = Filesystem.Read(path: source)
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadSucceeded { content: content } => Present { value: content }
+    FilesystemReadRefused { error: _ } => Absent
+  }
+}
+
+// THE RED THIS EXISTS TO CATCH, AS A PURE FUNCTION OF THE SOURCE TEXT: which of these markers do not appear
+// in the text they are supposed to be found in. Reported as `source :: marker`, so the refusal names BOTH
+// authorities that were meant to agree. It takes the text as an argument rather than reading it, so a claim
+// can hand it a fixture and prove the RED (a moved marker is reported) without touching the checkout.
+fn known_red_untied_markers_in(
+  source: String,
+  markers: List<String>,
+  text: String
+) -> List<String> {
+  fold(
+    xs: markers,
+    init: [],
+    f: (acc, m) =>
+      if string_contains(s: text, pattern: m) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: concat(source, " :: ", m))
+      }
+  )
+}
+
+// THE TIE FOR THE ARMS THAT DECIDE A CLASSIFICATION: which registered word+marker pairs do not appear, as
+// the literal `<WORD> {} <marker>`, in the text that is supposed to print them. A separate function from the
+// fragment check on purpose: a fragment tie is the right strength for a tail printed mid-message, and too
+// weak for an arm whose WORD the classifier keys on. Reported the same way (`source :: literal`) so both
+// refusals name the same pair of authorities.
+fn known_red_untied_arms_in(
+  source: String,
+  arms: List<KnownRedPrintedArm>,
+  text: String
+) -> List<String> {
+  fold(
+    xs: arms,
+    init: [],
+    f: (acc, a) =>
+      if string_contains(s: text, pattern: known_red_printed_arm_literal(arm: a)) {
+        acc
+      } else {
+        list_snoc_item(
+          xs: acc,
+          item: concat(source, " :: ", known_red_printed_arm_literal(arm: a))
+        )
+      }
+  )
+}
+
+// WHAT ONE AUTHORITY FAILS TO TIE, in one pass over its source: the fragments it no longer prints, and the
+// word+marker PAIRS it no longer prints as pairs. Both are reported `source :: thing`, so a refusal always
+// names both authorities that were meant to agree. Kept as one function rather than two so each source file
+// is read once per run.
+fn known_red_untied_in_authority(
+  authority: KnownRedPrintAuthority,
+  text: String
+) -> List<String> {
+  fold(
+    xs: known_red_untied_markers_in(
+      source: authority.source,
+      markers: authority.markers,
+      text: text
+    ),
+    init: known_red_untied_arms_in(source: authority.source, arms: authority.arms, text: text),
+    f: (acc, m) => list_snoc_item(xs: acc, item: m)
+  )
+}
+
+// THE TIE, AS A LIST OF WHAT IS NOT TIED. Empty means every marker this file matches on still appears in the
+// file that is supposed to print it, AND every classification arm still appears as the printed pair. It is a
+// property of the RUN, not of any fold's inputs, so the CLI producer checks it once and the fold stays a pure
+// function of the children it was handed.
+fn known_red_print_markers_untied() -> List<String> {
+  fold(
+    xs: known_red_print_authorities,
+    init: [],
+    f: (outer, a) =>
+      match known_red_transport_source_content(source: a.source) {
+        // An unreadable authority ties NOTHING: everything it was supposed to carry is reported, so a missing
+        // file cannot be read as 'all markers present'.
+        Absent =>
+          fold(
+            xs: a.markers,
+            init: fold(
+              xs: a.arms,
+              init: outer,
+              f: (acc, arm) =>
+                list_snoc_item(
+                  xs: acc,
+                  item: concat(
+                    a.source, " :: ", known_red_printed_arm_literal(arm: arm), " (source unreadable)"
+                  )
+                )
+            ),
+            f: (acc, m) =>
+              list_snoc_item(xs: acc, item: concat(a.source, " :: ", m, " (source unreadable)"))
+          )
+        Present { value: text } =>
+          fold(
+            xs: known_red_untied_in_authority(authority: a, text: text),
+            init: outer,
+            f: (acc, m) => list_snoc_item(xs: acc, item: m)
+          )
+      }
+  )
+}
+
+// THE DECLARED GENERALIZATION (DESIGN §6b), ADMITTED AS DEBT BY THE OPERATOR.
+//
+// This module decodes a human-readable transport. Review 84069 blocked on that being a second description of
+// the harness's output; the operator then ADMITTED the scaffold on three conditions (relayed 2026-10-21):
+// the approval is recorded outside the diff, the dissolution is bound to the typed outcome the harness lane
+// delivers with that lane's consent on the record, and the trigger names the CAPABILITY rather than an
+// artifact. The fail-closed rewording refusal is kept as the RED, so the interim is bounded by execution: a
+// reworded arm refuses the run, it does not misclassify.
+//
+// THE TRIGGER, as agreed with the harness owner (sunny-bear-433, on the PR): the day `claim_batch`'s
+// --claim-run answers with one `v2.workflow.floor_terminal_ledger` `ClaimAttemptTerminal` per claim on a
+// machine-readable path, this section's marker constants, `known_red_body_is_*` predicates, field extractors
+// and classifier are DELETED rather than maintained -- the fold reads the typed outcome instead of
+// reconstructing it from prose. He names it provisionally and asks that it stay provisional until he says
+// otherwise, so the name below is his current choice, not a settled one.
+data known_red_transport_decoder_target: DeclarationRef = decl_ref(module_path: "v1_compiler.claim_batch", decl_name: "claim_run_outcomes")
+
+data known_red_transport_decoder_dissolution: DissolutionCondition = bound_dissolution(ref: known_red_transport_decoder_target)
+
+// WHAT THE TRIGGER MEANS, in a carrier rather than in prose hanging off a declaration. A BoundDissolution
+// carries nothing but its ref (`dissolution_description` of one returns the ref's display key), so the
+// capability that retires this module has to be stated somewhere a reader is forced to look: as named parts of
+// one typed row, each of which the witness reads. Putting it in a `String` would be commentary wearing a
+// type-name, which §4c refuses.
+type KnownRedDecoderDeferral {
+  trigger: DeclarationRef
+  capability: String
+  owner: String
+  provisional: Bool
+}
+
+// The name is the harness owner's PROVISIONAL choice -- he asked that it stay flagged provisional until he
+// settles it, so `provisional` is a field the witness asserts rather than a note in a comment that rots.
+data known_red_transport_decoder_deferral: KnownRedDecoderDeferral = KnownRedDecoderDeferral {
+  trigger: known_red_transport_decoder_target,
+  capability: "DISSOLVES WHEN claim_batch's --claim-run transport answers each claim with a typed ClaimAttemptTerminal on a machine-readable path, and this fold reads THAT instead of matching prose; the marker constants, the known_red_body_is_* predicates, known_red_line_body / known_red_terminal_of_printed / known_red_terminal_of_body and their field extractors are then DELETED, not maintained.",
+  owner: "the claim_batch harness lane (sunny-bear-433), not this instrument",
+  provisional: true
+}
+
+// THE HONEST LIMIT OF THAT BINDING, stated here and CHECKED in the witness. A bound trigger is only
+// meaningful if something can OBSERVE it, and the observer's population is `gunbc.dissolution_observation`'s
+// `dissolution_census_pool_roots`, whose declaration index walks `.dag` files only. The trigger names a Rust
+// file under `src/v1`, outside that population, so the census reports it as outside the index and
+// `census_ref_is_present` counts that as not-present -- the same report an un-delivered trigger would get.
+// Pending on this row is therefore NOT evidence that the harness lane has not delivered; reading it that way
+// is the quietest possible way to let the debt live forever, which is the failure sunny-bear-433 named when he
+// agreed to the trigger. `the_bound_decoder_trigger_is_unobservable_in_the_census_pool` asserts that condition
+// from the pool's own roots and the real path of the file the trigger lives in, so it FAILS the moment either
+// side changes: the pool widened to reach the Rust lane (this row becomes genuinely observable), or the
+// trigger moved into a path the pool already walks. Widening the pool is the harness lane's call, and not a
+// reason to unbind.
+// `ProcessExit::ExitFailure` STAYS ON THE OBSERVED ARM with `holds: false`, following the seed's own arm
+// which places it beside `Fail` rather than beside `RuntimeError`: a claim that returns a failing
+// ProcessExit has decided, and decided against. The arms this function exists to SEPARATE are the ones
+// where no decision happened.
+//
+// A LINE THAT MATCHES NO FORM IS NEITHER SILENCE NOR A VERDICT: it is returned as `Absent` and kept, so the
+// fold refuses with the line attached instead of calling the claim not-run (hides a finding) or failed
+// (invents one). A new `ClaimOutcome` arm that prints a new shape lands here as `Absent` and is therefore
+// a refusal, not a verdict — the safe direction for a transport change.
+fn known_red_terminal_of_line(line: String, function: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_line_body(line: line, function: function) {
+    Absent => Absent
+    Present { value: printed } => known_red_terminal_of_printed(printed: printed)
+  }
+}
+
+// WHICH TERMINAL THE VERDICT WORD + BODY PAIR MEANS. The word is matched against the `known_red_word_*`
+// constants themselves, so a rewording of `claim_batch` that updates only the constants moves this match
+// too -- it cannot leave the classifier on the old spelling while the source-tying check goes green.
+fn known_red_terminal_of_printed(printed: KnownRedPrintedLine) -> Optional<ClaimAttemptTerminal> {
+  if printed.verdict_word == known_red_word_pass {
+    Present { value: Returned { observation: ObservedVerdict { holds: true } } }
+  } else {
+    if printed.verdict_word == known_red_word_fail {
+      if printed.body == "" {
+        Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+      } else {
+        known_red_terminal_of_body(body: printed.body)
+      }
+    } else {
+      if printed.verdict_word == known_red_word_panicked {
+        known_red_terminal_of_body(body: printed.body)
+      } else {
+        // The two arms the transport relabelled to `UNOBSERVED` (#14539) -- hermetic route gap and entry-resolve
+        // -- still carry the same bracketed tail as they did under FAIL, so the SAME body classifier decides
+        // them. Routed here rather than dropped to `Absent`: a line that is recognised but never dispatched is
+        // the dead-arm hole the tie check exists to catch. A bare `UNOBSERVED <fn>` with no bracketed tail is a
+        // no-observation and stays Absent (the third UNOBSERVED print, the subject-unresolved one, whose verdict
+        // the harness does not yet render -- it is not one of this instrument's classification arms).
+        if printed.verdict_word == known_red_word_unobserved {
+          if printed.body == "" {
+            Absent
+          } else {
+            known_red_terminal_of_body(body: printed.body)
+          }
+        } else {
+          Absent
+        }
+      }
+    }
+  }
+}
+
+// THE PRINTED LINE, BEFORE IT IS A TERMINAL. `known_red_line_body` strips the verdict word and the function
+// name off one stdout line and carries WHICH WORD IT MATCHED, as one of the three `known_red_word_*`
+// constants, beside the body that remains. The word travels as the constant's value rather than as a private
+// sentinel standing for it: a sentinel is a second, unstated spelling of the verdict, so a rewording that
+// updates the constants would leave the classifier matching the sentinel and every line of that kind would
+// decode as 'not about this claim' -- which reports as an absent line rather than as a refusal, the one
+// outcome this decoder must not produce (review 84034, DESIGN §3).
+type KnownRedPrintedLine { verdict_word: String, body: String }
+
+// STRIP THE VERDICT WORD AND THE FUNCTION NAME, or report that this line is not about this claim. The
+// transport prints the BARE FUNCTION NAME with no module path, which is why a line is attributed within one
+// child and never across children — see the identity-ambiguity refusal.
+fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrintedLine> {
+  let pass_head = concat(known_red_pass_prefix(), function)
+  let fail_head = concat(known_red_fail_prefix(), function)
+  let panic_head = concat(known_red_panicked_prefix(), function)
+  let unobserved_head = concat(known_red_unobserved_prefix(), function)
+  if line == pass_head {
+    Present { value: KnownRedPrintedLine { verdict_word: known_red_word_pass, body: "" } }
+  } else {
+    if line == fail_head {
+      Present { value: KnownRedPrintedLine { verdict_word: known_red_word_fail, body: "" } }
+    } else {
+      if starts_with(s: line, prefix: concat(pass_head, " ")) && trim(s: known_red_after(s: line, n: string_length(s: pass_head) + 1)) == "" {
+        Present { value: KnownRedPrintedLine { verdict_word: known_red_word_pass, body: "" } }
+      } else {
+        if starts_with(s: line, prefix: concat(fail_head, " (")) {
+          Present { value: KnownRedPrintedLine { verdict_word: known_red_word_fail, body: trim(s: known_red_after(s: line, n: string_length(s: fail_head) + 1)) } }
+        } else {
+          if starts_with(s: line, prefix: concat(panic_head, " (")) {
+            Present { value: KnownRedPrintedLine { verdict_word: known_red_word_panicked, body: trim(s: known_red_after(s: line, n: string_length(s: panic_head) + 1)) } }
+          } else {
+            if starts_with(s: line, prefix: concat(unobserved_head, " (")) {
+              Present { value: KnownRedPrintedLine { verdict_word: known_red_word_unobserved, body: trim(s: known_red_after(s: line, n: string_length(s: unobserved_head) + 1)) } }
+            } else {
+              Absent
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ONE DISPATCH ON THE BRACKETED TAIL: which transport arm printed this line.
+//
+// EVERY FIELD THE LEDGER ARM CARRIES IS LOCATED OR THE ROW REFUSES. Each arm below pulls its field out of
+// the position the harness prints it in (`src/v1/stage0/src/bin/claim_batch.rs`, one `println!` per arm)
+// through `known_red_field_of`, so a marker that moves makes the line `Absent` -- a refusal with the line
+// attached -- instead of filing the whole line as `RouteGap.operation`, `HostToolUnresolved.name` or
+// `Panicked.payload`. Those three fallbacks were review 83992's softer findings: they turned a decode
+// failure into data, which is the fabricated plausible output DESIGN §5 rejects.
+fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
+  if known_red_body_is_not_bool(body: body) {
+    Present {
+      value: Returned { observation: ObservationUnrepresentable { reason: "returned-not-a-bool" } }
+    }
+  } else {
+    if known_red_body_is_exit_failure(body: body) {
+      Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+    } else {
+      if known_red_body_is_runtime_error(body: body) {
+        // `message` carries BOTH facts the seed keeps separate -- which class, and which name/type/arity --
+        // as "<cause>: <message>", in the harness's own order. The ledger arm has one String field, so
+        // dropping either half would be the flattening the seed's own doc warns about.
+        match known_red_runtime_error_parts(body: body) {
+          Absent => Absent
+          Present { value: message } => Present { value: RuntimeErrored { message: message } }
+        }
+      } else {
+        if known_red_body_is_panicked(body: body) {
+          match known_red_payload(body: body) {
+            Absent => Absent
+            Present { value: payload } => Present { value: Panicked { payload: payload } }
+          }
+        } else {
+          if known_red_body_is_not_attempted(body: body) {
+            match known_red_halted_behind(body: body) {
+              Absent => Absent
+              Present { value: identity } => Present { value: NotAttempted { halted_by: identity } }
+            }
+          } else {
+            if known_red_body_is_host_tool(body: body) {
+              match known_red_host_tool_fields(body: body) {
+                Absent => Absent
+                Present { value: terminal } => Present { value: terminal }
+              }
+            } else {
+              if known_red_body_is_route_gap(body: body) {
+                match known_red_route_gap_fields(body: body) {
+                  Absent => Absent
+                  Present { value: terminal } => Present { value: terminal }
+                }
+              } else {
+                if known_red_body_is_budget(body: body) {
+                  match known_red_safety_of(body: body) {
+                    Absent => Absent
+                    Present { value: safety } => Present { value: BudgetRefused { safety: safety } }
+                  }
+                } else {
+                  if known_red_body_is_entry_resolve(body: body) {
+                    // NOT the same fact as 'not-attempted behind a host', and no longer the same value:
+                    // both were `halted_by: body`. The cause now names the resolver and carries the entry
+                    // the group was built from, so a reader of the ledger can tell them apart.
+                    match known_red_entry_of_resolve_failure(body: body) {
+                      Absent => Absent
+                      Present { value: entry } =>
+                        Present { value: NotAttempted { halted_by: known_red_entry_resolve_halted_by(entry: entry) } }
+                    }
+                  } else {
+                    Absent
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE ARM TESTS, one per transport arm, each keyed on the words that arm alone prints. Kept as named
+// predicates rather than an inline chain so a reader can check each against `claim_batch.rs` line by line.
+fn known_red_body_is_exit_failure(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_exit_failure)
+}
+
+fn known_red_body_is_not_bool(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_not_bool)
+    && string_contains(s: body, pattern: known_red_marker_not_bool_tail)
+}
+
+fn known_red_body_is_runtime_error(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_runtime_error)
+}
+
+fn known_red_body_is_panicked(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_panicked)
+}
+
+// THE PANIC PAYLOAD, fail-closed (review 83992). `Panicked { payload }` carries 'the payload the host
+// unwound with' (`cli_run.rs`). The transport wraps it in one parenthesised clause with no nested
+// parentheses, so the payload is everything between the marker and the closing paren -- and if that marker
+// has moved, the field is `Absent` and the row refuses. It used to fall back to the whole line, which is
+// the line's text standing in for a field nobody located.
+fn known_red_payload(body: String) -> Optional<String> {
+  known_red_field_of_end(s: body, open: known_red_marker_panicked, close: ")")
+}
+
+// THE IDENTITY A CLAIM WAS ABORTED BEHIND, out of '(reported as not-attempted behind <identity>, which
+// this path never mints)'. That identity -- not the whole line -- is what the seed says `halted_by` holds
+// (`cli_run.rs`: 'the identity whose panic stopped the line'). Matching the tail as well as the head is
+// what makes this arm's shape a claim about the print, not a guess at it.
+fn known_red_halted_behind(body: String) -> Optional<String> {
+  known_red_field_of(
+    s: body,
+    open: known_red_marker_not_attempted,
+    close: known_red_marker_not_attempted_tail
+  )
+}
+
+fn known_red_body_is_not_attempted(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_not_attempted)
+    && string_contains(s: body, pattern: known_red_marker_not_attempted_tail)
+}
+
+fn known_red_body_is_host_tool(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_host_tool)
+}
+
+// THE HOST TOOL NAME, out of '(host tool unresolved: "<name>" (probed: ...))'. Fail-closed for the same
+// reason as every other arm-carried field: the fallback used to be the whole body.
+fn known_red_host_tool_name(body: String) -> Optional<String> {
+  known_red_field_of(
+    s: body,
+    open: concat(known_red_marker_host_tool, "\""),
+    close: "\""
+  )
+}
+
+fn known_red_body_is_route_gap(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_route_gap)
+}
+
+// THE ROUTE-GAP OPERATION, out of '(hermetic route has no arm for <op>: <ground>...)'. This field was the
+// worst instance of the fallback: with the marker unmoved it held the ground prose too, and with the
+// marker moved it held the entire line -- and the row still read as data either way.
+fn known_red_route_gap_operation(body: String) -> Optional<String> {
+  known_red_field_of(s: body, open: known_red_marker_route_gap, close: ":")
+}
+
+fn known_red_body_is_budget(body: String) -> Bool {
+  starts_with(s: body, prefix: "(")
+    && string_contains(s: body, pattern: known_red_marker_budget_word)
+    && string_contains(s: body, pattern: known_red_marker_budget_exceeded)
+}
+
+fn known_red_body_is_entry_resolve(body: String) -> Bool {
+  starts_with(s: body, prefix: known_red_marker_entry_resolve)
+}
+
+// THE ENTRY THE GROUP WAS BUILT FROM, out of '(entry resolve failed: <entry>)'. Fail-closed: an
+// unlocatable entry refuses the row rather than inventing one.
+fn known_red_entry_of_resolve_failure(body: String) -> Optional<String> {
+  known_red_field_of_end(s: body, open: known_red_marker_entry_resolve, close: ")")
+}
+
+// `known_red_between` -- the marker extractor with a caller-supplied `fallback` -- was deleted here. Every
+// one of its callers now goes through `known_red_field_of`, which has no fallback: the fallback was the
+// mechanism by which an unmoved marker turned into a fabricated field value (review 83992), and a decode
+// helper that can lie is not a decode helper.
+
+// A FIELD, OR NOTHING. Every field a ledger arm carries goes through this, so when a marker moves the line
+// decodes to `Absent` and the run refuses, where the deleted fallback would have filed the whole line as
+// `RouteGap.operation` or `HostToolUnresolved.name` and called that data (review 83992). Verbatim matters
+// for the same reason: the cause a reader acts on has to survive the read, and a decode that restates it
+// invents a second author of the cause (DESIGN §3).
+fn known_red_field_of(s: String, open: String, close: String) -> Optional<String> {
+  match known_red_index_of(s: s, needle: open, at: 0, limit: string_length(s: s)) {
+    Absent => Absent
+    Present { value: from } =>
+      let after = from + string_length(s: open)
+      match known_red_index_of(s: s, needle: close, at: after, limit: string_length(s: s)) {
+        Absent => Absent
+        Present { value: to } =>
+          if to >= after {
+            Present { value: substring(s: s, start: after, end: to) }
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
+// A FIELD THAT ENDS THE PRINT. The transport closes the clause it is describing, so for the fields the
+// harness prints LAST in a line -- a panic payload, a runtime-error message, an unresolved entry path -- the
+// delimiter is the FINAL character, not the first character that happens to look like one. Taking the first
+// ')' would truncate a payload that contains one (`index out of bounds (at 3)`) and silently hand the ledger
+// half a cause. `close` must match at the very end or the field is `Absent`.
+fn known_red_field_of_end(s: String, open: String, close: String) -> Optional<String> {
+  match known_red_index_at_end(s: s, tail: close) {
+    Absent => Absent
+    Present { value: end } =>
+      match known_red_index_of(s: s, needle: open, at: 0, limit: end) {
+        Absent => Absent
+        Present { value: from } =>
+          let after = from + string_length(s: open)
+          if end >= after {
+            Present { value: substring(s: s, start: after, end: end) }
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
+// WHERE A SUFFIX SITS, IF IT IS ONE. Returns the index at which `tail` occupies the end of `s`.
+fn known_red_index_at_end(s: String, tail: String) -> Optional<Int> {
+  let at = string_length(s: s) - string_length(s: tail)
+  if at < 0 {
+    Absent
+  } else {
+    if substring(s: s, start: at, end: at + string_length(s: tail)) == tail {
+      Present { value: at }
+    } else {
+      Absent
+    }
+  }
+}
+
+fn known_red_index_of(s: String, needle: String, at: Int, limit: Int) -> Optional<Int> {
+  if at + string_length(s: needle) > limit {
+    Absent
+  } else {
+    if substring(s: s, start: at, end: at + string_length(s: needle)) == needle {
+      Present { value: at }
+    } else {
+      known_red_index_of(s: s, needle: needle, at: at + 1, limit: limit)
+    }
+  }
+}
+
+fn known_red_after(s: String, n: Int) -> String {
+  if n >= string_length(s: s) { "" } else { substring(s: s, start: n, end: string_length(s: s)) }
+}
+
+// THE PROBED PATHS, AS THE LIST THE LEDGER ARM OWNS. The transport renders them comma-joined inside
+// `(probed: …)`, so the separator it chose is the separator this splits on.
+// THE PROBED PATHS, AS THE LIST THE LEDGER ARM OWNS. The transport renders them comma-joined in
+// `(probed: …)`, so the separator it chose is the separator this splits on. An EMPTY list is a real
+// outcome (`probed.join(", ")` of nothing) and is spelled `Present { value: "" }` -> `[]`; a MOVED marker
+// is `Absent`, which refuses. The old code collapsed both into `[]` by way of a `fallback: ""`, so a
+// reworded arm reported 'the host probed nothing' -- a claim about the world, from a decode failure.
+fn known_red_probed_list(body: String) -> Optional<List<String>> {
+  match known_red_field_of(s: body, open: known_red_marker_probed, close: ")") {
+    Absent => Absent
+    Present { value: inner } =>
+      if inner == "" {
+        Present { value: [] }
+      } else {
+        Present { value: split(s: inner, delimiter: ", ") }
+      }
+  }
+}
+
+// THE RUNTIME-ERROR MESSAGE, in the seed's own order: '<cause>: <message>' (`cli_run.rs` keeps the cause
+// and the message as two facts -- the cause says WHICH class, the message says which name, type or arity).
+// The ledger arm has one String, so both halves are kept in it; either half alone would be the flattening
+// that arm's doc forbids. Fail-closed on both markers.
+fn known_red_runtime_error_parts(body: String) -> Optional<String> {
+  match known_red_field_of(s: body, open: known_red_marker_runtime_error, close: "]:") {
+    Absent => Absent
+    Present { value: cause } =>
+      match known_red_field_of_end(s: body, open: concat(cause, "]: "), close: ")") {
+        Absent => Absent
+        Present { value: message } => Present { value: concat(cause, ": ", message) }
+      }
+  }
+}
+
+// THE HOST-TOOL ARM, both fields or nothing. `name` sits in the harness's `{:?}` quotes and `probed` in
+// the `(probed: …)` clause that follows it; a row with only one of them located is a row whose shape this
+// file does not actually recognize.
+fn known_red_host_tool_fields(body: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_host_tool_name(body: body) {
+    Absent => Absent
+    Present { value: name } =>
+      match known_red_probed_list(body: body) {
+        Absent => Absent
+        Present { value: probed } =>
+          Present { value: HostToolUnresolved { name: name, probed: probed } }
+      }
+  }
+}
+
+// THE ROUTE-GAP ARM, both fields or nothing. `operation` is the printed service.operation between the
+// marker and the ':' that ends it; `ground` is one of the three closed labels.
+fn known_red_route_gap_fields(body: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_route_gap_operation(body: body) {
+    Absent => Absent
+    Present { value: operation } =>
+      match known_red_route_gap_ground_of(body: body) {
+        Absent => Absent
+        Present { value: ground } =>
+          Present { value: RouteGap { operation: operation, ground: ground } }
+      }
+  }
+}
+
+// THE ROUTE GAP'S GROUND, READ BACK OUT OF THE PRINT. The three sentences are the ones the transport
+// renders through `effect_refusal_ground_label`; this inverts that render onto the union the ledger arm
+// requires -- exhaustively. It used to end in `else { NoMockResponse }`, which meant the third label was
+// never actually tested for and an unrecognized ground was REPORTED AS THAT LABEL. Now an unmapped ground
+// is `Absent`, so the row refuses instead of being filed under a ground nobody printed.
+fn known_red_route_gap_ground_of(body: String) -> Optional<FloorRouteGapGround> {
+  if string_contains(s: body, pattern: known_red_marker_ground_unpublished_mock) {
+    Present { value: UnpublishedMockCase }
+  } else {
+    if string_contains(s: body, pattern: known_red_marker_ground_filesystem_removal) {
+      Present { value: FilesystemRemoval }
+    } else {
+      if string_contains(s: body, pattern: known_red_marker_ground_no_mock_response) {
+        Present { value: NoMockResponse }
+      } else {
+        Absent
+      }
+    }
+  }
+}
+
+// WHICH BUDGET ARM RAN. The transport renders BOTH budget arms through one function,
+// `budget_figure_phrase` (`src/v1/stage0/src/cli_run.rs`), and the two differ in exactly one field: the
+// interrupted arm prints `cost=UNMEASURED` because the deadline preempted the witness before a cost could
+// be taken, and the completed-over-budget arm prints `cost=<n>ms CEILING` because the witness ran to
+// completion and the figure is a right-censored bound on a cost that WAS taken. That difference is the only
+// discriminator available at the print, so the safety carried here is the one the print supports: the
+// elapsed figures stay 0 because a line never reports them, and the preemption is named as unbounded rather
+// than guessed at.
+fn known_red_safety_of(body: String) -> Optional<ClaimSafetyOutcome> {
+  if string_contains(s: body, pattern: known_red_marker_budget_unmeasured) {
+    match known_red_budget_operation(body: body) {
+      Absent => Absent
+      Present { value: raised_by } =>
+        Present {
+          value: SafetyInterrupted {
+            raised_by: raised_by,
+            elapsed_cpu_at_least: 0,
+            elapsed_wall_at_least: 0
+          }
+        }
+    }
+  } else {
+    if string_contains(s: body, pattern: known_red_marker_budget_exceeded) {
+      match known_red_budget_operation(body: body) {
+        Absent => Absent
+        Present { value: operation } =>
+          Present {
+            value: CompletedPastSafetyLimit {
+              observed_cpu: 0,
+              observed_wall: 0,
+              preemption: OpaqueHostCallUnbounded { operation: operation }
+            }
+          }
+      }
+    } else {
+      Absent
+    }
+  }
+}
+
+// WHICH BUDGET CEILING FIRED, out of `'<label> budget <n>ms EXCEEDED'`. `kind.label()` is the only thing
+// that distinguishes the two ceilings at the print, so a missing `' budget '` marker refuses; the fallback
+// used to hand the ledger an invented label, 'claim_batch budget guard', for a line that said no such thing.
+fn known_red_budget_operation(body: String) -> Optional<String> {
+  known_red_field_of(s: body, open: "(", close: known_red_marker_budget_word)
+}
+
+// A POPULATION WITH NO VERDICT ANYWHERE is the shape of a deleted spawn, or of a child killed before it
+// reached the verdicts. Neither is a clean empty run.
+fn known_red_any_verdict(children: List<KnownRedChildRun>) -> Bool {
+  any(xs: children, predicate: fn(c) { length(xs: known_red_child_verdict_lines(child: c)) > 0 })
+}
+
+// WHAT THE CHILD PRINTED, BY MATCHING — a child that never started printed nothing, and there is no
+// empty-string field to mistake for an honest empty stdout.
+fn known_red_child_verdict_lines(child: KnownRedChildRun) -> List<String> {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: o, stderr: _ } => known_red_verdict_lines(stdout: o)
+    NotStarted { claims: _, cause: _ } => []
+  }
+}
+
+fn known_red_child_claims(child: KnownRedChildRun) -> List<ClaimRun> {
+  match child {
+    Invoked { claims: c, exit_code: _, stdout: _, stderr: _ } => c
+    NotStarted { claims: c, cause: _ } => c
+  }
+}
+
+// A CHILD MUST NOT CARRY TWO CLAIMS WITH THE SAME VERDICT NAME: within one child the pooled lines cannot be
+// separated, so the packer splits them into different children instead (the cap already forces splits; this
+// adds name-clash as a second reason to flush). When no split is possible -- the same entry AND the same
+// function name, which is a duplicate identity, refused elsewhere -- `VerdictIdentityAmbiguous` below still
+// refuses rather than guessing.
+fn known_red_child_has_name_clash(current: List<ClaimRun>, incoming: List<ClaimRun>) -> Bool {
+  any(
+    xs: incoming,
+    predicate: fn(n) { any(xs: current, predicate: fn(c) { c.function == n.function }) }
+  )
+}
+
+
+// THE HARNESSED CHILDREN ONLY: those that actually ran. `exit_code` is consumed here, and this is the
+// consumer that keeps it honest — a child that exited non-zero while printing no verdict line is the
+// shape of a harness that died before it could adjudicate (its own OOM, its own argv refusal), which is
+// NOT the same as a child whose claims were adjudicated and some of them failed.
+fn known_red_invoked_children(children: List<KnownRedChildRun>) -> List<KnownRedChildRun> {
+  filter(xs: children, predicate: fn(c) { known_red_is_invoked(child: c) })
+}
+
+fn known_red_is_invoked(child: KnownRedChildRun) -> Bool {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: _, stderr: _ } => true
+    NotStarted { claims: _, cause: _ } => false
+  }
+}
+
+fn known_red_child_exit_code(child: KnownRedChildRun) -> Int {
+  match child {
+    Invoked { claims: _, exit_code: e, stdout: _, stderr: _ } => e
+    NotStarted { claims: _, cause: _ } => 0
+  }
+}
+
+// CHILDREN THAT DIED WITHOUT ADJUDICATING ANYTHING: non-zero exit, no verdict line. Carried with the
+// child's own claim count and stderr tail so a printed receipt can be traced to a cause.
+fn known_red_children_died_without_verdicts(
+  children: List<KnownRedChildRun>
+) -> List<ChildDiedWithoutVerdicts> {
+  filter(
+    xs: known_red_invoked_children(children: children),
+    predicate: fn(c) { known_red_child_exit_code(child: c) != 0 && length(xs: known_red_child_verdict_lines(child: c)) == 0 }
+  )
+    |> map(c =>
+      ChildDiedWithoutVerdicts {
+        exit_code: known_red_child_exit_code(child: c),
+        claims_asked: length(xs: known_red_child_claims(child: c)),
+        stderr_tail: known_red_child_stderr_tail(child: c)
+      }
+    )
+}
+
+fn known_red_child_stderr_tail(child: KnownRedChildRun) -> String {
+  match child {
+    Invoked { claims: _, exit_code: _, stdout: _, stderr: e } => e
+    NotStarted { claims: _, cause: e } => e
+  }
+}
+
+type ChildDiedWithoutVerdicts {
+  exit_code: Int
+  claims_asked: Int
+  stderr_tail: String
+}
+
+fn known_red_died_text(d: ChildDiedWithoutVerdicts) -> String {
+  concat(
+    "exit ",
+    concat(
+      known_red_int_text(n: d.exit_code),
+      concat(" after ",
+        concat(known_red_int_text(n: d.claims_asked),
+          concat(" claims asked and 0 verdict lines; stderr: ", d.stderr_tail)))
+    )
+  )
+}
+
+// ─────────────────────────── the fold (pure — the REDs are authored here) ───────────────────────────
+
+// THE JOIN. Head, subjects, and the verdict lines a child printed go in; the derivation comes out.
+// THE WHOLE RUN. `children` is the count of serial children actually spawned (or refused), printed so
+// the envelope's cost is visible; `reconciliation` is carried and printed rather than reduced to a
+// Bool, because a reader must be able to see WHICH identities the join could not account for.
+type KnownRedDerivation {
+  head: String
+  children: Int
+  subjects_owed: List<KnownRedSubject>
+  dispatched: List<KnownRedPlacedSubject>
+  rows: List<KnownRedDerivationRow>
+  coverage: List<KnownRedPopulationCoverage>
+  reconciliation: LedgerReconciliation
+  defects: List<KnownRedSubjectDefect>
+  refusals: List<KnownRedDerivationRefusal>
+}
+
+type KnownRedPopulationCoverage {
+  population: KnownRedSubjectPopulation
+  subject_count: Int
+  executed_count: Int
+  uncovered_cause: String
+}
+
+fn known_red_is_well_formed(subject: KnownRedSubject) -> Bool {
+  match known_red_defect_of(subject: subject) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// WHO WAS ACTUALLY ASKED, read back out of the children's own claims rather than from a list kept
+// alongside them — a child that was built with a subject in it is the evidence that the subject was asked.
+fn known_red_dispatched(
+  placed: List<KnownRedPlacedSubject>,
+  children: List<KnownRedChildRun>
+) -> List<KnownRedPlacedSubject> {
+  let asked = known_red_asked_claims(children: children)
+  filter(xs: placed, predicate: fn(x) { known_red_placed_was_asked(placed_subject: x, asked: asked) })
+}
+
+fn known_red_asked_claims(children: List<KnownRedChildRun>) -> List<ClaimRun> {
+  fold(
+    xs: children,
+    init: [],
+    f: (acc, c) => concat(acc, known_red_child_claims(child: c))
+  )
+}
+
+fn known_red_placed_was_asked(placed_subject: KnownRedPlacedSubject, asked: List<ClaimRun>) -> Bool {
+  contains(xs: asked, item: known_red_placed_identity_claim(placed: placed_subject), eq: known_red_same_claim)
+}
+
+fn known_red_same_claim(a: ClaimRun, b: ClaimRun) -> Bool {
+  a.entry == b.entry && a.function == b.function
+}
+
+// WHO WAS OWED A SPAWN AND NEVER GOT ONE, KEYED ON THE IDENTITY. Both sides of this join come from
+// `known_red_dispatchable`, so an unplaced subject is absent from BOTH: it is not counted as dispatched,
+// and it is not accused of being undispatched either -- it is reported where it belongs, as a defect, and
+// it stays in the owed population so the run still refuses. Nothing here compares an empty-string claim.
+fn known_red_missing_dispatch(subjects: List<KnownRedSubject>, dispatched: List<KnownRedPlacedSubject>) -> List<String> {
+  let well_formed = known_red_dispatchable(subjects: subjects)
+  map(
+    filter(xs: well_formed, predicate: fn(x) { !known_red_identity_dispatched(identity: x.identity, dispatched: dispatched) }),
+    x => witness_identity_qualified_name(identity: x.identity)
+  )
+}
+
+fn known_red_identity_dispatched(identity: WitnessIdentity, dispatched: List<KnownRedPlacedSubject>) -> Bool {
+  any(xs: dispatched, predicate: fn(x) { known_red_same_identity(a: identity, b: x.identity) })
+}
+
+// WHY THE VERDICT LOOKUP NEEDED A CONSTRUCTION, NOT A COUNT.
+// `claim_batch` spells each verdict `PASS <function>` / `FAIL <function>` -- the bare function name, with no
+// module (`src/v1/stage0/src/bin/claim_batch.rs:326-328`, and `:917` for the resolve-refusal form). The
+// fold used to pool EVERY child's stdout and match it against the subject's function name, so two claims in
+// different modules that share a function name had their verdicts merged: one passing and one failing made
+// BOTH rows `Absent`, and two failures made each row take the other's failure as its own. A silent wrong
+// answer, not a refusal -- and this is the exact place where the module header's promise ("completeness is
+// `ledger_is_complete`, an identity join") was false.
+//
+// Keying the lookup on `witness_identity_qualified_name` is what the reviewer proposed and it is the right
+// shape; it is not available to this file, because the harness does not print the module. Changing what
+// `claim_batch` prints is a production-Rust change with its own receipt, not a widening slipped into an
+// instrument. So the same guarantee is obtained by construction instead, in two parts:
+//   1. `known_red_evidence_is_of` restricts a subject's evidence to the children that were ASKED to run it
+//      (matched on entry AND function, i.e. the identity join), so a name shared across two children can no
+//      longer cross-contaminate; and
+//   2. `known_red_pack_groups` never packs two claims with the same function name into ONE child, because
+//      within a child the pooled lines genuinely are indistinguishable.
+// `VerdictIdentityAmbiguous` then refuses only the residue that no construction can resolve: the same child
+// carrying one function name twice, which is a duplicate identity.
+//
+// This is measured, not assumed: two rows of the CURRENT roster really do share function names
+// (`doc_graph_has_no_dangling_links` and `doc_graph_has_no_orphan_docs`, held by
+// `test.claim.doc_reachability_witness` and by `v2.test.lens_doc_reachability.doc_reachability`). A
+// population-wide refusal would therefore have bricked the label on real data; per-child attribution plus
+// the packing rule keeps those two claims correct AND keeps the run green.
+
+// THE NAMES THAT ARE UNRESOLVABLE: carried with the same function name BY ONE CHILD. Sharing a name across
+// the population is fine once attribution is per child and the packer splits those claims apart -- which is
+// what happens today, on measured data. What cannot be recovered is a clash inside a single child's stdout,
+// because there the two verdict lines are indistinguishable; that is what this refuses.
+fn known_red_ambiguous_verdict_names(children: List<KnownRedChildRun>) -> List<String> {
+  known_red_dedupe_texts(
+    xs: fold(
+      xs: children,
+      init: [],
+      f: (acc, c) => concat(xs: acc, ys: known_red_clashing_names_in_child(child: c))
+    )
+  )
+}
+
+fn known_red_clashing_names_in_child(child: KnownRedChildRun) -> List<String> {
+  fold(
+    xs: known_red_child_claims(child: child),
+    init: [],
+    f: (acc, n) =>
+      if length(xs: filter(xs: known_red_child_claims(child: child), predicate: fn(c) { c.function == n.function })) > 1
+        && !any(xs: acc, predicate: fn(a) { a == n.function })
+      {
+        list_snoc_item(xs: acc, item: n.function)
+      } else {
+        acc
+      }
+  )
+}
+
+fn known_red_dedupe_identities(xs: List<WitnessIdentity>) -> List<WitnessIdentity> {
+  fold(
+    xs: xs,
+    init: [],
+    f: (acc, x) =>
+      if any(xs: acc, predicate: fn(a) { known_red_same_identity(a: a, b: x) }) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: x)
+      }
+  )
+}
+
+fn known_red_dedupe_texts(xs: List<String>) -> List<String> {
+  fold(
+    xs: xs,
+    init: [],
+    f: (acc, x) => if any(xs: acc, predicate: fn(a) { a == x }) { acc } else { list_snoc_item(xs: acc, item: x) }
+  )
+}
+
+
+
+// Nothing in this function touches a service or a process, which is what lets the witness claims drive a
+// CONTROLLED enrolled-red identity through the real fold — made to fail, then to pass — instead of
+// asserting what the fold would have said. The live run stays separate from those arms on purpose: the
+// arms prove the join, the live run reports main.
+fn known_red_fold(
+  head: String,
+  subjects: List<KnownRedSubject>,
+  children: List<KnownRedChildRun>
+) -> KnownRedDerivation {
+  // THE ROWS READ ONLY THE CHILD THAT WAS ASKED TO RUN THEM: an item of the multiset carries the ENTRY of
+  // the child that printed it, and a row only accepts evidence whose entry is its own placed path. Pooling
+  // every child's stdout and matching on the bare function name is what let two claims in different modules
+  // with the same function name trade verdicts.
+  // THE EVIDENCE IS COMPUTED ONCE FOR THE WHOLE JOIN, and both the rows and the reconciliation read the
+  // SAME multiset. Computing it per row would let the row and the reconciliation disagree about what was
+  // printed, which is a second authority for the one fact the instrument exists to report.
+  let evidence = known_red_printed_evidence(children: children)
+  let rows = map(
+    subjects,
+    s =>
+      KnownRedDerivationRow {
+        identity: s.identity,
+        head: head,
+        entry: s.entry,
+        origin: s.origin,
+        expectation: known_red_expectation_of(s: s),
+        terminal: known_red_subject_terminal(subject: s, evidence: evidence),
+        disposition: known_red_projection(subject: s, evidence: evidence)
+      }
+  )
+  let report = known_red_reconciliation(subjects: subjects, rows: rows, evidence: evidence)
+  let defects = known_red_subject_defects(subjects: subjects)
+  // The placed list is derived here, once, from the subjects: it is the only thing the spawn-join and the
+  // owed-but-undispatched check are allowed to see, and an unplaced subject is not in it.
+  let placed = known_red_dispatchable(subjects: subjects)
+  let dispatched = known_red_dispatched(placed: placed, children: children)
+  KnownRedDerivation {
+    head: head,
+    children: length(xs: children),
+    subjects_owed: subjects,
+    dispatched: dispatched,
+    rows: rows,
+    coverage: known_red_coverage(subjects: subjects, rows: rows),
+    reconciliation: report,
+    defects: defects,
+    refusals: known_red_refusals(
+      subjects: subjects,
+      children: children,
+      dispatched: dispatched,
+      rows: rows,
+      report: report,
+      defects: defects,
+      evidence: evidence
+    )
+  }
+}
+
+// THE PROJECTION, DELEGATED TO THE AUTHORITY. A row is built exactly as the wet lane builds one —
+// identity, the derived expectation, and the observed terminal — and `claim_disposition` decides. No
+// `KnownRedHeld` or `KnownRedNowPassing` literal is written anywhere in this file as a conclusion: the
+// only way a row gets one is by the authority's projection of (expectation, terminal). An identity with
+// no verdict reaches `NotAttempted`, which projects to `NotAttemptedAfterAbort` — never a `Failed`, and
+// never a `Passed`.
+fn known_red_projection(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> ClaimDisposition {
+  claim_disposition(
+    row: ClaimTerminalRow {
+      identity: subject.identity,
+      expectation: known_red_expectation_of(s: subject),
+      terminal: known_red_subject_terminal(subject: subject, evidence: evidence)
+    }
+  )
+}
+
+// ============================================================ THE PRINTED EVIDENCE, KEPT
+//
+// THE JOIN'S OTHER HALF IS A MULTISET OF PRINTED LINES, not a set of verdicts. One item here is one line as
+// the harness printed it, the name it printed it UNDER, and the terminal it decodes to.
+//
+// WHY A TYPE AND NOT A `List<String>` THAT EACH CALLER RE-PARSES: the fold used to ask
+// `any(lines, l => child_carries(l, subject))` and throw the list away. Two things were lost at that `any`,
+// and both of them were verdicts. A claim whose line a child printed TWICE collapsed into one row, so a
+// duplicated identity went unreported -- and a line printed for something nobody planned was dropped in the
+// direction that hides an error, never the one that raises it. `LedgerReconciliation` already has a
+// `terminal_duplicated` and a `terminal_without_planned` leg (§5, "Completeness is an identity join, not a
+// count equality"); for most of this file's life both were structurally incapable of being non-empty,
+// because everything that could have filled them had been reduced by `any` before the join ever saw it.
+//
+// So the lines are kept AS EVIDENCE, every one, and the fold is the only consumer. Nothing renders them:
+// §4b forbids a second stdout, and the ledger is a value, so this is the join's input and not another report.
+type KnownRedPrintedEvidence {
+  // THE ENTRY THE CHILD WAS ASKED UNDER, taken from that child's own claims -- not from the line, which
+  // carries no path. Empty when no claim of that child explains the line, which is what makes the line
+  // foreign. Keeping the entry (rather than only the name) is what preserves the old per-child attribution:
+  // two claims in different modules may share a function name, and a line can only be matched to a subject
+  // whose PLACED PATH is the entry of the child that printed it.
+  entry: String,
+  // THE NAME THE HARNESS PRINTED, read off the line. `claim_batch` prints `PASS {}`/`FAIL {}`/`PANICKED {}`
+  // with exactly the string it was handed by `--function` (src/v1/stage0/src/bin/claim_batch.rs:324-347), so
+  // this is the claim's `function` field as dispatched, echoed back. Reading it FROM THE LINE is the point:
+  // an identity that was never printed must not be credited with a verdict.
+  printed: String,
+  line: String,
+  terminal: Optional<ClaimAttemptTerminal>
+}
+
+// EVERY VERDICT LINE THE CHILDREN PRINTED, in print order, one item per printed line. NOT deduplicated --
+// deduplication here is the defect this block exists to remove.
+fn known_red_printed_evidence(children: List<KnownRedChildRun>) -> List<KnownRedPrintedEvidence> {
+  fold(
+    xs: children,
+    init: [],
+    f: (acc, c) => concat(xs: acc, ys: known_red_child_evidence(child: c))
+  )
+}
+
+fn known_red_child_evidence(child: KnownRedChildRun) -> List<KnownRedPrintedEvidence> {
+  known_red_evidence_step(
+    rest: known_red_child_verdict_lines(child: child),
+    claims: known_red_child_claims(child: child),
+    out: []
+  )
+}
+
+fn known_red_evidence_step(
+  rest: List<String>,
+  claims: List<ClaimRun>,
+  out: List<KnownRedPrintedEvidence>
+) -> List<KnownRedPrintedEvidence> {
+  match rest {
+    Empty => out
+    Cons { head: h, tail: t } =>
+      known_red_evidence_step(
+        rest: t,
+        claims: claims,
+        out: list_snoc_item(xs: out, item: known_red_claim_evidence(line: h, claims: claims))
+      )
+  }
+}
+
+fn known_red_claim_evidence(line: String, claims: List<ClaimRun>) -> KnownRedPrintedEvidence {
+  let printed = known_red_verdict_name_of(line: line)
+  match known_red_claim_explaining(claims: claims, printed: printed) {
+    Present { value: c } =>
+      KnownRedPrintedEvidence {
+        entry: c.entry,
+        printed: printed,
+        line: line,
+        terminal: known_red_terminal_of_line(line: line, function: c.function)
+      }
+    Absent =>
+      KnownRedPrintedEvidence {
+        entry: "",
+        printed: printed,
+        line: line,
+        terminal: known_red_terminal_of_line(line: line, function: printed)
+      }
+  }
+}
+
+// WHICH OF THIS CHILD'S CLAIMS PRINTED THE LINE. Matched on the printed name against `function`, and then
+// against `entry`: the harness echoes whatever `--function` was handed, and a witness that dispatches a whole
+// entry as the function name gets that string back. `function` is tried first because the instrument's own
+// dispatch always puts the bare function there (`known_red_placed_identity_claim`), so the common arm is the
+// first arm.
+fn known_red_claim_explaining(claims: List<ClaimRun>, printed: String) -> Optional<ClaimRun> {
+  match claims {
+    Empty => Absent
+    Cons { head: h, tail: t } =>
+      if h.function == printed || h.entry == printed {
+        Present { value: h }
+      } else {
+        known_red_claim_explaining(claims: t, printed: printed)
+      }
+  }
+}
+
+// THE NAME THE HARNESS PRINTED: from the verdict keyword down to the first separator. The keywords are the
+// transport's own (`known_red_pass_prefix`, `known_red_fail_prefix`, `known_red_panicked_prefix`,
+// `known_red_unobserved_prefix`), so this cannot drift from `known_red_verdict_lines` -- the two read the same
+// prefixes. UNOBSERVED is stripped here too: a name that kept the `UNOBSERVED ` prefix could not be matched to
+// the claim it reports, which would leave the two re-labelled arms dead in the fold even though the decoder
+// dispatches them.
+fn known_red_verdict_name_of(line: String) -> String {
+  known_red_name_cut(s: known_red_strip_verdict_prefix(line: line), i: 0)
+}
+
+fn known_red_strip_verdict_prefix(line: String) -> String {
+  if starts_with(s: line, prefix: known_red_pass_prefix()) {
+    known_red_after(s: line, n: string_length(s: known_red_pass_prefix()))
+  } else {
+    if starts_with(s: line, prefix: known_red_fail_prefix()) {
+      known_red_after(s: line, n: string_length(s: known_red_fail_prefix()))
+    } else {
+      if starts_with(s: line, prefix: known_red_panicked_prefix()) {
+        known_red_after(s: line, n: string_length(s: known_red_panicked_prefix()))
+      } else {
+        if starts_with(s: line, prefix: known_red_unobserved_prefix()) {
+          known_red_after(s: line, n: string_length(s: known_red_unobserved_prefix()))
+        } else {
+          trim(s: line)
+        }
+      }
+    }
+  }
+}
+
+fn known_red_name_cut(s: String, i: Int) -> String {
+  if i >= string_length(s: s) {
+    trim(s: s)
+  } else {
+    let c = char_at(s: s, pos: i)
+    if c == " " || c == "(" || c == "\t" || c == "\r" {
+      trim(s: substring(s: s, start: 0, end: i))
+    } else {
+      known_red_name_cut(s: s, i: i + 1)
+    }
+  }
+}
+
+// IS THIS EVIDENCE THE SUBJECT'S OWN. Both sides must be known: a placed path, and a printed name equal to
+// the subject's function. This is the same join the deleted `known_red_lines_for_subject` performed
+// (`known_red_child_carries`), stated once as a predicate over the kept multiset instead of once per caller.
+fn known_red_evidence_is_of(
+  evidence: KnownRedPrintedEvidence,
+  subject: KnownRedSubject
+) -> Bool {
+  match subject.entry {
+    Placed { path: p } => evidence.entry == p && evidence.printed == subject.function
+    Underivable { name: _, cause: _ } => false
+  }
+}
+
+fn known_red_evidence_for(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<KnownRedPrintedEvidence> {
+  filter(
+    xs: evidence,
+    predicate: fn(e) { known_red_evidence_is_of(evidence: e, subject: subject) }
+  )
+}
+
+// AN IDENTITY CARRIED BY MORE THAN ONE ROW, which is what `LedgerReconciliation.terminal_duplicated` means
+// (§5: 'a missing witness ... reported as covered' is the failure this leg answers). Rows are one per
+// subject, so this catches the case where two populations planned the SAME identity and the join would
+// otherwise read two rows for one witness as two witnesses.
+fn known_red_duplicated_identities(rows: List<KnownRedDerivationRow>) -> List<WitnessIdentity> {
+  known_red_dup_step(
+    rest: rows,
+    seen: [],
+    out: []
+  )
+}
+
+fn known_red_dup_step(
+  rest: List<KnownRedDerivationRow>,
+  seen: List<WitnessIdentity>,
+  out: List<WitnessIdentity>
+) -> List<WitnessIdentity> {
+  match rest {
+    Empty => out
+    Cons { head: h, tail: t } =>
+      if any(xs: out, predicate: fn(o) { known_red_same_identity(a: o, b: h.identity) }) {
+        known_red_dup_step(rest: t, seen: seen, out: out)
+      } else {
+        if any(xs: seen, predicate: fn(o) { known_red_same_identity(a: o, b: h.identity) }) {
+          known_red_dup_step(
+            rest: t,
+            seen: seen,
+            out: list_snoc_item(xs: out, item: h.identity)
+          )
+        } else {
+          known_red_dup_step(
+            rest: t,
+            seen: list_snoc_item(xs: seen, item: h.identity),
+            out: out
+          )
+        }
+      }
+  }
+}
+
+// HOW MANY TIMES A SUBJECT WAS PRINTED. Asked of the multiset directly, never of a row: a row has already
+// collapsed to one per subject, which is precisely the fact the old `any` destroyed.
+fn known_red_printed_count(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> Int {
+  length(xs: known_red_evidence_for(subject: subject, evidence: evidence))
+}
+
+// THE TERMINAL OF A SUBJECT, from the lines printed for it. Several lines is not 'the first of them' and not
+// 'the strongest of them' -- it is a DUPLICATE, reported as one by `known_red_duplicated_evidence` -- while
+// the FIRST is still taken as the row's terminal so the ledger keeps exactly one row per identity. Refusing
+// to pick at all here would put that arbitration in two places. A line that matched structurally but decoded
+// to nothing is NOT silently 'absent': it is undecodable, its own cause, so it cannot be mistaken for the
+// 'printed nothing' cause and cannot be mistaken for a verdict either.
+fn known_red_subject_terminal(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> ClaimAttemptTerminal {
+  match known_red_evidence_for(subject: subject, evidence: evidence) {
+    Empty => NotAttempted { halted_by: known_red_no_line_cause }
+    Cons { head: h, tail: _ } =>
+      match h.terminal {
+        Present { value: t } => t
+        Absent => NotAttempted { halted_by: known_red_undecodable_cause }
+      }
+  }
+}
+
+// THE FOREIGN LINES: printed evidence that belongs to NO planned subject. Kept until the join so a line about
+// something outside the roster is REPORTED rather than discarded -- the direction the old fold only ever lost
+// in. A foreign line is reported under the function it printed with an EMPTY module path, because the harness
+// never prints a path and inventing one would be a guess about a claim nobody dispatched. The empty path
+// cannot cause a mix-up in either direction: adoption goes through `known_red_evidence_is_of`, which matches
+// a child's ENTRY against a subject's placed path (a foreign item has no entry, and no placed path is empty),
+// so a stranger's line is never credited to a subject -- and the identities reported here are the join's
+// output, not an input to any further match.
+fn known_red_foreign_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  known_red_dedupe_identities(
+    xs: map(
+      filter(
+        xs: evidence,
+        predicate: fn(e) {
+          !any(
+            xs: subjects,
+            predicate: fn(s) { known_red_evidence_is_of(evidence: e, subject: s) }
+          )
+        }
+      ),
+      e => WitnessIdentity { module_path: "", function: e.printed }
+    )
+  )
+}
+
+// AN IDENTITY WHOSE PRINTED LINES DISAGREE. More than one line for one subject is a duplicate (that is
+// `known_red_duplicated_evidence`); more than one line that decodes to DIFFERENT terminals is something
+// else, and the difference is not cosmetic: `claim_batch` cannot print two verdicts for one claim, so one of
+// the two lines did not come from this harness. Taking 'the first' as the row's terminal -- which the ledger
+// needs, since it wants one row per identity -- would otherwise pick silently. Compared by arm rather than
+// by rendered text, so two arms that merely print alike cannot be mistaken for agreeing.
+// AN IDENTITY PRINTED MORE THAN ONCE WITH AGREING TERMINALS. The disagreement case belongs to
+// `known_red_contradicted_evidence`; splitting the two here keeps each arm's leg a single fact.
+fn known_red_repeatedly_printed_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  map(
+    filter(
+      xs: subjects,
+      predicate: fn(s) {
+        known_red_printed_count(subject: s, evidence: evidence) > 1
+          && !known_red_subject_lines_contradict(subject: s, evidence: evidence)
+      }
+    ),
+    s => s.identity
+  )
+}
+
+fn known_red_contradicted_evidence(
+  subjects: List<KnownRedSubject>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<WitnessIdentity> {
+  map(
+    filter(
+      xs: subjects,
+      predicate: fn(s) { known_red_subject_lines_contradict(subject: s, evidence: evidence) }
+    ),
+    s => s.identity
+  )
+}
+
+fn known_red_subject_lines_contradict(
+  subject: KnownRedSubject,
+  evidence: List<KnownRedPrintedEvidence>
+) -> Bool {
+  match known_red_evidence_for(subject: subject, evidence: evidence) {
+    Empty => false
+    Cons { head: h, tail: t } => known_red_contradict_step(rest: t, first: h)
+  }
+}
+
+fn known_red_contradict_step(
+  rest: List<KnownRedPrintedEvidence>,
+  first: KnownRedPrintedEvidence
+) -> Bool {
+  match rest {
+    Empty => false
+    Cons { head: h, tail: t } =>
+      !known_red_optional_terminals_equal(a: first.terminal, b: h.terminal)
+        || known_red_contradict_step(rest: t, first: first)
+  }
+}
+
+// THE OPTIONAL, COMPARED WITHOUT COLLAPSING IT. `Absent` here means 'no arm of the decoder owns this line',
+// which is a THIRD possibility beside 'same terminal' and 'different terminal': two undecodable lines agree
+// (they are both reported by `PrintedLineUndecodable`, not by this arm), while an undecodable line beside a
+// decoded one is a genuine disagreement about what the harness said. Treating Absent as any particular
+// terminal would make the two indistinguishable, so it is matched rather than defaulted.
+fn known_red_optional_terminals_equal(
+  a: Optional<ClaimAttemptTerminal>,
+  b: Optional<ClaimAttemptTerminal>
+) -> Bool {
+  match a {
+    Absent => match b { Absent => true Present { value: _ } => false }
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => known_red_terminals_equal(a: x, b: y)
+      }
+  }
+}
+
+// THE LINES THAT DECODED TO NOTHING. A verdict line whose shape no arm owns is a `claim_batch` print arm this
+// file has not been shown; reporting it is the point, because skipping it would restore the very silence the
+// decoder was written to end. Counted as distinct printed names, so one broken arm prints once.
+fn known_red_undecodable_lines(evidence: List<KnownRedPrintedEvidence>) -> List<String> {
+  known_red_dedupe_texts(
+    xs: map(
+      filter(
+        xs: evidence,
+        predicate: fn(e) {
+          match e.terminal {
+            Absent => true
+            Present { value: _ } => false
+          }
+        }
+      ),
+      e => e.line
+    )
+  )
+}
+
+// THE ARMS THAT MAY NOT BE CONFUSED. `KnownRedHeld` is projected from Returned{ObservedVerdict{false}} and
+// nothing else, so the only comparison the join needs between two lines of one identity is whether they
+// decoded to the same terminal. Compared BY ARM, never through a rendered string: `Symbol` has no string
+// identity in this language (§4a, a carrier is never a verb), and a hand-rolled rendering of a sum type is
+// exactly how one arm stops being distinguishable from its neighbour.
+fn known_red_terminals_equal(a: ClaimAttemptTerminal, b: ClaimAttemptTerminal) -> Bool {
+  match a {
+    Returned { observation: o } =>
+      match b {
+        Returned { observation: p } => known_red_observations_equal(a: o, b: p)
+        _ => false
+      }
+    RuntimeErrored { message: m } =>
+      match b {
+        RuntimeErrored { message: n } => m == n
+        _ => false
+      }
+    Panicked { payload: p } =>
+      match b {
+        Panicked { payload: q } => p == q
+        _ => false
+      }
+    NotAttempted { halted_by: h } =>
+      match b {
+        NotAttempted { halted_by: k } => h == k
+        _ => false
+      }
+    BudgetRefused { safety: s } =>
+      match b {
+        BudgetRefused { safety: t } => known_red_safety_equal(a: s, b: t)
+        _ => false
+      }
+    HostToolUnresolved { name: n, probed: p } =>
+      match b {
+        HostToolUnresolved { name: m, probed: q } => n == m && known_red_texts_equal(a: p, b: q)
+        _ => false
+      }
+    RouteGap { operation: o, ground: g } =>
+      match b {
+        RouteGap { operation: p, ground: h } => o == p && known_red_ground_equal(a: g, b: h)
+        _ => false
+      }
+    SubjectUnresolved { entry: e, cause: c } =>
+      match b {
+        SubjectUnresolved { entry: f, cause: d } => e == f && known_red_subject_cause_equal(a: c, b: d)
+        _ => false
+      }
+  }
+}
+
+// A SUBJECT THAT NEVER RESOLVED. Compared by arm: two `EntryMissing` rows agree (the entry was simply not a
+// file), two `ResolveInfrastructure` rows agree only on their `detail`, and the two never agree with each
+// other -- 'the file is absent' is a different fact from 'the resolver itself broke'. Mirrors the display in
+// `floor_terminal_ledger_wire`.
+fn known_red_subject_cause_equal(a: SubjectUnresolvedCause, b: SubjectUnresolvedCause) -> Bool {
+  match a {
+    EntryMissing {} => match b { EntryMissing {} => true _ => false }
+    ResolveInfrastructure { detail: d } =>
+      match b {
+        ResolveInfrastructure { detail: e } => d == e
+        _ => false
+      }
+  }
+}
+
+fn known_red_observations_equal(a: ClaimObservation, b: ClaimObservation) -> Bool {
+  match a {
+    ObservedVerdict { holds: x } =>
+      match b {
+        ObservedVerdict { holds: y } => x == y
+        ObservationUnrepresentable { reason: _ } => false
+      }
+    ObservationUnrepresentable { reason: _ } =>
+      match b {
+        ObservedVerdict { holds: _ } => false
+        // Compared by arm, not by reason: `Symbol` has no string identity here, so inventing one would be a
+        // second authority for a fact `ClaimObservation` already owns.
+        ObservationUnrepresentable { reason: _ } => true
+      }
+  }
+}
+
+fn known_red_safety_equal(a: ClaimSafetyOutcome, b: ClaimSafetyOutcome) -> Bool {
+  match a {
+    CompletedWithinSafetyLimits => match b { CompletedWithinSafetyLimits => true _ => false }
+    SafetyInterrupted { raised_by: r, elapsed_cpu_at_least: c, elapsed_wall_at_least: w } =>
+      match b {
+        SafetyInterrupted { raised_by: s, elapsed_cpu_at_least: d, elapsed_wall_at_least: v } =>
+          r == s && c == d && w == v
+        _ => false
+      }
+    CompletedPastSafetyLimit { observed_cpu: c, observed_wall: w, preemption: p } =>
+      match b {
+        CompletedPastSafetyLimit { observed_cpu: d, observed_wall: v, preemption: q } =>
+          c == d && w == v && known_red_preemption_equal(a: p, b: q)
+        _ => false
+      }
+  }
+}
+
+fn known_red_preemption_equal(a: ClaimPreemptionReachability, b: ClaimPreemptionReachability) -> Bool {
+  match a {
+    CooperativelyPollable => match b { CooperativelyPollable => true _ => false }
+    OpaqueHostCallUnbounded { operation: o } =>
+      match b {
+        OpaqueHostCallUnbounded { operation: p } => o == p
+        _ => false
+      }
+  }
+}
+
+fn known_red_ground_equal(a: FloorRouteGapGround, b: FloorRouteGapGround) -> Bool {
+  match a {
+    UnpublishedMockCase => match b { UnpublishedMockCase => true _ => false }
+    NoMockResponse => match b { NoMockResponse => true _ => false }
+    FilesystemRemoval => match b { FilesystemRemoval => true _ => false }
+  }
+}
+
+fn known_red_texts_equal(a: List<String>, b: List<String>) -> Bool {
+  match a {
+    Empty => match b { Empty => true Cons { head: _, tail: _ } => false }
+    Cons { head: h, tail: t } =>
+      match b {
+        Empty => false
+        Cons { head: k, tail: m } => h == k && known_red_texts_equal(a: t, b: m)
+      }
+  }
+}
+
+// THE SUBJECT DEFECTS, computed from what the children were ASKED to run. `claim_batch_claims_argv` is
+// the harness's own argv builder and it refuses a row whose shape it cannot carry; an absent entry file
+// is the harness's own refusal condition ('resolved against the process working directory ... which does
+// not exist; refusing'). Both are carried rather than filtered, because the naive implementation drops
+// them and prints a clean population one claim short.
+fn known_red_subject_defects(subjects: List<KnownRedSubject>) -> List<KnownRedSubjectDefect> {
+  subjects
+    |> fold(
+      init: [],
+      f: (acc, s) =>
+        match known_red_defect_of(subject: s) {
+          Present { value: d } => list_snoc_item(xs: acc, item: d)
+          Absent => acc
+        }
+    )
+}
+
+
+// THE ENTRY IS ASKED OF THE FILESYSTEM, not of a list this file keeps: a defect must be re-derived from
+// the checkout each run, or it becomes a roster of known-missing files, which is a list again.
+fn known_red_entry_exists(entry: String) -> Bool {
+  shell.Test.IsFile(path: entry, expect: ExpectSuccess).is_file
+}
+
+// THE SHAPE THE HARNESS REFUSES: its builder carries one --entry and one --function per ClaimRun, so a
+// row whose qualified name does not split, or whose function is empty, is refused. Derived from the
+// builder's OWN output (it must emit both flags and exactly one pair), never from a predicate here.
+// THE WELL-FORMEDNESS TEST RUNS ON THE SUBJECT, BEFORE IT IS PLACED, because it asks whether the harness's
+// own builder would carry the row at all -- and it builds the argv from the placement the subject already
+// carries. Feeding it a `KnownRedPlacedSubject` would make the test unfalsifiable: by the time a subject is
+// placed its path exists, so an empty function would be the only thing left to catch.
+fn known_red_argv_is_well_formed(subject: KnownRedSubject) -> Bool {
+  match subject.entry {
+    Placed { path: p } =>
+      known_red_has_pair(
+        argv: claim_batch_claims_argv(
+          source_roots: witness_layer_roots(),
+          claims: [ClaimRun { entry: p, function: subject.function }]
+        )
+      )
+    Underivable { name: _, cause: _ } => false
+  }
+}
+
+fn known_red_has_pair(argv: List<String>) -> Bool {
+  known_red_has_flag(argv: argv, flag: "--entry")
+    && known_red_has_flag(argv: argv, flag: "--function")
+}
+
+fn known_red_has_flag(argv: List<String>, flag: String) -> Bool {
+  length(xs: filter(xs: argv, predicate: fn(a) { a == flag })) == 1
+}
+
+// WHY NEITHER ARM IS FILTERED. A dropped subject is the exact bug class this file exists to make loud:
+// `claim_batch` refuses a WHOLE batch that contains one entry it cannot stat, so the easy implementation
+// is to drop the offending row and print a clean population that is quietly one claim short — which is
+// what was happening to `test.claim.examples.blackjack_shuffle_wet_witness` here before this instrument
+// ran, its schedule row carrying a stale `_test` suffix in both `module_path` and `entry` while the real
+// file has none. The row is repaired in its owning carrier (`local_repo_wet_schedule`), the arm is kept
+// because the failure mode is a property of the harness and not of that one row, and it is claimed below
+// rather than asserted in prose.
+//
+// THE DEFECT FOR ONE SUBJECT. The roster side is a TYPE TEST on `entry`, not a stat: a name the layout
+// authority could not place is `Underivable`, and its typed cause is carried here verbatim rather than
+// flattened into a path that would then fail the file check below and be printed as a wet-file absence —
+// the wrong name for the wrong cause. `WetEntryFileAbsent` keeps its meaning for the case where a
+// filesystem question IS the right question: an entry column that points at no file (the schedule's
+// phantom-row failure mode). `ClaimArgvRefused` is the harness's own pre-condition.
+fn known_red_defect_of(subject: KnownRedSubject) -> Optional<KnownRedSubjectDefect> {
+  match subject.entry {
+    Underivable { name: n, cause: c } =>
+      Present {
+        value: RosterNameUnderivable {
+          identity: subject.identity,
+          name: n,
+          cause: c
+        }
+      }
+    Placed { path: p } =>
+      if !known_red_entry_exists(entry: p) {
+        Present {
+          value: WetEntryFileAbsent { identity: subject.identity, entry: p }
+        }
+      } else if !known_red_argv_is_well_formed(subject: subject) {
+        Present {
+          value: ClaimArgvRefused {
+            identity: subject.identity,
+            entry: p,
+            function: subject.function
+          }
+        }
+      } else {
+        Absent
+      }
+  }
+}
+
+// ───────────────────── completeness: an identity join, and its printed counts ─────────────────────
+
+// THE COMPLETENESS TEST IS THE LEDGER'S OWN, in BOTH directions. `ledger_is_complete` compares three sets
+// by IDENTITY — owed-without-verdict, verdict-without-owed, duplicated — and it is a record the fold
+// carries and prints, never a count compared against another count. `LedgerReconciliation` is deliberately
+// a RECORD and not a coproduct (the ledger module's own header: two defects that cancel in the totals must
+// not both hide), so this instrument cannot report a balanced run.
+fn known_red_reconciliation(
+  subjects: List<KnownRedSubject>,
+  rows: List<KnownRedDerivationRow>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> LedgerReconciliation {
+  LedgerReconciliation {
+    // OWED BUT NEVER VERDICTED. Asking 'is there a row for it' would be vacuous here — rows are built by
+    // mapping over the very subjects being reconciled, so a row always exists and the join would be
+    // decorative, a completeness check that can never fail. What is asked instead is whether any row for
+    // that identity actually CARRIES an observation: a child that printed nothing leaves the identity owed
+    // with nothing to show for it, and that is what this leg must catch.
+    planned_without_terminal: filter(
+      xs: subjects,
+      predicate: fn(s) { !known_red_subject_was_observed(rows: rows, s: s) }
+    )
+      |> map(s => s.identity),
+    // PRINTED FOR NOBODY. The one leg that can only be answered from the multiset. A row is always built by
+    // mapping over a planned subject, so 'a terminal nobody planned' is UNEXPRESSIBLE over rows: this leg
+    // used to be a filter over rows and was therefore structurally always empty -- a shape that could never
+    // be filled, which is the decorative completeness check §5 warns about. The other two legs are computed
+    // over rows and were always able to fire; they are left alone.
+    terminal_without_planned: known_red_foreign_evidence(subjects: subjects, evidence: evidence),
+    // THE LEDGER'S OWN LEG: an identity carried by MORE THAN ONE ROW. This is the ledger's meaning -- the
+    // reconciliation joins ROWS against PLANNED identities -- and it is computed over rows, from the rows
+    // that exist. It is NOT 'a line printed twice': that is a fact about the evidence and is reported by
+    // `PrintedLineDuplicated` below, because the two send a reader to different places (a duplicated row is
+    // the roster's or the packer's problem, a duplicated line is the harness's).
+    terminal_duplicated: known_red_duplicated_identities(rows: rows)
+  }
+}
+
+// THE LEDGER THE COMPLETENESS TEST RUNS ON. The binding is a LOCAL RUN and is spoken as one:
+// `UnpublishedWorkingTree` rather than a commit-shaped value, because a local instrument run has no
+// candidate tree, and the ledger module's own header makes an unbound ledger unmistakable from its shape
+// rather than by convention. The subject digest is the content hash of the head SHA, so a ledger cannot
+// be detached from the commit it claims to have run on. `publication` is `LedgerPartial` unless the
+// reconciliation is empty: a fold that has not accounted for every identity says so in the footer rather
+// than claiming a row count it cannot support.
+fn known_red_ledger(
+  subjects: List<KnownRedSubject>,
+  rows: List<KnownRedDerivationRow>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> TerminalLedger {
+  let report = known_red_reconciliation(subjects: subjects, rows: rows, evidence: evidence)
+  TerminalLedger {
+    binding: known_red_ledger_binding(head: known_red_head_of(rows: rows)),
+    rows: map(
+      rows,
+      r =>
+        ClaimTerminalRow {
+          identity: r.identity,
+          expectation: r.expectation,
+          terminal: r.terminal
+        }
+    ),
+    publication: if known_red_reconciliation_is_empty(r: report) {
+        LedgerFinalized {
+          row_count: length(xs: rows),
+          digest: known_red_head_of(rows: rows)
+        }
+      } else {
+        LedgerPartial { reason: "known-red derivation is not reconciliation-complete" }
+      }
+  }
+}
+
+fn known_red_ledger_binding(head: String) -> LedgerBinding {
+  LedgerBinding {
+    repository_snapshot: UnpublishedWorkingTree,
+    prepared_subject: content_hash_atom(value: head)
+  }
+}
+
+fn known_red_head_of(rows: List<KnownRedDerivationRow>) -> String {
+  match rows {
+    Empty => ""
+    Cons { head: h, tail: _ } => h.head
+  }
+}
+
+fn known_red_reconciliation_is_empty(r: LedgerReconciliation) -> Bool {
+  length(xs: r.planned_without_terminal) == 0
+    && length(xs: r.terminal_without_planned) == 0
+    && length(xs: r.terminal_duplicated) == 0
+}
+
+// THE COVERAGE OF THE TWO OWED POPULATIONS. The wet lane is executed; the floor is printed as uncovered
+// with the withdrawal as its cause. `executed_count` is a count of verdicts this run actually parsed for
+// that population — a consequence of the join, printed next to the join's own verdict, and never compared
+// against a number written into this file.
+fn known_red_coverage(
+  subjects: List<KnownRedSubject>,
+  rows: List<KnownRedDerivationRow>
+) -> List<KnownRedPopulationCoverage> {
+  [
+    known_red_coverage_of(population: WetLane, subjects: subjects, rows: rows, cause: ""),
+    known_red_coverage_of(
+      population: RequiredFloor,
+      subjects: subjects,
+      rows: rows,
+      cause: known_red_floor_uncovered_cause()
+    )
+  ]
+}
+
+fn known_red_coverage_of(
+  population: KnownRedSubjectPopulation,
+  subjects: List<KnownRedSubject>,
+  rows: List<KnownRedDerivationRow>,
+  cause: String
+  ) -> KnownRedPopulationCoverage {
+  // `&&` is infix and its left operand must be on the same line, so the executed test is a named
+  // predicate rather than a two-line expression: the conjunction is "this row belongs to the population
+  // AND a child actually printed a verdict for it".
+  let owed = filter(xs: subjects, predicate: fn(s) { s.origin == population })
+  let executed = filter(xs: rows, predicate: fn(r) { known_red_row_counts_as_executed(row: r, population: population) })
+  KnownRedPopulationCoverage {
+    population: population,
+    subject_count: length(xs: owed),
+    executed_count: length(xs: executed),
+    uncovered_cause: cause
+  }
+}
+
+fn known_red_row_counts_as_executed(row: KnownRedDerivationRow, population: KnownRedSubjectPopulation) -> Bool {
+  row.origin == population && known_red_row_was_observed(row: row)
+}
+
+fn known_red_subject_was_observed(rows: List<KnownRedDerivationRow>, s: KnownRedSubject) -> Bool {
+  any(
+    xs: rows,
+    predicate: fn(r) {
+      known_red_same_identity(a: r.identity, b: s.identity) && known_red_row_was_observed(row: r)
+    }
+  )
+}
+
+// AN IDENTITY IS OBSERVED WHEN IT RETURNED, not when a line came back. The `*BeforeVerdict` arms of
+// `ClaimAttemptTerminal` -- runtime error, panic, not-attempted, budget refusal, unresolved host tool, route
+// gap -- are the ledger's own way of saying the claim never reached its subject, and an identity in that
+// state is OWED a verdict, never covered: the run happened, the harness spoke about the claim, and there is
+// still no answer. This is why `claim_disposition` gives them `*BeforeVerdict` names rather than
+// Held/Failed/Passed; asking anything else of them would report a claim that never ran as known-red coverage.
+fn known_red_row_was_observed(row: KnownRedDerivationRow) -> Bool {
+  match row.terminal {
+    Returned { observation: _ } => true
+    RuntimeErrored { message: _ } => false
+    Panicked { payload: _ } => false
+    NotAttempted { halted_by: _ } => false
+    BudgetRefused { safety: _ } => false
+    HostToolUnresolved { name: _, probed: _ } => false
+    RouteGap { operation: _, ground: _ } => false
+    // A subject that never resolved is the ledger's own 'the run happened but the claim never reached its
+    // subject', same family as the route gap: the harness spoke, there is still no answer. Not observed.
+    SubjectUnresolved { entry: _, cause: _ } => false
+  }
+}
+
+// ─────────────────────────────── the derivation, and what refuses it ───────────────────────────────
+
+// WHY A REFUSAL IS A TYPED LIST AND NOT A Bool: each arm names a different remedy, and a single false
+// would make an unbuilt binary, a deleted spawn, and a stale enrolment look like one finding.
+type KnownRedDerivationRefusal
+  = LocalRepoWetExecutorNotInvoked { scheduled: Int }
+  | WitnessBinRefusedToBuild { cause: String }
+  | HeadCommitUnreadable
+  | ReconciliationIncomplete { report: LedgerReconciliation }
+  | StaleEnrolmentNowPassing { identities: List<String> }
+  | UnaccountedRedWithoutEnrolment { identities: List<String> }
+  | SubjectDefectsCarried { defects: List<String> }
+  | DispatchedPopulationNotComplete { missing: List<String> }
+  | ChildExitedNonzeroWithoutVerdicts { children: List<String> }
+  | VerdictIdentityAmbiguous { names: List<String> }
+  // A LINE THE DECODER HAS NO ARM FOR. `claim_batch` printed something whose shape this file does not own,
+  // which is drift between the harness's print arms and this instrument's decoder -- a defect of THIS file,
+  // not of the roster. It needs its own name because `ReconciliationIncomplete` would otherwise be the only
+  // thing it ever looks like, and that name sends the reader to fix the roster when the thing to fix is here.
+  // Its legs (which identity is unaccounted) and this one (which line could not be read) are different facts.
+  | PrintedLineUndecodable { lines: List<String> }
+  // PRINTED TWICE, AND NOT WITH THE SAME VERDICT. Distinct from `terminal_duplicated`, which reports an
+  // identity printed more than once: agreeing duplicates are a harness that spoke twice about one claim,
+  // while disagreeing duplicates mean one of the lines is not this harness's at all. Both refuse, and they
+  // carry different legs because they send the reader to different places -- a duplicate is the roster's
+  // problem, a contradiction is the evidence's.
+  | PrintedLinesContradict { identities: List<WitnessIdentity> }
+  // PRINTED MORE THAN ONCE, ALWAYS WITH THE SAME VERDICT. The counterpart to the arm above: agreeing
+  // duplicates are not a contradiction, but they are not nothing either -- the harness prints one line per
+  // claim, so a second identical line means something between the child and this file was run twice, or a
+  // line was echoed. Kept separate from `LedgerReconciliation.terminal_duplicated` (duplicate ROWS for one
+  // identity, which is a roster/packer defect) because the two facts have different owners and different
+  // legs; collapsing them would report a harness echo as a roster bug.
+  | PrintedLineDuplicated { identities: List<WitnessIdentity> }
+  // THE WORDING THIS FILE DECODES IS NO LONGER THE WORDING THE HARNESS PRINTS. Every marker the decoder
+  // matches on is declared against the file that prints it (`known_red_print_authorities`); a marker that
+  // has left that file means the decoder and the transport have drifted, and a line-by-line decode against
+  // stale wording can classify a claim by a clause that no longer exists. This refuses the whole run as
+  // NO OBSERVATION rather than let a partial match pass as a reading: `source :: marker` names both
+  // authorities that were supposed to agree. It is checked once per run, because it is a property of the
+  // checkout, not of any child's stdout (review 83992).
+  | PrintedWordingUntied { markers: List<String> }
+
+fn known_red_refusal_name(r: KnownRedDerivationRefusal) -> String {
+  match r {
+    LocalRepoWetExecutorNotInvoked { scheduled: _ } => "LocalRepoWetExecutorNotInvoked"
+    WitnessBinRefusedToBuild { cause: _ } => "WitnessBinRefusedToBuild"
+    HeadCommitUnreadable => "HeadCommitUnreadable"
+    ReconciliationIncomplete { report: _ } => "ReconciliationIncomplete"
+    StaleEnrolmentNowPassing { identities: _ } => "StaleEnrolmentNowPassing"
+    UnaccountedRedWithoutEnrolment { identities: _ } => "UnaccountedRedWithoutEnrolment"
+    SubjectDefectsCarried { defects: _ } => "SubjectDefectsCarried"
+    DispatchedPopulationNotComplete { missing: _ } => "DispatchedPopulationNotComplete"
+    ChildExitedNonzeroWithoutVerdicts { children: _ } => "ChildExitedNonzeroWithoutVerdicts"
+    VerdictIdentityAmbiguous { names: _ } => "VerdictIdentityAmbiguous"
+    PrintedLineUndecodable { lines: _ } => "PrintedLineUndecodable"
+    PrintedLinesContradict { identities: _ } => "PrintedLinesContradict"
+    PrintedLineDuplicated { identities: _ } => "PrintedLineDuplicated"
+    PrintedWordingUntied { markers: _ } => "PrintedWordingUntied"
+  }
+}
+
+// THE REFUSALS, DERIVED FROM THE FOLD'S OWN FACTS. Note what is NOT here: nothing is refused for a row
+// whose disposition is Failed on an unenrolled claim — that IS the list this instrument exists to print.
+// What refuses is the run's honesty: no spawn, an unreadable head, an unaccounted identity in either
+// direction, a stale enrolment, an unaccounted red, or a subject dropped on the way to the child.
+fn known_red_refusals(
+  subjects: List<KnownRedSubject>,
+  children: List<KnownRedChildRun>,
+  dispatched: List<KnownRedPlacedSubject>,
+  rows: List<KnownRedDerivationRow>,
+  report: LedgerReconciliation,
+  defects: List<KnownRedSubjectDefect>,
+  evidence: List<KnownRedPrintedEvidence>
+) -> List<KnownRedDerivationRefusal> {
+  let scheduled = length(xs: subjects)
+  let no_spawn =
+    if scheduled > 0 && !known_red_any_verdict(children: children) {
+      [LocalRepoWetExecutorNotInvoked { scheduled: scheduled }]
+    } else {
+      []
+    }
+  let bin_refused =
+    fold(
+      xs: children,
+      init: [],
+      f: (acc, c) =>
+        match c {
+          NotStarted { claims: _, cause: e } =>
+            if length(xs: acc) == 0 {
+              [WitnessBinRefusedToBuild { cause: e }]
+            } else {
+              acc
+            }
+          Invoked { claims: _, exit_code: _, stdout: _, stderr: _ } => acc
+        }
+    )
+  let died = known_red_children_died_without_verdicts(children: children)
+  let head_unreadable =
+    if known_red_head_of(rows: rows) == "" {
+      [HeadCommitUnreadable]
+    } else {
+      []
+    }
+  let incomplete =
+    if !known_red_reconciliation_is_empty(r: report) {
+      [ReconciliationIncomplete { report: report }]
+    } else {
+      []
+    }
+  let stale = known_red_stale_enrolments(rows: rows)
+  let unaccounted = known_red_unaccounted_reds(rows: rows)
+  let carried =
+    if length(xs: defects) > 0 {
+      [SubjectDefectsCarried { defects: known_red_defect_texts(defects: defects) }]
+    } else {
+      []
+    }
+  let missing = known_red_missing_dispatch(subjects: subjects, dispatched: dispatched)
+  let under_dispatched =
+    if length(xs: missing) > 0 {
+      [DispatchedPopulationNotComplete { missing: missing }]
+    } else {
+      []
+    }
+  let died_without_verdicts =
+    if length(xs: died) > 0 {
+      [ChildExitedNonzeroWithoutVerdicts { children: map(died, d => known_red_died_text(d: d)) }]
+    } else {
+      []
+    }
+  let repeated = known_red_repeatedly_printed_evidence(subjects: subjects, evidence: evidence)
+  let printed_repeated =
+    if length(xs: repeated) > 0 {
+      [PrintedLineDuplicated { identities: repeated }]
+    } else {
+      []
+    }
+  let contradicted = known_red_contradicted_evidence(subjects: subjects, evidence: evidence)
+  let printed_contradicted =
+    if length(xs: contradicted) > 0 {
+      [PrintedLinesContradict { identities: contradicted }]
+    } else {
+      []
+    }
+  let undecodable = known_red_undecodable_lines(evidence: evidence)
+  let printed_undecodable =
+    if length(xs: undecodable) > 0 {
+      [PrintedLineUndecodable { lines: undecodable }]
+    } else {
+      []
+    }
+  let ambiguous = known_red_ambiguous_verdict_names(children: children)
+  let verdict_name_ambiguous =
+    if length(xs: ambiguous) > 0 {
+      [VerdictIdentityAmbiguous { names: map(ambiguous, a => concat(a, " carried twice by one child")) }]
+    } else {
+      []
+    }
+  concat(
+    concat(concat(no_spawn, bin_refused), concat(head_unreadable, incomplete)),
+    concat(
+      if length(xs: stale) > 0 {
+        [StaleEnrolmentNowPassing { identities: stale }]
+      } else {
+        []
+      },
+      concat(
+        if length(xs: unaccounted) > 0 {
+          [UnaccountedRedWithoutEnrolment { identities: unaccounted }]
+        } else {
+          []
+        },
+        concat(
+          under_dispatched,
+          concat(
+            died_without_verdicts,
+            concat(
+              verdict_name_ambiguous,
+              concat(
+                printed_undecodable,
+                concat(printed_repeated, concat(printed_contradicted, carried))
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE TWO FINDINGS THE VOCABULARY EXISTS FOR, read off the projections the authority made:
+// `KnownRedNowPassing` is an enrolled identity that PASSED (a stale enrolment: the debt is paid and the
+// roster still carries it) and `Failed` on an identity the roster does NOT carry is an unaccounted red.
+// Both are printed by identity, never as a count.
+fn known_red_stale_enrolments(rows: List<KnownRedDerivationRow>) -> List<String> {
+  filter(xs: rows, predicate: fn(r) { known_red_is_stale(d: r.disposition) })
+    |> map(r => known_red_row_qualified(r: r))
+}
+
+fn known_red_unaccounted_reds(rows: List<KnownRedDerivationRow>) -> List<String> {
+  filter(
+    xs: rows,
+    predicate: fn(r) {
+      r.disposition == Failed && !known_red_row_is_enrolled(row: r)
+    }
+  )
+    |> map(r => known_red_row_qualified(r: r))
+}
+
+// ENROLLMENT, RECOVERED FROM THE ROW WITHOUT RE-READING THE ROSTER. A row's expectation IS the
+// enrollment decision the fold derived, so asking the row is asking the authority once, at the time the
+// run happened — a later roster edit cannot retroactively re-classify a printed receipt.
+fn known_red_row_is_enrolled(row: KnownRedDerivationRow) -> Bool {
+  row.expectation == ExpectedRed
+}
+
+// WHAT A DEFECT PRINTS, IN ONE PLACE. The unplaced case prints the authority's OWN cause text — the whole
+// point of carrying `cause` instead of a path is that a reader of the list can tell 'this identity has a
+// name the layout rule cannot place' from 'the file at its place is gone' without opening this file.
+fn known_red_subject_defect_text(d: KnownRedSubjectDefect) -> String {
+  match d {
+    WetEntryFileAbsent { identity: i, entry: e } =>
+      concat("WetEntryFileAbsent ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" entry=", concat(e, " (the harness refuses a whole batch containing an entry it cannot stat)"))))
+    RosterNameUnderivable { identity: i, name: n, cause: c } =>
+      concat("RosterNameUnderivable ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" name=", concat(n, concat(" cause=", c)))))
+    ClaimArgvRefused { identity: i, entry: e, function: f } =>
+      concat("ClaimArgvRefused ",
+        concat(witness_identity_qualified_name(identity: i),
+          concat(" entry=", concat(e, concat(" function=", f)))))
+  }
+}
+
+fn known_red_defect_texts(defects: List<KnownRedSubjectDefect>) -> List<String> {
+  map(defects, d => known_red_subject_defect_text(d: d))
+}
+
+fn known_red_held_rows(rows: List<KnownRedDerivationRow>) -> List<KnownRedDerivationRow> {
+  filter(xs: rows, predicate: fn(r) { known_red_is_held(d: r.disposition) })
+}
+
+// ───────────────────────────────────── the printed report ─────────────────────────────────────
+
+// THE PRINT, IN THE ORDER A READER NEEDS IT: the head first (nothing below means anything without it),
+// then the KNOWN-RED HELD list — the answer to the question — then the two honesty findings, then the
+// coverage of what was owed including the floor's printed gap, then the reconciliation by identity.
+// Counts are printed as consequences; the lists are the evidence.
+fn known_red_report(d: KnownRedDerivation) -> String {
+  let title = "known-red derivation (gunbc.instruments.known_red_derivation)"
+  let head_line = concat("head: ", d.head)
+  let cost_line = concat(
+    "children (serial, entry-packed, cap ",
+    concat(
+      known_red_int_text(n: known_red_max_claims_per_child),
+      concat(
+        " claims/child): ",
+        concat(
+          known_red_int_text(n: d.children),
+          concat(
+            " for owed ",
+            concat(
+              known_red_int_text(n: length(xs: d.rows)),
+              concat(
+                " witnesses over ",
+                concat(
+                  known_red_int_text(n: known_red_entries_owed(placed: known_red_dispatchable(subjects: d.subjects_owed))),
+                  concat(
+                    " entries, dispatched ",
+                    concat(
+                      known_red_int_text(n: length(xs: d.dispatched)),
+                      concat(
+                        " largest child ",
+                        known_red_int_text(n: known_red_largest_child_claims(placed: known_red_dispatchable(subjects: d.subjects_owed)))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+  let held = known_red_held_rows(rows: d.rows)
+  let held_header = concat(
+    "KnownRedHeld (enrolled in floor_expected_red, still FAILING at this head — the debt is real): ",
+    known_red_int_text(n: length(xs: held))
+  )
+  let held_lines = map(held, r => known_red_row_line(row: r))
+  let stale_count = length(
+    xs: filter(xs: d.rows, predicate: fn(r) { known_red_is_stale(d: r.disposition) })
+  )
+  let stale_header = concat(
+    "KnownRedNowPassing (enrolled in floor_expected_red, executed PASS — the debt is paid, the roster is stale): ",
+    known_red_int_text(n: stale_count)
+  )
+  let stale_lines = map(filter(xs: d.rows, predicate: fn(r) { known_red_is_stale(d: r.disposition) }),
+    r => known_red_row_line(row: r))
+  let unaccounted = filter(
+    xs: d.rows,
+    predicate: fn(r) { r.disposition == Failed && !known_red_row_is_enrolled(row: r) }
+  )
+  let unaccounted_header = concat(
+    "THE LIST — ExpectedToHold claims that FAIL at this head, with no entry in floor_expected_red: ",
+    known_red_int_text(n: length(xs: unaccounted))
+  )
+  let unaccounted_lines = map(unaccounted, r => known_red_row_line(row: r))
+  let coverage_lines = map(d.coverage, c => known_red_coverage_line(c: c))
+  let reconciliation_lines = known_red_reconciliation_lines(report: d.reconciliation)
+  let defect_lines = map(d.defects, x => concat("  defect ", known_red_subject_defect_text(d: x)))
+  let refusal_lines = map(d.refusals, r => concat("  REFUSED ", concat(known_red_refusal_name(r: r), known_red_refusal_detail(r: r))))
+  concat(
+    join(
+      concat(
+      [title, head_line, cost_line, held_header],
+      concat(
+        held_lines,
+        concat(
+          [stale_header],
+          concat(
+            stale_lines,
+            concat(
+              ["UnaccountedRed (Failed without enrolment):"],
+              concat(
+                unaccounted_lines,
+                concat(
+                  ["subject coverage:"],
+                  concat(
+                    coverage_lines,
+                    concat(
+                      ["reconciliation (identity join, both directions):"],
+                      concat(reconciliation_lines, concat(defect_lines, refusal_lines))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    ),
+      "\n"
+    ),
+    "\n"
+  )
+}
+
+// THE RECEIPT LINE, LANE-NAMED. `lane` is printed because the route is now a property of the subject, not a
+// constant of the instrument: a reader reconciling one row against a verdict must be able to see WHICH route
+// that claim was asked on, since a wet-schedule subject and a `floor_expected_red` roster-only subject of the
+// same shape are expected to answer differently. The lane is the row's `origin`, which is also what chose the
+// route at spawn time -- one fact, printed where it was decided, so the receipt cannot claim a route the
+// dispatch did not take.
+fn known_red_row_line(row: KnownRedDerivationRow) -> String {
+  concat(
+    "  ",
+    concat(
+      known_red_row_qualified(r: row),
+      concat(" @", concat(row.head, concat("  disposition=",
+        concat(known_red_disposition_name(d: row.disposition),
+          concat(" expectation=", concat(known_red_expectation_name(e: row.expectation),
+            concat(" lane=", concat(known_red_subject_population_name(p: row.origin),
+              concat(" entry=", known_red_entry_print(entry: row.entry)))))))))
+      )
+    )
+  )
+}
+
+fn known_red_coverage_line(c: KnownRedPopulationCoverage) -> String {
+  let cause = if c.uncovered_cause == "" {
+    ""
+  } else {
+    concat(" -- ", c.uncovered_cause)
+  }
+  concat(
+    "  ",
+    concat(
+      known_red_subject_population_name(p: c.population),
+      concat(
+        ": owed ",
+        concat(
+          known_red_int_text(n: c.subject_count),
+          concat(" executed ", concat(known_red_int_text(n: c.executed_count), cause))
+        )
+      )
+    )
+  )
+}
+
+fn known_red_reconciliation_lines(report: LedgerReconciliation) -> List<String> {
+  concat(
+    concat(
+      map(report.planned_without_terminal, i => concat("  owed, no verdict: ", witness_identity_qualified_name(identity: i))),
+      map(report.terminal_without_planned, i => concat("  verdict, not owed: ", witness_identity_qualified_name(identity: i)))
+    ),
+    map(report.terminal_duplicated, i => concat("  duplicated identity: ", witness_identity_qualified_name(identity: i)))
+  )
+}
+
+fn known_red_refusal_detail(r: KnownRedDerivationRefusal) -> String {
+  match r {
+    LocalRepoWetExecutorNotInvoked { scheduled: s } => concat(
+      ": ",
+      concat(
+        known_red_int_text(n: s),
+        " subjects scheduled and no child printed a single verdict line"
+      )
+    )
+    WitnessBinRefusedToBuild { cause: c } => concat(": ", c)
+    HeadCommitUnreadable => ": git.Inspect.HeadCommit returned no 40-char head"
+    ReconciliationIncomplete { report: rep } => concat(
+      ": owed-without-verdict ",
+      concat(
+        known_red_int_text(n: length(xs: rep.planned_without_terminal)),
+        concat(
+          ", verdict-without-owed ",
+          concat(
+            known_red_int_text(n: length(xs: rep.terminal_without_planned)),
+            concat(", duplicated ", known_red_int_text(n: length(xs: rep.terminal_duplicated)))
+          )
+        )
+      )
+    )
+    StaleEnrolmentNowPassing { identities: ids } => concat(": ", join(ids, ", "))
+    UnaccountedRedWithoutEnrolment { identities: ids } => concat(": ", join(ids, ", "))
+    SubjectDefectsCarried { defects: ds } => concat(": ", join(ds, ", "))
+    DispatchedPopulationNotComplete { missing: ms } =>
+      concat(": owed and well-formed but handed to no child: ", join(ms, ", "))
+    ChildExitedNonzeroWithoutVerdicts { children: ds } =>
+      concat(": ", join(ds, " | "))
+    PrintedLineDuplicated { identities: its } =>
+      concat(
+        ": ",
+        concat(
+          join(map(its, i => witness_identity_qualified_name(identity: i)), ", "),
+          " (printed more than once by the children, always with the same terminal)"
+        )
+      )
+    PrintedWordingUntied { markers: ms } =>
+      concat(": decoder markers absent from the source that prints them: ", join(ms, ", "))
+    PrintedLinesContradict { identities: its } =>
+      concat(
+        ": ",
+        concat(
+          join(map(its, i => witness_identity_qualified_name(identity: i)), ", "),
+          " (printed more than once with terminals that do not agree)"
+        )
+      )
+    PrintedLineUndecodable { lines: ls } =>
+      concat(": ", concat(join(ls, ", "), " (no claim arm of this instrument's decoder owns the shape)"))
+    VerdictIdentityAmbiguous { names: ns } =>
+      concat(": claim_batch prints the bare function name, so these verdict names are shared and their verdicts would merge -- ", join(ns, " | "))
+  }
+}
+
+fn known_red_disposition_name(d: ClaimDisposition) -> String {
+  match d {
+    Passed => "Passed"
+    Failed => "Failed"
+    KnownRedHeld => "KnownRedHeld"
+    KnownRedNowPassing => "KnownRedNowPassing"
+    BudgetRefusedBeforeVerdict => "BudgetRefusedBeforeVerdict"
+    PassedOverBudget => "PassedOverBudget"
+    BudgetTerminalWithoutSafetyCause => "BudgetTerminalWithoutSafetyCause"
+    HostToolUnresolvedBeforeVerdict => "HostToolUnresolvedBeforeVerdict"
+    RouteGapBeforeVerdict => "RouteGapBeforeVerdict"
+    RuntimeErroredBeforeVerdict => "RuntimeErroredBeforeVerdict"
+    PanickedBeforeVerdict => "PanickedBeforeVerdict"
+    NotAttemptedAfterAbort => "NotAttemptedAfterAbort"
+    ObservationUnreadableBeforeVerdict => "ObservationUnreadableBeforeVerdict"
+    SubjectUnresolvedBeforeVerdict => "SubjectUnresolvedBeforeVerdict"
+  }
+}
+
+fn known_red_expectation_name(e: ClaimExpectation) -> String {
+  match e {
+    ExpectedToHold => "ExpectedToHold"
+    ExpectedRed => "ExpectedRed"
+  }
+}
+
+// THE VERDICT: green only when the run is honest. Held reds are the EXPECTED output of a true
+// derivation — the list itself — so they do not refuse; a refusal is the run failing to be evidence.
+// Derived from the classifier, never a second test on `refusals`: two predicates over the same list
+// can disagree, and the disagreement would be exactly the bug this review is about (a run reported
+// as one thing while it is another).
+fn known_red_is_green(d: KnownRedDerivation) -> Bool {
+  known_red_exit_code_of_all(refusals: d.refusals) == 0
+}
+
+// The exit code is the run's OBSERVATION STATUS, not a pass/fail bit: DESIGN §"Building & checks"
+// and README both state "Exit 0 means the observation held, 1 that it did not, 2 that there was no
+// observation". Two refusals mean completely different things and must not share a code. A run that
+// never executed its subjects, or executed them and cannot trust what came back, observed NOTHING --
+// that is 2, the same code an unknown label refuses with. A run that did observe the claims and found
+// the list wrong observed something true: that is 1.
+//
+// This match names every arm of `KnownRedDerivationRefusal` and has NO wildcard, so adding a refusal
+// is a compile error until someone decides which class it belongs to. A default arm here would be the
+// fabricated `else: 1` this function exists to remove.
+fn known_red_exit_code_of(r: KnownRedDerivationRefusal) -> Int {
+  match r {
+    // ── no observation (2): nothing was executed, or what came back cannot be trusted as an observation ──
+    LocalRepoWetExecutorNotInvoked { scheduled: _ } => 2
+    WitnessBinRefusedToBuild { cause: _ } => 2
+    HeadCommitUnreadable => 2
+    ReconciliationIncomplete { report: _ } => 2
+    DispatchedPopulationNotComplete { missing: _ } => 2
+    ChildExitedNonzeroWithoutVerdicts { children: _ } => 2
+    VerdictIdentityAmbiguous { names: _ } => 2
+    // No observation (2), not an observed defect (1): the harness spoke, and what it said could not be read
+    // as a verdict, so no claim's disposition can be taken from it. Same class as a child that died without
+    // printing verdicts -- the run happened and produced nothing usable.
+    PrintedLineUndecodable { lines: _ } => 2
+    // No observation (2): where the evidence contradicts itself, no row's disposition is trustworthy.
+    PrintedLinesContradict { identities: _ } => 2
+    // No observation (2): the line said what it said, but the evidence for it is not a single trustworthy
+    // transcript, and 'the same line twice' is not a second observation of the same fact.
+    PrintedLineDuplicated { identities: _ } => 2
+    // No observation (2), and the earliest possible moment: the wording this file decodes is not the
+    // wording the transport prints, so no line from any child can be read. Not 1 -- nothing was observed
+    // about any claim, which is a different sentence from 'the list is wrong'.
+    PrintedWordingUntied { markers: _ } => 2
+    SubjectDefectsCarried { defects: _ } => 2
+    // ── observed defect (1): the claims ran, the verdicts were read, and the list is wrong ──
+    StaleEnrolmentNowPassing { identities: _ } => 1
+    UnaccountedRedWithoutEnrolment { identities: _ } => 1
+  }
+}
+
+// One run, one exit code, and a DEFINITE FINDING decides it. Precedence is 1 > 2 > 0 (parent ruling,
+// Kleene: false AND unknown = false). If any subject's verdict was read and contradicts the roster of
+// record -- a paid debt still enrolled, or a red with no enrolment -- the run OBSERVED that the list is
+// wrong, and it must say so with exit 1 EVEN IF some other subject could not be observed this run.
+// Reporting that definite finding as the milder 2 would bury a real finding under an accounting gap.
+// Exit 2 is reserved for the run that found NOTHING definite and had something it could not observe:
+// "the run failing to be evidence", nothing more. Any refusal at all still out-ranks a held observation.
+fn known_red_exit_code_of_all(refusals: List<KnownRedDerivationRefusal>) -> Int {
+  if length(xs: filter(xs: refusals, predicate: fn(r) { known_red_exit_code_of(r: r) == 1 })) > 0 {
+    1
+  } else if length(xs: refusals) > 0 {
+    2
+  } else {
+    0
+  }
+}
+
+// ───────────────────────────── the CLI producer (`gunbc test known-red-derivation`) ─────────────────────────────
+
+// THE PRODUCER. Reads the head from the repository, reads both populations from their authorities,
+// executes the children, folds, prints, and exits 1 on any refusal. The head is not a parameter and no
+// population is a literal, so the only way this prints a receipt is by running one.
+fn known_red_derivation_exit() -> CliWireResponse {
+  let head_opt = known_red_head_sha()
+  match head_opt {
+    Absent =>
+      CliWirePrintable {
+        bytes: "known-red derivation: git.Inspect.HeadCommit returned no 40-char head; refusing to print a receipt without a commit\n",
+        exit: ExitFailure { code: 2, reason: "known-red-derivation: NO OBSERVATION — head unreadable, so no receipt names a commit" }
+      }
+    Present { value: head } => {
+      // THE WORDING CHECK FIRST, BEFORE ANY CHILD RUNS. If this file's decoder no longer matches what the
+      // transport prints, nothing a child says can be read correctly, so the run refuses with exit 2 and
+      // spends no child execution on a reading it cannot honour (review 83992). `PrintedWordingUntied` is
+      // the no-observation class, not a finding: the list was not checked, which is a different sentence
+      // from 'the list is wrong' (exit 1).
+      let untied = known_red_print_markers_untied()
+      let untied_refusal = PrintedWordingUntied { markers: untied }
+      if length(xs: untied) > 0 {
+        CliWirePrintable {
+          bytes: concat(
+            "known-red derivation: REFUSED — this file's decoder markers are not in the source that prints them:\n",
+            concat(join(untied, "\n"), "\n")
+          ),
+          // THE EXIT CODE AND THE NAME COME FROM THE SAME FUNCTIONS EVERY OTHER REFUSAL USES. Nothing here
+          // decides by itself that this class is exit 2; `known_red_exit_code_of` is the only authority for
+          // what an arm costs, and the report line is the arm's own detail.
+          exit: ExitFailure {
+            code: known_red_exit_code_of(r: untied_refusal),
+            reason: concat(
+              "known-red-derivation: NO OBSERVATION — ",
+              concat(known_red_refusal_name(r: untied_refusal), known_red_refusal_detail(r: untied_refusal))
+            )
+          }
+        }
+      } else {
+      let subjects = known_red_subjects()
+      let children = known_red_collect_at(
+        root: git.Inspect.Toplevel().path,
+        placed: known_red_dispatchable(subjects: subjects)
+      )
+      let derived = known_red_fold(head: head, subjects: subjects, children: children)
+      let bytes = known_red_report(d: derived)
+      let code = known_red_exit_code_of_all(refusals: derived.refusals)
+      if code == 0 {
+        CliWirePrintable { bytes: bytes, exit: ExitSuccess }
+      } else if code == 2 {
+        // The run is not evidence at all: it never executed its subjects, or what came back could not
+        // be read as verdicts. Report the refusals, and exit 2 so a reader cannot mistake "nothing
+        // observed" for "the list was checked and is wrong".
+        CliWirePrintable {
+          bytes: bytes,
+          exit: ExitFailure {
+            code: 2,
+            reason: concat(
+              "known-red-derivation: NO OBSERVATION — ",
+              join(map(derived.refusals, r => known_red_refusal_name(r: r)), ", ")
+            )
+          }
+        }
+      } else {
+        // The claims ran and their verdicts were read; the derived list disagrees with the enrolment.
+        CliWirePrintable {
+          bytes: bytes,
+          exit: ExitFailure {
+            code: 1,
+            reason: concat(
+              "known-red-derivation: observation did not hold — ",
+              join(map(derived.refusals, r => known_red_refusal_name(r: r)), ", ")
+            )
+          }
+        }
+      }
+      }
+    }
+  }
+}
+
+// THE HEAD, READ FROM THE REPOSITORY. Never a parameter: a receipt that could be handed a commit would be
+// a receipt that could be filed against a commit it did not run on.
+fn known_red_head_sha() -> Optional<String> {
+  let head = git.Inspect.HeadCommit(expect: ExpectSuccess)
+  if head.success && length(xs: head.sha) == 40 {
+    Present { value: head.sha }
+  } else {
+    Absent
+  }
+}

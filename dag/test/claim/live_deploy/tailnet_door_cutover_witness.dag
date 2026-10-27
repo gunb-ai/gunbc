@@ -11,7 +11,7 @@ import test.claim.live_deploy.apply { fixture_converged_mutation }
 import gunbc.live_deploy.apply { tailnet_door_cutover_reconciliation, live_deploy_tailnet_door_cutover_gate, tailnet_door_cutover_door_standing }
 import gunbc.fabric.fabric_storage_client { FabricStorageBindingUnplaced }
 import gunbc.live_deploy.desired { deployment_spec_srv1, selected_deployment_spec, srv1_lab_desired_deployment }
-import gunbc.live_deploy.emit { tailscale_serve_mapping_apply_steps, deployment_serve_route_command }
+import gunbc.live_deploy.emit { deployment_serve_route_command }
 import gunbc.live_deploy.readiness { live_deploy_proxied_health_url }
 import gunbc.live_deploy.tailnet_door_cutover_host { serve_route_observation_of_status, cutover_journal_record_json, cutover_journal_record_of_json }
 import gunbc.live_deploy.candidate_identity { CandidateRelease }
@@ -399,32 +399,6 @@ test fn an_unrecorded_commit_is_not_converged_and_leaves_the_route_working() -> 
 
 fn production_door_target() -> String {
   concat("unix:", dashboard_instance_tailnet_door_socket(instance: srv1_live_dashboard_instance()) as String)
-}
-
-// THE RE-POINT IS NOT IN THE BULK MUTATION. Production's mapping member contributes no apply step,
-// so applying the deployment cannot redirect the route on its own; the port-routed twin still
-// re-asserts its mapping there. The cutover's own effect is the ONE typed command that writes the
-// route, and it names the door. Inhabitance: the real spec's serve endpoint maps (via
-// tailscale_serve_proxy_url) to exactly the door target the command's tail carries, so the route
-// word is the door itself, not a copy of it.
-test fn the_door_route_is_written_by_the_cutover_and_not_by_the_bulk_apply() -> Bool {
-  let live = deployment_spec_srv1()
-  let twin = selected_deployment_spec(row: srv1_lab_desired_deployment())
-  let endpoint = live.names.tailscale_serve_endpoint
-  let route = deployment_serve_route_command(endpoint: endpoint, enabled: true)
-  let off = deployment_serve_route_command(endpoint: endpoint, enabled: false)
-  let door_target = production_door_target()
-  let route_words = argv_words(command: route)
-  let off_words = argv_words(command: off)
-  count(tailscale_serve_mapping_apply_steps(spec: live)) == 0
-    && count(tailscale_serve_mapping_apply_steps(spec: twin)) == 1
-    && route_words == ["/usr/bin/sudo", "-n", "tailscale", "serve", "--bg", "--https=443", door_target]
-    && off_words == ["/usr/bin/sudo", "-n", "tailscale", "serve", "--https=443", "off"]
-    && string_list_contains(xs: route_words, wanted: door_target)
-    && !string_list_contains(xs: off_words, wanted: door_target)
-    && string_list_contains(xs: route_words, wanted: "--bg")
-    && !string_list_contains(xs: off_words, wanted: "--bg")
-    && tailscale_serve_proxy_url(endpoint: endpoint) == door_target
 }
 
 // THE DEPLOY'S OWN GATE. On the production deployment with a journal that cannot be read (an

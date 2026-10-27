@@ -37,7 +37,8 @@ import gunbc.persistent_instance_roots {
   materialization_store_persistent_macbook_scope, materialization_store_persistent_srv2_scope,
   MacbookLocal, Srv2Deploy,
 }
-import gunbc.compile_census_probe { total_blocking_count_for }
+import gunbc.compile_census_probe { census_verdict, census_verdict_all, total_blocking_census }
+import std.process { ProcessExit }
 import std.access { Permit, Deny }
 import std.effect_grant { Read, Write }
 import v2.compiler.self_host.generation { PreMaterializationIdentity }
@@ -75,6 +76,7 @@ import extdeps.realization.materialization_store_local {
   store_read_observation,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.nat { nat_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -543,7 +545,7 @@ fn budget_row(family: String, bytes: Int) -> LocalStoreFamilyBudget {
 }
 
 fn catalog_text(c: List<LocalStoreFamilyBudget>) -> List<String> {
-  c |> map(b => concat(concat(b.family as String, " -> "), measure_count(m: b.budget) as String))
+  c |> map(b => concat(concat(b.family as String, " -> "), nat_to_decimal_string(value: measure_count(m: b.budget))))
 }
 
 fn decodes_to(root: MaterializationStoreRoot, content: String, expected: List<LocalStoreFamilyBudget>) -> Bool {
@@ -886,10 +888,12 @@ data forged_persistent_store_path_source: String = "module probe_forged_persiste
 
 data accepted_frame_store_source: String = "module probe_accepted_frame_store\nimport std.materialization_store_grant { MaterializationStoreRoot, FrameJobWorkspace }\nfn accepted() -> MaterializationStoreRoot {\n  FrameJobWorkspace { frame: 1 }\n}\n"
 
-test fn a_store_root_cannot_be_constructed_on_a_caller_chosen_path() -> Bool {
-  (total_blocking_count_for(source: forged_frame_store_path_source) > 0)
-    && (total_blocking_count_for(source: forged_persistent_store_path_source) > 0)
-    && (total_blocking_count_for(source: accepted_frame_store_source) == 0)
+test fn a_store_root_cannot_be_constructed_on_a_caller_chosen_path() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(census: total_blocking_census(source: forged_frame_store_path_source), holds: fn(n) { n > 0 }),
+    census_verdict(census: total_blocking_census(source: forged_persistent_store_path_source), holds: fn(n) { n > 0 }),
+    census_verdict(census: total_blocking_census(source: accepted_frame_store_source), holds: fn(n) { n == 0 }),
+  ])
 }
 
 test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {

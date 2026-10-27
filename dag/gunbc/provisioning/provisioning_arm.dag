@@ -1,0 +1,204 @@
+module gunbc.provisioning.provisioning_arm
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, BoundDissolution, DeclarationAppears }
+import gunbc.machine_intake.subject { UnitKey }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeChainPin,
+  SitePxeEdgeChainPinned,
+  SitePxeEdgeChainUnpinned,
+  SitePxeEdgePinnedChain,
+  ChainSecureBootNoUnsignedMember,
+  ChainSecureBootBooted,
+  ChainSecureBootUnobserved,
+  ChainSecureBootRefused,
+  ChainSecureBootRejected,
+  site_pxe_edge_chain_secure_boot,
+}
+
+// ── Sibling imports (cut 6): ONE block. Each module is another cut-6 work item's file, now on main (S0 swift-wren-451,
+// S3 and S1 the base, S4 deep-ram-338, Secure Boot observation sleek-wolf-212); this PR owns only this module and its witness. ──
+// S0, gunbc.firmware_network_boot_standing (drafted on session/swift-wren-451): the preparation route and the standing a firmware probe answers.
+import gunbc.firmware_network_boot_standing {
+  FirmwareNetworkBootPreparationRoute,
+  PreparationBlockingOn,
+  FirmwareNetworkBootStanding,
+  Ready,
+  NeedsPreparation,
+  AdmittedPreparation,
+  Unobserved,
+  Refused,
+}
+// S3, PR #14281: the pinned Ubuntu arm64 network origin an attempt fetches from.
+import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin }
+// S4, owner deep-ram-338: the autoinstall seed binding an attempt boots with.
+import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding, BindingBlocker }
+
+// THE CLOSED SET OF DELIVERY STRATEGIES THE OPERATOR HAS PERMITTED. Network boot (PXE or UEFI HTTP,
+// one family: the firmware picks the transport) and BMC virtual media. There is deliberately no
+// USB arm: the operator ruled a USB interim out for these boards, so a variant would model a decision
+// already made against. A fleet where USB is admitted adds the constructor here and one arm in
+// provisioning_arm_derive; nothing else in this module names a transport.
+type DeliveryStrategy
+  = PxeOrUefiHttp
+  | VirtualMedia
+
+// What the BMC says about presenting virtual media. Evidence the caller observes (the board's BMC
+// firmware capability catalog is its authority); it is never read off a host name.
+type VirtualMediaStanding
+  = VirtualMediaAvailable { capability_observation: DeclarationRef }
+  | VirtualMediaUnavailable { cause: NonEmptyStr }
+  | VirtualMediaUnobserved
+
+// WHICH MACHINE THE ARM COVERS, AS DATA ONLY. The unit identity is carried so a receipt can say whom
+// the attempt was for; no fn in this module matches on it, and the derivation's evidence record has no
+// field a host name could hide in.
+type AttemptBinding {
+  unit: UnitKey
+  attempt: NonEmptyStr
+}
+
+// Everything the derivation may consult. Each field is an observation or an admitted sibling record;
+// absence of an origin or a seed is an Optional Absent, which the derivation reports as Unobserved.
+type DeliveryEvidence {
+  firmware: FirmwareNetworkBootStanding
+  chain: SitePxeEdgeChainPin
+  virtual_media: VirtualMediaStanding
+  origin: UbuntuNetworkOrigin?
+  seed: AltraAutoinstallSeedBinding?
+}
+
+// Network boot needs the firmware either already ready or prepared through exactly one named route.
+// Virtual media bypasses the NIC boot path, so its arm carries no firmware field at all.
+// The blocker travels beside the route because they answer different questions (what is in the way vs how
+// to act on it): an arm that kept only the route would be indifferent to WHICH blocker the standing named,
+// so two standings blocked differently but sharing a route would arm identically and an operator could not
+// read from the arm what the preparation is for. Both are copied from the standing, never chosen here.
+type FirmwarePreparation
+  = FirmwareAlreadyReady
+  | FirmwarePreparedVia { route: FirmwareNetworkBootPreparationRoute, blocking: PreparationBlockingOn }
+
+type ArmMissingEvidence
+  = FirmwareStandingNotObserved
+  | LoaderChainNotPinned { obligation: NonEmptyStr }
+  | SecureBootStandingNotObserved { why: NonEmptyStr }
+  | VirtualMediaStandingNotObserved
+  | OriginNotObserved
+  | SeedBindingNotObserved
+
+type ArmRefusalCause
+  = FirmwareProbeRefused { standing: FirmwareNetworkBootStanding }
+  | SecureBootRejectsChainloader { evidence: NonEmptyStr }
+  | SecureBootStandingRefused { why: NonEmptyStr }
+  | VirtualMediaNotAvailable { cause: NonEmptyStr }
+  | SeedBindingRefused { blocker: BindingBlocker }
+
+// THE SHAPE OF AN ARM: ONE strategy, fully bound, or a terminal Unobserved/Refused. It is derived from
+// (strategy, evidence) and from nothing else; no attempt or unit identity exists at this type, so the
+// derivation cannot see a host name to select on. There is NO field holding alternates, fallbacks or an
+// ordered list of strategies, and no constructor wraps another shape, so "try PXE, then virtual media"
+// is unwritable. An attempt that cannot proceed is Unobserved or Refused; the next arm is produced by
+// new evidence or a human choosing a strategy, never by this value retrying itself.
+type ArmShape
+  = ArmedPxeOrUefiHttp {
+      chain: SitePxeEdgePinnedChain
+      firmware: FirmwarePreparation
+      origin: UbuntuNetworkOrigin
+      seed: AltraAutoinstallSeedBinding
+    }
+  | ArmedVirtualMedia {
+      media_observation: DeclarationRef
+      origin: UbuntuNetworkOrigin
+      seed: AltraAutoinstallSeedBinding
+    }
+  | ArmUnobserved { missing: ArmMissingEvidence }
+  | ArmRefused { cause: ArmRefusalCause }
+
+// THE ARM = WHOM IT COVERS (data) + WHAT WAS DERIVED. The two are separate fields so the identity is
+// attached after the shape is fixed: provisioning_arm_derive never passes the attempt into the
+// derivation, which makes a per-host selection unwritable rather than merely tested for.
+type ProvisioningArm {
+  attempt: AttemptBinding
+  shape: ArmShape
+}
+
+// THE DERIVATION. Total over (strategy, evidence). The attempt is bound to the result and is not an
+// argument of any deriving fn. Evidence is checked in a fixed order so the same evidence always yields
+// the same missing/refused cause. No attempt-time fallback: a Refused or Unobserved shape ends the attempt.
+fn provisioning_arm_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence, attempt: AttemptBinding) -> ProvisioningArm {
+  ProvisioningArm { attempt: attempt, shape: arm_shape_derive(strategy: strategy, evidence: evidence) }
+}
+
+fn arm_shape_derive(strategy: DeliveryStrategy, evidence: DeliveryEvidence) -> ArmShape {
+  match strategy {
+    PxeOrUefiHttp => derive_pxe(evidence: evidence)
+    VirtualMedia => derive_virtual_media(evidence: evidence)
+  }
+}
+
+fn derive_pxe(evidence: DeliveryEvidence) -> ArmShape {
+  match evidence.firmware {
+    Unobserved { unanswered: _ } => ArmUnobserved { missing: FirmwareStandingNotObserved }
+    Refused { cause: _, gaps: _ } => ArmRefused { cause: FirmwareProbeRefused { standing: evidence.firmware } }
+    Ready { conclusion: _ } => derive_pxe_with(evidence: evidence, firmware: FirmwareAlreadyReady)
+    NeedsPreparation { admitted: AdmittedPreparation { route: r, blocking: b } } => derive_pxe_with(evidence: evidence, firmware: FirmwarePreparedVia { route: r, blocking: b })
+  }
+}
+
+fn derive_pxe_with(evidence: DeliveryEvidence, firmware: FirmwarePreparation) -> ArmShape {
+  match evidence.chain {
+    SitePxeEdgeChainUnpinned { architecture: _, obligation: o } => ArmUnobserved { missing: LoaderChainNotPinned { obligation: o } }
+    SitePxeEdgeChainPinned { chain: c } => match site_pxe_edge_chain_secure_boot(chain: c) {
+      ChainSecureBootUnobserved { why: w } => ArmUnobserved { missing: SecureBootStandingNotObserved { why: w } }
+      ChainSecureBootRefused { why: w } => ArmRefused { cause: SecureBootStandingRefused { why: w } }
+      ChainSecureBootRejected { evidence: e } => ArmRefused { cause: SecureBootRejectsChainloader { evidence: e } }
+      ChainSecureBootBooted { evidence: _ } => bind_origin_and_seed(evidence: evidence, chain: c, firmware: firmware)
+      ChainSecureBootNoUnsignedMember => bind_origin_and_seed(evidence: evidence, chain: c, firmware: firmware)
+    }
+  }
+}
+
+fn bind_origin_and_seed(evidence: DeliveryEvidence, chain: SitePxeEdgePinnedChain, firmware: FirmwarePreparation) -> ArmShape {
+  match evidence.origin {
+    Absent => ArmUnobserved { missing: OriginNotObserved }
+    Present { value: o } => match evidence.seed {
+      Absent => ArmUnobserved { missing: SeedBindingNotObserved }
+      Present { value: s } => ArmedPxeOrUefiHttp { chain: chain, firmware: firmware, origin: o, seed: s }
+    }
+  }
+}
+
+fn derive_virtual_media(evidence: DeliveryEvidence) -> ArmShape {
+  match evidence.virtual_media {
+    VirtualMediaUnobserved => ArmUnobserved { missing: VirtualMediaStandingNotObserved }
+    VirtualMediaUnavailable { cause: c } => ArmRefused { cause: VirtualMediaNotAvailable { cause: c } }
+    VirtualMediaAvailable { capability_observation: m } => match evidence.origin {
+      Absent => ArmUnobserved { missing: OriginNotObserved }
+      Present { value: o } => match evidence.seed {
+        Absent => ArmUnobserved { missing: SeedBindingNotObserved }
+        Present { value: s } => ArmedVirtualMedia { media_observation: m, origin: o, seed: s }
+      }
+    }
+  }
+}
+
+fn provisioning_arm_attempt(arm: ProvisioningArm) -> AttemptBinding {
+  arm.attempt
+}
+
+// THE CONSUMER THAT MUST EXIST. An arm is only a statement of what one boot attempt WOULD do; nothing
+// in this module runs it. The executing route is work item S9 (node://adhoc-9cc8b205-64b), which owns
+// `network_boot_arm_actuator_steps` in gunbc.provisioning.network_boot_actuation. That name is coined
+// by operator-side decision, not read off an existing module; S9 must build its steps from
+// gunbc.nbd_proxy_virtual_media_install's OsInstallActuatorStep / os_install_actuator_steps rather
+// than a second step vocabulary. Discharge-by-name proves ONLY that the declaration exists, never that
+// the arm's shape is exercised end to end (S0 keeps BoundaryInhabitation as a separate carrier for
+// that reason), so this frontier stays DissolutionPending (witnessed) until that name appears, and Fired would still not mean the arm is exercised.
+data provisioning_arm_consumer_frontier: DissolutionCondition = BoundDissolution {
+  trigger: DeclarationAppears { ref: provisioning_arm_consumer_ref() },
+}
+
+fn provisioning_arm_consumer_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.provisioning.network_boot_actuation", decl_name: "network_boot_arm_actuator_steps")
+}

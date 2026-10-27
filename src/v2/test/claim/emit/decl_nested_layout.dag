@@ -4,7 +4,7 @@ import v2.compiler.emit_semantic_decl { emit_decl_surface }
 import v2.std.grammar { formal_productions_catalog_to_node, grammar_formal_nested_occurrence, grammar_formal_nonterminal_occurrence, grammar_formal_production, grammar_formal_terminal }
 import v2.std.compilers.target_model { target_model_named_edge }
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.node { Conj, Edge, Node, Positional, TypeNode }
+import v2.std.node { Conj, Edge, Node, NotADeclaration, Positional, TypeNode }
 import v2.compiler.translate { serialize_concrete_syntax_layout_to_source }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.semantic_decl_emission { TargetSemanticDeclEmitTransformRow, TargetSemanticDeclSerializeProfile, semantic_decl_binding_spelling_row, semantic_decl_emission_from_target, semantic_decl_serialize_target }
@@ -67,16 +67,16 @@ fn dnl_text(items: List<ConcreteSyntaxLayoutItem>) -> String {
 }
 
 test fn a_nested_block_indents_by_its_spelled_unit_one_level() -> Bool {
-  dnl_text(items: dnl_depth_one(unit: ^dnl_indent)) == " { \n    : \n }"
+  dnl_text(items: dnl_depth_one(unit: ^dnl_indent)) == " {\n    : \n}"
 }
 
 test fn a_nested_block_inside_a_nested_block_indents_two_levels() -> Bool {
-  dnl_text(items: dnl_depth_two(unit: ^dnl_indent)) == " { \n    : \n        : \n }"
+  dnl_text(items: dnl_depth_two(unit: ^dnl_indent)) == " {\n    : \n        : \n}"
 }
 
 // RED: the same tokens with the nest removed print flush left, so the goldens above discriminate the nest.
 test fn the_same_tokens_without_a_nest_print_flush_left() -> Bool {
-  dnl_text(items: dnl_flat()) == " { \n: \n }"
+  dnl_text(items: dnl_flat()) == " {\n: \n}"
 }
 
 test fn a_nest_whose_unit_the_target_does_not_spell_refuses() -> Bool {
@@ -116,7 +116,7 @@ fn dnl_rules() -> Node {
 fn dnl_surface() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic } } ],
+    children: [ Edge { label: Positional, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration } ],
     occurrence_id: OccurrenceSynthetic
   }
 }
@@ -133,5 +133,5 @@ fn dnl_surface_text() -> String {
 }
 
 test fn the_door_route_keeps_the_nest_from_a_grammar_node_to_text() -> Bool {
-  dnl_surface_text() == " { \n    : \n }"
+  dnl_surface_text() == " {\n    : \n}"
 }

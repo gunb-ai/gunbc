@@ -1,0 +1,113 @@
+module test.claim.wire_spelling_injective_witness
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import v2.std.decl_index { decl_facts, DeclFact }
+import v2.std.node_query { coproduct_arm_list_from_node }
+import extdeps.apple.apns { ApnsDevelopment, ApnsProduction }
+import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny, proposed_decision_name }
+import gunbc.auth.approval_device_wire {
+  MobileIos, MobileAndroid, platform_wire, google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label, stored_enrolment_field_wire_kinds, stored_enrolment_field_wire_label,
+  wire_admission_platform, wire_admission_apns_environment, wire_admission_decision, wire_admission_signature_suite,
+  wire_admission_public_key_encoding, wire_admission_signature_encoding, EnrolmentStandingActive, EnrolmentStandingRevoked, enrolment_standing_wire, apns_environment_wire,
+}
+
+// INJECTIVITY OF THE MULTI-ARM NULLARY SPELLING FNS: platform, enrolment refusal, standing, APNs
+// environment and decision. The single-arm sums (suite and the two encodings) are trivially injective,
+// and the payload sum DeviceRedemptionOutcome is AsAuthored, so neither is listed. Totality is the
+// compiler's (an exhaustive match); distinctness is checked here, and ONE inhabitance claim joins each
+// supplied arm list to its declaration's arm count so a new arm cannot be left unlisted.
+//
+// first_repeated_spelling lives here, not in a production module, because its only consumer is this
+// witness; the generator that will emit raw-value enums is the later consumer and would move it then.
+// It names the first spelling an EARLIER arm already used, in one pass over a Set of those seen.
+type SpellingScan { seen: Set<String>, repeated: Optional<String> }
+
+fn first_repeated_spelling(spellings: List<String>) -> Optional<String> {
+  fold(spellings, init: SpellingScan { seen: empty_set(), repeated: Absent }, f: fn(acc, s) {
+    match acc.repeated {
+      Present { value: _ } => acc
+      Absent => if set_contains(acc.seen, s) {
+        SpellingScan { seen: acc.seen, repeated: Present { value: s } }
+      } else {
+        SpellingScan { seen: set_insert(acc.seen, s), repeated: Absent }
+      }
+    }
+  }).repeated
+}
+fn platform_spellings() -> List<String> {
+  wire_admission_platform.declared
+}
+
+fn refusal_spellings() -> List<String> {
+  map(google_enrolment_refusal_kinds(), k => google_enrolment_refusal_wire_label(k: k) as String)
+}
+
+// The nested closed sum's own spellings, and the refusal sum's TOP-LEVEL arms: the stored-mismatch arm
+// is spelled "stored_mismatch:<field>" and counts once as an arm.
+fn stored_field_spellings() -> List<String> {
+  map(stored_enrolment_field_wire_kinds(), f => stored_enrolment_field_wire_label(f: f) as String)
+}
+
+fn refusal_arm_spellings() -> List<String> {
+  concat(filter(refusal_spellings(), x => !string_contains(s: x, pattern: ":")), ["stored_mismatch"])
+}
+
+fn standing_spellings() -> List<String> {
+  map([EnrolmentStandingActive, EnrolmentStandingRevoked], s => enrolment_standing_wire(s: s) as String)
+}
+
+fn apns_spellings() -> List<String> {
+  wire_admission_apns_environment.declared
+}
+
+fn decision_spellings() -> List<String> {
+  wire_admission_decision.declared
+}
+
+fn no_repeat(xs: List<String>) -> Bool {
+  match first_repeated_spelling(spellings: xs) { Present { value: _ } => false  Absent => true }
+}
+
+test fn every_nullary_wire_spelling_is_injective() -> Bool {
+  no_repeat(xs: platform_spellings()) && no_repeat(xs: refusal_spellings()) && no_repeat(xs: stored_field_spellings()) && no_repeat(xs: standing_spellings())
+    && no_repeat(xs: apns_spellings()) && no_repeat(xs: decision_spellings())
+}
+
+// RED: a fixture fn that spells two arms alike is named.
+test fn a_fixture_spelling_two_arms_alike_is_refused() -> Bool {
+  match first_repeated_spelling(spellings: ["ios", "android", "ios"]) { Present { value: v } => v == "ios"  Absent => false }
+}
+
+// RED: the first spelling an EARLIER arm already used is named, not the first one that merely occurs twice.
+test fn the_named_spelling_is_the_first_repeat_in_declaration_order() -> Bool {
+  match first_repeated_spelling(spellings: ["a", "b", "b", "a"]) { Present { value: v } => v == "b"  Absent => false }
+}
+
+// The inhabitance claim: each supplied arm list is exactly the declared arm count of exactly one declaration.
+test fn supplied_arm_lists_cover_the_declared_arms() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag", "src/v2"])
+  covers(facts: facts, name: "gunbc.auth.approval_device_wire.MobilePlatform", spellings: platform_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.GoogleEnrolmentRefusalWire", spellings: refusal_arm_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.StoredEnrolmentFieldWire", spellings: stored_field_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_device_wire.EnrolmentStandingWire", spellings: standing_spellings())
+    && covers(facts: facts, name: "extdeps.apple.apns.ApnsEnvironment", spellings: apns_spellings())
+    && covers(facts: facts, name: "gunbc.auth.approval_capability.ProposedDecision", spellings: decision_spellings())
+    && covers(facts: facts, name: "extdeps.crypto.signature.SignatureSuite", spellings: wire_admission_signature_suite.declared)
+    && covers(facts: facts, name: "extdeps.crypto.signature.PublicKeyEncoding", spellings: wire_admission_public_key_encoding.declared)
+    && covers(facts: facts, name: "extdeps.crypto.signature.SignatureEncoding", spellings: wire_admission_signature_encoding.declared)
+}
+
+// RED: the same comparison refuses a list one arm short, a list one arm long, and an undeclared name.
+test fn the_cover_comparison_refuses_a_list_that_is_not_the_declared_arms() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag", "src/v2"])
+  let refusal = "gunbc.auth.approval_device_wire.GoogleEnrolmentRefusalWire"
+  !covers(facts: facts, name: refusal, spellings: filter(refusal_arm_spellings(), x => x != "token_refused"))
+    && !covers(facts: facts, name: refusal, spellings: concat(refusal_arm_spellings(), ["extra"]))
+    && !covers(facts: facts, name: "gunbc.auth.approval_device_wire.NoSuchSum", spellings: refusal_arm_spellings())
+}
+
+fn covers(facts: List<DeclFact>, name: String, spellings: List<String>) -> Bool {
+  let hits = filter(facts, f => f.qualified_name == name)
+  count(hits) == 1 && all(hits, f => count(coproduct_arm_list_from_node(node: f.node)) == count(spellings))
+}

@@ -1,7 +1,10 @@
 module gunbc.auth.branch_dispatch_federation
 
-import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp }
+import std.integer { int_to_decimal_string }
+import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_from_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed }
+import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
 import std.human_intervention { EveryProvision, EveryOperatorRequest }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
@@ -90,11 +93,11 @@ fn branch_dispatch_provider_resource() -> String {
 // THE ONE RUN ATTEMPT A GRANT NAMES. GitHub keeps run_id across a re-run and increments run_attempt
 // (both are claims of its OIDC token), so the provider maps their join and a grant names the join: a
 // re-run of an approved run is a new subject and needs its own approval.
-fn branch_run_key(run_id: Int, run_attempt: Int) -> String {
-  join([to_string(run_id), "-", to_string(run_attempt)], "")
+fn branch_run_key(run_id: GitHubWorkflowRunId, run_attempt: Int) -> String {
+  join([github_workflow_run_id_wire_text(id: run_id), "-", to_string(run_attempt)], "")
 }
 
-fn branch_run_principal_set(run_id: Int, run_attempt: Int) -> String {
+fn branch_run_principal_set(run_id: GitHubWorkflowRunId, run_attempt: Int) -> String {
   join([
     "principalSet://iam.googleapis.com/",
     wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: branch_dispatch_wif_pool_id as String),
@@ -112,7 +115,7 @@ data branch_run_expiry_expression_prefix: String = "request.time < timestamp('"
 
 data branch_run_expiry_expression_suffix: String = "')"
 
-fn branch_run_impersonation_cell(run_id: Int, run_attempt: Int, expires_at: Timestamp) -> GcpIamBindingCell {
+fn branch_run_impersonation_cell(run_id: GitHubWorkflowRunId, run_attempt: Int, expires_at: Timestamp) -> GcpIamBindingCell {
   GcpIamBindingCell {
     role: role_iam_workload_identity_user,
     member: branch_run_principal_set(run_id: run_id, run_attempt: run_attempt),
@@ -182,13 +185,19 @@ fn run_scoped_mode_named(mode: String) -> RunScopedMode? {
 // select_boot_credential_source selects RunScopedApprovedGrant for that ref (it refuses it on the
 // reviewed default branch, where the dedicated identity applies). Other modes are not ref-gated.
 fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
+  run_scoped_mode_eligible_on(mode: mode, on_reviewed_main: branch == (gunbc_default_branch_name as String))
+}
+
+// THE SAME RULE READ BY REF CLASS, for a reader that knows whether the dispatch is at reviewed main but
+// holds no branch name (gunbc.fleet.fleet_converge_workflow fleet_converge_grant_required).
+fn run_scoped_mode_eligible_on(mode: String, on_reviewed_main: Bool) -> RunScopedMode? {
   match run_scoped_mode_named(mode: mode) {
     Absent => none
     Present { value: m } => match m.main_route {
       MainUsesGrantedAccount => Present { value: m }
-      MainUsesFleetIdentity => if branch == (gunbc_default_branch_name as String) { none } else { Present { value: m } }
+      MainUsesFleetIdentity => if on_reviewed_main { none } else { Present { value: m } }
       MainUsesSelectedSource =>
-        match select_boot_credential_source(on_reviewed_main: branch == (gunbc_default_branch_name as String)) {
+        match select_boot_credential_source(on_reviewed_main: on_reviewed_main) {
           BootCredentialSourceSelected { source: RunScopedApprovedGrant } => Present { value: m }
           BootCredentialSourceSelected { source: ReviewedMainDedicatedFederation } => none
           BootCredentialSourceRefused { cause: _ } => none
@@ -199,18 +208,18 @@ fn run_scoped_mode_eligible(mode: String, branch: String) -> RunScopedMode? {
 
 // THE KEY BACK INTO ITS RUN AND ATTEMPT: exactly two decimal halves, or nothing.
 type BranchRunKey {
-  run_id: Int
+  run_id: GitHubWorkflowRunId
   run_attempt: Int
 }
 
 fn parse_branch_run_key(key: String) -> BranchRunKey? {
   let parts = key.split(delimiter: "-")
   if parts.length() != 2 { none } else {
-    match parse_int(s: match parts.first() { Present { value: h } => h  Absent => "" }) {
+    match github_workflow_run_id_from_wire_text(text: match parts.first() { Present { value: h } => h  Absent => "" }) {
       Absent => none
       Present { value: id } => match parse_int(s: match parts.last() { Present { value: t } => t  Absent => "" }) {
         Absent => none
-        Present { value: attempt } => if id > 0 && attempt > 0 { Present { value: BranchRunKey { run_id: id, run_attempt: attempt } } } else { none }
+        Present { value: attempt } => if attempt > 0 { Present { value: BranchRunKey { run_id: id, run_attempt: attempt } } } else { none }
       }
     }
   }
@@ -220,6 +229,54 @@ fn parse_branch_run_key(key: String) -> BranchRunKey? {
 // "fleet-converge <mode> <host> nonce=<nonce>", so the mode is the second word.
 fn mode_of_run_title(title: String) -> String {
   match title.split(delimiter: " ").skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+}
+
+// ── the branch run, as GitHub records it ─────────────────────────────────────────────────────
+// ONE JUDGMENT OF A RUN'S RECORD, read by the broker that asks for a grant
+// (gunbc.auth.branch_run_grant_broker) and by the grant that writes one (gunbc.auth.branch_run_grant):
+// both take the run id from GitHub's workflow_run event or a dispatch input, and neither may trust that
+// the id names a live fleet-converge dispatch until GitHub's own record of the run says so.
+
+type BranchRunFacts {
+  run_id: GitHubWorkflowRunId
+  run_attempt: Int
+  mode: String
+  branch: String
+  head_sha: CommitSha
+  dispatched_by: String
+  created_at: Timestamp
+}
+
+type BranchRunReading
+  = BranchRunAdmitted { facts: BranchRunFacts }
+  | BranchRunRefused { reason: NonEmptyStr }
+
+// THE RUN MUST BE A LIVE DISPATCH OF THE FLEET-CONVERGE WORKFLOW, AT THE ATTEMPT ASKED ABOUT: another
+// workflow, another event, a finished run, or a run GitHub has since re-run is refused, so an approval
+// can only ever reach the one attempt of the file this grant is for.
+fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
+  let path = match run.path { Present { value: p } => p  Absent => "" }
+  if github_workflow_run_id_of_wire(n: run.id) != run_id {
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", int_to_decimal_string(value: run.id)) as NonEmptyStr }
+  } else if run.run_attempt != run_attempt {
+    BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
+  } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
+    BranchRunRefused { reason: concat("the run is not a fleet-converge run: ", path) as NonEmptyStr }
+  } else if run.event != workflow_dispatch_event_name {
+    BranchRunRefused { reason: concat("the run was not dispatched: ", run.event) as NonEmptyStr }
+  } else if (run.status == Completed) {
+    BranchRunRefused { reason: "the run has already completed" as NonEmptyStr }
+  } else {
+    BranchRunAdmitted { facts: BranchRunFacts {
+      run_id: run_id,
+      run_attempt: run_attempt,
+      mode: mode_of_run_title(title: match run.display_title { Present { value: t } => t  Absent => "" }),
+      branch: match run.head_branch { Present { value: b } => b  Absent => "(no branch)" },
+      head_sha: run.head_sha,
+      dispatched_by: match run.triggering_actor { Present { value: u } => u.login as String  Absent => "(unknown)" },
+      created_at: run.created_at,
+    } }
+  }
 }
 
 // ── the run-scoped accounts ──────────────────────────────────────────────────────────────────
@@ -407,6 +464,7 @@ fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationP
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
     AdministratorEdge => BootCredentialSourceRefused { cause: "the selection named the administrator edge, which a boot credential does not use" as NonEmptyStr }
+    ApprovedConvergenceGrant => BootCredentialSourceRefused { cause: "the selection named a convergence-inherited approval, which no boot credential source realizes" as NonEmptyStr }
   }
 }
 

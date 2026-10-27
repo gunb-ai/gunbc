@@ -1,5 +1,6 @@
 module v2.test.claim.emit.semantic_decl_imports
 
+import v2.std.compilers.semantic_decl_emission { target_semantic_decl_no_documentation, ConformancesTargetDefault }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.extdeps.languages.swift { swift_target_model }
@@ -18,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS emit_semantic_type_decl WITH IMPORTS over each target's import-projection row. Goldens are the
 // exact text, so an import printed after the declaration, dropped, or printed under an unwired target reds here.
 
-data swift_import_golden: String = "import Foundation\nstruct Point: Equatable, Sendable { let x: Int32 }"
+data swift_import_golden: String = "import Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
 
 data rust_import_golden: String = concat("use serde;\n", concat(rust_struct_derives, "\nstruct Point { x: i32 }"))
 
@@ -35,7 +36,7 @@ fn sdi_point_record(type_name: Symbol) -> Node {
 }
 
 fn sdi_text(imports: List<Symbol>, type_name: Symbol, target: TargetModel) -> Outcome<String> {
-  match emit_semantic_type_decl(header: [], imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: type_name), target: target, realization_host: target) {
+  match emit_semantic_type_decl(header: [], documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: type_name), target: target, realization_host: target) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -59,7 +60,7 @@ test fn rust_use_prints_before_the_declaration() -> Bool {
 test fn two_imports_print_in_order() -> Bool {
   sdi_equals(
     o: sdi_text(imports: [^Foundation, ^CryptoKit], type_name: ^dag_binding_type_int, target: swift_target_model()),
-    golden: "import Foundation\nimport CryptoKit\nstruct Point: Equatable, Sendable { let x: Int32 }"
+    golden: "import Foundation\nimport CryptoKit\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
   )
 }
 
@@ -78,7 +79,7 @@ test fn c_without_imports_still_emits() -> Bool {
 // header (a header is an emit input, not a node field), so its hash, occurrence ids and graph cannot move; the
 // control is that the headed text is exactly the header lines followed by the unheaded text.
 fn sdi_headed(header: List<String>, imports: List<Symbol>, target: TargetModel) -> Outcome<String> {
-  match emit_semantic_type_decl(header: header, imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: ^dag_binding_type_int), target: target, realization_host: target) {
+  match emit_semantic_type_decl(header: header, documentation: target_semantic_decl_no_documentation(), conformances: ConformancesTargetDefault, imports: imports, members: [], name: ^Point, params: [], node: sdi_point_record(type_name: ^dag_binding_type_int), target: target, realization_host: target) {
     Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
@@ -87,7 +88,7 @@ fn sdi_headed(header: List<String>, imports: List<Symbol>, target: TargetModel) 
 test fn swift_header_leads_the_imports() -> Bool {
   sdi_equals(
     o: sdi_headed(header: ["Generated from gunbc.auth.approval_device_wire.", "Do not edit."], imports: [^Foundation], target: swift_target_model()),
-    golden: "// Generated from gunbc.auth.approval_device_wire.\n// Do not edit.\nimport Foundation\nstruct Point: Equatable, Sendable { let x: Int32 }"
+    golden: "// Generated from gunbc.auth.approval_device_wire.\n// Do not edit.\nimport Foundation\nstruct Point: Equatable, Sendable {\n    let x: Int32\n}"
   )
 }
 
@@ -113,7 +114,7 @@ test fn c_with_a_header_refuses_unwired() -> Bool {
 fn sdi_header_refused(header: List<String>, target: TargetModel) -> Bool {
   match sdi_headed(header: header, imports: [], target: target) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_header_line_break
+    Rejected { diagnostics: d } => d.head.reason == ^target_semantic_decl_line_break
   }
 }
 

@@ -376,6 +376,7 @@ type CompilerDiagnostic
   | ImportCollidesWithKernelName { name: String, module_path: String, importing_module: String, kernel_declaration_module: String, span: SourceSpan }
   | KernelMintDeclarationAmbiguousAtImport { name: String, module_path: String, importing_module: String, row_count: Int, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
+  | TypeRefMeasureBindingDisagreement { name: String, production_route: String, span: SourceSpan }
   | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
@@ -397,6 +398,7 @@ type CompilerDiagnostic
   | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
   | CircularDependency { modules: List<String>, span: SourceSpan }
   | DuplicateModule    { name: String, span: SourceSpan }
+  | TypeAliasCycle     { members: List<String>, span: SourceSpan }
   | DuplicateDeclaration { module_name: String, name: String, span: SourceSpan }
   | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
   | ParseError         { message: String, span: SourceSpan }
@@ -439,6 +441,7 @@ type CompilerDiagnostic
   | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
   | EqualityOnFunctionMember { type_name: String, member: String, span: SourceSpan }
   | EqualityMemberUnjudgeable { type_name: String, member: String, span: SourceSpan }
+  | EqualityOnInadmissibleType { type_name: String, span: SourceSpan }
   | EqualityOptionalityMismatch { optional_side: String, span: SourceSpan }
   | TypeArgumentArityMismatch { type_name: String, supplied: Int, declared: Int, span: SourceSpan }
   | TypeArgumentKindMismatch { type_name: String, param_name: String, kind_name: String, supplied: String, span: SourceSpan }
@@ -624,6 +627,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: s } => s
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: s } => s
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
@@ -645,6 +649,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     NonExhaustiveMatch { missing: _, span: s }                 => s
     CircularDependency { modules: _, span: s }                 => s
     DuplicateModule    { name: _, span: s }                    => s
+    TypeAliasCycle     { members: _, span: s }                 => s
     DuplicateDeclaration { module_name: _, name: _, span: s }  => s
     MissingAnnotation  { fn_name: _, what: _, span: s }        => s
     ParseError         { message: _, span: s }                 => s
@@ -687,6 +692,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: s } => s
     EqualityOnFunctionMember { type_name: _, member: _, span: s } => s
     EqualityMemberUnjudgeable { type_name: _, member: _, span: s } => s
+    EqualityOnInadmissibleType { type_name: _, span: s } => s
     EqualityOptionalityMismatch { optional_side: _, span: s } => s
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: s } => s
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: s } => s
@@ -711,6 +717,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') collides with the kernel name whose mint is the declaration in '", k, "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.")
     KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') cannot be judged against the kernel mint: ", to_string(value: c), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
+    TypeRefMeasureBindingDisagreement { name: n, production_route: r, span: _ } => concat("type reference '", n, "' resolves in production through ", r, ", but the N1a measure's binding authority finds no binding for it here: its qualifier is neither an ancestor of this module nor a module this module imports. The two routes disagree; the measure refuses rather than reading a production binding as unresolved.")
     UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
@@ -733,6 +740,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     NonExhaustiveMatch { missing: ms, span: _ }                   => concat("non-exhaustive match: missing variant(s) ", join(ms, separator: ", "))
     CircularDependency { modules: ms, span: _ }                   => concat("circular dependency detected: ", join(ms, separator: " -> "))
     DuplicateModule    { name: n, span: _ }                       => concat("duplicate module declaration: '", n, "'")
+    TypeAliasCycle     { members: ms, span: _ }                   => concat("type alias cycle: ", join(ms, separator: " -> "))
     DuplicateDeclaration { module_name: m, name: n, span: _ }     => concat("duplicate declaration '", n, "' in module '", m, "' -- a second declaration of one name silently replaced the first")
     MissingAnnotation  { fn_name: f, what: w, span: _ }           => concat("function '", f, "' requires ", w, " annotation")
     ParseError         { message: m, span: _ }                    => m
@@ -801,6 +809,8 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("call shape mismatch calling function value '", c, "': named argument '", a, "' is not supported — use positional arguments")
     EqualityOnFunctionMember { type_name: t, member: m, span: _ } =>
       concat("equality is not defined for '", t, "': member '", m, "' is function-valued, and function equality has no denotation — compare a declared identity for this type instead of '=='")
+    EqualityOnInadmissibleType { type_name: t, span: _ } =>
+      concat("equality is not defined for '", t, "': it is declared equality-inadmissible (it carries provenance that derived '==' would compare) — compare through the erasure route (node_equal_ignoring_provenance for structure, node_same_occurrence for identity) instead of '=='")
     EqualityMemberUnjudgeable { type_name: t, member: m, span: _ } =>
       concat("equality admission for '", t, "' cannot be judged: ", m, " — '==' is refused rather than admitted on an unjudged member")
     EqualityOptionalityMismatch { optional_side: side, span: _ } =>
@@ -877,6 +887,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -898,6 +909,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     NonExhaustiveMatch { missing: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     CircularDependency { modules: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateModule { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeAliasCycle { members: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     DuplicateDeclaration { module_name: _, name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     MissingAnnotation { fn_name: _, what: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ParseError { message: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
@@ -942,6 +954,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     CallNamedArgOnFunctionValue { callee: _, argument: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOnFunctionMember { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityMemberUnjudgeable { type_name: _, member: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    EqualityOnInadmissibleType { type_name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     EqualityOptionalityMismatch { optional_side: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentArityMismatch { type_name: _, supplied: _, declared: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeArgumentKindMismatch { type_name: _, param_name: _, kind_name: _, supplied: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }

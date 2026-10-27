@@ -4,21 +4,25 @@ import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.grammar {
+  FormalGrammarSymbol,
   grammar_formal_terminal,
   grammar_formal_terminal_free,
   grammar_formal_nonterminal_occurrence,
+  grammar_formal_nested_occurrence,
   grammar_formal_production,
   formal_productions_catalog_to_node,
   FormalProduction
 }
 import v2.std.compilers.target_model { EmitLineBreaks, EmitSpellingEscape, EmitSpellingQuote }
 import v2.std.compilers.semantic_decl_emission {
-  TargetSemanticDeclCoproductEnumSurface,
-  HeaderLeadingLines,
-  ImportsLeading,
+  TargetSemanticDeclColumnPlain,
+  ColumnUnwired,
+  ColumnWired,
   MembersInsideTypeBody,
+  TargetSemanticDeclCoproductEnumSurface,
   TargetSemanticDeclEmitTransformRow,
   TargetSemanticDeclSurfaceProjection,
+  semantic_decl_binding_spelling_row,
   semantic_decl_emission_bundle,
   semantic_decl_lex_ident_row,
   semantic_decl_lex_literal_row,
@@ -33,6 +37,7 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  NotADeclaration
 }
 
 // SWIFT TYPE DECLARATIONS AS ROWS, READ BY THE SHARED SEMANTIC-DECL FOLD (std.compilers.semantic_decl_emission).
@@ -66,7 +71,7 @@ data swift_decl_primitive_spelling_frontier: DissolutionCondition = unbound_diss
 )
 
 fn swift_decl_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn swift_decl_type_expr_productions() -> List<FormalProduction> {
@@ -122,6 +127,8 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_field,
       rhs: [
+        grammar_formal_terminal(identity: ^swift_token_line_start),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_let),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
         grammar_formal_terminal(identity: ^swift_token_colon),
@@ -138,17 +145,18 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_field_list_suffix,
       rhs: [
-        grammar_formal_terminal(identity: ^swift_token_statement_separator),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list_suffix)
       ]
     ),
     grammar_formal_production(lhs: ^swift_decl_field_list_suffix, rhs: []),
+    // THE BODY IS ONE NESTED OCCURRENCE: each line starts with a line break (swift_token_line_start) that renders
+    // inside the nest, so it is indented by the spelled unit; the closing brace's break is outside it.
     grammar_formal_production(
       lhs: ^swift_decl_field_block,
       rhs: [
         grammar_formal_terminal(identity: ^swift_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list),
+        grammar_formal_nested_occurrence(identity: ^swift_decl_field_list, unit: ^swift_indent),
         grammar_formal_terminal(identity: ^swift_token_rbrace)
       ]
     ),
@@ -157,15 +165,15 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
       lhs: ^swift_decl_field_block,
       rhs: [
         grammar_formal_terminal(identity: ^swift_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_list),
-        grammar_formal_terminal(identity: ^swift_token_statement_separator),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_member_list),
+        grammar_formal_nested_occurrence(identity: ^swift_decl_field_list, unit: ^swift_indent),
+        grammar_formal_nested_occurrence(identity: ^swift_decl_member_list, unit: ^swift_indent),
         grammar_formal_terminal(identity: ^swift_token_rbrace)
       ]
     ),
     grammar_formal_production(
       lhs: ^swift_decl_member,
       rhs: [
+        grammar_formal_terminal(identity: ^swift_token_line_start),
         grammar_formal_terminal(identity: ^swift_token_kw_static_let),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
         grammar_formal_terminal(identity: ^swift_token_equals),
@@ -182,7 +190,6 @@ fn swift_decl_struct_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_member_list_suffix,
       rhs: [
-        grammar_formal_terminal(identity: ^swift_token_statement_separator),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_member),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_member_list_suffix)
       ]
@@ -214,6 +221,52 @@ fn swift_decl_header_productions() -> List<FormalProduction> {
   ]
 }
 
+// A DECLARATION'S DOC LINES: `/// text` lines directly above the declaration. Nullable like the header list.
+fn swift_decl_doc_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_doc_line,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_doc_prefix),
+        grammar_formal_terminal_free(identity: ^swift_token_header_text),
+        grammar_formal_terminal(identity: ^swift_token_doc_end)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_doc_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_line),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_doc_list, rhs: [])
+  ]
+}
+
+// A DECLARATION'S CONFORMANCE CLAUSE over the names it states: `: A, B`. A declaration naming none takes the
+// target's fixed `swift_token_conformance` literal in the top productions instead, consuming no clause edge.
+fn swift_decl_conformance_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^swift_decl_conformance_clause,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_colon),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_conformance_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^swift_decl_conformance_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^swift_token_comma),
+        grammar_formal_terminal_free(identity: ^swift_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_conformance_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^swift_decl_conformance_suffix, rhs: [])
+  ]
+}
+
 fn swift_decl_import_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -236,29 +289,44 @@ fn swift_decl_import_productions() -> List<FormalProduction> {
 }
 
 fn swift_decl_struct_top_productions() -> List<FormalProduction> {
+  list_append(
+    left: swift_decl_struct_top_productions_with(conformance: [ grammar_formal_terminal(identity: ^swift_token_conformance) ]),
+    right: swift_decl_struct_top_productions_with(conformance: [ grammar_formal_nonterminal_occurrence(identity: ^swift_decl_conformance_clause) ])
+  )
+}
+
+fn swift_decl_struct_top_productions_with(conformance: List<FormalGrammarSymbol>) -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^swift_decl_struct,
-      rhs: [
+      rhs: list_append(
+        left: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_struct),
-        grammar_formal_terminal_free(identity: ^swift_token_ident),
-        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_terminal_free(identity: ^swift_token_ident)
+        ],
+        right: list_append(left: conformance, right: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_block)
-      ]
+        ])
+      )
     ),
     grammar_formal_production(
       lhs: ^swift_decl_struct,
-      rhs: [
+      rhs: list_append(
+        left: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_struct),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params),
-        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params)
+        ],
+        right: list_append(left: conformance, right: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_field_block)
-      ]
+        ])
+      )
     )
   ]
 }
@@ -313,6 +381,8 @@ fn swift_decl_variant_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_variant_list,
       rhs: [
+        grammar_formal_terminal(identity: ^swift_token_line_start),
+        grammar_formal_terminal(identity: ^swift_token_kw_case),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_list_suffix)
       ]
@@ -329,8 +399,8 @@ fn swift_decl_variant_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^swift_decl_variant_block,
       rhs: [
-        grammar_formal_terminal(identity: ^swift_token_lbrace_case),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_list),
+        grammar_formal_terminal(identity: ^swift_token_lbrace),
+        grammar_formal_nested_occurrence(identity: ^swift_decl_variant_list, unit: ^swift_indent),
         grammar_formal_terminal(identity: ^swift_token_rbrace)
       ]
     )
@@ -338,29 +408,44 @@ fn swift_decl_variant_productions() -> List<FormalProduction> {
 }
 
 fn swift_decl_enum_top_productions() -> List<FormalProduction> {
+  list_append(
+    left: swift_decl_enum_top_productions_with(conformance: [ grammar_formal_terminal(identity: ^swift_token_conformance) ]),
+    right: swift_decl_enum_top_productions_with(conformance: [ grammar_formal_nonterminal_occurrence(identity: ^swift_decl_conformance_clause) ])
+  )
+}
+
+fn swift_decl_enum_top_productions_with(conformance: List<FormalGrammarSymbol>) -> List<FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^swift_decl_enum,
-      rhs: [
+      rhs: list_append(
+        left: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_enum),
-        grammar_formal_terminal_free(identity: ^swift_token_ident),
-        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_terminal_free(identity: ^swift_token_ident)
+        ],
+        right: list_append(left: conformance, right: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_block)
-      ]
+        ])
+      )
     ),
     grammar_formal_production(
       lhs: ^swift_decl_enum,
-      rhs: [
+      rhs: list_append(
+        left: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_header_list),
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_import_list),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_doc_list),
         grammar_formal_terminal(identity: ^swift_token_kw_enum),
         grammar_formal_terminal_free(identity: ^swift_token_ident),
-        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params),
-        grammar_formal_terminal(identity: ^swift_token_conformance),
+        grammar_formal_nonterminal_occurrence(identity: ^swift_decl_generic_params)
+        ],
+        right: list_append(left: conformance, right: [
         grammar_formal_nonterminal_occurrence(identity: ^swift_decl_variant_block)
-      ]
+        ])
+      )
     )
   ]
 }
@@ -372,7 +457,7 @@ fn swift_decl_struct_formal_productions() -> List<FormalProduction> {
       left: swift_decl_generic_productions(),
       right: list_append(
         left: swift_decl_struct_field_productions(),
-        right: list_append(left: list_append(left: swift_decl_header_productions(), right: swift_decl_import_productions()), right: swift_decl_struct_top_productions())
+        right: list_append(left: list_append(left: swift_decl_header_productions(), right: list_append(left: swift_decl_import_productions(), right: list_append(left: swift_decl_doc_productions(), right: swift_decl_conformance_productions()))), right: swift_decl_struct_top_productions())
       )
     )
   )
@@ -385,7 +470,7 @@ fn swift_decl_enum_formal_productions() -> List<FormalProduction> {
       left: swift_decl_generic_productions(),
       right: list_append(
         left: swift_decl_variant_productions(),
-        right: list_append(left: list_append(left: swift_decl_header_productions(), right: swift_decl_import_productions()), right: swift_decl_enum_top_productions())
+        right: list_append(left: list_append(left: swift_decl_header_productions(), right: list_append(left: swift_decl_import_productions(), right: list_append(left: swift_decl_doc_productions(), right: swift_decl_conformance_productions()))), right: swift_decl_enum_top_productions())
       )
     )
   )
@@ -416,7 +501,9 @@ fn swift_semantic_decl_lex_rows() -> List<Node> {
   [
     semantic_decl_lex_whitespace_trivia_row(),
     semantic_decl_lex_literal_row(token_class: ^swift_token_comment_prefix, text: "// "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_doc_prefix, text: "/// "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_header_end, text: "\n"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_doc_end, text: ""),
     semantic_decl_lex_ident_row(token_class: ^swift_token_header_text),
     semantic_decl_lex_literal_row(token_class: ^swift_token_kw_import, text: "import "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_import_end, text: "\n"),
@@ -427,14 +514,14 @@ fn swift_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^swift_token_param_requirement, text: ": Equatable & Sendable"),
     semantic_decl_lex_literal_row(token_class: ^swift_token_generic_lt, text: "<"),
     semantic_decl_lex_literal_row(token_class: ^swift_token_generic_gt, text: ">"),
-    semantic_decl_lex_literal_row(token_class: ^swift_token_lbrace_case, text: " { case "),
-    semantic_decl_lex_literal_row(token_class: ^swift_token_lbrace, text: " { "),
-    semantic_decl_lex_literal_row(token_class: ^swift_token_rbrace, text: " }"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_kw_case, text: "case "),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_line_start, text: ""),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_lbrace, text: " {"),
+    semantic_decl_lex_literal_row(token_class: ^swift_token_rbrace, text: "}"),
     semantic_decl_lex_literal_row(token_class: ^swift_token_lparen, text: "("),
     semantic_decl_lex_literal_row(token_class: ^swift_token_rparen, text: ")"),
     semantic_decl_lex_literal_row(token_class: ^swift_token_colon, text: ": "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_comma, text: ", "),
-    semantic_decl_lex_literal_row(token_class: ^swift_token_statement_separator, text: "; "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_kw_static_let, text: "static let "),
     semantic_decl_lex_literal_row(token_class: ^swift_token_equals, text: " = "),
     semantic_decl_lex_ident_row(token_class: ^swift_token_ident),
@@ -445,8 +532,11 @@ fn swift_semantic_decl_lex_rows() -> List<Node> {
 fn swift_semantic_decl_serialize_profile_bundle_node() -> Node {
   semantic_decl_serialize_profile_bundle(
     lex_rows: swift_semantic_decl_lex_rows(),
-    spelling_rows: [],
+    spelling_rows: [ semantic_decl_binding_spelling_row(binding: ^swift_indent, spelling: "    ") ],
     emit_transform_rows: [
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_line_start, transform: EmitLineBreaks { before: 1, after: 0 } },
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_doc_end, transform: EmitLineBreaks { before: 0, after: 1 } },
+      TargetSemanticDeclEmitTransformRow { token_class: ^swift_token_rbrace, transform: EmitLineBreaks { before: 1, after: 0 } },
       TargetSemanticDeclEmitTransformRow {
         token_class: ^swift_token_string_lit,
         transform: EmitSpellingQuote {
@@ -474,9 +564,11 @@ fn swift_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjecti
     enum_name_after_variants: false,
     field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    member_projection: MembersInsideTypeBody,
-    import_projection: ImportsLeading,
-    header_projection: HeaderLeadingLines,
+    member_projection: ColumnWired { placement: MembersInsideTypeBody },
+    import_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    header_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    doc_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
+    conformance_projection: ColumnWired { placement: TargetSemanticDeclColumnPlain {} },
     coproduct_decoration_rules: []
   }
 }

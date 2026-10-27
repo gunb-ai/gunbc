@@ -18,7 +18,7 @@ import extdeps.access.posix_effective_principal_read_op { effective_posix_princi
 import product.host_identity { HostIdentity }
 import gunbc.command_runner { run_shell_commands }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
-import gunbc.host.host_layout { srv1_gunbc_repo_root, instance_receipts_dir }
+import gunbc.host.host_layout { srv1_gunbc_repo_root, instance_receipts_dir, attempt_exit_stall_record_path }
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent, ExpectedRevisionMalformed,
@@ -86,14 +86,15 @@ import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding, DashboardServiceRefused, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
+import gunbc.deploy_transition_store { transition_inhibition_store }
 import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, prod_role_realization_refusal_detail }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
   BeltProviderPreflight, ProviderPreflightRefused,
   belt_exit_spool_times, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
-  belt_exit_stall_read_at, BeltExitStallHeld, BeltExitStallNone, BeltExitStallUnreadable,
 }
+import gunbc.roadmap.spool_stall { spool_stall_read_at, SpoolStallHeld, SpoolStallNone, SpoolStallUnreadable }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
 import gunbc.dispatch_selection { NoDerivedSizingExpectation }
 import gunbc.dispatch_preflight { dispatch_preflight_for_instance, PreflightAdmitted, PreflightRefused }
@@ -273,7 +274,7 @@ fn window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardIns
     deployed_revision_hex: deployed_revision_hex_text(o: tree),
     deployed_tree_hex: deployed_tree_hex_text(o: tree),
     running_release_hex: running_release_hex_routed(base: routed_base),
-    transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
+    transition: transition_text(s: transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance))),
     active_instance: active_instance_text_routed(base: routed_base),
   }
 }
@@ -375,10 +376,10 @@ fn tick_fact(instance: HostDashboardInstance) -> TickFact {
 // THE BACKLOG ROW'S WET HALF: the exit spool's unconsumed entries, aged against the receipt run's own
 // now. The judgment is pure (event_backlog_judge); an unreadable spool or now refuses as unobserved.
 fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBacklogFact {
-  let stalled = match belt_exit_stall_read_at(root: instance.instance_root as String) {
-    BeltExitStallHeld { entries } => entries |> map(e => e.entry)
-    BeltExitStallNone => [] as List<String>
-    BeltExitStallUnreadable { reason: _ } => [] as List<String>
+  let stalled = match spool_stall_read_at(record_path: attempt_exit_stall_record_path(instance_root: instance.instance_root as String)) {
+    SpoolStallHeld { entries } => entries |> map(e => e.entry)
+    SpoolStallNone => [] as List<String>
+    SpoolStallUnreadable { reason: _ } => [] as List<String>
   }
   match iso8601_utc_epoch_seconds(text: now) {
     Absent => EventBacklogUnobserved { detail: join(["the receipt run's now did not parse: ", now], "") }
@@ -700,7 +701,7 @@ fn rlm_launch_deployment_receipt_bound(
     deployed_tree: deployed_root_tree_standing(candidate_tree_hex: candidate_tree, observation: tree),
     release_binding: binding,
     readiness: readiness,
-    transition: transition_actuation_standing(instance_root: instance.instance_root as String),
+    transition: transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance)),
     unit_standing: unit_standing,
     tick_standing: tick_fact(instance: instance),
     event_backlog: event_backlog_fact(instance: instance, now: now),

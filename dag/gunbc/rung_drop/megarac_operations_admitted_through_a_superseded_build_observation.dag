@@ -1,7 +1,8 @@
 module gunbc.rung_drop.megarac_operations_admitted_through_a_superseded_build_observation
 
 import std.types { NonEmptyStr }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { StructurallyGuaranteed, Mitigatable }
 
 // DECLARED 2026-10-04 beside managed-host cut 3 (#13261), under staging ruling C (eager-gull-22, relayed
@@ -36,17 +37,13 @@ data megarac_operations_admitted_through_a_superseded_build_observation: RungDro
 
   declared: "2026-10-04",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: StructurallyGuaranteed,
     temporary: Mitigatable,
     reason: ReplacementStaged {
       replacement: "gunbc.host.megarac_managed_host admit_megarac_host_at_current_build over gunbc.host.megarac_operation_standing (current build from committed build readings and recorded firmware transitions; operations grounded at an observed baseboard and firmware by receipts joined to a reading of that build with no transition between), rows in gunbc.machine_intake.megarac_operation_evidence",
     },
-    population: [
-      "mtcollins1's MegaRAC virtual media attach, KVM canvas still and SDR socket naming as admitted by admit_megarac_host, and the gunbc.machine_intake.mtcollins1_boot_run boot that depends on them -- the only managed host is mtcollins1",
-    ],
+    population: Enumerated { members: FreeSemigroup { head: "mtcollins1's MegaRAC virtual media attach, KVM canvas still and SDR socket naming as admitted by admit_megarac_host, and the gunbc.machine_intake.mtcollins1_boot_run boot that depends on them -- the only managed host is mtcollins1", tail: [] } },
     restoration_trigger: "THE CAPABILITY: EACH OF mtcollins1's MEGARAC OPERATIONS ADMITTED THROUGH THE CURRENT-BUILD GATE FROM A COMMITTED CURRENT-BUILD OBSERVATION PLUS EXECUTED EVIDENCE AT THAT BUILD -- a committed read-only probe of the controller's build (mc info / hpm check) entered as a build reading in gunbc.machine_intake.megarac_operation_evidence, and, for each of media attach, KVM still and SDR socket naming, a committed receipt that joins to that reading with no firmware transition recorded between. SUFFICIENT FOR: switching every production caller from admit_megarac_host to admit_megarac_host_at_current_build in one transition with the boot still admitted. A probe alone, or receipts without a build reading, or a gate that admits some operations while the boot needs all three, does not retire this row.",
-  }
+  } }
 }

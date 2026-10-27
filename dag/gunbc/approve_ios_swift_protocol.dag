@@ -10,13 +10,23 @@ import v2.extdeps.languages.swift.syntax {
   sw_expr, sw_p, sw_p_, sw_func, sw_struct, sw_enum, sw_cases, sw_doc, sw_cmt, sw_import,
   sw_static_let, sw_stored, sw_field, sw_keypath
 }
+import std.types { NonEmptyStr }
+import extdeps.crypto.signature { EcdsaP256Sha256, Sec1Uncompressed, P1363FixedWidth }
+import gunbc.auth.approval_device_wire {
+  approval_redemption_protocol, approval_device_read_protocol, approval_device_push_protocol,
+  approval_device_audience, signature_suite_wire, public_key_encoding_wire, signature_encoding_wire,
+  google_enrolment_refusal_kinds, google_enrolment_refusal_wire_label
+}
+import gunbc.auth.approval_google_enrolment { approval_google_enrolment_protocol }
+import gunbc.auth.tracker_web_oauth_client { approve_ios_oauth_client }
 import v2.extdeps.languages.swift.rows { SwiftRowEmission, swift_rows_emit_source_file }
 
 // apps/approve-ios/Approve/Protocol.swift AS A SWIFT SYNTAX TREE (v2.extdeps.languages.swift.syntax),
 // emitted through the Swift grammar rows (v2.extdeps.languages.swift.rows) into the committed file (gunbc.generated_artifact
 // ApproveIosProtocolSwiftArtifact; the drift gate refuses a hand edit). The tree is transcribed from
-// the hand-written file it replaces; deriving its constants from gunbc.auth.approval_device_wire is
-// the later step named by gunbc.approve_ios_app approve_ios_transcribed_swift_frontier.
+// the hand-written file it replaces. The protocol constants and the suite/encoding spellings are READ from
+// gunbc.auth.approval_device_wire (no restated literal); framing, field order and carriers are still transcribed
+// (gunbc.approve_ios_app approve_ios_transcribed_swift_frontier).
 
 fn approve_ios_framed_call(fields: List<SwiftExpr>) -> SwiftExpr {
   sw_call(f: sw_path(b: "Protocol", m: "framed"), a: [sw_pos(v: sw_arr(e: fields))])
@@ -24,11 +34,11 @@ fn approve_ios_framed_call(fields: List<SwiftExpr>) -> SwiftExpr {
 
 fn approve_ios_protocol_enum() -> SwiftDecl {
   sw_enum(n: "Protocol", i: [], m: [
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_enrolment_protocol."], d: sw_static_let(n: "enrolmentProtocol", e: sw_str(s: "gunbc.approval-enrolment.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_redemption_protocol."], d: sw_static_let(n: "redemptionProtocol", e: sw_str(s: "gunbc.approval-redemption.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_read_protocol."], d: sw_static_let(n: "readProtocol", e: sw_str(s: "gunbc.approval-device-read.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_push_protocol."], d: sw_static_let(n: "pushProtocol", e: sw_str(s: "gunbc.approval-device-push.v1"))),
-    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: "gunbc.roadmap_serve/device-redemption"))),
+    sw_doc(c: ["gunbc.auth.approval_google_enrolment approval_google_enrolment_protocol."], d: sw_static_let(n: "googleEnrolmentProtocol", e: sw_str(s: approval_google_enrolment_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_redemption_protocol."], d: sw_static_let(n: "redemptionProtocol", e: sw_str(s: approval_redemption_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_read_protocol."], d: sw_static_let(n: "readProtocol", e: sw_str(s: approval_device_read_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_push_protocol."], d: sw_static_let(n: "pushProtocol", e: sw_str(s: approval_device_push_protocol as String))),
+    sw_doc(c: ["gunbc.auth.approval_device_wire approval_device_audience."], d: sw_static_let(n: "audience", e: sw_str(s: approval_device_audience as String))),
     sw_doc(
       c: [
         "framed_field: \"<n>:<field>,\" where n is the field's length in Unicode code points",
@@ -54,7 +64,7 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
   [
     sw_doc(c: ["gunbc.auth.approval_device_wire MobilePlatform, spelled by platform_wire."], d: sw_enum(n: "MobilePlatform", i: [sw_t(n: "String")], m: [sw_cases(n: ["ios", "android"])])),
     sw_doc(c: ["gunbc.auth.approval_capability ProposedDecision, spelled by proposed_decision_name."], d: sw_enum(n: "ProposedDecision", i: [sw_t(n: "String")], m: [sw_cases(n: ["approve", "deny"])])),
-    sw_doc(c: ["gunbc.auth.approval_device_wire EnrolmentRefusalWire, spelled by enrolment_refusal_wire_label."], d: sw_enum(n: "EnrolmentRefusalKind", i: [sw_t(n: "String"), sw_t(n: "CaseIterable")], m: [sw_cases(n: ["code_not_issued", "code_already_used", "code_expired", "store_unreadable", "attestation_refused", "attestation_for_other_bytes", "android_unrealized"])])),
+    sw_doc(c: ["gunbc.auth.approval_device_wire GoogleEnrolmentRefusalWire, spelled by google_enrolment_refusal_wire_label: every label the enrol route may refuse with. The app acts on none of them (any refusal leaves the phone signed out); the list is the admitted set the refusal decoder checks."], d: sw_enum(n: "GoogleEnrolmentRefusal", i: [], m: [sw_static_let(n: "labels", e: sw_arr(e: map(google_enrolment_refusal_kinds(), k => sw_str(s: google_enrolment_refusal_wire_label(k: k) as String))))])),
     SwiftCommentedDecl {
       comments: [
         SwiftDocLineComment { text: "extdeps.crypto.signature VerifyingKey. The suite and encoding travel explicitly" },
@@ -63,8 +73,8 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
         SwiftLineComment { text: "Codable only for the local keychain record; the wire spelling is WireEncode.verifyingKey" },
       ],
       decl: sw_struct(n: "VerifyingKey", i: [sw_t(n: "Equatable"), sw_t(n: "Codable")], m: [
-        sw_static_let(n: "suite", e: sw_str(s: "ECDSA-P256-SHA256")),
-        sw_static_let(n: "encoding", e: sw_str(s: "SEC1-uncompressed")),
+        sw_static_let(n: "suite", e: sw_str(s: signature_suite_wire(s: EcdsaP256Sha256) as String)),
+        sw_static_let(n: "encoding", e: sw_str(s: public_key_encoding_wire(e: Sec1Uncompressed) as String)),
         sw_field(n: "point_b64url", t: sw_t(n: "String")),
       ]),
     },
@@ -74,32 +84,39 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
         "with its suite and encoding explicit (signature_encoding_wire).",
       ],
       d: sw_struct(n: "SignatureBytes", i: [sw_t(n: "Equatable")], m: [
-        sw_static_let(n: "suite", e: sw_str(s: "ECDSA-P256-SHA256")),
-        sw_static_let(n: "encoding", e: sw_str(s: "P1363-fixed-width")),
+        sw_static_let(n: "suite", e: sw_str(s: signature_suite_wire(s: EcdsaP256Sha256) as String)),
+        sw_static_let(n: "encoding", e: sw_str(s: signature_encoding_wire(e: P1363FixedWidth) as String)),
         sw_field(n: "b64url", t: sw_t(n: "String")),
       ])
     ),
     sw_doc(
       c: [
-        "enrolment_transcript = framed([protocol, code, platform_wire, point_b64url]). The one-time code",
-        "the operator types IS the challenge identifier; the login is NOT here — the server derives it.",
+        "gunbc.auth.approval_google_enrolment google_enrolment_transcript = framed([protocol, platform_wire,",
+        "point_b64url, attest_key_id]). Both device keys exist before it is built; the Google nonce and the",
+        "App Attest clientDataHash are both derived from these bytes.",
       ],
-      d: sw_func(m: [], n: "enrolmentTranscript", p: [sw_p(n: "code", t: sw_t(n: "String")), sw_p(n: "decisionKey", t: sw_t(n: "VerifyingKey")), sw_p(n: "platform", t: sw_t(n: "MobilePlatform"))], th: false, r: Present { value: sw_t(n: "Data") }, b: [
+      d: sw_func(m: [], n: "googleEnrolmentTranscript", p: [sw_p(n: "decisionKey", t: sw_t(n: "VerifyingKey")), sw_p(n: "platform", t: sw_t(n: "MobilePlatform")), sw_p(n: "attestKeyId", t: sw_t(n: "String"))], th: false, r: Present { value: sw_t(n: "Data") }, b: [
         sw_expr(e: approve_ios_framed_call(fields: [
-          sw_path(b: "Protocol", m: "enrolmentProtocol"),
-          sw_id(n: "code"),
+          sw_path(b: "Protocol", m: "googleEnrolmentProtocol"),
           sw_path(b: "platform", m: "rawValue"),
           sw_path(b: "decisionKey", m: "point_b64url"),
+          sw_id(n: "attestKeyId"),
         ])),
       ])
     ),
     sw_doc(
       c: [
-        "gunbc.auth.approval_device_wire enrollment_id_for_code: the enrolment an accepted code produces is",
-        "named by the code, so a lost enrolment answer costs nothing the app cannot re-derive.",
+        "gunbc.auth.approval_google_enrolment google_enrolment_nonce = base64url(sha256(transcript)): the nonce",
+        "Google signs into the ID token, so the token is bound to the keys the transcript names.",
       ],
-      d: sw_func(m: [], n: "enrollmentIdForCode", p: [sw_p_(n: "code", t: sw_t(n: "String"))], th: false, r: Present { value: sw_t(n: "String") }, b: [
-        sw_expr(e: sw_add(l: sw_str(s: "enr-"), r: sw_id(n: "code"))),
+      d: sw_func(m: [], n: "googleEnrolmentNonce", p: [sw_p_(n: "transcript", t: sw_t(n: "Data"))], th: false, r: Present { value: sw_t(n: "String") }, b: [
+        sw_expr(e: sw_call(f: sw_path(b: "Base64Url", m: "encode"), a: [sw_pos(v: sw_call(f: sw_id(n: "Data"), a: [sw_pos(v: sw_call(f: sw_path(b: "SHA256", m: "hash"), a: [sw_arg(l: "data", v: sw_id(n: "transcript"))]))]))])),
+      ])
+    ),
+    sw_doc(
+      c: ["gunbc.auth.tracker_web_oauth_client approve_ios_oauth_client: the iOS client the ID token's audience is. No server client id is configured, so aud is this client alone."],
+      d: sw_enum(n: "GoogleClient", i: [], m: [
+        sw_static_let(n: "clientID", e: sw_str(s: approve_ios_oauth_client.client_id as String)),
       ])
     ),
     sw_doc(
@@ -187,11 +204,11 @@ fn approve_ios_protocol_carriers() -> List<SwiftDecl> {
     sw_doc(c: ["gunbc.auth.approval_device_wire ApprovalPushHint: one opaque locator, nothing that is decided."], d: sw_struct(n: "ApprovalPushHint", i: [sw_t(n: "Equatable")], m: [
       sw_field(n: "notification_id", t: sw_t(n: "String")),
     ])),
+    // base64url WITH '=' padding: the encoder of std base64_encode UrlSafe, which every .dag crossing
+    // (google_enrolment_nonce, point_b64url, signatures) uses; vectors.json is emitted from it.
     sw_enum(n: "Base64Url", i: [], m: [
       sw_func(m: [SwiftStaticModifier], n: "encode", p: [sw_p_(n: "d", t: sw_t(n: "Data"))], th: false, r: Present { value: sw_t(n: "String") }, b: [
-        sw_expr(e: approve_ios_replace(
-          e: approve_ios_replace(e: approve_ios_replace(e: sw_call(f: sw_path(b: "d", m: "base64EncodedString"), a: []), of: "+", with: "-"), of: "/", with: "_"),
-          of: "=", with: "")),
+        sw_expr(e: approve_ios_replace(e: approve_ios_replace(e: sw_call(f: sw_path(b: "d", m: "base64EncodedString"), a: []), of: "+", with: "-"), of: "/", with: "_")),
       ]),
     ]),
   ]
@@ -210,7 +227,7 @@ data approve_ios_protocol_header: List<String> = [
 ]
 
 fn approve_ios_protocol_swift_file() -> SwiftSourceFile {
-  SwiftSourceFile { declarations: list_append(left: [sw_cmt(c: approve_ios_protocol_header, d: sw_import(n: "Foundation")), approve_ios_protocol_enum()], right: approve_ios_protocol_carriers()) }
+  SwiftSourceFile { declarations: list_append(left: [sw_cmt(c: approve_ios_protocol_header, d: sw_import(n: "Foundation")), sw_import(n: "CryptoKit"), approve_ios_protocol_enum()], right: approve_ios_protocol_carriers()) }
 }
 
 fn expected_approve_ios_protocol_swift() -> SwiftRowEmission {

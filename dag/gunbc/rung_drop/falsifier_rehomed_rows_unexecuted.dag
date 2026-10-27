@@ -1,7 +1,7 @@
 module gunbc.rung_drop.falsifier_rehomed_rows_unexecuted
 
 import std.types { NonEmptyStr, List, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger, population_from_list }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 import gunbc.ci.ci_layer_roots {
   RehomedBinWetRow, falsifier_rehomed_bin_wet_rows, falsifier_rehomed_roster_rows
@@ -39,13 +39,11 @@ data falsifier_rehomed_rows_unexecuted: RungDrop = RungDrop {
 
   declared: "2026-10-21",
 
-  standing: Standing,
-
-  declaration: TypedDeclaration {
+  standing: Standing { declaration: TypedDeclaration {
     previous: Mitigatable,
     temporary: OutsideTheLadder,
     reason: LostAsPassenger { carrier: ".github/workflows/falsifier.yml, deleted at 611fd02770 (#8283)" },
-    population: falsifier_rehomed_rows_unexecuted_population(),
+    population: population_from_list(xs: falsifier_rehomed_rows_unexecuted_population()),
     restoration_trigger: "an executor runs these rows to a terminal verdict on a host admitting their effects (candidate: the known-red instrument once parallel queues land), at which point each row is re-enrolled on it or dispositioned"
-  }
+  } }
 }

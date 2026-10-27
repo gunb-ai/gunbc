@@ -4,12 +4,12 @@ import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
-import gunbc.rung_climb { AwaitsOneGrounding }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
 
 data ledger_row_authored_unread_after_the_rung_migration: RecurringFailureMode = RecurringFailureMode {
   identity: "ledger_row_authored_unread_after_the_rung_migration" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: "a decidable notion of a row being NEW: the revision at which a ledger row was introduced, readable at ingestion, so the census can refuse an unread cause for a row introduced after the typed-rung migration without a grandfather roster of identities (a second authority, DESIGN section 3)" }, trigger_capability: "ingestion-time row-introduced-at-revision for gunbc.recurring_failure_mode rows, so that a row introduced after the typed-rung migration whose rung is RungUnread is refused by the rung census rather than admitted" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: AwaitsOneGrounding { grounding: GroundingUndeclared }, trigger_capability: "ingestion-time row-introduced-at-revision for gunbc.recurring_failure_mode rows, so that a row introduced after the typed-rung migration whose rung is RungUnread is refused by the rung census rather than admitted" } },
 
   receipts: [
     "INVALID STATE: a recurring-failure-mode row authored AFTER the typed-rung migration carries `rung: RungUnread { cause: ... }`, so the class is filed with no found-at rung, no ceiling and no next-rung trigger -- the untracked stall DESIGN section 4b obligation 2 forbids. The migration deliberately has no not-yet-migrated arm, but the unread causes are real prose classes and nothing distinguishes a legacy row from a new one.",

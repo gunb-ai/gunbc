@@ -281,7 +281,11 @@ fn ledger_read_line(line: String) -> LineRead {
 // readable stream), so this reader states only what the stream it was given holds.
 fn harness_round_ledger_from_events(body: String) -> HarnessRoundLedger {
   let reads = map(split(s: body, delimiter: "\n"), l => ledger_read_line(line: l))
-  match fold(reads, init: none, f: (acc, r) =>
+  // The seed's initial accumulator is typed here because a bare `none` init types the carrier
+  // Optional<Unit> (gunbc.recurring_failure_mode fold_accumulator_typed_from_init_not_from_the_expected_type),
+  // which made the first gap's cause a Unit that validate_cast now refuses into NonEmptyStr.
+  let no_gap_yet: String? = none
+  match fold(reads, init: no_gap_yet, f: (acc, r) =>
          match acc {
            Present { value: c } => Present { value: c }
            Absent =>

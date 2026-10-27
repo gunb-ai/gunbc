@@ -23,7 +23,7 @@ import v2.std.symbol_index { empty_symbol_index }
 import v2.std.qualified_name { declaration_reference_node, qualified_name_from_dotted_string }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.runtime { RuntimeValue }
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual, RuntimeValue }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List }
@@ -108,9 +108,9 @@ fn lel_eval_call_bool(inferred: InferredTree, name: Symbol) -> Optional<Bool> {
       match eval(tree: inferred, interpretation: v2_evaluator_interpretation(), inputs: inputs_root_only(root: call)) {
         Rejected { diagnostics: _ } => optional_absent()
         Accepted { value: v, diagnostics: _ } =>
-          if v == v2_eval_bool_runtime_value(is_true: true) {
+          if (runtime_value_equality(a: v, b: v2_eval_bool_runtime_value(is_true: true)) == RuntimeValuesEqual) {
             optional_present(value: true)
-          } else if v == v2_eval_bool_runtime_value(is_true: false) {
+          } else if (runtime_value_equality(a: v, b: v2_eval_bool_runtime_value(is_true: false)) == RuntimeValuesEqual) {
             optional_present(value: false)
           } else {
             optional_absent()

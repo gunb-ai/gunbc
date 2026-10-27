@@ -1,0 +1,25 @@
+module gunbc.claim_batch_exit_composition_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the exit composition claim_batch gained with SubjectUnresolved.
+// HAND-ITEM DELTA: +6 citable declarations, all new: batch_exit_code and report_unresolved_group and
+// RunWitnessesRefusal in v1_compiler.bin.claim_batch, EntryResolveRefusal, ResolveFailure and
+// resolve_entry_with_index_typed in v1_compiler.cli_run.entry_resolve. ResolveTimings, report_outcome
+// and the resolve-failure sites were MODIFIED, not added; no deletion is netted against the new items.
+data claim_batch_exit_composition_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "batch_exit_code", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "report_unresolved_group", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.bin.claim_batch", decl_name: "RunWitnessesRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "EntryResolveRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_with_index_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ResolveFailure", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: claim_batch is a seed-host CLI whose process exit code is produced before any .dag evaluation frame exists. batch_exit_code composes the three exit classes of the gunbc test contract, 1 (a finding) over 2 (no observation) over 0, from the two flags the resolve and report sites set. The VOCABULARY is modeled: v2.workflow.floor_terminal_ledger ClaimAttemptTerminal.SubjectUnresolved and .RouteGap project to the dispositions that mean no observation; this function is the seed's mirror of that projection at the process boundary. THE RESOLVE REFUSAL IS SPLIT BY WHAT IT SAYS ABOUT THE CLAIM (EntryResolveRefusal): an entry that is not a file never reached its subject (EntryMissing, UNOBSERVED, exit 2); a name or type error inside the entry's closure is a finding at the compiler floor (ClosureDiagnostics, FAIL, exit 1); a resolve refusal that is not a corpus diagnostic (host budget unreadable, assembly attribution, unreadable source) is ResolveInfrastructure, UNOBSERVED, exit 2. SubjectUnresolved IS A DECLARED FRONTIER, NOT CONSUMED: claim_batch prints the UNOBSERVED line, but no reader decodes that line into the SubjectUnresolved terminal today (the only ledger renderer is .dag, v2.workflow.floor_terminal_ledger_wire, and no Rust writes any row). Trigger: the ledger join that reads claim_batch output into ClaimAttemptTerminal rows; until it lands this PR does not claim to emit the row. A nonexistent --entry path is refused at the CLI boundary with exit 2 before any group runs.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete batch_exit_code when claim_batch's verdict fold is the .dag fold over ClaimDisposition and the process exit is derived from its typed standing rather than from two booleans and the cost-partition verdict.",
+  current_boundary: "Pure over two booleans and the cost-partition verdict (Refused NoSpans counts as unobserved, any other Refused as failed): any failed claim yields 1 even when another group was unobserved (false AND unknown is false), unobserved with nothing failed yields 2, otherwise 0. Every group's lines still print before the exit, so no measurement is dropped to reach 2."
+}

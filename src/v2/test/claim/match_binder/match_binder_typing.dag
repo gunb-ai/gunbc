@@ -15,7 +15,7 @@ import std.algebra { Cons, Empty, contains, list_map, list_append, empty_map }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NodeLocus, NonEmptyDiagnostics, None, Outcome, Rejected, Some, node_locus }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   ComputationNode,
   Conj,
@@ -31,7 +31,8 @@ import v2.std.node {
   Symbol,
   TypeNode,
   core_edge_label,
-  host_text_type_node
+  host_text_type_node,
+  NotADeclaration
 }
 import v2.std.node_query { binder_node, construct_node, field_projection_optional }
 import v2.std.type_binder { type_binder_set_children }
@@ -491,7 +492,7 @@ fn mbp_declaration_named(n: Node, name: Symbol) -> Optional<Node> {
 }
 
 fn mbp_node_within(root: Node, wanted: Node) -> Bool {
-  if root == wanted {
+  if node_same_occurrence(a: root, b: wanted) {
     true
   } else {
     fold(root.children, init: false, f: fn(acc, e) { acc || mbp_node_within(root: e.target, wanted: wanted) })
@@ -669,15 +670,15 @@ fn mbt_conj(fields: List<Edge>) -> Node {
 // (v2.std.node_query binder_node), which is what declared_field_from_edge reads. Pattern fields stay
 // mbt_named: a pattern binds an atom, it does not declare a field.
 fn mbt_field(name: Symbol, type_node: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: optional_absent()) }
+  Edge { label: Authored { name: name }, target: binder_node(type_node: type_node, default: optional_absent()), declaration: NotADeclaration }
 }
 
 fn mbt_named(name: Symbol, target: Node) -> Edge {
-  Edge { label: Authored { name: name }, target: target }
+  Edge { label: Authored { name: name }, target: target, declaration: NotADeclaration }
 }
 
 fn mbt_pos(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+  Edge { label: Positional, target: target, declaration: NotADeclaration }
 }
 
 // `Outcome<T> = Accepted { value: T, diagnostics: Diagnostics } | Rejected { diagnostics: NonEmptyDiagnostics }`
@@ -726,7 +727,7 @@ fn mbt_index() -> SymbolIndex {
       resolved: mbt_parse_artifact_declaration()
     ),
     qualified_path: mbt_qn(segs: [^p, ^Outcome]),
-    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic } }], source: mbt_conj(fields: [])))
+    params: mbt_conj(fields: type_binder_set_children(binders: [Edge { label: Authored { name: ^T }, target: Node { kind: TypeNode { connective: Atom { identity: ^T } }, children: [], occurrence_id: OccurrenceSynthetic }, declaration: NotADeclaration }], source: mbt_conj(fields: [])))
   )
 }
 
@@ -739,7 +740,7 @@ fn mbt_resolved() -> ResolvedTree {
     root: mbt_atom(s: ^mbt_unused_root),
     symbol_index: mbt_index(),
     resolved_declarations: mbt_index(),
-    occurrence_bindings: empty_map(), duplicate_binding_records: [],
+    occurrence_resolutions: empty_map(), duplicate_binding_records: [],
     module_outcomes: [], outcome_index: empty_module_outcome_index(),
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),
@@ -786,8 +787,8 @@ fn mbt_entry(node: Node, ty: Node) -> Map<Node, List<InferredFacts>> {
 
 fn mbt_arm(pattern: Node, body: Node) -> Node {
   mbt_conj(fields: [
-    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern },
-    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body }
+    Edge { label: core_edge_label(marker: MatchArmPatternEdge), target: pattern, declaration: NotADeclaration },
+    Edge { label: core_edge_label(marker: MatchArmBodyEdge), target: body, declaration: NotADeclaration }
   ])
 }
 

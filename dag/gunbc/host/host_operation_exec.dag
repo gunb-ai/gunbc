@@ -1,5 +1,6 @@
 module gunbc.host.host_operation_exec
 
+import extdeps.linux.kernel_random { kernel_boot_id_path }
 import std.types { String, NonEmptyStr, List, Bool }
 import extdeps.systemd.systemctl
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
@@ -128,6 +129,7 @@ type HostOperation =
   | CgroupReadEvents { cgroup_path: NonEmptyStr }
   | ProcfsReadStat
   | ProcfsReadMeminfo
+  | ProcfsReadBootId
   | ProcfsReadPidStat { pid: NonEmptyStr }
   | ProcfsReadPidCgroup { pid: NonEmptyStr }
   | ProcfsReadNetTcp
@@ -257,6 +259,10 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
     ProcfsReadMeminfo => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadMeminfo"),
       bindings: [],
+    )
+    ProcfsReadBootId => bind_operation_invocation(
+      at: procfs_operation_ref(operation: "ReadBootId"),
+      bindings: [operation_argv_bind_text(name: "path", text: kernel_boot_id_path)],
     )
     ProcfsReadPidStat { pid: p } => bind_operation_invocation(
       at: procfs_operation_ref(operation: "ReadPidStat"),
@@ -430,6 +436,10 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
     }
     ProcfsReadMeminfo => {
       let result = linux.Procfs.ReadMeminfo()
+      HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
+    }
+    ProcfsReadBootId => {
+      let result = linux.Procfs.ReadBootId(path: kernel_boot_id_path as NonEmptyStr)
       HostOperationObserved { stdout: result.value, success: result.success, stderr: none }
     }
     ProcfsReadPidStat { pid: p } => {

@@ -1,6 +1,6 @@
 module gunbc.instruments.native_materialization_store_closure
 
-import std.types { List, String, Bool, NonEmptyStr }
+import std.types { List, String, Bool, NonEmptyStr, bool_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import std.authorization_profile { UniversalAudience, EnumeratedAudience, audience_subset, audience_join }
 import std.effect_grant { namespace_tree_of_label, namespace_tree_label }
@@ -64,9 +64,6 @@ type StoreClosureCase {
   observed: String
 }
 
-fn bool_text(b: Bool) -> String {
-  if b { "true" } else { "false" }
-}
 
 fn held_as(identity: String, observed: String, expected: String) -> StoreClosureCase {
   StoreClosureCase { identity: identity, held: observed == expected, observed: observed }
@@ -162,9 +159,9 @@ fn store_path_cases() -> List<StoreClosureCase> {
 // structural fingerprints has no address, and the refusal names every refused component.
 //
 // NOT YET EXECUTED AS EMITTED CODE. This instrument's closure does not build: on main the emitted
-// std.list fails to typecheck, and with this module's provider import the closure holds two types
-// spelled Word64 (std.bit and std.machine_word), whose derives the emitter picks by spelling
-// (gunbc.recurring_failure_mode emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
+// std.list fails to typecheck (the std.bit / std.machine_word Word64 leaf collision it also met is
+// gone with std.bit's unused Word8..Word128; gunbc.recurring_failure_mode
+// emitter_index_keyed_on_a_type_leaf_takes_the_last_declarer). The
 // first identity case is executed today on the interpreter route by
 // test.claim.materialization_provider_witness; these cases become evidence when the closure builds.
 fn identity_fixture_sha256(hex: String) -> ContentHash {

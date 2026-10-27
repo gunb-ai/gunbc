@@ -1,0 +1,14 @@
+module gunbc.rung_drop_amendment.floor_cost_withhold_threshold_and_population_derivation
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop_amendment { RungDropAmendment }
+
+data floor_cost_withhold_threshold_and_population_derivation: RungDropAmendment = RungDropAmendment {
+  drop_identity: "floor_cost_high_cpu_withheld" as NonEmptyStr,
+
+  amended: "2026-10-22",
+
+  later_event: "The drop's population is now derived from the roster rather than transcribed: the identities in `v2.workflow.floor_cost_debt` proven chunks 14-20, the ones this drop enrolled (130 of the 132). The two gunbc#10389 identities below are NOT in it. The original declaration (2026-09-04) named 132 identities measured `cost_reading=observed` at or above 219 cpu-ms in green main run 33841933739; 130 were enrolled by that change in proven chunks 14-20 and TWO (`produced_decl_module_folds_declarations_in_order`, `produced_decl_two_targets_render_own_order`) were rostered by gunbc#10389 while that branch was open and were not re-enrolled, a duplicate that `floor_cost_debt_roster` refused fail-closed (`duplicate withheld identity`) when main merged in. `floor_cost_debt_roster` as a whole has since grown past that cut and is withheld for other reasons too, so it is not this drop's population.",
+
+  bearing: "THE THRESHOLD IS DERIVED, NOT CHOSEN: `floor_cost_claim_qualification_unavailable` measures the per-identity inflation floor at 2.280x over twelve green main runs on three hosts, so 500 / 2.280 = 219 cpu-ms is the lowest baseline that can reach the 500ms stop. The operator authorised anything above 100ms (316 identities); withdrawing at 219 took 132 and left 184 rows on the floor that cannot trip the line under the measured floor. If a larger inflation is measured this constant falls and the population grows: a re-derivation, not a re-argument. THREE SUBPOPULATIONS END DIFFERENTLY: 37 host-process execution rows (`emit_host`, `rust_emit_host_call`) build and run a real host program, permanent withhold candidates; 5 live-tree lens rows walk the repository corpus, which is what they assert about, also permanent (`wall_residue_live` is 298ms on 28 eval_steps, `test_migration_debt` 288ms on 129, which is why cpu and not eval_steps denominates the row); the remaining 90 were fixture-optimizable and leave the population by re-measurement under 219ms. eval_steps was proposed and tested as the denominator: it matches at the 100ms line (Jaccard 0.943) but degrades at the tail this row concerns (0.718 at 219ms, 0.294 at 400ms) because it cannot see host I/O; cpu is the only column that sees both mechanisms."
+}

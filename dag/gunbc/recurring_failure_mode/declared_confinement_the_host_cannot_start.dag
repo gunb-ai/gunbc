@@ -22,7 +22,7 @@ data declared_confinement_the_host_cannot_start: RecurringFailureMode = Recurrin
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_sandbox_preflight_reading", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_sandbox_discriminating_preflight_command", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.cursor_harness_credential", decl_name: "cursor_worker_turn_run", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.worker_turn_standing", decl_name: "cursor_standing_from_readings", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.worker_turn_standing", decl_name: "cursor_standing_from_sandbox_refusal", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.linux.apparmor_userns", decl_name: "apparmor_restrict_unprivileged_userns_sysctl_name", field: WholeDeclaration },
   ],
 }

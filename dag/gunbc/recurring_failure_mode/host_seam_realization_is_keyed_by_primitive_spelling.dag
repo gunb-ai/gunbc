@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.host_seam_realization_is_keyed_by_primitive_spelling
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data host_seam_realization_is_keyed_by_primitive_spelling: RecurringFailureMode = RecurringFailureMode {
+  identity: "host_seam_realization_is_keyed_by_primitive_spelling" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the emitter keys host seams by declaration identity: rust_host_seam_is_realized selects a same-name self-call as a realized seam from the declaration's own std.primitive_projection row, and the runtime bridge is addressed from that identity rather than from a primitive spelling" } },
+
+  receipts: [
+    "**a same-name HostRealizedSeam self-call is realized by looking its SPELLING up in extdeps.languages.rust.emit rt_function_registry (rust_seam_primitive_name, rust_runtime_primitive_has_bridge), not by the declaration's identity.** INVALID STATE: a declared seam whose spelling has no bridge row (or whose row names another primitive of the same spelling) is emitted as unconditional recursion. HARM: rustc rejects it under -D warnings as 'function cannot return without recursing', so the failure is loud and located but only after emission; the seam's realization is a second name for a fact the projection row already carries (DESIGN section 3, a spelling-keyed dispatch).",
+    "RECEIPT 2026-10-22 (sunny-bee-153, PR #14751 at 4d4cf77ac21): std.algebra declared list_push as a HostRealizedSeam before the mirror carried its std.primitive_projection row; emitted std_algebra.rs:248/:260 failed 'function cannot return without recursing' in heal-generated-artifacts and N7. The rt_function_registry row list_push -> rc_list_push (emit.dag) was kept by the #14751 no-second-route disposition (tidy-ant-251) as realization, not a binding route; this row records it as the known residue for Seat 13's 'realization by declaration identity' check.",
+    "RUNG FOUND AT: mitigated -- the unrealized seam refuses at the Rust compiler, never silently. CEILING: structurally guaranteed -- the realization is derivable from the declaration's projection row. NEXT TRIGGER: the emitter keys host seams by declaration identity; climbable now but unbuilt, and it touches a load-bearing stage, so it needs its own plan."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.languages.rust.emit", decl_name: "rt_function_registry", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.primitive_projection", decl_name: "primitive_projection_roster", field: WholeDeclaration },
+  ],
+}
