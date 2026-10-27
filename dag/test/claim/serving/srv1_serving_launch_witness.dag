@@ -222,7 +222,20 @@ test fn each_retained_wrapper_effect_has_its_own_trigger_row() -> Bool {
   has_row_naming(needle: "TLS self-mint", capability: "openssl")
     && has_row_naming(needle: "events.log", capability: "host-event")
     && has_row_naming(needle: "pool-key generation", capability: "secret-reference")
-    && has_row_naming(needle: "command substitution", capability: "SHELL GRAMMAR EMIT")
+    // The key-read row's trigger RE-KEYED 2026-10-27 (post #15230): grammar-emitted command
+    // substitution (v2.extdeps.languages.bash_build bash_build_word_cmdsubst + v2.workflow.bash_emit
+    // bash_emit_stmts) LANDED, so naming that capability as still-absent would be a false standing
+    // claim, and bound_dissolution on an existing ref would claim the row is already retired. The honest
+    // form is retirement by the disappearance of the retained body that spells the substitution: the
+    // trigger renders as the wrapper's own display key.
+    && has_row_naming(needle: "command substitution", capability: "srv1_serving_launch::srv1_serving_wrapper")
+    // ...and it is now a BOUND condition (a ref), unlike the relaunch half which stays unbound.
+    && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
+        string_contains(s: r.reason as String, pattern: "command substitution")
+      }) {
+        Present { value: r } => dissolution_is_bound(condition: r.dissolution)
+        Absent => false
+      })
 }
 
 fn has_row_naming(needle: String, capability: String) -> Bool {

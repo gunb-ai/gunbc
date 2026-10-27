@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Port, List }
 import std.optional { Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
-import std.dissolution { unbound_dissolution }
+import std.dissolution { unbound_dissolution, retires_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
@@ -246,6 +246,20 @@ data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper"),
     reason: "the key READ at exec time is the bash command substitution inside the retained wrapper body (the cat-substitution on --api-key in the docker run argument) — shell inside the sanctioned retained script, the ONLY place this repository spells it; the model carries the typed file source only (no shell in the interface, no shell-building fn).",
-    dissolution: unbound_dissolution(description: "the bash grammar (extdeps.languages.bash — today invocation only: bash_program_command, bash_script_argv) gains a command-substitution node plus an emit route, so the wrapper's --api-key argument becomes a grammar-emitted node realized from LilServeApiKeyFromFile. The capability restored is SHELL GRAMMAR EMIT for command substitution; when it lands the wrapper's substitution token retires with the docker-run half per srv1_serving_wrapper's dissolves_to. SUFFICIENT for retiring this trigger row."),
+    // RE-KEYED 2026-10-27 against origin/main (post #15230). This trigger used to name its waiting-on as
+    // the ABSENCE of grammar-emitted shell: that capability has LANDED — the bash grammar build rows
+    // (v2.extdeps.languages.bash_build bash_build_word_cmdsubst) and the emit route
+    // (v2.workflow.bash_emit bash_emit_stmts) exist and are already consumed in production by
+    // extdeps.posix.sh_invocation posix_sh_export_from_file. Naming it as the thing still to be built
+    // would be a false standing claim (DESIGN 4d), and bound_dissolution on either of those existing refs
+    // would claim this row is ALREADY retired, which it is not: the wrapper's --api-key argument is still
+    // hand-spelled shell. WHAT THIS ROW WAITS BEHIND is the disappearance of the retained body that
+    // spells it — srv1_serving_wrapper retiring into its modeled realizations (its dissolves_to,
+    // extdeps.docker.cli docker_run_foreground_argv); when that happens the --api-key word is rendered as
+    // a grammar-emitted substitution node (bash_build_word_cmdsubst over a cat of
+    // LilServeApiKeyFromFile.path) through bash_emit_stmts, the means that now exist. Retirement by the
+    // wrapper's disappearance is the honest form: the loss and the trigger have the same grain.
+    dissolution: retires_dissolution(ref: decl_ref(module_path: "gunbc.serving.srv1_serving_launch", decl_name: "srv1_serving_wrapper")),
+    // migrate behind a ref that exists.
   ),
 ]
