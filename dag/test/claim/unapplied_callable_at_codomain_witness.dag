@@ -13,14 +13,19 @@ import std.process { ProcessExit, ExitFailure }
 // THE DISCRIMINATING REDS are an unapplied callable at every position that judges a produced value against a declared
 // type: a declared fn return (a field, a parameter, a unary field), an early return, a record-literal field, a method
 // argument, a list element, an annotated let, a data initializer, a match-arm result, an if-branch result, a generic
-// instantiation flowing to an annotated let, a direct-call argument, and an if condition; and their lambda and
+// instantiation flowing to an annotated let, a generic TYPE ARGUMENT (a container whose element is the callable, passed
+// where the nominal element is declared, and one whose domain is wrong passed where an arrow of another signature is
+// declared), a direct-call argument, and an if condition; and their lambda and
 // arity siblings (a lambda at a nominal record field and list element, an arrow of the wrong arity at a callable
-// record field and method argument). Before the repair every one of them except the direct-call argument was
-// accepted with a blocking delta of 0.
+// record field and method argument). Of the 23 refusal cells, 20 are newly discriminating -- before the repair they
+// were accepted with a blocking delta of 0 -- while 3 (the direct-call argument, the annotated let and the generic
+// instantiation flowing to an annotated let) were already refused by earlier repairs and are kept as refusal/regression
+// controls. At the generic type argument no callable could even reach the judgment before this repair: the position's
+// gate named a Conj/Disj declaration that an Arrow never satisfies, so the element pair was judged by nothing.
 //
-// THE CONTROLS bound the repair from both sides: the applied form of each RED is admitted, and an arrow at an
+// THE 29 ACCEPTANCE CONTROLS bound the repair from both sides: the applied form of each RED is admitted, and an arrow at an
 // arrow-typed expectation of the same signature is admitted at the return, record-field, method-argument,
-// list-element, let and data positions, including a lambda returned from a fn, placed in a list, and placed in a
+// list-element, let, data, generic-type-argument and lambda positions, including a lambda returned from a fn, placed in a list, and placed in a
 // record field (a lambda's resolved type is its body, so these are what keep the judgment reading its value type).
 
 fn blocking_delta(hostile: String, holds: fn(Int) -> Bool) -> CensusVerdict {
