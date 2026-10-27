@@ -13,9 +13,19 @@ import gunbc.dispatch_replay_recording {
 // THE REPLAY WORKER: what the replay executor runs inside the same transient unit, as the same gunbc-worker
 // account, under the same confinement as a real worker (gunbc.roadmap.roadmap_dispatch_actuator
 // ReplayDispatchProvider, whose container plan is the harness's). It replaces the model and nothing else: the
-// worktree is forced to the recorded tree, committed with the worker's own git posture, and the process exits
-// with the recorded status, so the unit's ExecStopPost hook writes the exit record from a real exit exactly as
-// for a real worker.
+// worktree is forced to the recorded tree and left UNCOMMITTED, and the process exits with the recorded status,
+// so the unit's ExecStopPost hook writes the exit record from a real exit exactly as for a real worker.
+//
+// IT DOES NOT COMMIT, AND THAT IS THE PREMISE, NOT AN OMISSION. A real worker under WorkerDedicatedAccount does
+// not mint its result commit: the BELT does, as the service user, through
+// gunbc.roadmap.roadmap_belt_actuate.belt_capture_candidate_commit and its belt_commit_staged (git add -A, then
+// git commit, the identity coming from the belt's own environment). Lab qualification of this executor,
+// 2026-10-26: the attempt ended with commits-since-base 0 and a dirty worktree, and the belt's checkpoint made
+// the commit whose tree the recording then carried. Minting that commit inside the unit would be a step the
+// worker whose end state is being replayed never takes -- and it cannot even be taken: the dedicated account
+// holds no git identity, so git refuses it with "Author identity unknown". The belt observes this worktree and
+// mints the commit exactly as it does for a real worker, which is the whole point of one route (DESIGN section
+// 6: no second path beside a modeled route).
 //
 // EXACT OR REFUSES: the attempt's base (the worktree HEAD) must equal the recording's base, and the recorded
 // ref's tree must equal the id's tree; any other answer exits 78 with the typed cause and leaves the worktree
@@ -62,11 +72,6 @@ fn replay_worker_apply(address: GitRepositoryAddress, id: RecordingId) -> Proces
   if !(reset.exit_code == 0) {
     replay_refused(reason: join(["forcing the worktree to the recorded tree failed: ", trim(s: reset.stderr)], ""))
   } else {
-    let committed = git.Plumbing.CommitIndex(address: address, message: join(["replay of recording ", recording_ref_of(id: id)], ""))
-    if !(committed.exit_code == 0) {
-      replay_refused(reason: join(["committing the recorded tree as the worker failed: ", trim(s: committed.stderr)], ""))
-    } else {
-      replay_recorded_exit(id: id)
-    }
+    replay_recorded_exit(id: id)
   }
 }

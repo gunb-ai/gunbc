@@ -3,13 +3,22 @@ module test.claim.roadmap.dispatch_replay_wet_witness
 // THE REPLAY EXECUTOR'S GIT HALF, EXECUTED AGAINST A REAL REPOSITORY. The hermetic claims
 // (test.claim.roadmap.dispatch_replay_witness) supply values; this one runs the SAME recording_capture and the SAME
 // replay_worker_cli production runs over a throwaway repository: a base commit and a result commit, a recording
-// captured from the result, a fresh worktree at the base, and the worker run in it. It asserts the replayed tree is
-// the recorded tree (the capture/replay round trip, byte for byte, as git's own tree id), that the commit lands on
-// the attempt branch as a child of the base, that the exit equals the recorded status, and the two refusal controls
-// (a worktree at another base; a recording ref moved to a commit with another tree) which must exit with the
-// refusal code and leave HEAD and the tree untouched. Mutations: make replay_worker_apply skip ResetWorktreeToTree
-// (tree equality goes red); drop the base comparison in recording_replay_admission (the other-base control goes
-// red); drop the ref-to-tree comparison in replay_worker_admit (the moved-ref control goes red);
+// captured from the result, a fresh worktree at the base, and the worker run in it. It asserts the replay leaves
+// the worktree at the recorded tree UNCOMMITTED -- HEAD still the base, the tree dirty, exactly the state a real
+// worker's attempt ends in (lab qualification 2026-10-26: attempt a9 ended with commits-since-base 0 and a dirty
+// worktree; the BELT made the commit) -- that the tree the replay leaves in the index (git write-tree) IS the
+// recorded tree, byte for byte, that the commit the belt mints over that worktree (add -A, then commit, as
+// gunbc.roadmap.roadmap_belt_actuate.belt_commit_staged runs it under
+// gunbc.roadmap.roadmap_belt_actuate.belt_capture_candidate_commit) is a child of the base carrying that same
+// tree, that the exit equals the recorded status, and that all of this holds with NO git identity available to
+// the replaying account (the dedicated worker account has none; the control pins an empty local identity so a
+// replay that commits must go red). It also carries the two refusal controls (a worktree at another base; a
+// recording ref moved to a commit with another tree) which must exit with the refusal code and leave HEAD and the
+// tree untouched. Mutations: make replay_worker_apply skip ResetWorktreeToTree (tree equality goes red); make it
+// mint a commit -- restore the git.Plumbing.CommitIndex step this repair removed (the identity control goes red,
+// because the dedicated account holds no identity, and HEAD-still-the-base goes red); drop the base comparison in
+// recording_replay_admission (the other-base control goes red); drop the ref-to-tree comparison in
+// replay_worker_admit (the moved-ref control goes red);
 // drop either exit-code check in replay_worker_admit (its unreadable-read control goes red: a deleted recording ref,
 // or a repository whose HEAD is unborn, must refuse with a reason naming the failed read, not a mismatch);
 // drop the object-id check on the base in recording_capture (the non-object-id base control goes red).
@@ -99,6 +108,21 @@ fn refused_naming(exit: ProcessExit, failure: String) -> Bool {
     && !string_contains(s: reason, pattern: "does not resolve to the recorded tree")
 }
 
+// THE COMMITTING PRINCIPAL'S IDENTITY, SUPPLIED AT ITS OWN CALL SITE. Command-line `-c` is git's own highest
+// precedence, so this is how the witness says "the invoking principal carries an identity" -- the SERVICE USER's
+// posture, which is what gunbc.roadmap.roadmap_belt_actuate.belt_capture_candidate_commit commits as (through
+// belt_commit_staged: git add -A, then git commit -m): its identity comes from its own environment, never from the
+// repository's config. The replaying worker account (WorkerDedicatedAccount, gunbc-worker) has none, so the replay
+// gets no such pair and must not need one.
+data belt_identity_config_pairs: List<String> = ["-c", "user.name=gunbc-belt", "-c", "user.email=gunbc-belt@invalid"]
+
+// THE BELT'S COMMIT OVER THE ATTEMPT WORKTREE, run the way belt_commit_staged runs it, so the claim is about the
+// state the replay leaves and not about a step the replay does not take.
+fn belt_mints_commit_from(dir: String, message: String) -> Bool {
+  git_ok(dir: dir, args: concat(belt_identity_config_pairs, ["add", "-A"]))
+    && git_ok(dir: dir, args: concat(belt_identity_config_pairs, ["commit", "-q", "-m", message]))
+}
+
 fn replay_over(repo: String, work: String) -> Bool {
   let built = git_ok(dir: repo, args: ["init", "-q"])
     && git_ok(dir: repo, args: ["config", "user.name", "witness"])
@@ -123,13 +147,33 @@ fn replay_over(repo: String, work: String) -> Bool {
       let added = git_ok(dir: repo, args: ["worktree", "add", "-q", "-b", "attempt/replay", wt, base])
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other, result])
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_moved, base])
+      // THE DEDICATED ACCOUNT'S POSTURE, PINNED BEFORE ANY REPLAY RUNS. The worker unit runs as gunbc-worker under
+      // WorkerDedicatedAccount, and that account holds NO git identity -- which is what the lab hit on 2026-10-26,
+      // where the replay attempt died at exit 78 with "committing the recorded tree as the worker failed: Author
+      // identity unknown". A throwaway repository whose identity is merely UNSET does not model that account: git
+      // then auto-detects one from the OS user and a commit SUCCEEDS, which is why the pre-repair witness stayed
+      // green on its configured identity. An empty local user.name is the posture that refuses the way the account
+      // refuses (measured on the runner: git commit exits 128, "Author identity unknown"), and config is shared by
+      // every worktree of the repository, so no replay below can inherit an identity.
+      let identity_blanked = git_ok(dir: repo, args: ["config", "--local", "user.name", ""])
       let other_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_other, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
       let other_untouched = git_out(dir: wt_other, args: ["rev-parse", "HEAD"]) == result
         && git_out(dir: wt_other, args: ["status", "--porcelain"]) == ""
       let replay_exit = exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
-      let replayed_tree = git_out(dir: wt, args: ["rev-parse", concat("HEAD", recording_peel_to_tree_suffix)])
-      let replayed_parent = git_out(dir: wt, args: ["rev-parse", "HEAD^"])
-      let branch_tip = git_out(dir: repo, args: ["rev-parse", concat("attempt/replay", recording_peel_to_tree_suffix)])
+      // WHAT THE REPLAY LEAVES BEHIND IS THE RECORDED ATTEMPT'S END STATE, NOT A COMMIT. The recorded worker ended
+      // with its result UNCOMMITTED (attempt a9, 2026-10-26: commits-since-base 0, dirty worktree) and the belt made
+      // the commit, so HEAD must still be the base, the attempt branch must still be the base, and the worktree must
+      // be dirty. git write-tree over the index the replay left is the byte-for-byte round trip: the tree the belt
+      // will mint from this worktree is the recorded tree.
+      let head_still_base = git_out(dir: wt, args: ["rev-parse", "HEAD"]) == base
+      let branch_still_base = git_out(dir: repo, args: ["rev-parse", "attempt/replay"]) == base
+      let worktree_dirty = git_out(dir: wt, args: ["status", "--porcelain"]) != ""
+      let replayed_tree = git_out(dir: wt, args: ["write-tree"])
+      // THE BELT'S OWN COMMIT OVER THAT WORKTREE: what every stage downstream of the worker actually reads.
+      let belt_committed = belt_mints_commit_from(dir: wt, message: "dispatch checkpoint of the replayed attempt")
+      let belt_commit = git_out(dir: wt, args: ["rev-parse", "HEAD"])
+      let belt_tree = git_out(dir: wt, args: ["rev-parse", concat(belt_commit, recording_peel_to_tree_suffix)])
+      let belt_parent = git_out(dir: wt, args: ["rev-parse", "HEAD^"])
       let moved = git_ok(dir: repo, args: ["update-ref", ref_name, base])
       let moved_exit = exit_code_of(exit: replay_worker_cli(worktree: wt_moved, repo_root: repo, recording_id: recording_id_of(ref_name: ref_name)))
       let moved_untouched = git_out(dir: wt_moved, args: ["rev-parse", "HEAD"]) == base
@@ -173,10 +217,16 @@ fn replay_over(repo: String, work: String) -> Bool {
         RecordingCaptured { id: _, ref_name: _ } => false
       }
       added
-        && replayed_tree == result_tree
-        && replayed_parent == base
-        && branch_tip == result_tree
+        && identity_blanked
         && replay_exit == 3
+        && head_still_base
+        && branch_still_base
+        && worktree_dirty
+        && replayed_tree == result_tree
+        && belt_committed
+        && belt_commit != ""
+        && belt_tree == result_tree
+        && belt_parent == base
         && other_exit == replay_refusal_exit_code && other_untouched
         && moved && moved_exit == replay_refusal_exit_code && moved_untouched
         && collision

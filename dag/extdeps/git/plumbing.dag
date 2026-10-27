@@ -295,16 +295,6 @@ service git.Plumbing {
     transport shell { argv: ["git", git_repository_address_argv(address: address), "read-tree", "-u", "--reset", "{treeish}"] }
   }
 
-  operation CommitIndex {
-    requires opaque
-    input { address: GitRepositoryAddress, message: String }
-    output {
-      exit_code: Int from "exit_code"
-      stderr: String from "stderr"
-    }
-    transport shell { argv: ["git", git_repository_address_argv(address: address), "commit", "--allow-empty", "-m", "{message}"] }
-  }
-
   operation CommitTree {
     requires opaque
     input { address: GitRepositoryAddress, tree: String, parents: GitCommitParents, message: String }
