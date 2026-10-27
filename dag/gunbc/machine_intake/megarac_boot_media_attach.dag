@@ -5,13 +5,14 @@ import std.algebra { FreeSemigroup }
 import std.measure { Second, second, second_count }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.host.managed_host_unit_hold { UnitHoldProof }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, boot_subject_host }
 import product.host_identity { host_identity_eq }
 import gunbc.host.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
-import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account }
+import gunbc.host.bmc_control_binding { bmc_control_route_endpoint, bmc_control_route_account, bmc_control_route_ipmi_cipher_suite }
 import gunbc.host.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffCommandRefused, MegaRacStalePowerOffNotNeeded, MegaRacStalePowerOffNotObserved, MegaRacStalePowerOffObserved, media_attach_outcome_reason, session_release_text, MegaRacStalePowerOff, MegaRacMediaAttachNotAttempted,
@@ -90,6 +91,7 @@ fn megarac_boot_media_chassis_power(host: AdmittedMegaRacHost, account: NonEmpty
     password_file: password_file,
     deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -314,6 +316,7 @@ fn megarac_stale_power_off(
         action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
         deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
         kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
+        cipher_suite_argv: ipmi_cipher_suite_argv(suite: bmc_control_route_ipmi_cipher_suite(route: host.route)),
       )
       if control.success == false {
         MegaRacStalePowerOffCommandRefused { stale_image: stale, before: before }

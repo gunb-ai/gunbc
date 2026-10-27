@@ -1,0 +1,281 @@
+module gunbc.gpu_market.census
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.measure { Bandwidth, ByteSize, Milliwatt, mebibyte, mebibyte_to_byte_size }
+import std.algebra { string_contains }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.storage.types { PcieLink }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+import extdeps.vendor.intel { intel }
+import extdeps.wikipedia.gpu_spec_table {
+  WikipediaGpuSpecPage,
+  WikipediaGpuSpecRow,
+  WikipediaMemoryCell,
+  WikipediaBandwidthCell,
+  WikipediaSpecTable,
+  WikipediaNonSpecTable,
+}
+import extdeps.wikipedia.list_of_nvidia_graphics_processing_units { list_of_nvidia_graphics_processing_units_page }
+import extdeps.wikipedia.list_of_amd_graphics_processing_units { list_of_amd_graphics_processing_units_page }
+import extdeps.wikipedia.amd_instinct { amd_instinct_page }
+import extdeps.wikipedia.list_of_intel_graphics_processing_units { list_of_intel_graphics_processing_units_page }
+
+// THE GPU MARKET CENSUS: which cards the pinned sources list that meet this repository's rule, decided
+// once per source row. This is repository POLICY over upstream facts, so it lives here and not in
+// extdeps: the sources are the four pinned Wikipedia revisions in census_sources, each a closed
+// population (extdeps.wikipedia.gpu_spec_table wikipedia_spec_page_complete); the rule is the data below;
+// and census_decisions answers every source row with exactly one decision, Included with its cards or
+// Excluded with a typed reason. Nothing here is authored per card except census_judged_rows, the
+// judgments the cells cannot carry, each naming the row it judges and the model that row states.
+//
+// WHAT "EVERY CARD" MEANS HERE: every card the pinned revisions list, as of census_as_of. A card the
+// revisions do not list is not in the census. A card shipped after a revision is not in it until the
+// revision is re-pinned. That is a property of the sources, stated rather than hidden.
+//
+// A CARD IS THE PURCHASABLE BOARD. gpu_count, memory_per_gpu and bandwidth_per_gpu are per GPU as the
+// row states them; board_power is the board's. A multi-GPU board is one card with gpu_count > 1, so a
+// price joins to the board and its power is never counted once per GPU. No runtime-support figure is
+// carried: none has been read, and an empty list would read as "supports none".
+
+data census_as_of: NonEmptyStr = "2026-10-27"
+data census_launch_cutoff_year: Nat = 2011
+data census_memory_floor_mib: Nat = 8192
+
+type CensusSourcePage {
+  vendor: Vendor<Hardware>
+  page: WikipediaGpuSpecPage
+}
+
+data census_sources: List<CensusSourcePage> = [
+  CensusSourcePage { vendor: nvidia, page: list_of_nvidia_graphics_processing_units_page },
+  CensusSourcePage { vendor: amd, page: list_of_amd_graphics_processing_units_page },
+  CensusSourcePage { vendor: amd, page: amd_instinct_page },
+  CensusSourcePage { vendor: intel, page: list_of_intel_graphics_processing_units_page },
+]
+
+// One source row: the revision it is on, its table's ordinal on that revision, and its ordinal in the
+// table. Every figure on a card is read off the row this names, so the card's standing is that
+// revision's, by construction.
+type CensusRowRef {
+  revision: ExternalAuthority
+  table: Nat
+  row: Nat
+}
+
+fn census_row_ref_eq(a: CensusRowRef, b: CensusRowRef) -> Bool {
+  a.revision == b.revision && a.table == b.table && a.row == b.row
+}
+
+// A section one source carries that another pinned source carries more completely. The AMD list's
+// Radeon Instinct tables stop at the MI300X; the AMD Instinct article also lists the MI325X, MI350X,
+// MI350P and MI355X, so those rows are taken from the article and the list's copies are not counted twice.
+type CensusCoverage {
+  page: ExternalAuthority
+  heading_marker: NonEmptyStr
+  covered_by: ExternalAuthority
+}
+
+data census_coverage: List<CensusCoverage> = [
+  CensusCoverage {
+    page: list_of_amd_graphics_processing_units_page.revision,
+    heading_marker: "Radeon Instinct",
+    covered_by: amd_instinct_page.revision,
+  },
+]
+
+// A judgment the row's cells cannot carry: the page lists the part under a card section, but it is not a
+// card a host can take. model_as_stated is the row's own model cell, so a judgment left behind after the
+// page is re-pinned and the row moves is detectable rather than silently judging another card.
+type CensusJudgment = SocketedApu | SystemIntegrated | MxmModule
+
+type CensusJudgedRow {
+  row: CensusRowRef
+  model_as_stated: NonEmptyStr
+  judgment: CensusJudgment
+}
+
+data census_judged_rows: List<CensusJudgedRow> = [
+  CensusJudgedRow { row: CensusRowRef { revision: amd_instinct_page.revision, table: 1, row: 4 }, model_as_stated: "AMD Instinct MI300A (Antares)", judgment: SocketedApu },
+  CensusJudgedRow { row: CensusRowRef { revision: list_of_amd_graphics_processing_units_page.revision, table: 36, row: 2 }, model_as_stated: "Steam Machine GPU (Navi 33)", judgment: SystemIntegrated },
+  CensusJudgedRow { row: CensusRowRef { revision: list_of_amd_graphics_processing_units_page.revision, table: 73, row: 1 }, model_as_stated: "Radeon Pro 5500 XT (Navi 14)", judgment: SystemIntegrated },
+  CensusJudgedRow { row: CensusRowRef { revision: list_of_amd_graphics_processing_units_page.revision, table: 73, row: 2 }, model_as_stated: "Radeon Pro 5700 (Navi 10)", judgment: SystemIntegrated },
+  CensusJudgedRow { row: CensusRowRef { revision: list_of_amd_graphics_processing_units_page.revision, table: 73, row: 3 }, model_as_stated: "Radeon Pro 5700 XT (Navi 10)", judgment: SystemIntegrated },
+  CensusJudgedRow { row: CensusRowRef { revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 2 }, model_as_stated: "FirePro S7100X", judgment: MxmModule },
+]
+
+// NOT A DISCRETE CARD, read off the page's own structure. A heading marker names a section of mobile,
+// integrated, console or embedded parts. NVIDIA files workstation and mobile workstation parts under one
+// heading, so there the row's model text decides: it names the part Mobile or Laptop, or ends in "M" or
+// "Max-Q" (Quadro K5100M, Quadro P4000 Max-Q). The suffix is the END of the name, which is why the
+// desktop "RTX PRO 6000 Blackwell Max-Q Workstation Edition" stays a card.
+data census_not_discrete_heading_markers: List<NonEmptyStr> = [
+  "Mobile GPUs", "Mobile workstation GPUs", "> Mobile", "IGP", "Integrated", "Console", "Embedded", "Handheld",
+]
+data census_not_discrete_model_markers: List<NonEmptyStr> = ["Mobile", "Laptop", "MXM"]
+data census_not_discrete_model_suffixes: List<NonEmptyStr> = ["M", "Max-Q"]
+
+type CensusExclusion
+  = ModelUnread
+  | CoveredByAnotherSource { source: ExternalAuthority }
+  | Judged { judgment: CensusJudgment }
+  | LaunchUnread
+  | LaunchBeforeCutoff { year: Nat }
+  | MemoryUnread
+  | BelowMemoryFloor { largest_mib: Nat }
+  | NotADiscreteCard { marker: NonEmptyStr }
+  | GpuCountAmbiguous
+
+// bandwidth_per_gpu is the row's one stated rate and board_power its one stated power; a cell stating
+// none or several leaves the field Absent rather than choosing among them. bus_interface_as_stated is
+// the page's bus-interface column: for an SXM or OAM part it is a host link, not an add-in-card endpoint,
+// so it is never read as a package form.
+type CensusCard {
+  source: CensusRowRef
+  vendor: Vendor<Hardware>
+  model: String
+  gpu_count: Nat
+  memory_per_gpu: ByteSize
+  bandwidth_per_gpu: Bandwidth?
+  board_power: Milliwatt?
+  bus_interface_as_stated: PcieLink?
+}
+
+type CensusDecision
+  = CensusIncluded { row: CensusRowRef, cards: List<CensusCard> }
+  | CensusExcluded { row: CensusRowRef, reason: CensusExclusion }
+
+data census_no_memory_mib: Nat = 0
+
+fn census_largest_mib(m: WikipediaMemoryCell) -> Nat {
+  fold(m.sizes_mib, init: census_no_memory_mib, f: (a, x) => if x > a { x } else { a })
+}
+
+fn census_marker_in(text: String, markers: List<NonEmptyStr>) -> NonEmptyStr? {
+  first(markers |> filter(m => string_contains(s: text, pattern: m as String)))
+}
+
+// "|" never occurs in a model cell, so "text|" containing "suffix|" is "text ends in suffix".
+fn census_suffix_in(text: String, suffixes: List<NonEmptyStr>) -> NonEmptyStr? {
+  first(suffixes |> filter(m => string_contains(s: concat(text, "|"), pattern: concat(m as String, "|"))))
+}
+
+fn census_not_discrete_marker(heading: NonEmptyStr, model: String) -> NonEmptyStr? {
+  match census_marker_in(text: heading as String, markers: census_not_discrete_heading_markers) {
+    Present { value: m } => Present { value: m }
+    Absent => match census_marker_in(text: model, markers: census_not_discrete_model_markers) {
+      Present { value: m } => Present { value: m }
+      Absent => census_suffix_in(text: model, suffixes: census_not_discrete_model_suffixes)
+    }
+  }
+}
+
+fn census_covering(ref: CensusRowRef, heading: NonEmptyStr) -> ExternalAuthority? {
+  match first(census_coverage |> filter(c => c.page == ref.revision && string_contains(s: heading as String, pattern: c.heading_marker as String))) {
+    Present { value: c } => Present { value: c.covered_by }
+    Absent => none
+  }
+}
+
+fn census_judged(ref: CensusRowRef) -> CensusJudgment? {
+  match first(census_judged_rows |> filter(j => census_row_ref_eq(a: j.row, b: ref))) {
+    Present { value: j } => Present { value: j.judgment }
+    Absent => none
+  }
+}
+
+fn census_single_rate(cell: WikipediaBandwidthCell?) -> Bandwidth? {
+  match cell {
+    Present { value: b } => if count(b.rates) == 1 { first(b.rates) } else { none }
+    Absent => none
+  }
+}
+
+fn census_single_power(power: List<Milliwatt>) -> Milliwatt? {
+  if count(power) == 1 { first(power) } else { none }
+}
+
+fn census_gpu_count_ambiguous(memory: WikipediaMemoryCell, bandwidth: WikipediaBandwidthCell?) -> Bool {
+  match bandwidth {
+    Present { value: b } => b.gpu_count != memory.gpu_count
+    Absent => false
+  }
+}
+
+// One card per stated memory size at or above the floor: a row stating "16 32" is two SKUs.
+fn census_row_cards(src: CensusSourcePage, ref: CensusRowRef, model: String, memory: WikipediaMemoryCell, row: WikipediaGpuSpecRow) -> List<CensusCard> {
+  memory.sizes_mib |> filter(s => s >= census_memory_floor_mib) |> map(s => CensusCard {
+    source: ref,
+    vendor: src.vendor,
+    model: model,
+    gpu_count: memory.gpu_count,
+    memory_per_gpu: mebibyte_to_byte_size(m: mebibyte(count: s)),
+    bandwidth_per_gpu: census_single_rate(cell: row.bandwidth),
+    board_power: census_single_power(power: row.power),
+    bus_interface_as_stated: row.bus,
+  })
+}
+
+fn census_decide(src: CensusSourcePage, table: Nat, heading: NonEmptyStr, row: WikipediaGpuSpecRow) -> CensusDecision {
+  let ref = CensusRowRef { revision: src.page.revision, table: table, row: row.ordinal }
+  match row.model {
+    Absent => CensusExcluded { row: ref, reason: ModelUnread }
+    Present { value: model } => match census_covering(ref: ref, heading: heading) {
+      Present { value: by } => CensusExcluded { row: ref, reason: CoveredByAnotherSource { source: by } }
+      Absent => match census_judged(ref: ref) {
+        Present { value: j } => CensusExcluded { row: ref, reason: Judged { judgment: j } }
+        Absent => match row.launch_year {
+          Absent => CensusExcluded { row: ref, reason: LaunchUnread }
+          Present { value: y } => if y < census_launch_cutoff_year {
+            CensusExcluded { row: ref, reason: LaunchBeforeCutoff { year: y } }
+          } else {
+            match row.memory {
+              Absent => CensusExcluded { row: ref, reason: MemoryUnread }
+              Present { value: m } => if census_largest_mib(m: m) < census_memory_floor_mib {
+                CensusExcluded { row: ref, reason: BelowMemoryFloor { largest_mib: census_largest_mib(m: m) } }
+              } else {
+                match census_not_discrete_marker(heading: heading, model: model) {
+                  Present { value: marker } => CensusExcluded { row: ref, reason: NotADiscreteCard { marker: marker } }
+                  Absent => if census_gpu_count_ambiguous(memory: m, bandwidth: row.bandwidth) {
+                    CensusExcluded { row: ref, reason: GpuCountAmbiguous }
+                  } else {
+                    CensusIncluded { row: ref, cards: census_row_cards(src: src, ref: ref, model: model, memory: m, row: row) }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn census_page_decisions(src: CensusSourcePage) -> List<CensusDecision> {
+  src.page.tables |> flat_map(t => match t {
+    WikipediaSpecTable { ordinal: o, heading: h, row_count: _, rows: rs } => rs |> map(r => census_decide(src: src, table: o, heading: h, row: r))
+    WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => []
+  })
+}
+
+fn census_decisions() -> List<CensusDecision> {
+  census_sources |> flat_map(s => census_page_decisions(src: s))
+}
+
+fn census_decision_cards(d: CensusDecision) -> List<CensusCard> {
+  match d {
+    CensusIncluded { row: _, cards: cs } => cs
+    CensusExcluded { row: _, reason: _ } => []
+  }
+}
+
+fn census_cards() -> List<CensusCard> {
+  census_decisions() |> flat_map(d => census_decision_cards(d: d))
+}
+
+fn census_cards_of(vendor: Vendor<Hardware>) -> List<CensusCard> {
+  census_cards() |> filter(c => (c.vendor.legal_name as String) == (vendor.legal_name as String))
+}

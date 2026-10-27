@@ -16,13 +16,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// GEN1 AND GEN2 ARE ARMS, NOT ABSENCES. Cards still in circulation train at them -- NVIDIA's CMP
+// mining boards are fused to PCIe 1.0 x4 or x1 -- and a link this type could not name would leave such
+// a card's interconnect Absent, which reads as "not read" rather than as the narrow link it is.
 type PcieGeneration =
-    Gen3
+    Gen1
+  | Gen2
+  | Gen3
   | Gen4
   | Gen5
 
 fn pcie_generation_wire(g: PcieGeneration) -> String {
   match g {
+    Gen1 => "gen1"
+    Gen2 => "gen2"
     Gen3 => "gen3"
     Gen4 => "gen4"
     Gen5 => "gen5"
@@ -31,6 +38,8 @@ fn pcie_generation_wire(g: PcieGeneration) -> String {
 
 fn pcie_generation_per_lane_bandwidth(g: PcieGeneration) -> Bandwidth {
   match g {
+    Gen1 => bandwidth(2500000000 * 8 / 10 / 8)
+    Gen2 => bandwidth(5000000000 * 8 / 10 / 8)
     Gen3 => bandwidth(8000000000 * 128 / 130 / 8)
     Gen4 => bandwidth(16000000000 * 128 / 130 / 8)
     Gen5 => bandwidth(32000000000 * 128 / 130 / 8)
