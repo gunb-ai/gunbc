@@ -83,3 +83,30 @@ Consumption is wired inside the two step builders (`witness_floor_build_step`, a
 (commit, runner) pair until this lands; the sound interim citation is **commit + sha256 + host**.
 Sibling to `build_cache_key_includes_the_absolute_checkout_path` (same path inputs, cache-key
 surface rather than identity-digest surface).
+
+## The measurement, and the instrument that prints it
+
+Instrument: the `seed_build_reproducibility_falsifier` label authored in
+`src/v1/compiler_tests_rust.dag` (`ct_seed_build_reproducibility_falsifier_test`), host mirror
+`src/v1/stage0/src/compiler_tests.rs::seed_build_reproducibility_falsifier`. It is `#[ignore]`d
+because it performs three cold release builds of the seed. Run:
+
+    cargo test --lib -p v1-compiler -- --ignored --nocapture --test-threads=1 seed_build_reproducibility_falsifier
+
+It prints its own line rather than having hashes transcribed into this file. From the run on the
+remote runner (linux/amd64, rustc 1.95.0-nightly) at commit `28c994c4e1e54da925c27e9602151f3d898af98f`,
+19m05s, `test result: ok`:
+
+    seed-build-reproducibility commit 28c994c4e1e54da925c27e9602151f3d898af98f: preamble
+    a=fde094512484e3c7b6ce61d6940381ecca5b8ce69364be85a8ffa799d78629eb
+    b=fde094512484e3c7b6ce61d6940381ecca5b8ce69364be85a8ffa799d78629eb  (green arm, must be equal)
+    no-preamble c=7a206d54631b4a8fd0a6c16c6ba74050bb936e29ec2ea20cae450541ecc305fa  (red arm, must differ from a)
+
+Both arms discriminate: two independent clones through the preamble give ONE sha256, and the same
+commit built the way the tree was built before this repair gives a different one. The before side is
+measured too, not asserted — the probes at the head of this file (two clean clones at different paths:
+`ec03f8ac…` vs the reference; and the manager's two-clone control without remap: `141b29b0…` vs
+`2941d394…`), and the same control with the remap plus a pinned identity: `442c89e5…` on both.
+
+If the preamble is removed from the emitted workflow the test refuses before building; if it loses a
+prefix, the red arm collapses toward the green arm's shape and the assertion on `c != a` fails.
