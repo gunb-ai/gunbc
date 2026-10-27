@@ -9,11 +9,13 @@ module test.claim.runner.runner_qualification_subject_readings_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { second_count, byte_size_count }
+import extdeps.linux.cgroup_v2_memory { CgroupMemoryLimited, CgroupMemoryUnlimited }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep, Completed, Success }
 import gunbc.emitted_subject_build_gate { emitted_subject_build_rows }
 import gunbc.host.memory_envelope_receipt_reading {
   memory_receipt_line, memory_receipt_held, MemoryReceiptRead, MemoryReceiptGarbled, NotAMemoryReceipt,
+  memory_receipt_standing, MemoryReceiptHeld, MemoryReceiptViolated, MemoryReceiptSentenceDisagrees,
 }
 import gunbc.runner.runner_qualification_subject_readings {
   subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, JobStepsUnrecorded, SubjectReceiptCountDiffers,
@@ -58,7 +60,7 @@ test fn a_recorded_required_run_decodes_to_one_reading_per_subject_step() -> Boo
     SubjectReadingsRead { readings: rs } =>
       count(rs) == 2
         && join(rs |> map(r => second_count(r.wall) as String), ",") == "813,870"
-        && (rs |> all(r => memory_receipt_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (r.receipt.limit_high as String) == "22548578304"))
+        && (rs |> all(r => memory_receipt_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (match r.receipt.limit_high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 22548578304 _ => false })))
     SubjectReadingsRefused { refusal: _ } => false
   }
 }
@@ -114,6 +116,48 @@ test fn a_job_without_its_steps_refuses() -> Bool {
   })
     && (match subject_readings_of(job: job_with(steps: []), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows()) {
       SubjectReadingsRefused { refusal: SubjectStepAbsent { step: _ } } => true
+      _ => false
+    })
+}
+
+// THE VERDICT IS gunbc.host.memory_envelope memory_envelope_verdict OVER THE DECODED FIELDS (review 86991), and the printed
+// sentence must agree with it. RED: a kernel that cannot show a swap peak, under a cgroup that permits swap (swap_max=max),
+// violates the envelope -- the input a second, reader-local rule had dropped. A sentence with clean numbers, or numbers
+// that violate with no sentence, is a disagreement and is not held. Both together are a plain violation.
+fn standing_of(line: String) -> String {
+  match memory_receipt_line(line: line) {
+    MemoryReceiptRead { reading: r } =>
+      match memory_receipt_standing(r: r) {
+        MemoryReceiptHeld => "held"
+        MemoryReceiptViolated { verdict: _ } => "violated"
+        MemoryReceiptSentenceDisagrees { printed_violated: p, verdict: _ } => if p { "sentence-without-numbers" } else { "numbers-without-sentence" }
+      }
+    _ => "unread"
+  }
+}
+
+test fn the_verdict_is_the_envelope_authoritys_and_the_sentence_must_agree() -> Bool {
+  let clean = first_receipt_line()
+  let sentence = "gunbc test: MEMORY ENVELOPE VIOLATED cause=MemoryEnvelopeViolated -- see the receipt. "
+  let unobservable_swap = replace(s: replace(s: clean, from: "swap_max=0", to: "swap_max=max"), from: "swap_peak_delta=0", to: "swap_peak_delta=unobservable (no memory.swap.peak on this kernel)")
+  let oom = replace(s: clean, from: "oom_kills_delta=0", to: "oom_kills_delta=1")
+  standing_of(line: clean) == "held"
+    && standing_of(line: unobservable_swap) == "numbers-without-sentence"
+    && standing_of(line: concat(sentence, unobservable_swap)) == "violated"
+    && standing_of(line: concat(sentence, clean)) == "sentence-without-numbers"
+    && standing_of(line: oom) == "numbers-without-sentence"
+    && standing_of(line: concat(sentence, oom)) == "violated"
+}
+
+// THE LIMITS ARE THE KERNEL'S, DECODED: `max` reads as unlimited, and a limit that is neither a byte count nor `max` is
+// garbled and named, never carried as text.
+test fn a_limit_is_decoded_as_the_kernel_spells_it_or_the_receipt_is_garbled() -> Bool {
+  (match memory_receipt_line(line: replace(s: first_receipt_line(), from: "limit_max=23622320128", to: "limit_max=max")) {
+    MemoryReceiptRead { reading: r } => (match r.limit_max { CgroupMemoryUnlimited => true _ => false })
+    _ => false
+  })
+    && (match memory_receipt_line(line: replace(s: first_receipt_line(), from: "limit_high=22548578304", to: "limit_high=lots")) {
+      MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "limit_high")
       _ => false
     })
 }

@@ -4,6 +4,10 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.algebra { trim }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, parse_cgroup_memory_limit,
+}
+import gunbc.host.memory_envelope { MemoryEnvelopeVerdict, EnvelopeHeld, EnvelopeViolated, memory_envelope_verdict }
 
 // THE MEMORY RECEIPT A `gunbc test` SUBJECT STEP PRINTS, READ BACK (gunbc.plans.mtcollins1_ci_service_legs G3a). The
 // envelope's requirement, grain and verdict are gunbc.host.memory_envelope's; the seed prints the line at step exit
@@ -32,9 +36,9 @@ type MemoryReceiptReading {
   violated: Bool
   grain: NonEmptyStr
   cgroup: NonEmptyStr
-  limit_max: NonEmptyStr
-  limit_high: NonEmptyStr
-  swap_max: NonEmptyStr
+  limit_max: CgroupMemoryLimitValue
+  limit_high: CgroupMemoryLimitValue
+  swap_max: CgroupMemoryLimitValue
   peak: ByteSize
   high_events_delta: Int
   max_events_delta: Int
@@ -100,6 +104,19 @@ fn receipt_word(payload: String, key: String) -> String? {
   }
 }
 
+// A LIMIT IS THE KERNEL'S, decoded by the kernel interface's own authority (extdeps.linux.cgroup_v2_memory
+// parse_cgroup_memory_limit): a byte count or `max`, never text compared as text. A body that is neither is no limit.
+fn receipt_limit(payload: String, key: String) -> CgroupMemoryLimitValue? {
+  match receipt_word(payload: payload, key: key) {
+    Absent => none
+    Present { value: w } =>
+      match parse_cgroup_memory_limit(body: w) {
+        CgroupMemoryLimitUnparseable { body: _ } => none
+        v => Present { value: v }
+      }
+  }
+}
+
 fn receipt_count(payload: String, key: String) -> Int? {
   match receipt_word(payload: payload, key: key) {
     Absent => none
@@ -144,9 +161,9 @@ fn memory_receipt_line(line: String) -> MemoryReceiptLine {
 fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
   match receipt_word(payload: payload, key: "grain") { Absent => receipt_garbled(line: line, cause: "grain") Present { value: grain } =>
   match receipt_word(payload: payload, key: "cgroup") { Absent => receipt_garbled(line: line, cause: "cgroup") Present { value: cgroup } =>
-  match receipt_word(payload: payload, key: "limit_max") { Absent => receipt_garbled(line: line, cause: "limit_max") Present { value: limit_max } =>
-  match receipt_word(payload: payload, key: "limit_high") { Absent => receipt_garbled(line: line, cause: "limit_high") Present { value: limit_high } =>
-  match receipt_word(payload: payload, key: "swap_max") { Absent => receipt_garbled(line: line, cause: "swap_max") Present { value: swap_max } =>
+  match receipt_limit(payload: payload, key: "limit_max") { Absent => receipt_garbled(line: line, cause: "limit_max is neither a byte count nor max") Present { value: limit_max } =>
+  match receipt_limit(payload: payload, key: "limit_high") { Absent => receipt_garbled(line: line, cause: "limit_high is neither a byte count nor max") Present { value: limit_high } =>
+  match receipt_limit(payload: payload, key: "swap_max") { Absent => receipt_garbled(line: line, cause: "swap_max is neither a byte count nor max") Present { value: swap_max } =>
   match receipt_count(payload: payload, key: "peak_bytes") { Absent => receipt_garbled(line: line, cause: "peak_bytes") Present { value: peak } =>
   match receipt_count(payload: payload, key: "high_events_delta") { Absent => receipt_garbled(line: line, cause: "high_events_delta") Present { value: high_events } =>
   match receipt_count(payload: payload, key: "max_events_delta") { Absent => receipt_garbled(line: line, cause: "max_events_delta") Present { value: max_events } =>
@@ -156,9 +173,9 @@ fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
       violated: string_contains(s: line, pattern: memory_envelope_violated_marker),
       grain: grain as NonEmptyStr,
       cgroup: cgroup as NonEmptyStr,
-      limit_max: limit_max as NonEmptyStr,
-      limit_high: limit_high as NonEmptyStr,
-      swap_max: swap_max as NonEmptyStr,
+      limit_max: limit_max,
+      limit_high: limit_high,
+      swap_max: swap_max,
       peak: byte_size(peak),
       high_events_delta: high_events,
       max_events_delta: max_events,
@@ -173,12 +190,47 @@ fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
   } } } } } } } } } }
 }
 
-// THE ENVELOPE HELD FOR THIS STEP: no violation sentence, no OOM kill this step added, no swap resident at exit and no
-// swap peak that rose. This is the reading's own judgment of the same four facts the printer judged, so a receipt
-// whose numbers say otherwise than its sentence is caught either way.
+// THE ENVELOPE VERDICT IS gunbc.host.memory_envelope's, NOT THIS READER'S (review 86991, DESIGN section 3): the receipt's
+// decoded fields are the verdict's four inputs exactly as the printer supplies them (v1_compiler.target_invocation_host
+// memory_envelope_receipt) -- the OOM kills this step added, the swap resident at exit, whether the swap peak rose
+// (absent where this kernel cannot show it), and whether swap is forbidden (swap_max is exactly 0).
+fn memory_receipt_verdict(r: MemoryReceiptReading) -> MemoryEnvelopeVerdict {
+  memory_envelope_verdict(
+    oom_kills_delta: r.oom_kills_delta,
+    swap_current: Present { value: byte_size_count(b: r.swap_current) as Int },
+    swap_peak_rose: match r.swap_peak_delta {
+      Present { value: d } => Present { value: d > 0 }
+      Absent => none
+    },
+    swap_max_zero: match r.swap_max {
+      CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 0
+      CgroupMemoryUnlimited => false
+      CgroupMemoryLimitUnparseable { body: _ } => false
+    },
+  )
+}
+
+// THE PRINTED SENTENCE AND THE VERDICT MUST AGREE. The printer writes MEMORY ENVELOPE VIOLATED exactly when its verdict
+// violates, so a receipt whose sentence and recomputed verdict disagree was not written by that printer over these
+// numbers: it is its own standing, and it is not held.
+type MemoryReceiptStanding
+  = MemoryReceiptHeld
+  | MemoryReceiptViolated { verdict: MemoryEnvelopeVerdict }
+  | MemoryReceiptSentenceDisagrees { printed_violated: Bool, verdict: MemoryEnvelopeVerdict }
+
+fn memory_receipt_standing(r: MemoryReceiptReading) -> MemoryReceiptStanding {
+  let verdict = memory_receipt_verdict(r: r)
+  match verdict {
+    EnvelopeHeld => if r.violated { MemoryReceiptSentenceDisagrees { printed_violated: true, verdict: verdict } } else { MemoryReceiptHeld }
+    EnvelopeViolated { oom_kills_delta: _, swap_current: _, swap_peak_rose: _, swap_max_zero: _ } =>
+      if r.violated { MemoryReceiptViolated { verdict: verdict } } else { MemoryReceiptSentenceDisagrees { printed_violated: false, verdict: verdict } }
+  }
+}
+
 fn memory_receipt_held(r: MemoryReceiptReading) -> Bool {
-  !r.violated && r.oom_kills_delta == 0 && byte_size_count(b: r.swap_current) == 0 && match r.swap_peak_delta {
-    Present { value: d } => d == 0
-    Absent => true
+  match memory_receipt_standing(r: r) {
+    MemoryReceiptHeld => true
+    MemoryReceiptViolated { verdict: _ } => false
+    MemoryReceiptSentenceDisagrees { printed_violated: _, verdict: _ } => false
   }
 }

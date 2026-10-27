@@ -543,8 +543,10 @@ test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Boo
 test fn a_receipt_under_another_high_or_no_receipt_is_refused_on_the_bound_axis() -> Bool {
   let want = byte_size_count(b: slot_high()) as String
   let other = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=21474836480"), unit: slot_unit())
-  count(other) == count(subject_readings())
+  let unlimited = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=max"), unit: slot_unit())
+  count(other) == count(subject_readings()) && count(unlimited) == count(subject_readings())
     && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: other), axis: "cgroup bound")
+    && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: unlimited), axis: "cgroup bound")
     && refused_on(selection: selection(), run: varied_run(id: run_a, subjects: []), axis: "cgroup bound")
 }
 

@@ -123,6 +123,16 @@ fn parse_cgroup_memory_limit(body: String) -> CgroupMemoryLimitValue {
   }
 }
 
+// THE KERNEL'S OWN SPELLING OF A DECODED LIMIT, for a refusal that must show what was read: the byte count, the literal
+// `max`, or the body that did not parse, verbatim.
+fn cgroup_memory_limit_kernel_text(v: CgroupMemoryLimitValue) -> String {
+  match v {
+    CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) as String
+    CgroupMemoryUnlimited => "max"
+    CgroupMemoryLimitUnparseable { body: x } => x
+  }
+}
+
 // A COUNT FILE HAS NO `max` ARM. memory.current, memory.peak and memory.swap.current are documented
 // as byte counts with no sentinel, so admitting one would widen the parse past what the authority
 // says the file can hold. Two arms, not three -- a body of "max" in a count file is Unparseable,

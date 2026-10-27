@@ -10,6 +10,9 @@ import std.measure {
 }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_rows, emitted_subject_build_label_text }
 import gunbc.host.memory_envelope_receipt_reading { memory_receipt_held }
+import extdeps.linux.cgroup_v2_memory {
+  CgroupMemoryLimitValue, CgroupMemoryLimited, CgroupMemoryUnlimited, CgroupMemoryLimitUnparseable, cgroup_memory_limit_kernel_text,
+}
 import gunbc.runner.runner_qualification_subject_readings { SubjectStepReading }
 import std.decl_ref { DeclarationRef }
 import product.host_identity { HostIdentity }
@@ -346,15 +349,24 @@ fn locus_wire(l: WorkspaceBytesLocus) -> String {
 // THE BOUND AXIS: every subject step's receipt must report the selected slot's high as the limit that bound it (the
 // receipt's limit_high, read at the step's bounding cgroup). A run with no subject readings, or a step bounded by any
 // other high, ran outside the subject's envelope, so nothing it measured is about the subject: a join refusal, not a
-// memory standing.
+// memory standing. The comparison is of decoded limits (review 86991): `max` is CgroupMemoryUnlimited and never equals a
+// byte count, whatever its spelling.
+fn receipt_bound_by(limit: CgroupMemoryLimitValue, high: ByteSize) -> Bool {
+  match limit {
+    CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == byte_size_count(b: high)
+    CgroupMemoryUnlimited => false
+    CgroupMemoryLimitUnparseable { body: _ } => false
+  }
+}
+
 fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQualificationRun) -> SubjectJoin {
   let want = byte_size_count(b: selection.slot.memory_high) as String
   match run.subjects.first() {
     Absent => SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want, observed: "no subject step was read" }
     Present { value: _ } =>
-      match run.subjects |> filter(r => (r.receipt.limit_high as String) != want) |> first() {
+      match run.subjects |> filter(r => !receipt_bound_by(limit: r.receipt.limit_high, high: selection.slot.memory_high)) |> first() {
         Absent => SubjectJoined
-        Present { value: off } => SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want, observed: off.receipt.limit_high as String }
+        Present { value: off } => SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want, observed: cgroup_memory_limit_kernel_text(v: off.receipt.limit_high) }
       }
   }
 }
