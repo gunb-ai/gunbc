@@ -10,8 +10,7 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
-  design_ruling_declaration_refs,
-  ruling_cited_by_design_document,
+  document_ledger_declaration_refs,
 }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ruling { DesignRuling, design_rulings, ruling_ledger_notes }
@@ -78,9 +77,11 @@ fn intact_facts() -> List<DeclFact> {
   concat(fixed_facts(), ruling_facts())
 }
 
+// THE RESOLVER'S POPULATION IS THE WHOLE LEDGER (document_ledger_declaration_refs), so the fixture
+// that proves a refusal is caused by the perturbation covers uncited rows too.
 fn refusals_against(facts: List<DeclFact>) -> Int {
   cited_declaration_ref_refusal_count(
-    refs: generated_document_declaration_refs(document: expected_design_md()),
+    refs: document_ledger_declaration_refs(),
     facts: facts,
     modules: fixture_modules(),
   )
@@ -163,8 +164,9 @@ test fn documentary_refs_every_ruling_is_cited_by_the_document_or_noted() -> Boo
 // THE JOIN IS DISJOINT, SO THE TWO POPULATIONS ARE NOT OVERLAPPING CLAIMS ON THE SAME ROW: a row the
 // document cites may not also carry a note asserting the document leaves it out, and a noted row may
 // not be rendered. Citing a noted row (or noting a cited one) turns this claim red, which is the
-// direction the notes alone could not check. Only n.ruling is read -- the reason text is inert here
-// too, as RED B (editing a reason must keep every claim green) proves.
+// direction the notes alone could not check. A note carries ONLY its typed ruling -- its explanation
+// is a // comment, which no program text reads; RED B (editing those comments changes no verdict)
+// proves the prose is quarantine, not authority.
 test fn documentary_refs_no_ruling_is_both_cited_and_noted() -> Bool {
   let md = expected_design_md()
   all(ruling_ledger_notes(), n => !string_contains(s: md, pattern: documentary_ref_symbol_text(reference: n.ruling)))

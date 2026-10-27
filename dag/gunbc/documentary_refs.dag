@@ -69,3 +69,15 @@ fn generated_document_declaration_refs(document: String) -> List<DeclarationRef>
     design_ruling_declaration_refs(document: document),
   )
 }
+
+// THE REFERENCE RESOLVER'S POPULATION IS THE WHOLE LEDGER, not the cited subset: every ruling row is
+// checked to name a live declaration whether or not the document states it, so an uncited (noted)
+// row whose reference drifted from its declaration refuses. Narrowing this rung to the cited subset
+// would silently stop resolving the ledger's uncited half -- the cited/uncited split belongs to what
+// the document RENDERS (generated_document_declaration_refs above), never to what must RESOLVE.
+fn document_ledger_declaration_refs() -> List<DeclarationRef> {
+  concat(
+    [v1_maintenance_standing_ref, required_gate_subjects_ref],
+    map(design_rulings(), r => r.reference),
+  )
+}

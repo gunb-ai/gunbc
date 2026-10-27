@@ -32,122 +32,70 @@ type DesignRuling {
   provenance: String
 }
 
-// EXPLANATORY METADATA ONLY, NOT AN AUTHORITY. Whether the document cites a row is DERIVED from the
-// rendered document (gunbc.documentary_refs ruling_cited_by_design_document); this note says, for a
-// reader of the ledger, why a row is not stated by the document. The witness claims read a note's
-// RULING (the cited-or-noted join and the disjointness check make the notes the checked complement
-// of the cited set); NOTHING reads a note's REASON -- editing one changes no population and no
-// verdict, which is what makes it metadata rather than a second authority.
+// THE LEDGER'S NOT-CITED MEMBERSHIP ROWS: one row per ruling the document does not state. A note
+// declares membership only -- it is a typed DeclarationRef, not prose; per DESIGN.md §4c the why is
+// a // comment on the row, where it is commentary the compiler never parses, not data it carries.
+// The witness claims (test.claim.documentary_refs_witness) read these rows as the CHECKED COMPLEMENT
+// of the document-cited set: every ruling is cited OR noted (never both), so an uncited row without
+// a note refuses. The comments explain each absence to a reader; editing or deleting one changes no
+// population and no verdict, which is what keeps them commentary rather than a second authority.
 type RulingLedgerNote {
   ruling: DeclarationRef
-  reason: String
 }
 
 data ruling_ledger_notes: List<RulingLedgerNote> = [
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval"),
-    reason: "operator refinement routing recurring effects inside the one approved initial convergence, owned by gunbc.auth.authorization_pattern_selection and gunbc.auth.privileged_effect_census; DESIGN.md states the broker route and pattern selection but does not cite this ruling",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in"),
-    reason: "operator policy for how the approval app enrols, owned by the gunbc.auth approval modules; DESIGN.md names the one-off approved access authorities but does not cite this ruling",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli"),
-    reason: "operator extension of the native claim-route denominator to the docker CLI service for the router proxy falsifier, owned by std.compiler_entry native_claim_route_denominator; DESIGN.md states the native-process-effect route and the seed discipline but does not cite this ruling",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job"),
-    reason: "operator chose route B, the job files one broker approval itself, over the deployment-protection-rule App; DESIGN.md states the broker route generally but does not cite this choice, owned by gunbc.fleet.srv1_root_mutation_approval_run",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action"),
-    reason: "operator policy routing every privileged action through the approval broker route, owned by gunbc.auth.access_request, approval_capability and approval_broker; DESIGN.md states the authorization-pattern selection but does not cite this ruling",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "harness_default_requirement_places_on_operator_endpoint"),
-    reason: "overrules a placement rule in gunbc.harness.harness_seat, which owns it; DESIGN.md does not state harness placement",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim"),
-    reason: "interim scaffold exception to where_refinements_retire_for_checked_constructors, owned by v2.compiler.infer and v2.compiler.refinement_discharge; DESIGN.md states the retirement ruling but does not cite this exception",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
-    reason: "narrows fleet_converge_deploy_branch_admits, which owns the branch rule",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit"),
-    reason: "naming approval for the mtcollins1 fleet-converge modes; the names live in the fleet-converge plan rows",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction"),
-    reason: "fleet boot-workflow architecture decision owned by the fleet-converge plans, not a DESIGN principle",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct"),
-    reason: "fleet control-plane boundary owned by the machine/microVM modules, not a DESIGN principle",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
-    reason: "fleet fan-policy ownership decision, owned by the fan policy and its convergence workflow",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
-    reason: "hardware-admission policy owned by the DIMM population modules; DESIGN.md states no hardware policy",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
-    reason: "one-off enrolment approval of a single host, recorded for provenance; its effect is rows in ci_fleet",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
-    reason: "credential-custody decision for one runner host, owned by the gunbc.auth modules",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster"),
-    reason: "clarifies that fleet-converge modes are operations, not CI jobs; the closed-roster rule itself (job_roster_closed_to_growth) is cited, this carve-out is a fleet-converge fact",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
-    reason: "delegation of fan-control writes to the fleet fan policy, owned by that policy",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
-    reason: "a bounded exception in the v1 seed emitter, owned by the v1 maintenance standing rows",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
-    reason: "flex market policy grounds are operator parameters held by the flex policy rows",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars"),
-    reason: "a single figure supersession held by the flex policy rows",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts"),
-    reason: "operator policy for the runner drain bound, owned by gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy; DESIGN.md does not cite this ruling",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
-    reason: "flex serving templates are operator policy parameters held by the flex template rows",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
-    reason: "market recipe selection under the §3d decision authority; the recipe lives in the flex modules, the document states only the selection law",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
-    reason: "operational install decision for runner hosts; its authority is the sudoers install route, not a principle DESIGN states",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker"),
-    reason: "operational admission rule for stopping runner listeners, owned by gunbc.runner.runner_host_cap_bracket; DESIGN.md does not state it",
-  },
-  RulingLedgerNote {
-    ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products"),
-    reason: "operator veto on a third subject row, owned by gunbc.emitted_subject_build_gate emitted_subject_build_rows; DESIGN.md names the two subjects in Building and checks but does not cite this ruling",
-  },
+  // the_initial_convergence_is_the_only_approval: operator refinement routing recurring effects inside the one approved initial convergence, owned by gunbc.auth.authorization_pattern_selection and gunbc.auth.privileged_effect_census; DESIGN.md states the broker route and pattern selection but does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "the_initial_convergence_is_the_only_approval") },
+  // approval_enrolment_is_google_sign_in: operator policy for how the approval app enrols, owned by the gunbc.auth approval modules; DESIGN.md names the one-off approved access authorities but does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "approval_enrolment_is_google_sign_in") },
+  // native_claim_route_admits_the_docker_cli: operator extension of the native claim-route denominator to the docker CLI service for the router proxy falsifier, owned by std.compiler_entry native_claim_route_denominator; DESIGN.md states the native-process-effect route and the seed discipline but does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_claim_route_admits_the_docker_cli") },
+  // srv1_root_mutation_approval_is_filed_by_the_job: operator chose route B, the job files one broker approval itself, over the deployment-protection-rule App; DESIGN.md states the broker route generally but does not cite this choice, owned by gunbc.fleet.srv1_root_mutation_approval_run
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv1_root_mutation_approval_is_filed_by_the_job") },
+  // one_approval_route_for_every_privileged_action: operator policy routing every privileged action through the approval broker route, owned by gunbc.auth.access_request, approval_capability and approval_broker; DESIGN.md states the authorization-pattern selection but does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_approval_route_for_every_privileged_action") },
+  // harness_default_requirement_places_on_operator_endpoint: overrules a placement rule in gunbc.harness.harness_seat, which owns it; DESIGN.md does not state harness placement
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "harness_default_requirement_places_on_operator_endpoint") },
+  // literal_only_refinement_judgment_is_interim: interim scaffold exception to where_refinements_retire_for_checked_constructors, owned by v2.compiler.infer and v2.compiler.refinement_discharge; DESIGN.md states the retirement ruling but does not cite this exception
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "literal_only_refinement_judgment_is_interim") },
+  // production_is_main_only_lab_admits_integration: narrows fleet_converge_deploy_branch_admits, which owns the branch rule
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration") },
+  // machine_mode_names_drop_the_unit: naming approval for the mtcollins1 fleet-converge modes; the names live in the fleet-converge plan rows
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit") },
+  // one_physical_machine_boot_transaction: fleet boot-workflow architecture decision owned by the fleet-converge plans, not a DESIGN principle
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction") },
+  // physical_and_guest_control_remain_distinct: fleet control-plane boundary owned by the machine/microVM modules, not a DESIGN principle
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct") },
+  // fan_policy_is_one_fleet_management_workflow: fleet fan-policy ownership decision, owned by the fan policy and its convergence workflow
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow") },
+  // dimm_population_is_admitted_permissively: hardware-admission policy owned by the DIMM population modules; DESIGN.md states no hardware policy
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively") },
+  // mtcollins1_ci_runner_enrolment_approved: one-off enrolment approval of a single host, recorded for provenance; its effect is rows in ci_fleet
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved") },
+  // mtcollins1_in_memory_app_credential_per_boot: credential-custody decision for one runner host, owned by the gunbc.auth modules
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot") },
+  // fleet_converge_modes_are_outside_the_job_roster: clarifies that fleet-converge modes are operations, not CI jobs; the closed-roster rule itself (job_roster_closed_to_growth) is cited, this carve-out is a fleet-converge fact
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster") },
+  // operator_delegates_fan_control_to_the_fleet_policy: delegation of fan-control writes to the fleet fan policy, owned by that policy
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy") },
+  // v1_seed_emitted_byte_write_exception: a bounded exception in the v1 seed emitter, owned by the v1 maintenance standing rows
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception") },
+  // flex_market_policy_is_operator_decided: flex market policy grounds are operator parameters held by the flex policy rows
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided") },
+  // flex_fleet_cap_raised_to_three_dollars: a single figure supersession held by the flex policy rows
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars") },
+  // drain_wait_bound_is_derived_from_declared_job_timeouts: operator policy for the runner drain bound, owned by gunbc.runner.runner_host_cap_bracket runner_host_cap_drain_policy; DESIGN.md does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "drain_wait_bound_is_derived_from_declared_job_timeouts") },
+  // flex_operator_template_v2: flex serving templates are operator policy parameters held by the flex template rows
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+  // flex_first_recipe_is_flash_next: market recipe selection under the §3d decision authority; the recipe lives in the flex modules, the document states only the selection law
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next") },
+  // runner_host_sudoers_is_installed: operational install decision for runner hosts; its authority is the sudoers install route, not a principle DESIGN states
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed") },
+  // runner_listener_admission_is_mask_roster_and_no_worker: operational admission rule for stopping runner listeners, owned by gunbc.runner.runner_host_cap_bracket; DESIGN.md does not state it
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker") },
+  // emit_build_subjects_are_the_two_compiler_products: operator veto on a third subject row, owned by gunbc.emitted_subject_build_gate emitted_subject_build_rows; DESIGN.md names the two subjects in Building and checks but does not cite this ruling
+  RulingLedgerNote { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "emit_build_subjects_are_the_two_compiler_products") },
 ]
 
 data conformance_needs_attention: DesignRuling = DesignRuling {
