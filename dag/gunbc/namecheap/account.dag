@@ -1,6 +1,7 @@
 module gunbc.namecheap.account
 
 import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, host_name_eq }
 
 data namecheap_domain_sld: NonEmptyStr = "gunb"
@@ -34,9 +35,22 @@ type RegistrarNameserverSetting
   = RegistrarBasicDns
   | RegistrarCustomNameservers { nameservers: List<HostName> }
 
+// Each standing carries the typed receipt of the read that grounds it, never free text (DESIGN 4c).
+type RegistrarConsoleReport {
+  reported_at: Rfc3339Timestamp
+  reporter: NonEmptyStr
+}
+
+// A non-recursive NS query for the zone, sent to each listed parent authoritative server.
+type ParentDelegationQuery {
+  servers_queried: List<HostName>
+  observed_at: Rfc3339Timestamp
+  observer: NonEmptyStr
+}
+
 type NameserverDelegationStanding
-  = DelegationReportedAtRegistrar { setting: RegistrarNameserverSetting, source: String }
-  | DelegationObservedInParent { setting: RegistrarNameserverSetting, source: String }
+  = DelegationReportedAtRegistrar { setting: RegistrarNameserverSetting, report: RegistrarConsoleReport }
+  | DelegationObservedInParent { setting: RegistrarNameserverSetting, query: ParentDelegationQuery }
 
 // The operator's report is transcribed text; each name reaches HostName only through the DNS
 // authority's parser, and a name it refuses is a typed reading, never a dropped row. An NS target
@@ -51,17 +65,32 @@ type NameserverNameRefusal {
 type NameserverDelegationReading
   = DelegationRead { standing: NameserverDelegationStanding }
   | DelegationNameRefused { refusal: NameserverNameRefusal }
+  | DelegationParentDisagrees {
+      reported: List<HostName>
+      report: RegistrarConsoleReport
+      observed: List<HostName>
+      query: ParentDelegationQuery
+    }
 
 data gunb_ai_reported_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com", "austin.ns.cloudflare.com"]
 
-data gunb_ai_nameserver_report_source: String = "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending"
+// reported_at is when the operator's report was first recorded here (commit def15e98b41), an upper
+// bound on when the console was changed; the operator gave the date, not the time.
+data gunb_ai_nameserver_report: RegistrarConsoleReport = RegistrarConsoleReport {
+  reported_at: "2026-10-26T07:08:09Z" as Rfc3339Timestamp
+  reporter: "operator, Namecheap console Custom DNS"
+}
 
 // The parent's own answer, read by session bright-swift-248: a non-recursive NS query for gunb.ai
 // sent to three .ai authoritative servers returned the same two Cloudflare names from each, matching
 // the registrar report. The delegation reading below is built from these names, not from the report.
 data gunb_ai_parent_observed_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com.", "austin.ns.cloudflare.com."]
 
-data gunb_ai_parent_observation_source: String = "non-recursive NS query for gunb.ai to v0n0.nic.ai, v0n1.nic.ai and v2n0.nic.ai, 2026-10-27T03:53Z (session bright-swift-248): each delegation lists alexandra.ns.cloudflare.com and austin.ns.cloudflare.com"
+data gunb_ai_parent_servers_queried: List<NonEmptyStr> = ["v0n0.nic.ai", "v0n1.nic.ai", "v2n0.nic.ai"]
+
+data gunb_ai_parent_observed_at: Rfc3339Timestamp = "2026-10-27T03:53:52Z" as Rfc3339Timestamp
+
+data gunb_ai_parent_observer: NonEmptyStr = "session bright-swift-248"
 
 fn absolute_ns_spelling(raw: String) -> String {
   if ends_with(s: raw, suffix: ".") { raw } else { concat(raw, ".") }
@@ -86,28 +115,37 @@ fn same_nameserver_set(a: List<HostName>, b: List<HostName>) -> Bool {
 }
 
 // The parent's answer reaches DelegationObservedInParent only when it names the set the registrar
-// reports; a disagreement keeps the weaker standing, so the registrar row is never superseded silently.
+// reports. A disagreement is its own reading carrying both sets and both receipts: it is a
+// contradiction (a stale or hijacked delegation, or a registrar typo), not "not yet observed".
 fn gunb_ai_nameserver_delegation() -> NameserverDelegationReading {
   match parse_nameservers(raws: gunb_ai_reported_nameservers) {
     Err { value: refusal } => DelegationNameRefused { refusal: refusal }
     Ok { value: reported } => match parse_nameservers(raws: gunb_ai_parent_observed_nameservers) {
       Err { value: refusal } => DelegationNameRefused { refusal: refusal }
-      Ok { value: observed } =>
-        if same_nameserver_set(a: reported, b: observed) {
-          DelegationRead {
-            standing: DelegationObservedInParent {
-              setting: RegistrarCustomNameservers { nameservers: observed },
-              source: gunb_ai_parent_observation_source,
-            },
+      Ok { value: observed } => match parse_nameservers(raws: gunb_ai_parent_servers_queried) {
+        Err { value: refusal } => DelegationNameRefused { refusal: refusal }
+        Ok { value: servers } =>
+          let query = ParentDelegationQuery {
+            servers_queried: servers,
+            observed_at: gunb_ai_parent_observed_at,
+            observer: gunb_ai_parent_observer,
           }
-        } else {
-          DelegationRead {
-            standing: DelegationReportedAtRegistrar {
-              setting: RegistrarCustomNameservers { nameservers: reported },
-              source: gunb_ai_nameserver_report_source,
-            },
+          if same_nameserver_set(a: reported, b: observed) {
+            DelegationRead {
+              standing: DelegationObservedInParent {
+                setting: RegistrarCustomNameservers { nameservers: observed },
+                query: query,
+              },
+            }
+          } else {
+            DelegationParentDisagrees {
+              reported: reported,
+              report: gunb_ai_nameserver_report,
+              observed: observed,
+              query: query,
+            }
           }
-        }
+      }
     }
   }
 }
