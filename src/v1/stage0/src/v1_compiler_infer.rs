@@ -19773,6 +19773,16 @@ pub fn infer_record_lit_structural(
         let unbound_owner_param_variables = uninstantiated_owner_param_names.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Node>>(),
             |acc: Rc<HashMap<String, Rc<Node>>>, g: String| {
+                diag_uni(
+                    "DIAGMINTRL",
+                    format!("type={} field=? owner_param={} acc_has={}", tn_str.clone(), g.clone(), {
+                        let mut f = false;
+                        for fi in field_inits.iter().cloned() {
+                            f = true;
+                        }
+                        f
+                    }),
+                );
                 v1_rt::rc_map_insert(acc, g.clone(), type_variable_node(g.clone()))
             },
         );
@@ -19835,6 +19845,8 @@ if ((((ft.ident_span.clone() != std::option::Option::None) || crate::v1_compiler
     std::option::Option::None => std::option::Option::None,
 },
 };
+diag_uni("DIAGFIELD", v1_rt::concat(v1_rt::concat("type=".to_string(), tn_str.clone()), v1_rt::concat(" field=".to_string(), match field_expected.clone() { Some(fe) => diag_node_brief(fe.clone()), std::option::Option::None => "None".to_string() }))
+            );
 let ar = infer_expr(crate::v1_std_core::field_init_node_value(fi.clone()), scope.clone(), field_expected.clone());
 let ar_typed = ar.typed.clone();
 let ar_emissions = ar.emissions.clone();
