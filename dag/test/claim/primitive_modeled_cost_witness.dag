@@ -12,6 +12,8 @@ import std.algebra {
   ShapeConstant,
   FiniteSupport,
   FinitelySupportedFunctionProfile,
+  FreeMonoidCollectionProfile,
+  FreeMonoidScalarProfile,
   OpenSupport,
   PartialFunctionProfile,
   ShapeIterateBody,
@@ -19,8 +21,37 @@ import std.algebra {
   ShapeSortBody,
   algebra_profile_support,
 }
-import std.induction { CostBound, cost_bound_params, cost_bound_to_shape, cost_linear }
+import std.induction { CostBound, ConstantBound, cost_bound_params, cost_bound_to_shape, cost_constant, cost_linear, cost_log }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.realization_cost_fidelity {
+  CostFidelity,
+  FidelityInputRefused,
+  FidelityRows,
+  ModeledCostPreserved,
+  cost_fidelity_of,
+  count_cost_carrier_unselected,
+  count_cost_model_unmigrated,
+  count_cost_fidelity_unmeasured,
+  realization_cost_fidelity_rows,
+}
 import std.primitive_identity {
+  CarrierCostReading,
+  CarrierSensitiveCost,
+  DeclarationCostModeled,
+  DeclarationModeledCost,
+  DeclarationPrimitiveCostDuplicated,
+  DeclarationPrimitiveCostUnmodeled,
+  DeclarationProjectsNoCostedPrimitive,
+  DeclarationProjectsUndeclaredPrimitive,
+  PrimitiveDefinition,
+  primitive_declared_definitions,
+  EmitRust,
+  primitive_chars_cost,
+  primitive_list_push_cost,
+  primitive_sha256_hex_of_text_cost,
+  primitive_modeled_cost_for_declaration,
+  primitive_modeled_cost_in,
+  primitive_identity_is_declared,
   CoarseCostOnly,
   PrimitiveCostFact,
   PrimitiveModeledCost,
@@ -41,11 +72,13 @@ import std.primitive_identity {
   primitive_index_by,
   primitive_identity_eq,
 }
+import std.primitive_projection { PrimitiveIdentity, primitive_chars, primitive_list_push, primitive_sha256_hex_of_text }
 import std.types { Bool, Int, List, String }
 
 fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
   match cost {
     StructuredCost { bound: b } => Present { value: b }
+    CarrierSensitiveCost { ephemeral: _, persistent: _ } => none
     CoarseCostOnly { shape: _, cause: _ } => none
   }
 }
@@ -53,6 +86,7 @@ fn modeled_cost_bound(cost: PrimitiveModeledCost) -> CostBound? {
 fn modeled_cost_coarse_shape(cost: PrimitiveModeledCost) -> CostShape? {
   match cost {
     StructuredCost { bound: b } => cost_bound_to_shape(b: b)
+    CarrierSensitiveCost { ephemeral: _, persistent: _ } => none
     CoarseCostOnly { shape: s, cause: _ } => Present { value: s }
   }
 }
@@ -133,6 +167,7 @@ test fn an_open_support_carrier_refuses_instead_of_naming_an_axis() -> Bool {
     unavailable: carrier_support_axis_no_longer_finite_cause,
   ) {
     StructuredCost { bound: _ } => false
+    CarrierSensitiveCost { ephemeral: _, persistent: _ } => false
     CoarseCostOnly { shape: _, cause: _ } => true
   }
 }
@@ -147,6 +182,7 @@ test fn a_finite_support_carrier_reaches_the_structured_arm() -> Bool {
     unavailable: carrier_support_axis_no_longer_finite_cause,
   ) {
     StructuredCost { bound: _ } => true
+    CarrierSensitiveCost { ephemeral: _, persistent: _ } => false
     CoarseCostOnly { shape: _, cause: _ } => false
   }
 }
@@ -193,13 +229,35 @@ test fn index_by_keeps_its_coarse_fact_and_carries_a_cause() -> Bool {
 }
 
 // EVERY ROW ANSWERS THE COARSE QUESTION, whichever arm it took. This is what makes the refusal arm a
-// declared two-grain state rather than a hole: no row lost information in the migration.
+// declared two-grain state rather than a hole: no row lost information in the migration. A
+// carrier-sensitive row has no single coarse shape, so it answers once per carrier: each reading's
+// worst case must project to a shape or be the log bound that CostShape has no arm for.
+fn reading_answers_the_coarse_question(r: CarrierCostReading) -> Bool {
+  match cost_bound_to_shape(b: r.worst_case) {
+    Present { value: _ } => true
+    Absent => (cost_bound_params(b: r.worst_case) |> count) == 1
+  }
+}
+
+fn row_answers_the_coarse_question(row: PrimitiveCostFact) -> Bool {
+  match row.cost {
+    CarrierSensitiveCost { ephemeral: e, persistent: p } =>
+      reading_answers_the_coarse_question(r: e) && reading_answers_the_coarse_question(r: p)
+    StructuredCost { bound: _ } =>
+      match modeled_cost_coarse_shape(cost: row.cost) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    CoarseCostOnly { shape: _, cause: _ } =>
+      match modeled_cost_coarse_shape(cost: row.cost) {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
 test fn every_row_still_answers_the_coarse_question() -> Bool {
-  primitive_d0_cost_facts
-    |> all(row => match modeled_cost_coarse_shape(cost: row.cost) {
-      Present { value: _ } => true
-      Absent => false
-    })
+  primitive_d0_cost_facts |> all(row => row_answers_the_coarse_question(row: row))
 }
 
 // THE ROSTER JOINS THE ROWS BY IDENTITY, NOT BY COUNT. A length check would pass while a row was
@@ -216,26 +274,273 @@ test fn the_roster_joins_every_cost_row_by_identity() -> Bool {
     && roster_has(p: primitive_map_values)
     && roster_has(p: primitive_fold_list)
     && roster_has(p: primitive_index_by)
+    && roster_has(p: primitive_list_push)
+    && roster_has(p: primitive_chars)
+    && roster_has(p: primitive_sha256_hex_of_text)
 }
 
 // THE OTHER DIRECTION OF THE JOIN, so a roster that grew a row nobody named would be caught too.
-test fn the_roster_carries_no_row_outside_the_five() -> Bool {
-  (primitive_d0_cost_facts |> count) == 5
+test fn the_roster_carries_no_row_outside_the_eight() -> Bool {
+  (primitive_d0_cost_facts |> count) == 8
     && (primitive_d0_cost_facts |> all(row =>
       primitive_identity_eq(left: row.primitive, right: primitive_map_keys)
         || primitive_identity_eq(left: row.primitive, right: primitive_sorted_map_keys)
         || primitive_identity_eq(left: row.primitive, right: primitive_map_values)
         || primitive_identity_eq(left: row.primitive, right: primitive_fold_list)
-        || primitive_identity_eq(left: row.primitive, right: primitive_index_by)))
+        || primitive_identity_eq(left: row.primitive, right: primitive_index_by)
+        || primitive_identity_eq(left: row.primitive, right: primitive_list_push)
+        || primitive_identity_eq(left: row.primitive, right: primitive_chars)
+        || primitive_identity_eq(left: row.primitive, right: primitive_sha256_hex_of_text)))
 }
 
-// EXACTLY TWO ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather than
-// a tally: the two that are structured are named, so enrolling a third without modelling its
-// parameter reds here instead of silently changing a count.
-test fn the_structured_rows_are_exactly_the_two_grounded_ones() -> Bool {
+// EXACTLY FOUR ROWS ARE STRUCTURED TODAY, and this is deliberately an identity statement rather
+// than a tally: the rows that are structured are named, so enrolling another without modelling its
+// parameter reds here instead of silently changing a count. list_push is not among them: it is
+// carrier-sensitive, which the witnesses below assert separately.
+test fn the_structured_rows_are_exactly_the_four_grounded_ones() -> Bool {
   row_is_structured(row: primitive_map_keys_cost)
     && row_is_structured(row: primitive_map_values_cost)
+    && row_is_structured(row: primitive_chars_cost)
+    && row_is_structured(row: primitive_sha256_hex_of_text_cost)
+    && !row_is_structured(row: primitive_list_push_cost)
     && !row_is_structured(row: primitive_sorted_map_keys_cost)
     && !row_is_structured(row: primitive_fold_list_cost)
     && !row_is_structured(row: primitive_index_by_cost)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE DECLARATION-KEYED COST FACTS FOR list_push AND chars.
+//
+// Each operation's only cost record was a std.primitives *_contract row, and both rows were deleted
+// when the ambient admission retired. These witnesses execute the read a consumer makes: from the
+// DECLARATION, through std.primitive_projection, to the row. Each fact is checked by value against
+// a bound built over the same derived axis, so a row that is missing, duplicated, keyed by spelling
+// or carrying the wrong growth goes red here.
+
+data list_push_declaration: DeclarationRef = decl_ref(module_path: "std.algebra", decl_name: "list_push")
+data chars_declaration: DeclarationRef = decl_ref(module_path: "std.host_text", decl_name: "chars")
+
+fn free_monoid_axis() -> String {
+  match finite_support_cardinality_param(profile: FreeMonoidCollectionProfile) {
+    Present { value: a } => a
+    Absent => ""
+  }
+}
+
+fn text_axis() -> String {
+  match finite_support_cardinality_param(profile: FreeMonoidScalarProfile) {
+    Present { value: a } => a
+    Absent => ""
+  }
+}
+
+fn bound_is(actual: CostBound, expected: CostBound) -> Bool {
+  match cost_fidelity_of(modeled: expected, realized: actual) {
+    ModeledCostPreserved => true
+    _ => false
+  }
+}
+
+fn reading_is_amortized_constant(r: CarrierCostReading) -> Bool {
+  match r.amortized {
+    Present { value: a } =>
+      match a {
+        ConstantBound => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn reading_has_no_amortized_bound(r: CarrierCostReading) -> Bool {
+  match r.amortized {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// THE list_push FACT, by value. Ephemeral: linear worst case and no amortized claim. Persistent:
+// log worst case, amortized constant (im 15.1.0 Vector push_back, both running realizations).
+fn list_push_fact_holds(cost: PrimitiveModeledCost) -> Bool {
+  match cost {
+    CarrierSensitiveCost { ephemeral: e, persistent: p } =>
+      bound_is(actual: e.worst_case, expected: cost_linear(param: free_monoid_axis()))
+        && reading_has_no_amortized_bound(r: e)
+        && bound_is(actual: p.worst_case, expected: cost_log(param: free_monoid_axis()))
+        && reading_is_amortized_constant(r: p)
+    StructuredCost { bound: _ } => false
+    CoarseCostOnly { shape: _, cause: _ } => false
+  }
+}
+
+fn chars_fact_holds(cost: PrimitiveModeledCost) -> Bool {
+  match cost {
+    StructuredCost { bound: b } => bound_is(actual: b, expected: cost_linear(param: text_axis()))
+    CarrierSensitiveCost { ephemeral: _, persistent: _ } => false
+    CoarseCostOnly { shape: _, cause: _ } => false
+  }
+}
+
+fn declared_cost_of(answer: DeclarationModeledCost, expected: PrimitiveIdentity) -> PrimitiveModeledCost? {
+  match answer {
+    DeclarationCostModeled { primitive: p, cost: c } =>
+      if primitive_identity_eq(left: p, right: expected) { Present { value: c } } else { none }
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => none
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => none
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => none
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => none
+  }
+}
+
+// THE POSITIVE CONTROLS: the live declarations reach the live rows and the facts hold by value.
+test fn list_push_declaration_reads_its_carrier_sensitive_cost() -> Bool {
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: list_push_declaration), expected: primitive_list_push) {
+    Present { value: c } => list_push_fact_holds(cost: c)
+    Absent => false
+  }
+}
+
+test fn chars_declaration_reads_its_linear_cost() -> Bool {
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: chars_declaration), expected: primitive_chars) {
+    Present { value: c } => chars_fact_holds(cost: c)
+    Absent => false
+  }
+}
+
+// sha256_hex_of_text's retired contract (work n) re-homed: std.content_hash's declaration reaches a
+// linear bound over the text's length through its projection row.
+data sha256_hex_of_text_declaration: DeclarationRef = decl_ref(module_path: "std.content_hash", decl_name: "sha256_hex_of_text")
+
+test fn sha256_hex_of_text_declaration_reads_its_linear_cost() -> Bool {
+  match declared_cost_of(answer: primitive_modeled_cost_for_declaration(declaration: sha256_hex_of_text_declaration), expected: primitive_sha256_hex_of_text) {
+    Present { value: c } => chars_fact_holds(cost: c)
+    Absent => false
+  }
+}
+
+// A homonym in another module is not priced by the primitive's row.
+test fn a_homonym_sha256_hex_of_text_declaration_is_not_priced() -> Bool {
+  match primitive_modeled_cost_for_declaration(declaration: decl_ref(module_path: "test.claim.primitive_modeled_cost_witness", decl_name: "sha256_hex_of_text")) {
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => true
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+// THE RED FOR A WRONG FACT. The accumulator-copy lens's hand citation
+// (v2.lens.cost.copied_port_citations copied_port_citation_list_snoc_item) prices the append as
+// linear in xs on the carrier that runs. A row carrying that reading as its persistent cost must not
+// satisfy the fact, or the predicate above is too weak to tell the two claims apart.
+data list_push_cost_as_the_citation_prices_it: PrimitiveModeledCost = CarrierSensitiveCost {
+  ephemeral: CarrierCostReading { worst_case: cost_linear(param: free_monoid_axis()), amortized: none },
+  persistent: CarrierCostReading { worst_case: cost_linear(param: free_monoid_axis()), amortized: none },
+}
+
+test fn a_persistent_reading_linear_in_xs_is_not_the_list_push_fact() -> Bool {
+  !list_push_fact_holds(cost: list_push_cost_as_the_citation_prices_it)
+}
+
+// A worst case without its amortized constant is a different, weaker fact, and must not pass either.
+data list_push_cost_without_its_amortized_bound: PrimitiveModeledCost = CarrierSensitiveCost {
+  ephemeral: CarrierCostReading { worst_case: cost_linear(param: free_monoid_axis()), amortized: none },
+  persistent: CarrierCostReading { worst_case: cost_log(param: free_monoid_axis()), amortized: none },
+}
+
+test fn a_persistent_reading_without_its_amortized_bound_is_not_the_list_push_fact() -> Bool {
+  !list_push_fact_holds(cost: list_push_cost_without_its_amortized_bound)
+}
+
+test fn a_quadratic_text_scan_is_not_the_chars_fact() -> Bool {
+  !chars_fact_holds(cost: StructuredCost { bound: cost_log(param: text_axis()) })
+    && !chars_fact_holds(cost: StructuredCost { bound: cost_constant() })
+}
+
+// THE RED FOR A MISSING FACT. The same read over the roster with the row removed refuses with the
+// primitive named. If the row's deletion still answered, the lookup would be inventing a cost.
+fn roster_without(p: PrimitiveIdentity) -> List<PrimitiveCostFact> {
+  primitive_d0_cost_facts |> filter(row => !primitive_identity_eq(left: row.primitive, right: p))
+}
+
+test fn list_push_without_its_row_refuses_as_unmodeled() -> Bool {
+  match primitive_modeled_cost_in(facts: roster_without(p: primitive_list_push), definitions: primitive_declared_definitions(), declaration: list_push_declaration) {
+    DeclarationPrimitiveCostUnmodeled { primitive: p } => primitive_identity_eq(left: p, right: primitive_list_push)
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+test fn chars_without_its_row_refuses_as_unmodeled() -> Bool {
+  match primitive_modeled_cost_in(facts: roster_without(p: primitive_chars), definitions: primitive_declared_definitions(), declaration: chars_declaration) {
+    DeclarationPrimitiveCostUnmodeled { primitive: p } => primitive_identity_eq(left: p, right: primitive_chars)
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+// TWO ROWS FOR ONE PRIMITIVE ARE A CONTRADICTION, NOT A FIRST ANSWER.
+test fn a_duplicated_row_refuses_instead_of_answering_with_either() -> Bool {
+  match primitive_modeled_cost_in(facts: [primitive_list_push_cost, primitive_list_push_cost], definitions: primitive_declared_definitions(), declaration: list_push_declaration) {
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: n } => n == 2
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+  }
+}
+
+// THE RED FOR AN UNDECLARED PRIMITIVE, which is the state the projection roster was in before
+// list_push was declared. The same live row and the same live cost fact, read against a declared
+// population with list_push removed, must refuse with the projection's identity named. If it still
+// answered, the cost route would be keying through a row the projection validator refuses.
+fn declared_without(p: PrimitiveIdentity) -> List<PrimitiveDefinition> {
+  primitive_declared_definitions() |> filter(d => !primitive_identity_eq(left: d.identity, right: p))
+}
+
+test fn list_push_projected_onto_an_undeclared_primitive_refuses() -> Bool {
+  match primitive_modeled_cost_in(facts: primitive_d0_cost_facts, definitions: declared_without(p: primitive_list_push), declaration: list_push_declaration) {
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: p } => primitive_identity_eq(left: p, right: primitive_list_push)
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+// THE INHABITANCE CLAIM FOR THE LIVE POPULATION: both re-homed facts key on identities the declared
+// population carries, which is what the positive controls above rely on without asserting.
+test fn both_re_homed_primitives_are_declared() -> Bool {
+  primitive_identity_is_declared(identity: primitive_list_push)
+    && primitive_identity_is_declared(identity: primitive_chars)
+}
+
+// THE RED FOR A SPELLING KEY. A declaration named list_push in a module that is not its home is no
+// projection of the primitive, so the primitive's row must not price it.
+test fn a_homonym_declaration_is_not_priced_by_the_primitive_row() -> Bool {
+  match primitive_modeled_cost_for_declaration(declaration: decl_ref(module_path: "test.claim.primitive_modeled_cost_witness", decl_name: "list_push")) {
+    DeclarationProjectsNoCostedPrimitive { declaration: _ } => true
+    DeclarationProjectsUndeclaredPrimitive { declaration: _, primitive: _ } => false
+    DeclarationCostModeled { primitive: _, cost: _ } => false
+    DeclarationPrimitiveCostUnmodeled { primitive: _ } => false
+    DeclarationPrimitiveCostDuplicated { primitive: _, count: _ } => false
+  }
+}
+
+// THE JOIN READS THE LIVE ROWS. std.realization_cost_fidelity is the declared consumer of these
+// rows. Over the two re-homed rows it must place chars in the unmeasured population (structured,
+// no realized fact yet) and list_push in the carrier-unselected one. A list_push compared against
+// either carrier's reading would be the silent carrier choice that arm exists to refuse.
+test fn the_fidelity_join_refuses_to_pick_a_carrier_for_list_push() -> Bool {
+  match realization_cost_fidelity_rows(modeled: [primitive_list_push_cost, primitive_chars_cost], target: EmitRust, facts: []) {
+    FidelityInputRefused { cause: _ } => false
+    FidelityRows { rows: rows } =>
+      count_cost_carrier_unselected(rows: rows) == 1
+        && count_cost_fidelity_unmeasured(rows: rows) == 1
+        && count_cost_model_unmigrated(rows: rows) == 0
+  }
 }

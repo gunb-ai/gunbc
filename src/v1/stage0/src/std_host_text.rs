@@ -14,3 +14,7 @@ pub type HostText = std::string::String;
 pub fn chars(text: std::string::String) -> Rc<Vec<i64>> {
     v1_rt::chars(&text)
 }
+
+pub fn text_of_chars(scalars: Rc<Vec<i64>>) -> std::string::String {
+    v1_rt::chars_to_string(&scalars, 0, (scalars.clone().len() as i64))
+}

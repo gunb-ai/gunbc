@@ -3,15 +3,18 @@ module extdeps.gpu.types
 import std.types { Int, NonEmptyStr, String, List, Bool }
 import std.nat { Nat }
 import std.optional { Present, Absent }
-import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth, bandwidth_count, Micrometer }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, watt_count, Bandwidth, bandwidth_count, Micrometer, GigaTensorOperationsPerSecond }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
 import extdeps.storage.types { PcieLink }
+import extdeps.pci.identity { PciDeviceId }
 
-import extdeps.external_authority { ExternalAuthority, FactCitation }
+import extdeps.external_authority { ExternalAuthority, FactCitation, CitedFigureStanding, CitedToAuthority }
+import std.decl_ref { NamedField, decl_field_eq }
+import std.measure { Measure }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -96,10 +99,55 @@ type GpuSmCacheGeometry {
 // that system, never an add-in-card fact. IntegratedComputePackage is a GPU nested in an SoC
 // or superchip. The three stay separate so P4 feasibility can refuse to treat a B200 as a
 // purchasable dual-slot card.
+// GpuOnMultiGpuBoard is one GPU of an add-in card that carries several (the A16 carries four
+// GA107s behind an on-board PCIe switch). Its row describes ONE GPU; the card itself is a
+// GpuBoardCatalogRow, which owns the board-level facts (power, thermal, host link) that no single
+// GPU of it has.
 type GpuPackageForm
   = PcieAddInCard
   | SxmModule
   | IntegratedComputePackage
+  | GpuOnMultiGpuBoard
+
+// DENSE TENSOR-CORE THROUGHPUT IS A RATE PER DATATYPE, NOT A STRING AND NOT ONE NUMBER. Vendors print
+// a headline per datatype and print the SPARSE figure beside the dense one (sparsity doubles it), so a
+// row carries only the dense figure and the datatype it was read for: a card with no FP4 MMA has no
+// FP4 entry, which is different from an entry of zero. The list is empty where this repository has
+// read no throughput, never a fabricated zero (execution_lane_count's rule). Each entry carries its own
+// CitedFigureStanding because one datasheet routinely states some datatypes and not others.
+//
+// The unit is giga-operations per second, carried as std.measure's GigaTensorOperationsPerSecond --
+// the Frequency-axis sibling of TokensPerSecond, minted where every other unit is minted (DESIGN s3:
+// an extdeps module holds upstream facts, not units; review 84774 caught this alias minted here).
+// Giga scale rather than Tera because Tera would floor a published 835.5 TFLOPS to 835 and lose the
+// figure. 1.75 petaFLOPS is 1,750,000.
+type TensorDatatype = TensorFp4 | TensorFp8 | TensorInt8 | TensorBf16
+
+type DenseTensorThroughput {
+  datatype: TensorDatatype
+  rate: GigaTensorOperationsPerSecond
+  standing: CitedFigureStanding
+}
+
+fn tensor_datatype_wire(d: TensorDatatype) -> String {
+  match d {
+    TensorFp4 => "fp4"
+    TensorFp8 => "fp8"
+    TensorInt8 => "int8"
+    TensorBf16 => "bf16"
+  }
+}
+
+// Absent when the row carries no entry for the datatype (the card has no such MMA, or nothing was
+// read) AND when it carries two: a duplicated datatype is not read as either.
+fn gpu_dense_tensor_throughput(row: GpuModelCatalogRow, datatype: TensorDatatype) -> DenseTensorThroughput? {
+  let hits = row.dense_tensor_throughput |> filter(t => tensor_datatype_wire(d: t.datatype) == tensor_datatype_wire(d: datatype))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, t) => Present { value: t })
+  } else {
+    none
+  }
+}
 
 // figure_citations cites the row's other published figures (bandwidth, power, memory, lane count),
 // each naming the row field it grounds; sm_cache_citations grounds sm_cache only.
@@ -124,6 +172,7 @@ type GpuModelCatalogRow {
   sm_cache: GpuSmCacheGeometry?
   sm_cache_citations: List<FactCitation>
   figure_citations: List<FactCitation>
+  dense_tensor_throughput: List<DenseTensorThroughput>
 }
 
 // Identity of a catalog row is the cited vendor plus the cited SKU name (NVIDIA's edition
@@ -141,6 +190,31 @@ fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {
   }
 }
 
+// A MEMORY BANDWIDTH WITH THE STANDING OF ITS FIGURE, the bandwidth sibling of DenseTensorThroughput:
+// a consumer that divides by a bandwidth must be able to say what grounds the figure it divided by.
+// A catalog row's bandwidth is CitedToAuthority through the row's own figure_citations entry naming
+// memory_bandwidth; a figure supplied from outside the catalog states its own standing.
+type GpuBandwidthFigure {
+  rate: Bandwidth
+  standing: CitedFigureStanding
+}
+
+// Absent when the row carries no bandwidth AND when it carries one that no figure_citations entry, or
+// more than one, grounds: an uncited catalog figure is not read as cited.
+fn gpu_catalog_bandwidth(row: GpuModelCatalogRow) -> GpuBandwidthFigure? {
+  match row.memory_bandwidth {
+    Present { value: b } => {
+      let hits = row.figure_citations |> filter(c => decl_field_eq(a: c.fact.field, b: NamedField { field_name: "memory_bandwidth" as NonEmptyStr }))
+      if count(hits) == 1 {
+        fold(hits, init: none, f: (_acc, c) => Present { value: GpuBandwidthFigure { rate: b, standing: CitedToAuthority { authority: c.authority } } })
+      } else {
+        none
+      }
+    }
+    Absent => none
+  }
+}
+
 // THE SIDE OUTLINE OF A PCIe ADD-IN CARD, as a vendor's side-view drawing dimensions it. Length is
 // carried twice because vendors dimension it twice: with the I/O bracket and without it, and a
 // consumer placing the card in a chassis needs the first while one fitting a duct to the far end
@@ -150,4 +224,73 @@ type PcieCardSideOutline {
   length_without_bracket: Micrometer
   length_with_bracket: Micrometer
   height: Micrometer
+}
+
+// ── A CARD THAT CARRIES SEVERAL GPUs. Its power is a BOARD figure: the vendor states a range the
+// whole card may be set to, and how the driver divides it among the GPUs is a reading of the device,
+// not a catalog fact. Thermal solution is a board fact too, and the one the fan-zone policy needs:
+// a passive card depends on the chassis zone that reaches it.
+type GpuThermalSolution = PassiveThermalSolution | ActiveThermalSolution
+
+// The board power states a published default, the configurable range, and an optional named
+// operating point (NVIDIA's MaxQ on the A16). A range is a configurable span, distinct from a TDP.
+type GpuBoardPower {
+  default: Watt
+  minimum: Watt
+  maximum: Watt
+  named_points: List<GpuNamedPowerPoint>
+}
+
+type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
+
+// Whether the vendor states the board can be put in a zero-power state, which a sleep or park policy
+// must read before it can select one. NVIDIA's briefs print it as a row ("Zero Power").
+type GpuZeroPowerSupport = ZeroPowerSupported | ZeroPowerNotSupported
+
+// WHAT A BRIEF STATES, AS AUTHORED. The citations point at these fields.
+type GpuBoardCatalogFacts {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  gpu: GpuModelCatalogRow
+  gpu_count: Nat
+  board_power: GpuBoardPower
+  zero_power: GpuZeroPowerSupport
+  thermal: GpuThermalSolution
+  host_link: PcieLink
+  pci_device_id: PciDeviceId
+  figure_citations: List<FactCitation>
+}
+
+// THE ROW A CONSUMER READS, AND THE ONLY WAY IN REFUSES (the std.allocation_roster pattern). A board
+// with no GPU, a power range whose minimum is above its maximum, or a default or named point outside
+// the range has no GpuBoardCatalogRow, so no consumer can be handed one. The authored facts record is
+// still writable with any figures; it is admit_gpu_board that refuses them, so the invalid state is
+// unconstructible in the row and refused at one fallible ingress, not impossible to author.
+type GpuBoardCatalogRow sole_constructor { facts: GpuBoardCatalogFacts }
+
+type GpuBoardRefusal
+  = BoardCarriesNoGpu
+  | BoardPowerRangeInverted
+  | BoardPowerDefaultOutsideRange
+  | BoardNamedPointOutsideRange { name: NonEmptyStr }
+
+type GpuBoardAdmission
+  = GpuBoardAdmitted { row: GpuBoardCatalogRow }
+  | GpuBoardRefused { refusal: GpuBoardRefusal }
+
+fn gpu_board_power_within(p: GpuBoardPower, w: Watt) -> Bool {
+  watt_count(w) >= watt_count(p.minimum) && watt_count(w) <= watt_count(p.maximum)
+}
+
+fn admit_gpu_board(facts: GpuBoardCatalogFacts) -> GpuBoardAdmission {
+  let p = facts.board_power
+  if facts.gpu_count == 0 { GpuBoardRefused { refusal: BoardCarriesNoGpu } }
+  else if watt_count(p.minimum) > watt_count(p.maximum) { GpuBoardRefused { refusal: BoardPowerRangeInverted } }
+  else if !gpu_board_power_within(p: p, w: p.default) { GpuBoardRefused { refusal: BoardPowerDefaultOutsideRange } }
+  else {
+    match first(filter(p.named_points, n => !gpu_board_power_within(p: p, w: n.power))) {
+      Present { value: n } => GpuBoardRefused { refusal: BoardNamedPointOutsideRange { name: n.name } }
+      Absent => GpuBoardAdmitted { row: GpuBoardCatalogRow { facts: facts } }
+    }
+  }
 }

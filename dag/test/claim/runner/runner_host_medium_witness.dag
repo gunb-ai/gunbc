@@ -6,7 +6,9 @@ import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
+import gunbc.host.smpro_platform_capability {
+  SmproNotTaken
+}
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import std.optional { Present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -21,7 +23,7 @@ import gunbc.host.boot_medium { BootMedium, BootMediumRunnerHostUp, BootMediumVo
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_machine, mtcollins1_census_console_device, mtcollins1_census_console_arg }
-import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateNotReached }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateAbandoned, FanGateSafeStopReceipt, FanGatePowerDownAttempt, FanGateRepeatNotNeeded }
 import gunbc.machine_intake.mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRunnerHostAccepted, TerminalRefused, TerminalPending,
   WatchRunnerHostAccepted, watch_tick, SolChannelLive,
@@ -230,7 +232,7 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 
 // THE ARTIFACT'S DIGEST IS IN THE BUILD KEY AND ITS URL IS NOT: a different tarball is a different
 // image, the same bytes from another URL are the same image. (An input with no artifact keeps its
-// pre-artifact key: the census build key claim in test.claim.mtcollins1_census_medium_readback_witness
+// pre-artifact key: the census build key claim in test.claim.host.boot_medium_served_readback_witness
 // pins c001ac127d718e72.)
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host) {
@@ -293,11 +295,11 @@ fn reading_is_the_capture(up: RunnerHostUp) -> Bool {
 
 fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp? {
   let watch = TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "supplied" }, screen_reported: [], runner_host: reading }
-  let aw = actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: SmproNotTaken { reason: "supplied" }, smpro_read: UptimeRefused { detail: "supplied" }, terminal_read: UptimeRefused { detail: "supplied" }, fan_gate: PostPowerFanGateNotReached { reason: "supplied" as NonEmptyStr })
+  let aw = actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: SmproNotTaken { reason: "supplied" }, smpro_read: UptimeRefused { detail: "supplied" }, terminal_read: UptimeRefused { detail: "supplied" }, fan_gate: PostPowerFanGateAbandoned { reason: "supplied" as NonEmptyStr, stop: FanGateSafeStopReceipt { first: FanGatePowerDownAttempt { command_success: true, command_stdout: "", command_exit_code: 0, command_stderr: "", readbacks: [] }, repeat: FanGateRepeatNotNeeded } })
   let base = actuation_not_powered_on(outcome: aw.outcome, reason: "supplied")
   let act = actuation_after_watch(observed: aw, admitted: none, media: base.media, handoff_media: base.handoff_media, end_media: base.end_media, override_before: base.override_before, override_after: base.override_after, power_after: base.power_after, outcome: aw.outcome, screen: base.screen, timing: base.timing)
   let held = actuation_with_outcome(act: act, outcome: ExitSuccess)
-  mtcollins1_boot_attempt_of(act: held, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied")).runner_host
+  mtcollins1_boot_attempt_of(act: held, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied"), mc_info: Absent, fru: Absent).runner_host
 }
 
 // THE READING REACHES THE COMPLETED ATTEMPT, through every real post-watch projection the production

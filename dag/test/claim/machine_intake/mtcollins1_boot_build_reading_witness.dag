@@ -1,0 +1,86 @@
+module test.claim.machine_intake.mtcollins1_boot_build_reading_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, String }
+import std.algebra { string_contains }
+import extdeps.bmc.megarac { megarac_firmware_0_32 }
+import extdeps.bmc.capability { bmc_firmware_release_identity_eq }
+import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32, ipmitool_hpm_upgrade_app_row_bmc0_45_3 }
+import gunbc.host.bmc_release_capability_catalog {
+  MegaRacReleaseEstablishedByRead,
+  MegaRacReleaseEstablishmentRefused,
+}
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  AttemptIdentityUnavailable,
+  MegaRacBuildReadRetained,
+  MegaRacBuildReadNotRetained,
+  MegaRacRetainedBuildReading,
+  megarac_build_reading_receipt_line,
+  megarac_boot_build_reading,
+  megarac_boot_hpm_check_path,
+  megarac_build_reading_of,
+}
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+
+// THE BOOT'S RETAINED BUILD READ, OVER REAL CONTROLLER BYTES. The supplied stdout is the committed hpm
+// check of this controller (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32), so the fold
+// is exercised on the shape the tool actually prints; the derivation is the catalogue's own
+// (megarac_version_establishment), which the boot runs over the bytes it retained.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data path: NonEmptyStr = "artifacts/mtcollins1-boot-hpm-check-40070230626.txt"
+
+fn read_of(content: String) -> MegaRacRetainedBuildReading {
+  megarac_build_reading_of(path: path, read_ok: true, content: content, error: "")
+}
+
+// THE FILE IS THE RUN'S, AND IT IS UPLOADED: named by the run id, inside artifacts/mtcollins1-boot-*.
+test fn the_retained_file_is_named_by_the_run_that_read_it() -> Bool {
+  (megarac_boot_hpm_check_path(row: mtcollins1_boot_row_value, run_attempt: "40070230626") as String) == (path as String)
+    && (megarac_boot_hpm_check_path(row: mtcollins1_boot_row_value, run_attempt: "1") as String) != (path as String)
+}
+
+test fn the_committed_controller_bytes_establish_their_release_by_read() -> Bool {
+  match read_of(content: ipmitool_hpm_check_bmc0_32) {
+    MegaRacBuildReadRetained { path: p, established: MegaRacReleaseEstablishedByRead { firmware: f } } =>
+      (p as String) == (path as String) && bmc_firmware_release_identity_eq(a: f, b: megarac_firmware_0_32)
+    _ => false
+  }
+}
+
+test fn the_receipt_line_says_machine_read_and_names_the_file() -> Bool {
+  let line = megarac_build_reading_receipt_line(r: read_of(content: ipmitool_hpm_check_bmc0_32))
+  string_contains(s: line, pattern: "build=machine-read APP 0.32 from artifacts/mtcollins1-boot-hpm-check-40070230626.txt")
+}
+
+// AN UPGRADE LISTING IS NOT A BUILD: the retained bytes are kept, and the receipt says they establish nothing.
+test fn an_upgrade_listing_establishes_no_release() -> Bool {
+  match read_of(content: ipmitool_hpm_upgrade_app_row_bmc0_45_3) {
+    MegaRacBuildReadRetained { path: _, established: MegaRacReleaseEstablishmentRefused { standing: _, cause: _ } } =>
+      string_contains(s: megarac_build_reading_receipt_line(r: read_of(content: ipmitool_hpm_upgrade_app_row_bmc0_45_3)), pattern: "but establishes no release: ")
+    _ => false
+  }
+}
+
+// NOTHING RETAINED IS NOT A READING: an empty file and a failed read-back each refuse, with their cause.
+test fn an_empty_retained_file_is_not_a_reading() -> Bool {
+  match read_of(content: "") {
+    MegaRacBuildReadNotRetained { reason: r } => string_contains(s: r as String, pattern: "no hpm check output was retained")
+    _ => false
+  }
+}
+
+test fn a_failed_read_back_is_not_a_reading() -> Bool {
+  match megarac_build_reading_of(path: path, read_ok: false, content: ipmitool_hpm_check_bmc0_32, error: "ENOENT") {
+    MegaRacBuildReadNotRetained { reason: r } => string_contains(s: r as String, pattern: "could not be read back: ENOENT")
+    _ => false
+  }
+}
+
+// WITH NO RUN IDENTITY THERE IS NO FILE THAT IS THIS RUN'S, so no file is read at all.
+test fn without_a_run_identity_no_file_is_taken() -> Bool {
+  match megarac_boot_build_reading(row: mtcollins1_boot_row_value, attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "absent" }) {
+    MegaRacBuildReadNotRetained { reason: r } => string_contains(s: r as String, pattern: "run identity is unavailable")
+    _ => false
+  }
+}

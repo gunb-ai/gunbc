@@ -6,7 +6,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.qualified_name { qualified_name_from_dotted_string, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic, NotADeclaration }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, Atom, Authored, BinderStructureEdge, BinderTypeEdge, Conj, CoreEdgeLabel, Edge, Instantiation, Node, Positional, Symbol, TypeNode, core_edge_label, host_text_concatenation, node_subtree_nodes, node_synthetic, NotADeclaration }
 import v2.std.type_binder { ArgumentOutsideKind, KindUnresolved, edge_is_type_params, TypeApplicationArityMismatch, TypeApplicationBinderOrderMalformed, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterUnresolved, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, type_application_conformance, type_binder_set_children }
 import v2.std.algebra_structure_signature { algebra_binary_fn_node, algebra_inhabitance_node, free_monoid_structure_node, monoid_type_node }
 import v2.std.node_query { binder_edge }
@@ -14,7 +14,7 @@ import std.types { Bool, List }
 import std.algebra { Empty }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.fold_lowering { collection_roster_element_type, collection_roster_carrier_type, collection_roster_primitive_call_row_optional, collection_roster_signature_arrow }
-import v2.compiler.infer { infer_type_equal_ignoring_provenance, InferFormalMatched, StructureInhabited, StructureNotInhabited, StructureRowMalformed, infer_instance_structure_inhabitance_in, InferFormalShapeMismatch, infer_binder_set_structure_bounds, infer_match_generic_formal, infer_type_instantiated }
+import v2.compiler.infer { InferFormalMatched, StructureInhabited, StructureNotInhabited, StructureRowMalformed, infer_instance_structure_inhabitance_in, InferFormalShapeMismatch, infer_binder_set_structure_bounds, infer_match_generic_formal, infer_type_instantiated }
 import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.symbol_index { empty_symbol_index }
 import v2.std.list_introduction { list_introduction_head_path }
@@ -173,8 +173,8 @@ test fn fmb_mixed_carriers_refuse() -> Bool {
   match infer_match_generic_formal(formal: carrier, produced: fmb_kernel_type(spelling: "String"), type_params: [^collection_roster_carrier], instances: Empty, declarations: empty_symbol_index()) {
     InferFormalShapeMismatch => false
     InferFormalMatched { instances: bound } =>
-      infer_type_instantiated(t: carrier, instances: bound) == fmb_kernel_type(spelling: "String")
-        && infer_type_instantiated(t: carrier, instances: bound) != fmb_list_of(element: fmb_kernel_type(spelling: "Int"))
+      node_same_occurrence(a: infer_type_instantiated(t: carrier, instances: bound), b: fmb_kernel_type(spelling: "String"))
+        && !node_same_occurrence(a: infer_type_instantiated(t: carrier, instances: bound), b: fmb_list_of(element: fmb_kernel_type(spelling: "Int")))
   }
 }
 
@@ -239,7 +239,7 @@ fn fmb_generator_is(instance: Node, expected: Node) -> Bool {
   match infer_instance_structure_inhabitance_in(rows: dag_algebra_inhabitance_decls(), instance: instance, structure: fmb_roster_structure(), declarations: empty_symbol_index(), bindings: empty_symbol_index()) {
     StructureInhabited { generator: generator } =>
       match generator {
-        Present { value: g } => infer_type_equal_ignoring_provenance(a: g, b: expected)
+        Present { value: g } => node_equal_ignoring_provenance(a: g, b: expected)
         Absent => false
       }
     StructureNotInhabited => false

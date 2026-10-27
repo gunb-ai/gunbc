@@ -43,7 +43,7 @@ import v2.std.diagnostic {
 import v2.std.find_witness {
   TargetDeclaredPriority,
 }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
   CompilesClaim,
@@ -194,7 +194,7 @@ test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
   let outcome = cross_target_rust_i32_to_python_int_coercion_fold()
   match outcome {
     Accepted { value: r, diagnostics: _ } =>
-      (r.target == python_int_inhabitant_node()) && quality_is_widened(q: r.quality)
+      (node_same_occurrence(a: r.target, b: python_int_inhabitant_node())) && quality_is_widened(q: r.quality)
     Rejected { diagnostics: _ } => false
   }
 }

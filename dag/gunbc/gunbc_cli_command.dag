@@ -11,6 +11,7 @@ import gunbc.cli_invoke {
   InvocationWord, LiteralWord,
   invocation_words_bare,
   gunbc_run_invocation_words_with_functions,
+  NamedArgument, NamedArgumentRequest,
   NamedArgumentAdmitted, NamedArgumentNameEmpty, NamedArgumentNameHoldsSeparator, admit_named_argument,
   gunbc_bin_name,
   release_bin_rel_path
@@ -91,20 +92,40 @@ fn gunbc_run_command(entry: String, functions: List<String>) -> ArgvCommand {
   )
 }
 
-// THE INSTALLED BINARY'S `gunbc run` OF ONE FUNCTION WITH ONE NAMED ARGUMENT, over source roots the
-// caller names absolutely. The program is the installed path the deploy placed, not the checkout's
-// release output, so the readback after an apply exercises the bytes the apply installed. A name the
-// argument admission refuses yields no command rather than a command carrying the malformed option.
-fn gunbc_installed_run_with_argument_command(
+// THE ADMISSION RULE LIFTED TO ITS POPULATION. The least general statement of named-argument
+// admission is over a LIST: fold the admission and refuse the WHOLE population at the first bad
+// name, because a command that silently carries one of two bindings is worse than no command.
+// Every builder that takes caller-supplied named arguments folds here; a per-arity copy of this
+// match is a second path (DESIGN 6b), which is what the one- and two-argument builders this fold
+// replaced were.
+fn admit_named_argument_requests(requests: List<NamedArgumentRequest>) -> Optional<List<NamedArgument>> {
+  fold(requests, init: Present { value: [] as List<NamedArgument> }, f: (acc, r) => match acc {
+    Absent => Absent
+    Present { value: admitted } => match admit_named_argument(name: r.name, value: r.value) {
+      NamedArgumentAdmitted { argument: a } => Present { value: concat(admitted, [a]) }
+      NamedArgumentNameEmpty => Absent
+      NamedArgumentNameHoldsSeparator { name: _ } => Absent
+    }
+  })
+}
+
+// THE INSTALLED BINARY'S `gunbc run` OF ONE FUNCTION WITH ITS NAMED ARGUMENTS, over source roots
+// the caller names absolutely. The program is the installed path the deploy placed, not the
+// checkout's release output, so the readback after an apply exercises the bytes the apply
+// installed. One admission refusal on ANY argument yields no command rather than a command silently
+// missing a binding -- the half-bound readback is exactly how store row S83469995 stayed green, so
+// the population is admitted whole or not at all, by one fold. It takes the arguments as a LIST for
+// the reason DESIGN 6b gives: a per-arity copy of this admission match is a second path, and a
+// third argument would have been a third copy.
+fn gunbc_installed_run_with_named_arguments_command(
   binary: NonEmptyStr,
   source_roots: List<String>,
   entry: String,
   function: String,
-  argument_name: String,
-  argument_value: String,
+  arguments: List<NamedArgumentRequest>,
 ) -> Optional<ArgvCommand> {
-  match admit_named_argument(name: argument_name, value: argument_value) {
-    NamedArgumentAdmitted { argument: a } =>
+  match admit_named_argument_requests(requests: arguments) {
+    Present { value: admitted } =>
       Present { value: argv_command(
         program: uncataloged_program(invocation: binary),
         arguments: invocation_words_bare(words: gunbc_run_invocation_words_with_functions(
@@ -112,11 +133,10 @@ fn gunbc_installed_run_with_argument_command(
           entry: entry,
           functions: [function],
           claim_run: false,
-          arguments: [a],
+          arguments: admitted,
         )),
       ) }
-    NamedArgumentNameEmpty => Absent
-    NamedArgumentNameHoldsSeparator { name: _ } => Absent
+    Absent => Absent
   }
 }
 

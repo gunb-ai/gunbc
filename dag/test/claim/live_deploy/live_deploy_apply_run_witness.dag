@@ -17,13 +17,14 @@ import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
   DeployApplyPorts, DeployApplyRun, ApplyRunOk, ApplyRunFailed,
-  deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate,
+  deploy_apply_run_legs, live_deploy_apply_verdict, live_deploy_apply_orchestrate, credstore_copy_bracket,
   LiveDeployPreambleVerdict, PreambleConverged, PreambleRefused, ScratchAcquire,
   DeployRetractPorts, RemovedNoOp,
 }
 import gunbc.systemctl_show_read { SystemdPropertyCaptured }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
-import gunbc.live_deploy.spec { PublicationHelperPathUnit, deployment_publication_path_unit_path }
+import gunbc.live_deploy.spec { PublicationHelperPathUnit, deployment_publication_path_unit_path, BeltEventPathUnit, deployment_belt_exit_path_unit_path }
+import extdeps.exec.command { argv_words, ArgvCommand }
 import gunbc.owned_directory { OwnedDirectoryEnsureOutcome, OwnedDirectoryEnsureRefused }
 import gunbc.host.host_axis_caps { CapMember, CapConvergeAuthorized, CapConvergeWithheld }
 import gunbc.live_deploy.apply_legs {
@@ -31,6 +32,7 @@ import gunbc.live_deploy.apply_legs {
   ApplyLegCommand, ApplyLegInstallFile, ApplyLegReport, ApplyLegEnsureDirectory, ApplyLegBrokerStateDirectories, ApplyLegObjectSource, ApplyLegDigestVerify, ApplyLegDiagnosedCommand,
   deploy_apply_memory_cap_plan, deploy_apply_leg_step, deploy_apply_tree_plan, deploy_apply_executable_plan,
   ApplyLegRootHelperSnapshot, ApplyLegBrokerTree, ApplyLegRepairDirectoryEntries, ApplyLegRetract, ApplyLegDependency, ApplyLegDigestEnvFile, deploy_apply_unit_plan, deploy_apply_upsert_plan,
+  ApplyLegCredstoreCopy, CredstoreCopyBracket, CredstoreCopyCompleted, CredstoreCopyCompletedResidueRemains, CredstoreCopyNotEntered, CredstoreCopyNotEnteredResidueRemains,
 }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, selected_deployment_spec }
 import extdeps.git.partial_clone { ObjectSourceServeAdmission, ObjectSourceCanServe, ObjectSourceCannotServe }
@@ -149,6 +151,7 @@ test fn a_withheld_authorization_is_a_report_leg_and_no_mutation() -> Bool {
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
         ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
@@ -417,6 +420,7 @@ test fn the_executable_plan_verifies_the_source_before_and_the_install_after() -
         ApplyLegRetract { step: _, leg: _ } => false
         ApplyLegDependency { dep: _ } => false
         ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
         ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
       }
     ApplyPlanReady { legs: Empty } => false
@@ -547,3 +551,120 @@ test fn the_digest_env_is_written_from_the_installed_binarys_digest_and_no_other
     && (match other { ApplyRunFailed { step: s, reason: r, legs_run: _ } => s == "env" && string_contains(s: r, pattern: "wrong payload")  ApplyRunOk { legs_run: _, reports: _ } => false })
     && (match unparsed { ApplyRunFailed { step: _, reason: r, legs_run: _ } => string_contains(s: r, pattern: "no digest")  ApplyRunOk { legs_run: _, reports: _ } => false })
 }
+
+// ── ASSERTIONS RESTORED FROM THE DELETED SCRIPT-TEXT CLAIMS ──────────────────────────────────────────
+//
+// c11aa2317029 (#14660) deleted these claims with the bash apply script they read; the typed claims above
+// fix the cap plan's SHAPE and order by step name, and at main head d2b027b5f41 a production mutation of
+// WHAT each leg names left all of them green (audit table on #14824). Each is restored as its own claim.
+
+fn leg_words(leg: DeployApplyLeg) -> List<String> {
+  match leg {
+    ApplyLegCommand { step: _, command: c } => argv_words(command: c)
+    ApplyLegInstallFile { step: _, command: c, payload: _ } => argv_words(command: c)
+    ApplyLegDiagnosedCommand { step: _, command: c, diagnosis: _ } => argv_words(command: c)
+    ApplyLegRepairDirectoryEntries { command: c } => argv_words(command: c)
+    ApplyLegReport { step: _, line: _ } => []
+    ApplyLegEnsureDirectory { target: _ } => []
+    ApplyLegBrokerStateDirectories { revision: _ } => []
+    ApplyLegObjectSource => []
+    ApplyLegDigestVerify { step: _, path: _, digest: _ } => []
+    ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => []
+    ApplyLegBrokerTree { revision: _ } => []
+    ApplyLegRetract { step: _, leg: _ } => []
+    ApplyLegDependency { dep: _ } => []
+    ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => []
+    ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => []
+  }
+}
+
+// THE REVERT NAMES THE AUTHORIZED UNIT (was the_writer_reverts_only_the_authorized_target_units). The order
+// claim fixes one revert for one unit; this fixes WHICH unit, so a revert spent on any other unit cannot pass.
+test fn the_cap_revert_names_the_authorized_target_unit() -> Bool {
+  match authorized_legs() {
+    Cons { head: _, tail: Cons { head: _, tail: Cons { head: c, tail: Empty } } } =>
+      deploy_apply_leg_step(leg: c) == "memory-cap-revert" && any(leg_words(leg: c), w => w == "gunbc-a.service")
+    Cons { head: _, tail: _ } => false
+    Empty => false
+  }
+}
+
+// THE INSTALL WRITES THE AUTHORIZED MEMBER'S BYTES TO THAT MEMBER'S OWN DROP-IN (was
+// witness_apply_script_wires_memory_cap_deploy_consumer). The run claims supply port answers and never read a
+// payload, so an install that wrote nothing, or wrote it elsewhere, passed them.
+test fn the_cap_install_writes_the_members_content_to_its_dropin() -> Bool {
+  match authorized_legs() {
+    Empty => false
+    Cons { head: a, tail: _ } =>
+      match a {
+        ApplyLegInstallFile { step: _, command: c, payload: p } =>
+          p == the_member().content && any(argv_words(command: c), w => w == (the_member().dropin_path as String))
+        ApplyLegCommand { step: _, command: _ } => false
+        ApplyLegReport { step: _, line: _ } => false
+        ApplyLegEnsureDirectory { target: _ } => false
+        ApplyLegRepairDirectoryEntries { command: _ } => false
+        ApplyLegBrokerStateDirectories { revision: _ } => false
+        ApplyLegObjectSource => false
+        ApplyLegRootHelperSnapshot { locus: _, spine: _, revision: _, action: _ } => false
+        ApplyLegBrokerTree { revision: _ } => false
+        ApplyLegRetract { step: _, leg: _ } => false
+        ApplyLegDependency { dep: _ } => false
+        ApplyLegDigestEnvFile { step: _, binary: _, env_name: _, dest: _, owner: _ } => false
+        ApplyLegCredstoreCopy { step: _, source: _, dest: _, file_name: _ } => false
+        ApplyLegDigestVerify { step: _, path: _, digest: _ } => false
+        ApplyLegDiagnosedCommand { step: _, command: _, diagnosis: _ } => false
+      }
+  }
+}
+
+fn belt_legs() -> List<DeployApplyLeg> {
+  let spec = deployment_spec_srv1()
+  match deploy_apply_upsert_plan(kind: BeltEventPathUnit, path: deployment_belt_exit_path_unit_path(names: spec.names), spec: spec, plan: deploy_witness_full_install_plan(spec: spec), source_root: "/src") {
+    ApplyPlanReady { legs: ls } => ls
+    ApplyPlanRefused { step: _, reason: _ } => []
+  }
+}
+
+// THE BELT UPSERT RETIRES THE RETIRED BELT TIMER AFTER ITS OWN UNITS STAND (the belt half of
+// apply_retires_leftover_belt_and_publication_timers_and_installs_publication_path; the publication half is
+// the_publication_upsert_retires_the_timer_before_restarting_the_path_unit above). A belt install that left
+// the retired timer loaded would keep firing the superseded entry beside the path units.
+test fn the_belt_upsert_retires_the_retired_belt_timer_after_its_units_stand() -> Bool {
+  let legs = belt_legs()
+  let retire = step_index(legs: legs, step: "belt-retired-timer-retire")
+  retire >= 0 && retire > step_index(legs: legs, step: "belt-daemon-reload")
+}
+
+// ── THE CREDSTORE COPY'S BRACKET (gunbc.live_deploy.apply_legs ApplyLegCredstoreCopy) ─────────────────
+//
+// The fold is pinned over a SUPPLIED command port that answers by program: mktemp prints a stage, and the copy
+// (install), the root install (sudo), rm and rmdir each answer the code given. Each arm is the bracket's remedy:
+// a failed copy is NotEntered with the root install never run (had it run, the arm would be Completed), a failed
+// rmdir is a residue arm, and a stage that cannot be made enters nothing.
+fn credstore_port(mktemp: Int, copy: Int, root: Int, rmdir: Int) -> fn(ArgvCommand) -> RunArgvTransportOutcome {
+  fn(c) {
+    match argv_words(command: c).first() {
+      Absent => observed(code: 1, err: "")
+      Present { value: p } =>
+        if p == "mktemp" { observed_out(code: mktemp, out: "/tmp/gunbc-credstore.abc123\n") }
+        else if p == "install" { observed(code: copy, err: "") }
+        else if ends_with(s: p, suffix: "sudo") { observed(code: root, err: "") }
+        else if p == "rmdir" { observed(code: rmdir, err: "") }
+        else { observed(code: 0, err: "") }
+    }
+  }
+}
+
+fn credstore_run(port: fn(ArgvCommand) -> RunArgvTransportOutcome) -> CredstoreCopyBracket {
+  credstore_copy_bracket(source: "/home/svc/k" as NonEmptyStr, dest: "/etc/credstore/k-lab" as NonEmptyStr, file_name: "k" as NonEmptyStr, run: port)
+}
+
+test fn the_credstore_copy_bracket_answers_each_remedy() -> Bool {
+  (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 0, rmdir: 0)) { CredstoreCopyCompleted { installed: i } => i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 1, rmdir: 0)) { CredstoreCopyCompleted { installed: i } => !i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 1, root: 0, rmdir: 0)) { CredstoreCopyNotEntered { cause: _ } => true  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 1, root: 0, rmdir: 1)) { CredstoreCopyNotEnteredResidueRemains { cause: _ } => true  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 0, copy: 0, root: 0, rmdir: 1)) { CredstoreCopyCompletedResidueRemains { installed: i } => i  _ => false })
+    && (match credstore_run(port: credstore_port(mktemp: 1, copy: 0, root: 0, rmdir: 0)) { CredstoreCopyNotEntered { cause: _ } => true  _ => false })
+}
+

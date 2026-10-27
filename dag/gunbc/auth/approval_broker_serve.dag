@@ -12,6 +12,7 @@ import gunbc.auth.request_authentication { IngressUnattested,
   RequestAccessPath,
 }
 import gunbc.clock_read { clock_now_probed_at }
+import gunbc.auth.approval_apns_publish { read_device_push_targets, read_apns_sender }
 import gunbc.auth.approval_request_submission {
   admit_parsed_submission, SubmissionVerified, SubmissionNotAdmitted, file_and_notify, submission_outcome_http_body, read_submission_keyring, read_publisher_token, escalation_status,
   parse_submission_envelope, SubmissionEnvelopeParsed, SubmissionEnvelopeUnreadable,
@@ -449,15 +450,17 @@ fn approval_submit_admitted_response(request: ServeHttpRequest<RequestAccessPath
             root: approval_decision_store_root,
             capability_keyring: read_approval_keyring(),
             publisher: read_publisher_token(),
+            devices: read_device_push_targets(),
+            sender: read_apns_sender(),
             request: admitted,
             broker: approval_broker_serving_base_url(),
           )
       }
   }
   let status = match outcome {
-    SubmissionFiledAndNotified { escalation_id: _, message_id: _ } => 201
-    SubmissionFiledNotNotified { escalation_id: _, publish: _ } => 502
-    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _ } => 503
+    SubmissionFiledAndNotified { escalation_id: _, message_id: _, devices: _ } => 201
+    SubmissionFiledNotNotified { escalation_id: _, publish: _, devices: _ } => 502
+    SubmissionFiledPublisherTokenUnavailable { escalation_id: _, detail: _, devices: _ } => 503
     SubmissionFiledLinksNotIssued { escalation_id: _, key_id: _ } => 503
     SubmissionFiledBrokerAddressRefused { escalation_id: _, detail: _ } => 503
     SubmissionAlreadyFiled { escalation_id: _ } => 409

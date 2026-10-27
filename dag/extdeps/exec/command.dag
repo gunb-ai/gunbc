@@ -6,12 +6,7 @@ import extdeps.exec.program { ProgramIdentity, cataloged_program, uncataloged_pr
 
 import std.types { NonEmptyStr, String, List }
 import std.algebra { Cons, Empty }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  OperationInputBinding,
-  operation_argv_cause_label,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, OperationInputBinding, operation_argv_cause_label, shell_materialize_operation_argv }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.posix.shell_command_language { posix_single_quote }
@@ -86,6 +81,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
   admit_callers: [
     decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_mode_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
@@ -125,6 +121,21 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_remove_force_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_rename_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
+    // The GPU container acceptance run (gunbc.runner.runner_gpu_container_toolchain). Admitted in
+    // extdeps.docker.cli, the module that already owns every other `docker` verb in the fleet, so the
+    // probe cannot be re-spelled at a call site into something that is not an acceptance run: --rm and
+    // the BARE CDI device name are each load-bearing and each easy to drop when the words are retyped
+    // by hand. Deliberately NO --entrypoint: the measured command that works (srv1 2026-10-25, as the
+    // job user over its own socket) passes nvidia-smi -L as the image's ARGUMENTS, letting ubuntu's
+    // default entrypoint exec it; an --entrypoint override was written before it was measured and is
+    // not what the green run does.
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_gpu_cdi_probe_run_command"),
+    // nvidia-ctk's two legs — generate (writes /etc/cdi/nvidia.yaml) and list (the readback that
+    // proves the complete-device arm resolves). Declared where they are built, in
+    // extdeps.container.nvidia_container_toolkit, next to the pinned repository row that serves the
+    // package providing the binary.
+    decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_generate_command"),
+    decl_ref(module_path: "extdeps.container.nvidia_container_toolkit", decl_name: "nvidia_ctk_cdi_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_reproducible_command"),
@@ -177,6 +188,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.package_managers.micromamba", decl_name: "micromamba_create_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_slice_to_project_command"),
     decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_version_probe_command"),
+    decl_ref(module_path: "extdeps.printing.orca_slicer", decl_name: "orca_extract_bbl_profiles_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_run_program_command"),
     decl_ref(module_path: "extdeps.cadquery.cadquery", decl_name: "cadquery_import_probe_command"),
     decl_ref(module_path: "extdeps.package_managers.dpkg", decl_name: "dpkg_query_status_command"),
@@ -215,6 +227,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rm_recursive_force_one_file_system_command"),
     decl_ref(module_path: "extdeps.tools.util_linux_umount", decl_name: "umount_command"),
+    decl_ref(module_path: "extdeps.tools.util_linux_findmnt", decl_name: "findmnt_fstype_for_path_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ln_symbolic_force_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "timeout_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "printf_command"),
@@ -223,6 +236,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "pwd_command"),
     decl_ref(module_path: "extdeps.posix.getent", decl_name: "getent_passwd_command"),
     decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_auth_list_accounts_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_create_command"),
+    decl_ref(module_path: "extdeps.tools.gcloud", decl_name: "gcloud_secrets_versions_add_stdin_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "tee_append_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "readlink_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "ls_one_per_line_command"),
@@ -231,6 +246,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_regroup_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_group_writable_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_mode_readback_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_subtree_ungranted_entry_refusal_command"),
 
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_set_mode_command"),
     decl_ref(module_path: "extdeps.tools.chmod", decl_name: "chmod_recursive_set_mode_command"),
@@ -255,6 +271,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.mosquitto_rr", decl_name: "mosquitto_snapshot_command"),
     decl_ref(module_path: "extdeps.tools.gnu_time", decl_name: "gnu_time_max_rss_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_version_command"),
+    decl_ref(module_path: "extdeps.systemd.loginctl", decl_name: "loginctl_show_user_linger_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_user_manager_probe_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_list_all_service_units_command"),
     decl_ref(module_path: "extdeps.systemd.systemctl", decl_name: "systemctl_daemon_reload_command"),
@@ -280,6 +297,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_run_config_command"),
     decl_ref(module_path: "extdeps.virtualization.firecracker", decl_name: "firecracker_jailer_run_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_public_key_command"),
+    decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_generate_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_fingerprint_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keygen_known_hosts_find_command"),
     decl_ref(module_path: "extdeps.ssh.openssh_client_commands", decl_name: "ssh_keyscan_command"),
@@ -356,7 +374,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "rmdir_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
-    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_argument_command"),
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "gunbc.claim_executor_cli", decl_name: "claim_executor_command"),
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),

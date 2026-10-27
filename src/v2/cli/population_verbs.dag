@@ -1,7 +1,7 @@
 module v2.cli.population_verbs
 
 import std.types { Bool, Int, List, Map }
-import std.algebra { Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape, collection_join_shape }
+import std.algebra { string_contains, Cons, Empty, fold_list, is_empty, length, list_head, list_map, list_reverse, skip, empty_map, map_contains_key, map_insert, map_lookup, collection_concat_shape, collection_join_shape }
 import std.optional { Absent, Optional, Present }
 import std.integer { int_to_decimal_string }
 import v2.cli.parse_verdict_reuse { ParseVerdictBase, ParseVerdictReuseCounts, parse_verdict_reuse_counts_zero, parse_verdict_reuse_counts_add, parse_verdict_reuse_counts_text }
@@ -18,10 +18,11 @@ import gunbc.source_layout_namespaces { layout_namespaces }
 import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, SourceRootWalkTask, source_root_child_path, source_root_walk }
 import v2.cli.repository_layout { repository_storage_layout }
 import v2.compiler.module_acquisition { AcquisitionEnv, AcquisitionEnvReady, AcquisitionEnvUnprepared, BoundModulesListed, BoundModulesRefused, MemberParseRefused, MemberParses, PopulationMemberRead, PopulationMemberRefused, SourceRootBinding, acquisition_env, acquisition_header_reader, acquisition_parse, acquisition_probe, enumerate_bound_modules, population_member }
-import v2.compiler.source_authority { LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
+import v2.compiler.source_authority { SourceStorageLayout, LayoutFileHeader, LayoutHolds, LayoutRefused, LayoutVerdict, ModuleFileAbsent, ModuleFilePresent, ModuleFileRef, ModuleFileRefused, layout_check, layout_verdict_holds, layout_verdict_text, module_file_key }
 import v2.compiler.module_header { ModuleHeaderReader, module_header_read }
 import v2.std.text { String }
 import std.content_hash { content_hash_atom }
+import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, ambient_name_homes }
 
 
 // THE WHOLE-POPULATION VERBS. Compiling an entry reads the modules that entry requests and nothing
@@ -533,7 +534,7 @@ fn parse_population_listed(env: AcquisitionEnv, modules: List<String>, compiler:
 }
 
 fn parse_population_prepared(env: AcquisitionEnv, compiler: Optional<String>, reuse: ParseVerdictReuse) -> PopulationReport {
-  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings, namespaces: layout_namespaces()) {
+  match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
     BoundModulesRefused { subject: subject, cause: cause } =>
       PopulationReport {
         text: concat(subject, ": ", cause),
@@ -549,5 +550,91 @@ fn parse_population(bindings: List<SourceRootBinding>, compiler: Optional<String
     AcquisitionEnvUnprepared { diagnostics: _ } =>
       PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
     AcquisitionEnvReady { env: env } => parse_population_prepared(env: env, compiler: compiler, reuse: reuse)
+  }
+}
+
+// ---- select-spelled-modules ---------------------------------------------------------------------------
+//
+// THE MODULES THAT SPELL A RULED NAME. The population an ambient-name census must cover at a revision is the
+// modules whose source writes a name some wave moves (gunbc.namespace_cut.ambient_name_home ambient_name_homes,
+// the one roster of those names). The roots are the only input: the names are the roster's, so there is no
+// second place to list them. The population is the declared namespace rows' modules (`enumerate_bound_modules`,
+// names derived FORWARD under the storage rule, never a path mapped back), and a module is selected when its
+// text contains a ruled spelling.
+//
+// THIS IS AN OVER-APPROXIMATION COMPUTED AS THE ANSWER, and says so: selection is by SPELLING, not by binding. A
+// comment, a string literal or a longer identifier that contains the spelling selects its module, which only
+// widens the census; a module that binds the name without writing it cannot exist, because an occurrence is a
+// written spelling. It is a superset of the set a binding-level census would cover, never a subset, and the
+// census still reports a binding row per occurrence, so a selected module with no occurrence contributes none.
+// A module that cannot be read refuses the whole selection: a population that silently lost a member would
+// certify a smaller repository.
+fn spelled_in(content: String, names: List<String>) -> Bool {
+  fold_list(xs: names, empty: false, cons: fn(acc, name) { if acc { true } else { string_contains(s: content, pattern: name) } })
+}
+
+type SpelledSelection
+  = SpelledSelected { names: List<String> }
+  | SpelledRefused { module: String, cause: String }
+
+fn select_spelled_go(
+  layout: SourceStorageLayout,
+  bindings: List<SourceRootBinding>,
+  pending: List<String>,
+  spellings: List<String>,
+  acc: List<String>
+) -> SpelledSelection {
+  match list_head(xs: pending) {
+    Absent => SpelledSelected { names: list_reverse(xs: acc) }
+    Present { value: name } =>
+      match population_member(layout: layout, bindings: bindings, name: name) {
+        PopulationMemberRefused { cause: cause } => SpelledRefused { module: name, cause: cause }
+        PopulationMemberRead { member: member } =>
+          select_spelled_go(
+            layout: layout,
+            bindings: bindings,
+            pending: skip(xs: pending, n: 1),
+            spellings: spellings,
+            acc: if spelled_in(content: member.content, names: spellings) { Cons { head: name, tail: acc } } else { acc }
+          )
+      }
+  }
+}
+
+fn select_spelled_report(selection: SpelledSelection) -> PopulationReport {
+  match selection {
+    SpelledRefused { module: module, cause: cause } =>
+      PopulationReport { text: concat(module, ": ", cause), held: false, detail: concat("could not read ", module) }
+    SpelledSelected { names: names } =>
+      PopulationReport { text: join(names, "\n"), held: true, detail: "" }
+  }
+}
+
+fn select_spelled_listed(env: AcquisitionEnv, modules: List<String>) -> PopulationReport {
+  if is_empty(xs: modules) {
+    PopulationReport { text: "", held: false, detail: "the bound trees enumerate to zero modules; a selection over nothing is not a selection of zero" }
+  } else {
+    select_spelled_report(
+      selection: select_spelled_go(
+        layout: env.layout,
+        bindings: env.bindings,
+        pending: modules,
+        spellings: list_map(xs: ambient_name_homes(), f: fn(row) { row.name as String }),
+        acc: []
+      )
+    )
+  }
+}
+
+fn select_spelled_modules(bindings: List<SourceRootBinding>) -> PopulationReport {
+  match acquisition_env(layout: repository_storage_layout(), bindings: bindings) {
+    AcquisitionEnvUnprepared { diagnostics: _ } =>
+      PopulationReport { text: "", held: false, detail: "the dag grammar did not prepare; no module was observed" }
+    AcquisitionEnvReady { env: env } =>
+      match enumerate_bound_modules(layout: env.layout, bindings: env.bindings) {
+        BoundModulesRefused { subject: subject, cause: cause } =>
+          PopulationReport { text: concat(subject, ": ", cause), held: false, detail: concat("could not enumerate the modules of ", subject) }
+        BoundModulesListed { modules: modules } => select_spelled_listed(env: env, modules: modules)
+      }
   }
 }

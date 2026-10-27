@@ -1,7 +1,7 @@
 module test.claim.live_deploy.operations_witness
 
 import std.logic { Bool }
-import std.types { String, List, NonEmptyStr, Int }
+import std.types { String, List, Int }
 import extdeps.package_managers.apt { package_nodejs, package_tailscale }
 import extdeps.sudo.elevation { sudo_elevate_argv }
 import extdeps.systemd.systemctl {
@@ -23,7 +23,7 @@ import gunbc.live_deploy.operations {
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name, gunbc_service_uid }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import v2.workflow.effect_plan_bash_materialize { bash_bind_operation_invocation }
 import extdeps.posix.shell_command_language { posix_single_quote }
 
@@ -137,11 +137,6 @@ test fn witness_systemctl_user_daemon_reload_command_privileged() -> Bool {
 test fn live_deploy_operations_RED_user_daemon_reload_is_not_the_system_manager() -> Bool {
   systemctl_user_daemon_reload_argv(uid: gunbc_service_uid) != systemctl_daemon_reload_argv()
 }
-
-// RED discriminators against the former `join(argv, " ")` spelling returning. Under it an argv
-// element carrying a space or an apostrophe lost its boundary and the host re-parsed it as
-// several words; both assertions fail on that spelling and pass on the modelled command.
-data spacey_package: NonEmptyStr = "tail scale"
 
 // ── THE REFUSAL ARM, WHICH IS WHAT MAKES THE TYPED LEAF SAFER THAN THE STRING IT REPLACED ────────
 //

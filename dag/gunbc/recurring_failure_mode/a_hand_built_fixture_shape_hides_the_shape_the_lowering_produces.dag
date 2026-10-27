@@ -1,11 +1,18 @@
 module gunbc.recurring_failure_mode.a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode, RungUnread, CeilingNotStated }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces: RecurringFailureMode = RecurringFailureMode {
   identity: "a_hand_built_fixture_shape_hides_the_shape_the_lowering_produces" as NonEmptyStr,
-  rung: RungUnread { cause: CeilingNotStated },
+  // THE TYPED STANDING MIRRORS THE RUNG RECEIPT BELOW IT AT THE CLASS'S GRAIN: a class's rung is
+  // the MINIMUM across its in-scope paths, and this class has in-scope paths that are only mitigated
+  // (the hand-built shape question itself: a hand copy of a builder can still drift from what the
+  // lowering produces). The Swift SPELLING is the one path mechanically preventable today; that
+  // path-level fact lives in the receipts, which is also where the ceiling and trigger are named.
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "one claim whose Swift optional input is produced by the body lowering itself, so the fixture carries the shape the lowering actually produces rather than a hand-built one agreeing with the reader's assumption" } },
 
   receipts: [
     "a hand-built fixture shape hides the shape the lowering produces: a witness constructs the producer's output by hand in a shape the producer never emits, so the consumer is exercised only on the fixture and a defect on the real shape stays green. The invalid state is a consumer that answers one shape and is never run on the other.",

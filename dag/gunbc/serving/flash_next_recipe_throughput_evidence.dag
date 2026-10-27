@@ -1,0 +1,51 @@
+module gunbc.serving.flash_next_recipe_throughput_evidence
+
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+import std.measure { token_count_value, tokens_per_second_count, second_count, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, TokensPerSecond, tokens_per_second, ConcurrentRequestThousandths, concurrent_request_thousandths, concurrent_request_thousandths_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import product.fabric.serving_recipe { serving_recipe_flash_next_lab_vllm, ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
+import gunbc.serving.flash_next_maxq_run_receipt { FlashNextMaxQRunReceipt, flash_next_maxq_run_2026_10_21 }
+
+// WHAT THE MAX-Q RECEIPT SAYS ABOUT THE RECIPE'S THROUGHPUT SLOT. serving_recipe_flash_next_lab_vllm holds an uncited operator
+// reading (~900 tok/s at 16 concurrent, one RTX PRO 6000). The production receipt is a different operating point: its lifetime
+// generation rate and its mean decode concurrency are derived here, so the reading is superseded only by a measured row AT the
+// reading's concurrency, never by a rate taken at another one.
+// Review 84973: this printed a deci-tok/s figure on a bare Nat; the quantity is a rate, so
+// it rides std.measure's MilliTokensPerSecond (milli carries the printed tenth-tok/s
+// precision: 227.6 tok/s mints as 227600), and the name no longer claims a scale the type
+// does not carry.
+fn lifetime_generation_tokens_per_second(r: FlashNextMaxQRunReceipt) -> MilliTokensPerSecond {
+  milli_tokens_per_second(count: token_count_value(t: r.generation_tokens) * 1000 / second_count(s: r.uptime_seconds))
+}
+
+// Mean requests in decode: summed per-request decode seconds over wall-clock uptime (Little's
+// law), on std.measure's ConcurrentRequestThousandths beside ConcurrentRequestHundredths.
+fn mean_decode_concurrency(r: FlashNextMaxQRunReceipt) -> ConcurrentRequestThousandths {
+  concurrent_request_thousandths(count: second_count(s: r.decode_time_sum_seconds) * 1000 / second_count(s: r.uptime_seconds))
+}
+
+type RecipeThroughputVerdict
+  = ReceiptConcurrencyBelowReading { receipt_mean_decode_concurrency: ConcurrentRequestThousandths, reading_concurrency: Nat, receipt_tokens_per_second: MilliTokensPerSecond, reading_tokens_per_second: TokensPerSecond }
+  | ReceiptReachesReadingConcurrency { receipt_mean_decode_concurrency: ConcurrentRequestThousandths, reading_concurrency: Nat }
+  | RecipeReadsNoThroughput
+
+fn recipe_throughput_verdict(throughput: ServingThroughput, r: FlashNextMaxQRunReceipt) -> RecipeThroughputVerdict {
+  match throughput {
+    ThroughputUnread => RecipeReadsNoThroughput
+    ThroughputOperatorReading { tokens_per_second: t, at_concurrency: c, standing: _ } => {
+      let mean = concurrent_request_thousandths_count(c: mean_decode_concurrency(r: r))
+      if mean < c * 1000 {
+        ReceiptConcurrencyBelowReading { receipt_mean_decode_concurrency: mean_decode_concurrency(r: r), reading_concurrency: c, receipt_tokens_per_second: lifetime_generation_tokens_per_second(r: r), reading_tokens_per_second: tokens_per_second(count: tokens_per_second_count(r: t)) }
+      } else {
+        ReceiptReachesReadingConcurrency { receipt_mean_decode_concurrency: mean_decode_concurrency(r: r), reading_concurrency: c }
+      }
+    }
+  }
+}
+
+data flash_next_recipe_throughput_verdict: RecipeThroughputVerdict = recipe_throughput_verdict(throughput: serving_recipe_flash_next_lab_vllm.throughput, r: flash_next_maxq_run_2026_10_21)
+
+data flash_next_recipe_throughput_frontier: DissolutionCondition = unbound_dissolution(
+  description: "DESIGN section 3c: consumed by test.claim.flash_next_serving_witness. Frontier, trigger: a Max-Q row at the reading's concurrency (16) passes gpu_bench_warm_run_admission, after which product.fabric.serving_recipe ServingThroughput gains a measured arm citing that row and the operator reading is superseded in that module; adding the arm is a change to the shared recipe type and is not made here." as NonEmptyStr
+)

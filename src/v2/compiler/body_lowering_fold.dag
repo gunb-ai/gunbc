@@ -95,7 +95,7 @@ import v2.extdeps.languages.dag {
   dag_surface_edge_is
 }
 import v2.std.anonymous_binder { DeclaredParameterList, anonymous_binder_mint_parameter_list, fresh_fold_accumulator, fresh_return_type_variable, fresh_type_variable }
-import v2.std.node { positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
+import v2.std.node { node_same_occurrence, positional_child_target_nodes, content_hash, symbol_lexeme, NotADeclaration }
 
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
@@ -148,7 +148,7 @@ import v2.std.compilers.lowered_shape {
   LoweredTypeDeclaration
 }
 import v2.std.list_introduction { lower_list_introduction }
-import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
+import v2.std.arrow_signature { anonymous_signature_arrow, application_actual_edges, declared_signature, signature_order_edge }
 import v2.std.compilers.sugar { SugarSequencePair, sugar_sequence_pair_optional, sugar_named_child_optional, sugar_type_node }
 import v2.std.grammar { GrammarExpr, GrammarExprFold, fold_grammar_expr, grammar_infix_row_class, node_atom_identity_optional, parse_production_emitted_identity_optional }
 import v2.std.diagnostic {
@@ -2160,8 +2160,9 @@ fn body_lower_operator_operand(node: Node) -> Outcome<Node> {
 // ONE OPERATOR APPLIED TO THE ACCUMULATED LEFT OPERAND. `xs |> fold(init, step)` is a fold whose
 // receiver the pipe supplies: the fold template is receiver-first, so the pipe's left operand IS the
 // collection, and it lowers to the fold encoding with that operand as its domain
-// (v2.compiler.fold_lowering fold_call_lowering_piped). A pipe into anything else, and a fold whose
-// step this stage cannot read (a step by name), stays the ordinary infix Transform it always was.
+// (v2.compiler.fold_lowering fold_call_lowering_piped). Every other pipe is the application its
+// right operand names with the left operand as its FIRST actual (body_lower_pipe_application), and
+// every other operator stays the ordinary infix Transform.
 fn body_lower_binary_apply(acc: Node, operator: Node, right: Node) -> Outcome<Node> {
   match body_lower_piped_fold_optional(acc: acc, operator: operator, right: right) {
     Present { value: lowered } => lowered
@@ -2169,8 +2170,57 @@ fn body_lower_binary_apply(acc: Node, operator: Node, right: Node) -> Outcome<No
       match body_lower_operator_operand(node: right) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: operand, diagnostics: d } =>
-          outcome_with_diagnostics(value: lower_binary_infix(left: acc, operator: operator, right: operand), diagnostics: d)
+          if body_lower_operator_is_pipe(operator: operator) {
+            outcome_with_diagnostics(value: body_lower_pipe_application(receiver: acc, target: operand, source: body_lower_strip_empty_tails(node: right)), diagnostics: d)
+          } else {
+            outcome_with_diagnostics(value: lower_binary_infix(left: acc, operator: operator, right: operand), diagnostics: d)
+          }
       }
+  }
+}
+
+// A PIPE IS A CALL WITH ITS LEFT OPERAND AS THE FIRST ACTUAL, and it lowers to exactly the node the
+// call it abbreviates lowers to: `x |> f(a)` is `f(x, a)` and `x |> f` is `f(x)`, the same encoding
+// a receiver call `x.f(a)` already takes (body_lower_postfix_chain_fold_step's receiver arm). So the
+// head is an ordinary reference: resolve binds it by declaration identity through imports, and infer
+// and eval bind its actuals through v2.std.arrow_signature application_binding_plan, the one binding
+// authority every application uses. There is no pipe-specific route after this point.
+//
+// THE RECEIPT, measured on main before this change (v2.test.claim.pipe_application): resolve bound
+// `f` in `1 |> f(a: 2)` to the imported declaration, and infer refused the inner application with
+// application_positional_deficit -- the pipe was an opaque infix Transform, so its left operand never
+// reached the call it was written for. The piped fold above was the one head this lowering had
+// given the pipe's meaning; this is that meaning for every other head.
+//
+// AN OPERATOR OR CAST APPLICATION IS NOT A CALL, so `x |> (a + b)` is the application of the sum to
+// x, which infer refuses as a callee that is not callable, rather than a three-operand `+`.
+fn body_lower_pipe_application(receiver: Node, target: Node, source: Node) -> Node {
+  let piped = Edge { label: Positional, target: receiver, declaration: NotADeclaration }
+  match target.kind {
+    ComputationNode { behavior: Transform } =>
+      match list_at_optional(xs: target.children, index: 0) {
+        Present { value: callee } =>
+          if body_lower_transform_head_is_operator(head: callee.target) {
+            body_lower_primary_call_node(operator: target, args: [piped], source: source)
+          } else {
+            Node {
+              kind: target.kind,
+              children: list_append(left: [callee, piped], right: application_actual_edges(site: target)),
+              occurrence_id: target.occurrence_id
+            }
+          }
+        Absent => body_lower_primary_call_node(operator: target, args: [piped], source: source)
+      }
+    _ => body_lower_primary_call_node(operator: target, args: [piped], source: source)
+  }
+}
+
+// An operator Transform's head is the operator's token (lower_binary_infix, lower_unary_prefix) and a
+// cast's is the `as` keyword (body_lower_cast_node); a call's head is a reference.
+fn body_lower_transform_head_is_operator(head: Node) -> Bool {
+  match node_atom_identity_optional(node: head) {
+    Present { value: id } => dag_lex_token_symbol(sym: id) || dag_lex_keyword_symbol(sym: id)
+    Absent => false
   }
 }
 
@@ -2658,7 +2708,7 @@ fn body_lower_binder_name_behind_shell_optional(node: Node) -> Optional<Node> {
     Present { value: inner } => body_lower_param_binding_atom_optional(node: inner)
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_param_binding_atom_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -6925,7 +6975,8 @@ fn body_lower_postfix_chain_fold_step(
             value: PostfixAccumValue {
               node: body_lower_is_node(
                 operand: body_lower_postfix_accum_node(acc: state, source: source),
-                arm: arm
+                arm: arm,
+                source: source
               )
             },
             diagnostics: ad
@@ -7013,21 +7064,20 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumSpine { segments: segments } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
-                      // QUALIFIED CALL `m.f(args)` -- NOT YET ROUTED THROUGH body_lower_primary_call_node
-                      // (the one-defect generalization, stated here per DESIGN 6b rather than left implicit).
-                      // The operator here is body_lower_qualified_name_spine_node, which ALREADY stamps
-                      // source.occurrence_id on the spine root; giving the call root the same source would
-                      // place two nodes on one occurrence -- the collision body_lower_index_read_node records
-                      // for the index-read twin, which is why THAT site derives a distinct
-                      // OccurrencePending { caused_by } for its operator instead of reusing source. The same
-                      // caused_by geometry for this call root is the named follow-up PR (its trigger is this
-                      // one landing); it needs its own review because the spine shares the occurrence.
-                      node: body_lower_transform_call(
+                      // QUALIFIED CALL `m.f(args)` IS ROUTED THROUGH body_lower_primary_call_node, like
+                      // the bare call: the call root is the semantic form of the authored suffix, so it
+                      // takes the suffix's occurrence. The spine this site passes as its operator carries
+                      // the SAME source occurrence on its root until the helper's close_lowered_image
+                      // demotes it to OccurrencePending { caused_by } -- normalize's one allocation pass
+                      // turns it Projected -- so exactly one node carries the suffix's Minted id and no
+                      // two nodes ever share one occurrence.
+                      node: body_lower_primary_call_node(
                         operator: body_lower_qualified_name_spine_node(
                           segments: list_snoc_item(xs: segments, item: step_segment),
                           source: source
                         ),
-                        args: args
+                        args: args,
+                        source: source
                       )
                     },
                     diagnostics: diagnostics_merge(outer: ad, inner: cd)
@@ -7035,15 +7085,17 @@ fn body_lower_postfix_chain_fold_step(
                 PostfixAccumValue { node: receiver } =>
                   outcome_with_diagnostics(
                     value: PostfixAccumValue {
-                      // RECEIVER CALL `recv.f(args)` -- same deferral as the qualified site above, same
-                      // reason shape: the method-name segment and the receiver each stand for text inside
-                      // the same postfix source, so stamping the call root with source without first
-                      // deriving a distinct caused_by occurrence would stack nodes on one identity. The
-                      // caused_by generalization is that same named follow-up PR; until then a census fatal
-                      // anchored on these two call shapes stays FileRefusalAtUnresolvedNode.
-                      node: body_lower_transform_call(
+                      // RECEIVER CALL `recv.f(args)` IS ROUTED THROUGH body_lower_primary_call_node, like
+                      // the bare call: the call root is the semantic form of the authored suffix and takes
+                      // its occurrence. The receiver was itself lowered from this same source and the
+                      // method-name segment stands for text inside it; the helper's close_lowered_image
+                      // demotes every such same-source member beneath to OccurrencePending { caused_by }
+                      // (normalize's one allocation pass turns it Projected), so exactly one node carries
+                      // the suffix's Minted id and the deferral's stacked-identity collision cannot occur.
+                      node: body_lower_primary_call_node(
                         operator: step_segment,
-                        args: list_append(left: [Edge { label: Positional, target: receiver, declaration: NotADeclaration }], right: args)
+                        args: list_append(left: [Edge { label: Positional, target: receiver, declaration: NotADeclaration }], right: args),
+                        source: source
                       )
                     },
                     diagnostics: diagnostics_merge(outer: ad, inner: cd)
@@ -7257,27 +7309,45 @@ fn body_lower_index_read_node(base: Node, index: Node, source: Node) -> Node {
 // seed parser builds for the same source (src/v1/02_parse.dag parse_is_arm_test), so there is one lowering
 // of one concept in two pipelines. V is the arm's SOURCE SPELLING, so the variant pattern IS the authored
 // atom at its own occurrence: infer's Match path reads x's roster and a misspelt or foreign V refuses
-// (infer_match_pattern_variant_not_declared) located at V, inside the `is` expression. The synthesized
-// `true`, `false` and `_` are synthetic nodes, each its own occurrence: sharing V's occurrence id would put four nodes on one identity.
-// NOT YET ROUTED THROUGH node_lowered_from + close_lowered_image like the primary call and the cast
-// (the one-defect generalization, stated here per DESIGN 6b): at those two sites the authored suffix
-// is a node DISTINCT from the members it lowers, but here the suffix's source can BE V's own authored
-// token -- stamping the Match root with it would put root and pattern on one occurrence, the collision
-// this comment already refuses for the synthesized arms. The right shape is the caused_by geometry
-// body_lower_index_read_node derives for its operator (root OccurrencePending { caused_by } keeping V
-// the only Minted), and the walker's behavior over the still-authored V pattern is the named follow-up
-// PR's review item, together with the two postfix call sites in body_lower_postfix_chain_fold_step.
-fn body_lower_is_node(operand: Node, arm: Node) -> Node {
-  lower_match(
-    scrutinee: operand,
-    arms: [
-      body_lower_match_arm_wire(pat_node: arm, body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } }, children: [])),
-      body_lower_match_arm_wire(
-        pat_node: node_synthetic(kind: TypeNode { connective: Atom { identity: wildcard_pattern_identity() } }, children: []),
-        body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_false } }, children: [])
-      )
-    ]
-  )
+// (infer_match_pattern_variant_not_declared) located at the arm that carries the use, inside the `is`
+// expression. The synthesized `true`, `false` and `_` are synthetic nodes, each its own occurrence:
+// sharing V's occurrence id would put four nodes on one identity.
+// THE DEFERRAL THIS SITE CARRIED (#14891) ASKED, AND THIS BLOCK RECORDS THE ANSWER: it feared that
+// "the suffix's source can BE V's own authored token" -- stamping the Match root with it would put root
+// and pattern on one occurrence, so it prescribed root-Pending/V-Minted and named the walker's behavior
+// over the still-authored V pattern the follow-up's review item. The route was first taken on the
+// traced argument below (review 85455 correctly held that an argument is not an executed fact and that
+// the site's collision pin could not see this question at all); the two claims named at the end make
+// it one. At this site `source` is the whole postfix-chain node -- the parser mints
+// an identity for EVERY production (mint_parsed_node_identity, src/v1/02_parse.dag), so the chain node,
+// the `is` keyword pair, the operand and V each hold a DISTINCT Minted id; V reaches the builder as the
+// arm, lowered from the parsed V node's own mint by body_lower_param_binding_atom_optional. They cannot
+// alias, and close_lowered_image's walk proves what that means for the walker: it stops at a node
+// carrying ANOTHER source's occurrence, so V (and any subtree under it) is left exactly as authored --
+// V keeps its own OccurrenceMinted; only the operand, lowered from this same source, is demoted to
+// OccurrencePending { caused_by }. The two facts are pinned mechanically, not by this prose:
+// v2.test.claim.body_lowering_call_node_occurrence lowers_is_node_keeps_the_pattern_v_authored
+// (V's atom is Minted and its id differs from the Match root's -- red under the geometry the deferral
+// feared, which stamps the root with V's own occurrence and demotes V) and
+// lowers_is_node_refusal_stays_located_at_the_use (a foreign V refuses with
+// infer_match_pattern_variant_not_declared through the real assemble+infer route).
+fn body_lower_is_node(operand: Node, arm: Node, source: Node) -> Node {
+  // `x is Pattern` IS AN AUTHORED CONSTRUCT, so its Match stands for that text and takes the
+  // suffix's occurrence the way the primary call and the cast do. The arms' true/false/wildcard
+  // atoms are spelled text of THIS construct rather than authored identity, so they stay synthetic
+  // (the ruling body_lower_cast_node records for `as`); the operand was lowered from this same
+  // source and close_lowered_image demotes it to OccurrencePending { caused_by }, leaving exactly
+  // one node -- this Match -- carrying the suffix's Minted id. lower_match stays the one authority
+  // for the Match's shape; only its root's identity is taken from the source here, which is what
+  // node_lowered_from means.
+  let built = lower_match(scrutinee: operand, arms: [
+    body_lower_match_arm_wire(pat_node: arm, body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } }, children: [])),
+    body_lower_match_arm_wire(
+      pat_node: node_synthetic(kind: TypeNode { connective: Atom { identity: wildcard_pattern_identity() } }, children: []),
+      body: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_kw_false } }, children: [])
+    )
+  ])
+  close_lowered_image(root: node_lowered_from(kind: built.kind, children: built.children, source: source))
 }
 
 fn body_lower_cast_node(operand: Node, target_type: Node, source: Node) -> Node {
@@ -7440,11 +7510,7 @@ fn body_lower_postfix_repeat_head_optional(repeat_capture: Node) -> Optional<Nod
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-      Rejected { diagnostics: _ } =>
-        match find_named_child(root: repeat_capture, name: ^grammar_repeat_element_node_projection) {
-          Accepted { value: elem, diagnostics: _ } => optional_present(value: elem)
-          Rejected { diagnostics: _ } => optional_absent()
-        }
+      Rejected { diagnostics: _ } => optional_absent()
     }
   }
 }
@@ -8916,7 +8982,7 @@ fn body_lower_whole_match_shell_optional(node: Node) -> Optional<Node> {
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_whole_match_shell_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -9604,22 +9670,14 @@ fn body_lower_match_arms_wired(items: List<Node>) -> Outcome<List<Node>> {
 fn body_lower_match_spine_left(spine: Node) -> Optional<Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: left, diagnostics: _ } => Present { value: left }
-    Rejected { diagnostics: _ } =>
-      match sugar_sequence_pair_optional(node: spine) {
-        Present { value: pair } => Present { value: pair.left }
-        Absent => Absent
-      }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
 fn body_lower_match_spine_right(spine: Node) -> Optional<Node> {
   match find_named_child(root: spine, name: ^grammar_sequence_right_node_projection) {
     Accepted { value: right, diagnostics: _ } => Present { value: right }
-    Rejected { diagnostics: _ } =>
-      match sugar_sequence_pair_optional(node: spine) {
-        Present { value: pair } => Present { value: pair.right }
-        Absent => Absent
-      }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
@@ -9888,7 +9946,7 @@ fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
               Accepted { value: RawParse { node: _ }, diagnostics: _ } => false
               Accepted { value: RawLeaf { node: _ }, diagnostics: _ } => false
               Rejected { diagnostics: _ } => false
-            }) || dispatched != reduced
+            }) || !node_same_occurrence(a: dispatched, b: reduced)
         }
     }
   }
@@ -12733,7 +12791,7 @@ fn body_lower_statement_sole_if_optional(node: Node) -> Optional<Node> {
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_statement_sole_if_optional(node: peeled)
       } else {
         match sugar_sequence_pair_optional(node: node) {
@@ -12883,7 +12941,7 @@ fn body_lower_exit_walk(node: Node, tail: Bool, arm_tail: Bool) -> Optional<Outc
       }
     Absent =>
       let peeled = body_lower_deep_unwrap_optional(node: node)
-      if peeled != node {
+      if !node_same_occurrence(a: peeled, b: node) {
         body_lower_exit_walk(node: peeled, tail: tail, arm_tail: arm_tail)
       } else {
         match sugar_sequence_pair_optional(node: node) {

@@ -80,9 +80,16 @@ import gunbc.fleet.fleet_posix_accounts { fleet_posix_operator_user }
 // inherit a literal; preserving it is deliberate -- tightening a live directory is a host-behaviour
 // change this arm refuses to hide inside a migration. It dissolves with the other two arms, directory
 // by directory, as each one's dependents are declared.
+//
+// THE SETGID TRAVERSE ARM (2750) is the directory a group may enter but not write, whose children must
+// still land in that group. An explicit 0750 strips the setgid bit a parent handed down, so a child made
+// inside it takes its creator's primary group instead of the shared one; a dispatch attempt directory
+// that a dedicated worker account only traverses, holding the worker's group-writable scratch child, is
+// the first such directory (gunbc.roadmap.roadmap_dispatch_actuator attempt_state_prepare_argvs_for_instance).
 type DeclaredDirectoryMode
   = DirectoryOwnerOnly
   | DirectoryOwnerAllGroupTraverse
+  | DirectoryOwnerAllGroupTraverseSetgid
   | DirectoryOwnerAllEveryoneTraverse
   | DirectoryOwnerGroupWritableSetgid
   | DirectoryOwnerGroupWritableSetgidSticky
@@ -103,6 +110,14 @@ fn declared_directory_mode(m: DeclaredDirectoryMode) -> FileMode {
       other: PermissionBits { read: false, write: false, execute: false },
       setuid: false,
       setgid: false,
+      sticky: false,
+    }
+    DirectoryOwnerAllGroupTraverseSetgid => FileMode {
+      owner: PermissionBits { read: true, write: true, execute: true },
+      group: PermissionBits { read: true, write: false, execute: true },
+      other: PermissionBits { read: false, write: false, execute: false },
+      setuid: false,
+      setgid: true,
       sticky: false,
     }
     DirectoryOwnerAllEveryoneTraverse => FileMode {
