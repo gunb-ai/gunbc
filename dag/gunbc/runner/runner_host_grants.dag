@@ -14,7 +14,7 @@ import gunbc.fleet.fleet_bootstrap_principal { ExecutorBootstrapPrincipal, execu
 import std.types { String, NonEmptyStr, List, FilePath, list_length }
 import gunbc.live_deploy.desired { ProdRoleDeployment, prod_role_desired_deployment, ProdRoleDeploymentSelected, ProdRoleDeploymentRefused, ProdRoleDeploymentRosterRefused, ProdRoleDeploymentHolderRowMismatch, selected_deployment_spec }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_directory_demands }
-import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors, owned_directory_owner, owned_directory_mode, OwnedDirectoryModeResolved, OwnedDirectoryModeRefused }
+import gunbc.owned_directory { owned_directory_path, owned_directory_listed_ancestors }
 import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_state_group }
 import gunbc.fleet.printer_federation { printer_lan_host_identity }
 import extdeps.virtualization.firecracker { kvm_device_group }
@@ -32,6 +32,7 @@ import gunbc.executor_privileged_operation {
   SystemdSetUnitProperty,
   executor_managed_directory_mode,
   executor_privileged_operations_sudoers_body,
+  executor_privileged_owned_directory_plan_rows,
   runner_slot_privileged_operations,
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
@@ -365,10 +366,7 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
 fn install_media_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
   if (spec.host_label as String) == (operator_host_srv1 as String) && srv3_os_install_actuator_host_is_derived_srv1() {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    flat_map([install_media_store_directory(tree: host_state_tree(), owner: owner)], t => match owned_directory_mode(t: t) {
-      OwnedDirectoryModeRefused { reason: _ } => []
-      OwnedDirectoryModeResolved { mode: m } => [EnsureOwnedDirectory { path: owned_directory_path(t: t) as String as NonEmptyStr, owner: owned_directory_owner(t: t).user, group: owned_directory_owner(t: t).group, mode: m }]
-    })
+    flat_map([install_media_store_directory(tree: host_state_tree(), owner: owner)], t => executor_privileged_owned_directory_plan_rows(t: t))
   } else {
     []
   }
@@ -397,10 +395,7 @@ fn install_media_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivileg
 fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
   if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    flat_map([host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)], t => match owned_directory_mode(t: t) {
-      OwnedDirectoryModeRefused { reason: _ } => []
-      OwnedDirectoryModeResolved { mode: m } => [EnsureOwnedDirectory { path: owned_directory_path(t: t) as String as NonEmptyStr, owner: owned_directory_owner(t: t).user, group: owned_directory_owner(t: t).group, mode: m }]
-    })
+    flat_map([host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)], t => executor_privileged_owned_directory_plan_rows(t: t))
   } else {
     []
   }
@@ -682,10 +677,7 @@ fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<Executo
     let targets = printer_state_directories()
     let paths = map(targets, t => owned_directory_path(t: t) as String)
     let listed = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
-    flat_map(targets, t => match owned_directory_mode(t: t) {
-      OwnedDirectoryModeRefused { reason: _ } => []
-      OwnedDirectoryModeResolved { mode: m } => [EnsureOwnedDirectory { path: owned_directory_path(t: t) as String as NonEmptyStr, owner: owned_directory_owner(t: t).user, group: owned_directory_owner(t: t).group, mode: m }]
-    })
+    flat_map(targets, t => executor_privileged_owned_directory_plan_rows(t: t))
       + map(paths, p => ReadDirectoryIdentity { path: p as NonEmptyStr })
       + map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr })
       + [EnsureSupplementaryGroupMembership { login: deploy.job_user, group: printer_state_group() }]

@@ -10,6 +10,7 @@ import gunbc.executor_privileged_operation {
   RunsAsAccount,
   executor_privileged_operation_argv,
   executor_privileged_operation_principal,
+  executor_privileged_operation_is_plan_comment,
   executor_privileged_operation_sudoers_command,
   executor_privileged_operation_sudoers_line,
 }
@@ -130,15 +131,22 @@ fn host_grant_query_key(query: SudoDecisionQuery) -> String {
 
 // THE OPERATIONS THE APPLY RUNS UNDER SUDO AND THEIR PRINCIPALS: the host-wide grants run inside the
 // flock as the lease owner (a host with no runner spec declares none), the caller's own invoker-run
-// operations (the generation-store ensure) as the invoker.
+// operations (the generation-store ensure) as the invoker. PLAN-TEXT ROWS ARE EXCLUDED AT THIS SOURCE:
+// a refusal row authorizes nothing and has no argv, so querying sudo about it would ask a meaningless
+// question and -- worse -- report the mode the executor refused as a MISSING GRANT, inventing a
+// remediation (grant the directory) that the mode decision explicitly withholds.
 fn host_granted_operations(host: NonEmptyStr, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<GrantedOperation> {
+  let real_ops = filter(invoker_ops, op => !executor_privileged_operation_is_plan_comment(op: op))
   concat(
     match runner_host_spec_for(host: host as HostIdentity) {
       RunnerHostSpecAbsent { host: _ } => []
       RunnerHostSpecFound { spec: spec } =>
-        map(runner_host_wide_refused_operations(spec: spec), op => GrantedOperation { op: op, principal: GrantRunByLeaseOwner { owner: lease_owner } })
+        filter(
+          map(runner_host_wide_refused_operations(spec: spec), op => GrantedOperation { op: op, principal: GrantRunByLeaseOwner { owner: lease_owner } }),
+          g => !executor_privileged_operation_is_plan_comment(op: g.op),
+        )
     },
-    map(invoker_ops, op => GrantedOperation { op: op, principal: GrantRunByInvoker }),
+    map(real_ops, op => GrantedOperation { op: op, principal: GrantRunByInvoker }),
   )
 }
 
