@@ -8,7 +8,7 @@ on:
       label:
         description: The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref.
         required: true
-        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:self-host-frontier, //gunbc/instruments:decl-ref-census, //gunbc/instruments:effect-pair-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:known-red-derivation, //gunbc/instruments:roster-reach-inhabitance, //gunbc/instruments:router-proxy-falsifier, //gunbc/instruments:serving-benchmark-run, //gunbc/instruments:ambient-name-census, //gunbc/instruments:roster-import-sweep-controls, //gunbc/instruments:credential-acquisition-systemd-rows]
+        options: [//gunbc/instruments:dag-emit-real-grammar-round-trips, //gunbc/instruments:self-host-behavioral-equivalence, //gunbc/instruments:dependency-demand-census, //gunbc/instruments:self-host-frontier, //gunbc/instruments:decl-ref-census, //gunbc/instruments:effect-pair-census, //gunbc/instruments:v2-native-census, //gunbc/instruments:type-declaration-use-census, //gunbc/instruments:regen-round-cost, //gunbc/instruments:compute-run-unit-cold, //gunbc/instruments:compute-run-unit-sccache-probe, //gunbc/instruments:compute-run-unit-cold-same-path, //gunbc/instruments:compute-wrong-capture, //gunbc/instruments:compute-dependency-wrong-capture, //gunbc/instruments:known-red-derivation, //gunbc/instruments:roster-reach-inhabitance, //gunbc/instruments:ambient-name-census, //gunbc/instruments:roster-import-sweep-controls, //gunbc/instruments:credential-acquisition-systemd-rows, //gunbc/instruments:router-proxy-falsifier]
         type: choice
 permissions:
   contents: read
@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   instrument:
-    runs-on: ${{ inputs.label == '//gunbc/instruments:serving-benchmark-run' && fromJSON('["self-hosted", "linux", "arm64", "gunbc-gpu-docker", "srv3"]') || fromJSON('["self-hosted", "linux", "arm64"]') }}
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 360
     permissions:
       contents: read
@@ -308,16 +308,22 @@ jobs:
         run: |
           if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
         if: "!cancelled()"
-      - name: Run the dispatched instrument
+      - name: 'Run the instrument: dispatch regen proof (measurement only - NEVER lands)'
         id: instrument
         run: |
           set -e
-          status='0'
-          'set' '-o' 'pipefail'
-          ('target/release/gunbc' 'test' "$INSTRUMENT_LABEL" > "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt') 2>&1 | 'tee' "$RUNNER_TEMP"'/instrument-dispatch/stderr.txt' >&2 || status="$?"
-          'cat' "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt'
-          'echo' 'exit='"$status" > "$RUNNER_TEMP"'/instrument-dispatch/exit.txt'
-          '[' "$status" '=' '0' ']'
+          mkdir -p "$RUNNER_TEMP/instrument-dispatch"
+          COMMITTED=$(sha256sum .github/workflows/instrument-dispatch.yml | cut -d' ' -f1)
+          rm -f .github/workflows/instrument-dispatch.yml
+          ./target/release/gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet_one --arg path=.github/workflows/instrument-dispatch.yml > "$RUNNER_TEMP/instrument-dispatch/regen-stdout.txt" 2>&1
+          GENERATED=$(sha256sum .github/workflows/instrument-dispatch.yml | cut -d' ' -f1)
+          LEAK=$(grep -c '^ *// ' .github/workflows/instrument-dispatch.yml || true)
+          OLDG=$(grep -c 'instrument-dispatch-queued' .github/workflows/instrument-dispatch.yml || true)
+          BASEREF=$(grep -o "BASE_REF = '[^']*'" .github/workflows/instrument-dispatch.yml | head -1)
+          { echo "COMMITTED=$COMMITTED"; echo "GENERATED=$GENERATED"; echo "LEAK=$LEAK"; echo "OLDG=$OLDG"; echo "$BASEREF"; } > "$RUNNER_TEMP/instrument-dispatch/regen-report.txt"
+          mkdir -p "$RUNNER_TEMP/instrument-dispatch/yml"
+          cp .github/workflows/instrument-dispatch.yml "$RUNNER_TEMP/instrument-dispatch/yml/instrument-dispatch.yml"
+          echo exit=0 > "$RUNNER_TEMP/instrument-dispatch/exit.txt"
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
