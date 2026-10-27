@@ -1,0 +1,13 @@
+HTTP/1.1 401 Unauthorized
+Cache-Control: no-store, no-cache, must-revalidate, private
+Pragma: no-cache
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Content-Security-Policy: default-src 'self';object-src 'none';connect-src 'self' ws: wss:;style-src 'self';script-src 'self'; img-src 'self' blob:;frame-ancestors 'self';font-src 'self'
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+Set-Cookie: QSESSIONID=[REDACTED-SESSION-VALUE]; path=/; secure;HttpOnly
+Content-Type: application/json
+Transfer-Encoding: chunked
+Date: Tue, 27 Oct 2026 04:00:11 GMT
+Server: lighttpd
+
