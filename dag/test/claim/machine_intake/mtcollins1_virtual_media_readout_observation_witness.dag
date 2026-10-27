@@ -49,6 +49,9 @@ import gunbc.machine_intake.mtcollins1_virtual_media_readout_observation {
   b0_route_cause,
   route_is_unsettled,
   ladder_status,
+  ladder_answered,
+  ladder_answered_with,
+  ladder_answered_not,
   ladder_is_get_only,
 }
 
@@ -186,21 +189,21 @@ test fn b0_refusal_carries_the_offered_schemes() -> Bool {
 // The test breaks if the ladder is edited to match a story instead of the reverse.
 test fn b0_service_root_served_and_collections_refused() -> Bool {
   mtcollins1_b0_virtual_media_readout.redfish_service_root_served
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/") == 200
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia") == 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self") == 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems/1/VirtualMedia") == 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems") == 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general") == 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/") == 200
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems/1/VirtualMedia", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/", status: 200)
 }
 
 // THE OEM SPLIT SURVIVES THE FIRMWARE CHANGE: /api/session still 404s while its media-settings
 // sibling 401s, so the OEM surface is present but not authenticated-to -- the same split the 0.32
 // access observation recorded, which is what lets the two readings be compared at all.
 test fn b0_oem_surface_is_present_but_unauthenticated() -> Bool {
-  ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/api/session") == 404
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general") == 401
+  ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/session", status: 404)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general", status: 401)
 }
 
 // EVERY ROW WAS A GET, AND THE LADDER IS COMPLETE. A read-only receipt whose record type could hold
@@ -350,11 +353,11 @@ test fn b0_ladder_attributes_each_row_to_the_server_that_answered() -> Bool {
 // than one with no rows: it invites a reader to trust the module and distrust the artifact. The
 // capture said 200/200/200 in both passes, and the paths were re-probed nine times to settle it.
 test fn b0_every_root_form_serves_200() -> Bool {
-  ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish") == 200
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1") == 200
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/") == 200
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish") != 401
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1") != 401
+  ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/", status: 200)
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish", status: 401)
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1", status: 401)
 }
 
 // THE UNREAD FINDING IS ABOUT THE BODIES, NOT THE COLLECTION EXISTING. A 401 on the collection
@@ -364,5 +367,40 @@ test fn b0_refusal_is_about_bodies_not_the_collection_being_absent() -> Bool {
   // 401 (access) and 404 (absence) stay distinct across the whole ladder: nothing here reads as a
   // missing resource on the Redfish side, so the VirtualMedia collection is never reported as gone.
   b0_ladder.all(r => r.served_by == "lighttpd" || r.status == 200 || r.status == 401)
-    && ladder_status(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia") != 404
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia", status: 404)
+}
+
+// AN ABSENT ROW IS NOT AN ANSWER. This is the test that the previous shape of ladder_status could
+// not pass: it returned Int with Absent => -1, so a witness written with != went GREEN when the
+// row was deleted -- an absent read standing in for an answer, which is what this module exists to
+// make unwritable. Here the VirtualMedia row is deleted from a copy of the ladder and all three
+// doors are asked about it. Each must say no. If ladder_status ever grows a sentinel default
+// again, this test fails.
+test fn b0_deleting_a_ladder_row_fails_every_door_rather_than_passing_one() -> Bool {
+  let path: NonEmptyStr = "/redfish/v1/Managers/Self/VirtualMedia"
+  let thinned = with_readout(readout: mtcollins1_b0_virtual_media_readout.transfer_protocol_readout)
+  let without = B0VirtualMediaReadout {
+    endpoint: thinned.endpoint,
+    firmware: thinned.firmware,
+    identity: thinned.identity,
+    ladder: thinned.ladder.filter(r => r.path != path),
+    transfer_protocol_readout: thinned.transfer_protocol_readout,
+    candidate_locators: thinned.candidate_locators,
+    redfish_service_root_served: thinned.redfish_service_root_served,
+    offered_auth_schemes: thinned.offered_auth_schemes,
+    credential_path_available: thinned.credential_path_available,
+    credential_principal: thinned.credential_principal,
+    firmware_converge_live_at_observation: thinned.firmware_converge_live_at_observation,
+    observed_at: thinned.observed_at,
+    discovered_surfaces: thinned.discovered_surfaces,
+    raw_capture_digest: thinned.raw_capture_digest,
+    authenticated_refusal_captures: thinned.authenticated_refusal_captures,
+  }
+  // The row really is gone from the copy, or the test below proves nothing.
+  ladder_answered(readout: mtcollins1_b0_virtual_media_readout, path: path)
+    && list_length(items: without.ladder) == list_length(items: mtcollins1_b0_ladder) - 1
+    // ...and none of the three doors accepts the absence.
+    && !ladder_answered(readout: without, path: path)
+    && !ladder_answered_with(readout: without, path: path, status: 401)
+    && !ladder_answered_not(readout: without, path: path, status: 404)
 }

@@ -161,7 +161,7 @@ module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
 // capture rather than paraphrased from memory.
 
 import std.types { Bool, Int, NonEmptyStr, List, EpochMs, list_length }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_present, optional_absent }
 import std.list { list_member, first_where }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
@@ -384,10 +384,41 @@ fn protocol_in(xs: List<RedfishVirtualMediaTransferProtocol>, x: RedfishVirtualM
 // THE SELECTOR'S RULES AS PREDICATES, because this substrate has no list filter: the ladder is
 // asked questions through folds, and the witness uses the same doors rather than re-implementing
 // them, so a wrong door fails both sides at once.
-fn ladder_status(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Int {
+//
+// ladder_status returns Int?, NOT Int. An absent row must not come back as a number: -1 (or 0, or
+// any other sentinel) is indistinguishable from a real status at the call site, so a witness
+// written with != would go GREEN when the row was deleted -- an absent read standing in for an
+// answer, which is the exact failure this module exists to make unwritable. The caller has to
+// match on Present, and a missing probe then fails the match rather than passing the comparison.
+fn ladder_status(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Int? {
   match first_where(readout.ladder, r => r.path == path) {
-    Present { value: row } => row.status
-    Absent => -1
+    Present { value: row } => optional_present(value: row.status)
+    Absent => optional_absent()
+  }
+}
+
+// THE ONLY LEGITIMATE WAY TO ASK "WHAT DID THIS PATH ANSWER": a Present match, so the question
+// cannot be answered about a path that was never probed.
+fn ladder_answered(readout: B0VirtualMediaReadout, path: NonEmptyStr) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn ladder_answered_with(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: seen } => seen == status
+    Absent => false
+  }
+}
+
+// "NOT THIS STATUS, AND ONLY IF IT WAS PROBED AT ALL" -- the form the != assertions in the witness
+// need, so that deleting a row fails the test instead of satisfying it.
+fn ladder_answered_not(readout: B0VirtualMediaReadout, path: NonEmptyStr, status: Int) -> Bool {
+  match ladder_status(readout: readout, path: path) {
+    Present { value: seen } => seen != status
+    Absent => false
   }
 }
 
@@ -448,8 +479,31 @@ fn b0_media_route_admission(readout: B0VirtualMediaReadout) -> BmcMediaRouteAdmi
   }
 }
 
-// B0'S RESULT, FOR CONSUMERS THAT SHOULD NOT RE-DERIVE IT. This is the datum the plan's B0 step
-// exists to produce, and it says NEITHER ROUTE.
+// B0'S RESULT, AS A VALUE. It says NEITHER ROUTE.
+//
+// CONSUMER CLASSIFICATION (DESIGN §3c), STATED HONESTLY BECAUSE THE HONEST ANSWER IS "NOT YET
+// WIRED". The consumers of this datum today are: (a) this module's witness, which pins the
+// selector's arms; and (b) the plan gunbc.plans.boot_origin_bmc_media, whose survey and B0 phase
+// text now carry this reading's outcome and whose retirement condition already gates on "mtcollins1
+// has booted that ISO through the media route its B0 observation selected". There is NO executing
+// route that reads this datum as a value: no boot-lane code branches on it, and no B3 gate consumes
+// it. That is a real gap, not a completed gate, and it must not be described as one.
+//
+// WHY IT IS NOT WIRED INTO THE BOOT LANE IN THIS PR, and what wiring it would need. The boot lane
+// selects media by a different mechanism -- the fleet-converge workflow's boot step and the OEM
+// remote-media configuration -- and B0's answer is NEITHER, which means there is no route to wire:
+// a branch on DirectRedfishHttps or NfsRelayThroughHolder has no arm to take until the
+// TransferProtocolType read actually lands. Wiring a gate that can only ever pass through its
+// "unsettled" arm would be a scaffold, not a gate. The gate that DOES bite is the plan's retirement
+// condition, which cannot be satisfied by any route other than the one this datum selects, and
+// which this datum currently blocks.
+//
+// WHAT WOULD MAKE IT A VALUE-LEVEL CONSUMER: when the authenticated read lands (the credential lane
+// is separate and open), the datum should be read by the boot step's media-route selection in
+// gunbc.fleet.fleet_converge_workflow, which is where a boot's media attach is chosen. That is the
+// named consumer and the executing route; it is deliberately not attempted here, because changing
+// boot-attach selection on the strength of a NEITHER reading would be an unearned change to a live
+// boot lane.
 data mtcollins1_b0_media_route: BmcMediaRouteAdmission =
   b0_media_route_admission(readout: mtcollins1_b0_virtual_media_readout)
 
