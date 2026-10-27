@@ -1641,12 +1641,31 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
   Cons { head: xs.head, tail: xs.tail }
 }
 
+// ALL BUT THE LAST, IN ORDER. The recursion this replaced (Cons { head: h, tail: list_init(t) }) made the
+// CALL DEPTH the list's length: under the seed interpreter every caller inherited an overflow at ~10^5
+// members (measured: rc=134 through v2.extdeps.languages.dag's string-literal framing on main a430c878e5cf).
+// DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
+// read one step ago is only committed to the kept list when its successor arrives — so the last element is
+// what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
+// intercept, and the emitter lowers it to a cursor loop). list_push appends in place, so the pass is
+// linear; a Cons-prepend fold would have rebuilt the accumulator per step.
+type ListInitLag<T> {
+  kept: FreeMonoid<T>
+  pending: Optional<T>
+}
+
 fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
-  match xs {
-    Empty => Empty
-    Cons { head: _, tail: Empty } => Empty
-    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
-  }
+  fold_list(
+    xs: xs,
+    empty: ListInitLag { kept: Empty, pending: Absent },
+    cons: fn(acc: ListInitLag<T>, item: T) {
+      match acc.pending {
+        Absent => ListInitLag { kept: acc.kept, pending: Present { value: item } }
+        Present { value: p } =>
+          ListInitLag { kept: list_push(xs: acc.kept, item: p), pending: Present { value: item } }
+      }
+    }
+  ).kept
 }
 
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {

@@ -200,7 +200,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetRecordConstructShape
 }
 import v2.std.logic { bool_node }
-import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_init, list_map, skip, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, list_append, list_snoc_item, fold_list, for_all, is_empty, length, list_map, PointwisePower, empty_map, list_at_optional, map_insert, map_lookup, collection_concat_shape, collection_count_shape, list_reverse }
 import v2.std.diagnostic {
   Accepted,
   CorrectionNotModeled,
@@ -5549,32 +5549,26 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the open
+// The lexeme's body TEXT, sliced; a lexeme is framed when its first and last scalars are the open
 // and close and there are at least two of them (quotes for a literal; quote/`{` and `}`/quote for
-// a template part).
-fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
-  let cs = unicode_scalar_unfold(s: lexeme)
-  let n = length(xs: cs)
+// a template part). THE BODY IS READ BY SLICE, NOT REBUILT (DESIGN 6: a fixed cost, regardless of
+// n): the earlier shape unfolded the lexeme to scalars and rebuilt the body one Cons at a time
+// (skip + list_init), so every caller of the lexer paid the fold's depth on the literal's length —
+// a 10^5-scalar literal overflowed the seed interpreter. string_length counts scalars, char_at and
+// substring index scalars on the non-ASCII path (v1_rt.rs), so the three reads agree on the scalar
+// measure the framing judgment is stated in, and the O(1) slice replaces the O(n) rebuild.
+fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<String> {
+  let n = string_length(s: lexeme)
   if n < 2 {
     optional_absent()
+  } else if (code_point(c: char_at(s: lexeme, pos: 0)) == open) && (code_point(c: char_at(s: lexeme, pos: n - 1)) == close) {
+    optional_present(value: substring(s: lexeme, start: 1, end: n - 1))
   } else {
-    match list_at_optional(xs: cs, index: 0) {
-      Present { value: first } =>
-        match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: last } =>
-            if (first == open) && (last == close) {
-              optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
-            } else {
-              optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      Absent => optional_absent()
-    }
+    optional_absent()
   }
 }
 
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<String> {
   dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
 }
 
@@ -5613,12 +5607,12 @@ fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrence
   dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
 }
 
-fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
+fn dag_string_text_decoded(token_class: Symbol, body: Optional<String>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
   match body {
     Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
-    Present { value: scalars } =>
-      match fold(scalars, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
+    Present { value: text } =>
+      match fold(unicode_scalar_unfold(s: text), init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
         DagStringDecodeEscape { text: _ } => escape_refusal
         DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal

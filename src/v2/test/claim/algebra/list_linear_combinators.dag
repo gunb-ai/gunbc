@@ -65,3 +65,13 @@ test fn reverse_reverses() -> Bool {
   list_eq(xs: list_reverse(xs: sample()), ys: [3, 2, 1])
     && list_eq(xs: list_reverse(xs: Empty), ys: Empty)
 }
+
+// list_init is the drop-the-last combinator, claimed on the sample the v1 fixture and the
+// emitter witness both read: [1,2,3] loses its last member, and the two boundary shapes --
+// empty and singleton -- are the arms a rewrite must keep (a fold that forgets the pending
+// member, or commits it, fails one of these).
+test fn init_drops_the_last_member_in_order() -> Bool {
+  list_eq(xs: list_init(xs: sample()), ys: [1, 2])
+    && list_eq(xs: list_init(xs: Empty), ys: Empty)
+    && list_eq(xs: list_init(xs: Cons { head: 7, tail: Empty }), ys: Empty)
+}
