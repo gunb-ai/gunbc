@@ -10,10 +10,11 @@ import v2.std.decl_ref_resolution_host { cited_declaration_ref_refusal_count }
 import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
-  ruling_standing_agrees_with_citation,
+  design_ruling_declaration_refs,
+  ruling_cited_by_design_document,
 }
 import gunbc.design_document { expected_design_md }
-import gunbc.design_ruling { DesignRuling, design_rulings, CitedInDesign, LedgerOnly }
+import gunbc.design_ruling { DesignRuling, design_rulings, ruling_ledger_notes }
 
 // THE PERTURBATIONS ARE THE POINT, AND EACH RUNS AGAINST THE SAME RESOLVER PRODUCTION USES.
 // cited_declaration_ref_refusal_count is v2.std.decl_ref_resolution's own counter -- the one the
@@ -79,7 +80,7 @@ fn intact_facts() -> List<DeclFact> {
 
 fn refusals_against(facts: List<DeclFact>) -> Int {
   cited_declaration_ref_refusal_count(
-    refs: generated_document_declaration_refs(),
+    refs: generated_document_declaration_refs(document: expected_design_md()),
     facts: facts,
     modules: fixture_modules(),
   )
@@ -133,44 +134,62 @@ test fn documentary_refs_ambiguous_system_refuses() -> Bool {
 // THE BYTES COME FROM THE ROWS, WHICH IS WHAT MAKES THE ROWS LOAD-BEARING RATHER THAN DECORATIVE. A
 // typed reference sitting beside a paragraph that independently spells the same name is two
 // representations of one fact -- the rename would move the row and leave the sentence, and the
-// enrolled population would resolve while the document lied. This claim asserts the rendered symbol
-// text of EVERY row appears in the generated document, so the row and the printed name cannot
-// diverge, and a row no paragraph renders is a red rather than an orphan.
+// enrolled population would resolve while the document lied. Cited-ness is derived from the rendered
+// document, so the two fixed system rows are the only references the population carries that the
+// document could quietly drop; this claim is what holds them, and the derived ruling half is held by
+// the claims below.
 
 test fn documentary_refs_generated_document_renders_the_rows() -> Bool {
   let md = expected_design_md()
-  all(generated_document_declaration_refs(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
+  all(generated_document_declaration_refs(document: md), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r)))
 }
 
-
-// THE CLASSIFICATION HALF, IN BOTH DIRECTIONS. Every ruling row declares whether the generated document
-// cites it (CitedInDesign) or is a ledger fact it does not state (LedgerOnly), and the rendered
-// document must agree with that for EVERY row: a cited row it omits and a ledger row it cites are both
-// refused. The roster claim above reads only the rows classified as cited, so without this claim a
-// LedgerOnly label could be set on a row the document in fact cites, or a row could be moved to
-// LedgerOnly to silence an omission, and nothing would notice.
-test fn documentary_refs_every_ruling_standing_agrees_with_the_document() -> Bool {
+// A DERIVED POPULATION IS ONLY AN HONEST ONE IF THE LEDGER SAYS WHAT THE DOCUMENT DOES NOT. Each
+// ruling_ledger_notes() entry asserts the document leaves its row unstated; the row's OWN ABSENCE
+// from the rendered document must back that up, and it must also sit outside the derived population.
+// The note's reason text is not consulted anywhere in the derivation -- so editing a reason (the RED
+// the reviewer asked for) moves nothing, while citing a noted row in the document turns this claim
+// red and forces the stale note to be deleted.
+test fn documentary_refs_ledger_notes_back_what_the_document_does_not_cite() -> Bool {
   let md = expected_design_md()
-  all(design_rulings(), r => ruling_standing_agrees_with_citation(
-    standing: r.standing,
-    cited: string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r.reference)),
-  ))
+  let population = generated_document_declaration_refs(document: md)
+  all(ruling_ledger_notes(), n =>
+    !string_contains(s: md, pattern: documentary_ref_symbol_text(reference: n.ruling))
+      && !any(population, p => p.decl_name == n.ruling.decl_name && p.module_path == n.ruling.module_path)
+  )
 }
 
-// THE REDS OF THAT JUDGEMENT, driven on supplied values: the live claim above is green when the corpus
-// agrees, so these two are what make it discriminate, and the third is the positive control that both
-// agreeing combinations are admitted.
-test fn documentary_refs_a_ledger_only_row_the_document_cites_refuses() -> Bool {
-  !ruling_standing_agrees_with_citation(standing: LedgerOnly { reason: "fixture" }, cited: true)
+// THE CITATION ACTUALLY REACHES THE POPULATION, NAMED. Cited-ness is derived from the rendered
+// document; if the document's citation of a ruling is deleted, the row drops out of the population
+// with no other notice -- which is exactly right for the population, and exactly why a claim must
+// NAME a few citations and fail when one vanishes. These three cover both ways the projection cites
+// a row: the ruling() renderer (chain_re_derivation, coercion_is_the_implicit_safe_subset) and prose
+// backticks (where_refinements_retire_for_checked_constructors). Deleting any of those citations from
+// gunbc/design_document.dag turns this claim red; the ledger half of the document (uncited rows)
+// stays green, as it should.
+test fn documentary_refs_named_document_citations_reach_the_population() -> Bool {
+  let md = expected_design_md()
+  let population = generated_document_declaration_refs(document: md)
+  any(population, p => p.decl_name == "chain_re_derivation")
+    && any(population, p => p.decl_name == "coercion_is_the_implicit_safe_subset")
+    && any(population, p => p.decl_name == "where_refinements_retire_for_checked_constructors")
 }
 
-test fn documentary_refs_a_cited_row_the_document_omits_refuses() -> Bool {
-  !ruling_standing_agrees_with_citation(standing: CitedInDesign {}, cited: false)
-}
-
-test fn documentary_refs_agreeing_standings_are_admitted() -> Bool {
-  ruling_standing_agrees_with_citation(standing: CitedInDesign {}, cited: true)
-    && ruling_standing_agrees_with_citation(standing: LedgerOnly { reason: "fixture" }, cited: false)
+// NO SECOND AUTHORITY, PROVEN STRUCTURALLY: the population is exactly the two fixed system rows plus
+// every ruling row the rendered document cites, recomputed here independently of the product
+// function. Today this is true by construction; it is the tripwire against re-introducing an
+// authored filter (the standing field this claim retires) -- a filter over notes or any other stored
+// flag makes the two sides disagree, and RED B (editing a note's reason must keep every claim green)
+// is its mutation counterpart.
+test fn documentary_refs_population_is_exactly_the_document_cited_rows() -> Bool {
+  let md = expected_design_md()
+  let from_document = map(
+    filter(design_rulings(), r => string_contains(s: md, pattern: documentary_ref_symbol_text(reference: r.reference))),
+    r => r.reference,
+  )
+  let product = generated_document_declaration_refs(document: md)
+  length(xs: product) == length(xs: concat([v1_maintenance_standing_ref, required_gate_subjects_ref], from_document))
+    && all(from_document, p => any(product, q => q.decl_name == p.decl_name && q.module_path == p.module_path))
 }
 
 // THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so

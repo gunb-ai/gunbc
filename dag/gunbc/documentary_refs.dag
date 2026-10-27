@@ -2,7 +2,7 @@ module gunbc.documentary_refs
 
 import std.types { String, Bool }
 import std.decl_ref { DeclarationRef, decl_ref }
-import gunbc.design_ruling { design_rulings, DesignRuling, RulingStanding, CitedInDesign, LedgerOnly }
+import gunbc.design_ruling { design_rulings, DesignRuling }
 
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
@@ -47,24 +47,25 @@ fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
-// THE GENERATED DOCUMENT'S REFERENCES ARE THE ROWS IT HAS CLASSIFIED AS CITED, not every ruling: a
-// LedgerOnly row is declared not to be a document reference, so it is not in the population the
-// citation resolver and the render claim hold the document to. Whether the document actually
-// agrees with each row's classification is the separate judgement below.
-fn generated_document_declaration_refs() -> List<DeclarationRef> {
-  concat(
-    [v1_maintenance_standing_ref, required_gate_subjects_ref],
-    map(filter(design_rulings(), r => ruling_standing_agrees_with_citation(standing: r.standing, cited: true)), r => r.reference),
-  )
+// CITED-NESS IS DERIVED FROM THE DOCUMENT, NEVER STORED. gunbc.design_document design_document()
+// renders a ruling's reference exactly where the document cites that ruling, so whether the document
+// cites a row is asked of the rendered document itself. An authored standing field was a second,
+// hand-maintained authority over the same fact: it could narrow the population below by editing the
+// field. The document projection is the one place to look.
+fn ruling_cited_by_design_document(r: DesignRuling, document: String) -> Bool {
+  string_contains(s: document, pattern: documentary_ref_symbol_text(reference: r.reference))
 }
 
-// THE TWO DIRECTIONS OF THE CLASSIFICATION, ONE FUNCTION: a CitedInDesign row the document does not
-// render is an orphan, and a LedgerOnly row the document does render is a classification the
-// document contradicts. `cited` is read by the caller from the rendered document, so this stays a
-// pure judgement over supplied values that a RED can drive directly.
-fn ruling_standing_agrees_with_citation(standing: RulingStanding, cited: Bool) -> Bool {
-  match standing {
-    CitedInDesign => cited
-    LedgerOnly { reason: _ } => !cited
-  }
+fn design_ruling_declaration_refs(document: String) -> List<DeclarationRef> {
+  map(filter(design_rulings(), r => ruling_cited_by_design_document(r: r, document: document)), r => r.reference)
+}
+
+// THE GENERATED DOCUMENT'S REFERENCES ARE THE ROWS THE DOCUMENT CITES, derived row by row from the
+// rendered document it is the projection of -- not an authored roster, so no second authority can
+// narrow it.
+fn generated_document_declaration_refs(document: String) -> List<DeclarationRef> {
+  concat(
+    [v1_maintenance_standing_ref, required_gate_subjects_ref],
+    design_ruling_declaration_refs(document: document),
+  )
 }
