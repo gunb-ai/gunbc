@@ -3560,7 +3560,8 @@ data equality_extensional_container_rows: Map<String, Bool> = carrier_container_
 // which answers node_same_occurrence. At the operand ROOT a Node or Edge still refuses, because a caller
 // comparing Nodes directly names its question.
 // THE ONE TABLE, held here because the only consumer that reads it is this checker (the folds below:
-// equality_route_for_identity, equality_root_refused_leaf_names). It is NOT copied beside its carriers
+// equality_route_for, equality_root_refused_leaf_names, read by equality_operand_walk). It is NOT
+// copied beside its carriers
 // in v2.std.node: a second copy with no reader would be a fork (DESIGN section 3, "Minimization holds
 // only if each fact lives in exactly one place") and a declaration with no consumer at all (section 3c).
 // v2.std.node states the same thing in a comment pointing here. TRIGGER: the v2 checker computes the

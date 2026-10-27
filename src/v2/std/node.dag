@@ -682,8 +682,8 @@ fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
 // are the functions it names.
 //
 // WHY THE TABLE SITS IN THE SEED AND NOT BESIDE ITS CARRIERS. The only consumer that reads it is the
-// seed checker, which computes the equality plan (v1.compiler.infer equality_plan_for_operand,
-// equality_route_for_identity, equality_root_refused_leaf_names); DESIGN section 3 will not admit a
+// seed checker, which computes the equality plan (v1.compiler.infer equality_route_for,
+// equality_root_refused_leaf_names, read by equality_operand_walk); DESIGN section 3 will not admit a
 // second copy here next to a table with one reader, and DESIGN section 3c will not admit a declaration
 // with no consumer at all. The seed cannot import a v2 module (section 6b keeps the seed below v2), so
 // until the consumer moves the table sits with the consumer. TRIGGER: the v2 checker computes the
