@@ -135,9 +135,14 @@ fn scope_satisfaction_for(
 
 // THE RESOLUTION, NOT THE STRING MATCH. A roster row is an ENROLLMENT only if the (entry, function)
 // it names resolves to a declaration in the closure census: some DeclFact whose rel_path is the
-// entry path and whose name is the function, declared as a function item (a `fn` or a `test fn`;
-// the census carries both as FnItem -- declaration_index.rs:1074 folds TestMarked into FnItem, which
-// is what lets claim_batch resolve a `test fn` by name at all). A row whose witness resolves to no
+// entry path and whose name is the function, declared as a function item -- a `fn` or a `test fn`
+// alike. The two become alike upstream of the census: v1_compiler_parse's `test_marked_item_result`
+// carries the marker onto the item without touching its `module_item_kind`, and
+// v1_compiler_infer_items's `item_kind` classifies from body and parameters alone, so it cannot
+// read the marker even if it wanted to. v1.compiler.compiler_tests_rust
+// `test_marker_selects_the_test_item_kind` holds that as its positive control. This is also why
+// claim_batch can resolve a `test fn` by name at all.
+// A row whose witness resolves to no
 // such declaration is refused EnrollmentWitnessUnresolved rather than counted EnrolledInFloorRoster:
 // the defect this closes (proved at ee97d81d) counted any string-equal row as live, so a witness
 // that does not exist turned the enforcement-consistency gate green.
