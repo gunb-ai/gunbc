@@ -1,7 +1,7 @@
 module gunbc.namecheap.account
 
-import std.types { String, NonEmptyStr, List }
-import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name, host_name_eq }
 
 data namecheap_domain_sld: NonEmptyStr = "gunb"
 data namecheap_domain_tld: NonEmptyStr = "ai"
@@ -24,8 +24,8 @@ data namecheap_account_report: NamecheapAccountReport = NamecheapAccountReport {
 
 // WHICH NAMESERVERS THE REGISTRAR DELEGATES gunb.ai TO. A registrar setting is a different fact
 // from what resolvers answer: the .ai parent zone serves the new NS set only after the registry
-// publishes it, which the operator expects to take a day or two. So the standing is two arms,
-// and this row holds only the first. The Cloudflare nameserver names are assigned per account by
+// publishes it. So the standing is two arms; the report was the first, and the parent's answer
+// (2026-10-27) now holds the second. The Cloudflare nameserver names are assigned per account by
 // Cloudflare. The comment on NamecheapAccountReport asks for the API allowlist to be re-observed when
 // the DNS controller changes; this change triggers that. Frontier: gunbc.plans.boot_origin_bmc_media B1
 // (BootOriginHostnameAllocated) and the fleet zone (gunbc.plans.fleet_naming_reach_access P7) consume
@@ -56,6 +56,13 @@ data gunb_ai_reported_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare
 
 data gunb_ai_nameserver_report_source: String = "operator Namecheap console report 2026-10-26: Custom DNS set to the two Cloudflare nameservers; parent-zone propagation pending"
 
+// The parent's own answer, read by session bright-swift-248: a non-recursive NS query for gunb.ai
+// sent to three .ai authoritative servers returned the same two Cloudflare names from each, matching
+// the registrar report. The delegation reading below is built from these names, not from the report.
+data gunb_ai_parent_observed_nameservers: List<NonEmptyStr> = ["alexandra.ns.cloudflare.com.", "austin.ns.cloudflare.com."]
+
+data gunb_ai_parent_observation_source: String = "non-recursive NS query for gunb.ai to v0n0.nic.ai, v0n1.nic.ai and v2n0.nic.ai, 2026-10-27T03:53Z (session bright-swift-248): each delegation lists alexandra.ns.cloudflare.com and austin.ns.cloudflare.com"
+
 fn absolute_ns_spelling(raw: String) -> String {
   if ends_with(s: raw, suffix: ".") { raw } else { concat(raw, ".") }
 }
@@ -70,14 +77,34 @@ fn parse_nameservers(raws: List<NonEmptyStr>) -> Result<List<HostName>, Nameserv
   })
 }
 
+fn same_nameserver_set(a: List<HostName>, b: List<HostName>) -> Bool {
+  a.length() == b.length()
+    && fold(a, init: true, f: (acc, x) => acc && fold(b, init: false, f: (hit, y) => hit || host_name_eq(a: x, b: y)))
+}
+
+// The parent's answer reaches DelegationObservedInParent only when it names the set the registrar
+// reports; a disagreement keeps the weaker standing, so the registrar row is never superseded silently.
 fn gunb_ai_nameserver_delegation() -> NameserverDelegationReading {
   match parse_nameservers(raws: gunb_ai_reported_nameservers) {
     Err { value: refusal } => DelegationNameRefused { refusal: refusal }
-    Ok { value: hosts } => DelegationRead {
-      standing: DelegationReportedAtRegistrar {
-        setting: RegistrarCustomNameservers { nameservers: hosts },
-        source: gunb_ai_nameserver_report_source,
-      },
+    Ok { value: reported } => match parse_nameservers(raws: gunb_ai_parent_observed_nameservers) {
+      Err { value: refusal } => DelegationNameRefused { refusal: refusal }
+      Ok { value: observed } =>
+        if same_nameserver_set(a: reported, b: observed) {
+          DelegationRead {
+            standing: DelegationObservedInParent {
+              setting: RegistrarCustomNameservers { nameservers: observed },
+              source: gunb_ai_parent_observation_source,
+            },
+          }
+        } else {
+          DelegationRead {
+            standing: DelegationReportedAtRegistrar {
+              setting: RegistrarCustomNameservers { nameservers: reported },
+              source: gunb_ai_nameserver_report_source,
+            },
+          }
+        }
     }
   }
 }
