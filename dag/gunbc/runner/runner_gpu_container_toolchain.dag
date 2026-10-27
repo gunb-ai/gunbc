@@ -1,0 +1,2610 @@
+module gunbc.runner.runner_gpu_container_toolchain
+
+// THE GPU CONTAINER TOOLCHAIN AS A FLEET CAPABILITY: declared per host in
+// gunbc.runner.runner_host_deploy, converged here, read back on the machine, and granted as the
+// runner registration label gunbc.runner.runner_registration_labels gunbc_gpu_docker_label ONLY when
+// the readback holds. Operator decision 2026-10-25 (node://adhoc-0cabf47d-be0): fleet CI jobs must
+// run containers that see GPUs WITHOUT root equivalence; the S1b gate
+// //gunbc/instruments:router-proxy-falsifier (#15089) and the serving benchmark both depend on it.
+//
+// WHY A CONVERGE AND NOT AN INSTALL. The brief's rule is that this is applied by `gunbc converge` and
+// never hand-installed, so the only writer of the label and the only installer of the packages is the
+// fold below, run from the fleet-converge workflow as mode runner_gpu_container_toolchain_converge.
+// A host whose label was set by hand is a host that loses it at the next converge, because the label
+// here is a READING of the machine and never a declaration of intent.
+//
+// WHY ROOTLESS, STATED TWICE BECAUSE IT IS THE WHOLE POINT. The capability is the JOB USER'S OWN
+// daemon at unix:///run/user/<uid>/docker.sock — the endpoint
+// gunbc.runner.runner_unit_file docker_host_from_uid_reading already forms for the slot — plus the
+// NVIDIA container toolkit and a generated CDI spec. The rootful socket is NOT this capability:
+// gunbc.fleet.fleet_posix_accounts fleet_root_equivalent_group_names classes "docker" as a
+// root-equivalent group, so joining that group buys GPU containers by granting root, which is the
+// thing the decision forbids. Readiness therefore asks whether the JOB USER can run a container that
+// sees the devices; a host where only root can is not ready, however healthy its nvidia-smi.
+//
+// WHY THE READBACK RUNS FOUR ARMS AND NOT ONE. `--device nvidia.com/gpu=all` resolves only against a
+// CDI spec, so a host with the packages and no /etc/cdi/nvidia.yaml fails at run time in a way no
+// package query predicts; and a host with all three still fails if the job user's own daemon is not
+// running (lingering off, socket gone). So the arms are: the toolkit package present, a CDI spec
+// naming the complete-device arm, the job user's daemon answering, and — the one that actually
+// decides — a container run by the job user through that daemon that sees a device. Each is a
+// separate observed fact with its own refusal text, because "docker is installed" is not the question
+// the two gates ask.
+//
+// MIRRORS, EXPLICITLY: gunbc.runner.runner_browser_toolchain (its apt ensure over the admin edge via
+// gunbc.host.host_effect_realize srv3_ensure_apt, its typed-argv label drop-in, its *_ci_wet receipt
+// entry). Deviations are stated where they occur, not hidden. The one symbol this module takes FROM it
+// rather than mirroring is nothing at all any more: the GPU converge names no browser symbol. The browser
+// capability reaches it as a ROW in gunbc.runner.runner_capability_labels, and the same fold that restates
+// the browser label will restate the fourth capability nobody has written yet. The row's drop-in path is
+// the single spelling of that file, shared between its writer and every reader.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { string_contains, trim }
+import std.process { ExitSuccess, ProcessExit, exit_failure }
+import std.env_binding { EnvSet }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.exec.command { ArgvCommand, argv_words, env_prefixed_command }
+import extdeps.sudo.elevation { sudo_elevate_as_command, sudo_elevate_command }
+import extdeps.systemd.systemctl {
+  systemctl_daemon_reload_command,
+  systemctl_user_machine_connector,
+  systemctl_enable_verb,
+  systemctl_start_verb,
+  systemctl_restart_verb,
+  systemctl_is_active_verb,
+  systemctl_is_enabled_verb,
+}
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
+import extdeps.posix.getent { getent_passwd_command }
+import extdeps.docker.cli {
+  docker_gpu_cdi_probe_run_command,
+  docker_info_command,
+  docker_info_root_dir_from_stdout,
+  DockerRootDir,
+  DockerRootDirUnreadable,
+}
+import extdeps.docker.endpoint { docker_rootless_unix_endpoint }
+import extdeps.container.docker_ce {
+  DockerCeAptRepo, docker_ce_apt_source_line, docker_ce_keyrings_directory,
+  docker_ce_keyrings_directory_mode, docker_ce_sources_list_path,
+}
+import extdeps.container.nvidia_container_toolkit {
+  NvidiaContainerToolkitAptRepo,
+  nvidia_ctk_cdi_generate_command,
+  nvidia_ctk_cdi_list_command,
+  nvidia_cdi_all_gpu_device,
+  nvidia_container_toolkit_apt_source_line,
+  nvidia_container_toolkit_sources_list_path,
+}
+import product.host_identity { HostIdentity }
+import gunbc.runner.runner_host_deploy {
+  GpuContainerToolchainDesired,
+  GpuContainerToolchainNotWanted,
+  GpuContainerToolchainUnmeasured,
+  RunnerHostGpuToolchainAbsent,
+  RunnerHostGpuToolchainFound,
+  RunnerHostSpec,
+  runner_host_gpu_container_toolchain_for,
+  RunnerHostSubordinateIds,
+  RunnerHostSubordinateIdsDeclared,
+  RunnerHostSubordinateIdsUnmeasured,
+  subordinate_ids_declared_for,
+}
+import extdeps.shadow.subordinate_ids {
+  SubordinateIdFile,
+  SubordinateUids,
+  SubordinateGids,
+  SubordinateRange,
+  SubordinateFileReading,
+  SubordinateFileRead,
+  SubordinateFileUnreadable,
+  SubordinateStep,
+  SubordinatePlan,
+  SubordinatePlanSteps,
+  SubordinatePlanRefused,
+  subordinate_id_file_path,
+  parse_subordinate_file,
+  subordinate_ranges_for,
+  plan_subordinate_file,
+  usermod_step_words,
+  subordinate_step_text,
+  subordinate_plan_text,
+}
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, declared_directory_mode }
+import extdeps.systemd.loginctl { loginctl_binary_name, loginctl_enable_linger_argv }
+import extdeps.tools.gnu_coreutils {
+  coreutils_install_directory_argv,
+  ls_one_per_line_command,
+  cat_command,
+  coreutils_install_binary_name,
+  coreutils_install_directory_flag,
+  coreutils_install_mode_flag,
+  coreutils_install_owner_flag,
+  coreutils_directory_mode_operand,
+}
+// THE CAPABILITY TABLE, not the browser module. The GPU converge needs three things from it: its own
+// drop-in path (declared there so the write target and the evidence target are one string), the rows to
+// observe, and the accessors that keep a witness's token and path derived from the row rather than
+// re-spelled at this call site. It does NOT import gunbc.runner.runner_browser_toolchain: the browser
+// capability is a row in that table, and importing the module would mean this converge had to name every
+// sibling it knows about, which is the quadratic coupling the table exists to remove.
+import gunbc.runner.runner_capability_labels {
+  gpu_docker_labels_dropin_path,
+  host_capability_rows_to_observe, host_capability_row_label, host_capability_row_dropin_path,
+}
+import gunbc.runner.runner_registration_labels {
+  HostCapabilityWitness, HostCapabilityRow, CapabilityHeld, CapabilityAbsent, CapabilityUnobservable,
+  gunbc_gpu_docker_label,
+}
+import gunbc.runner.runner_unit_file {
+  RunnerJobUserUidReading,
+  JobUserUidObserved,
+  JobUserUidUnobserved,
+  runner_host_gpu_docker_labels_dropin_text,
+  runner_job_user_uid_reading,
+}
+import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  FleetSshExecutionContext,
+  SshTarget,
+  SshTargetResolution,
+  SshTargetResolved,
+  SshTargetRefused,
+  fleet_ssh_target_at_standard_port,
+  ssh_target_refusal_text,
+}
+import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
+import gunbc.runner.runner_microvm_host_ready {
+  MicrovmHostBound,
+  MicrovmHostBindingRefused,
+  microvm_host_binding_wet,
+  microvm_host_binding_refusal_text,
+}
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  Srv3HostPredicate,
+  Srv3PredicateHolds,
+  Srv3PredicateFails,
+  Srv3PredicateUnobserved,
+  run_argv_over_host_effect_transport,
+  run_argv_transport_succeeded,
+  srv3_ensure_apt,
+  AptPresenceSubject,
+  AptPackageInstalled,
+}
+import gunbc.typed_remote_file_write {
+  converge_typed_remote_file,
+  typed_remote_file_write_seal,
+  TypedRemoteFileConverged,
+  TypedRemoteFileConvergenceRefused,
+  RemoteFileMode,
+  RemoteFileModeOwnerReadWrite,
+  RemoteFileModeOwnerReadWriteWorldRead,
+  RemoteFileViaNonInteractiveSudo,
+  NoValidation,
+}
+import gunbc.file_access { FileTreeScope }
+
+// ── ONE QUESTION PER ARM, AND A REFUSED LEG IS NEVER A MISSING ARM ────────────────────────────────
+//
+// One field per question the two gates actually ask, each carrying its own refusal text. A single
+// Bool would make "the toolkit is installed but the CDI spec was never generated" and "there is no
+// GPU on this host" the same answer, and those need different repairs.
+//
+// A TRANSPORT THAT CANNOT EXECUTE IS UNOBSERVED, NEVER MISSING — the distinction this repository
+// polices hardest, because a refused leg that becomes a green reading is the failure that matters.
+// UNOBSERVED AND MISSING BOTH BLOCK READINESS; they differ in what an operator is told to do next.
+type GpuContainerArm
+  = GpuContainerArmOk { detail: String }
+  | GpuContainerArmMissing { detail: String }
+  | GpuContainerArmUnobserved { reason: String }
+
+fn gpu_container_arm_holds(a: GpuContainerArm) -> Bool {
+  match a {
+    GpuContainerArmOk { detail: _ } => true
+    GpuContainerArmMissing { detail: _ } => false
+    GpuContainerArmUnobserved { reason: _ } => false
+  }
+}
+
+fn gpu_container_arm_text(a: GpuContainerArm) -> String {
+  match a {
+    GpuContainerArmOk { detail: d } => concat("ok(", d, ")")
+    GpuContainerArmMissing { detail: d } => concat("missing(", d, ")")
+    GpuContainerArmUnobserved { reason: r } => concat("unobserved(", r, ")")
+  }
+}
+
+fn gpu_container_arm_from(outcome: RunArgvTransportOutcome, what: String, marker: String) -> GpuContainerArm {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => GpuContainerArmUnobserved { reason: concat(what, " leg refused: ", r) }
+    RunArgvTransportObserved { observed: o } =>
+      if o.success == false {
+        GpuContainerArmMissing { detail: concat(what, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
+      } else if marker == "" || string_contains(s: o.stdout, pattern: marker) {
+        GpuContainerArmOk { detail: first_line(text: o.stdout) }
+      } else {
+        GpuContainerArmMissing {
+          detail: concat(what, " succeeded but its output does not contain ", marker, ": ", first_line(text: o.stdout)),
+        }
+      }
+  }
+}
+
+fn first_line(text: String) -> String {
+  match split(s: text, delimiter: "\n").first() {
+    Present { value: l } => trim(s: l)
+    Absent => ""
+  }
+}
+
+// ── THE OBSERVE SIDE: WHAT THE HOST IS ASKED ────────────────────────────────────────────────────
+//
+// THE ARMS RUN AS THE JOB USER, NOT AS THE ADMIN. The admin edge installs; the job user is who must
+// be able to run the container, so readiness is measured in that identity or it proves nothing. The
+// socket URL is formed from the uid the HOST itself answered — gunbc.runner.runner_unit_file
+// runner_job_user_uid_reading, the same passwd-reading authority the depriv drop-in uses, fed from a
+// getent over this transport — so nothing here guesses 999, and an unobserved uid leaves every
+// job-user arm UNOBSERVED rather than pointing the probe at a socket nobody owns.
+type GpuContainerToolchainReadback {
+  job_user: NonEmptyStr
+  // The toolkit package is installed (the dpkg query is the authority).
+  toolkit_package: GpuContainerArm
+  // A CDI spec exists AND names the complete-device arm.
+  cdi_spec: GpuContainerArm
+  // The job user's own rootless daemon answers.
+  job_user_daemon: GpuContainerArm
+  // THE ARM THAT DECIDES: a container the job user runs through its own daemon sees the device.
+  container_sees_device: GpuContainerArm
+}
+
+fn job_user_uid_arm(user: NonEmptyStr, transport: HostEffectTransport) -> RunnerJobUserUidReading {
+  match run_argv_over_host_effect_transport(command: getent_passwd_command(key: user), transport: transport) {
+    RunArgvTransportRefused { reason: r } => JobUserUidUnobserved { cause: r as NonEmptyStr }
+    RunArgvTransportObserved { observed: o } =>
+      runner_job_user_uid_reading(job_user: user, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+fn toolkit_package_arm(transport: HostEffectTransport) -> GpuContainerArm {
+  match srv3_ensure_apt(
+    subject: AptPackageInstalled { package: ("nvidia-container-toolkit" as NonEmptyStr) },
+    package: ("nvidia-container-toolkit" as NonEmptyStr),
+    require_version_probe: false,
+    transport: transport,
+  ) {
+    Srv3PredicateHolds => GpuContainerArmOk { detail: "nvidia-container-toolkit installed" }
+    Srv3PredicateFails => GpuContainerArmMissing { detail: "nvidia-container-toolkit not installed" }
+    Srv3PredicateUnobserved { reason: why } => GpuContainerArmUnobserved { reason: why }
+  }
+}
+
+// UNELEVATED ON PURPOSE. `nvidia-ctk cdi list` reads the spec the generate step wrote, and a readback
+// that had to be root would stop proving that the unprivileged identity which actually runs CI can
+// resolve the device. The marker is the cited complete-device name, so an empty spec, a stale spec, or
+// a spec generated for a host with no GPUs all answer Missing rather than Ok.
+fn cdi_spec_arm(transport: HostEffectTransport) -> GpuContainerArm {
+  gpu_container_arm_from(
+    outcome: run_argv_over_host_effect_transport(command: nvidia_ctk_cdi_list_command(), transport: transport),
+    what: ("nvidia-ctk cdi list" as NonEmptyStr),
+    marker: nvidia_cdi_all_gpu_device as String,
+  )
+}
+
+// THE DOCKER HOST IS THE POINT OF THE WHOLE MODULE, so it is spelled once, here. DOCKER_HOST is set to
+// the job user's own rootless socket and the command is run AS the job user: if the daemon answers and
+// the container sees the device, the capability is real for the identity that will actually run CI.
+// env_prefixed_command puts the assignment in front of the sudo, so the value survives into the
+// command the job user's shell execs.
+fn job_user_command(user: NonEmptyStr, socket: String, inner: ArgvCommand) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
+    command: sudo_elevate_as_command(user: user, command: argv_words(command: inner)),
+  )
+}
+
+// ── THE ACCEPTANCE PROBE: THE EXACT COMMAND MEASURED TO WORK ─────────────────────────────────────
+//
+// ubuntu:24.04 because it is already present in the job user's own rootless store on the host that
+// carries the shape today (srv1 2026-10-25: `docker images` as ghrunner lists ubuntu:24.04 and
+// alpine:3), so the acceptance run does not depend on the host being able to reach a registry — a
+// probe that fails because the network is down would be reported as a missing GPU capability. The
+// probe is nvidia-smi -L for the reason recorded at
+// extdeps.docker.cli docker_gpu_cdi_probe_run_command: it asks whether the device reached the
+// container, not whether the host's driver stack is healthy. Both rows are here, at the call site's
+// module, rather than buried in extdeps, because which image the fleet accepts as its GPU probe is a
+// fleet decision with a supply-chain consequence, while how to render a `docker run` is not.
+data gpu_container_acceptance_image: NonEmptyStr = "ubuntu:24.04"
+
+data gpu_container_acceptance_probe_argv: List<String> = ["nvidia-smi", "-L"]
+
+// THE DAEMON ARM ASKS TWO QUESTIONS, NOT ONE, and the second one is the difference between a pass that
+// means something and a pass that means nothing.
+//
+// Checking only that `docker info` succeeded and printed "Server Version" would be satisfied by ANY
+// daemon the job user can reach. Both srv1 daemons report version 29.7.2 (measured), so the version
+// cannot tell them apart; on srv1 today ghrunner happens to reach its own daemon with no DOCKER_HOST set
+// at all, because its private socket is what the environment resolves to for that uid — so a probe that
+// merely "got a docker answer" would have been green against the wrong daemon and nobody would have
+// noticed. Measured directly: pointing ghrunner at root's socket fails with "permission denied while
+// trying to connect to the docker API at unix:///var/run/docker.sock", which is the no-root-equivalence
+// property holding, but that is a fact about sudoers on one host on one day, not something this arm
+// should be relying on to make its own verdict honest.
+//
+// THE DISCRIMINATOR IS THE DAEMON'S OWN ROOT DIRECTORY, read from the daemon's answer rather than
+// asserted. A rootless dockerd reports `Docker Root Dir: <job user home>/.local/share/docker`; a rootful
+// one reports /var/lib/docker, and the string "rootless" appears nowhere in its output. Requiring the
+// per-user path means the arm can only pass against a daemon that stores under the job user's own home,
+// which is the daemon the capability is about. gunbc.extdeps.docker.cli
+// docker_info_root_dir_from_stdout is the existing authority for reading that line, and it refuses a
+// document with zero or two such lines rather than defaulting — so an unparseable answer is a failure,
+// not a pass.
+data gpu_container_provision_rootless_store_suffix: String = "/.local/share/docker"
+
+// FIELD 6 OF THE passwd LINE, which getent passwd returns as `name:x:uid:gid:gecos:HOME:shell`. The
+// authority that parsed this line (gunbc.runner.runner_unit_file runner_job_user_uid_reading) has already
+// refused anything that does not have seven colon-separated fields, so the slice here is taking an
+// already-vouched-for position rather than guessing at a format.
+fn job_user_home_from_passwd(passwd_line: String) -> String {
+  match split(s: trim(s: passwd_line), delimiter: ":").skip(n: 5).first() {
+    Absent => ""
+    Present { value: h } => trim(s: h)
+  }
+}
+
+fn job_user_daemon_arm(user: NonEmptyStr, uid: Int, home: String, transport: HostEffectTransport) -> GpuContainerArm {
+  // NO HOME, NO VERDICT. An empty home would make the prefix test below `starts_with(path, "")`, which is
+  // TRUE OF EVERY PATH — the arm would then accept any daemon on the host, including root's, while
+  // reporting the strongest form of readiness. The empty string is checked before it can be compared
+  // rather than assumed away by the caller.
+  if home == "" {
+    GpuContainerArmUnobserved { reason: "job user home is unknown, so no Docker Root Dir can be accepted as its own" }
+  } else {
+  // ONE RUN, BOTH VERDICTS. Asking the daemon twice would let the two halves of this arm disagree for a
+  // reason that has nothing to do with the host — the daemon could answer the first call and be
+  // restarting for the second — and a check that can disagree with itself is not a check.
+  match run_argv_over_host_effect_transport(
+    command: job_user_command(user: user, socket: docker_rootless_unix_endpoint(uid: uid), inner: docker_info_command()),
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => GpuContainerArmUnobserved { reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        GpuContainerArmMissing {
+          detail: join(["job-user docker info exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)], ""),
+        }
+      } else if !string_contains(s: o.stdout, pattern: "Server Version") {
+        GpuContainerArmMissing {
+          detail: concat("job-user docker info succeeded but printed no server version: ", first_line(text: o.stdout)),
+        }
+      } else {
+        match docker_info_root_dir_from_stdout(stdout: o.stdout) {
+          DockerRootDirUnreadable { cause: c } =>
+            GpuContainerArmUnobserved { reason: concat("docker info root dir: ", c) }
+          DockerRootDir { path: p } =>
+            if ends_with(s: p as String, suffix: gpu_container_provision_rootless_store_suffix)
+              && starts_with(s: p as String, prefix: home) {
+              // The path is echoed into the detail so a receipt shows WHICH daemon was accepted; "Ok" with
+              // no evidence is how a green readback becomes unauditable after the fact.
+              GpuContainerArmOk { detail: join(["rootless daemon, Docker Root Dir ", p as String], "") }
+            } else {
+              // THE WORST AVAILABLE OUTCOME, named rather than smoothed over: a daemon answered, so the
+              // host looks ready, but it is not the job user's own rootless daemon. Reported as Missing so
+              // the capability label is withheld — never Ok with a caveat, because the label is what makes
+              // GPU jobs schedule onto this slot.
+              GpuContainerArmMissing {
+                detail: join(["docker info answers but its Docker Root Dir is ", p as String,
+                              ", not the job user's rootless store under ", home], ""),
+              }
+            }
+        }
+      }
+  }
+  }
+}
+
+fn container_sees_device_arm(user: NonEmptyStr, uid: Int, transport: HostEffectTransport) -> GpuContainerArm {
+  gpu_container_arm_from(
+    outcome: run_argv_over_host_effect_transport(
+      command: job_user_command(
+        user: user,
+        socket: docker_rootless_unix_endpoint(uid: uid),
+        inner: docker_gpu_cdi_probe_run_command(
+          image: gpu_container_acceptance_image,
+          device: nvidia_cdi_all_gpu_device,
+          probe_argv: gpu_container_acceptance_probe_argv,
+        ),
+      ),
+      transport: transport,
+    ),
+    what: ("job-user GPU container probe" as NonEmptyStr),
+    marker: "GPU",
+  )
+}
+
+fn runner_gpu_container_toolchain_readback_wet(job_user: NonEmptyStr, transport: HostEffectTransport) -> GpuContainerToolchainReadback {
+  match job_user_uid_arm(user: job_user, transport: transport) {
+    JobUserUidUnobserved { cause: c } =>
+      GpuContainerToolchainReadback {
+        job_user: job_user,
+        toolkit_package: toolkit_package_arm(transport: transport),
+        cdi_spec: cdi_spec_arm(transport: transport),
+        job_user_daemon: GpuContainerArmUnobserved { reason: concat("job user uid unobserved: ", c as String) },
+        container_sees_device: GpuContainerArmUnobserved { reason: concat("job user uid unobserved: ", c as String) },
+      }
+    // THE HOME COMES OUT OF THE SAME passwd ANSWER THAT PRODUCED THE UID, not a second lookup. Field 6 of
+    // the line getent passwd returned is the home directory, and runner_job_user_uid_reading above has
+    // already rejected a line that does not carry the seven fields a passwd entry must have — so taking
+    // field 6 here cannot disagree with the uid about which account was read, which is the drift that
+    // would otherwise let the unit be installed for one account and the daemon checked for another.
+    JobUserUidObserved { uid: uid, passwd_line: line } =>
+      GpuContainerToolchainReadback {
+        job_user: job_user,
+        toolkit_package: toolkit_package_arm(transport: transport),
+        cdi_spec: cdi_spec_arm(transport: transport),
+        job_user_daemon: job_user_daemon_arm(user: job_user, uid: uid, home: job_user_home_from_passwd(passwd_line: line), transport: transport),
+        container_sees_device: container_sees_device_arm(user: job_user, uid: uid, transport: transport),
+      }
+  }
+}
+
+// THE GATE IS CONJUNCTIVE AND THE CONTAINER ARM IS NOT OPTIONAL. A host can pass every package and
+// spec query and still be unable to run a container as the job user; calling that ready would be the
+// exact green-without-capability failure the dependent instruments are built to refuse.
+fn runner_gpu_container_toolchain_ready(r: GpuContainerToolchainReadback) -> Bool {
+  gpu_container_arm_holds(a: r.toolkit_package)
+    && gpu_container_arm_holds(a: r.cdi_spec)
+    && gpu_container_arm_holds(a: r.job_user_daemon)
+    && gpu_container_arm_holds(a: r.container_sees_device)
+}
+
+// THE FULL GREEN CONDITION, AS ONE PREDICATE OVER OBSERVED DATA. What `ready` means decides whether a
+// slot advertises the gpu-docker capability and therefore whether GPU jobs land on it, so it is stated in
+// one function that a witness can call rather than assembled inline in the converge where only a live host
+// could exercise it. Two conjuncts, and each earns its place:
+//
+//   runner_gpu_container_toolchain_ready  — the four capability arms: the toolkit package, the CDI spec, a
+//     live rootless daemon answering the job user, and a container the job user ran that listed a device.
+//   gpu_container_subordinate_integrity_holds — the range reconciliation actually PROVED both files. This
+//     is a separate conjunct on purpose and was not one until review 5644178843: the four arms describe
+//     the running system, and a host whose uid range migrated while its gid range refused can still pass
+//     all four, because the daemon that answers the probe started under ranges that were correct when it
+//     started. Certifying that host green is the failure this conjunction exists to make unrepresentable.
+//
+// A caller cannot reach a green verdict by passing the readback alone — which is the point of the extra
+// argument rather than a boolean: the provisioning steps are the only witness of the range verifications,
+// so any caller that wants the label must be able to show them.
+fn runner_gpu_container_toolchain_host_ready(
+  ensure_ok: Bool,
+  cdi_ok: Bool,
+  readback: GpuContainerToolchainReadback,
+  provision_steps: List<GpuContainerProvisionStep>,
+) -> Bool {
+  ensure_ok
+    && cdi_ok
+    && runner_gpu_container_toolchain_ready(r: readback)
+    && gpu_container_subordinate_integrity_holds(steps: provision_steps)
+}
+
+fn runner_gpu_container_toolchain_readback_text(r: GpuContainerToolchainReadback) -> String {
+  join(
+    [
+      "job_user=", r.job_user as String, "\n",
+      "toolkit_package=", gpu_container_arm_text(a: r.toolkit_package), "\n",
+      "cdi_spec=", gpu_container_arm_text(a: r.cdi_spec), "\n",
+      "job_user_daemon=", gpu_container_arm_text(a: r.job_user_daemon), "\n",
+      "container_sees_device=", gpu_container_arm_text(a: r.container_sees_device), "\n",
+      "ready=", if runner_gpu_container_toolchain_ready(r: r) { "yes" } else { "no" }, "\n",
+    ],
+    "",
+  )
+}
+
+// ── THE ADMIN-SIDE ENSURE: WHAT CONVERGE DOES ABOUT A DECLARED HOST ──────────────────────────────
+//
+// The packages are ensured through the SAME fold the browser toolchain and the password-session
+// converge use (gunbc.host.host_effect_realize srv3_ensure_apt), one typed subject per package, over
+// the ADMIN edge. The repository and its keyring are NOT re-implemented here: the pinned repo row and
+// the provisioning sequence live in extdeps.container.nvidia_container_toolkit, which carries the
+// fingerprint verification, and declared-ness comes from gunbc.runner.runner_host_deploy. This module
+// adds no third spelling of either.
+type GpuToolchainEnsureStep {
+  label: String
+  subject: AptPresenceSubject
+  package: NonEmptyStr
+}
+
+fn runner_gpu_container_toolchain_ensure_steps(packages: List<NonEmptyStr>) -> List<GpuToolchainEnsureStep> {
+  map(packages, p =>
+    GpuToolchainEnsureStep {
+      label: p as String,
+      subject: AptPackageInstalled { package: p },
+      package: p,
+    }
+  )
+}
+
+type GpuToolchainEnsureOutcome
+  = GpuToolchainEnsureHolds { label: String }
+  | GpuToolchainEnsureFailed { label: String, cause: String }
+  | GpuToolchainEnsureUnobserved { label: String, reason: String }
+
+fn runner_gpu_container_toolchain_ensure_wet(
+  packages: List<NonEmptyStr>,
+  transport: HostEffectTransport,
+) -> List<GpuToolchainEnsureOutcome> {
+  map(
+    runner_gpu_container_toolchain_ensure_steps(packages: packages),
+    step =>
+      match srv3_ensure_apt(subject: step.subject, package: step.package, require_version_probe: false, transport: transport) {
+        Srv3PredicateHolds => GpuToolchainEnsureHolds { label: step.label }
+        Srv3PredicateFails => GpuToolchainEnsureFailed { label: step.label, cause: "not installed after ensure" }
+        Srv3PredicateUnobserved { reason: why } => GpuToolchainEnsureUnobserved { label: step.label, reason: why }
+      },
+  )
+}
+
+fn gpu_toolchain_ensure_outcome_holds(o: GpuToolchainEnsureOutcome) -> Bool {
+  match o {
+    GpuToolchainEnsureHolds { label: _ } => true
+    GpuToolchainEnsureFailed { label: _, cause: _ } => false
+    GpuToolchainEnsureUnobserved { label: _, reason: _ } => false
+  }
+}
+
+fn gpu_toolchain_ensure_outcome_text(o: GpuToolchainEnsureOutcome) -> String {
+  match o {
+    GpuToolchainEnsureHolds { label: l } => concat(l, "=present")
+    GpuToolchainEnsureFailed { label: l, cause: c } => concat(l, "=failed cause=", c)
+    GpuToolchainEnsureUnobserved { label: l, reason: r } => concat(l, "=unobserved reason=", r)
+  }
+}
+
+// ── THE CDI GENERATE: AN EFFECT, RUN ONLY WHEN THE PACKAGES HOLD ─────────────────────────────────
+//
+// Installing the toolkit does not produce the spec; `nvidia-ctk cdi generate` does, and a host with
+// the packages and no spec is a host whose `--device nvidia.com/gpu=all` fails at run time. The argv
+// comes from extdeps.container.nvidia_container_toolkit, the same row the readback asks about, so
+// generate and readback cannot disagree about where the spec lives or what it must contain. The write
+// goes to /etc/cdi/nvidia.yaml and so runs ELEVATED: the unprivileged job user must not be able to
+// decide what "all GPUs" means.
+type CdiGenerateOutcome
+  = CdiGenerateRan { output: String }
+  | CdiGenerateFailed { cause: String }
+  | CdiGenerateSkipped { cause: String }
+
+fn runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: Bool, transport: HostEffectTransport) -> CdiGenerateOutcome {
+  if packages_hold == false {
+    CdiGenerateSkipped { cause: "the toolkit packages did not hold, so generating a spec would be reading from a host that has no toolkit" }
+  } else {
+    match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: argv_words(command: nvidia_ctk_cdi_generate_command())), transport: transport) {
+      RunArgvTransportRefused { reason: r } => CdiGenerateFailed { cause: r }
+      RunArgvTransportObserved { observed: o } =>
+        if o.success {
+          CdiGenerateRan { output: first_line(text: o.stdout) }
+        } else {
+          CdiGenerateFailed { cause: concat("nvidia-ctk cdi generate exited ", to_string(o.exit_code), ": ", trim(s: o.stderr)) }
+        }
+    }
+  }
+}
+
+fn cdi_generate_outcome_holds(o: CdiGenerateOutcome) -> Bool {
+  match o {
+    CdiGenerateRan { output: _ } => true
+    CdiGenerateFailed { cause: _ } => false
+    CdiGenerateSkipped { cause: _ } => false
+  }
+}
+
+fn cdi_generate_outcome_text(o: CdiGenerateOutcome) -> String {
+  match o {
+    CdiGenerateRan { output: _ } => "cdi_generate=ran"
+    CdiGenerateFailed { cause: c } => concat("cdi_generate=failed cause=", c)
+    CdiGenerateSkipped { cause: c } => concat("cdi_generate=skipped cause=", c)
+  }
+}
+
+// ── THE LABEL: GRANTED BY THIS CONVERGE, FROM THE READBACK, BY NOTHING ELSE ──────────────────────
+//
+// gunbc.runner.runner_registration_labels gunbc_gpu_docker_label reaches the runner as a TEMPLATE
+// DROP-IN that replaces LABELS_JSON for every instance on the host with the host's set plus this
+// label — the mechanism gunbc.runner.runner_unit_file gives the browser readiness, and for the same
+// reason: systemd reads the template's drop-in directory after the fragment, so a later LABELS_JSON
+// wins and there is no per-slot hook to hang it on. Written when the readback holds, REMOVED when it
+// does not. The number is 86 so it lands after the browser label's 85 and both are visible in one
+// `systemctl cat`, rather than one silently overwriting the other.
+// (the drop-in path itself is IMPORTED from gunbc.runner.runner_capability_labels, not declared here;
+// see the note on that declaration)
+
+type GpuDockerLabelsPlan
+  = GpuDockerLabelsGrant { write: ArgvCommand, content: String, reload: ArgvCommand }
+  | GpuDockerLabelsRevoke { remove: ArgvCommand, reload: ArgvCommand }
+  | GpuDockerLabelsUnrenderable { cause: String }
+
+// THE GRANT, WITH EVERY SIBLING HALF OBSERVED RATHER THAN INFERRED. This function does not decide whether
+// any capability beyond its own belongs in the set — it has no way to know, and an earlier draft let the
+// renderer beneath it decide unconditionally for the browser label, which is how a host with a never-earned
+// browser label could be advertised as browser-ready to the scheduler (review 86378). Witnesses arrive from
+// reads of the owning converges' own drop-ins (host_capability_rows_observed), taken by the caller that has
+// the transport. A caller that has not looked has no way to reach this function, because the only route in
+// gpu_docker_labels_converge_wet goes through the observation, and the fold refuses an unreadable row
+// rather than dropping its label.
+fn gpu_docker_labels_grant_plan(host: HostIdentity, target: NonEmptyStr, witnesses: List<HostCapabilityWitness>) -> GpuDockerLabelsPlan {
+  match runner_host_gpu_docker_labels_dropin_text(host: host, witnesses: witnesses) {
+    // A refused rendering is a failed converge, never a silent skip: a host that keeps a stale label
+    // set because the new one could not be rendered is a host still advertising a capability it lost.
+    // THE CONTENT IS THE SUBJECT OF THE WRITE, NOT A STRING SHIPPED BESIDE A PATH, and the route is
+    // chosen for that reason. The obvious carrier — an elevated `dd of=<path>` with the body on stdin —
+    // is what this module did FIRST, and it is wrong twice over. It cannot RUN: the stdin transport
+    // refuses a FleetSsh transport outright (gunbc.host.host_effect_realize
+    // run_argv_stdin_over_host_effect_transport's FleetSsh arm), so the leg was a guaranteed refusal on
+    // the only transport this converge has — the same trap gunbc.runner.runner_browser_toolchain
+    // browser_ready_labels_converge_wet is still standing in, which is why 85-browser-ready-labels.conf
+    // is absent on srv1 despite that mode having been dispatched. And it could not be PROVEN even if it
+    // ran: an exit-0 from `dd` establishes that a process exited, not that these bytes are at this path.
+    // converge_typed_remote_file stages, chmods, renames and then has the FAR SIDE `cmp -s -` the
+    // destination against the payload, and its carrier embeds the exact write; the bytes are confirmed
+    // by something other than the writer's own exit status.
+    // MODE 0644 AND PRIVILEGE VIA SUDO, both deliberate. The file is read by systemd as root but its
+    // content is public by nature — a label list — and world-readable is what every sibling drop-in in
+    // that directory already is, so 0644 asks for nothing the neighbours do not have. Sudo rather than
+    // the session principal because /etc belongs to root and the converge's ssh principal is an
+    // operator account, not root; the alternative would be a write that fails on permissions and reads
+    // as a broken renderer.
+    RunnerUnitText { text: content } =>
+      GpuDockerLabelsGrant {
+        write: gpu_docker_labels_write_command(),
+        content: content,
+        reload: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())),
+      }
+    RunnerUnitTextRefused { reason: r } => GpuDockerLabelsUnrenderable { cause: r as String }
+  }
+}
+
+// The argv of the write, named so the wet step can pass it to the typed writer without re-spelling it.
+// The typed route builds its own `tee` staging leg from the sealed write; this command is the SUBJECT
+// the operator sees in the plan and the thing the receipt names.
+fn gpu_docker_labels_write_command() -> ArgvCommand {
+  sudo_elevate_command(command: argv_words(command: dd_overwrite_path_command(path: gpu_docker_labels_dropin_path as String)))
+}
+
+// THE SCOPE THE SEAL REQUIRES. /etc because the drop-in lives under it, which is also what every other
+// writer of a system file in this repository declares (gunbc.runner.runner_host_file_converge
+// fleet_host_file_scope, gunbc.auth.approval_keyring_converge approval_keyring_etc_scope). A scope is
+// not decoration: it is what stops a rendering bug from sealing a write to /etc/shadow under the name
+// of a runner label file.
+data gpu_docker_labels_file_scope: FileTreeScope = FileTreeScope { root_path: "/etc" as NonEmptyStr }
+
+fn gpu_docker_labels_revoke_plan(target: NonEmptyStr) -> GpuDockerLabelsPlan {
+  GpuDockerLabelsRevoke {
+    remove: sudo_elevate_command(command: argv_words(command: rm_force_command(path: target as String))),
+    reload: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())),
+  }
+}
+
+type GpuDockerLabelsOutcome
+  = GpuDockerLabelsGranted
+  | GpuDockerLabelsRevoked
+  | GpuDockerLabelsFailed { cause: String }
+
+fn gpu_docker_labels_outcome_text(o: GpuDockerLabelsOutcome) -> String {
+  match o {
+    GpuDockerLabelsGranted => "gpu_docker_label=granted"
+    GpuDockerLabelsRevoked => "gpu_docker_label=revoked"
+    GpuDockerLabelsFailed { cause: c } => concat("gpu_docker_label=failed cause=", c)
+  }
+}
+
+// A REVOKE IS THE RIGHT LABEL ACTION AND STILL A FAILED CONVERGE, exactly as in the browser case:
+// removing the label from a host that lost the toolchain is correct, but the converge did not make
+// the host able to run a GPU container, so only a grant on a ready readback can leave the run green.
+fn gpu_docker_labels_outcome_holds(o: GpuDockerLabelsOutcome, ready: Bool) -> Bool {
+  match o {
+    GpuDockerLabelsGranted => ready
+    GpuDockerLabelsRevoked => !ready
+    GpuDockerLabelsFailed { cause: _ } => false
+  }
+}
+
+// A FAILED LEG AS ONE LINE OF TEXT, shared by the outcome builder below and by the browser-ready
+// observation. The two have to word failure identically, because both end up in the same receipt and a
+// reader comparing lines should not have to learn two formats for the same event.
+fn gpu_docker_labels_transport_failure_text(step: String, outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportRefused { reason: r } => concat(step, " refused: ", r)
+    RunArgvTransportObserved { observed: o } =>
+      concat(step, " exited ", to_string(o.exit_code), ": ", trim(s: o.stderr))
+  }
+}
+
+fn gpu_docker_labels_step_failed(step: String, outcome: RunArgvTransportOutcome) -> GpuDockerLabelsOutcome {
+  GpuDockerLabelsFailed { cause: gpu_docker_labels_transport_failure_text(step: step, outcome: outcome) }
+}
+
+fn gpu_docker_labels_reload_then(success: GpuDockerLabelsOutcome, reload: ArgvCommand, transport: HostEffectTransport) -> GpuDockerLabelsOutcome {
+  let reloaded = run_argv_over_host_effect_transport(command: reload, transport: transport)
+  if run_argv_transport_succeeded(outcome: reloaded) {
+    success
+  } else {
+    gpu_docker_labels_step_failed(step: "daemon-reload", outcome: reloaded)
+  }
+}
+
+// THE TRANSPORT IS BUILT HERE, NOT PASSED IN. The grant leg needs the SshTarget and the agent context
+// separately — converge_typed_remote_file takes them apart, because it names the exact target inside
+// its success carrier and an opaque transport could not give it that. Deriving the argv transport from
+// the same two values here is what keeps the grant and the revoke from ever addressing different
+// machines: two callers passing a transport and a target that disagreed would be a check running
+// against one host and a label being written to another.
+fn gpu_docker_labels_converge_wet(
+  host: NonEmptyStr,
+  ready: Bool,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> GpuDockerLabelsOutcome {
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  let target = gpu_docker_labels_dropin_path
+  // SIBLING CAPABILITIES ARE OBSERVED ONLY ON THE GRANT PATH, and the two halves of that sentence each
+  // carry weight. Only the grant needs the answer: a revoke removes the whole file, so there is nothing to
+  // restate and asking the host would add a leg that can fail for no reason whatsoever. The grant cannot
+  // skip it: the 86- drop-in's LABELS_JSON REPLACES its siblings' rather than adding to them, so the set
+  // written here decides whether browser jobs keep arriving at this host, and the only admissible source
+  // for that answer is each owning converge's own drop-in — the model's opinion about what the browser
+  // converge would have written is precisely the reasoning review 86378 removed, and review 86550's point
+  // is that the fold asking every row that question is one function over the table, not a read per pair.
+  //
+  // COULD-NOT-LOOK IS NOT ABSENT. An unobservable read fails the converge and touches nothing: the
+  // previously written drop-in stays as it was and the runner keeps whatever it had. The alternative —
+  // treating a failed read as "not held" — would silently strip a legitimately held capability from this
+  // host whenever a read blipped, and every check on the owning side would still report green while that
+  // host sat idle. A converge that fails loudly on a failed observation is the cheaper bug.
+  let plan =
+    if ready {
+      gpu_docker_labels_grant_plan(
+        host: (host as String) as HostIdentity,
+        target: target,
+        witnesses: host_capability_rows_observed(
+          own_label: gunbc_gpu_docker_label,
+          admin: admin,
+          context: context,
+        ),
+      )
+    } else {
+      gpu_docker_labels_revoke_plan(target: target)
+    }
+  match plan {
+    GpuDockerLabelsUnrenderable { cause: c } => GpuDockerLabelsFailed { cause: c }
+    GpuDockerLabelsGrant { write: write, content: content, reload: reload } =>
+      // THE WRITE GOES THROUGH THE TYPED WRITER, not through this module's own transport. Two
+      // independent reasons, both load-bearing:
+      //   (1) It is the only route that runs. The stdin transport arm of
+      //       gunbc.host.host_effect_realize run_argv_stdin_over_host_effect_transport REFUSES a
+      //       FleetSsh transport, and FleetSsh is the only transport this converge has — so the
+      //       `dd`-on-stdin leg this module first wrote was a guaranteed refusal, and would have made
+      //       the grant step report a failure that looks like an ssh problem. That is the same trap
+      //       gunbc.runner.runner_browser_toolchain browser_ready_labels_converge_wet is still in;
+      //       verified on srv1, where 85-browser-ready-labels.conf is absent although that mode has
+      //       been dispatched. Fixing it here is deliberate; fixing it there is out of scope and left
+      //       as a note rather than a silent drift between two modules that look identical.
+      //   (2) It is the only route that PROVES the write. converge_typed_remote_file stages, chmods,
+      //       atomically renames, and then asks the FAR SIDE to `cmp -s -` the destination against
+      //       these bytes; its carrier embeds the exact write and the exact target. An exit-0 from a
+      //       writer process establishes a process exited — the class of substitution this repository
+      //       has repeatedly retracted. The label is what makes GPU jobs schedule here, so "granted"
+      //       has to mean the bytes are there.
+      // NOT CONVERGED IS NOT REFUSED. A refusal at "admission" means the seal sent nothing — the
+      // destination is untouched and the previous label state stands. Any later step may have left a
+      // staged sibling behind, so the destination is UNKNOWN; both are failures of the converge, but
+      // they are named apart because only the first is safe to retry blindly.
+      match converge_typed_remote_file(
+        target: admin,
+        context: context,
+        admission: typed_remote_file_write_seal(path: gpu_docker_labels_dropin_path as String, content: content, allowed_scope: gpu_docker_labels_file_scope),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: s, reason: r } =>
+          GpuDockerLabelsFailed { cause: concat("drop-in write ", s, ": ", r) }
+        TypedRemoteFileConverged { converged: _ } =>
+          gpu_docker_labels_reload_then(success: GpuDockerLabelsGranted, reload: reload, transport: transport)
+      }
+    GpuDockerLabelsRevoke { remove: remove, reload: reload } => {
+      let removed = run_argv_over_host_effect_transport(command: remove, transport: transport)
+      if run_argv_transport_succeeded(outcome: removed) == false {
+        gpu_docker_labels_step_failed(step: "drop-in remove", outcome: removed)
+      } else {
+        gpu_docker_labels_reload_then(success: GpuDockerLabelsRevoked, reload: reload, transport: transport)
+      }
+    }
+  }
+}
+
+// ── THE WET ENTRY: THE FLEET-CONVERGE MODE'S OWN GATE ────────────────────────────────────────────
+//
+// BOUND FIRST, THEN TRUSTED, THEN ACTED ON — the order the browser converge uses, for the reason it
+// gives: the workflow's `host` input is workflow_write text and the SSH edge is a network fact, so
+// acting before the reading is what lets a mistyped or hostile host value reach the fleet-admin key.
+//   1. gunbc.runner.runner_microvm_host_ready microvm_host_binding_wet pins this runner to the machine
+//      it claims to be, and hands over the host's declared spec — whose job_user is the identity the
+//      readback asks, so the question is put to the account the model named rather than one guessed;
+//   2. the host model must DECLARE the capability (gunbc.runner.runner_host_deploy) — a host that
+//      never declared it is refused outright, because installing a GPU container stack on a machine
+//      that never asked for one is how an operator's box quietly becomes a CI runner;
+//   3. only then the admin edge, with the pinned host key;
+//   4. ensure -> generate -> readback -> label, each leg run only when the previous held.
+//
+// A declared host that fails the readback gets the label REMOVED and exits non-zero. It never exits 0
+// on a host that cannot actually run a GPU container as the job user — that is the never-green rule
+// the dependent instruments rely on for their own exit-2 arms.
+data runner_gpu_container_toolchain_converge_attempt_raw: NonEmptyStr = "fleet-ci-gpu-container-toolchain"
+
+data runner_gpu_container_toolchain_converge_receipt_path: String = "target/runner-gpu-container-toolchain-converge-receipt.txt"
+
+fn gpu_container_toolchain_admin_target(host: NonEmptyStr) -> SshTargetResolution {
+  fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host as String), principal: executor_bootstrap_principal.login)
+}
+
+fn gpu_container_toolchain_admin_transport(target: SshTarget, context: FleetSshExecutionContext) -> HostEffectTransport {
+  FleetSsh { target: target, context: context }
+}
+
+fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {
+  match microvm_host_binding_wet() {
+    MicrovmHostBindingRefused { cause: c } =>
+      exit_failure(reason: join(["runner_gpu_container_toolchain_converge: ", microvm_host_binding_refusal_text(c: c)], ""))
+    MicrovmHostBound { spec: spec, host: host } =>
+      match runner_host_gpu_container_toolchain_for(host: (host as String) as HostIdentity) {
+        RunnerHostGpuToolchainAbsent { host: h } =>
+          exit_failure(reason: concat("runner_gpu_container_toolchain_converge: host ", h as String, " carries no GPU container toolchain row in gunbc.runner.runner_host_deploy; converge installs only what the model declares"))
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainNotWanted { reason: r } } =>
+          exit_failure(reason: concat("runner_gpu_container_toolchain_converge: this host does not want the GPU container toolchain: ", r as String))
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainUnmeasured { } } =>
+          exit_failure(reason: "runner_gpu_container_toolchain_converge: this host's GPU capability is UNMEASURED, so nothing is installed and nothing is granted; measure it, then declare it")
+        RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: repo, packages: packages } } =>
+          // THE SUBORDINATE RANGE MUST BE DECLARED BEFORE ANYTHING IS TOUCHED, and it is asked for here —
+          // at the gate, beside the toolchain row that says the host wants this at all — rather than deep
+          // inside provisioning where its absence would surface as one refusal among many. A host whose
+          // /etc/subuid has never been read has no declared range, and there is no safe default to
+          // substitute: picking a number would be choosing 65536 uids that belong to someone else, which
+          // is how two accounts end up sharing a namespace.
+          match subordinate_ids_declared_for(host: (host as String) as HostIdentity) {
+            RunnerHostSubordinateIdsUnmeasured { reason: r } =>
+              exit_failure(reason: concat("runner_gpu_container_toolchain_converge: ", r))
+            RunnerHostSubordinateIdsDeclared { spec: ids } =>
+          match prepare_fleet_ssh_agent_context(attempt_raw: runner_gpu_container_toolchain_converge_attempt_raw) {
+            FleetSshContextRefused { cause: c } => exit_failure(reason: c)
+            FleetSshContextReady { context: context, receipt: context_receipt } =>
+              match gpu_container_toolchain_admin_target(host: host) {
+                SshTargetRefused { endpoint: e, refusal: why } =>
+                  exit_failure(reason: join(["runner_gpu_container_toolchain_converge: ", ssh_target_refusal_text(endpoint: e, refusal: why)], ""))
+                SshTargetResolved { target: admin } => {
+                  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+                  // PROVISIONING RUNS FIRST. apt cannot install docker-ce or nvidia-container-toolkit
+                  // until the pinned repos have been staged and run, so an ensure that went first would
+                  // report "package not found" on a host that is actually fine. It runs on every Desired
+                  // host and is idempotent: on srv1, where the repos, packages, ranges and daemon already
+                  // exist, every step reports "already declared" or succeeds as a no-op.
+                  let provision = gpu_container_provision_wet(host: host, spec: spec, ids: ids, admin: admin, context: context)
+                  // THE ENSURE RUNS EVEN WHEN PROVISIONING REFUSED, and that is deliberate rather than an
+                  // oversight: the package install is harmless and idempotent, and its outcome belongs in
+                  // the receipt because it is what tells an operator WHERE the chain broke — "repos staged
+                  // but package missing" and "packages present but ranges refused" need different fixes.
+                  // Safety never depended on skipping it; it depends on the gate below, which requires the
+                  // two subordinate verifications to have run and passed. An earlier version of this
+                  // comment argued safety from a consequence instead ("no range means no daemon means the
+                  // readback fails"), and that reasoning is unsound for the partial-migration case the
+                  // range work exists to handle — see the conjunct at `subordinate_integrity`.
+                  let ensure = runner_gpu_container_toolchain_ensure_wet(packages: packages, transport: transport)
+                  let ensure_ok = fold(ensure, init: true, f: (ok, o) => ok && gpu_toolchain_ensure_outcome_holds(o: o))
+                  let generate = runner_gpu_container_toolchain_generate_cdi_wet(packages_hold: ensure_ok, transport: transport)
+                  let readback = runner_gpu_container_toolchain_readback_wet(job_user: spec.job_user, transport: transport)
+                  // SUBORDINATE INTEGRITY IS ITS OWN CONJUNCT, and not being one was review 5644178843's
+                  // second finding. The line before it used to be trusted to cover ranges — "a host without
+                  // its subordinate range cannot start a rootless daemon, so the readback's daemon arm
+                  // fails" — and that inference is only sound for a host that NEVER had the range. It is
+                  // unsound for the case the range work actually exists for: a PARTIALLY MIGRATED host. If
+                  // the uid legs land and a gid leg refuses, dockerd is already running under ranges that
+                  // were correct when it started, so it answers the socket probe, the CDI spec is on disk,
+                  // and nvidia-smi lists both devices — all four capability arms pass, `ready` is true, and
+                  // the label is granted to a host whose /etc/subgid no longer agrees with its /etc/subuid.
+                  // The capability probes look at the running system; not one of them reads those two
+                  // files. So the safety property is asserted where it can be seen, as a conjunct, rather
+                  // than inferred from a chain of consequences that holds on most hosts.
+                  //
+                  // WHY PRESENT-AND-PROVISIONED AND NOT MERELY "NOT REFUSED". The fold stops at the first
+                  // refusal, so a chain that died before the two verifications leaves them ABSENT — and
+                  // absence must not satisfy a safety gate. Requiring both to have actually run and passed
+                  // is what makes a skipped check, a refused check and a partially-applied range all land
+                  // on the same side of the line.
+                  let subordinate_integrity = gpu_container_subordinate_integrity_holds(steps: provision.steps)
+                  let ready = runner_gpu_container_toolchain_host_ready(
+                    ensure_ok: ensure_ok,
+                    cdi_ok: cdi_generate_outcome_holds(o: generate),
+                    readback: readback,
+                    provision_steps: provision.steps,
+                  )
+                  // THE VERDICT IS THE READBACK, NOT THE PROVISIONING LOG. That answers the question a
+                  // reviewer will ask: why does a provisioning refusal not fail the converge on its own?
+                  // Because provisioning is the MEANS and "a container the job user runs sees the device"
+                  // is the END, and the only thing this capability promises is the end. Two cases show why
+                  // the gate cannot be provisioning:
+                  //   a refusal on a host that is nevertheless correct — srv1 already has the repos, the
+                  //   packages, the ranges and a running daemon, so any transient refusal (a staged write
+                  //   that timed out) would fail a converge over a host that demonstrably works, and the
+                  //   label would be pulled from a slot that can run GPU jobs; and
+                  //   success on a host that is not correct — every step can exit 0 and leave the daemon
+                  //   unable to start, which is the exact failure mode the subordinate-range work exists
+                  //   to make visible.
+                  // So `ready` decides, and provisioning is REPORTED. A refusal reaches the operator in the
+                  // receipt, and the converge goes red on it directly — not by the indirect route this
+                  // comment formerly claimed (that a refusal "fails the converge indirectly, because a host
+                  // that never got its ranges cannot pass a container-sees-the-device check"). That route was
+                  // wrong for a partially migrated host, whose already-running daemon can pass every
+                  // capability probe while its two range files disagree; the gate that makes such a refusal
+                  // red is now explicit, in `subordinate_integrity`, rather than a hoped-for consequence.
+                  //
+                  // WHAT THE GATE DOES NOT DO is pull the label off a working host over a transient
+                  // provisioning hiccup. The two verifications read the files themselves rather than trusting
+                  // the usermod exit codes, so on a host that already holds both declared ranges they pass
+                  // no matter what the legs did, and the label stands — the behaviour that kept srv1's slot
+                  // serving through the staged-write timeouts this module was built around. Red means "both
+                  // ranges are not proven"; it does not mean "something failed".
+                  let labels = gpu_docker_labels_converge_wet(host: host, ready: ready, admin: admin, context: context)
+                  // THE RECEIPT IS WRITTEN BEFORE THE VERDICT on every path past the binding, so a
+                  // failed converge still says why in the artifact a human reads.
+                  let body = join(
+                    [
+                      "runner_gpu_container_toolchain_converge host=", host as String,
+                      " probed_at=", probed_at_word(reading: clock_now_probed_at()) as String, "\n",
+                      context_receipt,
+                      "repo=", repo.repo_base as String, "\n",
+                      // PROVISIONING FIRST in the receipt, because it is the first thing that ran and the
+                      // first thing an operator needs: if the repos were never staged, everything after it
+                      // is noise. The declared ranges are printed too, since a range the model declares
+                      // and a range the host holds can disagree and that disagreement is the story.
+                      "subordinate: declared ", to_string(ids.job_user_first), "+", to_string(ids.job_user_count),
+                      " for ", spec.job_user as String, ", displaceable ", ids.displaceable as String, "\n",
+                      "provision: ", gpu_container_provision_run_text(r: provision), "\n",
+                      // SUBORDINATE INTEGRITY AS ITS OWN LINE, because it is now a reason a converge can go
+                      // red that no other line explains: all four capability arms can print ok and this
+                      // print false. Without it the receipt would say "ready false" next to four passing
+                      // probes and leave an operator debugging dockerd when the fault is in /etc/subgid.
+                      "subordinate integrity: ",
+                      if subordinate_integrity { "proven (both range files read back holding the declared range)" } else {
+                        join(["NOT proven — refusing the label; see the provision lines above for which of '", gpu_container_provision_subuid_verify_step, "' / '", gpu_container_provision_subgid_verify_step, "' did not pass"], "")
+                      },
+                      "\n",
+                      "ensure: ", join(map(ensure, o => gpu_toolchain_ensure_outcome_text(o: o)), " "), "\n",
+                      cdi_generate_outcome_text(o: generate), "\n",
+                      runner_gpu_container_toolchain_readback_text(r: readback),
+                      gpu_docker_labels_outcome_text(o: labels), "\n",
+                    ],
+                    "",
+                  )
+                  let w = Filesystem.Write(path: runner_gpu_container_toolchain_converge_receipt_path, content: body)
+                  if w.success == false {
+                    exit_failure(reason: join(["runner_gpu_container_toolchain_converge: receipt write failed: ", w.error, "\n", body], ""))
+                  } else if ready && gpu_docker_labels_outcome_holds(o: labels, ready: ready) {
+                    ExitSuccess
+                  } else {
+                    exit_failure(reason: body)
+                  }
+                }
+              }
+          }
+          }
+      }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// PROVISIONING: THE PART THAT MAKES THE READBACK POSSIBLE
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// THE READBACK ARMS ABOVE CAN ONLY ever answer "no" on a host that has nothing installed, and an
+// honest "no" is exactly what the dependent instrument needs — but an honest no forever is a host that
+// never runs the GPU instrument at all. This section is what turns the four arms green on srv3, which
+// today has no docker, no container toolkit, no job-user daemon, and a subordinate-range collision.
+//
+// NOTHING HERE IS HAND-INSTALLED, and that is a requirement rather than a preference: the brief says the
+// toolchain must be declared in the host model and applied by converge, never hand-installed, because a
+// host that is green because someone ssh'd in once is a host that goes red silently the first time it is
+// rebuilt. So every mutation below is a declared step that re-runs to the same state, and every step
+// that could fail is checked by re-reading the host rather than by trusting the command's exit status.
+//
+// THE FIVE THINGS ROOTLESS DOCKER ACTUALLY NEEDS, in the order the failures compound:
+//   1. apt knows where to get docker-ce and nvidia-container-toolkit (two pinned third-party repos),
+//      or the packages simply do not exist as far as the host is concerned;
+//   2. the packages, including docker-ce-rootless-extras — without which there is no dockerd-rootless.sh
+//      and the whole idea is dead on arrival;
+//   3. the job user's subordinate uid AND gid ranges, disjoint from every other account's;
+//   4. linger, so the user manager exists when nobody is logged in — a CI runner's defining condition;
+//   5. a unit in that manager that starts dockerd-rootless.sh and is enabled, so it survives a reboot.
+// Items 3 and 5 are the two nobody anticipates, and both fail in ways that look like something else: a
+// colliding range reads as a Docker bug, and a missing linger reads as "the daemon works when I test it
+// by hand and dies on its own later", because an interactive login creates /run/user/UID and a runner
+// restart does not.
+//
+// ── STAGED SCRIPTS: THE docker-ce REPO ─────────────────────────────────────────────────────────
+//
+// WHAT STAYS A STAGED SCRIPT, AND WHY IT IS ONLY docker-ce. The nvidia repo install used to be staged
+// alongside this one; it is now modelled as argv legs and a Check
+// (gpu_container_provision_repo_actions), because review found the fingerprint gate — the one thing that
+// separates a trusted key from a blindly fetched one — existed only as text inside its shell string. The
+// docker-ce body is the same shape and carries the same defect, but it is PRE-EXISTING debt with its own
+// dissolution condition, and its own module's witnesses assert on it
+// rewriting it here would be me silently expanding scope into a module I was not asked to change. It stays
+// exactly as landed: read from the host row, staged with the typed writer, run by path — the same discipline
+// as every other staged artifact in this repository, and the reason a declared apt repo can no longer sit in
+// the model while the host has no Docker on it.
+//
+// THE SCRIPT IS DATA, NOT A COMMAND LINE. Handing a shell body to an interpreter through a `-c` argument
+// would splice the body into a shell string, making the content of a script capable of altering what
+// gets executed. The typed writer takes the body as its SUBJECT (path + content, sealed against a
+// declared scope) and the script carrier runs a PATH, so the bytes travel as data end to end and the
+// only thing that ever looks like shell syntax is a filename.
+data gpu_container_provision_staging_dir: NonEmptyStr = "/tmp/gunbc-gpu-container-toolchain-staging"
+
+// THE STAGED SCRIPT'S PATH, derived from the script it holds so two installs cannot collide on one
+// filename and so a stale staging file from a previous model revision is a DIFFERENT path rather than a
+// file the next run might execute believing it is current.
+fn gpu_container_provision_staged_path(name: NonEmptyStr) -> NonEmptyStr {
+  concat(concat(gpu_container_provision_staging_dir as String, "/gpu-"), name as String)
+}
+
+// THE STAGING DIR IS ROOT-OWNED AND NOBODY ELSE WRITES IN IT, so the tightest declared mode is the
+// correct default: gunbc.managed_directory declared_directory_mode's DirectoryOwnerOnly, which is the
+// named intent 0700 rather than a permission-bits literal I would be re-deriving here. The mode is
+// passed explicitly rather than left to install's default because a mode that comes from umask is a mode
+// that changes when the same step is moved into a systemd unit, and this step will be.
+fn gpu_container_provision_install_dir_argv() -> List<String> {
+  coreutils_install_directory_argv(mode: declared_directory_mode(m: DirectoryOwnerOnly), path: gpu_container_provision_staging_dir as String)
+}
+
+// THE STAGED-FILE HELPERS THAT USED TO LIVE HERE ARE GONE. This region held the mode, the scope seal and
+// the two helpers that turned a body String into a file and then into `sh <path>` (gpu_container_provision_
+// repo_script_write, gpu_container_provision_script_mode, gpu_container_provision_run_script_argv, and a
+// staging-directory FileTreeScope that existed only to admit staged scripts). Deleting the staged-script
+// variant left all of them without a producer, and a helper with no producer is not inert: it is the exact
+// shape the next author reaches for when a step is awkward to model. The staging DIRECTORY and the staged
+// PATH helper remain, because the fetched keyrings are still written there before the fingerprint check
+// reads them — what is gone is the route from a String to a program.
+//
+// The `sh` interpreter import went with them. It existed solely to run staged scripts; nothing this plan
+// runs is a script any more, and extdeps.posix.sh_invocation keeps its own witnesses for the carriers that
+// still legitimately stage scripts elsewhere in the fleet.
+
+// ── THE JOB USER'S USER MANAGER: LINGER ─────────────────────────────────────────────────────────
+//
+// LINGER IS WHAT MAKES A CI RUNNER A CI RUNNER. /run/user/UID and the user's systemd manager exist only
+// while the account has a session; an interactive login creates them, so a human testing rootless Docker
+// by hand sees it work, and then the host reboots at 03:00 with nobody logged in and the daemon is
+// simply not there. loginctl enable-linger is the durable statement that this account's manager runs
+// whenever the machine is up. It is idempotent, and it is one of the two things that fail invisibly.
+//
+// ELEVATED AS ROOT. Enabling linger on ANOTHER account is an administration act; loginctl refuses it
+// for a non-privileged caller targeting a uid it does not own, and letting the job user enable its own
+// linger would let the account the runner jobs run as decide its own persistence policy.
+//
+// THE UID, NOT THE NAME, IS WHAT THE MEASUREMENT GAVE. Both fleet hosts report ghrunner's manager state
+// keyed by uid (`loginctl show-user 999 -p Linger` returns Linger=yes), and a name would have to resolve
+// through the same NSS the caller may not share. The uid comes from the getent readback above, so
+// enabling linger and starting the manager address the SAME account the readback verified — they cannot
+// drift to different users if one of the two is handed a name and the other a number.
+fn gpu_container_provision_enable_linger_argv(uid: Int) -> List<String> {
+  loginctl_enable_linger_argv(subject: to_string(uid) as NonEmptyStr)
+}
+
+// THE LINGER READBACK, because exit status is not evidence here: enable-linger on an account that
+// already has it exits 0, and enable-linger on a host whose logind is in a bad state can also exit 0
+// while nothing was created. show-user -p Linger is the thing that answers, and it is read the same way
+// the other arms are read.
+fn gpu_container_provision_linger_probe_argv(uid: Int) -> List<String> {
+  [loginctl_binary_name as String, "show-user", to_string(uid) as NonEmptyStr, "-p", "Linger"]
+}
+
+// `Linger=yes` on its own line is the only answer that counts. The comparison is against the WORD rather
+// than a substring of the output because a unit that is failing prints an error containing the word
+// "yes" no more often than it prints one containing "no", but a parser that accepts any output
+// mentioning yes would also accept "Linger=yes" appearing inside an error message about a different
+// user; anchoring on the property name is what makes it the right property.
+data gpu_container_provision_linger_yes: String = "Linger=yes"
+
+fn gpu_container_provision_linger_holds(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: gpu_container_provision_linger_yes)
+}
+
+// ── THE ROOTLESS DAEMON UNIT ────────────────────────────────────────────────────────────────────
+//
+// THE UNIT IS DECLARED HERE BECAUSE NOTHING ELSE WRITES IT. srv1's is what dockerd-rootless-setuptool.sh
+// install generated for ghrunner in August, read verbatim off that host on 2026-10-25 and reproduced
+// below; srv3 has no such file, and its job user has no ~/.config at all (measured). Relying on the
+// setuptool would mean the unit's content depends on whatever a vendor script from some version of
+// docker-ce-rootless-extras emits on the day it runs — and that script also refuses to run when a
+// rootful socket is present unless passed --force, which is exactly the srv1 shape. A declared unit is
+// byte-identical across hosts and runs, converges, and is diffed as data.
+//
+// WHAT IS PRESERVED FROM THE MEASURED UNIT AND WHY: `Requires=dbus.socket` (dockerd-rootless.sh talks to
+// the user manager's bus; without it the daemon can start before its bus exists), Type=notify with
+// NotifyAccess=all (without notify, "started" means nothing — dockerd forks and the unit would report
+// success before the socket is listening, which is precisely the lie this module exists to refuse),
+// Restart=always with RestartSec=2 (a runner's daemon must come back after a crash with nobody watching),
+// Delegate=yes (RootlessKit needs to manage its own subtree, and without delegation systemd's
+// controllers account the container's work against the runner's slice, so a build could be OOM-killed
+// against a limit it was never given), KillMode=mixed (the privileged RootlessKit parent must stay up to
+// tear down what it created), and the Limits/TasksMax=infinity set the vendor unit ships with.
+//
+// DELIBERATELY NOT COPIED: the measured unit's `Environment=PATH=` line, which hardcodes /usr/bin twice
+// because it was generated by a shell interpolating the rootless user's PATH at install time. Inheriting
+// that would bake one host's PATH into every host, and PATH is the one variable whose right value depends
+// on the machine. dockerd-rootless.sh works with the manager's default PATH (which is what the srv3 run
+// will have), so the honest thing is to say nothing about PATH rather than to state a value measured
+// somewhere else.
+data gpu_container_provision_rootless_unit_name: NonEmptyStr = "docker.service"
+
+// The daemon's own binary path, INSIDE the unit. Absolute, because systemd does not search PATH for
+// ExecStart — a bare name there does not resolve at all, it is not a lookup that might succeed. Measured
+// present on srv1 at /usr/bin/dockerd-rootless.sh, and it is the file docker-ce-rootless-extras
+// (declared in the package set above) installs; srv3 will have it from that same package.
+data gpu_container_provision_rootless_exec_start: NonEmptyStr = "/usr/bin/dockerd-rootless.sh"
+
+fn gpu_container_provision_rootless_unit_text() -> String {
+  join(
+    [
+      "[Unit]\n",
+      "Description=Docker Application Container Engine (Rootless, declared by gunbc.runner)\n",
+      "Documentation=https://docs.docker.com/go/rootless/\n",
+      "Requires=dbus.socket\n",
+      "\n",
+      "[Service]\n",
+      "ExecStart=", gpu_container_provision_rootless_exec_start as String, "\n",
+      "ExecReload=/bin/kill -s HUP $MAINPID\n",
+      "TimeoutSec=0\n",
+      "RestartSec=2\n",
+      "Restart=always\n",
+      "StartLimitBurst=3\n",
+      "StartLimitInterval=60s\n",
+      "LimitNOFILE=infinity\n",
+      "LimitNPROC=infinity\n",
+      "LimitCORE=infinity\n",
+      "TasksMax=infinity\n",
+      "Delegate=yes\n",
+      "Type=notify\n",
+      "NotifyAccess=all\n",
+      "KillMode=mixed\n",
+      "\n",
+      "[Install]\n",
+      "WantedBy=default.target\n",
+    ],
+    "",
+  )
+}
+
+// WHERE THE UNIT GOES, and the answer had to be measured rather than reasoned about, because the obvious
+// choice is wrong in a way that looks right until a daemon silently stops working. systemd's user
+// search path includes ~/.config/systemd/user for the account whose manager it is; a file there is found
+// by that manager (verified on srv1: a root-owned unit placed in ghrunner's ~/.config/systemd/user was
+// loaded, enabled — "Created symlink … default.target.wants/gpu-probe.service" — started, and its
+// ExecStart ran AS ghrunner). The directory itself is owned by ghrunner, mode 0755, which the manager can
+// read; the FILE is written root-owned 0644 by the typed writer.
+//
+// WHY NOT THE SETUPTOOL'S OWN LOCATION. dockerd-rootless-setuptool.sh install writes the same path — that
+// is where srv1's measured unit lives — so declaring this path keeps the two approaches interchangeable
+// and lets a host migrated from a hand-run setuptool converge to the declared content in place.
+fn gpu_container_provision_unit_dir(home: String) -> String {
+  join([home, "/.config/systemd/user"], "")
+}
+
+fn gpu_container_provision_unit_path(home: String) -> String {
+  join([gpu_container_provision_unit_dir(home: home), "/", gpu_container_provision_rootless_unit_name as String], "")
+}
+
+// THE UNIT DIRECTORY MUST BE CREATED, not assumed: ghrunner's ~/.config does not exist on srv3 at all
+// (measured), and the directory's OWNER is load-bearing. This was measured rather than assumed because
+// the intuitive choice fails invisibly.
+//
+// root:root 0755 — the natural instinct, since the converge is elevated and root is what would make the
+// directory — produced: daemon-reload OK, start OK, ExecStart ran AS ghrunner, BUT `enable` FAILED with
+// "Failed to enable unit: Unit file …/default.target.wants/gpu-probe.service does not exist", exit 1, and
+// is-enabled stayed "disabled". The reason is that `enable` is performed by the USER MANAGER, which runs
+// as ghrunner, and it must CREATE default.target.wants/ and the symlink inside it; a root-owned directory
+// stops that. The failure is the worst kind available here: the daemon starts and works for the run, so a
+// smoke test that only asks "can I run a container" is green, and the unit is simply absent after the next
+// reboot — which is the property the whole capability label is supposed to guarantee.
+//
+// ghrunner-owned 0700 is what was verified end to end: install -d -m 0700 -o ghrunner, root-owned 0644
+// unit file, daemon-reload, enable ("Created symlink … default.target.wants/gpu-probe.service"), and
+// is-enabled printing "enabled".
+//
+// WHY NOT extdeps.tools.gnu_coreutils coreutils_install_directory_owned_argv, which already exists and
+// does this with an owner AND a group: it requires a group NAME, and the group turned out not to matter —
+// the same measurement produced group root (install's default when -g is omitted) and enable still worked,
+// because it is the OWNER, the manager's own uid, whose write permission the enable needs. Supplying one
+// would mean resolving ghrunner's primary group name as a claim about each host, whose only possible
+// contribution is to be wrong about one of them. 0700 rather than 0755: nothing outside the account reads
+// a user manager's unit directory, and a world-readable one advertises which units a service account runs
+// to every local principal. Tighter than the vendor default, and measured sufficient.
+fn gpu_container_provision_install_unit_dir_argv(job_user: NonEmptyStr, home: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_directory_flag as String,
+    coreutils_install_mode_flag as String,
+    coreutils_directory_mode_operand(mode: declared_directory_mode(m: DirectoryOwnerOnly)),
+    coreutils_install_owner_flag as String,
+    job_user as String,
+    gpu_container_provision_unit_dir(home: home),
+  ]
+}
+
+// THE ROOT-AS-ELEVATED USER-MANAGER VERBS, addressing the job user's manager by UID. These are NOT the
+// systemctl_user_* builders that already exist, and the distinction is the kind that produces a green
+// converge that changed nothing: those emit bare `--user`, which means the manager of whoever is running
+// systemctl. A converge ssh'ing in as an operator and elevating to root would therefore reload, enable,
+// and start units in ROOT's manager, where a docker.service does not exist and where, if one did, it
+// would be the rootful daemon. Every verb here carries `--machine=UID@` so the target manager is a value
+// the caller must supply rather than an accident of the invoking uid; see
+// extdeps.systemd.systemctl systemctl_user_machine_connector for why that connector and not a restart of
+// user@UID.service.
+fn gpu_container_provision_manager_argv(verb: NonEmptyStr, uid: Int, unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), verb as String, unit as String]
+}
+
+// daemon-reload takes NO unit operand, so it does not go through the verb+unit builder above: passing an
+// empty name to that builder would emit a trailing empty argv element, and `systemctl --user
+// --machine=999@ daemon-reload ""` is a command with an extra argument, not the same command.
+fn gpu_container_provision_reload_argv(uid: Int) -> List<String> {
+  ["systemctl", "--user", systemctl_user_machine_connector(uid: uid), "daemon-reload"]
+}
+
+fn gpu_container_provision_enable_argv(uid: Int) -> List<String> {
+  gpu_container_provision_manager_argv(verb: systemctl_enable_verb, uid: uid, unit: gpu_container_provision_rootless_unit_name)
+}
+
+fn gpu_container_provision_start_argv(uid: Int) -> List<String> {
+  gpu_container_provision_manager_argv(verb: systemctl_start_verb, uid: uid, unit: gpu_container_provision_rootless_unit_name)
+}
+
+fn gpu_container_provision_restart_argv(uid: Int) -> List<String> {
+  gpu_container_provision_manager_argv(verb: systemctl_restart_verb, uid: uid, unit: gpu_container_provision_rootless_unit_name)
+}
+
+fn gpu_container_provision_is_active_argv(uid: Int) -> List<String> {
+  gpu_container_provision_manager_argv(verb: systemctl_is_active_verb, uid: uid, unit: gpu_container_provision_rootless_unit_name)
+}
+
+// The enable check, compared against the printed WORD and not the exit code. Both were measured on srv1
+// and they disagree: a unit that is loaded but has no install symlink prints "static" and EXITS 0, so a
+// check on the exit status calls a never-enabled unit enabled. The case that matters is exactly the one
+// srv1 is in — a daemon that works because a human started it once — and "static" is also what a unit
+// with no [Install] section reports, so the word "enabled" is the only answer that means what is claimed.
+fn gpu_container_provision_is_enabled_argv(uid: Int) -> List<String> {
+  gpu_container_provision_manager_argv(verb: systemctl_is_enabled_verb, uid: uid, unit: gpu_container_provision_rootless_unit_name)
+}
+
+data gpu_container_provision_enabled_word: String = "enabled"
+data gpu_container_provision_active_word: String = "active"
+
+// THE UNIT IS RESTARTED ONLY WHEN ITS TEXT CHANGED. Restarts are not free: the rootless daemon owns the
+// running containers of the runner's currently executing job, so an unconditional restart on every
+// converge would kill in-flight CI jobs every time the converge ran. The typed writer knows whether the
+// bytes were already there (its write is a cmp and an atomic rename, and it reports the rename), so the
+// caller restarts only on an actual change and otherwise just ensures the unit is active.
+
+// ── THE PROVISIONING RUN ────────────────────────────────────────────────────────────────────────
+//
+// EVERY STEP IS A STEP THAT COULD HAVE NOT HAPPENED, and the outcome names which. Not ceremony: a
+// converge that reports success after only some of these ran leaves a host that looks configured and
+// cannot run a GPU container, which is worse than a host nobody claimed was ready — the label would be
+// granted on the strength of a readback about to fail, and the operator's only clue would be a receipt
+// saying "converged".
+//
+// THE ORDER IS A DEPENDENCY CHAIN, RUN WITH AN EARLY EXIT, following the shape gunbc.fleet
+// .host_credential_custody_converge run_legs_until_refused already uses for elevated legs: later steps
+// cannot work without earlier ones. apt cannot install from a repo it was never told about; dockerd
+// cannot start without a subordinate range; the user manager cannot create the enable symlink in a
+// directory it does not own; and a unit in a manager that linger never created will not come up after a
+// reboot. Continuing past a failure produces four refusals where the first was the only fact worth
+// reading, and — worse — leaves the later refusals looking like independent problems.
+//
+// THE WRITES ARE NOT LEGS. The three things that write a file (two staged repo scripts, the unit) go
+// through converge_typed_remote_file, which does its own stage/chmod/rename/cmp and reports a refusal
+// per step; the things that only run a command are legs here, and the two kinds are kept apart so the
+// proof-of-arrival property is not accidentally dropped from the file writes to make a fold tidier.
+type GpuContainerProvisionStep
+  = GpuContainerProvisioned { step: String }
+  | GpuContainerProvisionRefused { step: String, cause: String }
+  | GpuContainerProvisionSkipped { step: String, reason: String }
+
+// ONE ELEVATED COMMAND, in the same two-field shape the custody leg uses, so a step is data. THE LEG
+// STORES UNELEVATED WORDS and the elevation happens once, in gpu_container_provision_run_leg. That
+// division is not a style preference: legs that arrived pre-elevated and were then handed to the elevated
+// runner produced `sudo -n sudo -n usermod …`, which fails as a malformed command and reads as a typo in
+// the arguments. Storing the inner words means the set of legs and the set of elevated steps are the same
+// set by construction, and there is exactly one place that can add sudo.
+type GpuContainerProvisionLeg {
+  step: String
+  argv: List<String>
+}
+
+fn gpu_container_provision_leg(step: String, words: List<String>) -> GpuContainerProvisionLeg {
+  GpuContainerProvisionLeg { step: step, argv: words }
+}
+
+fn gpu_container_provision_run_leg(leg: GpuContainerProvisionLeg, transport: HostEffectTransport) -> GpuContainerProvisionStep {
+  match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: leg.argv), transport: transport) {
+    RunArgvTransportRefused { reason: r } => GpuContainerProvisionRefused { step: leg.step, cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        GpuContainerProvisioned { step: leg.step }
+      } else {
+        GpuContainerProvisionRefused { step: leg.step, cause: join(["exit=", to_string(o.exit_code), " ", trim(s: o.stderr)], "") }
+      }
+  }
+}
+
+// RUN THE LEGS, STOPPING AT THE FIRST THAT DID NOT SUCCEED, and return everything that happened: the
+// steps that ran AND the one that stopped the run. Dropping the successful prefix would throw away the
+// only information that distinguishes "the host refused at step one" from "steps one to six were fine and
+// the last one failed" — which is the difference between a host that needs an operator and a host that
+// needs a re-run.
+//
+// The guard is the refusal itself, checked on the accumulator: once a step has failed, no further command
+// is run on a host whose chain has already broken. It reads the accumulated STEPS rather than a
+// counter, because a counter that drifted would silently run the rest of the chain anyway.
+fn gpu_container_provision_run_legs(legs: List<GpuContainerProvisionLeg>, transport: HostEffectTransport) -> List<GpuContainerProvisionStep> {
+  fold(legs, init: ([] as List<GpuContainerProvisionStep>), f: (acc, leg) =>
+    if gpu_container_provision_has_refusal(steps: acc) {
+      acc
+    } else {
+      append(acc, items: [gpu_container_provision_run_leg(leg: leg, transport: transport)])
+    }
+  )
+}
+
+fn gpu_container_provision_has_refusal(steps: List<GpuContainerProvisionStep>) -> Bool {
+  steps.any(s => match s {
+    GpuContainerProvisionRefused { step: _, cause: _ } => true
+    GpuContainerProvisioned { step: _ } => false
+    GpuContainerProvisionSkipped { step: _, reason: _ } => false
+  })
+}
+
+// THE TWO STEP NAMES THE SUBORDINATE-RANGE VERIFICATION IS MADE OF, as rows. They are spelled once here
+// because three different things have to agree on them — the plan that emits the checks, the receipt that
+// prints them, and the predicate below that refuses to grant the label without them. A string that lives in
+// two places is a string that will drift, and drifting here means the predicate silently requires a step
+// that never runs (no host can ever be ready) or accepts one that never checks anything (every host is).
+data gpu_container_provision_subuid_verify_step: String = "subuid verified"
+data gpu_container_provision_subgid_verify_step: String = "subgid verified"
+
+// SUBORDINATE INTEGRITY, PROVEN OR NOT — the gate the label cannot cross without. THE POINT OF THIS
+// PREDICATE IS THAT "READY" ALONE DOES NOT MEAN THE HOST IS SAFE.
+//
+// The four readback arms answer "can the job user run a container that sees a GPU?" and they answer it
+// about the RUNNING system: dockerd answers, the CDI spec is there, nvidia-smi lists the devices. None of
+// them looks at /etc/subuid or /etc/subgid. And the subordinate reconciliation runs BEFORE any of them, so
+// a host can be refused (or partially applied) in the range step and still sail through every capability
+// arm — a dockerd that started under ranges that are still correct from the last converge, before this
+// converge's usermod refused halfway. The capability probes would then certify a host whose next container
+// can fail at namespace-creation time, and worse, they would certify it for as long as the stale ranges
+// keep working. Review 5644178843 named exactly this: deliberately not requiring provisioning success is
+// right for harmless install failures on an already-correct host, and wrong for a failed safety check.
+//
+// So integrity is its own conjunct rather than being inferred from provisioning success. It is proven by
+// the two verifications ACTUALLY READING BACK BOTH FILES, not by the usermod legs reporting exit 0 — which
+// is why requiring them present-and-provisioned (rather than "not refused") is the shape that holds: a
+// chain that stopped before the checks leaves them absent, and absent is not proven.
+// ONE RANGE FILE'S VERIFICATION, PROVEN — asked per file, which is the whole point. Two conditions on the
+// records that name THIS file: at least one success, and NO refusal or skip under that name.
+//
+// WHY A COUNT CANNOT ANSWER THIS, which is review 5646125208's finding. The first version filtered steps
+// whose name was either of the two and required `length(proven) == 2`. Two records answering for one file
+// satisfy that: two successful "subuid verified" steps and no "subgid verified" step at all is a population
+// of two matching records, so the predicate returned true for a host whose /etc/subgid had never been read,
+// and with the four capability arms green the label was grantable. Counting matching records and requiring
+// TWO distinct FILES are different questions, and only the second one is the safety property. Asking per
+// name makes duplicates useless: a second copy of the uid answer contributes nothing to the gid answer.
+//
+// WHY A REFUSAL UNDER THE SAME NAME POISONS THE FILE RATHER THAN BEING OUTVOTED. The obvious question
+// — what if the step list legitimately holds two records for one file, one good and one bad — is answered
+// in the conservative direction. These two names are emitted by exactly one planning site per file, so a
+// population carrying both a success and a refusal for the same file is not a normal outcome; it means
+// something about the plan or the executor is not what this module believes, and the answer to that is to
+// withhold the label and say so in the receipt, not to take a vote. Requiring the absence of a refusal is
+// also the only version that cannot be defeated by whoever produced the duplicate.
+fn gpu_container_subordinate_range_verification_proven(
+  steps: List<GpuContainerProvisionStep>,
+  step_name: String,
+) -> Bool {
+  let successes = filter(steps, s => match s {
+    GpuContainerProvisioned { step: st } => st == step_name
+    GpuContainerProvisionRefused { step: _, cause: _ } => false
+    GpuContainerProvisionSkipped { step: _, reason: _ } => false
+  })
+  let counter_records = filter(steps, s => match s {
+    GpuContainerProvisioned { step: _ } => false
+    GpuContainerProvisionRefused { step: st, cause: _ } => st == step_name
+    GpuContainerProvisionSkipped { step: st, reason: _ } => st == step_name
+  })
+  length(successes) > 0 && length(counter_records) == 0
+}
+
+// BOTH RANGE FILES, EACH PROVEN IN ITS OWN RIGHT. Conjunction of the two per-file answers and nothing else:
+// there is no arithmetic over the combined population left in this predicate to satisfy by duplication.
+fn gpu_container_subordinate_integrity_holds(steps: List<GpuContainerProvisionStep>) -> Bool {
+  gpu_container_subordinate_range_verification_proven(steps: steps, step_name: gpu_container_provision_subuid_verify_step)
+    && gpu_container_subordinate_range_verification_proven(steps: steps, step_name: gpu_container_provision_subgid_verify_step)
+}
+
+// WHY TWO usermod LEGS ARE NOT A TRANSACTION, AND WHAT IS HONEST TO CLAIM INSTEAD.
+//
+// An earlier comment on this path asserted that planning both files before mutating either means "the host
+// can never have one range moved without the other". That was false as written, and review 5644178843
+// caught it: gpu_container_provision_subordinate_actions emits the uid operations and the gid operations as
+// SEPARATE legs, and gpu_container_provision_run_legs stops at the first leg that fails, so a host can be
+// left with /etc/subuid migrated and /etc/subgid not. Planning both first buys one thing only — a refusal
+// that can be seen before anything is touched when BOTH files are already known to be bad — and it buys
+// nothing across the boundary between the two files.
+//
+// THE CONTRACT ACTUALLY OFFERED, stated as what it guarantees:
+//   1. A PARTIAL MIGRATION IS RECOGNISED, not papered over. The two verifications read the files
+//      themselves after usermod ran, so a host whose gid range did not land fails "subgid verified"
+//      whether or not its usermod exited 0. Partial application is therefore detected on the same
+//      converge that caused it, and reported in the receipt by name.
+//   2. THE CAPABILITY IS NOT GRANTED ACROSS IT. gpu_container_subordinate_integrity_holds makes the
+//      label gate refuse, so a half-migrated host never advertises gpu-docker; no GPU job is scheduled
+//      onto a host with ranges that are inconsistent with each other.
+//   3. THE NEXT CONVERGE FINISHES THE JOB, unattended. plan_subordinate_file compares the file AS IT IS
+//      against the declared range and emits NO steps for a file that already holds exactly the desired
+//      range. So re-converging a half-migrated host replans to "nothing to do" for the file that landed
+//      and "move it" for the one that did not — the missing half is applied, the applied half is left
+//      alone, and there is no ordering trap where the second run tries to move a range that is already
+//      there (which is the failure mode that makes naive rollback scripts worse than the bug they fix).
+//      Recovery is therefore RE-ENTRY, not a compensating undo: undoing the uid half would mean writing
+//      the pre-converge range back, and the pre-converge range for the displaced account is exactly the
+//      range this converge intends to hand to it — an "undo" would fight the plan.
+//   4. WHAT THAT MEANS FOR THE OPERATOR in one line: a refused range step is a red converge that names
+//      the file, and re-running the same converge is the repair. Nothing has to be reconstructed by hand,
+//      and nothing green hides the damage in the meantime.
+//
+// WHAT IS NOT CLAIMED: that the two writes are atomic. /etc/subuid and /etc/subgid are two files with no
+// joint transaction available to an unprivileged process, and a crash between the two is always
+// observable — claim 1 is what makes that survivable, so the claim worth making is detection + gating +
+// idempotent completion, and it is the one made above.
+//
+// THE SAME QUESTION ASKED OF A PLAN RATHER THAN A RUN. A witness must be able to say "this host would have
+// been refused" without running anything, and the refusal is a member of the action type, so the predicate
+// is over actions. It is written separately from the step predicate above rather than shared, because the
+// two enums are different types and conflating them would let a plan be judged by its results.
+fn gpu_container_provision_plan_has_refusal(actions: List<GpuContainerProvisionAction>) -> Bool {
+  actions.any(a => match a {
+    ProvisionRefusal { step: _, cause: _ } => true
+    ProvisionOwnedDirectory { step: _, argv: _ } => false
+    ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionLegs { legs: _ } => false
+    ProvisionVerify { step: _, check: _ } => false
+  })
+}
+
+// ── THE BROWSER-READY OBSERVATION: WHY THE GPU LABEL RESTATES, AND ONLY WHAT IT SAW ──────────
+//
+// THE LABEL SET THE GPU DROP-IN WRITES HAS TO RESTATE gunbc-browser-ready, because systemd's drop-in
+// ordering means the 86- file's `Environment=LABELS_JSON=` REPLACES the browser's 85- file rather than
+// adding to it (see gunbc.runner.runner_registration_labels
+// runner_gpu_docker_ready_registration_labels for the full argument). Restating is only honest if the host
+// actually holds that label, and the only way to know is to ASK THE HOST. An earlier draft asked nothing and
+// restated anyway; on srv1, where 85-browser-ready-labels.conf does not exist although the browser mode has
+// been dispatched, a successful GPU converge would have advertised a browser capability the browser
+// converge never certified, and browser jobs would have scheduled onto a host that cannot run one. Review
+// 86378 called that a fabricated default, and it is: the same defect class as staging an empty installer,
+// reached through the label axis.
+//
+// THE THREE ANSWERS ARE DIFFERENT ON PURPOSE, and the difference is the whole safety property.
+//   HELD    — the file is there and carries the label token: the GPU drop-in may restate it.
+//   ABSENT  — the file is not there, or is there without the token: the GPU drop-in must NOT restate it.
+//             Dropping the label from the 86 file cannot revoke a capability the host never had, so this
+//             answer is safe in both directions.
+//   UNOBSERVABLE — the read itself failed (ssh refused, cat refused, permissions). THIS IS NOT FALSE.
+//             Treating "could not look" as "not there" would revoke gunbc-browser-ready from a host that
+//             legitimately holds it, and a runner whose label set lost the browser label would sit idle
+//             while every check on the browser side still reports green — an unexplainable capacity loss,
+//             which is the failure mode this module keeps being asked to design out. So the caller fails the
+//             converge on this answer: the 86 file keeps whatever it held, and nothing is asserted.
+//
+// WHY `cat` AND NOT `test -f`. The token, not the file's existence, is what the label means; a file
+// written by hand, truncated, or left over from an interrupted write that names no label must not license a
+// restatement. And a marker the host controls is why the token is searched for in STDOUT rather than the
+// exit code being trusted alone — `cat` exits 0 for an empty file too.
+//
+// WHY ELEVATED. /etc/systemd/system is root-owned; the file itself is 0644 but the directory is not
+// guaranteed traversable by the converge's operator account, and a read that depends on that is a read that
+// fails differently on different hosts. sudo makes the observation's success a property of this command
+// rather than of the host's umask. LC_ALL is pinned inside sudo for the same reason
+// gpu_container_provision_locale_pinned_ls pins it (sudo's env_reset strips an outer assignment, and the
+// failure wording would otherwise arrive in the host's language).
+// OBSERVING ONE CAPABILITY ROW: read the sibling's own drop-in and answer HELD / ABSENT / UNOBSERVABLE.
+// One function for every capability, because the question is always the same question — do these bytes
+// contain that label token? — and the answer's SHAPE is what keeps the fold honest. A per-capability
+// observer would be a second implementation of one rule (§6b) and the place where a third capability
+// gets forgotten.
+//
+// THE COMMAND IS ELEVATED AND THE LOCALE IS PINNED, both for the same reason as the locale-pinned `ls`
+// above: the label drop-ins are root-owned files under a template's drop-in directory, a directory that is
+// not guaranteed traversable by the converge's operator account, and a read that depends on that is a read
+// that fails differently on different hosts. sudo makes success a property of this command rather than of
+// the host's umask; LC_ALL is pinned INSIDE sudo because sudo's env_reset strips an outer assignment, and
+// without it the failure wording would arrive in the host's language.
+//
+// NON-ZERO IS "COULD NOT LOOK", NOT "EMPTY". An elevated cat that exits non-zero did not read the file: a
+// missing path, an unreadable directory, or sudo refusing. Mapping that to ABSENT would let a permission
+// problem silently revoke a capability, which is the failure this whole three-arm shape exists to prevent —
+// so the non-zero arm answers Unobservable and the converge refuses.
+fn host_capability_row_observe(
+  row: HostCapabilityRow,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> HostCapabilityWitness {
+  let label = host_capability_row_label(row: row)
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  let read = run_argv_over_host_effect_transport(
+    command: host_capability_row_read_command(row: row),
+    transport: transport,
+  )
+  match read {
+    RunArgvTransportRefused { reason: r } => CapabilityUnobservable { label: label, cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code != 0 {
+        CapabilityUnobservable {
+          label: label,
+          cause: gpu_docker_labels_transport_failure_text(step: join(["read ", label, " drop-in"], ""), outcome: read),
+        }
+      } else if string_contains(s: o.stdout, pattern: label) {
+        CapabilityHeld { label: label }
+      } else {
+        CapabilityAbsent { label: label }
+      }
+  }
+}
+
+// OBSERVE EVERY ROW THE CONVERGE IS NOT THE OWNER OF. This is what the fold needs and it is data-driven:
+// the rows come from the table, so a fourth capability is read by this loop the moment its row lands, with
+// no edit here. If any read is unobservable, the whole fold is refused — the first such row's cause is what
+// surfaces, because a converge that cannot see one sibling cannot safely write the shared label set at all.
+fn host_capability_rows_observed(
+  own_label: String,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> List<HostCapabilityWitness> {
+  map(host_capability_rows_to_observe(own_label: own_label), r =>
+    host_capability_row_observe(row: r, admin: admin, context: context))
+}
+
+// THE READ ITSELF: `sudo env LC_ALL=C cat <row's drop-in>`, built through env_prefixed_command so the
+// program word survives the elevation wrapper.
+fn host_capability_row_read_command(row: HostCapabilityRow) -> ArgvCommand {
+  sudo_elevate_command(
+    command: argv_words(command: env_prefixed_command(
+      bindings: [EnvSet { name: "LC_ALL", value: "C" }],
+      command: cat_command(path: host_capability_row_dropin_path(row: row) as String),
+    )),
+  )
+}
+
+// WHICH STEPS A PLAN WOULD ATTEMPT, as names. The no-fabrication property for the nvidia repo has two
+// halves and the second needs this: it is not enough that a Desired host gets actions, the actions have to
+// be the ones the trust argument depends on. If the fingerprint check silently disappeared from the list,
+// the fetch would still "succeed" and the dearmor would trust unverified bytes — so a test that only counts
+// actions could not see that failure, and the step names are what it can assert on.
+fn gpu_container_provision_plan_step_names(actions: List<GpuContainerProvisionAction>) -> List<String> {
+  flat_map(actions, a => match a {
+    ProvisionRefusal { step: s, cause: _ } => [s]
+    ProvisionOwnedDirectory { step: s, argv: _ } => [s]
+    ProvisionRootOwnedFile { step: s, path: _, content: _, scope: _ } => [s]
+    ProvisionLegs { legs: ls } => map(ls, l => l.step)
+    ProvisionVerify { step: s, check: _ } => [s]
+  })
+}
+
+// IS A NAMED STEP PRESENT IN THE LIST. Kept as its own predicate so a witness asserts on the step a trust
+// argument depends on by name, and the name is the same string the plan and the receipt print — there is no
+// second spelling to drift from.
+fn gpu_container_provision_step_names_include(names: List<String>, wanted: String) -> Bool {
+  names.any(n => n == wanted)
+}
+
+// HOW MANY CHECKS A PLAN WOULD RUN. A leg can fail loudly and a check can vanish quietly, so "the plan is
+// non-empty" is not the property worth guarding: this counts only the verifications, which are the steps
+// that can be omitted without anything downstream noticing.
+fn gpu_container_provision_plan_check_count(actions: List<GpuContainerProvisionAction>) -> Int {
+  length(filter(actions, a => match a {
+    ProvisionVerify { step: _, check: _ } => true
+    ProvisionRefusal { step: _, cause: _ } => false
+    ProvisionOwnedDirectory { step: _, argv: _ } => false
+    ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionLegs { legs: _ } => false
+  }))
+}
+
+// THE REFUSAL, OR NOTHING. The receipt wants one string, not a list to interpret, and the FIRST refusal
+// is the one to print — later ones are consequences of it and would bury the cause.
+fn gpu_container_provision_first_refusal(steps: List<GpuContainerProvisionStep>) -> String? {
+  match filter(steps, s => match s {
+    GpuContainerProvisionRefused { step: _, cause: _ } => true
+    GpuContainerProvisioned { step: _ } => false
+    GpuContainerProvisionSkipped { step: _, reason: _ } => false
+  }).first() {
+    Absent => Absent
+    Present { value: s } =>
+      match s {
+        GpuContainerProvisionRefused { step: st, cause: c } => Present { value: join([st, ": ", c], "") }
+        _ => Absent
+      }
+  }
+}
+
+fn gpu_container_provision_step_text(steps: List<GpuContainerProvisionStep>) -> String {
+  join(map(steps, s => match s {
+    GpuContainerProvisioned { step: st } => join(["+", st], "")
+    GpuContainerProvisionRefused { step: st, cause: c } => join(["-", st, " (", c, ")"], "")
+    GpuContainerProvisionSkipped { step: st, reason: r } => join(["~", st, " (", r, ")"], "")
+  }), " ")
+}
+
+// ── THE SUBORDINATE RANGE, RECONCILED AGAINST THE FILE AS IT IS NOW ─────────────────────────────
+//
+// THE FILE IS READ BEFORE ANYTHING IS WRITTEN, and the plan comes from what the read said rather than
+// from what the model wants. This is where a naive converge silently corrupts a host: run `usermod -v`
+// unconditionally and, on a host where the account already holds the range, it is a no-op that leaves the
+// collision in place, while on a host where it holds a DIFFERENT range it leaves the account owning two.
+// Both exit 0.
+//
+// WHY THESE READS ARE ELEVATED, MEASURED. /etc/subuid is 0644 on both fleet hosts, so an unprivileged read
+// works today — but exit status alone cannot tell "not there" from "could not look", and that is the
+// distinction the whole displace-safety argument rests on. Measured on srv3 as the unprivileged principal:
+//   ls -1 <missing>            exit 2
+//   ls -1 <exists>             exit 2   (because the parent path is unreadable to it)
+//   cat <missing>              exit 1
+//   cat <present, unreadable>  exit 1
+// Both cases collapse to one code, so a non-zero exit read unelevated would let a permission problem be
+// reported as "no store here" — the exact fail-open that would let the converge strip a range out from
+// under a 149 MB image store. ELEVATED, exit status is sound: root can read every path on the host, so
+// zero means present and non-zero means absent, with no third case for the code to confuse it with. That
+// is why every read below is a root read, and it is a correctness requirement rather than belt-and-braces.
+fn gpu_container_provision_read_argv(path: String) -> List<String> {
+  argv_words(command: cat_command(path: path))
+}
+
+// A PATH'S PRESENCE, AS ROOT. Three arms because two are not the same fact: absent is evidence the
+// converge can act on, unobservable is evidence it must not.
+type GpuContainerPathObservation
+  = GpuContainerPathAbsent { path: String }
+  | GpuContainerPathPresent { path: String }
+  | GpuContainerPathUnobservable { path: String, cause: String }
+
+// `ls` PUTS THE REASON IN ITS STDERR, AND THE REASON IS LOCALISED. ls(1) exits 2 both for "No such file
+// or directory" and for "cannot access" — a difference that decides whether a subordinate range may be
+// deleted — so the message is the only thing that separates them, and on srv3 the message came back in
+// the host's own locale (measured: LC_ALL unset there resolves to en_US.UTF-8). A host someone configured
+// for another language would print absence in a language this comparison does not speak, and the converge
+// would classify a missing store as unobservable: annoying, fail-safe, and a host that can never be
+// provisioned. Pinning LC_ALL to C makes the wording a property of this command rather than of the host.
+//
+// env IS RUN INSIDE sudo, NOT OUTSIDE IT. sudo's env_reset (the fleet's own hardened default) strips
+// LC_ALL before ls ever sees it, so `LC_ALL=C sudo ls` pins nothing at all — the outer variable is
+// discarded and the inner process inherits the target's environment. Measured both ways on srv3: pinning
+// inside sudo reproduces the C wording.
+//
+// THE `env` WORD ITSELF IS PART OF THE PRIVILEGED COMMAND, which is why this goes through
+// extdeps.exec.command env_prefixed_command and then argv_words rather than calling env_prefixed_args
+// directly: the _args form returns only the `NAME=value` prefix plus the command, with no program word,
+// so handing it to the elevation wrapper yields `sudo -n LC_ALL=C ls …`, where sudo tries to EXECUTE a
+// file called "LC_ALL=C" and fails with an error that looks like a broken path rather than a missing
+// program word.
+fn gpu_container_provision_locale_pinned_ls(path: String) -> List<String> {
+  argv_words(command: env_prefixed_command(
+    bindings: [EnvSet { name: "LC_ALL", value: "C" }],
+    command: ls_one_per_line_command(path: path),
+  ))
+}
+
+// THE ABSENCE WORDING, as a row. ls(1) prints "No such file or directory" for a missing path; the phrase
+// is what distinguishes a store that is not there from one that cannot be reached, so it is a fact this
+// module depends on and it is named rather than inlined at the comparison.
+data gpu_container_provision_absent_marker: String = "No such file or directory"
+
+fn gpu_container_provision_observe_path(path: String, transport: HostEffectTransport) -> GpuContainerPathObservation {
+  match run_argv_over_host_effect_transport(
+    command: sudo_elevate_command(command: gpu_container_provision_locale_pinned_ls(path: path)),
+    transport: transport) {
+    RunArgvTransportRefused { reason: r } => GpuContainerPathUnobservable { path: path, cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      // PRESENT if it listed. ABSENT only if ls said so in as many words. Everything else is
+      // UNOBSERVABLE, and the third arm is the reason this is worth three arms: ls(1) exits 2 for
+      // "no such file or directory" AND for "cannot access" AND for a broken mount point, so treating
+      // the number alone as absence would call a store that is merely unreachable — an unmounted volume,
+      // a stale NFS handle — into "this account owns nothing here", which is precisely the reading that
+      // licenses deleting its subordinate range. Elevation makes permission errors impossible; it does
+      // not make every failure a missing file, so the message is what decides.
+      if o.exit_code == 0 {
+        GpuContainerPathPresent { path: path }
+      } else if string_contains(s: o.stderr, pattern: gpu_container_provision_absent_marker) {
+        GpuContainerPathAbsent { path: path }
+      } else {
+        GpuContainerPathUnobservable { path: path, cause: join(["ls exit=", to_string(o.exit_code), " ", trim(s: o.stderr)], "") }
+      }
+  }
+}
+
+// IS THE DISPLACEABLE ACCOUNT STORE-FREE? THE MODEL SAYS WHO MAY MOVE; THIS ESTABLISHES THAT IT STILL
+// SHOULD. The operator decision of 2026-10-25 named the displaceable account per host on the strength of
+// that account having no rootless container store, and a decision is only as good as the day it was made:
+// the moment someone runs a container as that account, its range is baked into the ownership of every file
+// in the store, and removing the range turns working images into uid numbers nobody can account for.
+//
+// BOTH LAYOUTS ARE CHECKED. The thing being protected is the store, and Docker is not the only runtime
+// that writes one: a host where someone tried podman once has state under .local/share/containers/storage
+// carrying the identical ownership dependency, and checking only Docker's path would call that account
+// free to move. A failed read is NOT free either — see the measurement above.
+fn gpu_container_provision_docker_store_path(home: String) -> String {
+  join([home, "/.local/share/docker"], "")
+}
+
+fn gpu_container_provision_podman_store_path(home: String) -> String {
+  join([home, "/.local/share/containers/storage"], "")
+}
+
+fn gpu_container_provision_store_free_text(observations: List<GpuContainerPathObservation>) -> String {
+  // The rule in one place: store-free means EVERY probed path is absent. Present or unobservable, either
+  // one, and the account is not free.
+  if observations.any(o => match o {
+    GpuContainerPathAbsent { path: _ } => false
+    GpuContainerPathPresent { path: _ } => true
+    GpuContainerPathUnobservable { path: _, cause: _ } => true
+  }) { "not store-free" } else { "store-free" }
+}
+
+fn gpu_container_provision_displacee_store_free(
+  displacee_home: String?,
+  transport: HostEffectTransport,
+) -> Bool {
+  match displacee_home {
+    // NO HOME, NOT STORE-FREE. If passwd could not be read for the account whose range is about to be
+    // deleted, there is no way to know whether it owns a store, and "unknown" must fall on the side that
+    // does not delete anything.
+    Absent => false
+    Present { value: h } =>
+      gpu_container_provision_store_free_text(
+        observations: [
+          gpu_container_provision_observe_path(path: gpu_container_provision_docker_store_path(home: h), transport: transport),
+          gpu_container_provision_observe_path(path: gpu_container_provision_podman_store_path(home: h), transport: transport),
+        ],
+      ) == "store-free"
+  }
+}
+
+// THE RECONCILIATION, AS LEGS PLUS A REFUSAL. A REFUSAL IS TERMINAL, and deliberately so: proceeding
+// without the range yields a dockerd that will not start, so "everything else installed" is not a partial
+// success — it is a host that looks configured and cannot run a container, which is the failure mode this
+// entire work item exists to remove.
+//
+// BOTH FILES ARE PLANNED BEFORE EITHER IS WRITTEN. /etc/subuid and /etc/subgid are edited as a pair by
+// shadow itself, and planning them together means a refusal on either one stops BOTH — so the converge
+// can never leave a host where uids were moved and gids were not, which is a state no tool produces and
+// no tool expects.
+type GpuContainerSubordinateReconcile
+  = GpuContainerSubordinatePlanned { legs: List<GpuContainerProvisionLeg>, report: String }
+  | GpuContainerSubordinateRefused { reason: String }
+  | GpuContainerSubordinateUnreadable { reason: String }
+
+fn gpu_container_provision_subordinate_legs(
+  job_user: NonEmptyStr,
+  ids: RunnerHostSubordinateIds,
+  displacee_home: String?,
+  transport: HostEffectTransport,
+) -> GpuContainerSubordinateReconcile {
+  let uid_path = subordinate_id_file_path(f: SubordinateUids)
+  let gid_path = subordinate_id_file_path(f: SubordinateGids)
+  // store-free is established ONCE and shared by both plans, so the two files cannot be judged against
+  // two different answers about the same account.
+  let store_free = gpu_container_provision_displacee_store_free(displacee_home: displacee_home, transport: transport)
+  let uid_reading = gpu_container_provision_file_reading(
+    path: uid_path, transport: transport)
+  let gid_reading = gpu_container_provision_file_reading(
+    path: gid_path, transport: transport)
+  let uid_plan = plan_subordinate_file(
+    path: uid_path,
+    reading: uid_reading,
+    account: job_user,
+    want_first: ids.job_user_first,
+    want_count: ids.job_user_count,
+    displaceable: ids.displaceable,
+    displaceable_store_free: store_free,
+    displacee_regrant_first: ids.displacee_regrant_first)
+  let gid_plan = plan_subordinate_file(
+    path: gid_path,
+    reading: gid_reading,
+    account: job_user,
+    want_first: ids.job_user_first,
+    want_count: ids.job_user_count,
+    displaceable: ids.displaceable,
+    displaceable_store_free: store_free,
+    displacee_regrant_first: ids.displacee_regrant_first)
+  match uid_plan {
+    SubordinatePlanRefused { reason: r } => GpuContainerSubordinateRefused { reason: concat(uid_path, ": ", r) }
+    SubordinatePlanSteps { steps: us } =>
+      match gid_plan {
+        SubordinatePlanRefused { reason: r } => GpuContainerSubordinateRefused { reason: concat(gid_path, ": ", r) }
+        SubordinatePlanSteps { steps: gs } =>
+          GpuContainerSubordinatePlanned {
+            legs: append(
+              map(us, s => gpu_container_provision_leg(
+                step: join(["subuid ", subordinate_step_text(step: s)], ""),
+                words: usermod_step_words(f: SubordinateUids, step: s))),
+              items: map(gs, s => gpu_container_provision_leg(
+                step: join(["subgid ", subordinate_step_text(step: s)], ""),
+                words: usermod_step_words(f: SubordinateGids, step: s)))),
+            report: join([subordinate_plan_text(plan: uid_plan), " | ", subordinate_plan_text(plan: gid_plan)], ""),
+          }
+      }
+  }
+}
+
+// ONE FILE'S READING, or Unreadable. The refusal to parse is carried through as Unreadable rather than
+// being turned into an empty list: an empty list would plan "grant the range", which is what a file with
+// no entries means, and a half-written file is not a file with no entries.
+fn gpu_container_provision_file_reading(path: String, transport: HostEffectTransport) -> SubordinateFileReading {
+  match run_argv_over_host_effect_transport(
+    command: sudo_elevate_command(command: gpu_container_provision_read_argv(path: path)),
+    transport: transport) {
+    RunArgvTransportRefused { reason: r } =>
+      SubordinateFileUnreadable { path: path, cause: r as String }
+    RunArgvTransportObserved { observed: o } =>
+      parse_subordinate_file(path: path, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr)
+  }
+}
+
+
+// ── WHAT PROVISIONING DOES, AS DATA ─────────────────────────────────────────────────────────────
+//
+// THE CHAIN IS A LIST OF ACTIONS, FOLDED, rather than a pyramid of nested matches. The first draft was
+// the nested kind and it had two problems worth naming: each new step needed the step-list prefix
+// threaded through another arm (six copies of `[dir_step, run_docker, ...]` by the time it reached the
+// unit), and the early-exit condition was written differently at each level, so the levels could disagree
+// about when to stop without anything failing. A fold states the stop rule once.
+//
+// NO ACTION CARRIES A PREDICATE. A verification cannot be `argv + a function that judges its stdout`,
+// because this language rejects function-typed parameters; and if it could, a verification built as data
+// would be a verification the type checker cannot enumerate — the receipt could then claim a step was
+// verified by a rule no one can inspect. So the checks are a CLOSED SET below, and adding a check means
+// adding a case that the fold must handle, which is the point.
+// WHICH OF THIS CONVERGE'S TWO WRITABLE TREES A root-owned file lands in. See the note on
+// ProvisionRootOwnedFile: the alternative — carrying a FileTreeScope in the variant — would let a caller
+// name "/" and defeat the seal. This closed set is mapped by gpu_container_provision_write_scope_tree to a
+// constant THIS module owns, so the only roots a write can reach are /home and /etc.
+type GpuContainerProvisionWriteScope
+  = WriteScopeJobUserHome
+  | WriteScopeSystemEtc
+
+// THE TWO SCOPES ARE THE MODULE'S OWN CONSTANTS. path_within_file_tree_scope prefix-matches the root, so
+// the /etc tree admits /etc/apt/sources.list.d/nvidia-container-toolkit.list, and the /home tree admits the
+// job user's ~/.config/systemd/user/*.service. gpu_docker_labels_file_scope (root /etc) and
+// gpu_container_provision_home_scope (root /home) are reused verbatim rather than re-declared, so the
+// drop-in writer and the sources writer cannot drift onto different /etc roots.
+fn gpu_container_provision_write_scope_tree(scope: GpuContainerProvisionWriteScope) -> FileTreeScope {
+  match scope {
+    WriteScopeJobUserHome => gpu_container_provision_home_scope
+    WriteScopeSystemEtc => gpu_docker_labels_file_scope
+  }
+}
+
+// NO STAGED-SCRIPT VARIANT, and the reason is this one type's review history. An earlier version carried
+// ProvisionStagedScript { step, name, body }, whose body arrived as a String assembled by join; reviews
+// 86305 and 86314 blocked on it (shell built as strings, with the keyring fingerprint check existing only as
+// text inside the string and therefore invisible to the model), and review 86503 blocked again once the last
+// two consumers of that variant were found. Both were resolved by MODELING the steps rather than by marking
+// the shell as debt, which is why the variant is deleted rather than annotated: a variant with no producer
+// is a door left open for the next author to reintroduce the defect without editing anything that says it
+// was ever a problem.
+type GpuContainerProvisionAction
+  = ProvisionOwnedDirectory { step: String, argv: List<String> }
+  // THE SCOPE IS A CLOSED SET, NOT A CALLER-SUPPLIED ROOT. The first version sealed every
+  // ProvisionRootOwnedFile to the /home scope, which is correct for the job user's unit file and wrong for
+  // the apt sources line, whose path is /etc/apt/sources.list.d/… and which the seal would then refuse
+  // outright. Fixing that by putting a FileTreeScope in the variant would have opened the other door: a
+  // caller could name "/" and the seal would admit anything. So the variant carries which of THIS module's
+  // two declared trees the write belongs in, and the executor maps the choice to the constant. There is no
+  // spelling for "some other root" — the write is confined to /home (the job user's unit file) or /etc (the
+  // apt sources line), which are exactly the two trees this converge owns.
+  | ProvisionRootOwnedFile { step: String, path: String, content: String, scope: GpuContainerProvisionWriteScope }
+  | ProvisionLegs { legs: List<GpuContainerProvisionLeg> }
+  | ProvisionVerify { step: String, check: GpuContainerProvisionCheck }
+  // AN ACTION THAT ONLY REPORTS, for a refusal discovered while PLANNING. It exists because a refusal has
+  // to travel through the same chain as everything else, and folding it into the nearest homogeneous
+  // action — the first draft put it in ProvisionLegs with an empty argv — destroys the one thing it
+  // carries: the reason. An empty argv reaching a transport reports "the command failed" with nothing
+  // naming why the ranges were never set, which is exactly the fact an operator needs.
+  | ProvisionRefusal { step: String, cause: String }
+
+// THE TWO RANGE FILES, as data, so the verification cannot check one file and call it "the ranges".
+type GpuContainerRangeFile
+  = RangeSubordinateUids
+  | RangeSubordinateGids
+
+fn gpu_container_range_file_path(f: GpuContainerRangeFile) -> String {
+  match f {
+    RangeSubordinateUids => subordinate_id_file_path(f: SubordinateUids)
+    RangeSubordinateGids => subordinate_id_file_path(f: SubordinateGids)
+  }
+}
+
+// THE ONLY VERIFICATIONS PROVISIONING PERFORMS. Each is a command plus the answer that counts, and each
+// exists because the corresponding ACTION's exit status is not evidence:
+type GpuContainerProvisionCheck
+  = VerifySubordinateRanges { file: GpuContainerRangeFile, job_user: NonEmptyStr, first: Int, count: Int }
+  // usermod exits 0 when a flag pair simply did not apply to the file named, so the ONLY thing that can
+  // tell "the range is there" from "the command ran" is reading the file back. THE FILE IS NAMED rather
+  // than the check being "the ranges": /etc/subuid and /etc/subgid are separate files, shadow maintains
+  // them separately, and a host whose uid range landed while its gid range did not has a dockerd that
+  // fails at namespace-creation time with an error naming neither file. Checking only subuid because it
+  // is "the main one" is how that host gets a green converge.
+  | VerifyLinger { uid: Int }
+  // enable-linger exits 0 whether or not anything changed, and can exit 0 with no session created;
+  // `loginctl show-user UID -p Linger` is the only thing that answers.
+  | VerifyUnitEnabled { uid: Int }
+  // MEASURED, AND THE MEASUREMENT IS WHY THIS IS A CHECK AND NOT AN EXIT-CODE TEST: on srv1,
+  // `systemctl --user is-enabled <unit>` on a loaded unit with no install symlink printed "static" and
+  // EXITED 0. A check on exit status therefore calls a never-enabled unit enabled — exactly the srv1
+  // shape, where the daemon works because a human started it once. The printed word must be "enabled".
+  | VerifyUnitActive { uid: Int }
+  // THE KEYRING FINGERPRINT, AS A VALUE THE MODEL COMPUTES — not a `grep -q … || exit 1` inside a
+  // shell string. It runs `gpg --batch --with-colons --show-keys <keyring_path>` and PARSES the printed
+  // colon records: the primary key's fingerprint is field 9 of the first `fpr:` line (MEASURED on srv1
+  // 2026-10-25 against the pinned key — the record is `fpr:::::::::C95B…ECB0:` on stdout, exit 0). A key
+  // fetched from the network is only trusted once its fingerprint equals the pinned one, and that decision
+  // now lives in a match arm here where a reader and a test can reach it, rather than as text a shell would
+  // run. A non-zero exit, no fpr record, or a fingerprint that differs all refuse.
+  | VerifyKeyringFingerprint { keyring_path: String, expected_fingerprint: String }
+
+fn gpu_container_provision_check_argv(check: GpuContainerProvisionCheck) -> List<String> {
+  match check {
+    // Both files must be checked, which is why the check carries WHICH file it is for.
+    VerifySubordinateRanges { file: f, job_user: _, first: _, count: _ } => gpu_container_provision_read_argv(path: gpu_container_range_file_path(f: f))
+    VerifyLinger { uid: u } => gpu_container_provision_linger_probe_argv(uid: u)
+    VerifyUnitEnabled { uid: u } => gpu_container_provision_is_enabled_argv(uid: u)
+    VerifyUnitActive { uid: u } => gpu_container_provision_is_active_argv(uid: u)
+    VerifyKeyringFingerprint { keyring_path: p, expected_fingerprint: _ } => gpu_container_provision_show_keys_argv(keyring_path: p)
+  }
+}
+
+// THE SHOW-KEYS ARGV, as a plain word list the executor elevates (like every other leg). MEASURED on srv1
+// 2026-10-25: this exact word list, on the armored fetch and on the dearmored key, prints the colon records
+// on stdout and exits 0. There is deliberately NO `--` / `--:` option terminator: a probe of the same host
+// showed `gpg --batch --with-colons --show-keys --: <path>` prints no fpr record at all (gpg does not
+// terminate option parsing on `--:`), so shipping the terminator would have produced a check that silently
+// observes nothing. The paths reaching this argv are this module's own pinned literals and the staging path
+// under gpu_container_provision_staging_dir — every one begins with `/` and none is caller-supplied — so
+// there is no leading-dash word for an option parser to swallow, and portable_remote_words carries both
+// forms without a terminator.
+fn gpu_container_provision_show_keys_argv(keyring_path: String) -> List<String> {
+  ["gpg", "--batch", "--with-colons", "--show-keys", keyring_path]
+}
+
+// THE ANSWER THAT COUNTS, per check. Returns Absent when satisfied, Present(reason) when not — the same
+// shape the rest of this module uses for "nothing to report".
+fn gpu_container_provision_check_verdict(
+  check: GpuContainerProvisionCheck,
+  job_user: NonEmptyStr,
+  stdout: String,
+) -> String? {
+  match check {
+    VerifySubordinateRanges { file: file, job_user: j, first: f, count: c } => {
+      // Re-read and re-parse with the SAME parser the planning used, so the check and the plan cannot
+      // disagree about what the file says.
+      let rs = parse_subordinate_file(path: gpu_container_range_file_path(f: file), exit_code: 0, stdout: stdout, stderr: "")
+      match rs {
+        SubordinateFileUnreadable { path: _, cause: cc } => Present { value: cc }
+        SubordinateFileRead { path: _, ranges: ranges } =>
+          if subordinate_ranges_for(rs: ranges, account: j).any(r => r.first == f && r.count == c) {
+            Absent
+          } else {
+            Present { value: join([j as String, " does not hold ", to_string(f), "+", to_string(c), " in ",
+                                   gpu_container_range_file_path(f: file), " after usermod"], "") }
+          }
+      }
+    }
+    VerifyLinger { uid: _ } =>
+      if gpu_container_provision_linger_holds(stdout: stdout) {
+        Absent
+      } else {
+        Present { value: join(["loginctl did not report ", gpu_container_provision_linger_yes], "") }
+      }
+    VerifyUnitEnabled { uid: _ } =>
+      // COMPARED AS A WHOLE WORD, not as a substring: "static", "disabled", and "masked" all CONTAIN no
+      // substring that would fool a contains-check against "enabled", but a unit can also report
+      // "enabled-runtime" or print the property name in a warning, and the honest test is that the line
+      // the tool printed IS the word.
+      if trim(s: stdout) == gpu_container_provision_enabled_word {
+        Absent
+      } else {
+        Present { value: join([gpu_container_provision_rootless_unit_name as String, " is-enabled printed '", trim(s: stdout), "', not 'enabled'"], "") }
+      }
+    VerifyUnitActive { uid: _ } =>
+      if trim(s: stdout) == gpu_container_provision_active_word {
+        Absent
+      } else {
+        Present { value: join([gpu_container_provision_rootless_unit_name as String, " is-active printed '", trim(s: stdout), "', not 'active'"], "") }
+      }
+    VerifyKeyringFingerprint { keyring_path: path, expected_fingerprint: want } =>
+      gpu_container_provision_keyring_verdict(keyring_path: path, expected_fingerprint: want, stdout: stdout)
+  }
+}
+
+// THE FINGERPRINT VERDICT, as its own function so the refusal message can be built from the fingerprints
+// actually seen (a refusal that names what was observed is debuggable; one that only says "mismatch" is not).
+// THE PINNED KEY MUST BE PRESENT, not merely first. The posture this replaces
+// (`gpg --show-keys --with-colons … | grep -q <fingerprint>`) matched the pinned value ANYWHERE in the
+// tool's output — a keyring holds several keys and each prints an `fpr:` record for its primary and its
+// subkeys, so a first-record-only check would refuse a perfectly good keyring whose pinned key is not the
+// first one. The honest question is therefore "does some fpr field equal the pinned value", and
+// fingerprints are content hashes, so equality IS identity; it is deliberately not a substring test, which
+// is all the shell had and which a crafted key could satisfy with a prefix.
+fn gpu_container_provision_keyring_verdict(keyring_path: String, expected_fingerprint: String, stdout: String) -> String? {
+  let seen = gpu_container_provision_keyring_fingerprints(stdout: stdout)
+  if seen.any(f => f == expected_fingerprint) {
+    Absent
+  } else {
+    Present { value: join(["NvidiaKeyringFingerprintRefusal: fetched keyring ", keyring_path, " printed no fpr record equal to the pinned ", expected_fingerprint, if length(seen) == 0 { " (no fpr record at all)" } else { join([" (saw: ", join(seen, ", "), ")"], "") }], "") }
+  }
+}
+
+// EVERY FINGERPRINT gpg printed, as data. gpg --with-colons prints one record per line, fields split on
+// ':'; a key's fingerprint is field 9 of an `fpr:` record. MEASURED against the pinned key on srv1
+// 2026-10-25: `fpr:::::::::C95B321B61E88C1809C4F759DDCAE044F796ECB0:` on stdout, exit 0. This splits and
+// indexes with the exact idiom parse_subordinate_line uses, so the two colon parsers cannot disagree
+// about field extraction. A record that is not long enough to have a field 9 yields nothing from it.
+fn gpu_container_provision_keyring_fingerprints(stdout: String) -> List<String> {
+  let fpr_lines = filter(split(s: stdout, delimiter: "\n"), l => starts_with(s: l, prefix: "fpr:"))
+  map(fpr_lines, l => match split(s: l, delimiter: ":").skip(n: 9).first() {
+    Absent => ""
+    Present { value: f } => f
+  })
+}
+
+// RUN ONE ACTION. Elevation is applied where the action means a root command and NOT elsewhere: the
+// staged-script actions run their body as root (apt, gpg, install into /etc), the directory and file
+// actions need root for /etc and for another user's home, and the checks run as root so their exit
+// statuses mean what they are supposed to mean — see the measurement above gpu_container_provision_observe_path.
+fn gpu_container_provision_run_action(
+  action: GpuContainerProvisionAction,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+  job_user: NonEmptyStr,
+) -> List<GpuContainerProvisionStep> {
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  match action {
+    // A REFUSAL DISCOVERED WHILE PLANNING reports itself and runs NOTHING. It is here rather than
+    // short-circuiting earlier because it must reach the same receipt as every other step: the operator
+    // reading "converged" needs to see that the ranges were never set, with the reason, in the position
+    // where the chain stopped.
+    ProvisionRefusal { step: s, cause: c } => [GpuContainerProvisionRefused { step: s, cause: c }]
+    // STAGE THEN RUN, as one action, because splitting them invites a caller to run a body it never
+    // There is no staged-script arm; see the note on GpuContainerProvisionAction. An arm here was the
+    // route by which a String became a program the executor ran blindly, so it is deleted rather than
+    // restricted — a caller alone cannot bring it back.
+    ProvisionOwnedDirectory { step: s, argv: a } =>
+      [gpu_container_provision_run_leg(leg: gpu_container_provision_leg(step: s, words: a), transport: transport)]
+    ProvisionRootOwnedFile { step: s, path: p, content: c, scope: sc } =>
+      match converge_typed_remote_file(
+        target: admin,
+        context: context,
+        admission: typed_remote_file_write_seal(path: p, content: c, allowed_scope: gpu_container_provision_write_scope_tree(scope: sc)),
+        mode: RemoteFileModeOwnerReadWriteWorldRead,
+        privilege: RemoteFileViaNonInteractiveSudo,
+        validation: NoValidation,
+      ) {
+        TypedRemoteFileConvergenceRefused { step: st, reason: r } =>
+          [GpuContainerProvisionRefused { step: join([s, " ", st], ""), cause: r }]
+        TypedRemoteFileConverged { converged: _ } =>
+          [GpuContainerProvisioned { step: s }]
+      }
+    ProvisionLegs { legs: ls } => gpu_container_provision_run_legs(legs: ls, transport: transport)
+    ProvisionVerify { step: s, check: k } =>
+      match run_argv_over_host_effect_transport(command: sudo_elevate_command(command: gpu_container_provision_check_argv(check: k)), transport: transport) {
+        RunArgvTransportRefused { reason: r } => [GpuContainerProvisionRefused { step: s, cause: r }]
+        RunArgvTransportObserved { observed: o } =>
+          match gpu_container_provision_check_verdict(check: k, job_user: job_user, stdout: o.stdout) {
+            Present { value: why } => [GpuContainerProvisionRefused { step: s, cause: why }]
+            Absent => [GpuContainerProvisioned { step: s }]
+          }
+      }
+  }
+}
+
+// THE USER'S OWN HOME AS A WRITE SCOPE. The unit file goes under the job user's home, which is not under
+// /etc, so the drop-in scope above cannot admit it; this one is derived from the home the converge READ
+// rather than from a literal, so a host whose ghrunner lives somewhere else converges correctly and a
+// host whose home could not be read gets no write at all rather than a write to a guessed path.
+data gpu_container_provision_home_scope: FileTreeScope = FileTreeScope { root_path: "/home" as NonEmptyStr }
+
+// THE WHOLE RUN: build the action list from the model plus two reads, then fold it.
+//
+// THE ACTION LIST IS BUILT BEFORE ANY OF IT RUNS, which is what makes the run auditable: the receipt can
+// say what was attempted as well as what happened, and a reviewer can compare the two. Building it
+// lazily, one step at a time, would mean the only record of what was intended was the record of what
+// happened — and those are the same thing, which tells you nothing about a step that was silently
+// omitted.
+fn gpu_container_provision_plan(
+  host: NonEmptyStr,
+  spec: RunnerHostSpec,
+  ids: RunnerHostSubordinateIds,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> List<GpuContainerProvisionAction> {
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  // THE JOB USER'S UID AND HOME, FROM ONE getent ANSWER. Both are needed and neither may be a guess: the
+  // uid keys the user manager and the socket path, the home keys the unit's location and the store paths.
+  // ONE READ, BOTH FACTS. uid and home are the two things every action below is addressed by — the uid
+  // keys the user manager and the socket path, the home keys where the unit is written and where the
+  // daemon's store lives — and they are taken from a SINGLE getent answer so they cannot name two
+  // different accounts. Asking twice is not merely slower: passwd can be served from a source that
+  // changes between the two reads, and a converge that installed the unit for the home from read one and
+  // started the manager of the uid from read two would produce a docker.service no user manager will ever
+  // load, in a home nobody's daemon reads. A refusal names the account, so the operator sees which one
+  // could not be resolved rather than discovering it from a unit that failed to load.
+  let principal = gpu_container_provision_principal(user: spec.job_user, transport: transport)
+  // AN UNRESOLVED PRINCIPAL STOPS PROVISIONING ENTIRELY, and neither field is defaulted to get past it.
+  // An action handed uid -1 would address user@-1.service and die on a unit that does not exist; one
+  // handed home "" would build "/.config/systemd/user/docker.service" — a path in the root filesystem
+  // that the typed writer would happily create, leaving a stray unit no future converge planned. Those
+  // are wrong-actions, not failures, which is why the type carries their absence rather than a sentinel.
+  match principal {
+    Absent => []
+    Present { value: identity } => {
+      let uid_value = identity.uid
+      let home_dir = identity.home
+    let displacee_home = gpu_container_displacee_home_lookup(account: ids.displaceable, transport: transport)
+    let repo_actions = gpu_container_provision_repo_actions_for(host: (host as String) as HostIdentity)
+    append(
+      append(
+        append(
+          append(
+            [
+              // 0. THE STAGING DIRECTORY, created before anything is staged into it. Every staged script
+              // and the fetched nvidia keyring are written inside gpu_container_provision_staging_dir, and
+              // the typed writer stages to a SIBLING of its target (it cannot create a parent), so without
+              // this step the very first converge on a host whose /tmp had never held the directory would
+              // have died on the docker-ce stage. Root-owned, 0700; `install -d` makes it a no-op when the
+              // directory already exists, so it is safe on every converge.
+              gpu_container_provision_staging_dir_action(),
+              // 1. THE STAGING DIRECTORY ITSELF IS THE ONLY THING LEFT INLINE HERE. Both pinned repos —
+              // docker-ce and the nvidia container toolkit — are appended as typed actions below, and
+              // neither is a staged shell any more. See gpu_container_provision_repo_actions_for.
+              
+              // 2. THE UNIT DIRECTORY, owned by the JOB USER and not by root. This is the single most
+              // counter-intuitive requirement found while building this, and it is measured: with the
+              // directory root-owned, daemon-reload succeeded, the daemon started, and the container ran —
+              // while `enable` failed, because it is the user manager (running as the job user) that must
+              // CREATE default.target.wants/ inside that directory. A smoke test that only asks "can I run a
+              // container" passes on a root-owned directory and the unit is simply gone after the reboot.
+              ProvisionOwnedDirectory {
+                step: "unit directory",
+                argv: gpu_container_provision_install_unit_dir_argv(job_user: spec.job_user, home: home_dir),
+              },
+            ],
+            // 1b. BOTH PINNED REPOS, as legs and checks (directory, fetch, VERIFY, dearmor, mode, sources,
+            // update). A list rather than one staged script each, so they are appended as items rather than
+            // written inline, and the fingerprint verification is an action the model can see instead of a
+            // grep buried in a string the executor would have run blindly.
+            items: repo_actions,
+          ),
+          items: gpu_container_provision_subordinate_actions(spec: spec, ids: ids, displacee_home: displacee_home, transport: transport),
+        ),
+        items: [
+          // 4. LINGER, then the unit. LINGER BEFORE THE UNIT: an enabled unit in a manager that does not
+          // exist yet is not wrong, but it cannot be verified, and the enable is what has to be read back.
+          ProvisionLegs { legs: [gpu_container_provision_leg(step: "linger", words: gpu_container_provision_enable_linger_argv(uid: uid_value))] },
+          ProvisionVerify { step: "linger verified", check: VerifyLinger { uid: uid_value } },
+          // 5. THE UNIT, written as root-owned 0644 by the typed writer (see the unit notes for what is
+          // preserved from the measured srv1 unit and what was deliberately not copied), then reloaded,
+          // enabled, and started.
+          ProvisionRootOwnedFile {
+            step: "rootless docker unit",
+            path: gpu_container_provision_unit_path(home: home_dir),
+            content: gpu_container_provision_rootless_unit_text(),
+            scope: WriteScopeJobUserHome,
+          },
+          ProvisionLegs { legs: [gpu_container_provision_leg(step: "user daemon-reload", words: gpu_container_provision_reload_argv(uid: uid_value))] },
+          ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit enable", words: gpu_container_provision_enable_argv(uid: uid_value))] },
+          ProvisionVerify { step: "unit enabled verified", check: VerifyUnitEnabled { uid: uid_value } },
+          ProvisionLegs { legs: [gpu_container_provision_leg(step: "unit start", words: gpu_container_provision_start_argv(uid: uid_value))] },
+          ProvisionVerify { step: "unit active verified", check: VerifyUnitActive { uid: uid_value } },
+        ],
+      ),
+      // 3 (placed last on purpose). THE RANGES, READ BACK AFTER usermod ran. Verification goes at the end
+      // of the list rather than immediately after the step it checks so that a failure anywhere in the
+      // chain is reported at the point the chain stopped, and the verifications — which are the only
+      // things here that can be run against a host that is already correct — then always describe the
+      // FINAL state rather than a mid-chain one.
+      // BOTH FILES, as two verifications. One check named "the ranges" would read whichever file its argv
+      // happened to name and could report both correct after looking at only one. /etc/subuid and
+      // /etc/subgid are separate files maintained separately, and a host whose uid range landed while its
+      // gid range did not has a dockerd that fails at namespace-creation time with an error naming
+      // neither file — the class of "green converge, dead host" this module exists to prevent.
+      items: [
+        ProvisionVerify {
+          step: gpu_container_provision_subuid_verify_step,
+          check: VerifySubordinateRanges { file: RangeSubordinateUids, job_user: spec.job_user, first: ids.job_user_first, count: ids.job_user_count },
+        },
+        ProvisionVerify {
+          step: gpu_container_provision_subgid_verify_step,
+          check: VerifySubordinateRanges { file: RangeSubordinateGids, job_user: spec.job_user, first: ids.job_user_first, count: ids.job_user_count },
+        },
+      ],
+    )
+      }
+  }
+}
+
+// THE NVIDIA REPO DECISION FOR ONE HOST, AS A PURE FUNCTION OF THE MODEL ROW. This is deliberately its own
+// function rather than inline in the plan: the plan needs a live transport and a resolved principal before
+// it can be called at all, and the property that matters most here — that a host the model does not
+// describe can NEVER receive install actions, only a refusal — has to be checkable by a witness that runs
+// no transport. It is the same fold the wet converge already performs at its gate, so the two cannot
+// disagree about what a row means, and each of the four row shapes answers separately: Desired yields the
+// legs; NotWanted and Unmeasured and Absent each yield a refusal that names the host and the reason, never
+// an empty action list (an empty list would read to the fold as "nothing needed doing") and never a staged
+// empty script (a valid sh file that installs nothing and exits 0 — the fabricated default an earlier draft
+// of this module carried).
+fn gpu_container_provision_repo_actions_for(host: HostIdentity) -> List<GpuContainerProvisionAction> {
+  match runner_host_gpu_container_toolchain_for(host: host) {
+    // BOTH REPOSITORIES, ONE FOLD, ONE SHAPE. There is no docker half written differently from the nvidia
+    // half: the same six actions come out of each, because the questions are the same questions (fetch the
+    // key, prove the key is the pinned key, install it where apt will trust it, write the sources line,
+    // refresh the index). A per-vendor shape would be two implementations of one rule, and the second one
+    // is where a check quietly stops existing.
+    RunnerHostGpuToolchainFound { host: _, toolchain: GpuContainerToolchainDesired { repo: repo, docker_repo: docker_repo, packages: _ } } =>
+      append(gpu_container_provision_docker_repo_actions(repo: docker_repo), items: gpu_container_provision_repo_actions(repo: repo))
+    RunnerHostGpuToolchainFound { host: h, toolchain: GpuContainerToolchainNotWanted { reason: r } } =>
+      [ProvisionRefusal {
+        step: "apt repo install",
+        cause: join(["host ", h as String, " declares the GPU container toolchain unwanted in runner_host_deploy (", r as String, "); refusing to install it"], ""),
+      }]
+    RunnerHostGpuToolchainFound { host: h, toolchain: GpuContainerToolchainUnmeasured { } } =>
+      [ProvisionRefusal {
+        step: "apt repo install",
+        cause: join(["host ", h as String, " has an UNMEASURED GPU capability row; nothing is installed on a host whose capability has never been read"], ""),
+      }]
+    RunnerHostGpuToolchainAbsent { host: h } =>
+      [ProvisionRefusal {
+        step: "apt repo install",
+        cause: join(["host ", h as String, " carries no GPU container toolchain row in gunbc.runner.runner_host_deploy; refusing rather than staging an installer for a host the model does not describe"], ""),
+      }]
+  }
+}
+
+// THE DOCKER REPO, AS TYPED ACTIONS — the same shape, built by the same builders. This function is the
+// answer to review 86503, and the answer is symmetry rather than an annotation: docker-ce's installer used
+// to reach this converge as ONE STRING of assembled shell staged to a file and run with `sh`, while the
+// nvidia repo beside it was modelled. Marking the shell as debt would have left two notions of what
+// "the repository is installed" means in one plan.
+//
+// THREE DIFFERENCES FROM THE NVIDIA ROUTE, each because the upstream differs rather than because it was
+// easier:
+//  - the keyring directory must exist before the key can be written into it, so a directory leg comes
+//    first. It is 0755 (docker's own row declares the mode), not the 0700 the staging directory uses:
+//    /etc/apt/keyrings is read by apt on every package operation, not held by this converge alone.
+//  - the keyring is 0644 for the same reason. Measured on srv1: the file dpkg's docker-ce setup left is
+//    root:root 0644, and apt's keyring reader is not this converge.
+//  - THE PACKAGES ARE NOT INSTALLED HERE. The shell version ended with an `apt-get install`, and dropping
+//    it while claiming the route was converted would have left srv3 with no docker at all — the failure
+//    mode that matters most here, since the whole point of the converge is a working `docker run`. The
+//    install lives in ONE place instead: the per-host row's `packages` field, which the modeled ensure
+//    route (runner_gpu_container_toolchain_ensure_steps over srv3_ensure_apt) installs after provisioning,
+//    for both upstreams. A leg here would be a second install path with a second notion of success, and
+//    it would run BEFORE the sources line existed on a fresh host.
+fn gpu_container_provision_docker_repo_actions(repo: DockerCeAptRepo) -> List<GpuContainerProvisionAction> {
+  let staged_key = gpu_container_provision_staged_path(name: "docker-keyring-asc" as NonEmptyStr)
+  append(
+    [
+      ProvisionOwnedDirectory {
+        step: "apt keyring directory",
+        argv: gpu_container_provision_keyring_dir_argv(),
+      },
+      ProvisionLegs {
+        legs: [gpu_container_provision_leg(step: "docker keyring fetch", words: gpu_container_provision_keyring_fetch_argv(url: repo.keyring_url, staged_path: staged_key as String))],
+      },
+      // THE SAME CHECK, NOT A SIMILAR ONE: the pinned fingerprint must appear among gpg's colon records,
+      // the verdict computed by the model rather than by a grep inside a string. Both vendors' keys pass
+      // through this one check, so a fingerprint that stops being checked for one upstream is a change
+      // this file has to make impossible rather than merely unlikely.
+      ProvisionVerify {
+        step: "docker keyring fingerprint verified",
+        check: VerifyKeyringFingerprint { keyring_path: staged_key as String, expected_fingerprint: repo.keyring_fingerprint as String },
+      },
+      ProvisionLegs {
+        legs: [gpu_container_provision_leg(step: "docker keyring dearmor", words: gpu_container_provision_dearmor_argv(source: staged_key as String, dest: repo.keyring_path as String))],
+      },
+      ProvisionLegs {
+        legs: [gpu_container_provision_leg(step: "docker keyring mode", words: gpu_container_provision_keyring_mode_argv(keyring_path: repo.keyring_path as String))],
+      },
+      ProvisionRootOwnedFile {
+        step: "docker apt sources",
+        path: docker_ce_sources_list_path as String,
+        content: docker_ce_apt_source_line(repo: repo),
+        scope: WriteScopeSystemEtc,
+      },
+      ProvisionLegs {
+        legs: [gpu_container_provision_leg(step: "apt index refresh", words: gpu_container_provision_apt_update_argv())],
+      },
+    ],
+    items: [],
+  )
+}
+
+// /etc/apt/keyrings, at the mode docker's own row declares. Idempotent, and needed on a host that has
+// never had docker: the typed writer stages to a SIBLING of its target and cannot create a parent, so
+// dearmoring into a directory that does not exist fails at the write rather than at the check.
+fn gpu_container_provision_keyring_dir_argv() -> List<String> {
+  coreutils_install_directory_argv(mode: docker_ce_keyrings_directory_mode, path: docker_ce_keyrings_directory as String)
+}
+
+// THE NVIDIA REPO, AS TYPED ACTIONS RATHER THAN A SHELL SCRIPT. This is the whole answer to the one
+// finding that mattered most in review: the install used to be one POSIX string assembled by join, so the
+// keyring fingerprint check — the only thing standing between a blindly fetched key and a trusted one —
+// existed as TEXT inside that string, invisible to the model, and every interpolated path rode inside a
+// quoted line a shell would re-split. What runs instead is a list of this module's own action shapes:
+//
+//   fetch          one leg, curl, writing the ARMORED key into the staging directory
+//   verify         one Check, whose stdout is parsed field-for-field against the pinned fingerprint
+//   dearmor        one leg, only ever reached if the check above passed
+//   mode           one leg, 0644 on the keyring (what apt's signed-by needs: world-readable, root-writable)
+//   sources        ONE typed file write, whose content is the module's own source-line rendering
+//   apt update     one leg, because ensure_wet installs packages and nothing before it refreshes the index
+//
+// WHY THE CHECK COMES BEFORE THE WRITE. --show-keys reads the armored bytes as readily as the dearmored
+// ones (measured on srv1, 2026-10-25, both exit 0), so the trust decision is taken on what came off the
+// network BEFORE a single byte lands under /usr/share/keyrings. A key that fails the comparison never
+// reaches the system path at all, and the fold stops the entire plan on the first refusal, so the dearmor,
+// the mode, the sources line and the update are all skipped on a host whose key is not the pinned one —
+// they are not merely reported as failures, they never run.
+//
+// WHY apt-get update IS HERE AND THE PACKAGES ARE NOT. runner_gpu_container_toolchain_ensure_wet installs
+// the row's `packages` through the apt effect, so installing them again here would be a duplicate action
+// with two records of the same mutation. Refreshing the index is NOT duplicated anywhere: srv3_ensure_apt
+// goes straight to the install, so on a host that has never seen this repo the install would fail with
+// "Unable to locate package" and the receipt would blame the package rather than the missing index. The
+// `update` is the reason the install can find the package at all.
+//
+// THIS LEG MUST BE ELEVATED, AND THE MEASUREMENT SHOWS WHY THAT IS NOT SELF-EVIDENT. run_leg wraps every
+// leg in sudo, and for most legs here that is a convenience. For this one it is the difference between an
+// update and a lie. MEASURED on srv1, 2026-10-25, SAME command `apt-get update -q`:
+//   unprivileged -> exit 0, while printing E: Could not open lock file /var/lib/apt/lists/lock (13:
+//                  Permission denied) and E: Unable to lock directory — it updated nothing and still
+//                  reported success
+//   elevated     -> exit 0, zero E:/W: lines, "Fetched 4,288 kB", "Reading package lists..."
+// AN EXIT CODE CANNOT DISTINGUISH THOSE TWO RUNS, and the receipt cannot either: a leg that exits 0
+// collapses to GpuContainerProvisioned { step } and its stdout is not retained (only a non-zero exit keeps
+// stderr). So an un-elevated version of this leg would not merely be weakly checked, it would be
+// indistinguishable from the real one everywhere the model can see — the converge would certify a current
+// apt index, and the failure would surface much later as a package that mysteriously does not exist. That
+// is the definition of a fabricated success, and it is closed here by the only thing that actually differs
+// between the two runs: the leg goes through sudo. Anyone changing run_leg to stop elevating should read
+// this paragraph before doing it, because no test can catch it and no receipt will show it.
+//
+// WHY EVERY WORD IS SAFE WITHOUT QUOTING. A leg is one argv vector handed to the transport, which refuses
+// anything outside the portable allowlist before it leaves the machine; the words never meet a shell
+// again. The string form had to hand-quote each word with posix_single_quote and still left three
+// interpolated values (keyring_url, keyring_path, keyring_fingerprint) sitting unquoted inside literal
+// quotes in the very same line — a defect class this shape cannot express.
+fn gpu_container_provision_repo_actions(repo: NvidiaContainerToolkitAptRepo) -> List<GpuContainerProvisionAction> {
+  let staged_key = gpu_container_provision_staged_path(name: "nvidia-keyring-asc" as NonEmptyStr)
+  [
+    ProvisionLegs {
+      legs: [gpu_container_provision_leg(step: "nvidia keyring fetch", words: gpu_container_provision_keyring_fetch_argv(url: repo.keyring_url, staged_path: staged_key as String))],
+    },
+    ProvisionVerify {
+      step: "nvidia keyring fingerprint verified",
+      check: VerifyKeyringFingerprint { keyring_path: staged_key as String, expected_fingerprint: repo.keyring_fingerprint as String },
+    },
+    ProvisionLegs {
+      legs: [gpu_container_provision_leg(step: "nvidia keyring dearmor", words: gpu_container_provision_dearmor_argv(source: staged_key as String, dest: repo.keyring_path as String))],
+    },
+    ProvisionLegs {
+      legs: [gpu_container_provision_leg(step: "nvidia keyring mode", words: gpu_container_provision_keyring_mode_argv(keyring_path: repo.keyring_path as String))],
+    },
+    // THE SOURCES FILE IS CONTENT, NOT SHELL. The line is the module's own rendering (signed-by the key
+    // this plan just verified), written by the sealed typed writer into the /etc tree. It is a string in
+    // exactly the sense the docker.service text and every other file content is a string: it is what the
+    // FILE says, not a program the model executes. apt itself expands the `$(ARCH)` inside it at parse
+    // time, so no shell on this host ever sees that text — which is why the one dollar-paren in the whole
+    // converge crosses safely as data while the shell form needed it inside an echo.
+    ProvisionRootOwnedFile {
+      step: "nvidia apt sources",
+      path: nvidia_container_toolkit_sources_list_path as String,
+      content: nvidia_container_toolkit_apt_source_line(repo: repo),
+      scope: WriteScopeSystemEtc,
+    },
+    ProvisionLegs {
+      legs: [gpu_container_provision_leg(step: "apt index refresh", words: gpu_container_provision_apt_update_argv())],
+    },
+  ]
+}
+
+// THE THREE PACKAGE-MANAGEMENT LEGS, each a word list. The fetch carries the URL as a plain word:
+// portable_remote_words admits the characters a https URL is made of (letters, digits, `.`, `_`, `-`, `/`,
+// `@`, `:`, `=`, `,`), so a malformed or substituted URL is refused by the transport rather than parsed by
+// a shell. `-o <path>` is how curl is given its output file rather than a pipe, which is what removes the
+// `|` the shell form leaned on; the key goes to the staging directory and only the VERIFIED bytes are ever
+// dearmored into the system keyring path.
+fn gpu_container_provision_keyring_fetch_argv(url: NonEmptyStr, staged_path: String) -> List<String> {
+  ["curl", "-fsSL", url as String, "-o", staged_path]
+}
+
+fn gpu_container_provision_dearmor_argv(source: String, dest: String) -> List<String> {
+  ["gpg", "--batch", "--yes", "--dearmor", "-o", dest, source]
+}
+
+fn gpu_container_provision_keyring_mode_argv(keyring_path: String) -> List<String> {
+  ["chmod", "644", keyring_path]
+}
+
+fn gpu_container_provision_apt_update_argv() -> List<String> {
+  ["apt-get", "update", "-q"]
+}
+
+// THE STAGING DIRECTORY, CREATED BEFORE ANYTHING IS STAGED IN IT. gpu_container_provision_install_dir_argv
+// has existed since the first version of this module and had NO CALLER: every staged script and the fetched
+// keyring are written into gpu_container_provision_staging_dir, and the typed writer stages to a sibling of
+// its target (it cannot create a parent), so on a host where the directory did not already exist every
+// stage would have failed at the write — on srv1, where /tmp had never held it, the very first converge
+// would have died on the docker-ce stage. It is root-owned and 0700 (DirectoryOwnerOnly): the directory
+// holds a key being fetched across the network and a script about to be run as root, and only root should
+// be able to change either. Idempotent — `install -d` on an existing directory is a no-op — so it runs on
+// every converge.
+fn gpu_container_provision_staging_dir_action() -> GpuContainerProvisionAction {
+  ProvisionOwnedDirectory { step: "staging directory", argv: gpu_container_provision_install_dir_argv() }
+}
+
+// THE RANGE ACTIONS, from the plan computed against the files AS THEY ARE NOW. The planning is done here
+// and not inside the fold because both files must be judged before either is written: a refusal on one
+// has to stop both, or the converge can leave a host where uids moved and gids did not — a state no tool
+// creates and no tool expects.
+fn gpu_container_provision_subordinate_actions(
+  spec: RunnerHostSpec,
+  ids: RunnerHostSubordinateIds,
+  displacee_home: String?,
+  transport: HostEffectTransport,
+) -> List<GpuContainerProvisionAction> {
+  match gpu_container_provision_subordinate_legs(
+    job_user: spec.job_user, ids: ids, displacee_home: displacee_home, transport: transport) {
+    GpuContainerSubordinatePlanned { legs: legs, report: _ } =>
+      if length(legs) == 0 {
+        []
+      } else {
+        [ProvisionLegs { legs: legs }]
+      }
+    // A REFUSAL IS REPORTED AS ITSELF, not converted into a leg with an empty argv. The first draft did
+    // that conversion, and it destroyed the one thing the refusal exists to carry: the reason. An empty
+    // argv reaching a transport produces "the command failed" with nothing naming WHY the ranges were
+    // never set, which is precisely the fact an operator needs. ProvisionRefusal keeps the reason intact.
+    GpuContainerSubordinateRefused { reason: r } =>
+      [ProvisionRefusal { step: "subordinate ids", cause: r }]
+    GpuContainerSubordinateUnreadable { reason: r } =>
+      [ProvisionRefusal { step: "subordinate ids read", cause: r }]
+  }
+}
+
+// AN ACTION THAT ONLY REPORTS. It exists because a refusal discovered while PLANNING is still part of the
+// chain, and dropping it to keep the action list homogeneous would turn a specific, actionable refusal
+// into silence.
+
+// THE RUN. FOLDED, stopping at the first refusal.
+fn gpu_container_provision_wet(
+  host: NonEmptyStr,
+  spec: RunnerHostSpec,
+  ids: RunnerHostSubordinateIds,
+  admin: SshTarget,
+  context: FleetSshExecutionContext,
+) -> GpuContainerProvisionRun {
+  let actions = gpu_container_provision_plan(host: host, spec: spec, ids: ids, admin: admin, context: context)
+  let transport = gpu_container_toolchain_admin_transport(target: admin, context: context)
+  let job_user = spec.job_user
+  let steps = fold(actions, init: ([] as List<GpuContainerProvisionStep>), f: (acc, action) =>
+    if gpu_container_provision_has_refusal(steps: acc) {
+      acc
+    } else {
+      append(acc, items: gpu_container_provision_run_action(action: action, admin: admin, context: context, job_user: job_user))
+    }
+  )
+  // NOTHING PLANNED IS NOT "NOTHING NEEDED": an empty plan means the account could not be resolved, which
+  // is a failure with a cause, not a host that was already configured.
+  if length(actions) == 0 {
+    GpuContainerProvisionRun {
+      steps: [GpuContainerProvisionRefused { step: "job user identity", cause: join([job_user as String, " could not be resolved to a uid and home; nothing was provisioned"], "") }],
+      planned: 0,
+    }
+  } else {
+    GpuContainerProvisionRun { steps: steps, planned: length(actions) }
+  }
+}
+
+type GpuContainerProvisionRun {
+  steps: List<GpuContainerProvisionStep>
+  planned: Int
+}
+
+fn gpu_container_provision_run_holds(r: GpuContainerProvisionRun) -> Bool {
+  r.planned > 0 && !gpu_container_provision_has_refusal(steps: r.steps)
+}
+
+fn gpu_container_provision_run_text(r: GpuContainerProvisionRun) -> String {
+  join([to_string(r.planned), " action(s): ", gpu_container_provision_step_text(steps: r.steps)], "")
+}
+
+// THE JOB USER, AS PROVISIONING NEEDS TO KNOW IT: its uid and its home, from one lookup.
+type GpuContainerPrincipalIdentity {
+  uid: Int
+  home: String
+}
+
+// THE ONE getent passwd READ THAT PROVISIONING DEPENDS ON. Both halves come from the same answer, and the
+// answer is rejected whole if either half is unusable: there is no state in which a converge knows the
+// uid but not the home, because half that knowledge is enough to address a user manager and not enough to
+// place the unit inside it — the combination that produces a service no manager will load.
+//
+// THE PARSER IS THE EXISTING AUTHORITY, not a re-derivation: gunbc.runner.runner_unit_file
+// runner_job_user_uid_reading already decides what counts as a passwd line (it refuses anything without
+// the seven fields a passwd entry must have) and already names the failure, so this function only pairs
+// its uid with field 6 of the line it vouched for.
+fn gpu_container_provision_principal(user: NonEmptyStr, transport: HostEffectTransport) -> GpuContainerPrincipalIdentity? {
+  match run_argv_over_host_effect_transport(command: getent_passwd_command(key: user), transport: transport) {
+    RunArgvTransportRefused { reason: _ } => Absent
+    RunArgvTransportObserved { observed: o } =>
+      match runner_job_user_uid_reading(job_user: user, exit_code: o.exit_code, stdout: o.stdout, stderr: o.stderr) {
+        JobUserUidUnobserved { cause: _ } => Absent
+        JobUserUidObserved { uid: u, passwd_line: line } => {
+          let h = job_user_home_from_passwd(passwd_line: line)
+          // NO HOME, NO IDENTITY. The empty string is not a location, and defaulting it would put the
+          // unit at /.config/systemd/user/docker.service — a real, writable path the typed writer would
+          // accept, in a filesystem that belongs to no job user.
+          if h == "" {
+            Absent
+          } else {
+            Present { value: GpuContainerPrincipalIdentity { uid: u, home: h } }
+          }
+        }
+      }
+  }
+}
+
+// WHERE THE ACCOUNT WE MAY DISPLACE LIVES, read from the same passwd database the plan reads. This is
+// a lookup of a fact, not a policy decision: nothing here says the account may be moved, only where its
+// files are should the plan (which does decide) come back with steps. A refused transport, a non-zero
+// getent, or an entry whose home field is empty all answer Absent, and the caller must then refuse the
+// plan — the store-free readback cannot run against an unknown directory, and a silent assumption of
+// some home would read the wrong account's storage and report its emptiness as this one's.
+fn gpu_container_displacee_home_lookup(account: NonEmptyStr, transport: HostEffectTransport) -> String? {
+  match run_argv_over_host_effect_transport(command: getent_passwd_command(key: account), transport: transport) {
+    RunArgvTransportRefused { reason: _ } => Absent
+    RunArgvTransportObserved { observed: o } =>
+      if o.exit_code == 0 {
+        let h = job_user_home_from_passwd(passwd_line: o.stdout)
+        if h == "" {
+          Absent
+        } else {
+          Present { value: h }
+        }
+      } else {
+        Absent
+      }
+  }
+}
