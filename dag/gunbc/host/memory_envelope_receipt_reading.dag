@@ -34,7 +34,7 @@ type ReceiptValueKind
   = ReceiptWord
   | ReceiptLimit
   | ReceiptCount
-  | ReceiptRestOfLine
+  | ReceiptCountOrUnobservable
 
 type ReceiptKey {
   key: String
@@ -51,7 +51,11 @@ data receipt_key_high_events_delta: ReceiptKey = ReceiptKey { key: "high_events_
 data receipt_key_max_events_delta: ReceiptKey = ReceiptKey { key: "max_events_delta", kind: ReceiptCount }
 data receipt_key_oom_kills_delta: ReceiptKey = ReceiptKey { key: "oom_kills_delta", kind: ReceiptCount }
 data receipt_key_swap_current_bytes: ReceiptKey = ReceiptKey { key: "swap_current_bytes", kind: ReceiptCount }
-data receipt_key_swap_peak_delta: ReceiptKey = ReceiptKey { key: "swap_peak_delta", kind: ReceiptRestOfLine }
+// THE SWAP PEAK'S RISE IS A BYTE COUNT (the printer's saturating after - before), OR THE PRINTER'S OWN SENTENCE THAT THIS
+// KERNEL CANNOT SHOW IT, read to the end of the line because that sentence has spaces. Nothing else: a value that is
+// neither is garbled, never read as unobservable.
+data receipt_swap_peak_unobservable_prefix: String = "unobservable"
+data receipt_key_swap_peak_delta: ReceiptKey = ReceiptKey { key: "swap_peak_delta", kind: ReceiptCountOrUnobservable }
 
 // THE PRINTER'S ORDER.
 data memory_receipt_keys: List<ReceiptKey> = [
@@ -72,7 +76,7 @@ type MemoryReceiptReading {
   max_events_delta: Int
   oom_kills_delta: Int
   swap_current: ByteSize
-  swap_peak_delta: Int?
+  swap_peak_delta: ByteSize?
 }
 
 type MemoryReceiptLine
@@ -104,7 +108,7 @@ type ReceiptField
 
 fn receipt_reads_rest_of_line(k: ReceiptKey) -> Bool {
   match k.kind {
-    ReceiptRestOfLine => true
+    ReceiptCountOrUnobservable => true
     ReceiptWord => false
     ReceiptLimit => false
     ReceiptCount => false
@@ -165,15 +169,40 @@ fn receipt_count(payload: String, k: ReceiptKey) -> Int? {
   }
 }
 
-// WHAT A ROW'S VALUE MUST BE, by its kind: present and non-empty for every kind, and decodable for a limit or a count.
-// The rest-of-line value (the swap peak) may be prose and is read as a delta only when it is a number.
+// A COUNT, OR ABSENT WHERE THE PRINTER SAID THE KERNEL CANNOT SHOW IT; any other text is not a reading.
+type ReceiptCountOrUnobservableValue
+  = ReceiptCountObserved { bytes: ByteSize }
+  | ReceiptCountUnobservable
+  | ReceiptCountUnreadable
+
+fn receipt_count_or_unobservable(payload: String, k: ReceiptKey) -> ReceiptCountOrUnobservableValue {
+  match receipt_text(payload: payload, k: k) {
+    Absent => ReceiptCountUnreadable
+    Present { value: v } =>
+      if starts_with(s: v, prefix: receipt_swap_peak_unobservable_prefix) {
+        ReceiptCountUnobservable
+      } else {
+        match parse_int(s: v) {
+          Present { value: n } => if n >= 0 { ReceiptCountObserved { bytes: byte_size(n) } } else { ReceiptCountUnreadable }
+          Absent => ReceiptCountUnreadable
+        }
+      }
+  }
+}
+
+// WHAT A ROW'S VALUE MUST BE, by its kind: present and non-empty for every kind, and decodable for a limit, a count, or
+// a count-or-unobservable.
 fn receipt_key_fault_of(payload: String, k: ReceiptKey) -> String? {
   match receipt_text(payload: payload, k: k) {
     Absent => Present { value: concat("the receipt's key is missing, repeated or empty: ", k.key) }
     Present { value: _ } =>
       match k.kind {
         ReceiptWord => none
-        ReceiptRestOfLine => none
+        ReceiptCountOrUnobservable => match receipt_count_or_unobservable(payload: payload, k: k) {
+          ReceiptCountUnreadable => Present { value: concat("the receipt's value is neither a byte count nor the printer's unobservable sentence: ", k.key) }
+          ReceiptCountObserved { bytes: _ } => none
+          ReceiptCountUnobservable => none
+        }
         ReceiptLimit => match receipt_limit(payload: payload, k: k) {
           Absent => Present { value: concat("the receipt's value is neither a byte count nor max: ", k.key) }
           Present { value: _ } => none
@@ -236,9 +265,10 @@ fn receipt_of_words(line: String, payload: String) -> MemoryReceiptLine {
       max_events_delta: max_events,
       oom_kills_delta: oom_kills,
       swap_current: byte_size(swap_current),
-      swap_peak_delta: match receipt_text(payload: payload, k: receipt_key_swap_peak_delta) {
-        Present { value: v } => parse_int(s: v)
-        Absent => none
+      swap_peak_delta: match receipt_count_or_unobservable(payload: payload, k: receipt_key_swap_peak_delta) {
+        ReceiptCountObserved { bytes: b } => Present { value: b }
+        ReceiptCountUnobservable => none
+        ReceiptCountUnreadable => none
       },
     } }
   } } } } } } } } } }
@@ -253,7 +283,7 @@ fn memory_receipt_verdict(r: MemoryReceiptReading) -> MemoryEnvelopeVerdict {
     oom_kills_delta: r.oom_kills_delta,
     swap_current: Present { value: byte_size_count(b: r.swap_current) as Int },
     swap_peak_rose: match r.swap_peak_delta {
-      Present { value: d } => Present { value: d > 0 }
+      Present { value: d } => Present { value: byte_size_count(b: d) > 0 }
       Absent => none
     },
     swap_max_zero: match r.swap_max {

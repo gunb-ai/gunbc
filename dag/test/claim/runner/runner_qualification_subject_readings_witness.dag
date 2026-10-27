@@ -166,3 +166,23 @@ fn is_held(r: MemoryReceiptReading) -> Bool {
     _ => false
   }
 }
+
+// THE SWAP PEAK'S RISE IS BYTES OR THE PRINTER'S UNOBSERVABLE SENTENCE, NOTHING ELSE (review 87000): the recorded zero
+// reads as a ByteSize, the sentence reads as absent, and any other text garbles the receipt naming the key rather than
+// reading as unobservable.
+test fn the_swap_peak_rise_is_bytes_or_the_printers_sentence() -> Bool {
+  let unobservable = replace(s: first_receipt_line(), from: "swap_peak_delta=0", to: "swap_peak_delta=unobservable (no memory.swap.peak on this kernel)")
+  let garbled = replace(s: first_receipt_line(), from: "swap_peak_delta=0", to: "swap_peak_delta=lots")
+  (match memory_receipt_line(line: first_receipt_line()) {
+    MemoryReceiptRead { reading: r } => (match r.swap_peak_delta { Present { value: b } => byte_size_count(b: b) == 0 Absent => false })
+    _ => false
+  })
+    && (match memory_receipt_line(line: unobservable) {
+      MemoryReceiptRead { reading: r } => (match r.swap_peak_delta { Absent => true Present { value: _ } => false })
+      _ => false
+    })
+    && (match memory_receipt_line(line: garbled) {
+      MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "swap_peak_delta")
+      _ => false
+    })
+}
