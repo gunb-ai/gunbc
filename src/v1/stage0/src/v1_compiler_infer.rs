@@ -26190,7 +26190,7 @@ pub fn unify_generics(
             // rather than being emitted unsolved.
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    eprintln!("DIAGBIND bind={:?} actual={} verdict_full={} inferred={:?} conn={:?} nchildren={} typed_inferred={:?}", bind_name.clone(), type_node_label(actual.clone(), source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(actual.clone(), source_indices.clone()), actual.inferred.clone().map(|i| format!("{:?}", (*i).clone()).chars().take(90).collect::<String>()), actual.connective, actual.children.len(), ar.typed.inferred.clone().map(|i| format!("{:?}", (*i).clone()).chars().take(90).collect::<String>()));
+                    eprintln!("DIAGBIND bind={:?} actual={} verdict_full={} is_tv_actual={} nchildren={}", bind_name.clone(), type_node_label(actual.clone(), source_indices.clone()), crate::v1_compiler_infer_types::is_fully_resolved(actual.clone(), source_indices.clone()), actual.inferred.clone().map(|i| is_type_variable(i)).unwrap_or(false), actual.children.len());
                     if crate::v1_compiler_infer_types::is_fully_resolved(
                         actual.clone(),
                         source_indices.clone(),
