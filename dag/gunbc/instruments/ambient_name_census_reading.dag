@@ -310,6 +310,13 @@ fn ambient_name_census_standing(
   // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_resolution_census UnrecordedSplit): declared-order
   // heads no one resolves, printed by module and path and counted, never refused and never hidden.
   let unanswered = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unanswered\t")))
+  // THE GLOBAL_BARE MIGRATION ORACLE'S ROWS (v2.compiler.occurrence_resolution_census binding_unbound_oracle_line), forwarded
+  // verbatim with one count per answer word. They are the generated import sweep's row source
+  // (v2.workflow.roster_import_sweep roster_generated_row_of_oracle_line), so this label is their executing route; they
+  // are observation only and no exit below reads them.
+  let oracle = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unbound_oracle\t")))
+  let oracle_answers = ["unique", "ambiguous", "absent", "oracle_unavailable"]
+    |> map(a => "oracle_answer_count\t" + a + "\t" + to_string(count(oracle |> filter(l => field_at(line: l, index: 4) == a))))
   let bytes = census_observation_text(tree_stdout: tree_stdout)
     + (subject_lines |> join(separator: "\n")) + "\n"
     + (unreached |> join(separator: "\n")) + "\n"
@@ -320,6 +327,8 @@ fn ambient_name_census_standing(
     + (missing |> map(m => "unobserved_rewritten\t" + m) |> join(separator: "\n")) + "\n"
     + (failed |> map(l => "unobserved_subject\t" + l) |> join(separator: "\n")) + "\n"
     + (ambient_summary_lines(stdout: tree_rows |> join(separator: "\n")) |> join(separator: "\n")) + "\n"
+    + (oracle |> join(separator: "\n")) + "\n"
+    + (oracle_answers |> join(separator: "\n")) + "\n"
   match fixture_join_failure(stdout: fixture_stdout) {
     Present { value: why } => CliWirePrintable { bytes: fixture_stdout + "\n", exit: ExitFailure { code: 1, reason: "fixture control: " + why } }
     Absent =>

@@ -13,6 +13,7 @@ import v2.compiler.emit_produced { module_bodies_in_tree, module_body_member_edg
 import v2.compiler.symbol_index_fill { symbol_index_binder_type_or_target }
 import v2.compiler.type_declaration_use_census { type_ref_text, ref_text, as_arrow_return }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
+import v2.std.symbol_index { SymbolIndex, GlobalBareLookup, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_global_unique_lookup }
 import v2.compiler.resolve {
   ResolvedTree, OccurrenceResolution, OccurrenceResolutionRecord, OccurrenceResolutionEntry, occurrence_resolution_duplicates, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
@@ -459,4 +460,57 @@ fn occurrence_resolution_partial_lines(module: String, entries: List<OccurrenceR
     xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_resolution_row_fields(row: row)) }),
     item: "binding_partial_module\t" + module + "\t" + to_string(length(xs: p.rows)) + "\t" + to_string(p.conflicting) + "\t" + to_string(p.unreadable)
   )
+}
+
+// THE MIGRATION ORACLE'S ANSWER FOR ONE UNBOUND OCCURRENCE, OBSERVED, NEVER BOUND (tidy-ant-251's option-A ruling on
+// gunbc#14761's re-derivation, 2026-10-24: extend this census on its own label, no sibling producer; the answer is a
+// closed carrier; observation only; a control shows the other row kinds unchanged; option B, a new driver verb on the
+// self-host entry, was rejected). resolve refuses a name its ancestor chain does not bind (v2.compiler.resolve
+// lookup_symbol_index_atom_identity: global_bare died as a mechanism); the index's surviving global_bare map is
+// the migration oracle that same header keeps for this census. For each binding_unbound row the census prints
+//   binding_unbound_oracle <module> <spelling> <locus> <answer> <declaring path> <owning module | paths>
+// where answer is the closed GlobalBareLookup carrier rendered as three fields: unique <path> <owning module>,
+// ambiguous - <path,...>, absent - -, and oracle_unavailable - - when the context carries no index. It is observation only: nothing in
+// resolve or infer reads it, no verdict or exit code depends on it, and its kind word is not a prefix any
+// existing reader filters on (each filters "binding_unbound" followed by a tab). It is handed the unbound atom's own Symbol and
+// interns nothing: interning a spelling here mints symbols, which moved which refused import a census_root row
+// reported (measured: infer_cascade's root line 41 became 46 over `census-infer src/v2`). The generated import sweep reads
+// only its unique rows; ambiguous and absent rows are listed and refused there, never picked.
+fn global_bare_oracle_answer_text(index: SymbolIndex, answer: GlobalBareLookup) -> String {
+  match answer {
+    GlobalBareHit { node: _, path: p } =>
+      "unique\t" + qualified_name_to_dotted_string(qn: p) + "\t" + match global_bare_oracle_owning_module(index: index, path: p) {
+        Present { value: m } => qualified_name_to_dotted_string(qn: m)
+        Absent => "-"
+      }
+    GlobalBareLookupAmbiguous { paths: ps } =>
+      "ambiguous\t-\t" + fold_list(xs: ps, empty: "", cons: fn(acc, q) {
+        if acc == "" { qualified_name_to_dotted_string(qn: q) } else { acc + "," + qualified_name_to_dotted_string(qn: q) }
+      })
+    GlobalBareLookupUnbound => "absent\t-\t-"
+  }
+}
+
+fn binding_unbound_oracle_line(module: String, name: Symbol, locus: String, index: Optional<SymbolIndex>) -> String {
+  let answer = match index {
+    Present { value: ix } => global_bare_oracle_answer_text(index: ix, answer: symbol_index_global_unique_lookup(index: ix, name: name))
+    Absent => "oracle_unavailable\t-\t-"
+  }
+  "binding_unbound_oracle\t" + module + "\t" + symbol_lexeme(sym: name) + "\t" + locus + "\t" + answer
+}
+
+// The module a unique oracle answer's declaration lives in: the LONGEST prefix of its path the index records as a module
+// root, found in one pass over the path's own prefixes (cost bounded by the path's depth, never by the corpus's module count). A
+// variant's path (module.Type.Variant) answers its module, which is the import home the sweep needs. Absent prints
+// "-" and the sweep refuses that row.
+fn global_bare_oracle_owning_module(index: SymbolIndex, path: QualifiedName) -> Optional<QualifiedName> {
+  fold_list(xs: path, empty: GlobalBareOwnerWalk { prefix: Empty, owner: Absent }, cons: fn(acc, seg) {
+    let next = list_snoc_item(xs: acc.prefix, item: seg)
+    GlobalBareOwnerWalk { prefix: next, owner: if map_contains_key(m: index.module_roots, key: next) { Present { value: next } } else { acc.owner } }
+  }).owner
+}
+
+type GlobalBareOwnerWalk {
+  prefix: QualifiedName
+  owner: Optional<QualifiedName>
 }

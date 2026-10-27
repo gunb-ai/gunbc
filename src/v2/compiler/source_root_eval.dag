@@ -78,8 +78,10 @@ import v2.compiler.infer {
 import v2.compiler.type_declaration_use_census {
   TypeCensusContribution, AsTypedBy, AsUntyped, type_census_contribution, type_census_unreached
 }
+import v2.std.symbol_index { SymbolIndex }
 import v2.compiler.occurrence_resolution_census {
-  occurrence_resolution_contribution, occurrence_resolution_contribution_lines, occurrence_resolution_partial_lines, occurrence_resolution_locus_text
+  occurrence_resolution_contribution, occurrence_resolution_contribution_lines, occurrence_resolution_partial_lines, occurrence_resolution_locus_text,
+  binding_unbound_oracle_line
 }
 import v2.compiler.name_resolve {
   resolution_context_namespace,
@@ -3665,9 +3667,9 @@ fn native_census_module_inference(
     outcome: match step.verdict {
       NativeModuleResolveFileRefused { refusal: _ } => NativeInferCensusFileRefused
       NativeModuleResolveImportTargetFileRefused { target: _, first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r, oracle: native_census_oracle_index(context: context)) }
       NativeModuleResolveRefused { first: f, rest: r, observation: o } =>
-        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r) }
+        NativeInferCensusResolveRefused { first: f, rest: r, observation: o, partial: step.partial, loci: native_census_binding_loci(positions: context.positions, path: entry.path, ids: list_map(xs: step.partial, f: fn(e) { e.reference })), unbound: native_census_unbound_lines(positions: context.positions, entry: entry, first: f, rest: r, oracle: native_census_oracle_index(context: context)) }
       NativeModuleResolveAccepted { resolved: resolved } =>
         match native_test_infer_resolved(module: qualified_name_from_dotted_string(dotted: entry.module), resolved: resolved) {
           Accepted { value: prepared, diagnostics: _ } =>
@@ -3714,33 +3716,49 @@ fn native_census_binding_loci(positions: NativeCensusPositionTable, path: Symbol
 // name, as `binding_unbound <module> <spelling> <line>:<byte column>`, located by the same position table as the
 // residual rows (native_census_locate_fatal). A name with no binding has no binding row; this is its occurrence-grain
 // record, so a wave that binds it can be joined occurrence by occurrence on the source locus.
-fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>) -> List<String> {
-  let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], unreadable: 0 }, cons: fn(acc, chain) {
+fn native_census_unbound_lines(positions: NativeCensusPositionTable, entry: NativeCensusModule, first: NonEmptyDiagnostics, rest: List<NonEmptyDiagnostics>, oracle: Optional<SymbolIndex>) -> List<String> {
+  let folded = fold_list(xs: Cons { head: first, tail: rest }, empty: NativeCensusUnbound { lines: [], oracle_lines: [], unreadable: 0 }, cons: fn(acc, chain) {
     if diagnostics_fatal(d: chain).reason == ^resolve_reason_unbound_symbol {
-      match native_census_unbound_spelling(at: diagnostics_fatal(d: chain).at) {
-        Present { value: spelling } =>
-          NativeCensusUnbound { lines: list_snoc_item(xs: acc.lines, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + occurrence_resolution_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))), unreadable: acc.unreadable }
-        Absent => NativeCensusUnbound { lines: acc.lines, unreadable: acc.unreadable + 1 }
+      match native_census_unbound_atom(at: diagnostics_fatal(d: chain).at) {
+        Present { value: atom } =>
+          let spelling = symbol_lexeme(sym: atom)
+          let locus = occurrence_resolution_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: chain, path: entry.path, positions: positions)))
+          NativeCensusUnbound { lines: list_snoc_item(xs: acc.lines, item: "binding_unbound\t" + entry.module + "\t" + spelling + "\t" + locus), oracle_lines: list_snoc_item(xs: acc.oracle_lines, item: binding_unbound_oracle_line(module: entry.module, name: atom, locus: locus, index: oracle)), unreadable: acc.unreadable }
+        Absent => NativeCensusUnbound { lines: acc.lines, oracle_lines: acc.oracle_lines, unreadable: acc.unreadable + 1 }
       }
     } else {
       acc
     }
   })
-  list_snoc_item(xs: folded.lines, item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable))
+  list_append(
+    left: list_snoc_item(xs: folded.lines, item: "binding_unbound_module\t" + entry.module + "\t" + int_to_decimal_string(value: length(xs: folded.lines)) + "\t" + int_to_decimal_string(value: folded.unreadable)),
+    right: folded.oracle_lines
+  )
+}
+
+// The migration oracle the binding_unbound_oracle rows read (v2.compiler.occurrence_resolution_census
+// binding_unbound_oracle_line): the context's own index, observed and never consulted for a binding. A context
+// that did not build answers Absent, printed as oracle_unavailable, never as an empty answer.
+fn native_census_oracle_index(context: NativeTestContext) -> Optional<SymbolIndex> {
+  match context.resolution {
+    Accepted { value: rc, diagnostics: _ } => optional_present(value: rc.symbol_index)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
 }
 
 // The unbound fatals of one refused module: the rows that printed, and the count of those whose name did not read
 // (counted in `binding_unbound_module`, never dropped).
 type NativeCensusUnbound {
   lines: List<String>
+  oracle_lines: List<String>
   unreadable: Int
 }
 
-fn native_census_unbound_spelling(at: Locus) -> Optional<String> {
+fn native_census_unbound_atom(at: Locus) -> Optional<Symbol> {
   match at {
     NodeLocus { anchor: a } =>
       match a.at.kind {
-        TypeNode { connective: Atom { identity: id } } => optional_present(value: symbol_lexeme(sym: id))
+        TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
         _ => optional_absent()
       }
     _ => optional_absent()
