@@ -31,12 +31,12 @@ data holds_spools_retry_consolidation_residue: RecurringFailureMode = RecurringF
 
   evidence: [
     decl_ref(module_path: "gunbc.session_lease", decl_name: "ProcessLeasePlan"),
-    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "DispatchLeasePlan"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "DispatchLeasePlan"),
     decl_ref(module_path: "std.temporal_effect", decl_name: "decision_for_held_lease_verdict"),
     decl_ref(module_path: "std.temporal_effect", decl_name: "stall_budget_verdict"),
     decl_ref(module_path: "std.durable_transfer", decl_name: "LocalCommitStanding"),
     decl_ref(module_path: "gunbc.fleet_observation.capture_chunk", decl_name: "local_commit_from_cas"),
-    decl_ref(module_path: "gunbc.roadmap_dispatch_actuator", decl_name: "AttemptUnitObservation"),
+    decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "AttemptUnitObservation"),
     decl_ref(module_path: "gunbc.workspace_acquisition_invocation", decl_name: "WorkspacePriorActorStanding"),
     decl_ref(module_path: "gunbc.systemd_unit_invocation_liveness", decl_name: "unit_invocation_holder_liveness"),
     decl_ref(module_path: "gunbc.spark.model_snapshot_materialize", decl_name: "spark_transfer_retry_law"),
