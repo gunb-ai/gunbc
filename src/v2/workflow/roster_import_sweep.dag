@@ -49,7 +49,7 @@ import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, diagnostics_reason_lexemes }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
 import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, Positional, TypeNode, symbol_intern_lexeme, symbol_lexeme, node_subtree_nodes, Symbol, NotADeclaration, StructuralLabel, positional_child_target_nodes }
@@ -180,9 +180,11 @@ fn roster_qn_text(qn: QualifiedName) -> String {
 // THE CLOSED SET OF REFUSAL REASONS of this module; every REFUSE row is rendered from one by roster_refusal_text,
 // the sole place a reason becomes protocol text. Admission is Optional (Absent = admitted), never a member of this set.
 type RosterRefusalReason
-  = RefusalTokenizeRefused
-  | RefusalParseRefused
-  | RefusalNormalizeRefused
+  // A compiler stage refused the file: `reasons` names the stage's diagnostics in order (diagnostics_reason_lexemes),
+  // so a REFUSE row says WHY, not only which stage -- a bare stage name let a cause be inferred rather than read.
+  = RefusalTokenizeRefused { reasons: String }
+  | RefusalParseRefused { reasons: String }
+  | RefusalNormalizeRefused { reasons: String }
   | RefusalNoImportAnchor
   | RefusalExtentNotOnCharBoundary
   | RefusalExtentMismatch
@@ -262,9 +264,9 @@ type RosterRefusalReason
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
-    RefusalTokenizeRefused => "tokenize-refused"
-    RefusalParseRefused => "parse-refused"
-    RefusalNormalizeRefused => "normalize-refused"
+    RefusalTokenizeRefused { reasons: rs } => "tokenize-refused reasons=" + rs
+    RefusalParseRefused { reasons: rs } => "parse-refused reasons=" + rs
+    RefusalNormalizeRefused { reasons: rs } => "normalize-refused reasons=" + rs
     RefusalNoImportAnchor => "no-import-anchor"
     RefusalExtentNotOnCharBoundary => "extent-not-on-char-boundary"
     RefusalExtentMismatch => "extent-mismatch"
@@ -1087,8 +1089,8 @@ fn roster_applied(before: String, outcome: RosterOutcome) -> RosterApplied {
   // every edit in the fold is checked against it (the fold mutates only text BELOW a still-checked offset, and label
   // edits land strictly below every import edit, so a checked extent's bytes are exactly the bytes this parse saw).
   match roster_splice_facts(path: "roster_applied", before: before) {
-    Absent => RosterApplyRefused { reason: RefusalParseRefused }
-    Present { value: facts } => roster_applied_with_facts(before: before, outcome: outcome, facts: facts)
+    SpliceFactsRefused { reason: r } => RosterApplyRefused { reason: r }
+    SpliceFactsRead { facts: facts } => roster_applied_with_facts(before: before, outcome: outcome, facts: facts)
   }
 }
 
@@ -1283,19 +1285,23 @@ type RosterSpliceFacts {
 
 // The parse the guard reads, over the exact bytes being spliced: the module's one tokenize/parse route (no normalization
 // -- the import-decl facts are read off the parse tree, as the plan reads them). A text that will not parse here cannot
-// have come from the plan, so the caller refuses it.
-fn roster_splice_facts(path: String, before: String) -> Optional<RosterSpliceFacts> {
+// have come from the plan, so the caller refuses it, with the refusing stage and its diagnostics' reasons.
+type RosterSpliceFactsRead
+  = SpliceFactsRead { facts: RosterSpliceFacts }
+  | SpliceFactsRefused { reason: RosterRefusalReason }
+
+fn roster_splice_facts(path: String, before: String) -> RosterSpliceFactsRead {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => Absent
+    Rejected { diagnostics: _ } => SpliceFactsRefused { reason: RefusalGrammarUnprepared }
     Accepted { value: prepared, diagnostics: _ } =>
       match tokenize_prepared(text: before, file: symbol_intern_lexeme(lexeme: path), prepared: dag_prepared_lex()) {
-        Rejected { diagnostics: _ } => Absent
+        Rejected { diagnostics: ds } => SpliceFactsRefused { reason: RefusalTokenizeRefused { reasons: diagnostics_reason_lexemes(diagnostics: ds) } }
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => Absent
+            Rejected { diagnostics: ds } => SpliceFactsRefused { reason: RefusalParseRefused { reasons: diagnostics_reason_lexemes(diagnostics: ds) } }
             Accepted { value: artifact, diagnostics: _ } =>
-              Present {
-                value: RosterSpliceFacts {
+              SpliceFactsRead {
+                facts: RosterSpliceFacts {
                   imports: roster_import_decl_facts(parse_root: artifact.tree, spans: artifact.span_index),
                   header_end: roster_module_header_end(parse_root: artifact.tree, spans: artifact.span_index)
                 }
@@ -1470,13 +1476,13 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
     Present { value: reason } => roster_census_refused(reason: reason)
     Absent =>
       match tokenize_prepared(text: text, file: symbol_intern_lexeme(lexeme: path), prepared: lex) {
-        Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalTokenizeRefused)
+        Rejected { diagnostics: ds } => roster_census_refused(reason: RefusalTokenizeRefused { reasons: diagnostics_reason_lexemes(diagnostics: ds) })
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
-            Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalParseRefused)
+            Rejected { diagnostics: ds } => roster_census_refused(reason: RefusalParseRefused { reasons: diagnostics_reason_lexemes(diagnostics: ds) })
             Accepted { value: artifact, diagnostics: _ } =>
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
-                Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
+                Rejected { diagnostics: ds } => roster_census_refused(reason: RefusalNormalizeRefused { reasons: diagnostics_reason_lexemes(diagnostics: ds) })
                 Accepted { value: scoped, diagnostics: _ } =>
                   let unmet = roster_gate_unmet(gates: gates, candidates: candidates, sites: collect_scoped_module_reference_sites(root: scoped.tree.root, imported: list_map(xs: scoped.tree.import_bindings, f: fn(b) { b.binding })).sites, spans: artifact.span_index, imported: scoped.tree.import_bindings)
                   let outcome = match unmet {
@@ -3322,6 +3328,7 @@ fn roster_controls_report() -> String {
         + roster_control_annotation(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_home_converges(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_no_import_anchor(prepared: prepared, lex: dag_prepared_lex())
+        + roster_control_stage_refusal_names_reasons(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_import_closes_cycle(prepared: prepared, lex: dag_prepared_lex())
         + roster_control_closure_inhabited()
         + roster_control_row_scope(prepared: prepared, lex: dag_prepared_lex())
@@ -4306,6 +4313,18 @@ fn roster_control_edit_row_round_trip(outcome: RosterOutcome) -> String {
 
 // A MODULE WITH NO IMPORT LINE is in reach: pass 1 writes exactly one import, directly after the module header and before
 // the first top-level item, and leaves the header's own bytes untouched; pass 2 (the fixed point) is Clean.
+// A file a compiler stage refuses must say WHY in its REFUSE row: the stage's diagnostic reasons, not the bare stage name.
+// A bare normalize-refused once let a multi-byte cause be inferred for files whose diagnostics nobody had read.
+fn roster_control_stage_refusal_names_reasons(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let broken = "module c.broken\n\nfn f( -> {\n"
+  match roster_rename_outcome(companions: [], text: broken, prepared: prepared, lex: lex) {
+    RosterRefused { reason: RefusalTokenizeRefused { reasons: rs } } => if rs == "" { "CONTROL-FAIL stage-refusal-names-reasons: tokenize-refused with no reason\n" } else { "" }
+    RosterRefused { reason: RefusalParseRefused { reasons: rs } } => if rs == "" { "CONTROL-FAIL stage-refusal-names-reasons: parse-refused with no reason\n" } else { "" }
+    RosterRefused { reason: r } => "CONTROL-FAIL stage-refusal-names-reasons: refused " + roster_refusal_text(reason: r) + ", wanted a tokenize or parse refusal\n"
+    other => "CONTROL-FAIL stage-refusal-names-reasons: not refused, got " + roster_render_outcome(path: "control/broken.dag", outcome: other)
+  }
+}
+
 fn roster_control_no_import_anchor(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
   let before = "module c.bare\n\nfn f(x: String) -> Int {\n  count(xs: chars(s: x))\n}\n"
   let after = "module c.bare\n\nimport std.host_text { chars }\n\nfn f(x: String) -> Int {\n  count(xs: chars(text: x))\n}\n"
