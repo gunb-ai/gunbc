@@ -47,7 +47,7 @@ fn code_segment_text(segment: CodeSegment) -> String {
 }
 
 fn code_segments_text(segments: List<CodeSegment>) -> String {
-  fold(segments, init: "", f: fn(acc, s) { concat(acc, code_segment_text(segment: s)) })
+  join(map(segments, s => code_segment_text(segment: s)), "")
 }
 
 type MarkdownListItem { blocks: List<MarkdownBlock> }
