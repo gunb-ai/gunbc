@@ -2131,6 +2131,32 @@ impl UnitVariantPhantomLookup {
     }
 }
 
+pub fn type_declaration_in_own_scope_with_spelling(env: Rc<TypeEnv>, name: String) -> bool {
+    {
+        let own = match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+            Some(binding) => Some(binding.clone()),
+            std::option::Option::None => {
+                match v1_rt::map_get(&env.authored_import_names.clone(), name.clone()) {
+                    Some(_) => lookup_binding_by_name(env.clone(), name.clone()),
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        };
+        match own.clone() {
+            Some(binding) => {
+                ((binding.resolved.module_item_kind.clone()
+                    == ParsedModuleItemKind::ModuleItemTypeDeclaration)
+                    && binding_declares_name(
+                        binding.clone(),
+                        name.clone(),
+                        env.source_indices.clone(),
+                    ))
+            }
+            std::option::Option::None => false,
+        }
+    }
+}
+
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
