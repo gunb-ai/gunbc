@@ -655,8 +655,17 @@ data ci_heal_expected_healed_sha_input: DispatchInput = DispatchInput {
 // branch advanced before GitHub resolved the dispatch ref into the run subject. Selection alone
 // would produce a run whose checkout is H1 and whose CHECK is attached to H2, which is exactly the
 // silent wrong answer this input exists to make unwritable.
+// The input's NAME is read from `ci_heal_expected_healed_sha_input_name`, the one declaration of
+// it (DESIGN section 3: minimization holds only if each fact lives in exactly one place). That
+// data is already the authority two screens up, in the concurrency group, and in the DispatchInput
+// row GitHub advertises; spelling it again here as a string literal left the same fact in two
+// places, and the drift is silent: rename the input and the advertised row and the concurrency
+// group follow while this checkout keeps reading the OLD `inputs.expected_healed_sha`, which is
+// then absent, so the LogicalOr falls through to `github.sha` and the heal revalidation checks the
+// head it was handed instead of the healed head it was promised -- the exact confusion this input
+// exists to make unwritable.
 data ci_heal_checkout_ref: Expression = LogicalOr {
-  left: ContextAccess { context: Inputs, path: ["expected_healed_sha"] },
+  left: ContextAccess { context: Inputs, path: [ci_heal_expected_healed_sha_input_name] },
   right: ContextAccess { context: Github, path: ["sha"] },
 }
 
