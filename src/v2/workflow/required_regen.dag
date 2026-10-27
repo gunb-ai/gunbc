@@ -129,6 +129,25 @@ type RequiredRegenRefusal
   | CandidateTreeAbsent { reason: String }
   | FormatterUnavailable { reason: String }
   | AffectedSetUnlocatable { paths: List<String>, reason: String }
+  // A SUBJECT OUTSIDE THE POPULATION THE ROUND CAN READ IS NOT A CLEAN ROUND AND IT IS NOT A
+  // VERDICT EITHER -- it is NO OBSERVATION. The regen round is an instrument, and an instrument has
+  // exactly three answers (DESIGN 'Building & checks': exit 0 the observation held, 1 it did not
+  // hold, 2 there was no observation). This arm covers the state that used to be answerable with
+  // the first of them: a round handed a subject -- a requested mirror, or an affected-set path --
+  // that the compared population it can read does not carry.
+  //
+  // IT IS NOT `MirrorMissingForEmittedSurface` OR `CommittedMirrorNoLongerEmitted`. Those name a
+  // DRIFT SUBJECT missing from one side of a comparison the round did perform, and their verdict is
+  // exit 1. This names the SUBJECT OF THE INSTRUMENT sitting outside the population entirely, so
+  // no comparison happened and the round has no standing in either direction. The rule it forecloses
+  // is the quiet one: an out-of-population path being dropped from the selection (as an
+  // out-of-root path is) yields an empty selection, an empty selection ends the round successfully,
+  // and a green that compared nothing is read as evidence by the very consumers this file governs.
+  //
+  // NO FABRICATED DEFAULT (DESIGN 5). The arm carries the subject verbatim and the name of the
+  // population it is outside of, so a reader can tell which side of the boundary failed. Nothing is
+  // substituted for either: no default population, no default subject, no default verdict.
+  | SubjectOutsidePopulation { subject: String, population: String }
 
 // The emitter's product, named by where the author finds it. `produced_paths` are the
 // generated surfaces actually written under `root`, which is the population a first
