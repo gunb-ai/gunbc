@@ -4,7 +4,7 @@
 
 The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too.
 
-It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact (ruling `gunbc.design_ruling project_documentation_projections_are_not_checkout_artifacts`). Write it on demand (`gunbc.instruments.generated_artifact_gate` `documentation_wet`). Plans that still project committed markdown stay linked from the section that governs them.
+It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact (ruling `gunbc.design_ruling project_documentation_projections_are_not_checkout_artifacts`). Write it on demand (`gunbc.instruments.generated_artifact_gate documentation_wet`). Plans that still project committed markdown stay linked from the section that governs them.
 
 ---
 
@@ -52,7 +52,7 @@ Single authority governs meaning, not only symbols. Nicknaming's dual is a **mea
 
 Two corollaries. The import graph's only structural law is **acyclicity**: the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule. And a fact's home is its *layer*, not its file.
 
-**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and there is no tree direction. A crossing between the trees is admitted when both namespaces have a row in that layout, either way, and refused when either has none (`v2.std.cross_tree.import_model` `cross_tree_import_admitted`) (ruling `gunbc.design_ruling cross_tree_admission_is_namespace_membership`), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: `gunbc.plans.source_layout_authority`.
+**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and there is no tree direction. A crossing between the trees is admitted when both namespaces have a row in that layout, either way, and refused when either has none (`v2.std.cross_tree.import_model cross_tree_import_admitted`) (ruling `gunbc.design_ruling cross_tree_admission_is_namespace_membership`), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: `gunbc.plans.source_layout_authority`.
 
 The load-bearing consequence: **interface, realization and policy are three facts.** `extdeps/` owns a dependency's *interface shape*; *transport* (shell, REST, SDK) is one of N handlers bound to it; *business policy* (which base ref, which flag) is a workflow fact. Policy has leaked when an argv carries a literal it should receive as a parameter; transport has fused when an operation is forked per transport. **The dispatch that selects a realization is itself realization**, so it sits peripheral.
 
@@ -107,11 +107,11 @@ A Chrome change must not require editing Safari’s module. Adding Opera must no
 
 A two-valued reading loses the middle and either blocks every deliberate departure or admits every accidental one.
 
-A domain is added by adding a row with its home; the leasing row's authorization-pattern clause was added that way (ruling `gunbc.design_ruling authorization_pattern_is_a_selection`). A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. Criterion keys are distinct (`gunbc.roadmap.roadmap_review_criteria` `review_criterion_identities_are_unique`) but not semantically exclusive, so two criteria may report one defect from two perspectives.
+A domain is added by adding a row with its home; the leasing row's authorization-pattern clause was added that way (ruling `gunbc.design_ruling authorization_pattern_is_a_selection`). A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. Criterion keys are distinct (`gunbc.roadmap.roadmap_review_criteria review_criterion_identities_are_unique`) but not semantically exclusive, so two criteria may report one defect from two perspectives.
 
 **On the ladder (§4b)** a reviewer over a finished diff is *mitigation*. The climb: which domains a change touches is derivable before any worker runs — from the modules its plan imports and the vocabulary it introduces that a home already owns — so plan admission can name the homes in the brief and spawn only the reviewers the change reaches, leaving the roster as the safety net.
 
-The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gunbc.roadmap.roadmap_review_criteria` derives one reviewer from each row; the reviewer's question and tells live in its brief. Each domain below states:
+The roster is modeled in `gunbc.design_argument conformance_domains`, and `gunbc.roadmap.roadmap_review_criteria` derives one reviewer from each row; the reviewer's question and tells live in its brief. Each domain below states:
 
 - **Owns** — the part of a change reviewed under this domain.
 - **Boundary** — a nearby responsibility owned elsewhere.
@@ -126,7 +126,7 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Upstream ownership** — what an external model may own
-  - `extdeps.external_authority::ExternalModelScope`
+  - `extdeps.external_authority ExternalModelScope`
 
 ### Materialization / realization
 
@@ -137,11 +137,11 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Materialization contract** — what is requested and what result is promised
-  - `std.realization::Materialization`
-  - `std.materialization_provider::ArtifactRequest`
+  - `std.realization Materialization`
+  - `std.materialization_provider ArtifactRequest`
 - **Storage contract** — how admitted results are stored and read back
-  - `std.artifact_store::ArtifactStore`
-  - `std.cache_interface::StorageSurface`
+  - `std.artifact_store ArtifactStore`
+  - `std.cache_interface StorageSurface`
 
 ### Leasing, locking, grants and privileged access
 
@@ -155,26 +155,26 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Lease and exclusion** — time-bounded possession and atomic updates of shared state
-  - `std.temporal_effect::HeldLease`
-  - `std.durable_compare_and_set::CasExpectation`
-  - `gunbc.durable_cas_file_store::file_compare_and_set_windowed`
-  - `std.durable_exclusive_hold::DurableHoldState`
+  - `std.temporal_effect HeldLease`
+  - `std.durable_compare_and_set CasExpectation`
+  - `gunbc.durable_cas_file_store file_compare_and_set_windowed`
+  - `std.durable_exclusive_hold DurableHoldState`
 - **Grant and resource scope** — what may be used, by whom, under what authority
-  - `std.scoped_authorization::ScopedAuthorization`
-  - `std.effect_grant::Grant`
-  - `std.resources::ResourceHandle`
+  - `std.scoped_authorization ScopedAuthorization`
+  - `std.effect_grant Grant`
+  - `std.resources ResourceHandle`
 - **Authorization-pattern selection** — chooses the admissible mechanism for an effect
-  - `gunbc.auth.authorization_pattern_selection::select_authorization_pattern`
-  - `gunbc.auth.access_token_source::select_access_token_source`
+  - `gunbc.auth.authorization_pattern_selection select_authorization_pattern`
+  - `gunbc.auth.access_token_source select_access_token_source`
 - **Recurring automated access** — workload identity and scoped secret access
-  - `gunbc.auth.github_gcp_federation::github_wif_provider`
-  - `gunbc.auth.gcp_secret_access::SecretAccessGrant`
+  - `gunbc.auth.github_gcp_federation github_wif_provider`
+  - `gunbc.auth.gcp_secret_access SecretAccessGrant`
 - **One-off approved access** — requests, capabilities and redemption
-  - `gunbc.auth.access_request::AccessRequest`
-  - `gunbc.auth.approval_capability::ApprovalCapability`
-  - `gunbc.auth.approval_broker::redeem_capability`
+  - `gunbc.auth.access_request AccessRequest`
+  - `gunbc.auth.approval_capability ApprovalCapability`
+  - `gunbc.auth.approval_broker redeem_capability`
 - **Coverage evidence** — classifies the privileged-effect sites that exist today
-  - `gunbc.auth.privileged_effect_census::privileged_effect_census`
+  - `gunbc.auth.privileged_effect_census privileged_effect_census`
 
 ### Fabric / compute
 
@@ -189,21 +189,21 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Shared demand and supply selection** — what work needs and which supply serves it
-  - `product.fabric.selection::select_supply`
-  - `product.fabric.work::ExecutionRequirements`
-  - `gunbc.compute.work_request::WorkOperation`
-  - `product.fabric.contention::select_demand_for_offer`
-  - `gunbc.ci.ci_runner_target::CiRunnerTarget`
+  - `product.fabric.selection select_supply`
+  - `product.fabric.work ExecutionRequirements`
+  - `gunbc.compute.work_request WorkOperation`
+  - `product.fabric.contention select_demand_for_offer`
+  - `gunbc.ci.ci_runner_target CiRunnerTarget`
 - **Compute cells** — layout, reservation and admission
-  - `gunbc.compute.work_provider_local::ComputeLayout`
-  - `gunbc.fabric.fabric_control_plane::CellReservation`
-  - `gunbc.fabric.fabric_executor_class::CapacityClassAdmission`
+  - `gunbc.compute.work_provider_local ComputeLayout`
+  - `gunbc.fabric.fabric_control_plane CellReservation`
+  - `gunbc.fabric.fabric_executor_class CapacityClassAdmission`
 - **Seats and serving** — seat demand, grants and occupancy
-  - `product.capacity.lease::LeaseGrant`
-  - `product.capacity.pool_events::SeatRequest`
-  - `gunbc.fabric.fabric_event_log::fabric_seat_acquire`
-  - `gunbc.harness.harness_seat::harness_bind_seat`
-  - `gunbc.serving.turn_admission::serving_group_admission`
+  - `product.capacity.lease LeaseGrant`
+  - `product.capacity.pool_events SeatRequest`
+  - `gunbc.fabric.fabric_event_log fabric_seat_acquire`
+  - `gunbc.harness.harness_seat harness_bind_seat`
+  - `gunbc.serving.turn_admission serving_group_admission`
 
 ### Decision / selection
 
@@ -217,14 +217,14 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Decision subject, result and receipt** — what is decided and the record of the choice
-  - `std.decision::DecisionSubject`
-  - `std.decision::RealizationSelectionResult`
-  - `std.decision::SelectionReceipt`
-  - `std.decision::select_realization`
+  - `std.decision DecisionSubject`
+  - `std.decision RealizationSelectionResult`
+  - `std.decision SelectionReceipt`
+  - `std.decision select_realization`
 - **Pareto evidence** — axes, readings and dominance; a frontier, never a winner
-  - `std.pareto::SelectionAxis`
-  - `std.pareto::ParetoEntry`
-  - `std.pareto::DominanceVerdict`
+  - `std.pareto SelectionAxis`
+  - `std.pareto ParetoEntry`
+  - `std.pareto DominanceVerdict`
 
 ### Keys / hashing
 
@@ -238,15 +238,15 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Hash family and structural identity** — how a node's identity is computed
-  - `std.content_hash::HashFamily`
-  - `v2.std.node::content_hash`
+  - `std.content_hash HashFamily`
+  - `v2.std.node content_hash`
 - **Request, computation and occurrence identity** — the keys materialization and source graphs use
-  - `std.materialization_provider::request_key`
-  - `std.computation_identity::ComputationIdentity`
-  - `std.occurrence_identity::OccurrenceIdAllocator`
+  - `std.materialization_provider request_key`
+  - `std.computation_identity ComputationIdentity`
+  - `std.occurrence_identity OccurrenceIdAllocator`
 - **Equality and cache admissibility** — whether a key type's equality may be relied on (instantiation-blind at this rung)
-  - `std.algebra::algebra_profile_equality_extensional`
-  - `extdeps.realization.cache_purity::CachePurityVerdict`
+  - `std.algebra algebra_profile_equality_extensional`
+  - `extdeps.realization.cache_purity CachePurityVerdict`
 
 ### Process observability / reporting
 
@@ -260,13 +260,13 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Observation and recording** — the occurrence and its record
-  - `std.observation::ObservationEvent`
-  - `std.observation::RecordedObservation`
+  - `std.observation ObservationEvent`
+  - `std.observation RecordedObservation`
 - **Presentation** — how an observation is shown
-  - `std.observation::ObservationPresentation`
+  - `std.observation ObservationPresentation`
 - **CI encoding** — the rendered CI line
-  - `gunbc.observation_ci_render::ci_event_line`
-  - `gunbc.observation_ci_render::ci_render_line`
+  - `gunbc.observation_ci_render ci_event_line`
+  - `gunbc.observation_ci_render ci_render_line`
 
 ### Cardinality / absence
 
@@ -281,16 +281,16 @@ The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gun
 **Existing authorities**
 
 - **Presence and sequences** — the canonical optional, possibly-empty sequence and nonempty sequence carriers
-  - `std.optional::Optional`
-  - `std.algebra::FreeMonoid`
-  - `std.algebra::FreeSemigroup`
+  - `std.optional Optional`
+  - `std.algebra FreeMonoid`
+  - `std.algebra FreeSemigroup`
 - **Optional-layer structure** — read and construct consecutive optional layers without collapsing their depth
-  - `v2.std.optional_layers::type_node_occupancy_read`
-  - `v2.std.optional_layers::wrap_type_node_occupancy`
+  - `v2.std.optional_layers type_node_occupancy_read`
+  - `v2.std.optional_layers wrap_type_node_occupancy`
 - **Declared-type boundaries** — the existing producer-versus-declared-type inhabitance judgment
-  - `v2.std.inhabitance::declared_type_inhabitance`
+  - `v2.std.inhabitance declared_type_inhabitance`
 - **Natural bounds** — the existing natural-order witness from which its two bounds are read
-  - `v2.std.cardinality::NatLeWitness`
+  - `v2.std.cardinality NatLeWitness`
 
 ## 3c. Consumption (who consumes a change, and how)
 
@@ -313,7 +313,7 @@ The result is scoped, never `Optimal`: `SelectedWithin` binds a `SelectionReceip
 - A candidate violating a hard constraint is excluded *before* Pareto, never ranked.
 - An incomplete subject — required (objective-term × decision-variable) cells are an identity join, and terms drop only with order preservation — refuses: absence is not irrelevance, and `SelectedWithin` may not mint over an incomplete closure.
 
-Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`product.fleet_operating_point` `fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence.
+Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`product.fleet_operating_point fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence.
 
 ## 4. The closed, grounded substrate (what makes §2–§3 decidable)
 
@@ -328,7 +328,7 @@ You can unify and decompose *mechanically* only in a closed, grounded system. A 
 
 Where-refinements are retired in favour of checked constructors returning `Optional` (ruling `gunbc.design_ruling where_refinements_retire_for_checked_constructors`).
 
-**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** (ruling `gunbc.design_ruling text_crossings_go_through_the_unfold`). `v2.std.text` `String` is `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other. The only route between them is the Unicode scalar unfold, `gunbc.structural_realization_bindings` `literal_homomorphism_rows` `UnicodeScalarSequenceUnfold`. Type compatibility keys on the exact declaration a position resolves to, never its leaf name; the unfold is not a property of literals, so a non-literal value at a crossing takes the same route or refuses; and the untranslated crossings inside the emitted compiler are measured and dispositioned under `gunbc.rung_drop.text_boundary_identity_wall`, whose standing follows the measurement.
+**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** (ruling `gunbc.design_ruling text_crossings_go_through_the_unfold`). `v2.std.text String` is `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other. The only route between them is the Unicode scalar unfold, `gunbc.structural_realization_bindings literal_homomorphism_rows` `UnicodeScalarSequenceUnfold`. Type compatibility keys on the exact declaration a position resolves to, never its leaf name; the unfold is not a property of literals, so a non-literal value at a crossing takes the same route or refuses; and the untranslated crossings inside the emitted compiler are measured and dispositioned under `gunbc.rung_drop.text_boundary_identity_wall`, whose standing follows the measurement.
 
 ## 4b. Safety: the guarantee ladder
 
@@ -354,7 +354,7 @@ Four meta-obligations make the ladder operational:
 
 At a service boundary rung honesty is commercial: an opaque dimension needs a falsifiable quality floor with a named consequence (billing, remedy or refusal), or the claim is marketing. Below-floor delivery refuses or discharges the remedy; materially different delivery is its own named, priced product; losing the ability to verify a floor is a declared drop that may force refusal and never licenses silent below-floor delivery.
 
-Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
+Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate regen`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it.
 
 **The floor first, the differentiator above it.** gunbc must hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and no higher capability compensates a failure there. Above it, because the substrate carries causal, cardinality, algebraic, effect, ownership, cost and realization facts, the ladder reaches classes ordinary compilers leave to tests and postmortems: an empty collection into a nonempty consumer, recursion without descent proof, a non-idempotent effect under retry, a blown complexity bound, a realization that does not preserve behavior.
 
@@ -376,7 +376,7 @@ The obligation is symmetric (ruling `gunbc.design_ruling epistemic_humility_is_s
 - **Do not over-generalize a prohibition.** Forbidding more than the evidence supports costs opportunities nobody sees, so it looks like rigor. This is not §5's never-trap (claiming construction for an undecidable class); it is forbidding more of the world than the cited variables support.
 - **Do assert what you are confident in.** A fact declined is a wall that does not exist. Under-asserting is not humility.
 
-The homes: `extdeps.external_authority` `CitedFigureStanding` = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` carries a figure's evidentiary standing in its type, an uncited figure naming what would ground it; and `strategy.node_rental` `SupplierHypothesis`, whose only arm answering true requires a cited discriminator. The cautionary specimen: `product.node_power_envelope` `altra_two_dpc_ceilings` were self-declared `TranscribedUncited`, and `effective_data_rate` consumed them as a wall — a typed bet consumed as deduced fact, whatever the sources later say.
+The homes: `extdeps.external_authority CitedFigureStanding` = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` carries a figure's evidentiary standing in its type, an uncited figure naming what would ground it; and `strategy.node_rental` `SupplierHypothesis`, whose only arm answering true requires a cited discriminator. The cautionary specimen: `product.node_power_envelope altra_two_dpc_ceilings` were self-declared `TranscribedUncited`, and `effective_data_rate` consumed them as a wall — a typed bet consumed as deduced fact, whatever the sources later say.
 
 ## 5. Fail-closed (§1's safety axis)
 
@@ -469,12 +469,12 @@ One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_f
 
 ## Building & checks
 
-The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
+The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document.
 
-- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `v2-bootstrap`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused.
-- **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).
+- **CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `v2-bootstrap`, run on the fleet for every pull request and merge_group (ruling `gunbc.design_ruling v1_withdrawn_one_required_job`). It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused.
+- **A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling `gunbc.design_ruling regeneration_jobs_added_to_roster`).
 - **The memory envelope is part of the verdict** (ruling `gunbc.design_ruling memory_envelope_is_part_of_the_verdict`). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`).
 - **What a green `v2-bootstrap` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter.
 - **The job roster is closed to growth** (ruling `gunbc.design_ruling job_roster_closed_to_growth`): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`.
-- **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).
-- **Instrument measurements queue per dispatch, not one behind all** (ruling `gunbc.design_ruling instrument_measurement_queues_run_in_parallel`). `gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_concurrency_group` keys the workflow's concurrency group on the dispatch ref plus the dispatch label, so two unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped -- a queued run cancelled without signal was the failure the instrument fleet recorded on 2026-10-03 (`instrument_dispatch_workflow`, the scalar-cancel history). The global group never isolated one run from another, so removing it costs no guarantee: the authority that keeps an instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue -- `gunbc.runner.runner_slot_desired` declares the per-slot shape and `gunbc.host.memory_envelope` enforces it (memory.high throttles early, memory.max refuses late, `MemorySwapMax: 0` refuses an overrun rather than paging it) -- per the operator's ruling recorded in that row's provenance. That is what isolation MEANS for an instrument run; it is not a claim that the live fleet carries it today. Live runner units drift from the declared shape -- a `MemorySwapMax` of 32 GiB where the slot declares 0, read on the fleet 2026-10-21 -- the class at `gunbc.recurring_failure_mode` `the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot against the slot declared for that host, refusing on drift. Until that trigger runs, parallel instrument measurements rest on a declared authority that is not fully installed, and this document records that instead of assuming it holds.
+- **Measurements are `gunbc test <label>`** (ruling `gunbc.design_ruling instrument_is_a_row_not_a_flag`). A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2).
+- **Instrument measurements queue per dispatch, not one behind all** (ruling `gunbc.design_ruling instrument_measurement_queues_run_in_parallel`). `gunbc.instruments.instrument_dispatch_workflow instrument_dispatch_concurrency_group` keys the workflow's concurrency group on the dispatch ref plus the dispatch label, so two unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped -- a queued run cancelled without signal was the failure the instrument fleet recorded on 2026-10-03 (`instrument_dispatch_workflow`, the scalar-cancel history). The global group never isolated one run from another, so removing it costs no guarantee: the authority that keeps an instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue -- `gunbc.runner.runner_slot_desired` declares the per-slot shape and `gunbc.host.memory_envelope` enforces it (memory.high throttles early, memory.max refuses late, `MemorySwapMax: 0` refuses an overrun rather than paging it) -- per the operator's ruling recorded in that row's provenance. That is what isolation MEANS for an instrument run; it is not a claim that the live fleet carries it today. Live runner units drift from the declared shape -- a `MemorySwapMax` of 32 GiB where the slot declares 0, read on the fleet 2026-10-21 -- the class at `gunbc.recurring_failure_mode` `the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot against the slot declared for that host, refusing on drift. Until that trigger runs, parallel instrument measurements rest on a declared authority that is not fully installed, and this document records that instead of assuming it holds.
