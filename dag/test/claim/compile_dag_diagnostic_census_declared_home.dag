@@ -2,7 +2,30 @@ module test.claim.compile_dag_diagnostic_census_declared_home
 
 import std.types { Bool, List, String }
 import std.optional { Present, Absent }
+import std.algebra { count_where }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+// THE NO-GROWTH CONTROL READS THE AUTHORITIES DIRECTLY. std.primitives carries the ambient registry
+// surface entry for the spelling, gunbc.v1.v1_interpreter_primitive_surface carries the authored
+// interpreter arm that RUNS it, std.primitive_projection carries this home's projection row and the
+// primitive datum itself, and std.primitive_identity carries the primitive's declaration and the
+// traversal fact every declared primitive owes. Counting all four is what makes "homing the name
+// added no second authority" a counted fact rather than a promise: a second registry entry, a second
+// authored arm, or a second projection row turns this claim red -- and so does a projection row whose
+// primitive std.primitive_identity does not declare, which is the arm
+// primitive_projection_authority_witness w_projection_roster_carries_no_violations refuses (the arm
+// that made the first shape of this change red).
+import std.primitives { builtin_registry_surface_names }
+import std.primitive_identity {
+  primitive_identity_eq,
+  primitive_identity_is_declared,
+  primitive_traversal_order_for_identity,
+}
+import std.primitive_projection {
+  primitive_compile_dag_diagnostic_census,
+  primitive_projection_roster,
+  HostRealizedSeam,
+}
+import gunbc.v1.v1_interpreter_primitive_surface { v1_interpreter_authored_roster_arms }
 import gunbc.compile_diagnostic_census {
   compile_dag_diagnostic_census,
   CompileDiagnosticCensusRow,
@@ -112,4 +135,33 @@ test fn importing_an_undeclared_spelling_from_the_home_moves_the_rows() -> Bool 
     }
     Absent => false
   }
+}
+
+// THE NO-GROWTH CONTROL (the control tidy-ant-251's ruling requires beside the imported-positive /
+// bare-negative pair). Homing an ambient built-in must add ONE authority and remove none: the
+// spelling keeps exactly one entry in the std.primitives registry surface list, exactly one authored
+// interpreter arm in gunbc.v1.v1_interpreter_primitive_surface, and exactly one row in
+// std.primitive_projection -- whose fidelity is the HostRealizedSeam that binds the existing host
+// implementation by the declaration's identity, not a second realization. The last two conjuncts are
+// the ones that went red before this change was repaired: the projection row is only legal while
+// std.primitive_identity DECLARES the primitive it names (primitive_identity_is_declared reads
+// primitive_declared_definitions(), which the canonical-name list feeds) and owes the traversal-order
+// fact every declared primitive owes. A row that projects an undeclared primitive is what
+// primitive_projection_authority_witness w_projection_roster_carries_no_violations refuses; this
+// conjunct is the same fact read directly, so the two witnesses cannot disagree about it.
+test fn homing_the_name_added_no_second_authority() -> Bool {
+  count_where(builtin_registry_surface_names(), name => name == "compile_dag_diagnostic_census") == 1
+    && count_where(v1_interpreter_authored_roster_arms(), arm => arm.authored_spelling == "compile_dag_diagnostic_census") == 1
+    && count_where(primitive_projection_roster(), row => primitive_identity_eq(left: row.primitive, right: primitive_compile_dag_diagnostic_census)) == 1
+    && count_where(primitive_projection_roster(), row =>
+      match row.fidelity {
+        HostRealizedSeam => primitive_identity_eq(left: row.primitive, right: primitive_compile_dag_diagnostic_census)
+        _ => false
+      }
+    ) == 1
+    && primitive_identity_is_declared(primitive_compile_dag_diagnostic_census)
+    && match primitive_traversal_order_for_identity(identity: primitive_compile_dag_diagnostic_census) {
+      Present { value: _ } => true
+      Absent => false
+    }
 }
