@@ -5,6 +5,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_count_at_key,
   census_rows_of_class,
   census_total_count,
 }
@@ -45,6 +46,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data file_transport_source: String = "module tfx_file\nservice Fs \{\n  operation Write \{\n    input \{ path: String, content: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\", success: Bool from \"read_success\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n  operation Delete \{\n    input \{ path: String \}\n    output \{ success: Bool from \"delete_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"delete\" \}\n  \}\n  operation List \{\n    input \{ path: String \}\n    output \{ entries: String from \"entries\", success: Bool from \"list_success\" \}\n    readonly\n    transport file \{ path: \"\{path\}\", verb: \"list\" \}\n  \}\n\}\n"
 
 data rest_and_shell_source: String = "module tfx_ok\nimport extdeps.transports.rest \{ RestResult \}\nservice Sh \{\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n\}\n\nservice Net \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n\}\n"
+
+// The same importing fixture with one unmodeled operation beside the healthy ones. It keeps the
+// rest import, so this RED reaches the closure the zero claims above read: if a blocking row in
+// that closure stops emit again, this goes red instead of the zeros going silently green
+// (gunbc.recurring_failure_mode a_census_measurement_mode_changes_whether_emit_runs).
+data rest_and_shell_with_planted_refusal_source: String = "module tfx_ok_red\nimport extdeps.transports.rest \{ RestResult \}\nservice Sh \{\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n  operation Chmod \{\n    input \{ path: String \}\n    output \{ success: Bool from \"write_success\" \}\n    transport file \{ path: \"\{path\}\", verb: \"chmod\" \}\n  \}\n\}\n\nservice Net \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n\}\n"
 
 data mixed_transport_source: String = "module tfx_mixed\nimport extdeps.transports.rest \{ RestResult \}\nservice Mixed \{\n  config \{\n    endpoint: \"https://example.invalid\"\n  \}\n  operation Fetch \{\n    input \{ id: String \}\n    output \{ body: String from \"body\" \}\n    readonly\n    transport rest \{ method: GET, path: \"/things/\{id\}\" \}\n  \}\n  operation ListDirs \{\n    input \{ path: String \}\n    output \{ dirs: String from \"stdout_lines\" \}\n    readonly\n    transport shell \{ argv: [\"find\", \"\{path\}\", \"-type\", \"d\"] \}\n  \}\n  operation Read \{\n    input \{ path: String \}\n    output \{ content: String from \"content\" \}\n    readonly\n    transport file \{ path: \"\{path\}\" \}\n  \}\n\}\n"
 
@@ -95,8 +102,54 @@ test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool {
   not_modeled_blocking_count(source: rest_and_shell_source) == 0
 }
 
-test fn w_rest_and_shell_transports_are_clean_of_all_blocking_diagnostics() -> Bool {
-  blocking_diagnostic_count(source: rest_and_shell_source) == 0
+// The census rows are the WHOLE compile's, and this fixture imports extdeps.transports.rest, so an
+// all-blocking total carries that closure's rows and is permanently nonzero
+// (gunbc.compile_diagnostic_census, CompileDiagnosticCensus). The exact form is a count keyed on
+// class AND subject; a TransportEmissionNotModeled row's subject is "<Service>.<Operation>"
+// (compile_clean_diagnostic_histogram_key), so the fixture's own operations are the subjects.
+fn own_operation_refusal_count(source: String, subject: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: "TransportEmissionNotModeled", subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_rest_and_shell_transports_are_not_refused_at_their_own_operations() -> Bool {
+  own_operation_refusal_count(source: rest_and_shell_source, subject: "Sh.ListDirs") == 0
+    && own_operation_refusal_count(source: rest_and_shell_source, subject: "Net.Fetch") == 0
+}
+
+// THE QUALIFIED-SPELLING CONTROL. extdeps.transports.rest spells rest_method_verb's return type
+// std.effect_grant.Verb and imports std.effect_grant selectively; production binds that name, and
+// so must the census, or the importing fixtures above stop emitting (gunbc#15097,
+// gunbc.recurring_failure_mode a_census_measurement_mode_changes_whether_emit_runs). Keyed on both
+// classes the measure can charge it to, so neither a revert of the import arm (UnresolvedType)
+// nor a disagreement reading of an imported module (TypeRefMeasureBindingDisagreement) passes.
+fn qualified_verb_blocking_count(diagnostic_class: String) -> Int {
+  match compile_dag_diagnostic_census(rest_and_shell_source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: diagnostic_class, subject_name: "std.effect_grant.Verb", blocking: true)
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn w_rest_qualified_return_type_binds_under_the_census() -> Bool {
+  qualified_verb_blocking_count(diagnostic_class: "UnresolvedType") == 0
+    && qualified_verb_blocking_count(diagnostic_class: "TypeRefMeasureBindingDisagreement") == 0
+}
+
+test fn w_importing_fixture_reports_a_planted_refusal_at_its_own_operation() -> Bool {
+  own_operation_refusal_count(source: rest_and_shell_with_planted_refusal_source, subject: "Sh.Chmod") == 1
+    && own_operation_refusal_count(source: rest_and_shell_with_planted_refusal_source, subject: "Sh.ListDirs") == 0
+    && own_operation_refusal_count(source: rest_and_shell_with_planted_refusal_source, subject: "Net.Fetch") == 0
+}
+
+// RED + positive control for the keyed form: it must go red on a planted refusal at the fixture's
+// own operation (Fv.Chmod, unmodeled verb) and stay zero at the healthy sibling (Fv.Read).
+test fn w_keyed_count_sees_a_planted_refusal_at_its_own_operation_only() -> Bool {
+  own_operation_refusal_count(source: unmodeled_verb_source, subject: "Fv.Chmod") == 1
+    && own_operation_refusal_count(source: unmodeled_verb_source, subject: "Fv.Read") == 0
 }
 
 test fn w_file_operation_emits_beside_its_rest_and_shell_siblings() -> Bool {

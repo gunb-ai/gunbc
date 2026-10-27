@@ -2,7 +2,7 @@ module gunbc.machine_intake.mtjade1_fan_standing
 
 import std.types { NonEmptyStr }
 
-import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten }
 import gunbc.machine_intake.bmc_first_contact_standing {
   BmcFirmwareFamilyStanding,
   FamilyObserved,
@@ -107,6 +107,7 @@ fn jade_fan_policy_convergence(family: BmcFirmwareFamilyStanding) -> JadeFanConv
     FamilyUnobserved { discriminator: _ } => FamilyUnobservedNoFanRealizer
     FamilyObserved { family: OpenBmc } => JadeFanRouteSelected { route: fan_converge_route_for_family(family: OpenBmc) }
     FamilyObserved { family: AmiMegaRac } => JadeFanRouteSelected { route: fan_converge_route_for_family(family: AmiMegaRac) }
+    FamilyObserved { family: SupermicroAten } => JadeFanRouteSelected { route: fan_converge_route_for_family(family: SupermicroAten) }
   }
 }
 

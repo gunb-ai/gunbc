@@ -84,9 +84,9 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // FILL ORDER (dependency-first; each step independently landable; the machine-readable order is
 // h11ssl_x86_bringup_fill_order, consumed by
 // test.claim.supermicro_h11ssl_x86_bringup_frontier_witness):
-//   1. The BMC family spelling (G4's precondition): every BMC-side route gates on BmcFirmwareFamily,
-//      so admitting or refusing the AST2500/ATEN family unblocks G4 and G5 and de-risks the install
-//      route's BMC leg.
+//   1. The BMC family spelling (G4's precondition): FILLED -- extdeps.bmc.endpoint SupermicroAten, its
+//      authority extdeps.bmc.supermicro, and the read-only readers gunbc.bmc.supermicro_bmc_read; the
+//      row is deleted.
 //   2. G5 readers (read-only): they exercise the family answer against the live BMC WITHOUT writes,
 //      and the post-upgrade intake is the first consumer -- the cheapest capability that makes
 //      future units observable.
@@ -106,7 +106,6 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 //   7. G2 install-to-disk route: composes G1 (media), G3 (boot path), G4 (media attach) on the
 //      srv3-actuate shape -- the capstone, not the first brick.
 
-data h11ssl_x86_bringup_bmc_family_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact", decl_name: "supermicro_h11ssl_bmc_firmware_family_standing")
 data h11ssl_x86_bringup_virtual_media_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.megarac_media_attach", decl_name: "MegaRacAttachRoute")
 data h11ssl_x86_bringup_dimm_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.bmc.redfish_memory_inventory", decl_name: "redfish_memory_dimm_inventory")
 data h11ssl_x86_bringup_storage_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_storage_support")
@@ -116,17 +115,11 @@ data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path:
 data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "uefi_pxe_admitted_architectures")
 data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.srv3.srv3_os_install_actuate", decl_name: "srv3_os_install_actuator_plan_refuses_on_unestablished_path")
 
-// ---- G4a: BMC firmware family for the AST2500/ATEN BMC (fill-order step 1) ----
-
-data h11ssl_bmc_firmware_family_dissolution: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: extdeps.bmc.endpoint BmcFirmwareFamily gains the H11SSL's AST2500/ATEN family as an admitted member (or a typed refusal of it carrying the datasheet citation), gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_bmc_firmware_family_standing crosses from its TranscribedUncited arm to a cited arm, AND gunbc.machine_intake.supermicro_h11ssl_unit_observation supermicro_h11ssl_attested_hardware carries the BMC firmware name/version reading. Naming AST2500 in prose, or adding the family arm without the standing crossing, is not this trigger." as NonEmptyStr
-)
-
-data h11ssl_bmc_firmware_family_frontier: FrontierRow = frontier_row_decl(
-  ref: h11ssl_x86_bringup_bmc_family_gap_subject,
-  reason: "the board's BMC is an AST2500 with the ATEN-family IPMI/web stack, outside the OpenBmc|AmiMegaRac family set every BMC-side route gates on; no modeled route can address this BMC's firmware until the family admits or refuses it",
-  dissolution: h11ssl_bmc_firmware_family_dissolution,
-)
+// ---- G4a (BMC firmware family) is FILLED and its row deleted (roster_frontier contract): extdeps.bmc.endpoint
+// BmcFirmwareFamily admits SupermicroAten with its authority extdeps.bmc.supermicro; extdeps.boards.supermicro_h11ssl
+// supermicro_h11ssl_bmc_firmware_family_standing is CitedToAuthority and supermicro_h11ssl_catalog declares the
+// family; gunbc.machine_intake.supermicro_bmc_reading reads unit 1's firmware family and version (Manager Oem key
+// + Get Device ID, 01.52.25) and checks it against that catalog row.
 
 // ---- G4b: virtual media on this BMC (fill-order step 1's payload) ----
 
@@ -231,7 +224,6 @@ data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
 // census; the hand-install receipt names this module as where its install's missing route lives;
 // test.claim.supermicro_h11ssl_x86_bringup_frontier_witness exercises the roster.
 data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
-  h11ssl_bmc_firmware_family_frontier,
   h11ssl_virtual_media_frontier,
   h11ssl_dimm_census_frontier,
   h11ssl_storage_census_frontier,
@@ -246,7 +238,6 @@ data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
 // consumer). Each entry names a gap row's subject decl in the order the fills should land,
 // dependency-first; the last entry is the capstone that composes the others.
 data h11ssl_x86_bringup_fill_order: List<DeclarationRef> = [
-  h11ssl_x86_bringup_bmc_family_gap_subject,
   h11ssl_x86_bringup_dimm_reader_gap_subject,
   h11ssl_x86_bringup_storage_reader_gap_subject,
   h11ssl_x86_bringup_adoption_gap_subject,

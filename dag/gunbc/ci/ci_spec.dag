@@ -3,7 +3,9 @@ module gunbc.ci.ci_spec
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
 
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_kvm_observer_dir
+}
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -1053,6 +1055,11 @@ data gunbc_ci_runner_user_session_converge_target: GunbcRunStepTarget = GunbcRun
   function: "runner_user_session_converge_ci_wet",
 }
 
+data gunbc_ci_runner_gpu_container_toolchain_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_gpu_container_toolchain.dag",
+  function: "runner_gpu_container_toolchain_converge_ci_wet",
+}
+
 data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/printer_workflow_run.dag",
   function: "run",
@@ -1492,6 +1499,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_password_session_tool_converge_target,
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_runner_user_session_converge_target,
+    gunbc_ci_runner_gpu_container_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
     gunbc_ci_review_sheet_converge_target,
@@ -3285,6 +3293,16 @@ fn gunbc_ci_runner_user_session_converge_invoke() -> String {
   )
 }
 
+fn gunbc_ci_runner_gpu_container_toolchain_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_runner_gpu_container_toolchain_converge_target.entry,
+    function: gunbc_ci_runner_gpu_container_toolchain_converge_target.function,
+    claim_run: false,
+    receipt_rel: "target/runner-gpu-container-toolchain-converge-receipt.txt"
+  )
+}
+
 fn gunbc_ci_runner_password_session_tool_converge_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -4213,8 +4231,26 @@ fn gunbc_ci_heal_candidate_invoke() -> String {
 // builds the seed, emits, installs, rebuilds from the installed mirrors and repeats to first_generation_equal,
 // restoring the tree and refusing when it does not converge (src/v1/stage0/src/required_regen_host.rs
 // run_regen_round_cost). Its exit is the typed refusal this job reports; nothing is pushed on a non-zero exit.
+
+// THE HEAL ROUND'S INVOCATION. `--base-mirror` asks round 1 to compile the BASE commit's committed
+// stage0 mirror instead of this checkout's (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963): the head's
+// mirror is what the PR's `.dag` edits exist to repair, so a head mirror already carrying that
+// refusal stops the round before the regenerated seed can replace it (PR #13936, run
+// 40064940799, job 120786085841, step 7 -- `stage seed build refused ... cargo build
+// (round.rebuild_from_installed) failed with exit status: 101`, over five rows of `shared layer
+// refused for 'Nat': TypeDeclNotDeclared` in the committed mirror at std_measure.rs:650:34 and
+// its siblings). The flag carries NO value: the base commit is this step's
+// `HEAL_BASE_MIRROR_COMMIT` environment value (gunbc.heal_workflow heal_round_base_mirror_env,
+// bound to the immutable github.event.pull_request.base.sha), never argv, because a
+// pull-request-controlled value spliced into a command line would be shell. A COMMIT and not the
+// branch name: a name resolves to whatever the checkout holds under it, and a local branch can sit
+// behind its remote-tracking ref, so seeding from "whichever name exists" and then recording the
+// pick as the base commit would fabricate the fact the receipt carries (DESIGN §3, §5). It is passed unconditionally -- the round does not try the
+// head mirror and fall back -- and this invoke is the heal round alone, so a non-heal round is a
+// different invocation of the same producer with the flag absent, not a second path.
 fn gunbc_ci_stage0_round_invoke() -> String {
-  concat(claim_executor_relative_path(), " --regen-round-cost --source-root dag --source-root src/v2")
+  concat(claim_executor_relative_path(), " --regen-round-cost --base-mirror --source-root dag --source-root src/v2")
 }
 
 fn gunbc_ci_heal_candidate_stage0_invoke() -> String {
