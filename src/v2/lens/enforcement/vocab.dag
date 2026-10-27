@@ -16,9 +16,16 @@ type ScopeRoster {
 
 type EnforcementMode = AuditOnly | Blocking
 
+// EnrollmentWitnessUnresolved is the TYPED REFUSAL of the silent green (gunbc#15236 line): a
+// consumer bound to a roster entry whose (entry, function) resolves to NO declaration in the
+// closure census is not enrolled, and it is not WitnessOnly either -- WitnessOnly says "a real
+// witness with no enforcement surface", while this says "the promised witness does not exist".
+// The two are countable apart because consumer_rank gives them different ranks and
+// consumer_kind_eq compares through that rank.
 type ConsumerKind
   = EnrolledInFloorRoster | MergeAdmission | PrePushHook | PeriodicActuator
   | RoadmapDriftGate | DeployReadback | WitnessOnly | NoConsumer
+  | EnrollmentWitnessUnresolved
 
 type ConsumerRequirement
   = AnyLiveConsumer
@@ -69,9 +76,15 @@ fn consumer_rank(k: ConsumerKind) -> Int {
     DeployReadback => 6
     WitnessOnly => 7
     NoConsumer => 8
+    // Distinct rank from WitnessOnly (7) and NoConsumer (8): the refusal is its own countable
+    // state, not a synonym for either.
+    EnrollmentWitnessUnresolved => 9
   }
 }
 
+// Rank equality is the one identity on ConsumerKind, and it is TOTAL over the arms: every arm
+// carries a distinct rank (EnrollmentWitnessUnresolved at 9 sits apart from WitnessOnly at 7 and
+// NoConsumer at 8), so a refusal is never equal to either of them.
 fn consumer_kind_eq(a: ConsumerKind, b: ConsumerKind) -> Bool {
   consumer_rank(k: a) == consumer_rank(k: b)
 }
@@ -86,6 +99,8 @@ fn consumer_is_live(k: ConsumerKind) -> Bool {
     DeployReadback => true
     WitnessOnly => false
     NoConsumer => false
+    // A binding to a witness that resolves to no declaration is NOT live: it enforces nothing.
+    EnrollmentWitnessUnresolved => false
   }
 }
 
