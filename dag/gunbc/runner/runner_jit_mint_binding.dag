@@ -38,12 +38,14 @@ type JitMintBinding sole_constructor {
 
 // THE PUBLIC BOUNDARY IS THIS CONSTRUCTOR: mint_for_binding, mint_under_observed_group and
 // deregister_binding_registration need a JitMintBinding, and only the two bindings' own builders make one --
-// the microVM attempt's (after its cell admission) and the service slot's (which takes the sealed
-// ServiceSlotMintAdmission and ServiceSlotKeyHeld). A caller outside them cannot reach the dispatch through
+// the microVM attempt's (after its cell admission), the service slot's (which takes the sealed
+// ServiceSlotMintAdmission and ServiceSlotKeyHeld) and the qualification attempt's (a bound attempt slot, inside its
+// pass fold, gunbc.runner.runner_qualification_attempt_pass). A caller outside them cannot reach the dispatch through
 // host_unit_registration_subject, because it cannot hold a binding.
 fn jit_mint_binding(subject: JitRegistrationSubjectStanding, runner_group_name: NonEmptyStr, selected_workflow: NonEmptyStr, signer: JwsSigningKeyRef) -> JitMintBinding admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_microvm_slot_controller", decl_name: "attempt_mint_binding"),
   decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_mint_binding"),
+  decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_pass", decl_name: "qualification_attempt_mint_binding"),
 ] {
   JitMintBinding { subject: subject, runner_group_name: runner_group_name, selected_workflow: selected_workflow, signer: signer }
 }
