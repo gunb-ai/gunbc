@@ -76,12 +76,6 @@ import test.claim.machine_intake.mtcollins1_boot_acceptance_matrix {
 import gunbc.machine_intake.post_power_fan_gate_outcome {
   PostPowerFanGatePowered, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  MediaAttachAttempted,
-  MediaAttachNotAttempted,
-  HandoffMediaAttempted,
-  PoweredOnAfterAttempt,
-}
 import gunbc.machine_intake.mtcollins1_boot_run {
   ActuationCensusEnded,
   ActuationNotPoweredOn,

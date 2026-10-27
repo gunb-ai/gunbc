@@ -117,6 +117,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
     let mut regen_round_cost_mode = false;
+    let mut base_mirror_mode = false;
     let mut regen_affected_set_mode = false;
     let mut required_admitted_set_mode = false;
     // `--query-module <identity>`: the typed admission answer for ONE identity, printed by
@@ -186,6 +187,22 @@ fn run() -> Result<ExitCode, ExitCode> {
             // is what a round IS; the receipt names the tree and every installed path.
             "--regen-round-cost" => {
                 regen_round_cost_mode = true;
+            }
+            // THE HEAL ROUND'S BOOTSTRAP AUTHORITY (DESIGN §5, RFM heal_round_one_bootstraps_
+            // from_the_mirror_the_change_must_repair / PR #14963): round 1's seed compiles from
+            // the BASE COMMIT's committed stage0 mirror, never from the mirror the PR's own .dag
+            // changes exist to repair. The flag carries NO value — the commit arrives as the
+            // HEAL_BASE_MIRROR_COMMIT environment value, named by `gunbc.heal_workflow`
+            // `heal_round_base_mirror_env` (env, not argv, because it is pull-request-controlled
+            // text; same shape as GUNBC_AFFECTED_SCOPE). It is a 40-hex COMMIT, not a ref:
+            // HEAL_BASE_REF belongs to the candidate step (gunbc.heal_candidate) and carries a
+            // branch NAME for a different purpose, so the round must not read it. Without the
+            // flag the round is the probe/CI shape:
+            // the working tree's own committed mirror, byte for byte what it was. There is no
+            // "try the tree, fall back on failure" path — the flag is set unconditionally by
+            // the heal round step and its absence is a different CONTEXT, not a second attempt.
+            "--base-mirror" => {
+                base_mirror_mode = true;
             }
             // THE AFFECTED SET OF THE FLOOR'S DIFF RANGE: which committed mirrors can change
             // for the .dag modules this edit touched, as `gunbc.regen_affected_set` bounds it.
@@ -607,6 +624,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_receipt_path,
             &source_roots,
             regen_affected_scope,
+            base_mirror_mode,
         ) {
             Ok(outcome) => {
                 eprint!("{}", outcome.rendered);

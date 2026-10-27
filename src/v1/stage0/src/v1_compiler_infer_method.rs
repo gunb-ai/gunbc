@@ -994,40 +994,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<BuiltinSignature>>> 
     })]),
         returns: list_of_type_variable("collection_element".to_string()),
     }));
-                __m.insert("shell_materialize_operation_argv".to_string(), Rc::new(BuiltinSignature {
-        params: Rc::new(vec![Rc::new(BuiltinParam {
-        name: "operation".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "workspace_dir".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "files".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    }), Rc::new(BuiltinParam {
-        name: "environment".to_string(),
-        ty: Rc::new(AlgebraTypeTemplate::ContainerOf {
-        source: Rc::new(ContainerSource::Named {
-        name: "List".to_string(),
-    }),
-        element: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-        name: "String".to_string(),
-    }),
-    }),
-    })]),
-        returns: crate::v1_compiler_infer_types::nominal_type_ref("std.operation_argv.ArgvMaterialization".to_string()),
-    }));
                 __m.insert("shell_transport_operation_rows".to_string(), Rc::new(BuiltinSignature {
         params: Rc::new(vec![]),
         returns: list_of_type_variable("shell_transport_operation_row_elem".to_string()),
