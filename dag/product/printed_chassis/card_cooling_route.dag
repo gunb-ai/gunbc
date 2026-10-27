@@ -366,7 +366,7 @@ data hypothetical_blower_shape: NonEmptyStr = "hypothetical planform; no vendor,
 
 // One extent of such a shape, and what produced it. `cap` is the gap that capped it; where no reading
 // reaches that far, the extent is reported as unmeasured rather than as a number nobody took.
-type ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
+data ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
 
 // A shape's three roles, named by what the extent DOES in the home rather than by an axis, because a home
 // rotates the fan and it is the role that has to fit the gap.
@@ -441,10 +441,11 @@ fn flat_on_end_housing_length_cap() -> Int {
 // those overhangs facing each other across the clear gap between the cards, and the span they share is not
 // the gap alone -- it is the gap PLUS one card's pitch, because each housing's overhang starts at the far
 // edge of its own lane. So the pair need is (housing length - pitch) = two overhangs, and it is measured
-// against pitch + gap. For the BFB1012M that is 56.56 mm of overhang against 86.64 mm of span: it fits, with
-// 30.08 mm to spare on the operator's numbers. This is worth stating plainly because the tempting wrong
-// arithmetic -- comparing 56.56 against 46 alone -- refuses a home that in fact clears, and a model that
-// over-forbids is as wrong as one that over-admits.
+// against pitch + gap -- on the operator's figures, and with this repository's width taken off the by-eye
+// 46 mm, 56.56 mm of overhang against 81.64 mm of span: it clears, with 25.08 mm to spare. Stating this
+// plainly matters because the tempting wrong arithmetic -- comparing 56.56 against 46 alone -- refuses a
+// home that in fact clears, and a model that over-forbids is as wrong as one that over-admits. flat_on_end
+// _twin_verdict computes it rather than asserting it, so the numbers above are checked by the witness.
 fn flat_on_end_pair_need(b: RadialBlowerEnvelope) -> Int { 2 * plane_on_end_overhang_per_side(b: b) }
 
 // The span two adjacent ducted cards actually share, from the outer overhang face of one housing to the
