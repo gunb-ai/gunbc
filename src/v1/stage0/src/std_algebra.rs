@@ -3100,38 +3100,55 @@ pub fn non_empty_to_list<T: Clone>(xs: Rc<FreeSemigroup<T>>) -> Rc<FreeMonoid<T>
     })
 }
 
-pub fn list_init<T: Clone>(mut __tco_loop_xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
-    {
-        let mut __trmc_out = Rc::new(vec![]);
-        let mut __tco_cursor_xs: usize = 0;
-        #[allow(unused_labels)]
-        let __tco_result = '__tco_rebase: loop {
-            let __tco_base_xs = __tco_loop_xs.clone();
-            #[allow(unused_mut, unused_variables)]
-            let mut __tco_focus_xs = __tco_base_xs.focus();
-            break loop {
-                {
-                    let __fm = __tco_base_xs.clone();
-                    if (__fm.len() - __tco_cursor_xs) == 0 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else if (__fm.len() - __tco_cursor_xs) == 1 {
-                        break v1_rt::rc_list_concat(__trmc_out, Rc::new(vec![]));
-                    } else {
-                        let h = __tco_focus_xs.index(__tco_cursor_xs + 0).clone();
-                        {
-                            __trmc_out = v1_rt::rc_list_push(__trmc_out, h.clone());
-                            {
-                                let __tco_0 = __tco_cursor_xs + 1;
-                                __tco_cursor_xs = __tco_0;
-                                continue;
-                            }
-                        }
-                    }
-                }
-            };
-        };
-        __tco_result
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ListInitLag<T> {
+    pub kept: Rc<FreeMonoid<T>>,
+    pub pending: Option<T>,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ListInitLag<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListInitLag")
+            .field("kept", &self.kept)
+            .field("pending", &self.pending)
+            .finish()
     }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ListInitLag<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kept == other.kept && self.pending == other.pending
+    }
+}
+
+pub fn list_init<T: Clone>(xs: Rc<FreeMonoid<T>>) -> Rc<FreeMonoid<T>> {
+    fold_list(
+        xs,
+        Rc::new(ListInitLag {
+            kept: Rc::new(vec![]),
+            pending: std::option::Option::None,
+            _phantom: std::marker::PhantomData,
+        }),
+        |acc, item| match acc.pending.clone() {
+            std::option::Option::None => Rc::new(ListInitLag {
+                kept: acc.kept.clone(),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+            Some(p) => Rc::new(ListInitLag {
+                kept: v1_rt::rc_list_push(acc.kept.clone(), p.clone()),
+                pending: Some(item.clone()),
+                _phantom: std::marker::PhantomData,
+            }),
+        },
+    )
+    .kept
+    .clone()
 }
 
 pub fn bag_eq<T: Clone>(
