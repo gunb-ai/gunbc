@@ -798,12 +798,27 @@ fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi
   block(w: x_hi - x_lo, h: y_hi - y_lo, d: z_hi - z_lo, x: (x_lo + x_hi) / 2, y: (y_lo + y_hi) / 2, z: (z_lo + z_hi) / 2)
 }
 
+// Mirror a z about the card's end-face plane. The slabs below are written upward from the bed -- floor,
+// then housing, then collector walls -- and this flips them so the stack hangs BEHIND the end, which is
+// where the route model put it and where the card envelope is not (card_reference_parts runs the card from
+// face_z to face_z + card_length, so an unmirrored stack would be built inside the card). Clamped at the
+// bed: the collector's outer wall would otherwise poke 2 mm under z = 0, and a printed part does not get
+// to occupy space below its own bed.
+fn plane_on_end_flip_z(z: Int, face_z: Int) -> Int {
+  let flipped = 2 * face_z - z
+  if flipped < 0 { 0 } else { flipped }
+}
+
 fn plane_on_end_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> List<AssemblyPart> {
   let wall = um(m: d.wall)
   let bc = um(m: d.band_clearance)
   let fl = um(m: d.flange_thickness)
   let sc = um(m: b.socket_clearance)
-  let face_z = um(m: d.plug_depth) + um(m: f.fin_setback) - um(m: d.fin_margin)
+  // The card's end-face plane, seen from the bed: the part prints shoulder-down, so the face sits at the
+  // TOP of the z stack and everything the route model budgets -- two wall plates, then the housing at its
+  // tolerance -- is spent BEHIND the end, at z below it. That stack is literally plane_on_end_duct_run_back,
+  // which the witness pins to 37500; the flange and its plug lip continue above it, into the card.
+  let face_z = plane_on_end_duct_run_back(b: b, d: d)
   let top = um(m: f.face_length) / 2
   let band = um(m: f.window_from_back)
   let card_y = band - um(m: f.face_thickness) / 2
@@ -842,32 +857,32 @@ fn plane_on_end_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuc
     kind: Printed, scope: FixedFrame,
     adds: concat([
       // The shoulder's floor: the two plates the route model budgets, under the housing's whole plan.
-      plane_on_end_slab(x_lo: shoulder_lo_x, x_hi: shoulder_hi_x, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: seat_z, z_hi: floor_hi_z),
+      plane_on_end_slab(x_lo: shoulder_lo_x, x_hi: shoulder_hi_x, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z, face_z: face_z)),
       // The housing's four walls, open at the top so the blower is dropped in from the fan side.
-      plane_on_end_slab(x_lo: 0 - housing_x / 2 - wall, x_hi: 0 - housing_x / 2, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
-      plane_on_end_slab(x_lo: 0 + housing_x / 2, x_hi: 0 + housing_x / 2 + wall, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
-      plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: housing_hi_y, y_hi: shoulder_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 - wall, x_hi: 0 - housing_x / 2, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z)),
+      plane_on_end_slab(x_lo: 0 + housing_x / 2, x_hi: 0 + housing_x / 2 + wall, y_lo: shoulder_lo_y, y_hi: shoulder_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z)),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: housing_hi_y, y_hi: shoulder_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z)),
       // The collector: walls along its two flanks and a roof, so air leaving the outlet band is carried inward over the
       // card and down through the window rather than spilled into the chassis. Its card-facing END is left open on
       // purpose -- that opening is the shoulder, and it is what makes the unread outlet position harmless.
-      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_lo_x, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
-      plane_on_end_slab(x_lo: collector_hi_x, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
-      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_hi_y, y_hi: collector_hi_y + wall, z_lo: floor_hi_z, z_hi: housing_hi_z + wall),
-      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: housing_hi_z, z_hi: housing_hi_z + wall),
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_lo_x, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + wall),
+      plane_on_end_slab(x_lo: collector_hi_x, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + wall),
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_hi_y, y_hi: collector_hi_y + wall, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + wall),
+      plane_on_end_slab(x_lo: collector_lo_x - wall, x_hi: collector_hi_x + wall, y_lo: collector_lo_y, y_hi: collector_hi_y, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z) + wall),
     ], interface.adds),
     cuts: concat(concat([
       // The housing's pocket: its plan plus a clearance, open through the top, and open at its card-facing wall so the
       // whole peripheral band that may carry the outlet stands open from the floor to the top of the housing.
-      plane_on_end_slab(x_lo: 0 - housing_x / 2 - sc, x_hi: 0 + housing_x / 2 + sc, y_lo: housing_lo_y - sc, y_hi: housing_hi_y + sc, z_lo: floor_hi_z, z_hi: housing_hi_z + 2000),
-      plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - wall - 2000, y_hi: housing_lo_y + wall, z_lo: floor_hi_z, z_hi: housing_hi_z + 2000),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 - sc, x_hi: 0 + housing_x / 2 + sc, y_lo: housing_lo_y - sc, y_hi: housing_hi_y + sc, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + 2000),
+      plane_on_end_slab(x_lo: 0 - housing_x / 2 + wall, x_hi: 0 + housing_x / 2 - wall, y_lo: housing_lo_y - wall - 2000, y_hi: housing_lo_y + wall, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: floor_hi_z, face_z: face_z) + 2000),
       // The passage down to the fins: the window's plug passage, cleared through the shoulder's floor and the
       // collector's floor so the turned air reaches the fins instead of striking a plate.
-      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: seat_z - fl - 2000, z_hi: housing_hi_z + wall + 2000),
+      plane_on_end_slab(x_lo: window_x - plug_w / 2, x_hi: window_x + plug_w / 2, y_lo: window_y - plug_h / 2, y_hi: window_y + plug_h / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z + wall + 2000, face_z: face_z), z_hi: plane_on_end_flip_z(z: seat_z - fl - 2000, face_z: face_z)),
     ], interface.cuts), card_screw_holes(f: f, d: d, face_z: face_z)),
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -60000, plane: LayOnXY,
     notes: "Print shoulder-down; the shoulder floor is solid, the housing pocket is open upward and open toward the card along the whole outlet band, and the collector's roof needs support. Drive both M3 x 4 screws into the end cap's inserts through the flange BEFORE the blower goes down, then drop the housing into the pocket with its intake facing the rear chassis fan. The 8-pin connector keep-out is crossed by the shoulder's top-end corner: check the connector is still reachable before committing to a service print. PLA for an unpowered fit prototype only; PETG or ASA for service.")
   let blower = part(id: "FAN", name: "Delta BFB1012M radial blower envelope, flat on the plug end", kind: Purchased, scope: FixedFrame,
-    adds: [plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: plane_on_end_housing_y(card_y: card_y) - housing_y / 2, y_hi: plane_on_end_housing_y(card_y: card_y) + housing_y / 2, z_lo: housing_lo_z, z_hi: housing_hi_z)],
+    adds: [plane_on_end_slab(x_lo: 0 - housing_x / 2, x_hi: 0 + housing_x / 2, y_lo: plane_on_end_housing_y(card_y: card_y) - housing_y / 2, y_hi: plane_on_end_housing_y(card_y: card_y) + housing_y / 2, z_lo: plane_on_end_flip_z(z: housing_hi_z, face_z: face_z), z_hi: plane_on_end_flip_z(z: housing_lo_z, face_z: face_z))],
     cuts: [],
     x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: -120000, plane: LayOnXY,
     notes: "Bounding envelope only: the housing lies flat, 94.4 mm along the end face and 97.2 mm across the slot, 33 mm thick along the card's length with Delta's tolerance. Housing cited to Delta's BFB sheet (extdeps.fans.delta delta_bfb1012m_envelope_standing); the outlet's position along the peripheral band is uncited (delta_bfb1012m_outlet_standing), which is why the collector is an open shoulder and not a spigot.")

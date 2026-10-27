@@ -180,7 +180,7 @@ test fn w_the_same_home_is_refused_at_thirty_mm_behind_the_end() -> Bool {
 test fn w_the_thirty_mm_refusal_blames_the_rear_and_not_the_sides() -> Bool {
   match admit_plane_on_end(rear: bench_rear_bound(total: 30000), lane: neighbour_lane_width) {
     RouteRefusedByChassis {home: PlaneOnEnd, unmet: n, gap: g} => (n.of_gap as String) == "plug end to rear chassis fan"
-      && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")""
+      && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")
     _ => false
   }
 }
@@ -214,7 +214,7 @@ test fn w_a_twenty_mm_side_bound_refuses_on_the_overhang() -> Bool {
 test fn w_the_admitted_home_reports_everything_it_spends() -> Bool {
   match admit_home(home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: ns, on_bound: g, margin: _} => length(list: ns) == 3
-      && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")""
+      && string_contains(s: gap_display(g: g), pattern: "DECLARED BY THE OPERATOR")
     _ => false
   }
 }

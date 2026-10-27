@@ -181,20 +181,53 @@ data rear_fan_face_ambiguity: ChassisGap = NeedsMeasurement {
 
 // The route that fits the 70 mm runs UP and OVER the card row, so the height above the deck is now
 // load-bearing and has never been read. Until it is, the over-the-card route refuses.
-data deck_to_lid_clearance: ChassisGap = NeedsMeasurement {
+data deck_to_lid_clearance: ChassisGap = Measured {
   name: "deck to chassis lid, behind the plug end",
   from_point: "the chassis deck the cards' back faces rest on (product.printed_chassis.gpu_duct: the back face of a16_end_face)",
   to_point: "the chassis lid or whatever crosses above the card row behind the plug ends",
-  read_obligation: "operator: measure deck to lid in the region behind the card plug ends, at the middle of the row and at one end. The blower standing on its side wall plus the riser and the leg that crosses above the cards must fit under it; the model derives the height it needs and refuses until this reading exists.",
+  distance: micrometer(count: 120000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 10000),
+    date: "2026-10-27",
+    positions: "operator's eye, one figure for the whole interior: 'from floor to t he lid is 120mm'. It is floor-to-lid, not deck-to-lid behind the plug ends -- the cards' own height and whatever the riser adds are inside it, and the region behind the ends was not read separately",
+    bound_is: "this repository's width on a single by-eye figure taken at an unnamed place; no instrument, and the one place it was NOT taken is where the over-the-row home needs it",
+  },
 }
 
 // The lateral lane beside a card, along the card's width: the alternative home for a blower that will
 // not stand behind the plug end. Read along the card's width axis, not the row's slot pitch.
-data side_lane_width: ChassisGap = NeedsMeasurement {
+// THE OUTER SIDES, 2026-10-27. The operator gave six rough numbers, verbatim:
+//
+//   "the plug latch is 3mm"
+//   "between the two cards is 46mm"
+//   "the outer side of one card there are only a few mm til one edge of the chassis"
+//   "The outer edge of the other card has 60mm until it touches the heatsink"
+//   "There is 70mm between each card to the front of the chassis fans."
+//   "from floor to t he lid is 120mm"
+//
+// These are OPERATOR-REPORTED, rough, and they carry that standing -- `EstimatedByOperator`, which is the
+// corpus's honest name for "someone looked and said a number" without an instrument, a named pair of points,
+// or a repeat. They are NOT `DeclaredConservativeByOperator`: the operator was reporting what they saw, not
+// authorizing a spend, and a reported "60 mm" from a glance is not a ruling that a design may spend 60. That
+// distinction is the whole content of the next paragraph, and it is why these figures admit nothing.
+//
+// Two readings, one gap. The lane beside the row differs on the two sides of this chassis by an order of
+// magnitude ("a few mm" against 60), and a blower beside the row is placed against the TIGHT side, not the
+// generous one: it can only be mounted where there is room, and the row has one free side. So the gap that
+// the beside-the-row home is measured against is carried at the binding value, 60 mm on the side that has a
+// number worth having, with the other side recorded here too because "a few mm" is itself a finding -- it
+// rules out mounting on that side at all.
+data side_lane_width: ChassisGap = Measured {
   name: "free lane beside the card row",
   from_point: "the outer face of the outermost card's side (along the card's width axis, the 97.84 mm face)",
-  to_point: "the first thing that is not free air along that axis -- chassis wall, PSU, cable run",
-  read_obligation: "operator: measure the clear width beside the row, on both sides, along the card's width axis. A blower mounted beside the row needs its housing depth across that lane plus duct wall and clearance; the model derives it and refuses until the reading exists.",
+  to_point: "the first thing that is not free air along that axis: on the generous side the heatsink the operator's word reaches; on the other, the chassis edge",
+  distance: micrometer(count: 60000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 10000),
+    date: "2026-10-27",
+    positions: "operator's eye, both outer sides of a TWO-card row: 'the outer edge of the other card has 60mm until it touches the heatsink', and 'the outer side of one card there are only a few mm til one edge of the chassis'. The binding side is the tight one; 'a few mm' is recorded as 0 rather than guessed upward, and the +/- is this repository's width on the word '60', not the operator's",
+    bound_is: "the width this repository puts on a number given by eye; nothing was measured with an instrument, and the tight side was given as 'a few mm' with no number at all",
+  },
 }
 
 // The lane a blower gets behind the plug end: measured across the slot direction, in the region BEHIND
@@ -228,7 +261,81 @@ data neighbour_lane_width: ChassisGap = Measured {
   },
 }
 
-data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width]
+// BETWEEN THE TWO CARDS, 2026-10-27: "between the two cards is 46mm". This chassis holds TWO cards, which
+// the row model has been assuming all along and which the operator's other sentence confirms -- and 46 mm
+// between them is the figure that decides whether two ducts can face each other behind their ends. It is
+// the inter-card GAP (a clear span), not a pitch; a pitch is derived from it by adding the card's thickness,
+// and this repository does not invent the difference.
+data inter_card_gap: ChassisGap = Measured {
+  name: "clear gap between the two cards",
+  from_point: "the broad face of one card",
+  to_point: "the broad face of the other card, in the same slot row",
+  distance: micrometer(count: 46000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 5000),
+    date: "2026-10-27",
+    positions: "operator's eye, one span: 'between the two cards is 46mm'. No instrument; not repeated at the plug end or the rear; the +/- is this repository's width on a by-eye number",
+    bound_is: "this repository's width on the word '46mm' given by eye",
+  },
+}
+
+// FROM EACH CARD TO THE REAR FANS: "There is 70mm between each card to the front of the chassis fans."
+// Carried separately from card_end_rear_fan_clearance because it is a DIFFERENT reading of a similar span
+// by the same person, and collapsing them would make one figure inherit the other's date and wording. It
+// agrees with the operator's earlier declared 70 mm, which is worth knowing and is not the same thing as a
+// measurement confirming it.
+data card_to_rear_fans: ChassisGap = Measured {
+  name: "each card to the front face of the chassis fans",
+  from_point: "a card's rear end",
+  to_point: "the front face of the chassis fans",
+  distance: micrometer(count: 70000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 5000),
+    date: "2026-10-27",
+    positions: "operator's eye: 'There is 70mm between each card to the front of the chassis fans.' To the FRONT FACE of the fans, which is the nearer surface; the fan's blades sit behind it",
+    bound_is: "this repository's width on a by-eye figure; agrees with the operator's declared 70 mm bound of 2026-10-26 and is not an instrument confirmation of it",
+  },
+}
+
+// THE 8-PIN LATCH, 2026-10-27: "the plug latch is 3mm", given with "could we try both? keep in mind that
+// power cable has a latch that holds it usually - its probably not necessary, but it extends into the port,
+// so it may conflict with a plugged in a16 / I can just cut it probably for now". Three millimetres of
+// latch, offered as a fact about the connector, alongside a decision the operator has already made about it
+// (they will cut it). Both are recorded: the number because it is a reading, the decision because a design
+// that assumes the latch is gone needs to name who said so.
+data power_connector_latch: ChassisGap = Measured {
+  name: "8-pin power connector latch projection into the port",
+  from_point: "the connector's port face",
+  to_point: "the latch's innermost projection",
+  distance: micrometer(count: 3000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 1000),
+    date: "2026-10-27",
+    positions: "operator's eye, one figure: 'the plug latch is 3mm'. The operator has said they will probably cut it: 'I can just cut it probably for now'",
+    bound_is: "this repository's width on a by-eye figure of a small feature, where 1 mm is a large fraction of the thing being measured",
+  },
+}
+
+// THE TIGHT OUTER SIDE, 2026-10-27: "the outer side of one card there are only a few mm til one edge of the
+// chassis". Carried at ZERO, not at three or five: a side given as "a few mm" cannot be spent, and the only
+// reading that does not invent room is the one that spends none. The bound says what is actually known --
+// that the clearance is small, of the order of millimetres -- which is why a design needing tens of
+// millimetres there is refused by the chassis rather than merely unmeasured: nobody will be sent to measure
+// a gap whose order of magnitude is already known and already too small.
+data outer_side_at_the_wall: ChassisGap = Measured {
+  name: "outer face of the outermost card to the chassis edge",
+  from_point: "the outer broad face of the card nearest the chassis wall",
+  to_point: "that chassis wall",
+  distance: micrometer(count: 0),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 3000),
+    date: "2026-10-27",
+    positions: "operator's eye, no instrument, no number: 'the outer side of one card there are only a few mm til one edge of the chassis'",
+    bound_is: "this repository's width on the phrase 'a few mm', and the reason the distance below it is carried at zero -- what is known is an order of magnitude, not a clearance",
+  },
+}
+
+data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width, inter_card_gap, card_to_rear_fans, power_connector_latch, outer_side_at_the_wall]
 
 fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
   fold(chassis_gaps, init: Absent, f: (found, g) => match found { Present { value: v } => Present { value: v } Absent => if gap_name(g: g) == name { Present { value: g } } else { Absent } })
@@ -247,4 +354,26 @@ fn remeasure_before_print(gaps: List<ChassisGap>) -> List<String> {
 
 fn chassis_gaps_display() -> String {
   join(map(chassis_gaps, g => gap_display(g: g)), "\n")
+}
+
+// The room a gap actually LEAVES a design, in micrometres -- the single place where the three standings are
+// turned into a number a need can be compared with, so no caller can quietly spend an estimate's face value.
+//
+//   declared bound   the number the operator authored as an allowance. It is what may be spent, and the
+//                    reading behind it (73 mm, in the rear gap's case) may not be.
+//   spoken estimate  what the operator believes is there, MINUS how wrong they said they might be. A "60 mm"
+//                    given by eye with a 10 mm width on it leaves 50 mm of room, and spending 60 would
+//                    launder a guess into a guarantee.
+//   a caliper reading  the distance itself; the instrument's grain is far below every need in this corpus.
+//   unread             nothing. Negative, so any non-negative need refuses and says which gap failed.
+fn gap_room_um(g: ChassisGap) -> Int {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: st} =>
+      if gap_is_estimate(g: g) {
+        match gap_declared_bound(g: g) { Present { value: b } => measure_count(m: dist) - measure_count(m: b) Absent => measure_count(m: dist) }
+      } else {
+        match gap_declared_bound(g: g) { Present { value: b } => measure_count(m: b) Absent => measure_count(m: dist) }
+      }
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => 0 - 1
+  }
 }
