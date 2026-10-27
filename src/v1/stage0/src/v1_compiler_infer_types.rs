@@ -23,6 +23,7 @@ use crate::std_coercion::SubtractionRefinement::{
 };
 pub use crate::std_coercion::{dag_subtraction_refinement, SubtractionRefinement};
 use crate::std_decl_ref::DeclField::{NamedField, TypeParameter, WholeDeclaration};
+use crate::v1_compiler_infer::type_node_label as diag_label;
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclField, DeclarationRef};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -1490,6 +1491,7 @@ pub fn unify_template(
                 if (v1_rt::map_get(&subst, var_id.clone()) != std::option::Option::None) {
                     subst.clone()
                 } else {
+                    eprintln!("DIAGTMPL var={:?} lbl={} inf={} occ={} full={}", var_id.clone(), diag_label(concrete.clone(), source_indices.clone()), concrete.inferred.clone().map(|i| { let t = format!("{:?}", (*i).clone()); t.chars().take(55).collect::<String>() }).unwrap_or("None".to_string()), format!("{:?}", concrete.occurrence_identity.clone()).chars().take(70).collect::<String>(), is_fully_resolved(concrete.clone(), source_indices.clone()));
                     v1_rt::rc_map_insert(subst.clone(), var_id.clone(), concrete.clone())
                 }
             }
