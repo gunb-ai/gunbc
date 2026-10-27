@@ -284,6 +284,7 @@ fn layout_namespaces() -> List<String> {
     "gunbc.roadmap",
     "gunbc.rung_drop",
     "gunbc.rung_drop_amendment",
+    "gunbc.rung_drop_removal",
     "gunbc.runner",
     "gunbc.scm",
     "gunbc.scm_compatibility",

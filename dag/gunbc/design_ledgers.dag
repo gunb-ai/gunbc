@@ -79,6 +79,8 @@ import gunbc.rung_drop { RungDrop, rung_drop_declaration_message, RungDropStandi
 import gunbc.rung_drop.roster { rung_drop_roster }
 import gunbc.rung_drop_amendment { rung_drop_amendment_message }
 import gunbc.rung_drop_amendment.roster { amendments_for_drop }
+import gunbc.rung_drop_removal { rung_drop_removal_message }
+import gunbc.rung_drop_removal.roster { removals_for_drop }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
   census_identity_domain_separator,
@@ -130,7 +132,7 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
         h3(text: concat(concat(concat(d.subject, " — declared "), d.declared), rung_drop_standing_suffix(standing: d.standing))),
       ], rung_drop_standing_blocks(standing: d.standing)), concat(concat([
         p(text: rung_drop_declaration_message(d: d)),
-      ], rung_drop_amendment_blocks(d: d)), if (d.identity as String) == "measurement_bankruptcy" {
+      ], concat(rung_drop_amendment_blocks(d: d), rung_drop_removal_blocks(d: d))), if (d.identity as String) == "measurement_bankruptcy" {
         compile_phase_frontier_blocks()
       } else { [] }))),
     ],
@@ -145,6 +147,12 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
 // makes the carrier consumed rather than declared.
 fn rung_drop_amendment_blocks(d: RungDrop) -> List<MarkdownBlock> {
   map(amendments_for_drop(identity: d.identity), a => p(text: rung_drop_amendment_message(a: a, standing: d.standing)))
+}
+
+// A DROP'S DELETED CITED ARTIFACTS ARE RENDERED FROM gunbc.rung_drop_removal, so the record is read by
+// the ledger a reader opens rather than found by grep.
+fn rung_drop_removal_blocks(d: RungDrop) -> List<MarkdownBlock> {
+  map(removals_for_drop(identity: d.identity), r => p(text: rung_drop_removal_message(r: r)))
 }
 
 // THE LEDGER RENDERED A RETIRED DROP AND A STANDING ONE IDENTICALLY, which made it unable to
