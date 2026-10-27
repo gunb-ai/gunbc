@@ -887,19 +887,13 @@ fn global_bare_chain_candidates(env_module_path: String, candidates: List<Global
   )
 }
 
-fn global_bare_unique_chain_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
-  let chain = global_bare_chain_candidates(env_module_path: env_module_path, candidates: candidates)
-  match module_path_owner_binding_decide(owners: chain |> map(c => c.module_path)) {
-    ModulePathBindingHit { owner: owner } =>
-      chain |> filter(c => c.module_path == owner) |> first
-    ModulePathBindingMiss => Absent
-    ModulePathBindingAmbiguous { owners: _ } => Absent
-  }
-}
-
+// THE ONE ANSWER TO "WHICH AMBIGUOUS CANDIDATE DOES A BARE NAME BIND", for global_bare_lookup_candidates, v1.compiler.infer_lookup
+// borrowed_census_decl and global_bare_owner_module. Under namespace-only it binds NONE: v2.compiler.resolve binds a bare name
+// only through the module's own declarations and its imports (build_program_namespace, module_root_bindings), so a candidate on
+// the module-path ancestor chain is not a binding the author wrote (tidy-ant-251's ruling; measured (b)-only population 0).
 fn global_bare_policy_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
   if name_resolution_policy_is_namespace_only() {
-    global_bare_unique_chain_candidate(env_module_path: env_module_path, candidates: candidates)
+    none
   } else {
     global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates)
   }
@@ -920,8 +914,22 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
   }
 }
 
+// EVERY CANDIDATE, FOR THE REFUSAL MESSAGE ONLY: under namespace-only an ambiguous bare name binds none
+// (global_bare_policy_candidate), so a miss lists each declaring module and the author picks the import; it never guesses one.
+// The gating readers keep global_bare_strict_ambiguity_candidates' chain-only answer, so which sites refuse does not change here.
+fn global_bare_every_candidate_label(env: TypeEnv, name: String) -> List<String> {
+  if name_resolution_policy_is_namespace_only() == false {
+    return []
+  }
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      ambiguity_labels_from_decide(owners: cands |> map(c => c.module_path), name: name)
+    _ => []
+  }
+}
+
 fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> CompilerDiagnostic {
-  let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
+  let cands = global_bare_every_candidate_label(env: env, name: name)
   if cands |> count > 0 {
     AmbiguousReference { name: name, candidates: cands, span: span }
   } else {
@@ -1105,7 +1113,7 @@ fn global_bare_lookup_candidates(env: TypeEnv, name: String) -> TypeBinding? {
     Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
-        match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
+        match global_bare_policy_candidate(env_module_path: env.module_path, candidates: cands) {
           Present { value: cand } => Present { value: cand.binding }
           Absent => Absent
         }

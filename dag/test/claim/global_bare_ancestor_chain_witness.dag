@@ -1,0 +1,74 @@
+module test.claim.global_bare_ancestor_chain_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_rows_of_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: v1.compiler.infer_env global_bare_lookup_candidates' ancestor-chain arm. A bare name declared twice in the
+// corpus (fa and fx each declare Pin) bound, from fa.b.c, to the one candidate on its module-path ancestor chain, with no
+// import. v2.compiler.resolve binds a bare name only through the module's own declarations and its imports
+// (build_program_namespace, module_root_bindings), so the v1 arm bound what v2 leaves unbound
+// (gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace). The RED is an invalid program, authorable only
+// as fixture source (DESIGN 4b).
+data gba_fa_source: String = "module fa\ntype Pin { v: Int }\n"
+data gba_fx_source: String = "module fx\ntype Pin { w: Int }\n"
+
+fn gba_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("fa.dag", gba_fa_source),
+      fixture_source("fx.dag", gba_fx_source),
+      fixture_source("fa/b/c.dag", user_source)
+    ],
+    entry: "fa/b/c.dag"
+  })
+}
+
+fn gba_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => count(fixture_blocking_rows(rows)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn gba_accepted(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_blocking_rows(rows)) == 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn gba_ambiguous_reference_to_pin(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(fixture_rows_of_class(rows, "AmbiguousReference") |> filter(r => r.subject_name == "Pin" && r.blocking)) > 0,
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// RED: the ancestor module's Pin, used from fa.b.c without an import, refuses as an AMBIGUOUS reference to Pin (fa and fx both
+// declare it), so the author picks the import; the refusal names no guessed module.
+test fn gba_ancestor_declaration_without_an_import_is_refused() -> Bool {
+  gba_ambiguous_reference_to_pin(o: gba_run(user_source: "module fa.b.c\nfn use_pin(p: Pin) -> Int { p.v }\n"))
+}
+
+// POSITIVE CONTROL: the same use with the import it names is accepted.
+test fn gba_ancestor_declaration_with_its_import_is_accepted() -> Bool {
+  gba_accepted(o: gba_run(user_source: "module fa.b.c\nimport fa { Pin }\nfn use_pin(p: Pin) -> Int { p.v }\n"))
+}

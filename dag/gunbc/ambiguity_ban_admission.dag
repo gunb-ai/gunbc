@@ -69,7 +69,37 @@ data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrow
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
-      decl_name: "one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration",
+      decl_name: "candidate_bound_as",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "PolicyGuard",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "drop",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "legacy_policy",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "namespace_only_policy",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "one_on_chain_candidate_pulls_nothing_under_namespace_only",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
+      decl_name: "one_on_chain_candidate_pulls_under_the_legacy_policy_positive_control",
       field: WholeDeclaration
     },
     DeclarationRef {
@@ -89,7 +119,7 @@ data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrow
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
-      decl_name: "the_referencing_module_is_on_its_own_chain",
+      decl_name: "the_referencing_module_is_on_its_own_chain_legacy_pull_namespace_only_none",
       field: WholeDeclaration
     },
     DeclarationRef {
@@ -113,7 +143,7 @@ data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrow
       field: WholeDeclaration
     }
   ],
-  reason: "WHY RUST IS STILL NEEDED HERE: the closure resolver decides WHICH FILES ENTER A CLOSURE before any parse result exists to consult, so it cannot read the parse-owned import and binder surface that the closure it is constructing has not yet produced. That is the same bootstrap ordering constraint gunbc.bare_reference_scanner_admission records, not seed-shrink debt -- and it is also the exact reason the terminal construction named below is a PARSE-PHASE surface rather than a better scanner.\n\nWHAT THE CHANGE ACTUALLY DID, because it decides whether this growth bought anything: the closure resolver ranked ambiguous bare references by namespace PROXIMITY (global_bare_nearest_ancestor_candidate, the longest-common-prefix heuristic that survives in 04_env only as the legacy ImportScoped branch). So the resolver deciding WHICH FILES GET PARSED silently picked, while the resolver deciding WHAT THE PROGRAM MEANS did not. Removing that ranking exposed defects rather than forcing an import tax: 293 sites were kernel-type and container-carrier SPELLINGS sent to a module resolver, 54 were a declared primitive re-declared byte-identically in three test modules, 8 were caret SYMBOL LITERALS sent to a declaration resolver, 7 were a structured service projection flattened to its head, and one was a PCB dielectric fixture owning the global name 'core' -- through which the heuristic pulled PCB witness modules into the closure of all 8 GitHub service configs. Net: zero imports added except one naming a genuine cross-tree fork.\n\nHAND-ITEM DELTA: +16 FROM origin/main, ENUMERATED ABOVE -- THREE production items (explicit_import_member_names, ClosureBareDisposition, closure_bare_disposition) and THIRTEEN test items (two test modules' worth of fns plus one test helper). Reproducible from the MERGE BASE, never the moving tip: git diff origin/main...HEAD -- src/v1/stage0/src/cli_run.rs reports 535 insertions and 47 deletions in one file, and no other .rs file on this branch differs.\n\nWHY THE PRODUCTION THREE ARE NOT ONE ITEM: closure_bare_disposition and ClosureBareDisposition exist because external review (review 58002) established that every test enrolled on the first revision exercised the SCANNER and none reached the ambiguity arm the change rewrote -- a decision buried in a closure inside a 200-line function cannot be witnessed. Naming the decision is what made the six-case matrix authorable, and the two mutants it discriminates are measured rather than asserted: removing the chain filter fails 3 cases, restoring nearest ranking fails 1, disjoint kill sets. That is growth bought FOR evidence, and it is the honest reason it is not smaller.\n\nWHAT THIS RECEIPT DOES NOT DO: it does not admit the growth. gunbc.bare_reference_scanner_admission's operator disposition explicitly excludes additional source-text recognizers and public-surface growth, both of which this change lands, so it requires a NEW disposition and fails closed without one -- see ambiguity_ban_receipt_disposition.",
+  reason: "WHY RUST IS STILL NEEDED HERE: the closure resolver decides WHICH FILES ENTER A CLOSURE before any parse result exists to consult, so it cannot read the parse-owned import and binder surface that the closure it is constructing has not yet produced. That is the same bootstrap ordering constraint gunbc.bare_reference_scanner_admission records, not seed-shrink debt -- and it is also the exact reason the terminal construction named below is a PARSE-PHASE surface rather than a better scanner.\n\nWHAT THE CHANGE ACTUALLY DID, because it decides whether this growth bought anything: the closure resolver ranked ambiguous bare references by namespace PROXIMITY (global_bare_nearest_ancestor_candidate, the longest-common-prefix heuristic that survives in 04_env only as the legacy ImportScoped branch). So the resolver deciding WHICH FILES GET PARSED silently picked, while the resolver deciding WHAT THE PROGRAM MEANS did not. Removing that ranking exposed defects rather than forcing an import tax: 293 sites were kernel-type and container-carrier SPELLINGS sent to a module resolver, 54 were a declared primitive re-declared byte-identically in three test modules, 8 were caret SYMBOL LITERALS sent to a declaration resolver, 7 were a structured service projection flattened to its head, and one was a PCB dielectric fixture owning the global name 'core' -- through which the heuristic pulled PCB witness modules into the closure of all 8 GitHub service configs. Net: zero imports added except one naming a genuine cross-tree fork.\n\nHAND-ITEM DELTA: +16 AT THE ORIGINAL CUTOVER, ENUMERATED ABOVE -- THREE production items (explicit_import_member_names, ClosureBareDisposition, closure_bare_disposition) and the test items (two test modules' worth of fns plus helpers). THE #15200 REVIEW-86559 FIX GREW THIS MODULE BY FIVE HELPER ITEMS AND RENAMED TWO TESTS: candidate_bound_as (two distinct bindings at one module path must be constructible), PolicyGuard + its Drop impl drop + legacy_policy + namespace_only_policy (the thread-local policy flag a test may set must be RESTORED on drop, or a leaked flag silently retargets every later assertion in that thread), one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration was REPLACED by one_on_chain_candidate_pulls_nothing_under_namespace_only (its assertion WAS the silent binding #15200 deletes) plus one_on_chain_candidate_pulls_under_the_legacy_policy_positive_control (byte-for-byte legacy control), and the_referencing_module_is_on_its_own_chain became the_referencing_module_is_on_its_own_chain_legacy_pull_namespace_only_none (one fn, both policies, in scope-isolated blocks). Every decl_name above resolves; a dangling one is decidable and the enumeration is the authority, not the prose count. Reproducible from the MERGE BASE, never the moving tip.\n\nWHY THE PRODUCTION THREE ARE NOT ONE ITEM: closure_bare_disposition and ClosureBareDisposition exist because external review (review 58002) established that every test enrolled on the first revision exercised the SCANNER and none reached the ambiguity arm the change rewrote -- a decision buried in a closure inside a 200-line function cannot be witnessed. Naming the decision is what made the six-case matrix authorable, and the mutants it discriminates are measured rather than asserted: removing the chain filter fails 3 cases, restoring nearest ranking fails 1, and the #15200 fix adds a third measured mutant -- restoring the deleted ancestor-chain binding under namespace-only fails exactly 2 cases (one_on_chain_candidate_pulls_nothing_under_namespace_only and the namespace-only block of the own-chain test) while the legacy positive control stays green, disjoint kill sets, run at the fix head. That is growth bought FOR evidence, and it is the honest reason it is not smaller.\n\nWHAT THIS RECEIPT DOES NOT DO: it does not admit the growth. gunbc.bare_reference_scanner_admission's operator disposition explicitly excludes additional source-text recognizers and public-surface growth, both of which this change lands, so it requires a NEW disposition and fails closed without one -- see ambiguity_ban_receipt_disposition.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
   trigger: "Delete explicit_import_member_names and its two tests when the parse phase publishes resolved import occurrences -- local_name, provider_module, exported_identity, occurrence_span -- so the closure resolver consumes a parse-owned binding instead of re-scanning source text, and a failed import retains its own refusal rather than falling through to a global same-spelled declaration. Delete ClosureBareDisposition, closure_bare_disposition and their seven test items when v1.compiler.infer_env publishes ONE total GlobalBareDisposition consumed by both the type environment and the closure resolver, so neither side independently interprets zero, one and many. That second trigger is a .dag change to src/v1/04_env.dag plus regeneration of its mirror, NOT an edit to the generated v1_compiler_infer_env.rs, which carries 'Generated by v1 compiler -- do not edit'.",
   current_boundary: "gunbc.ambiguity_ban_admission -> v1_compiler.cli_run closure_bare_disposition -> v1_compiler.cli_run bare_reference_pull_paths_for_source -> the bare-reference closure edge index"

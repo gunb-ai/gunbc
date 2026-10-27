@@ -949,6 +949,35 @@ fn ct_function_value_adapter_fixture_closure_discrimination_test() -> String {
     "    }\n\n")
 }
 
+fn ct_global_bare_ambiguous_name_refusal_lists_every_candidate_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn global_bare_ambiguous_name_refusal_lists_every_candidate() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(16 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let fa = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"fa.dag\".to_string(), content: \"module fa\\ntype Pin { v: Int }\\n\".to_string() });\n",
+    "                let fx = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"fx.dag\".to_string(), content: \"module fx\\ntype Pin { w: Int }\\n\".to_string() });\n",
+    "                let user = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile { path: \"fa/b/c.dag\".to_string(), content: \"module fa.b.c\\nfn use_pin(p: Pin) -> Int { p.v }\\n\".to_string() });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![fa, fx, user]), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "                let lists: Vec<Vec<String>> = result.diagnostics.iter().filter_map(|e| match &*e.diagnostic {\n",
+    "                    crate::v1_std_core::CompilerDiagnostic::AmbiguousReference { name, candidates, .. } if name == \"Pin\" => { let mut c: Vec<String> = candidates.iter().cloned().collect(); c.sort(); Some(c) }\n",
+    "                    _ => None,\n",
+    "                }).collect();\n",
+    "                let rendered: Vec<String> = result.diagnostics.iter().map(|e| crate::v1_std_core::diagnostic_to_message(e.diagnostic.clone())).collect();\n",
+    "                assert!(!lists.is_empty(), \"an unimported Pin declared in fa and fx must refuse as AmbiguousReference; got {:?}\", rendered);\n",
+    "                assert!(\n",
+    "                    lists.iter().all(|c| c == &vec![\"fa.Pin\".to_string(), \"fx.Pin\".to_string()]),\n",
+    "                    \"the refusal lists EVERY candidate, not the ancestor chain's: an ambiguous bare name binds none, so the author picks the import (gunbc.recurring_failure_mode bare_name_resolved_only_by_the_flat_namespace); got {:?}\",\n",
+    "                    lists\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"global_bare_ambiguous_name_refusal_lists_every_candidate panicked\");\n",
+    "    }\n\n")
+}
+
 fn ct_generic_optional_over_a_type_application_keeps_the_optional_test() -> String {
   concat(
     "    #[test]\n",
@@ -6332,6 +6361,7 @@ fn compiler_tests_source() -> String {
     ct_entry_point_absent_refusal_test(),
     ct_import_lines_follow_resolved_binding_identity_test(),
     ct_generic_optional_over_a_type_application_keeps_the_optional_test(),
+    ct_global_bare_ambiguous_name_refusal_lists_every_candidate_test(),
     ct_optional_nested_list_stamps_the_collection_test(),
     ct_user_declared_optional_is_not_stamped_test(),
     ct_if_join_admits_a_transparent_alias_of_its_other_branch_test(),

@@ -19798,23 +19798,36 @@ mod cli_wire_outcome_tests {
 /// not evidence about what the arm DOES. Both are right, and they are the same mistake I have
 /// a standing note about: an executed conjunct can still be an inert wall.
 ///
-/// The CHAIN FILTER is not reimplemented here. It delegates to
+/// THE ANSWER IS NOT REIMPLEMENTED HERE. Under namespace-only the disposition comes from the
+/// SAME seat type inference asks — `v1_compiler_infer_env::global_bare_policy_candidate` (its
+/// ancestor-chain arm deleted by #15200; under namespace-only it answers `None`, so a bare
+/// name never pulls a provider it did not import) and
+/// `v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide` over the on-chain
+/// population (the same decide behind `global_bare_is_ambiguous` and
+/// `global_bare_strict_ambiguity_candidates`). Before this change the walk classified the
+/// chain itself and returned `UniqueOnChain` for one on-chain candidate — a second path that
+/// bound exactly what inference refuses, so one question got two answers (review 86559 on
+/// #15200, DESIGN §3 "Y never falls back to, resolves through or derives from X"). The
+/// legacy (namespace-only OFF) arm keeps the pre-#15200 nearest-ancestor pull, byte-for-byte,
+/// because inference's legacy arm (`global_bare_nearest_ancestor`) still performs it.
+///
+/// The CHAIN FILTER is not reimplemented here either. It delegates to
 /// `v1_compiler_infer_env::global_bare_chain_candidates`, the §13 authority the type env uses,
 /// so there is one containment rule and this function only classifies its output.
 pub enum ClosureBareDisposition {
-    /// Exactly one candidate on the referencing module's ancestor chain: that is what the
-    /// reference means, and an unrelated same-spelled declaration elsewhere is not a reason to
-    /// reject a program the type env accepts.
+    /// Legacy (namespace-only OFF) only: the nearest-ancestor candidate the type env's legacy
+    /// arm binds, so the closure pulls its provider. Under namespace-only NOTHING is bound
+    /// here — an unimported bare name resolves only through imports, never through the flat
+    /// namespace (#15200), and this variant must not resurrect a pull inference refused.
     UniqueOnChain {
         module_path: String,
         binding: Rc<crate::v1_compiler_infer_env::TypeBinding>,
     },
-    /// Two or more on-chain. Refuse, naming the full on-chain population in deterministic
-    /// order -- never rank them.
+    /// Two or more binders on the chain that the shared decide calls ambiguous. Refuse, naming
+    /// the full on-chain population in deterministic order -- never rank them.
     AmbiguousOnChain { modules: Vec<String> },
-    /// Nothing on the chain. `global_bare_lookup` returns `Absent` here and
-    /// `global_bare_is_ambiguous` answers false (ModulePathBindingMiss), so the semantic result
-    /// is UNRESOLVED and the closure must not fabricate a provider. It pulls nothing.
+    /// Inference resolves nothing here and the name is not an ambiguity it reports either, so
+    /// the closure must not fabricate a provider. It pulls nothing.
     NoOnChainCandidate,
 }
 
@@ -19824,34 +19837,72 @@ pub fn closure_bare_disposition(
 ) -> ClosureBareDisposition {
     let on_chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
         referencing_module.to_string(),
-        candidates,
+        candidates.clone(),
     );
-    if on_chain.is_empty() {
-        return ClosureBareDisposition::NoOnChainCandidate;
+    if crate::v1_rt::name_resolution_policy_is_namespace_only() {
+        // THE ONE ANSWER INFERENCE GIVES, SHARED. The type env asks
+        // `global_bare_policy_candidate` (ancestor-chain arm deleted by #15200): under
+        // namespace-only it is None for EVERY population, so nothing binds and nothing is
+        // pulled. An unimported bare name therefore has no provider to add here — the author
+        // adds the import. When the same name has more than one binder on the chain,
+        // inference's decide reports AmbiguousReference; report the identical population so
+        // the walk names what the refusal names (both labels come from `decide` below, and a
+        // single-binder chain is not an ambiguity inference reports, so it is NoOnChainCandidate).
+        if on_chain.is_empty() {
+            return ClosureBareDisposition::NoOnChainCandidate;
+        }
+        let on_chain_labels: im::Vector<String> = on_chain
+            .iter()
+            .map(|cand| cand.module_path.clone())
+            .collect();
+        let projection =
+            crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide(Rc::new(
+                on_chain_labels,
+            ));
+        match &*projection {
+            crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection::ModulePathBindingAmbiguous {
+                owners,
+                ..
+            } => {
+                // Sorted for determinism — a candidate list that permutes between runs cannot
+                // be diffed. The owners are the binders, not the module labels deduped away:
+                // two bindings at one path are what the author has to fix, and naming that
+                // module once would describe it as something else.
+                let mut modules: Vec<String> = owners.iter().cloned().collect();
+                modules.sort();
+                ClosureBareDisposition::AmbiguousOnChain { modules }
+            }
+            _ => ClosureBareDisposition::NoOnChainCandidate,
+        }
+    } else {
+        // LEGACY (namespace-only OFF): the pre-#15200 nearest-ancestor pull, kept byte-for-byte
+        // because inference's legacy arm (`global_bare_nearest_ancestor`) still performs it.
+        if on_chain.is_empty() {
+            return ClosureBareDisposition::NoOnChainCandidate;
+        }
+        if on_chain.len() == 1 {
+            let cand = on_chain[0].clone();
+            return ClosureBareDisposition::UniqueOnChain {
+                module_path: cand.module_path.clone(),
+                binding: cand.binding.clone(),
+            };
+        }
+        // COUNT BINDERS, NOT MODULE LABELS. An earlier revision projected the on-chain candidates to
+        // module paths, deduped THOSE, and returned UniqueOnChain when they all came from one module,
+        // taking `on_chain[0]` as the binding. That is not §13's rule and it diverged from inference
+        // exactly where it matters: the legacy nearest-ancestor seat
+        // (`global_bare_nearest_ancestor_candidate`, which the legacy policy still routes through
+        // `module_path_owner_binding_decide`) counts the COMPLETE on-chain owner list and answers
+        // ModulePathBindingAmbiguous at two entries EVEN WHEN THE OWNER STRINGS ARE EQUAL, so two
+        // distinct bindings under one module label is a refusal the operator must resolve — not a
+        // winner to pick. Duplicates are KEPT rather than collapsed in the label list below: two
+        // bindings at one module path is what the operator has to fix, and naming that module once
+        // would describe it as something else. Sorted for determinism — a candidate list that
+        // permutes between runs cannot be diffed.
+        let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
+        modules.sort();
+        ClosureBareDisposition::AmbiguousOnChain { modules }
     }
-    if on_chain.len() == 1 {
-        let cand = on_chain[0].clone();
-        return ClosureBareDisposition::UniqueOnChain {
-            module_path: cand.module_path.clone(),
-            binding: cand.binding.clone(),
-        };
-    }
-    // COUNT BINDERS, NOT MODULE LABELS. An earlier revision projected the on-chain candidates to
-    // module paths, deduped THOSE, and returned UniqueOnChain when they all came from one module,
-    // taking `on_chain[0]` as the binding. That is not §13's rule and it diverged from inference
-    // exactly where it matters: `global_bare_unique_chain_candidate` routes the COMPLETE on-chain
-    // owner list through `module_path_owner_binding_decide`, which counts the list and answers
-    // ModulePathBindingAmbiguous at two entries EVEN WHEN THE OWNER STRINGS ARE EQUAL. So two
-    // distinct bindings at one module path are ambiguous to the type env and were a free choice
-    // here — a silent pick inside the change whose whole purpose is banning silent picks.
-    // Caught by external review; my own sixth test had canonized the wrong answer.
-    //
-    // Duplicates are KEPT rather than collapsed: two bindings at one module path is what the
-    // operator has to fix, and naming that module once would describe it as something else.
-    // Sorted for determinism — a candidate list that permutes between runs cannot be diffed.
-    let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
-    modules.sort();
-    ClosureBareDisposition::AmbiguousOnChain { modules }
 }
 
 #[cfg(test)]
@@ -19908,34 +19959,79 @@ mod closure_bare_disposition_tests {
         })
     }
 
-    /// CASE 1 — one on-chain, one off-chain. The on-chain declaration is what the reference
-    /// means. RED if the flat raw-candidate rule is restored: that rule refuses here.
+    /// The policy flag is thread-local and tests run one thread each, so a test may set it --
+    /// but it must RESTORE, or a leaked flag would silently retarget every later assertion in
+    /// this thread. Restoring on drop makes the leak impossible.
+    struct PolicyGuard(bool);
+    impl Drop for PolicyGuard {
+        fn drop(&mut self) {
+            crate::v1_rt::name_resolution_policy_set_namespace_only(self.0);
+        }
+    }
+    fn legacy_policy() -> PolicyGuard {
+        let prior = crate::v1_rt::name_resolution_policy_is_namespace_only();
+        crate::v1_rt::name_resolution_policy_set_namespace_only(false);
+        PolicyGuard(prior)
+    }
+    fn namespace_only_policy() -> PolicyGuard {
+        let prior = crate::v1_rt::name_resolution_policy_is_namespace_only();
+        crate::v1_rt::name_resolution_policy_set_namespace_only(true);
+        PolicyGuard(prior)
+    }
+
+    /// CASE 1 (namespace-only, the production default) — ONE candidate on the chain of a forked
+    /// name pulls NOTHING. This is the reviewer 86559 discriminating case: the walk used to
+    /// return UniqueOnChain here and pull `fa` as a provider while inference, at the seat this
+    /// function now shares (`global_bare_policy_candidate`, ancestor-chain arm deleted by
+    /// #15200), refuses to bind the same name -- one question, two answers, the silent binding
+    /// the flat namespace is (DESIGN §3, "Y never falls back to, resolves through or derives
+    /// from X"). RED if UniqueOnChain returns under namespace-only.
     #[test]
-    fn one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration() {
-        let d = closure_bare_disposition(
-            "a.b.c",
-            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("x.y")])),
-        );
+    fn one_on_chain_candidate_pulls_nothing_under_namespace_only() {
+        let _p = namespace_only_policy();
+        let d = closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a")])));
         match d {
-            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
-                assert_eq!(
-                    module_path, "a.b",
-                    "containment decides, not proximity or count"
-                );
-            }
-            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
-                "refused a reference the type env resolves; a flat rule was restored: {modules:?}"
+            ClosureBareDisposition::NoOnChainCandidate => {}
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "the walk bound what inference refuses to bind — the ancestor-chain pull is \
+                 back under namespace-only: {module_path}"
             ),
-            ClosureBareDisposition::NoOnChainCandidate => {
-                panic!("a.b IS on a.b.c's chain")
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                panic!("one on-chain candidate is not an ambiguity: {modules:?}")
             }
         }
     }
 
-    /// CASE 2 — two on-chain at different depths. §13 refuses and names BOTH. RED if
+    /// CASE 1-LEGACY (positive control, policy OFF) — the pre-#15200 nearest-ancestor pull is
+    /// kept byte-for-byte for the legacy resolver, because inference's legacy arm
+    /// (`global_bare_nearest_ancestor`) still performs it. If this flips, the legacy arm was
+    /// not preserved and the byte-for-byte claim in the function's doc is false.
+    #[test]
+    fn one_on_chain_candidate_pulls_under_the_legacy_policy_positive_control() {
+        let _p = legacy_policy();
+        let d = closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a")])));
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(module_path, "a", "the legacy nearest-ancestor binding")
+            }
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                panic!("legacy arm refused where it must pull the nearest ancestor: {modules:?}")
+            }
+            ClosureBareDisposition::NoOnChainCandidate => {
+                panic!("legacy arm lost its nearest-ancestor pull")
+            }
+        }
+    }
+
+    /// CASE 2 — two on-chain candidates. Under BOTH policies: refuse, and name the whole on-chain
+    /// population in deterministic order. Inference's decide reports the same population as
+    /// AmbiguousReference, and inference has no ranking to fall back on, so neither may the walk.
+    /// The deleted heuristic would pick the LONGEST prefix; a tie at equal depth would be a coin
+    /// flip. RED if ranking returns: under namespace-only the candidate_count is already >= 2 so
     /// nearest/LCP ranking is restored: ranking would pick `a.b` as the longer prefix.
     #[test]
     fn two_on_chain_candidates_refuse_and_name_the_whole_on_chain_population() {
+        let _p = namespace_only_policy();
         let d = closure_bare_disposition(
             "a.b.c",
             Rc::new(im::Vector::from(vec![candidate("a"), candidate("a.b")])),
@@ -19963,6 +20059,7 @@ mod closure_bare_disposition_tests {
     /// and none has two candidates on one referencing module's chain.
     #[test]
     fn zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing() {
+        let _p = namespace_only_policy();
         let d = closure_bare_disposition(
             "gunbc.ci.ci_spec",
             Rc::new(im::Vector::from(vec![
@@ -19985,6 +20082,7 @@ mod closure_bare_disposition_tests {
     /// chain, and a rule written with `starts_with` would say it is.
     #[test]
     fn a_segment_boundary_is_respected_so_a_bc_is_not_on_a_b_c_s_chain() {
+        let _p = namespace_only_policy();
         let d =
             closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.bc")])));
         assert!(
@@ -19993,16 +20091,45 @@ mod closure_bare_disposition_tests {
         );
     }
 
-    /// The referencing module itself is on its own chain (equal, not strictly above).
+    /// The referencing module itself is on its own chain (equal, not strictly above) — under
+    /// namespace-only even that declaration pulls NOTHING through the walk: the module's own
+    /// declarations bind through its own scope, and a name it merely USES bare still needs its
+    /// import (#15200). The LEGACY control below keeps the pull the pre-#15200 walk performed.
+    /// The ownership fact is tested by `global_bare_chain_candidates`' own claim, not here.
     #[test]
-    fn the_referencing_module_is_on_its_own_chain() {
+    fn the_referencing_module_is_on_its_own_chain_legacy_pull_namespace_only_none() {
+        {
+            let _p = namespace_only_policy();
+            let d = closure_bare_disposition(
+                "a.b.c",
+                Rc::new(im::Vector::from(vec![candidate("a.b.c")])),
+            );
+            match d {
+                ClosureBareDisposition::NoOnChainCandidate => {}
+                ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                    "namespace-only walked a provider path inference did not bind: {module_path}"
+                ),
+                ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                    panic!("one candidate is not an ambiguity: {modules:?}")
+                }
+            }
+        }
+        let _p = legacy_policy();
         let d =
             closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.b.c")])));
         match d {
             ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
-                assert_eq!(module_path, "a.b.c")
+                assert_eq!(
+                    module_path, "a.b.c",
+                    "a module declaring a name is on its own chain"
+                )
             }
-            _ => panic!("a module declaring a name is on its own chain"),
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "legacy arm refused its own declaration: one own-chain candidate, {modules:?}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => {
+                panic!("legacy arm lost the own-chain candidate")
+            }
         }
     }
 
@@ -20015,6 +20142,7 @@ mod closure_bare_disposition_tests {
     /// pick — the exact class this change bans — and would disagree with the type env on one input.
     #[test]
     fn two_distinct_bindings_at_one_module_path_are_ambiguous_not_a_free_choice() {
+        let _p = namespace_only_policy();
         let d = closure_bare_disposition(
             "a.b.c",
             Rc::new(im::Vector::from(vec![
