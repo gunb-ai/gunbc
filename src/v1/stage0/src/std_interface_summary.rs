@@ -152,7 +152,7 @@ pub fn module_key(
     direct_import_interface_hashes.iter().cloned().fold(
         crate::std_content_hash::content_hash_tagged_structural(
             "module-key-source".to_string(),
-            source_hash.clone(),
+            source_hash,
         ),
         |acc: Rc<Fnv1a64Structural>, import_hash: Rc<Fnv1a64Structural>| {
             crate::std_content_hash::content_hash_tagged_structural(
@@ -179,10 +179,7 @@ pub fn typed_module_key(
 ) -> Rc<Fnv1a64Structural> {
     crate::std_content_hash::content_hash_tagged_structural(
         "typed-module-compiler".to_string(),
-        crate::std_content_hash::content_hash_combine_structural(
-            interface_key.clone(),
-            compiler_identity.clone(),
-        ),
+        crate::std_content_hash::content_hash_combine_structural(interface_key, compiler_identity),
     )
 }
 

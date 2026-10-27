@@ -9,7 +9,7 @@ import v2.std.coercion { CoercionQuality, CoercionResult, NoTargetCandidate, Wid
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.compiler.emit { emit }
-import v2.compiler.eval { eval, inputs_root_only }
+import v2.compiler.eval { outcome_runtime_value_equality, eval, inputs_root_only }
 import v2.compiler.infer { InferredFacts, InferredTree, infer, refinement_declaration }
 import v2.extdeps.languages.dag { dag_arrow_domain_conj_node, dag_arrow_with_body_node, dag_int_literal_node_from_lexeme, dag_type_atom_node }
 import v2.extdeps.languages.rust_fixtures { rust_binop_target_model_staging }
@@ -49,7 +49,7 @@ import v2.std.node {
   NotADeclaration
 }
 import std.optional { Absent, Optional, Present, optional_present }
-import v2.std.runtime { RuntimeValue }
+import v2.std.runtime { runtime_value_equality, RuntimeValuesEqual, RuntimeValue }
 import v2.std.type_binder { cast_target_edge, cast_target_optional, type_binder_labels_conform }
 import v2.test.claim.fold_lowering { lowered_fixture_loop }
 import v2.std.node_query { binder_edge }
@@ -374,8 +374,11 @@ fn bcn_emitted_cast_without_target() -> Outcome<String> {
 // (10) TRANSLATE REALIZES THE CAST AS ITS OPERAND (the rust extdep's OperandUnchanged row -- how v1
 // spells a representation-preserving crossing, not Rust `as`) ...
 test fn bcn_rust_realizes_the_cast_as_its_operand() -> Bool {
-  bcn_emitted_cast()
-    == Accepted { value: "fn add(x: i32, y: i32) -> i32 { x }", diagnostics: None }
+  match bcn_emitted_cast() {
+    Accepted { value: v, diagnostics: None } => v == "fn add(x: i32, y: i32) -> i32 { x }"
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 // (11) ... and THE MUTANT THAT DROPS THE CAST TARGET is refused, typed: a coercion with no target is
@@ -418,8 +421,8 @@ fn bcn_coerce_wire() -> Node {
 // and not to the value `8` does -- the result is the operand's, not a constant.
 test fn bcn_eval_realizes_the_operand_value() -> Bool {
   let seven = bcn_eval(root: bcn_int(lexeme: "7"))
-  (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)) == seven)
-    && (bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)) != seven)
+  ((outcome_runtime_value_equality(a: bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "7"), keep_target: true)), b: seven) == RuntimeValuesEqual))
+    && (!(outcome_runtime_value_equality(a: bcn_eval(root: bcn_cast_node(operator: bcn_coerce_wire(), operand: bcn_int(lexeme: "8"), keep_target: true)), b: seven) == RuntimeValuesEqual))
 }
 
 // (13) THE NAMED EDGE'S PLACE DOES NOT MOVE THE CONTENT HASH (v2.std.node

@@ -112,8 +112,8 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassFailed,
   BeltPassRecorded,
   BeltPassDeferred,
-  srv1_live_dashboard_instance,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 
 data fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
 

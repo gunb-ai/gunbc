@@ -61,8 +61,8 @@ import extdeps.tools.gnu_coreutils {
   install_directory_owned_argv_command,
 }
 import gunbc.managed_directory { declared_directory_mode }
-import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
-import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command }
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_recursive_set_mode_command, chmod_binary_path }
+import extdeps.tools.findutils { find_subtree_mode_readback_command, find_path_probe_command, find_subtree_ungranted_entry_refusal_command }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 import gunbc.roadmap.roadmap_dashboard_instance {
   HostDashboardInstance, DashboardLocalProvision, DashboardEnsureGitSharedRepositoryPosture,
@@ -78,11 +78,13 @@ import gunbc.roadmap.roadmap_dashboard_instance_apply {
   dashboard_apply_provision_op, dashboard_git_worker_subtree_is_granted,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchSpawnCommands, DispatchWorkerUnitPlan, DispatchSessionContainer, SystemdUnitContainer,
-  HostExecArgv, dispatch_attempt_private_git_dir,
+  dispatch_attempt_worker_worktree_grant,
+  DispatchSpawnCommands, DispatchSessionContainer, SystemdUnitContainer,
+  HostExecArgv,
   dispatch_attempt_worker_git_entry_migration, dispatch_attempt_worker_git_entry_readback_command,
   dispatch_git_owned_host_step_argv,
 }
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, dispatch_attempt_private_git_dir }
 import gunbc.roadmap.roadmap_belt_actuate { BeltExecStepsOutcome, ExecStepsOk, ExecStepFailed }
 
 // THE HOST ROUTE, THE PRODUCTION ONE: run_shell_command_capture over LocalExec. An ArgvCommand goes in as an
@@ -412,7 +414,8 @@ fn wet_spawn_bundle(readback: HostExecArgv) -> DispatchSpawnCommands {
     worktree_add: HostExecArgv { program: "", args: [] },
     worker_git_entry_grant: [],
     worker_git_entry_readback: readback,
-    attempt_state_prepare: HostExecArgv { program: "", args: [] },
+    worker_worktree_grant: [],
+    attempt_state_prepare: [],
     attempt_current_pointer: HostExecArgv { program: "", args: [] },
     session_container: SystemdUnitContainer {
       plan: DispatchWorkerUnitPlan {
@@ -876,6 +879,38 @@ fn wet_receipts_unchanged(before: List<String>, after: List<String>) -> Bool {
 // dispatch_attempt_worker_git_entry_migration (line 3966 maps it through the same host-step wrapper), as a
 // LIST -- not re-assembled word by word here. A builder change therefore cannot leave this claim green.
 //
+// THE WORKTREE GRANT, ON A REAL CHECKOUT. The ungranted state is CONSTRUCTED, not inherited: `git worktree add`
+// leaves the checkout at its runner's umask, and a runner at 0002 (srv1's user manager, measured by bright-moth-475
+// at 508f36df) gets a checkout that is already group-writable and in the claim's group, so a proof walk over it
+// passes before any grant and the RED below would hold only on some hosts. So the claim takes group write off the
+// whole checkout, `.git` pointer included, before the first walk; the proof walk then REFUSES it; the grant's two
+// commands (the sweep, then the proof) both run clean; and the pointer is still not group-writable afterwards,
+// because the grant prunes it -- a worker able to rewrite that file could repoint its git directory. RED on a grant
+// that skipped files or reached the pointer, and on a proof that could not refuse. The group is the claim's own
+// (wet_group_token), for the reason stated there.
+test fn the_worktree_grant_makes_the_checkout_editable_and_its_proof_refuses_without_it() -> Bool {
+  let root = wet_out(command: mktemp_directory_command(template: "/tmp/wre3-worktree-XXXXXX" as NonEmptyStr))
+  let group = wet_group_token()
+  if root == "" || group == "" {
+    false
+  } else {
+    let repo = join([root, "/source"], "")
+    let worktree = join([root, "/attempt"], "")
+    let instance = wet_lab_local_instance(root: repo)
+    let seeded = wet_ok(command: mkdir_parents_command(path: repo))
+      && wet_repo_with_a_commit(repo: repo)
+      && wet_ok(command: git_worktree_add_detached_command(repository_dir: repo, path: worktree, revision: "HEAD"))
+      && wet_ok(command: chmod_recursive_set_mode_command(chmod_program: chmod_binary_path, mode: "g-w" as NonEmptyStr, path: worktree))
+    let proof = find_subtree_ungranted_entry_refusal_command(target: worktree, pruned: [".git"], group: group, depth: dashboard_git_worker_subtree_walk_depth)
+    let refused_before = !wet_ok(command: proof)
+    let grant = dispatch_attempt_worker_worktree_grant(instance: instance, attempt_worktree: worktree, group: group as NonEmptyStr)
+    let granted = count(grant) == 2 && wet_all(steps: grant) && wet_ok(command: proof)
+    let pointer_still_closed = !wet_ok(command: find_subtree_ungranted_entry_refusal_command(target: join([worktree, "/.git"], ""), pruned: [], group: group, depth: dashboard_git_worker_subtree_walk_depth))
+    let cleaned = wet_ok(command: rm_recursive_force_command(path: root))
+    seeded && refused_before && granted && pointer_still_closed && cleaned
+  }
+}
+
 // WHAT THIS CLAIM DOES NOT EXECUTE, AND WHERE THAT EXECUTION LIVES. In production the gate is reached
 // through belt_exec, whose steps run on belt_program_available -> gunbc.WitnessBin.Run, and the unit start
 // it guards runs through shell.Exec.RunArgv -- NEITHER realized on the wet route (the shell.Exec frontier;

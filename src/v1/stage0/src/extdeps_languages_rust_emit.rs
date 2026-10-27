@@ -179,7 +179,7 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
 }
 
 pub fn rust_value_binding_candidate(prefix: String, index: i64) -> String {
-    v1_rt::concat(prefix.clone(), (index.clone()).to_string())
+    v1_rt::concat(prefix.clone(), (index).to_string())
 }
 
 pub fn rust_value_binding_name_absent() -> Option<String> {
@@ -788,7 +788,7 @@ pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
 
 pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
     v1_rt::concat(
-        rust_qualified_module_mod_basename(qualified_module.clone()),
+        rust_qualified_module_mod_basename(qualified_module),
         ".rs".to_string(),
     )
 }
@@ -902,7 +902,7 @@ pub fn rust_pair_completion_factor_render(
     later_sources: Rc<Vec<String>>,
 ) -> String {
     {
-        let src = rust_pair_completion_factor_source(factor.clone());
+        let src = rust_pair_completion_factor_source(factor);
         let repeats_in_term = (Rc::new({
             let mut __result = Vec::new();
             for f in term.factors.clone().iter().cloned() {

@@ -1,0 +1,420 @@
+module test.claim.machine_intake.mtcollins1_virtual_media_readout_observation_witness
+
+// B0 (gunbc.plans.boot_origin_bmc_media), AND THE DISCRIMINATION ITS OWN PREMISE NEEDS.
+//
+// Every test below is a fact ONLY this phase's reading can change, and each is written so a wrong
+// selector or a padded receipt FAILS it: the plan's rule is one arm per branch, and the arms are
+// what make "unread" safe to carry into a phase that builds infrastructure.
+//
+// The unusual one is b0_serves_no_redfish_premise_is_false_on_0_45: it pins that the 0.32-era
+// "serves no Redfish" premise is FALSE against the 0.45 reading. That sentence is what the plan and
+// two planning lanes were built on, so the correction is held to the same standard as the
+// conclusion it displaces -- a comment saying "this is now wrong" is precisely the artifact the
+// next lane will not read.
+//
+// WHY THE SCENARIOS ARE FUNCTIONS AND NOT BINDINGS: a test body here is one expression, so each
+// scenario is named and the tests read as a table. Each is built by OVERRIDING one field of the
+// committed receipt, so every arm is driven by the same data the fleet will consume and cannot
+// drift from it.
+
+import std.types { Bool, List, String, NonEmptyStr, list_length }
+import std.optional { Present, Absent }
+import std.algebra { length, string_contains }
+import std.content_hash { ContentHash, Sha256Hash, lower_hex_64 }
+import extdeps.bmc.redfish_virtual_media {
+  RedfishVirtualMediaTransferProtocol,
+  TransferHttps,
+  TransferNfs,
+  TransferCifs,
+  TransferSftp,
+  redfish_virtual_media_collection_path,
+}
+import gunbc.machine_intake.mtcollins1_virtual_media_readout_observation {
+  RouteUnsettledUnread,
+  BmcMediaRouteAdmission,
+  TransferProtocolReadout,
+  ReadoutRead,
+  ReadoutRefusedUnauthenticated,
+  ReadoutNeverAttempted,
+  B0VirtualMediaReadout,
+  B0CredentialGap,
+  GapNone,
+  GapCredentialUnreachable,
+  mtcollins1_b0_virtual_media_readout,
+  mtcollins1_b0_media_route,
+  mtcollins1_b0_credential_gap,
+  b0_ladder,
+  b0_media_route_admission,
+  b0_credential_gap,
+  b0_serves_no_redfish_premise_still_holds,
+  b0_challenge_of,
+  b0_route_cause,
+  route_is_unsettled,
+  ladder_status,
+  ladder_answered,
+  ladder_answered_with,
+  ladder_answered_not,
+  ladder_is_get_only,
+}
+
+// The cause and challenge accessors answer Absent where an arm has none, so a text assertion
+// first requires the value to be Present: an absent cause fails rather than matching nothing.
+fn cause_contains(route: BmcMediaRouteAdmission, pattern: String) -> Bool {
+  match b0_route_cause(route: route) {
+    Present { value: cause } => string_contains(s: cause, pattern: pattern)
+    Absent => false
+  }
+}
+
+fn challenge_contains(readout: B0VirtualMediaReadout, pattern: String) -> Bool {
+  match b0_challenge_of(readout: readout) {
+    Present { value: challenge } => string_contains(s: challenge, pattern: pattern)
+    Absent => false
+  }
+}
+
+fn with_readout(readout: TransferProtocolReadout) -> B0VirtualMediaReadout {
+  B0VirtualMediaReadout {
+    endpoint: mtcollins1_b0_virtual_media_readout.endpoint,
+    firmware: mtcollins1_b0_virtual_media_readout.firmware,
+    identity: mtcollins1_b0_virtual_media_readout.identity,
+    ladder: mtcollins1_b0_virtual_media_readout.ladder,
+    transfer_protocol_readout: readout,
+    candidate_locators: mtcollins1_b0_virtual_media_readout.candidate_locators,
+    redfish_service_root_served: mtcollins1_b0_virtual_media_readout.redfish_service_root_served,
+    offered_auth_schemes: mtcollins1_b0_virtual_media_readout.offered_auth_schemes,
+    credential_gap: mtcollins1_b0_virtual_media_readout.credential_gap,
+    firmware_converge_live_at_observation: mtcollins1_b0_virtual_media_readout.firmware_converge_live_at_observation,
+    observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
+    discovered_surfaces: mtcollins1_b0_virtual_media_readout.discovered_surfaces,
+    raw_capture_digest: mtcollins1_b0_virtual_media_readout.raw_capture_digest,
+    authenticated_refusal_captures: mtcollins1_b0_virtual_media_readout.authenticated_refusal_captures,
+  }
+}
+
+fn with_credential_gap(gap: B0CredentialGap) -> B0VirtualMediaReadout {
+  B0VirtualMediaReadout {
+    endpoint: mtcollins1_b0_virtual_media_readout.endpoint,
+    firmware: mtcollins1_b0_virtual_media_readout.firmware,
+    identity: mtcollins1_b0_virtual_media_readout.identity,
+    ladder: mtcollins1_b0_virtual_media_readout.ladder,
+    transfer_protocol_readout: mtcollins1_b0_virtual_media_readout.transfer_protocol_readout,
+    candidate_locators: mtcollins1_b0_virtual_media_readout.candidate_locators,
+    redfish_service_root_served: mtcollins1_b0_virtual_media_readout.redfish_service_root_served,
+    offered_auth_schemes: mtcollins1_b0_virtual_media_readout.offered_auth_schemes,
+    credential_gap: gap,
+    firmware_converge_live_at_observation: mtcollins1_b0_virtual_media_readout.firmware_converge_live_at_observation,
+    observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
+    discovered_surfaces: mtcollins1_b0_virtual_media_readout.discovered_surfaces,
+    raw_capture_digest: mtcollins1_b0_virtual_media_readout.raw_capture_digest,
+    authenticated_refusal_captures: mtcollins1_b0_virtual_media_readout.authenticated_refusal_captures,
+  }
+}
+
+// A never-attempted receipt: no ladder, no service root, nothing probed. It differs from the
+// committed one in EVERY field a "refused" story would also change, so the arm-separation test
+// cannot pass by accident.
+fn never_attempted() -> B0VirtualMediaReadout {
+  B0VirtualMediaReadout {
+    endpoint: mtcollins1_b0_virtual_media_readout.endpoint,
+    firmware: mtcollins1_b0_virtual_media_readout.firmware,
+    identity: mtcollins1_b0_virtual_media_readout.identity,
+    ladder: [],
+    transfer_protocol_readout: ReadoutNeverAttempted,
+    candidate_locators: [],
+    redfish_service_root_served: false,
+    offered_auth_schemes: [],
+    credential_gap: mtcollins1_b0_virtual_media_readout.credential_gap,
+    firmware_converge_live_at_observation: false,
+    observed_at: mtcollins1_b0_virtual_media_readout.observed_at,
+    discovered_surfaces: [],
+    raw_capture_digest: mtcollins1_b0_virtual_media_readout.raw_capture_digest,
+    authenticated_refusal_captures: [],
+  }
+}
+
+fn admitted(protocols: List<RedfishVirtualMediaTransferProtocol>) -> B0VirtualMediaReadout {
+  with_readout(readout: ReadoutRead { protocols: protocols })
+}
+
+// A committed digest slot that is a REAL sha256 -- 64 lowercase hex -- rather than a plausible
+// string. A receipt that cites a non-digest is worse than one that cites nothing, because it reads
+// as verifiable and is not.
+fn digest_is_sha256(hash: ContentHash) -> Bool {
+  match hash {
+    Sha256Hash(digest) => lower_hex_64(value: digest.hex as String)
+    _ => false
+  }
+}
+
+// Both cited collection locations, recognised by their DERIVED paths rather than by structurally
+// comparing coproduct arms. Which location the endpoint actually serves is the open question; this
+// pins only that the receipt lists exactly the two that are open.
+fn lists_both_cited_collections(readout: B0VirtualMediaReadout) -> Bool {
+  length(xs: readout.candidate_locators) == 2
+    && readout.candidate_locators.all(l =>
+      redfish_virtual_media_collection_path(parent: l.parent) == "/redfish/v1/Managers/Self/VirtualMedia"
+        || redfish_virtual_media_collection_path(parent: l.parent) == "/redfish/v1/Systems/1/VirtualMedia")
+    && readout.candidate_locators.any(l =>
+      redfish_virtual_media_collection_path(parent: l.parent) == "/redfish/v1/Managers/Self/VirtualMedia")
+    && readout.candidate_locators.any(l =>
+      redfish_virtual_media_collection_path(parent: l.parent) == "/redfish/v1/Systems/1/VirtualMedia")
+}
+
+// B0'S ANSWER: neither route. A cause that degenerates to "no data" is how an unread reading gets
+// filed as a plain miss and never resumed, so the cause must name the wall and the field.
+test fn b0_selects_neither_route_and_says_why() -> Bool {
+  route_is_unsettled(route: mtcollins1_b0_media_route)
+    && cause_contains(route: mtcollins1_b0_media_route, pattern: "401")
+    && cause_contains(route: mtcollins1_b0_media_route, pattern: "TransferProtocolType")
+}
+
+// THE READING IS UNREAD -- the third state, not either of the two it could be confused with.
+test fn b0_readout_is_the_refused_arm() -> Bool {
+  match mtcollins1_b0_virtual_media_readout.transfer_protocol_readout {
+    ReadoutRefusedUnauthenticated { challenge: _ } => true
+    _ => false
+  }
+}
+
+// UNREAD IS NOT "ANSWERED AND ADMITTED NOTHING". An empty admitted list is a READ (the collection
+// answered; it admitted nothing), and the ruling gives it NEITHER route -- admitting nothing is not
+// an admission of NFS. The two states must stay reachable separately, because conflating them is
+// how a refusal gets filed as a miss or a miss gets filed as a refusal.
+test fn b0_empty_admitted_list_is_a_different_state_from_unread() -> Bool {
+  (match with_readout(readout: ReadoutRead { protocols: [] }).transfer_protocol_readout {
+    ReadoutRefusedUnauthenticated { challenge: _ } => false
+    ReadoutRead { protocols: p } => list_length(items: p) == 0
+    ReadoutNeverAttempted => false
+  })
+    && (match b0_media_route_admission(readout: admitted(protocols: [])) {
+      RouteUnsettledUnread { cause: cause } => string_contains(s: cause, pattern: "admitted no protocol at all")
+      _ => false
+    })
+}
+
+// THE CHALLENGE IS CARRIED, so whoever resumes the read knows whether to present Basic or take a
+// session without probing again.
+test fn b0_refusal_carries_the_offered_schemes() -> Bool {
+  challenge_contains(readout: mtcollins1_b0_virtual_media_readout, pattern: "Basic")
+    && challenge_contains(readout: mtcollins1_b0_virtual_media_readout, pattern: "X-Auth-Token")
+}
+
+// THE SERVICE ROOT IS SERVED AND THE COLLECTIONS REFUSE, read out of the ladder rows themselves.
+// The test breaks if the ladder is edited to match a story instead of the reverse.
+test fn b0_service_root_served_and_collections_refused() -> Bool {
+  mtcollins1_b0_virtual_media_readout.redfish_service_root_served
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems/1/VirtualMedia", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Systems", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general", status: 401)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/", status: 200)
+}
+
+// THE OEM SPLIT SURVIVES THE FIRMWARE CHANGE: /api/session still 404s while its media-settings
+// sibling 401s, so the OEM surface is present but not authenticated-to -- the same split the 0.32
+// access observation recorded, which is what lets the two readings be compared at all.
+test fn b0_oem_surface_is_present_but_unauthenticated() -> Bool {
+  ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/session", status: 404)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/api/settings/media/general", status: 401)
+}
+
+// EVERY ROW WAS A GET, AND THE LADDER IS COMPLETE. A read-only receipt whose record type could hold
+// a POST is not a read-only receipt; the row count is pinned so a silently truncated ladder fails
+// rather than reading as a clean surface.
+test fn b0_ladder_is_get_only_and_complete() -> Bool {
+  ladder_is_get_only(readout: mtcollins1_b0_virtual_media_readout)
+    && length(xs: b0_ladder) == 15
+    && b0_ladder.all(r => r.status > 0)
+}
+
+// HTTPS SELECTS THE DIRECT ROUTE, AND WINS WHEN BOTH ARE ADMITTED. Preference is a property of the
+// selector, not of the order the wire returned them: both orders must agree.
+test fn b0_https_admitted_selects_direct_redfish_https() -> Bool {
+  b0_media_route_admission(readout: admitted(protocols: [TransferHttps])) == DirectRedfishHttps
+    && b0_media_route_admission(readout: admitted(protocols: [TransferNfs, TransferHttps])) == DirectRedfishHttps
+    && b0_media_route_admission(readout: admitted(protocols: [TransferHttps, TransferNfs])) == DirectRedfishHttps
+    && b0_media_route_admission(readout: admitted(protocols: [TransferCifs, TransferHttps])) == DirectRedfishHttps
+}
+
+// NFS ALONE SELECTS THE RELAY -- the other half of the plan's sentence, driven through the same
+// committed receipt shape.
+test fn b0_nfs_alone_selects_the_relay() -> Bool {
+  b0_media_route_admission(readout: admitted(protocols: [TransferNfs])) == NfsRelayThroughHolder
+    && b0_media_route_admission(readout: admitted(protocols: [TransferCifs, TransferNfs])) == NfsRelayThroughHolder
+}
+
+// NON-HTTPS SETS TAKE THE RELAY, AND ONLY AN EMPTY SET OR A NON-READ TAKES NEITHER. This is the
+// arm a two-branch implementation gets wrong: "not HTTPS" is "relay" ONLY once a list has actually
+// been admitted. A CIFS-only or SFTP-only controller is a reason to relay (the OEM remote-media
+// path takes NFS or CIFS shares without any Redfish admission), while an empty admission or a
+// refusal is not a reason to build anything.
+test fn b0_non_https_sets_relay_and_only_a_non_answer_takes_neither() -> Bool {
+  b0_media_route_admission(readout: admitted(protocols: [TransferCifs])) == NfsRelayThroughHolder
+    && b0_media_route_admission(readout: admitted(protocols: [TransferSftp])) == NfsRelayThroughHolder
+    && b0_media_route_admission(readout: admitted(protocols: [TransferSftp, TransferCifs])) == NfsRelayThroughHolder
+    && route_is_unsettled(route: b0_media_route_admission(readout: admitted(protocols: [])))
+    && route_is_unsettled(route: b0_media_route_admission(readout: mtcollins1_b0_virtual_media_readout))
+    && route_is_unsettled(route: b0_media_route_admission(readout: never_attempted()))
+}
+
+// THE RELAY IS NOT THE DEFAULT FOR A MISSING READ. Stated separately from the test above because it
+// is the one property the whole phase is protecting: a receipt that never obtained the field must
+// not be able to authorize B3, even though both cases "failed to show HTTPS".
+test fn b0_unread_never_authorizes_the_relay() -> Bool {
+  b0_media_route_admission(readout: mtcollins1_b0_virtual_media_readout) != NfsRelayThroughHolder
+    && b0_media_route_admission(readout: never_attempted()) != NfsRelayThroughHolder
+    && b0_media_route_admission(readout: admitted(protocols: [])) != NfsRelayThroughHolder
+}
+
+// THE SURFACE PREMISE IS DEAD, FOR THE RIGHT REASON. The plan text and the two planning lanes
+// assert mtcollins1 serves no Redfish; against the 0.45 reading that predicate is false, while it
+// correctly holds of a receipt that read nothing. Rebuild the receipt claiming no service root, or
+// swap in the 0.32 ladder of 404s, and this goes red.
+test fn b0_serves_no_redfish_premise_is_false_on_0_45() -> Bool {
+  !b0_serves_no_redfish_premise_still_holds(readout: mtcollins1_b0_virtual_media_readout)
+    && b0_serves_no_redfish_premise_still_holds(readout: never_attempted())
+}
+
+// THE GAP IS TYPED AND NAMES THE READ-ONLY PRINCIPAL. A gap that named the boot credential would
+// license someone to present the operator secret for a GET -- the least-privilege violation this
+// phase was told not to commit, and which the operator ruled on again.
+test fn b0_gap_names_the_readonly_principal() -> Bool {
+  match mtcollins1_b0_credential_gap {
+    GapCredentialUnreachable { principal: principal, cause: cause } =>
+      string_contains(s: principal, pattern: "gunbc_health")
+        && string_contains(s: principal, pattern: "ReadOnly")
+        && string_contains(s: principal, pattern: "not the principal for this read")
+        && string_contains(s: cause, pattern: "fleet-converge")
+    GapNone => false
+  }
+}
+
+// THE GAP DOES NOT BLAME THE SURFACE. The credential gap's cause is about the credential path, and
+// the route's cause is about the 401 wall: two different failures, two different sentences.
+test fn b0_gap_and_route_causes_are_distinct_failures() -> Bool {
+  !cause_contains(route: mtcollins1_b0_media_route, pattern: "no ADC")
+    && match mtcollins1_b0_credential_gap {
+      GapCredentialUnreachable { cause: cause } => !string_contains(s: cause, pattern: "401")
+      GapNone => false
+    }
+}
+
+// CREDENTIAL AVAILABILITY ALONE NEVER SELECTS A ROUTE. If someone closes the credential gap
+// without obtaining a reading, the gap closes but the route must STILL be unsettled: a reachable
+// credential is not a read, and a phase that treats it as one is the failure this receipt exists to
+// make unwritable.
+test fn b0_credential_availability_alone_never_selects_a_route() -> Bool {
+  route_is_unsettled(route: b0_media_route_admission(readout: with_credential_gap(gap: GapNone)))
+    && (match b0_credential_gap(readout: with_credential_gap(gap: GapNone)) {
+      GapNone => true
+      _ => false
+    })
+}
+
+// NEVER-ATTEMPTED IS ITS OWN ARM, NOT THE REFUSAL ARM REUSED. If a future consumer files "nobody
+// looked" as "it refused", the two failure stories merge and the fleet can no longer tell an
+// unprobed unit from an inaccessible one -- the exact ambiguity that let a 0.32 conclusion survive
+// as a 0.45 fact.
+test fn b0_never_attempted_is_distinct_from_refused() -> Bool {
+  (match b0_media_route_admission(readout: never_attempted()) {
+    RouteUnsettledUnread { cause: cause } => string_contains(s: cause, pattern: "no VirtualMedia read has been attempted")
+    _ => false
+  })
+    && (match b0_challenge_of(readout: never_attempted()) { Absent => true  _ => false })
+    && (match b0_challenge_of(readout: mtcollins1_b0_virtual_media_readout) { Present { value: _ } => true  _ => false })
+}
+
+// THE COMMITTED RECEIPT CARRIES ITS OWN EVIDENCE AND ITS FIRMWARE, and is pinned to the reserved
+// BMC address so it cannot be read as an observation of some other host.
+test fn b0_receipt_is_evidence_bound_and_address_pinned() -> Bool {
+  mtcollins1_b0_virtual_media_readout.endpoint.host == "192.168.1.228"
+    && mtcollins1_b0_virtual_media_readout.observed_at == 1793073612000
+    && digest_is_sha256(hash: mtcollins1_b0_virtual_media_readout.raw_capture_digest)
+    && length(xs: mtcollins1_b0_virtual_media_readout.authenticated_refusal_captures) == 2
+    && mtcollins1_b0_virtual_media_readout.authenticated_refusal_captures.all(digest_is_sha256)
+    && lists_both_cited_collections(readout: mtcollins1_b0_virtual_media_readout)
+}
+
+// THE FIRMWARE SLOT IS FILLED. A receipt that does not say which firmware it was read under is the
+// exact mistake this phase had to unwind: the 0.32 ladder and the 0.45 ladder disagree about
+// whether Redfish exists, so an undated read is an unfalsifiable one.
+test fn b0_receipt_is_firmware_dated() -> Bool {
+  match mtcollins1_b0_virtual_media_readout.firmware {
+    Present { value: f } => string_contains(s: f.raw_version, pattern: "0.45")
+    Absent => false
+  }
+}
+
+// THE LADDER NAMES WHICH SERVER ANSWERED, AND GETS THE TWO SERVERS APART. One address on this box
+// is answered by two servers, and the superseded premise came from reading a lighttpd answer as an
+// answer about the whole box. If the rows lose their Server attribution, or attribute the OEM paths
+// to the Redfish service, the receipt re-commits the original error and this test fails.
+test fn b0_ladder_attributes_each_row_to_the_server_that_answered() -> Bool {
+  b0_ladder.all(r => r.served_by == "AMI MegaRAC Redfish Service" || r.served_by == "lighttpd")
+    && b0_ladder.any(r => r.path == "/redfish/v1/" && r.served_by == "AMI MegaRAC Redfish Service")
+    && b0_ladder.any(r => r.path == "/redfish/v1/Managers/Self/VirtualMedia" && r.served_by == "AMI MegaRAC Redfish Service")
+    && b0_ladder.any(r => r.path == "/api/settings/media/general" && r.served_by == "lighttpd")
+    && b0_ladder.any(r => r.path == "/" && r.served_by == "lighttpd")
+    // The web root answering 200 says nothing about Redfish, because it is a different server: that
+    // is exactly the inference the 0.32 reading drew and this receipt exists to undo.
+    && b0_ladder.any(r => r.path == "/" && r.status == 200 && r.served_by == "lighttpd")
+}
+
+// ALL THREE ROOT FORMS ANSWER 200, AND THE FIRST COMMIT HAD TWO OF THEM AS 401. Pinned as data
+// rather than as a note, because a receipt whose rows disagree with the capture it cites is worse
+// than one with no rows: it invites a reader to trust the module and distrust the artifact. The
+// capture said 200/200/200 in both passes, and the paths were re-probed nine times to settle it.
+test fn b0_every_root_form_serves_200() -> Bool {
+  ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1", status: 200)
+    && ladder_answered_with(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/", status: 200)
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish", status: 401)
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1", status: 401)
+}
+
+// THE UNREAD FINDING IS ABOUT THE BODIES, NOT THE COLLECTION EXISTING. A 401 on the collection
+// proves the endpoint is there and refusing; it does not prove the collection is empty and does not
+// prove the member bodies are absent. The reading must keep saying the narrower thing.
+test fn b0_refusal_is_about_bodies_not_the_collection_being_absent() -> Bool {
+  // 401 (access) and 404 (absence) stay distinct across the whole ladder: nothing here reads as a
+  // missing resource on the Redfish side, so the VirtualMedia collection is never reported as gone.
+  b0_ladder.all(r => r.served_by == "lighttpd" || r.status == 200 || r.status == 401)
+    && ladder_answered_not(readout: mtcollins1_b0_virtual_media_readout, path: "/redfish/v1/Managers/Self/VirtualMedia", status: 404)
+}
+
+// AN ABSENT ROW IS NOT AN ANSWER. This is the test that the previous shape of ladder_status could
+// not pass: it returned Int with Absent => -1, so a witness written with != went GREEN when the
+// row was deleted -- an absent read standing in for an answer, which is what this module exists to
+// make unwritable. Here the VirtualMedia row is deleted from a copy of the ladder and all three
+// doors are asked about it. Each must say no. If ladder_status ever grows a sentinel default
+// again, this test fails.
+test fn b0_deleting_a_ladder_row_fails_every_door_rather_than_passing_one() -> Bool {
+  let path: NonEmptyStr = "/redfish/v1/Managers/Self/VirtualMedia"
+  let thinned = with_readout(readout: mtcollins1_b0_virtual_media_readout.transfer_protocol_readout)
+  let without = B0VirtualMediaReadout {
+    endpoint: thinned.endpoint,
+    firmware: thinned.firmware,
+    identity: thinned.identity,
+    ladder: thinned.ladder.filter(r => r.path != path),
+    transfer_protocol_readout: thinned.transfer_protocol_readout,
+    candidate_locators: thinned.candidate_locators,
+    redfish_service_root_served: thinned.redfish_service_root_served,
+    offered_auth_schemes: thinned.offered_auth_schemes,
+    credential_gap: thinned.credential_gap,
+    firmware_converge_live_at_observation: thinned.firmware_converge_live_at_observation,
+    observed_at: thinned.observed_at,
+    discovered_surfaces: thinned.discovered_surfaces,
+    raw_capture_digest: thinned.raw_capture_digest,
+    authenticated_refusal_captures: thinned.authenticated_refusal_captures,
+  }
+  // The row really is gone from the copy, or the test below proves nothing.
+  ladder_answered(readout: mtcollins1_b0_virtual_media_readout, path: path)
+    && list_length(items: without.ladder) == list_length(items: b0_ladder) - 1
+    // ...and none of the three doors accepts the absence.
+    && !ladder_answered(readout: without, path: path)
+    && !ladder_answered_with(readout: without, path: path, status: 401)
+    && !ladder_answered_not(readout: without, path: path, status: 404)
+}

@@ -2,6 +2,7 @@ module test.claim.machine_intake.megarac_media_convergence_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
+import std.algebra { non_empty_singleton }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.content_hash { ContentHash, content_hash_of_value }
 import extdeps.bmc.megarac { megarac_firmware_0_32 }
@@ -17,6 +18,8 @@ import gunbc.machine_intake.mount_establishment {
   mount_standing_as_of,
 }
 import gunbc.machine_intake.megarac_media_attach {
+  MegaRacShareBinding,
+  MegaRacShareNfs,
   AttachReadiness,
   ConvergeStepAttachFromListing,
   ConvergeStepAwaitReadiness,
@@ -53,6 +56,9 @@ import gunbc.machine_intake.megarac_media_attach {
   ReadinessStarted,
   ReadinessStartedUnbound,
   ReadinessUncatalogued,
+  redirection_unread_wire,
+  RedirectionUnreadCode,
+  RedirectionUnreadFirmware,
   ReadinessWaitClosed,
   ReadinessWaitReady,
   ReadinessWaitRefused,
@@ -110,9 +116,13 @@ import gunbc.machine_intake.megarac_media_attach {
   SessionReleaseNotAttempted,
 }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { media_attach_text, media_attach_outcome_reason, MediaAttachAttempted, MtCollins1MediaAttachRecord, detach_evidence_text, HandoffMediaAttempted, HandoffConfirmed, HandoffAttemptedUnconfirmed, MediaAttachNotAttempted, StalePowerOffNotNeeded, end_media_is_owed, HandoffMediaWithheldAtRecheck, handoff_media_harness, harness_finding_text, MtCollins1HandoffMedia, MtCollins1EndMedia, EndMediaObserved, EndMediaNotTaken, media_loss_after_handoff, outcome_attributing_media_loss }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  EndReleaseKeptHostOn, MegaRacEndMedia, MegaRacEndMediaNotTaken, MegaRacEndMediaObserved, MegaRacHandoff, MegaRacHandoffAttempted, MegaRacHandoffAttemptedUnconfirmed, MegaRacHandoffConfirmed, MegaRacHandoffWithheldAtRecheck, MegaRacMediaAttach, MegaRacMediaAttachAttempted, MegaRacStalePowerOffNotNeeded, detach_evidence_text, end_media_is_owed, handoff_media_harness, harness_finding_text, media_attach_outcome_reason, media_loss_after_handoff, outcome_attributing_media_loss, megarac_media_attach_text, MegaRacMediaAttachNotAttempted,
+}
 import gunbc.machine_intake.megarac_boot_media_attach { MediaGateReady, MediaGateWithheld, megarac_boot_media_gate }
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
+import extdeps.network.ipv4 { render_ipv4_address }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -139,9 +149,9 @@ fn step(configurations: String, detach: MegaRacDetachAdmission) -> ConvergenceSt
 fn step_with_cd(configurations: String, detach: MegaRacDetachAdmission, cd_before: CdErrorReading) -> ConvergenceStep {
   megarac_convergence_step(
     convergence: presented_convergence(
-      presented: presented_media(body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
+      presented: presented_media(body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable: Present { value: non_empty_singleton(item: mtcollins1_census_image_stem) }),
       image_name: desired_census,
-      replaceable_seeded_stem: mtcollins1_census_image_stem,
+      replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem),
     ),
     detach: detach,
     configurations: configurations,
@@ -210,7 +220,7 @@ test fn a_stopped_row_is_nothing_presented() -> Bool {
 
 test fn an_uncatalogued_status_on_a_named_row_refuses_keeping_the_wire() -> Bool {
   match step(configurations: presenting(name: desired_census as String, status: "16"), detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, wire: w, configurations: _ } } => w == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: _, unread: u, refusal: _, configurations: _ } } => redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
@@ -224,7 +234,7 @@ fn look(at: EpochMs, status: String, session: String) -> ReadinessLook {
 test fn status_16_refuses_keeping_the_wire() -> Bool {
   match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 2000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 1) {
     ReadinessRefusedVerdict { look: l, looks: _ } =>
-      match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: c } => w == 16 && string_contains(s: c, pattern: "255") _ => false }
+      match l.reading { ReadinessUncatalogued { image_name: _, unread: u, configurations: c } => redirection_unread_wire(unread: u) == 16 && string_contains(s: c, pattern: "255") _ => false }
     _ => false
   }
 }
@@ -257,7 +267,7 @@ test fn connecting_only_times_out_keeping_the_last_look() -> Bool {
 test fn unknown_after_connecting_refuses() -> Bool {
   (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 5000, status: "100", session: "0"), phase: ReadinessAfterStart, looks: 1) { ReadinessLookAgain => true _ => false })
     && (match readiness_verdict(opened_at: 1000, budget: 30000, previous: none, look: look(at: 7000, status: "16", session: "255"), phase: ReadinessAfterStart, looks: 2) {
-      ReadinessRefusedVerdict { look: l, looks: n } => n == 2 && (match l.reading { ReadinessUncatalogued { image_name: _, wire: w, configurations: _ } => w == 16 _ => false })
+      ReadinessRefusedVerdict { look: l, looks: n } => n == 2 && (match l.reading { ReadinessUncatalogued { image_name: _, unread: u, configurations: _ } => redirection_unread_wire(unread: u) == 16 _ => false })
       _ => false
     })
 }
@@ -329,27 +339,27 @@ data cleared_rows: String = "[{\"media_type\":1,\"image_name\":\"\",\"redirectio
 
 test fn an_error_but_detached_is_established_and_keeps_the_error() -> Bool {
   let d = detach(success: false, body: stop_1411, readback_read: true, readback: cleared_rows)
-  (match detach_verdict(evidence: d, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+  (match detach_verdict(evidence: d, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
     && string_contains(s: detach_evidence_text(detach: d), pattern: "1411")
 }
 
 test fn a_success_but_still_attached_is_not_established() -> Bool {
-  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: presenting(name: stale_census as String, status: "1")), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
 }
 
 test fn a_success_with_an_unread_readback_is_not_established() -> Bool {
-  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: false, readback: "curl: (28)"), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: false, readback: "curl: (28)"), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
 }
 
 // ─── THE GATE THE HANDOFF IS BEHIND ─────────────────────────────────────────────────────────────
-fn attempted(result: MegaRacAttachResult) -> MtCollins1MediaAttachRecord {
-  MediaAttachAttempted { attempt: "36330382023", medium_image_name: desired_census, medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: false }, stale_power_off: StalePowerOffNotNeeded { reason: "the host was read off" }, result: result }
+fn attempted(result: MegaRacAttachResult) -> MegaRacMediaAttach {
+  MegaRacMediaAttachAttempted { attempt: "36330382023", medium_image_name: desired_census, medium_image_sha256: "30ca88d43f891399", power: ChassisPowerRead { power_on: false }, stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "the host was read off" }, result: result }
 }
 
 test fn a_timed_out_presentation_withholds_the_handoff_with_its_last_look() -> Bool {
@@ -445,43 +455,59 @@ fn general_with(server: String, path: String, kind: String, mount: String, error
   join(["{ \"cd_remote_server_address\": \"", server, "\", \"cd_remote_source_path\": \"", path, "\", \"cd_remote_share_type\": \"", kind, "\", \"remote_media_support\": 0, \"mount_cd\": ", mount, ", \"cd_error_code\": ", error, " }"], "")
 }
 
-// The binding the production caller passes is derived from srv2's address and the export row, and
-// the controller's own answer binds to it: the morning read (error 0) is bound.
-test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
-  (mtcollins1_media_share.server_address as String) == "192.168.1.188"
+// THE RECEIPTS BELOW ARE DATED, AND SO IS THE BINDING THEY ARE JUDGED AGAINST. On 2026-09-27 srv2
+// served the export at 192.168.1.188; on 2026-10-24 the operator moved srv2 to its 1G NIC (now .201).
+// The captures stay verbatim, so they are judged against the binding of their own day, not the live
+// one -- otherwise every mismatch test below would mismatch on the server first and stop
+// discriminating the path, type and mount member it names.
+data share_as_of_2026_09_27: MegaRacShareBinding = MegaRacShareBinding {
+  server_address: "192.168.1.188" as NonEmptyStr,
+  source_path: "/srv/bmc" as NonEmptyStr,
+  share_type: MegaRacShareNfs,
+}
+
+// The binding the production caller passes is DERIVED from srv2's address row and the export row:
+// it renders gunbc.fleet.fleet_reach srv2_lan_ipv4, never a literal copied here.
+test fn the_production_share_is_derived_from_srv2s_address_row() -> Bool {
+  (mtcollins1_media_share.server_address as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
     && (mtcollins1_media_share.source_path as String) == "/srv/bmc"
-    && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: mtcollins1_media_share) { ShareBound => true _ => false })
+}
+
+// The controller's own answer of that day binds to that day's binding: the morning read (error 0) is bound.
+test fn the_derived_share_binds_the_controllers_own_answer() -> Bool {
+  (share_as_of_2026_09_27.source_path as String) == "/srv/bmc"
+    && (match share_binding_standing(body: mtcollins1_media_general_2026_09_27_morning_as_reported, expected: share_as_of_2026_09_27) { ShareBound => true _ => false })
 }
 
 // The code is judged at readiness, not in the share binding: the evening read, cd_error_code 16, still binds.
 test fn a_nonzero_cd_error_is_not_a_share_mismatch() -> Bool {
-  match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: mtcollins1_media_share) {
+  match share_binding_standing(body: mtcollins1_media_general_2026_09_27, expected: share_as_of_2026_09_27) {
     ShareBound => true
     _ => false
   }
 }
 
 test fn another_server_is_a_mismatch_naming_it() -> Bool {
-  match share_binding_standing(body: general_with(server: "192.168.1.99", path: "/srv/bmc", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+  match share_binding_standing(body: general_with(server: "192.168.1.99", path: "/srv/bmc", kind: "nfs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) {
     ShareMismatch { observed: o } => o.server_address == "192.168.1.99"
     _ => false
   }
 }
 
 test fn another_path_is_a_mismatch_naming_it() -> Bool {
-  match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/other", kind: "nfs", mount: "1", error: "0"), expected: mtcollins1_media_share) {
+  match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/other", kind: "nfs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) {
     ShareMismatch { observed: o } => o.source_path == "/srv/other"
     _ => false
   }
 }
 
 test fn a_cifs_share_or_an_unmounted_share_is_a_mismatch() -> Bool {
-  (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "cifs", mount: "1", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.share_type == "cifs" _ => false })
-    && (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "nfs", mount: "0", error: "0"), expected: mtcollins1_media_share) { ShareMismatch { observed: o } => o.mount_cd == "0" _ => false })
+  (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "cifs", mount: "1", error: "0"), expected: share_as_of_2026_09_27) { ShareMismatch { observed: o } => o.share_type == "cifs" _ => false })
+    && (match share_binding_standing(body: general_with(server: "192.168.1.188", path: "/srv/bmc", kind: "nfs", mount: "0", error: "0"), expected: share_as_of_2026_09_27) { ShareMismatch { observed: o } => o.mount_cd == "0" _ => false })
 }
 
 test fn a_general_document_missing_a_member_is_unreadable_not_bound() -> Bool {
-  match share_binding_standing(body: "{ \"cd_remote_server_address\": \"192.168.1.188\", \"mount_cd\": 1 }", expected: mtcollins1_media_share) {
+  match share_binding_standing(body: "{ \"cd_remote_server_address\": \"192.168.1.188\", \"mount_cd\": 1 }", expected: share_as_of_2026_09_27) {
     ShareUnreadable { detail: _ } => true
     _ => false
   }
@@ -588,7 +614,7 @@ test fn boot_run_36721915217_readings_now_admit() -> Bool {
         && nonzero_is(r: e.cd_at_ready, expected: 16)
     _ => false
   })
-    && (match megarac_boot_media_gate(record: MediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: StalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
+    && (match megarac_boot_media_gate(record: MegaRacMediaAttachAttempted { attempt: "36721915217", medium_image_name: run_36721915217_image, medium_image_sha256: "161b98b9bb389a80", power: ChassisPowerRead { power_on: false }, stale_power_off: MegaRacStalePowerOffNotNeeded { reason: "the host was read off" }, result: MegaRacAttachResult { outcome: outcome, session_release: SessionReleased, baseline: none } }) {
       MediaGateReady { evidence: _ } => true
       MediaGateWithheld { reason: _ } => false
     })
@@ -643,7 +669,7 @@ test fn nothing_presented_with_a_code_outside_the_table_and_the_host_on_refuses_
 fn observed(general: String, configurations: String) -> MegaRacAttachResult {
   MegaRacAttachResult {
     outcome: MegaRacPresentationObserved {
-      share: share_binding_standing(body: general, expected: mtcollins1_media_share),
+      share: share_binding_standing(body: general, expected: share_as_of_2026_09_27),
       readiness: attach_readiness(answered: true, body: configurations, image_name: desired_census, firmware: megarac_firmware_0_32),
       cd_error: cd_error_reading(body: general, firmware: megarac_firmware_0_32),
       general: MegaRacRawRead { answered: true, body: general, observed_at: Present { value: 5000 } },
@@ -655,7 +681,7 @@ fn observed(general: String, configurations: String) -> MegaRacAttachResult {
 }
 
 // The handoff's typed harness findings, rendered once each by the bundle's own renderer.
-fn handoff_media_findings(h: MtCollins1HandoffMedia) -> List<String> {
+fn handoff_media_findings(h: MegaRacHandoff) -> List<String> {
   map(handoff_media_harness(h: h), f => harness_finding_text(f: f))
 }
 
@@ -674,13 +700,13 @@ test fn a_started_bound_presentation_is_still_served() -> Bool {
 test fn the_36330382023_after_state_is_indeterminate_not_an_affirmed_loss() -> Bool {
   let after = observed(general: mtcollins1_media_general_2026_09_27, configurations: presenting_in(name: desired_census as String, status: "16", session: "255"))
   (match presentation_still_served(result: after) { PresentationUnobserved { reason: _ } => true _ => false })
-    && only_finding_contains(findings: handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: after }), pattern: "INDETERMINATE")
-    && (count(handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look })) == 0)
+    && only_finding_contains(findings: handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: after }), pattern: "INDETERMINATE")
+    && (count(handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: served_look })) == 0)
 }
 
 // An affirmed loss: the look was taken and the row is gone.
 test fn a_withdrawn_row_after_the_handoff_is_an_affirmed_loss() -> Bool {
-  only_finding_contains(findings: handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "LOST at or after")
+  only_finding_contains(findings: handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "LOST at or after")
 }
 
 // A LOSS AFFIRMED AFTER A CONFIRMED HANDOFF IS THE ATTEMPT'S CAUSE (gunbc#12533 finding 4): the
@@ -691,16 +717,16 @@ test fn a_withdrawn_row_after_the_handoff_is_an_affirmed_loss() -> Bool {
 data withdrawn_look: MegaRacAttachResult = observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]")
 data deadline_failure: ProcessExit = ExitFailure { code: 1, reason: "mtcollins1 boot: deadline reached without a host-capture terminal" }
 
-fn attributed_reason(handoff: MtCollins1HandoffMedia, end: MtCollins1EndMedia) -> String {
-  match outcome_attributing_media_loss(outcome: deadline_failure, loss: media_loss_after_handoff(handoff: handoff, end: end)) {
+fn attributed_reason(handoff: MegaRacHandoff, end: MegaRacEndMedia) -> String {
+  match outcome_attributing_media_loss(row: mtcollins1_boot_row_value, outcome: deadline_failure, loss: media_loss_after_handoff(handoff: handoff, end: end)) {
     ExitFailure { code: _, reason: r } => r
     ExitSuccess => ""
   }
 }
 
 test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bool {
-  let at_after = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look })
-  let at_end = attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: withdrawn_look })
+  let at_after = attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: withdrawn_look }, end: MegaRacEndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn })
+  let at_end = attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: served_look }, end: MegaRacEndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn })
   starts_with(s: at_after, prefix: "mtcollins1 boot: media presentation lost at after-handoff (")
     && string_contains(s: at_after, pattern: "deadline reached without a host-capture terminal")
     && starts_with(s: at_end, prefix: "mtcollins1 boot: media presentation lost at end-of-attempt (")
@@ -709,10 +735,10 @@ test fn a_presentation_lost_after_a_confirmed_handoff_is_the_named_cause() -> Bo
 test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() -> Bool {
   let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
   let unchanged = "mtcollins1 boot: deadline reached without a host-capture terminal"
-  attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: served_look }, end: EndMediaObserved { look: served_look }) == unchanged
-    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: failed }, end: EndMediaObserved { look: failed }) == unchanged
-    && attributed_reason(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffAttemptedUnconfirmed { reason: "no read-back" }, after: withdrawn_look }, end: EndMediaObserved { look: withdrawn_look }) == unchanged
-    && (match outcome_attributing_media_loss(outcome: ExitSuccess, loss: media_loss_after_handoff(handoff: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: withdrawn_look }, end: EndMediaNotTaken { reason: "x" })) { ExitSuccess => true _ => false })
+  attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: served_look }, end: MegaRacEndMediaObserved { look: served_look, end_release: EndReleaseKeptHostOn }) == unchanged
+    && attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: failed }, end: MegaRacEndMediaObserved { look: failed, end_release: EndReleaseKeptHostOn }) == unchanged
+    && attributed_reason(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "no read-back" }, after: withdrawn_look }, end: MegaRacEndMediaObserved { look: withdrawn_look, end_release: EndReleaseKeptHostOn }) == unchanged
+    && (match outcome_attributing_media_loss(row: mtcollins1_boot_row_value, outcome: ExitSuccess, loss: media_loss_after_handoff(handoff: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: withdrawn_look }, end: MegaRacEndMediaNotTaken { reason: "x" })) { ExitSuccess => true _ => false })
 }
 
 // THE DISCRIMINATING CONTROL: a failed session with the prior good presentation unchanged is
@@ -720,7 +746,7 @@ test fn an_unaffirmed_look_or_an_unconfirmed_handoff_leaves_the_cause_alone() ->
 test fn a_failed_look_is_indeterminate_not_lost() -> Bool {
   let failed = MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "curl: (7)" }, session_release: SessionReleaseNotAttempted, baseline: none }
   (match presentation_still_served(result: failed) { PresentationUnobserved { reason: _ } => true _ => false })
-    && only_finding_contains(findings: handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffConfirmed, after: failed }), pattern: "INDETERMINATE")
+    && only_finding_contains(findings: handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffConfirmed, after: failed }), pattern: "INDETERMINATE")
 }
 
 // THE RECHECK OWES ITS OWN CLEANUP: identical bodies, differing release -> only the released one admits.
@@ -761,7 +787,7 @@ test fn a_stopped_row_with_code_16_is_no_longer_served_and_the_reason_does_not_n
 
 test fn a_withdrawn_row_or_an_unobserved_look_is_not_served() -> Bool {
   (match presentation_still_served(result: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]")) { PresentationNoLongerReady { reason: _ } => true _ => false })
-    && only_finding_contains(findings: handoff_media_findings(h: HandoffMediaWithheldAtRecheck { before: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "no boot-device or power write")
+    && only_finding_contains(findings: handoff_media_findings(h: MegaRacHandoffWithheldAtRecheck { before: observed(general: mtcollins1_media_general_2026_09_27_morning_as_reported, configurations: "[]") }), pattern: "no boot-device or power write")
 }
 
 // ─── RECEIPTS FOR THE TWO BETS ──────────────────────────────────────────────────────────────────
@@ -775,8 +801,8 @@ data manual_stop_readback_1545z: String = "[ { \"id\": 1, \"media_type\": 1, \"m
 data manual_stop_readback_1630z: String = "[ { \"id\": 1, \"media_type\": 1, \"media_index\": 0, \"session_index\": 255, \"image_name\": \"\", \"redirection_status\": 0 } ]"
 
 test fn both_manual_stop_readbacks_establish_the_detach_whatever_stop_media_answered() -> Bool {
-  (match detach_verdict(evidence: detach(success: true, body: "echoed body", readback_read: true, readback: manual_stop_readback_1545z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
-    && (match detach_verdict(evidence: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachEstablished => true _ => false })
+  (match detach_verdict(evidence: detach(success: true, body: "echoed body", readback_read: true, readback: manual_stop_readback_1545z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
+    && (match detach_verdict(evidence: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachEstablished => true _ => false })
 }
 
 test fn the_stop_body_this_module_sends_is_byte_equal_to_the_manual_stop_that_worked() -> Bool {
@@ -804,13 +830,13 @@ test fn a_started_row_beside_an_unreadable_row_is_not_ready_either_order() -> Bo
 }
 
 test fn an_unreadable_row_in_the_readback_does_not_establish_a_detach() -> Bool {
-  (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: empty_row_doc), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachNotEstablished { reason: _ } => true _ => false })
-    && (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: string_status_row), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) { DetachNotEstablished { reason: _ } => true _ => false })
+  (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: empty_row_doc), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachNotEstablished { reason: _ } => true _ => false })
+    && (match detach_verdict(evidence: detach(success: true, body: "{}", readback_read: true, readback: string_status_row), image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) { DetachNotEstablished { reason: _ } => true _ => false })
 }
 
 test fn an_unnamed_row_with_an_uncatalogued_status_keeps_its_wire() -> Bool {
   match step(configurations: unnamed_uncatalogued_row, detach: host_off) {
-    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, wire: w, configurations: _ } } => n == "" && w == 16
+    ConvergeStepRefuse { outcome: MegaRacRedirectionUncatalogued { image_name: n, unread: u, refusal: _, configurations: _ } } => n == "" && redirection_unread_wire(unread: u) == 16
     _ => false
   }
 }
@@ -914,7 +940,7 @@ test fn a_write_without_an_http_answer_is_effect_uncertain() -> Bool {
 // readiness clock refused afterwards.
 test fn the_rendered_artifact_keeps_the_detach_and_start_answers_on_a_clock_refusal() -> Bool {
   let route = RouteReplaced { image_list_index: "5", detach: detach(success: false, body: stop_1411, readback_read: true, readback: manual_stop_readback_1630z), start: WriteEffectUncertain { exit_code: 28, partial_body: "", stderr: "curl: (28) Operation timed out" } }
-  let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
+  let rendered = megarac_media_attach_text(record: attempted(result: MegaRacAttachResult {
     outcome: MegaRacReadinessClockIncoherent { image_name: desired_census, route: route, opened_at: 1000, previous: none, look: look(at: 500, status: "1", session: "0"), looks: 1 },
     session_release: SessionReleased,
     baseline: none,
@@ -959,7 +985,7 @@ test fn partial_bytes_then_a_timeout_are_uncertain_and_kept() -> Bool {
 }
 
 test fn a_stop_never_sent_is_not_issued() -> Bool {
-  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stem: mtcollins1_census_image_stem) {
+  match detach_verdict(evidence: MegaRacDetachEvidence { stale_image: stale_census as String, media_index: "", command: WriteNotIssued { reason: "no device" }, readback_read: false, readback: "", cd_after_stop: cd_unread, general_after_stop: MegaRacRawRead { answered: false, body: "not read", observed_at: none } }, image_name: desired_census, firmware: megarac_firmware_0_32, replaceable_seeded_stems: non_empty_singleton(item: mtcollins1_census_image_stem)) {
     DetachNotEstablished { reason: _ } => true
     _ => false
   }
@@ -969,22 +995,24 @@ test fn a_stop_never_sent_is_not_issued() -> Bool {
 // reported as attempted, not as a handoff that happened.
 test fn the_end_look_is_owed_by_any_attempted_attach() -> Bool {
   end_media_is_owed(media: attempted(result: MegaRacAttachResult { outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_16, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) }, session_release: SessionReleased, baseline: none }))
-    && !end_media_is_owed(media: MediaAttachNotAttempted { reason: "BMC is not BmcSecured" })
+    && !end_media_is_owed(media: MegaRacMediaAttachNotAttempted { reason: "BMC is not BmcSecured" })
 }
 
 test fn an_unconfirmed_handoff_is_reported_as_attempted() -> Bool {
-  let findings = handoff_media_findings(h: HandoffMediaAttempted { before: served_look, handoff: HandoffAttemptedUnconfirmed { reason: "chassis power read-back did not observe on" }, after: served_look })
+  let findings = handoff_media_findings(h: MegaRacHandoffAttempted { before: served_look, handoff: MegaRacHandoffAttemptedUnconfirmed { reason: "chassis power read-back did not observe on" }, after: served_look })
   count(findings) == 1 && (match findings.first() { Present { value: f } => string_contains(s: f, pattern: "attempted and not confirmed")  Absent => false })
 }
 
-// The raw, timed settings read reaches the rendered artifact.
+// The raw, timed settings read reaches the rendered artifact, bound to readiness: the code before any
+// write differs (16), so a render that swapped the two fields or dropped the timestamp reds. A nonzero
+// code renders as observed with no meaning, the standing MegaRacCdErrorCode gives every nonzero value.
 test fn the_rendered_artifact_keeps_the_raw_timed_settings_at_readiness() -> Bool {
-  let rendered = media_attach_text(record: attempted(result: MegaRacAttachResult {
-    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_42, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
+  let rendered = megarac_media_attach_text(record: attempted(result: MegaRacAttachResult {
+    outcome: MegaRacMediaStateUnestablished { image_name: desired_census, route: RouteAttached { image_list_index: "5", start: WriteAccepted { body: "{}" } }, look: look(at: 13000, status: "1", session: "0"), looks: 4, cd_before_any_write: cd_16, cd_at_ready: cd_42, general_at_ready: raw_at(body: mtcollins1_media_general_2026_09_27) },
     session_release: SessionReleased,
     baseline: none,
   }))
-  string_contains(s: rendered, pattern: "13100") && string_contains(s: rendered, pattern: "42 (uncatalogued)")
+  string_contains(s: rendered, pattern: "and at readiness 42 (observed; no meaning established) (general settings answered at 13100: ")
 }
 
 // THE VERDICT IS THE TYPED EXIT CODE, NOT STDERR WORDING (review 71971): a complete HTTP error with

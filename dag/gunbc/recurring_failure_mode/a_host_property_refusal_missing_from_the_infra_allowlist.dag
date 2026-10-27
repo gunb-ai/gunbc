@@ -1,12 +1,21 @@
 module gunbc.recurring_failure_mode.a_host_property_refusal_missing_from_the_infra_allowlist
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { NoRungStated, RecurringFailureMode, RungUnread }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data a_host_property_refusal_missing_from_the_infra_allowlist: RecurringFailureMode = RecurringFailureMode {
   identity: "a_host_property_refusal_missing_from_the_infra_allowlist" as NonEmptyStr,
 
-  rung: RungUnread { cause: NoRungStated },
+  // THE TYPED STANDING MIRRORS WHAT THE THREE SPECIMEN RECEIPTS MEASURED: each refusal was EXECUTED
+  // and observed (MemoryEnvelopeAbsent, MemoryReceiptUnreadable/CgroupFileUnreadable,
+  // HostBudgetUnreadable on two runner hosts), the class is mitigated by re-placement on a bounded
+  // slot and by reading the named owning authority before hunting the diff -- mitigation, not
+  // prevention, because every unenumerated host-property cause still lands in the structural bucket.
+  // The ceiling is the classifier repair the RECOGNITION RULE receipt names; the blocker is
+  // ClimbableButUnbuilt (the arm shape is writable, nothing awaits a declaration).
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the floor step's infra-signature reclassifier carries a named arm per KNOWN host-property cause, keyed on WHERE the property lives (the missing host memory interface attributes to the runner slot regardless of which reading step noticed it), attribution-only with the refusal preserved and unknown causes staying structural by default" } },
 
   receipts: [
     "**a refusal whose cause is a property of the host is attributed to the subject because its signature is not in the floor step's infra allowlist** (the reclassifier is an enumeration of known infra signatures, so any NEW host-side refusal -- a cgroup file the runner lacks, a mount the slot never got, a quota the pool changed -- defaults to the structural bucket and reads as a defect in what was built rather than in where it ran.",

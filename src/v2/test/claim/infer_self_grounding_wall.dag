@@ -40,6 +40,7 @@ import v2.std.diagnostic { Accepted, Rejected, Some, None, NonEmptyDiagnostics, 
 import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.node {
+  node_same_occurrence,
   Node,
   Edge,
   TypeNode,
@@ -241,8 +242,8 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: g, diagnostics: _ } =>
-      (g.node == wall_conj_node())
-        && (g.witness.structural.evidence == wall_derived_type_node())
+      node_same_occurrence(a: g.node, b: wall_conj_node())
+        && node_same_occurrence(a: g.witness.structural.evidence, b: wall_derived_type_node())
   }
 }
 

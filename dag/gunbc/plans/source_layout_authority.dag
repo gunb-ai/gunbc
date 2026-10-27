@@ -144,7 +144,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
     p(text: "Lookup chain: module name → `SourceRootRef` + relative path → bound host root → exact read → `module` line agrees with the name → `SourceRef`."),
     h3(text: "4.3 Lookup by name"),
     p(text: "A qualified reference is split into module and member by probing prefixes, longest first. Each probe is tri-state: `ModuleFilePresent`, `ModuleFileAbsent`, `ModuleFileRefused` (unreadable, wrong kind, transport failure). Only `Absent` falls back to a shorter prefix; `Refused` refuses the reference. No prefix present is an unknown module."),
-    p(text: "Cross-tree direction is preserved at this layer: today's grounding (`v2.std.cross_tree.import_model`, `tree_fundamentality_order`; v2→dag admitted, dag→v2 denied) moves from the whole-tree ingest into the storage lookup, so loading by name cannot lose it."),
+    p(text: "The cross-tree verdict lives at this layer: `v2.std.cross_tree.import_model` `cross_tree_import_admitted` is decided in the storage lookup before the read, so loading by name cannot lose it. Since the 2026-10-25 ruling it carries no tree direction: a crossing between two namespaces declared in `gunbc.source_layout_namespaces` is admitted either way, and one from or to a namespace with no row refuses as `CrossTreeNamespaceUndeclared` (ruling `gunbc.design_ruling cross_tree_admission_is_namespace_membership`)."),
     h3(text: "4.4 The layout check"),
     p(text: "Run by the binary the `v2-native-cli` step builds, as a step on the required `witnesses` job. It has one mode: hold or refuse. Refusals are typed and located: `UndeclaredNamespace`, `NotAtRulePosition`, `ModuleLineMissing`, `DuplicateModule` (including case-fold duplicates). It reads headers, not bodies."),
     h3(text: "4.5 Closure by demand"),
@@ -211,7 +211,7 @@ fn source_layout_authority_design_and_plan() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "`docs/plans/namespace-resolution-design.md` — §10 (a module's position is declared, never inferred from storage; the `module` header is placement sugar that ends as a projection) is satisfied by declaring the rule; §13's unique-on-chain resolution is R1."),
       li(text: "`docs/plans/namespace-cut-replacement-plan.md` — its \"parse-then-derive\" closure mechanism is §4.5; stage XL-3 overlaps C2."),
-      li(text: "`docs/plans/demand-engine-program.md` — §1's unruled next derivation (\"an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets\") and M3a's context-assembly note are C3."),
+      li(text: "`gunbc.plans.demand_engine_program` — §1's unruled next derivation (\"an authority cheaper than full ingestion … a source-root manifest … the module dependency closure of the requested targets\") and M3a's context-assembly note are C3."),
       li(text: "`docs/plans/replacement-migration-doctrine.md` — the whole PR is one replacement migration; it deletes what it replaces."),
       li(text: "gunb-ai/gunbc#13674 — independent of this plan (R9)."),
       li(text: "`gunbc.generated_artifact_registry` — unchanged; not consulted by the check."),

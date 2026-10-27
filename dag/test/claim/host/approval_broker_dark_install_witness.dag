@@ -6,10 +6,6 @@ import gunbc.host.host_effect_realize {
   DarkInstallRefused,
   DarkInstallConverged,
   DarkStepOwner,
-  DarkStepSudoersCheck,
-  DarkStepSudoersCompare,
-  DarkStepSudoersStage,
-  DarkStepSudoersReadback,
   DarkStepSnapshotReadback,
   DarkStepSliceUnit,
   DarkStepBrokerUnit,
@@ -17,6 +13,7 @@ import gunbc.host.host_effect_realize {
   DarkStepEnable,
   DarkStepRestart,
   DarkStepSliceControl,
+  DarkStepDeviceStore,
   DarkState,
   DarkOk,
   DarkFailed,
@@ -24,27 +21,44 @@ import gunbc.host.host_effect_realize {
   DarkLegArgv,
   DarkLegStdin,
   DarkLegExpectEmpty,
-  DarkLegSameHash,
   dark_run_legs,
   dark_run_leg,
+  dark_state_directory_legs,
+  dark_state_directories_admit,
   dark_expect_empty_state,
-  dark_same_hash_state,
   dark_unit_legs,
   dark_slice_control_legs,
   approval_broker_dark_install,
   DarkStepSidecarEnv, DarkStepSidecarUnit, DarkStepSidecarRestart, DarkStepSidecarDaemonReload, DarkStepSidecarEnable,
   DarkStepSidecarDigest, dark_sidecar_legs, dark_stage_sidecar_digest, dark_stage_sidecar, dark_sidecar_readback_not_local, DarkInstallInputs,
+  dark_snapshot_readback_legs_at,
 }
+import gunbc.live_deploy.emit { path_ancestors_inclusive }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_launcher_locus }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
-import gunbc.host.host_effect_realize { Sha256Agreement, RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved, Sha256Agrees, Sha256SideUnobserved, SourceSide, Sha256RunFailed }
+import gunbc.host.host_effect_realize { RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved }
 import gunbc.host.host_effect { LocalShell, HostEffectTransport, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation }
 import gunbc.host.host_converge { SliceControlPlanDerived, SliceControlPlanNotOwed, SliceControlPlanRefused, slice_control_plan_for }
 import gunbc.host.host_axis_caps { slice_control_converge_argvs_for_unit }
-import std.algebra { list_map, non_empty_to_list }
+import std.algebra { list_map, non_empty_to_list, Cons, Empty }
+import std.types { list_length }
 import gunbc.live_deploy.release_locus { RevisionBoundAtEmission }
 import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_lab_desired_deployment, selected_deployment_spec }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_ci_runner_principal, fleet_posix_operator_user }
+import gunbc.auth.approval_broker_state_directories {
+  approval_broker_state_directories,
+  approval_assertion_counter_directory,
+  approval_decision_store_directory,
+}
+import gunbc.auth.approval_assertion_counter { approval_assertion_counter_root }
+import gunbc.auth.approval_decision_store { approval_decision_store_root }
+import gunbc.managed_directory { managed_directory_admit, managed_directory_mode_octal, managed_directory_permissions, ManagedDirectory, ManagedDirectoryAdmitted, ManagedDirectoryRefused, DirectoryDependent, EntriesUnmanaged }
+import gunbc.ownership { Ensured }
+import std.effect_grant { Read, Write, Execute }
+import extdeps.access.posix { PosixUser, LoginShellUnobserved }
+import extdeps.tools.gnu_coreutils { coreutils_install_directory_owned_argv }
 import gunbc.live_deploy.spec { gunbc_approval_broker_unit_name }
 import extdeps.systemd.systemctl { systemctl_enable_argv, systemctl_restart_argv }
 import extdeps.sudo.elevation { sudo_elevate_command }
@@ -69,7 +83,6 @@ fn leg_step(l: DarkLeg) -> DarkInstallStep {
     DarkLegArgv { step: s, command: _ } => s
     DarkLegStdin { step: s, command: _, payload: _ } => s
     DarkLegExpectEmpty { step: s, command: _ } => s
-    DarkLegSameHash { step: s, left: _, right: _ } => s
   }
 }
 
@@ -101,20 +114,13 @@ fn failed_exit(code: Int) -> RunArgvTransportOutcome {
 
 test fn a_failing_leg_stops_the_line_at_its_step() -> Bool {
   let first = dark_expect_empty_state(step: DarkStepSnapshotReadback, outcome: failed_exit(code: 1))
-  let after = dark_run_leg(state: first, leg: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }, transport: LocalShell)
+  let after = dark_run_leg(state: first, leg: DarkLegArgv { step: DarkStepEnable, command: find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root") }, transport: LocalShell)
   step_of(s: first) == Present { value: DarkStepSnapshotReadback } && after == first
 }
 
-test fn an_unhashable_pair_fails_the_compare() -> Bool {
-  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b",
-    agreement: Sha256SideUnobserved { side: SourceSide, cause: Sha256RunFailed { stderr: "no such file" } }))
-    == Present { value: DarkStepSudoersCompare }
-}
-
-test fn an_agreeing_pair_and_an_empty_clean_run_are_ok() -> Bool {
-  step_of(s: dark_same_hash_state(step: DarkStepSudoersCompare, left: "a", right: "b", agreement: Sha256Agrees)) == none
-    && step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
-      outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
+test fn an_empty_clean_run_is_ok() -> Bool {
+  step_of(s: dark_expect_empty_state(step: DarkStepSnapshotReadback,
+    outcome: RunArgvTransportObserved { observed: ShellExecObserved { success: true, exit_code: 0, stdout: "", stderr: "" } })) == none
 }
 
 // INHABITANCE ON THE REAL ROUTE (pairs the supplied-outcome controls above): from DarkOk, dark_run_leg
@@ -133,9 +139,8 @@ fn refused_step(l: DarkLeg) -> DarkInstallStep? {
 test fn dark_run_leg_routes_each_leg_through_the_transport_to_its_own_step() -> Bool {
   let cmd = find_untrusted_entries_command(roots: ["/nonexistent-w6b/none"], top_only: true, owner: "root")
   refused_step(l: DarkLegArgv { step: DarkStepEnable, command: cmd }) == Present { value: DarkStepEnable }
-    && refused_step(l: DarkLegStdin { step: DarkStepSudoersStage, command: cmd, payload: "x" }) == Present { value: DarkStepSudoersStage }
+    && refused_step(l: DarkLegStdin { step: DarkStepSliceUnit, command: cmd, payload: "x" }) == Present { value: DarkStepSliceUnit }
     && refused_step(l: DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: cmd }) == Present { value: DarkStepSnapshotReadback }
-    && refused_step(l: DarkLegSameHash { step: DarkStepSudoersCompare, left: "a", right: "b" }) == Present { value: DarkStepSudoersCompare }
 }
 
 test fn an_empty_leg_list_is_ok() -> Bool {
@@ -238,4 +243,152 @@ test fn a_non_local_transport_refuses_the_sidecar_readback() -> Bool {
     DarkInstallRefused { step: s, reason: _ } => s == DarkStepSidecarReadback
     DarkInstallConverged { broker_tree_digest: _ } => false
   }
+}
+
+// THE SNAPSHOT READBACK COVERS EVERY ANCESTOR OF THE LOCUS AND REFUSES LINKS (restored from the deleted
+// test.claim.live_deploy.approval_broker_helper_grant the_snapshot_readback_covers_every_ancestor_and_refuses_links,
+// c11aa2317029). The broker grant it was written for is gone (cb6548946213), but the same readback runs for the
+// attempt launcher's root-owned snapshot. Root executes what is under the locus, so a non-root-owned,
+// group/other-writable or symlinked ANCESTOR is as good as owning the snapshot; checking the locus alone admits
+// that. At main head d2b027b5f41 narrowing the roots to the locus left every surviving claim green (the claims
+// above drive dark_expect_empty_state over supplied commands, never this command's roots).
+fn ancestor_readback_args(legs: List<DarkLeg>) -> List<String> {
+  match legs {
+    Empty => []
+    Cons { head: h, tail: _ } =>
+      match h {
+        DarkLegExpectEmpty { step: DarkStepSnapshotReadback, command: c } => c.arguments
+        DarkLegExpectEmpty { step: _, command: _ } => []
+        DarkLegArgv { step: _, command: _ } => []
+        DarkLegStdin { step: _, command: _, payload: _ } => []
+      }
+  }
+}
+
+test fn the_launcher_snapshot_readback_covers_every_ancestor_and_refuses_links() -> Bool {
+  let locus = attempt_system_unit_launcher_locus(instance: srv1_live_dashboard_instance())
+  let ancestors = path_ancestors_inclusive(path: locus.base)
+  let args = ancestor_readback_args(legs: dark_snapshot_readback_legs_at(locus: locus, dir: "/d"))
+  list_length(items: ancestors) == 5
+    && all(ancestors, p => any(args, a => a == p))
+    && any(args, a => a == "l")
+    && any(args, a => a == "/022")
+}
+
+// ── THE BROKER STATE-ROOT CENSUS (the srv1 assertion-counter 503) ─────────────────────────────
+// THE POSITIVE CONTROL THE DEFECT NEEDS. On srv1 (release a3b8d7df, 2026-10-24) an enrolled device's
+// PUT push-token route 503'd because nothing created /var/lib/gunbc/approval-assertion-counters: the
+// counter root was a bare path with no ManagedDirectory, while its device-store and JWKS siblings were
+// converged by a nested match in dark_state_directories_install that NAMED only those two. The fold now
+// consumes gunbc.auth.approval_broker_state_directories approval_broker_state_directories, and these
+// claims name what the deploy emits — deleting the counter row from the census fails exactly these
+// witnesses (the RED), and every row below is compared against the argv builders the route itself calls.
+
+// THE EXACT ARGV THE ROUTE BUILDS, RESTATED. The leg's command is sudo_elevate_command over
+// coreutils_install_directory_owned_argv, so its arguments are the -n prefix plus install -d -m 00700
+// -o briansrls -g briansrls <root> — the literal 00700 is the device-mode operand spelled twice on
+// purpose: if a derivation change moves the census row's mode away from the operator-owned directory
+// srv1 stands at, this claim and the shape claim below fail together and say which side moved.
+fn counter_install_args() -> List<String> {
+  list_append(
+    left: ["-n"],
+    right: coreutils_install_directory_owned_argv(
+      mode: managed_directory_permissions(d: approval_assertion_counter_directory()).mode,
+      owner: fleet_posix_operator_user.name,
+      group: fleet_posix_operator_user.name,
+      path: approval_assertion_counter_root as String,
+    ),
+  )
+}
+
+// THE ARGV LITERALLY, INDEPENDENT OF THE BUILDERS: the same list spelled from its flags and names, so
+// a silent change in coreutils_install_directory_owned_argv or sudo_elevate cannot move both this and
+// the builder-based claim above in lockstep.
+fn counter_install_args_literal() -> List<String> {
+  ["-n", "install", "-d", "-m", "00700", "-o", "briansrls", "-g", "briansrls", approval_assertion_counter_root as String]
+}
+
+// THE EMITTED DEPLOY PLAN INCLUDES THE COUNTER DIRECTORY: the fold's leg list carries a
+// `sudo install -d` leg for the counter root's argv, with the step name the realization reports.
+test fn the_state_directory_plan_includes_the_assertion_counter_root() -> Bool {
+  let legs = dark_state_directory_legs()
+  any(legs, l => match l {
+    DarkLegArgv { step: DarkStepDeviceStore, command: c } =>
+      c.arguments == counter_install_args() && c.arguments == counter_install_args_literal()
+    DarkLegArgv { step: _, command: _ } => false
+    DarkLegStdin { step: _, command: _, payload: _ } => false
+    DarkLegExpectEmpty { step: _, command: _ } => false
+  })
+}
+
+// THE CENSUS IS THE BROKER STATE ROOTS THE SERVE PATH READS OR WRITES: every serve-written root has a
+// row — the device store and JWKS cache that were converged before this change, the counter root (the
+// observed 503), and the decision store (serve-written at redemption commit, serve-read on every status route). A root joins the deploy by
+// being a row here; adding a broker state root without a row is visible at review in this one list.
+test fn the_census_names_every_broker_serve_path_state_root() -> Bool {
+  let rows = approval_broker_state_directories()
+  let paths = list_map(xs: rows, f: d => d.path as String)
+  count(rows) == 4
+    && any(paths, p => p == "/var/lib/gunbc/approval-devices")
+    && any(paths, p => p == "/var/lib/gunbc/approval-jwks")
+    && any(paths, p => p == approval_assertion_counter_root as String)
+    && any(paths, p => p == approval_decision_store_root as String)
+}
+
+// DERIVED, NOT RE-MINTED: the counter row's path IS the owning module's root — the census cannot drift
+// the path away from what the CAS store reads. The row carries the device store's shape (operator-owned
+// both sides, ownership Ensured so contents survive a retract of the deployment that created it) —
+// exactly the briansrls:briansrls 0700 state the operator's hand-made srv1 directory already stands at,
+// so `install -d` converges it as a no-op rather than fighting it (no wet claim asserts it is absent:
+// gunbc.recurring_failure_mode wet_witness_premise_read_from_the_runner_it_happens_to_land_on).
+test fn the_counter_row_is_derived_and_shaped_for_the_live_host() -> Bool {
+  let d = approval_assertion_counter_directory()
+  d.path as String == approval_assertion_counter_root as String
+    && d.owner == fleet_posix_operator_user
+    && d.group_principal == fleet_posix_operator_user
+    && d.ownership == Ensured
+    && managed_directory_mode_octal(d: d) == "0700"
+    && (match managed_directory_admit(d: d) {
+         ManagedDirectoryAdmitted { dir: _ } => true
+         ManagedDirectoryRefused { member: _, path: _, writer: _ } => false
+       })
+}
+
+// THE CENSUS IS ADMITTED BEFORE ANY LEG RUNS: the fold refuses the whole install if any row's dependents
+// fail to cover their writes, so a malformed row five cannot mutate the host after rows one through four.
+test fn the_whole_census_admits() -> Bool {
+  match dark_state_directories_admit(directories: approval_broker_state_directories()) {
+    DarkOk => true
+    DarkFailed { step: _, reason: _ } => false
+  }
+}
+
+// A BROKER-UNCOVERED WRITER REFUSES THE CENSUS: the admission gate is live, not decorative — a row whose
+// writer sits outside every permission class fails the fold before any install -d runs.
+test fn a_census_row_with_an_uncovered_writer_refuses_the_install() -> Bool {
+  let outsider = PosixUser { name: "outsider", uid: 6001, gid: 6001, shell: LoginShellUnobserved }
+  let bad = ManagedDirectory {
+    member: "approval-counter-sabotage",
+    path: "/var/lib/gunbc/approval-assertion-counters",
+    owner: fleet_posix_operator_user,
+    group_principal: fleet_posix_operator_user,
+    dependents: [DirectoryDependent { who: outsider, needs: [Read, Write, Execute] }],
+    ownership: Ensured,
+    entries: EntriesUnmanaged,
+  }
+  match dark_state_directories_admit(directories: [approval_assertion_counter_directory(), bad]) {
+    DarkFailed { step: s, reason: r } => s == DarkStepDeviceStore && string_contains(s: r, pattern: "outsider")
+    DarkOk => false
+  }
+}
+
+// THE DECISION ROW IS THE DEVICE STORE'S SHAPE, DERIVED FROM ITS OWNER: the census's whole point is
+// that a new root joins by being a row, not a branch -- so a row's ownership story is the device store's,
+// restated once by broker_state_directory.
+test fn the_decision_row_is_derived_owner_only() -> Bool {
+  let decision = approval_decision_store_directory()
+  decision.path as String == approval_decision_store_root as String
+    && managed_directory_mode_octal(d: decision) == "0700"
+    && decision.owner == fleet_posix_operator_user
+    && decision.ownership == Ensured
 }

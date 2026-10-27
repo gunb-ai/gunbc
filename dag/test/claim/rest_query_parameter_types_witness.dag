@@ -1,0 +1,22 @@
+module test.claim.rest_query_parameter_types_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing witness for v1.compiler.emit_rust emit_rest_query_line. Query parameters of different
+// types used to render into one Rust array literal, `request.query(&[("q", &q), ("limit", &limit)])`,
+// which compiles only when every value has one type (extdeps.github.pulls List: rustc E0308,
+// expected `&PullRequestState`, found `&i64`; class 7 of stern-bat-401's emitter-debt list). The
+// sibling test.claim.pipeline_transport_emit_rest_shell_witness w_rest_includes_query_params asserts
+// only that `.query(` appears, so it stayed green on the uncompilable form. This row is the RED: the
+// mixed pair must render as two calls, in declaration order, and never share a slice.
+
+test fn mixed_type_query_parameters_render_as_one_call_each() -> Bool {
+  compile_dag_rust_emit_check(
+    "module rest_query_witness.mixed\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n",
+    "src/rest_query_witness_mixed.rs",
+    ["let request = request.query(&[(\"q\", ", "let request = request.query(&[(\"limit\", "],
+    ["), (\"limit\""]
+  )
+}

@@ -1,0 +1,38 @@
+module gunbc.namespace_wave_binding_diff_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data namespace_wave_binding_diff_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "instrument_revision",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "select_base_population",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.cli_run.native_lane_runner",
+      decl_name: "run_v2_select_spelled_modules",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "BaseTreeGuard",
+      field: WholeDeclaration
+    }
+  ],
+
+  reason: "The producer arm for the Wave 1+ binding-diff admission gate (gunbc.target_binding, label //gunbc/instruments:namespace-wave-binding-diff). Its host part is only what no .dag fold can do: read GUNBC_WAVE_SHARD, GUNBC_CENSUS_SUBJECTS and GUNBC_CENSUS_TREE (the base worktree the head's own compiler reads, run from this checkout so the binary-freshness gate stays whole) from the environment, acquire the label's own source closure and the stage0 tree id for the instrument revision, list the merge-base tree with git, check it out as a base worktree and run this executable's ambient-name census inside it. The decisions made inside the interpreted label (gunbc.instruments.namespace_wave_binding_diff and namespace_wave_binding_shard) are the shard plan, base selection and coverage, the occurrence join, the three receipt records and the verdict. The host decides no population: it runs the head's emitted compiler's select-spelled-modules verb (src/v2/cli/population_verbs.dag, module names derived forward under the storage rule) over the base worktree's roots and relays the names it prints. That selection is by SPELLING, an over-approximation that only widens the census, not a binding-level fact; its next rung is the census or resolution reader selecting by binding, which the trigger below covers. It sits in the host because the census reads a whole corpus at two revisions through the compiler front end, which an interpreted .dag entry cannot afford, and it is how a wave's rewrite is admitted at its own head. It serves the v2 self-host program under gunbc.v1.v1_maintenance_standing v1_seed_standing: it measures the namespace cut and changes no language behavior.",
+
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+
+  trigger: "Delete these declarations when gunbc test's producer dispatch is emitted rather than hand-mirrored (the capability gunbc.target_invocation_seed_growth names for target_invocation_host as a whole) AND an emitted driver can list a git tree, materialize a base worktree and run a built census in it, handing its rows to a .dag fold, AND the base population is selected by the census or resolution reader rather than by spelling, SUFFICIENT FOR //gunbc/instruments:namespace-wave-binding-diff to run with no hand-authored producer body.",
+
+  current_boundary: "src/v1/stage0/src/target_invocation_host.rs run_namespace_wave_binding_diff and run_base_ambient_name_census, and src/v1/stage0/src/cli_run/native_lane_runner.rs run_v2_select_spelled_modules, behind gunbc test //gunbc/instruments:namespace-wave-binding-diff"
+}

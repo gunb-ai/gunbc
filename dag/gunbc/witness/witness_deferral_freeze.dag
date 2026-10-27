@@ -181,7 +181,7 @@ THE RATCHET, and why it is a freeze rather than a sweep. Classifying every histo
 // src/v2/test/claim/execution/native_selected_witness_bundle.dag [partial],
 // src/v2/test/claim/manual/emit_source_store.dag [partial]), 19 identities, MIGRATED not
 // exempted: run 32721781133 executed each through the required floor and observed an
-// interpreter-typed HermeticHostEffectRefused route gap; typed enrollment now makes that executing
+// interpreter-typed HostEffectRefused route gap; typed enrollment now makes that executing
 // outcome a checked debt contract, so LegacyFrozenPathDeferral no longer describes their standing.
 // The exact route-gap/freeze join was recomputed after retirement at head d4f3aab194c and is empty;
 // non-colliding siblings remain frozen. No construction wall currently refuses the route-gap/freeze
@@ -903,7 +903,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     entry: "src/v2/test/claim/long/cross_tree_real_ingest_activation.dag",
     functions: [
       "cross_tree_real_ingest_v2_to_dag_admitted_holds",
-      "cross_tree_real_ingest_dag_to_v2_denied_holds"
+      "cross_tree_real_ingest_dag_to_v2_admitted_holds"
     ]
   },
   FrozenPathDeferral {

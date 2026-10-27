@@ -1,5 +1,6 @@
 module product.fabric.flex_vast_template_control
 
+import std.integer { int_to_decimal_string }
 import std.types { String, NonEmptyStr, Bool, Int, List, Secret, list_length }
 import std.optional { Present, Absent }
 import std.resources { Network }
@@ -93,7 +94,7 @@ fn flex_template_outcome(spec: FlexTemplateSpec, after: FlexTemplateListing, ret
               if list_length(rr) == 1 {
                 FlexTemplateEnsured { hash: h }
               } else {
-                FlexTemplateNotEnsured { reason: concat("retired: rows=", list_length(rr) as String) }
+                FlexTemplateNotEnsured { reason: concat("retired: rows=", int_to_decimal_string(value: list_length(rr))) }
               }
           }
       }
