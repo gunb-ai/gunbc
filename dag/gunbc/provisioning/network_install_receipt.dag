@@ -55,8 +55,10 @@ type InstallClientClassReading
   = ClientClassRead { client: Eui48Address, code: Int }
   | ClientClassUnread { why: NonEmptyStr }
 
-// What the edge logged as delivered. A TFTP delivery names the client by MAC (dnsmasq's TFTP log joins it to
-// the lease the reader holds); an HTTP response names only its path, because the seed server authenticates
+// What the edge logged as delivered. A TFTP delivery is carried by client MAC, but dnsmasq's TFTP log names
+// the client's address, and in proxy mode the router assigned it: the reader joins that address to a MAC
+// through the same client's ProxyDHCP log line (log-dhcp is rendered by gunbc.site_pxe_edge), and a delivery
+// it cannot join is not a delivery to this client, never one assumed. An HTTP response names only its path, because the seed server authenticates
 // no client and the seed is public (gunbc.fleet.site_pxe_edge_converge, the install surface): the MAC in a
 // seed's path routes it, so the receipt reads the seed fetch as "this MAC's seed was served", never as
 // "this client fetched it". The host-side reading is what ties the install to the client.
