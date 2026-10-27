@@ -33,10 +33,11 @@ type DesignRuling {
 }
 
 // EXPLANATORY METADATA ONLY, NOT AN AUTHORITY. Whether the document cites a row is DERIVED from the
-// rendered document (gunbc.documentary_refs ruling_cited_by_design_document); this note explains, for
-// a reader of the ledger, why a row is not stated by the document. Nothing reads it: editing or
-// deleting a note changes no population and no verdict (the witness proves that directly), and a
-// row with no note behaves exactly like one with one.
+// rendered document (gunbc.documentary_refs ruling_cited_by_design_document); this note says, for a
+// reader of the ledger, why a row is not stated by the document. The witness claims read a note's
+// RULING (the cited-or-noted join and the disjointness check make the notes the checked complement
+// of the cited set); NOTHING reads a note's REASON -- editing one changes no population and no
+// verdict, which is what makes it metadata rather than a second authority.
 type RulingLedgerNote {
   ruling: DeclarationRef
   reason: String
