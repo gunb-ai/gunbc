@@ -2,7 +2,7 @@ module test.claim.roadmap.dispatch_replay_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Present }
-import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance, srv1_lab_dashboard_instance, srv1_dashboard_lab_id, srv1_dashboard_live_id }
 import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchCliProvider, GunbcHarnessProvider, ReplayDispatchProvider }
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_session_container_for_provider,
@@ -22,6 +22,8 @@ import gunbc.dispatch_replay_recording {
   recording_ref_prefix, recording_prepared_ref_prefix, recorded_end_of_status, RecordingPreparedEndAdmitted, RecordingPreparedEndRefused,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
+import gunbc.dispatch_replay_capture { recording_prepare_cli }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.roster_frontier { frontier_subject_eq, DeclSubject, PathSubject }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultExitCode, ServiceResultOomKill }
 
@@ -158,6 +160,48 @@ test fn decode_refuses_an_unreplayable_exit_status_or_pair() -> Bool {
 // THE CAPTURE FRONTIER IS TRACKED IN THE CORPUS: its row is read by the closure census, so the dissolution trigger is
 // a citable fact and not a note. Mutation: drop dispatch_replay_recording_frontier_rows from
 // census_closure_frontier_row_groups and this goes red.
+// The exit facts a refusal claim needs, read from the same two arms ProcessExit has.
+fn prepare_exit_code(exit: ProcessExit) -> Int {
+  match exit {
+    ExitSuccess => 0
+    ExitFailure { code, reason: _ } => code
+  }
+}
+
+fn prepare_exit_reason(exit: ProcessExit) -> String {
+  match exit {
+    ExitSuccess => ""
+    ExitFailure { code: _, reason } => reason
+  }
+}
+
+// THE PREPARE ENTRY IS GATED THE WAY REPLAY IS, AND BY THE SAME AUTHORITY. The wet claim proves a prepared
+// recording mints and replays in a real repository; this proves the refusal an operator gets elsewhere: on the live
+// instance the entry refuses with the typed reason and no mint happens, and an unknown instance refuses too. There
+// is no arm on which a live request for a prepared recording produces a ref -- a refusal, never a fallback (§5).
+// Mutation: route recording_prepare_cli through the lab regardless of instance (the live assertion goes red); fall
+// back to the vendor provider or to recording_capture when the gate refuses (both reason assertions go red).
+test fn the_prepare_entry_refuses_on_the_live_instance_and_never_mints_there() -> Bool {
+  let live = recording_prepare_cli(
+    instance_id: srv1_dashboard_live_id as String,
+    base_sha: base_a,
+    result_commit: tree_t,
+    exit_status: 0,
+  )
+  let unknown = recording_prepare_cli(
+    instance_id: "some-instance-that-is-not-declared",
+    base_sha: base_a,
+    result_commit: tree_t,
+    exit_status: 0,
+  )
+  prepare_exit_code(exit: live) != 0
+    && string_contains(s: prepare_exit_reason(exit: live), pattern: "prepared")
+    && string_contains(s: prepare_exit_reason(exit: live), pattern: srv1_dashboard_lab_id as String)
+    && !string_contains(s: prepare_exit_reason(exit: live), pattern: "recording capture refused")
+    && prepare_exit_code(exit: unknown) != 0
+    && string_contains(s: prepare_exit_reason(exit: unknown), pattern: "no declared dashboard instance")
+}
+
 test fn the_capture_frontier_is_enrolled_in_the_closure_census() -> Bool {
   // Two rows: the capture operation and the prepare operation, each with no production caller.
   count(dispatch_replay_recording_frontier_rows) == 2
