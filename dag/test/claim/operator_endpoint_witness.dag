@@ -7,7 +7,7 @@ import gunbc.harness.harness_operator_route { operator_pinned_certificate, opera
   operator_header_text, operator_route_standing, operator_class_admission,
   OperatorClassAdmitted, OperatorClassRefused,
   OperatorModelsReading, OperatorFrontUnanswered, OperatorFrontCertificateRefused, OperatorModelsRefused, OperatorModelsAnswered,
-  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCardUnanswered, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
+  operator_certificate_pin_decision, operator_round_fault, OperatorRoundFault, OperatorNoCapacity, OperatorCardUnanswered, OperatorUpstreamsBusy, OperatorCertificateNotPinned, OperatorCertificateNotVerifiedForHost,
   OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable,
   operator_custody_file_path, OperatorCredentialHandedByManager, OperatorCredentialInHome, OperatorCredentialUnlocated,
 }
@@ -296,6 +296,7 @@ test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_differe
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorNoCapacity } => false
     Present { value: OperatorCardUnanswered } => false
+    Present { value: OperatorUpstreamsBusy } => false
     Absent => false
   }) && !harness_post_is_retryable(posted: p)
 }
@@ -309,6 +310,7 @@ fn peer_exit_is_typed_not_pinned_and_never_retried(code: Int) -> Bool {
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Present { value: OperatorNoCapacity } => false
     Present { value: OperatorCardUnanswered } => false
+    Present { value: OperatorUpstreamsBusy } => false
     Absent => false
   }) && !harness_post_is_retryable(posted: p)
 }
@@ -334,6 +336,7 @@ test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> 
   (match p.fault {
     Present { value: OperatorNoCapacity } => true
     Present { value: OperatorCardUnanswered } => false
+    Present { value: OperatorUpstreamsBusy } => false
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
@@ -347,6 +350,19 @@ test fn a_502_from_the_front_is_typed_card_unanswered_and_held() -> Bool {
   let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 502 Bad Gateway\r\n", body: "{\"error\":{\"message\":\"the card did not answer: no answer in 600s\",\"type\":\"pool_front\"}}")
   (match p.fault {
     Present { value: OperatorCardUnanswered } => true
+    Present { value: OperatorUpstreamsBusy } => false
+    Present { value: OperatorNoCapacity } => false
+    Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
+    Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
+    Absent => false
+  }) && harness_post_is_retryable(posted: p)
+}
+
+test fn a_429_from_the_front_is_typed_upstreams_busy_and_held() -> Bool {
+  let p = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 429 Too Many Requests\r\n", body: "{\"error\":{\"type\":\"rate_limit_error\",\"message\":\"every compatible upstream is busy or unavailable\"}}")
+  (match p.fault {
+    Present { value: OperatorUpstreamsBusy } => true
+    Present { value: OperatorCardUnanswered } => false
     Present { value: OperatorNoCapacity } => false
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
@@ -368,6 +384,7 @@ test fn a_503_with_an_empty_body_carries_the_typed_no_capacity_fault() -> Bool {
   match p.fault {
     Present { value: OperatorNoCapacity } => true
     Present { value: OperatorCardUnanswered } => false
+    Present { value: OperatorUpstreamsBusy } => false
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false

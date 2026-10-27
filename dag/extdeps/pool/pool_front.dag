@@ -158,12 +158,15 @@ fn pool_front_fingerprint_from_openssl_text(stdout: String) -> String? {
 // nothing, so a 503 is a statement about CAPACITY and carries no model output; the request had no effect and
 // may be sent again. A 502 is the front's own "the card did not answer" (observed live 2026-10-26: type
 // pool_front, "no answer in 600s"): a card was chosen and returned nothing, so there is no model output either,
-// and a chat completion has no effect to duplicate. 401 is the key. Anything else the front says is its own and
+// and a chat completion has no effect to duplicate. A 429 is the front's rate_limit_error, "every compatible
+// upstream is busy or unavailable" (observed live 2026-10-27): a capacity statement like the 503, nothing was
+// served. 401 is the key. Anything else the front says is its own and
 // stays what it was.
 type PoolFrontStatusMeaning
   = PoolFrontAnswered
   | PoolFrontNoTlsCardServing
   | PoolFrontCardUnanswered
+  | PoolFrontUpstreamsBusy
   | PoolFrontKeyRejected
   | PoolFrontRefused { status: HttpStatus }
 
@@ -174,6 +177,8 @@ fn pool_front_status_meaning(status: HttpStatus) -> PoolFrontStatusMeaning {
     PoolFrontNoTlsCardServing
   } else if status == 502 {
     PoolFrontCardUnanswered
+  } else if status == 429 {
+    PoolFrontUpstreamsBusy
   } else if status == 401 {
     PoolFrontKeyRejected
   } else {

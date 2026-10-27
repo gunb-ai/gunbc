@@ -356,7 +356,7 @@ data session_capacity_wait_budget_seconds: Int = 86400
 fn session_cause_text_no_capacity(round: Int, held: Int, status: Int) -> String {
   join([
     "round ", to_string(value: round), ": the pool front answered ", to_string(value: status),
-    if status == 502 { " (the card did not answer)" } else { " (no TLS card serving)" },
+    if status == 502 { " (the card did not answer)" } else if status == 429 { " (every compatible upstream busy)" } else { " (no TLS card serving)" },
     " for ", to_string(value: held + 1), " attempts; no model output came back and the request had no effect",
   ], "")
 }
