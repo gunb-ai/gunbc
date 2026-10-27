@@ -9,7 +9,7 @@ import std.types { SourceSpan, is_kernel_type, is_container_type }
 import std.coercion { TypeDeclarationProvenance, DeclarationIdentityAbsent, KernelMinted, CorpusDeclared, TextRepresentation, HostText, CodePointSequence, NotText, TextRepresentationUnidentified }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { decl_ref, DeclarationRef, WholeDeclaration, declaration_ref_eq, declaration_ref_display_key }
 import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
@@ -2509,6 +2509,21 @@ fn kernel_settled_agree(left: Node, right: Node, source_indices: Map<String, New
         Absent => false
         Present { value: r } => l == r
       }
+  }
+}
+
+// THE DECLARATION A RESOLVED TYPE NODE CARRIES, then the reference read. A node resolve bound to a
+// declaration in ANOTHER module (a call's return type, imported there) names it on Node.declaration;
+// the by-name reads below consult the CURRENT module's index and spans, which that module may not
+// import (extdeps.units.iso8601_calendar never imports Nat).
+fn carried_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match n.declaration {
+    Present { value: d } =>
+      match d.field {
+        WholeDeclaration => Present { value: d }
+        _ => none
+      }
+    Absent => type_reference_declaration_ref(n: n, source_indices: source_indices, env: env)
   }
 }
 
