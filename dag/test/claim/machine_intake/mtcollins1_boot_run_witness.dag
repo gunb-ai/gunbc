@@ -39,7 +39,8 @@ import gunbc.host.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.machine_intake.mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake.ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_checkout_ref_expr, fleet_converge_event_sha_checkout_ref_expr, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
+import test.claim.fleet.fleet_converge_checkout_trust { fleet_converge_checkout_trust_holds }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_mtcollins1_boot_runner, fleet_converge_mtcollins1_boot_steps_around, fleet_converge_mtcollins1_boot_step, fleet_converge_mtcollins1_boot_job_if, fleet_converge_mtcollins1_boot_concurrency_group, fleet_converge_mtcollins1_boot_wif_provider_resource, fleet_converge_mtcollins1_boot_wif_service_account, fleet_converge_branch_run_grant_wait_if, fleet_converge_job_needs, fleet_converge_mode_job_id, fleet_converge_branch_run_grant_await_job_id, needs_result_is, MtCollins1Boot, fleet_converge_mtcollins1_boot_provider_resource, fleet_converge_mtcollins1_boot_service_account }
 import gunbc.fleet.fleet_workflow_steps { ci_fleet_key_agent_step }
 import extdeps.github.actions { Step, RunStep, UsesStep, RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner }
 import extdeps.github.expressions { serialize_expression }
@@ -730,14 +731,12 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
-// Re-contracted post-#14359: fleet_converge_checkout_ref widened to LogicalOr{needs.build.outputs.revision, github.sha}; the left arm is the gated plan-revision job's OUTPUT, never the raw dispatch input. The security conjuncts below (event-sha checkout + no expected_revision) are the wall; the old == github.sha literal here was #14359's stale contract, red on main (control run 7a9928584d).
+// The trusted-checkout conjuncts live once in test.claim.fleet.fleet_converge_checkout_trust; #14690's three per-file copies were consolidated there, the literal shared-job exclusion included.
 test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
-  fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
+  fleet_converge_checkout_trust_holds()
     && !string_contains(s: inputs, pattern: "expected_revision")
     && string_contains(s: inputs, pattern: "${{ github.sha }}")
-    && fleet_converge_checkout_ref_expr == "${{ needs.build.outputs.revision || github.sha }}"
-    && !string_contains(s: fleet_converge_checkout_ref_expr, pattern: "expected_revision")
 }
 
 fn runner_labels(r: RunnerSpec) -> List<String> {
