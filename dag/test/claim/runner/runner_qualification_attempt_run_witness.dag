@@ -15,7 +15,18 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingAnchorAbsent }
 import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved, ListenerNotLaunched }
-import gunbc.runner.runner_qualification_attempt_run { attempt_listener_run_of, qualification_attempt_label }
+import gunbc.runner.runner_qualification_attempt_run {
+  attempt_listener_run_of, qualification_attempt_label, qualification_attempt_verdict, AttemptQualified, AttemptNotQualified,
+}
+import gunbc.runner.runner_qualification_attempt_pass {
+  AttemptPassed, AttemptPinRefused, AttemptDispatchRefused, AttemptRan, AttemptNothingRegistered,
+}
+import gunbc.runner.runner_qualification_ref_pin {
+  qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, QualificationBranchRemoved, PinBranchCreateAmbiguous,
+}
+import gunbc.runner.runner_qualification_dispatch { DispatchTokenForAnotherInstallation, QualificationRunRefused, RunReadUnreadable }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.transports.rest { RestExchangeUnreached }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -91,5 +102,45 @@ test fn the_live_transport_to_mtcollins1_refuses_without_an_anchor_and_contacts_
   match anchored_host_transport_live(host: operator_host_mtcollins1, attempt_raw: "q-1") {
     AnchoredBindingAnchorAbsent { cause: c } => string_contains(s: c, pattern: "nothing contacted")
     _ => false
+  }
+}
+
+// THE STEP'S VERDICT IS THE ATTEMPT'S (review 86968). Cleanup that held does not make a refused, unclean or never-run
+// attempt green: each of these is NotQualified with its cause. The Qualified arm needs the sealed collected run, which
+// only the real collection mints, so its positive control is the live run's.
+fn removed_branch_pass(run_is_refused_dispatch: Bool) -> String {
+  match qualification_branch_name(attempt: "q-1" as NonEmptyStr) {
+    QualificationBranchNameRefused { attempt: _, cause: _ } => "no branch"
+    QualificationBranchNamed { name: n } =>
+      match qualification_attempt_verdict(pass: AttemptPassed {
+        run: if run_is_refused_dispatch {
+          AttemptDispatchRefused { refusal: DispatchTokenForAnotherInstallation }
+        } else {
+          AttemptRan {
+            listener: ListenerEndedUnclean { result: "exit-code" as NonEmptyStr },
+            collection: QualificationRunRefused { run_id: GitHubWorkflowRunId { value: 1 }, refusal: RunReadUnreadable { refusal: RestExchangeUnreached { cause: "x" } } },
+          }
+        },
+        retirement: AttemptNothingRegistered,
+        unpin: QualificationBranchRemoved { name: n, deleted: true },
+      }) {
+        AttemptQualified => "qualified"
+        AttemptNotQualified { cause: c } => c as String
+      }
+  }
+}
+
+test fn a_refused_dispatch_with_clean_cleanup_is_not_qualified() -> Bool {
+  removed_branch_pass(run_is_refused_dispatch: true) == "the floor dispatch was refused"
+}
+
+test fn an_unclean_listener_end_is_not_qualified_and_names_its_result() -> Bool {
+  removed_branch_pass(run_is_refused_dispatch: false) == "the attempt unit ended with result exit-code"
+}
+
+test fn a_refused_pin_is_not_qualified_even_with_nothing_to_remove() -> Bool {
+  match qualification_attempt_verdict(pass: AttemptPinRefused { attempt: "q-1" as NonEmptyStr, refusal: PinBranchCreateAmbiguous { detail: "lost" as NonEmptyStr }, unpin: none }) {
+    AttemptNotQualified { cause: c } => (c as String) == "the qualification ref pin was refused"
+    AttemptQualified => false
   }
 }

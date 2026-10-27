@@ -43,11 +43,12 @@ import gunbc.runner.runner_qualification_ref_pin {
   ensure_qualification_ref_pin, remove_qualification_ref_pin, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
   qualification_selected_workflow,
 }
-import gunbc.runner.runner_qualification_dispatch { qualification_dispatch_subject, dispatch_qualification_floor, collect_qualification_run }
+import gunbc.runner.runner_qualification_dispatch { qualification_dispatch_subject, dispatch_qualification_floor, collect_qualification_run, QualificationRunCollected, QualificationRunRefused }
+import extdeps.github.workflow_runs { Success }
 import gunbc.runner.runner_qualification_floor_job { qualification_floor_job_id, qualification_attempt_subject_env_name }
 import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerNotLaunched, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved }
 import gunbc.runner.runner_qualification_attempt_pass {
-  QualificationAttemptPass, qualification_attempt_pass_over, qualification_attempt_registration_and_branch_removed,
+  QualificationAttemptPass, QualificationAttemptRun, qualification_attempt_pass_over, qualification_attempt_registration_and_branch_removed,
   AttemptPinRefused, AttemptPassed, AttemptNotMinted, AttemptSubjectRefused, AttemptDispatchRefused, AttemptDispatchAmbiguous, AttemptRan,
   AttemptNothingRegistered, AttemptDeregistered, AttemptRegistrationRemains,
 }
@@ -142,6 +143,58 @@ fn qualification_attempt_receipt_lines(attempt: NonEmptyStr, host: HostIdentity,
   }
 }
 
+// THE STEP'S VERDICT IS THE ATTEMPT'S, NOT ITS CLEANUP'S (review 86968; DESIGN section 5). It succeeds only when the
+// floor ran on the attempt's runner, the listener ended clean, the run was collected with a successful conclusion,
+// AND the registration and the branch were both observed removed. Every other arm fails the step with its own cause,
+// so a refused, never-launched, unclean or unobserved attempt can never read green with the outcome left to a receipt.
+type QualificationAttemptVerdict
+  = AttemptQualified
+  | AttemptNotQualified { cause: NonEmptyStr }
+
+fn not_qualified(cause: String) -> QualificationAttemptVerdict {
+  AttemptNotQualified { cause: cause as NonEmptyStr }
+}
+
+fn qualification_attempt_run_verdict(run: QualificationAttemptRun) -> QualificationAttemptVerdict {
+  match run {
+    AttemptNotMinted => not_qualified(cause: "the JIT registration was not minted")
+    AttemptSubjectRefused { refusal: _ } => not_qualified(cause: "the qualification subject was refused, so nothing was dispatched")
+    AttemptDispatchRefused { refusal: _ } => not_qualified(cause: "the floor dispatch was refused")
+    AttemptDispatchAmbiguous { detail: d } => not_qualified(cause: concat("the floor dispatch's commit is ambiguous: ", d as String))
+    AttemptRan { listener: l, collection: c } =>
+      match l {
+        ListenerNotLaunched { cause: why } => not_qualified(cause: concat("the attempt unit did not launch: ", why as String))
+        ListenerEndedUnclean { result: r } => not_qualified(cause: concat("the attempt unit ended with result ", r as String))
+        ListenerOutcomeUnobserved { cause: why } => not_qualified(cause: concat("the attempt unit's end was not observed: ", why as String))
+        ListenerExited { exit_code: code } =>
+          if code != 0 {
+            not_qualified(cause: concat("the attempt unit exited with status ", to_string(code)))
+          } else {
+            match c {
+              QualificationRunRefused { run_id: _, refusal: _ } => not_qualified(cause: "the dispatched run could not be collected as this attempt's floor")
+              QualificationRunCollected { collected: run } =>
+                match run.conclusion {
+                  Success => AttemptQualified
+                  _ => not_qualified(cause: "the collected floor run did not conclude in success")
+                }
+            }
+          }
+      }
+  }
+}
+
+fn qualification_attempt_verdict(pass: QualificationAttemptPass) -> QualificationAttemptVerdict {
+  match pass {
+    AttemptPinRefused { attempt: _, refusal: _, unpin: _ } => not_qualified(cause: "the qualification ref pin was refused")
+    AttemptPassed { run: r, retirement: _, unpin: _ } =>
+      if !qualification_attempt_registration_and_branch_removed(pass: pass) {
+        not_qualified(cause: "the registration or the branch was not observed removed; see the receipt")
+      } else {
+        qualification_attempt_run_verdict(run: r)
+      }
+  }
+}
+
 fn write_qualification_attempt_receipt(lines: List<String>) -> ProcessExit {
   let kept = Filesystem.Write(path: qualification_attempt_receipt_path, content: concat(join(lines, "\n"), "\n"))
   if kept.success { ExitSuccess } else { exit_failure(reason: concat("qualification attempt: receipt write refused: ", kept.error)) }
@@ -181,7 +234,10 @@ fn qualification_attempt_bound(
     unpin: n => remove_qualification_ref_pin(token: token, name: n),
   )
   let wrote = write_qualification_attempt_receipt(lines: qualification_attempt_receipt_lines(attempt: attempt, host: host, pass: pass))
-  if qualification_attempt_registration_and_branch_removed(pass: pass) { wrote } else { exit_failure(reason: "qualification attempt: the registration or the branch was not observed removed; see the receipt") }
+  match qualification_attempt_verdict(pass: pass) {
+    AttemptQualified => wrote
+    AttemptNotQualified { cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
+  }
 }
 
 fn qualification_attempt_with_key(
