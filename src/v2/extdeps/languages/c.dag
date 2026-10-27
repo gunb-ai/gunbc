@@ -69,7 +69,7 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   Prepend,
   ProducedDeclSupport,
   ProducedDeclUnwired,
-  ProducedDeclWired,
+  ProducedDeclWired, UnusedTypeParamNotApplicable,
   ProducedDeclRenderRows,
   ProducedSignatureFixed,
   ProducedSignatureDeclName,
@@ -1366,7 +1366,8 @@ fn c_produced_decl_support() -> ProducedDeclSupport {
   ProducedDeclWired {
     render_rows: c_produced_decl_render_rows,
     scaffold_relation_rule_name: ^c_relation_rule_fn_add,
-    scaffold_base_row: c_grammar_relation_row_node(row: c_grammar_relation_row())
+    scaffold_base_row: c_grammar_relation_row_node(row: c_grammar_relation_row()),
+    unused_type_param: UnusedTypeParamNotApplicable
   }
 }
 
