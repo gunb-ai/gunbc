@@ -50,7 +50,7 @@ data wla_algebra_peer: String = "module std.algebra\n\ntype AbelianGroup<A>\n\nt
 
 // The two carrier declarations are std.integer's own (dag/std/integer.dag: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
 // `type UInt = Nat`), and the widths are written over them exactly as it writes them.
-data wla_int_peer: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\n\ntype UInt = Nat\n\ntype UInt8 = Compose<UInt, MachineWidth<8>>\n\ntype Int8 = Compose<Int, MachineWidth<8>>\n"
+data wla_int_peer: String = "module std.integer\n\nimport std.nat { Nat }\nimport std.algebra { AbelianGroup, GroupCompletion }\nimport std.machine_constraints { Compose, MachineWidth }\n\ntype Int = AbelianGroup<GroupCompletion<Nat>>\n\ntype UInt = Nat\n\ntype UInt8 = Compose<UInt, MachineWidth<8>>\n\ntype Int8 = Compose<Int, MachineWidth<8>>\n\ntype UInt16 = Compose<UInt, MachineWidth<16>>\n"
 
 fn wla_source(src: String, artifact: Artifact, cu: Symbol) -> DagSourceReadWitness {
   DagSourceReadWitness { source: Medium { carried: src, fidelity: Lossless }, artifact: artifact, compilation_unit: cu, source_root: V2Tree }
@@ -160,6 +160,41 @@ test fn wla_int8_128_refuses() -> Bool {
 
 test fn wla_int8_minus_129_refuses() -> Bool {
   wla_reason_of(type_name: "Int8", literal: "-129") == ^infer_reason_literal_outside_machine_width
+}
+
+// WIDTH CROSSINGS at a width-typed formal, under gunbc.design_ruling coercion_is_the_implicit_safe_subset
+// (DESIGN §4: an implicit route must be total, exact, semantics-preserving, unique, pure and consent-free).
+// A widening literal (an in-range value of the narrower signedness carried into a wider width) is total,
+// exact and unique, so it is accepted implicitly. A narrowing or sign-changing literal can lose information
+// — it is not exact — so it refuses implicit coercion with the width's own typed, located reason; a named
+// conversion route is the way across that boundary (v2.compiler.convert covers width change).
+// The shape matches the fixture's other claims: a literal as the argument of a call whose formal is the
+// named width type, peers identical, so any refusal is the crossing's and not a slip of the fixture.
+
+// CONTROL: 127, in range of both UInt8 and Int16, is accepted implicitly at the wider UInt16 formal —
+// a same-signedness widening is total and exact, so no declared route is required at the call.
+fn wla_widen_src(literal: String) -> String {
+  concat(concat("module p\n\nimport std.integer { UInt8, Int8, UInt16 }\n\nfn w(n: UInt16) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  w(n: ", literal), ")\n}\n")
+}
+
+test fn wla_uint16_127_widens_implicitly() -> Bool {
+  wla_reason(src: wla_widen_src(literal: "127")) == ^accepted
+}
+
+// CONTROL FOR THE RED: the same 1000 is accepted at the UInt16 formal it fits — the refusal below is the
+// crossing's, not the literal's.
+test fn wla_uint16_1000_is_admitted() -> Bool {
+  wla_reason(src: wla_widen_src(literal: "1000")) == ^accepted
+}
+
+// RED: 1000, in range of UInt16 but outside UInt8, at a UInt8 formal refuses implicit coercion with the
+// width's own reason — the narrowing is not exact, so the boundary admits only a named conversion route.
+fn wla_narrow_src(literal: String) -> String {
+  concat(concat("module p\n\nimport std.integer { UInt8, Int8 }\n\nfn n(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  n(n: ", literal), ")\n}\n")
+}
+
+test fn wla_uint8_1000_narrowing_refuses() -> Bool {
+  wla_reason(src: wla_narrow_src(literal: "1000")) == ^infer_reason_literal_outside_machine_width
 }
 
 // SUPPLIED INPUTS: the expected type is built as the node infer normalizes to, Compose<carrier, MachineWidth<bits>>,
