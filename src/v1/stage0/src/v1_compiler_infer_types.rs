@@ -1233,10 +1233,13 @@ pub fn algebra_child_or_placeholder(
                 ty: child_type_node(child.clone()),
                 diagnostics: evidence_diags.clone(),
             }),
-            std::option::Option::None => Rc::new(KernelTypeBuild {
-                ty: type_variable_node(placeholder),
-                diagnostics: evidence_diags.clone(),
-            }),
+            std::option::Option::None => {
+                eprintln!("DIAGMINT placeholder={:?} base_name={} base_conn={:?} base_nc={} base_inferred={}", placeholder.clone(), base.name.clone(), base.connective, base.children.len(), base.inferred.clone().map(|i| { let t = format!("{:?}", (*i).clone()); t.chars().take(60).collect::<String>() }).unwrap_or("None".to_string()));
+                Rc::new(KernelTypeBuild {
+                    ty: type_variable_node(placeholder),
+                    diagnostics: evidence_diags.clone(),
+                })
+            }
         }
     }
 }
@@ -1548,6 +1551,7 @@ pub fn unify_template(
                 {
                     subst.clone()
                 } else {
+                    eprintln!("DIAGELEM bind __element__ = {} inf={} occ={}", diag_label(concrete.clone(), source_indices.clone()), concrete.inferred.clone().map(|i| { let t = format!("{:?}", (*i).clone()); t.chars().take(55).collect::<String>() }).unwrap_or("None".to_string()), format!("{:?}", concrete.occurrence_identity.clone()).chars().take(60).collect::<String>());
                     v1_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
                 }
             }
@@ -1755,10 +1759,13 @@ pub fn apply_type_substitution(
                         ty: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    std::option::Option::None => Rc::new(KernelTypeBuild {
-                        ty: type_variable_node(var_id.clone()),
-                        diagnostics: Rc::new(vec![]),
-                    }),
+                    std::option::Option::None => {
+                        eprintln!("DIAGMINT2 var={:?}", var_id.clone());
+                        Rc::new(KernelTypeBuild {
+                            ty: type_variable_node(var_id.clone()),
+                            diagnostics: Rc::new(vec![]),
+                        })
+                    }
                 }
             }
             AlgebraTypeTemplate::ReceiverSelf => {
