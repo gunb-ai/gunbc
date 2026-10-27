@@ -430,6 +430,7 @@ type RosterLabelEdit {
 
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
+    RosterHeadRow { call: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead },
     RosterHeadRow { call: "concat", import_name: "collection_concat_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     RosterHeadRow { call: "count", import_name: "collection_count_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     RosterHeadRow { call: "map", import_name: "collection_map_shape", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
