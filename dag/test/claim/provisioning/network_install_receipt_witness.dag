@@ -5,6 +5,7 @@ import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.optional { Absent, Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ietf.http_semantics { http_not_found }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.toolchain.types { X86_64 }
@@ -258,7 +259,7 @@ test fn a_seed_answered_404_was_not_served() -> Bool {
   let fetches = filter(all_fetches(), f => match f {
     TftpDelivered { client: _, served_path: _ } => true
     HttpServed { path: _, status: _ } => false
-  }) + [HttpServed { path: seed_path, status: 404 }]
+  }) + [HttpServed { path: seed_path, status: http_not_found() }]
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: fetches, host: installed_host(secure_boot: SecureBootEnabled)))
     == [SeedNotServed { path: seed_path }]
 }

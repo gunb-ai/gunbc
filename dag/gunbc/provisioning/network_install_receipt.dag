@@ -1,6 +1,7 @@
 module gunbc.provisioning.network_install_receipt
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
+import extdeps.ietf.http_semantics { http_status_is_success }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import std.decl_ref { decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -61,10 +62,11 @@ type InstallClientClassReading
 // it cannot join is not a delivery to this client, never one assumed. An HTTP response names only its path, because the seed server authenticates
 // no client and the seed is public (gunbc.fleet.site_pxe_edge_converge, the install surface): the MAC in a
 // seed's path routes it, so the receipt reads the seed fetch as "this MAC's seed was served", never as
-// "this client fetched it". The host-side reading is what ties the install to the client.
+// "this client fetched it". Served means a success-class status under RFC 9110 (extdeps.ietf.http_semantics). The
+// host-side reading is what ties the install to the client.
 type InstallFetchReading
   = TftpDelivered { client: Eui48Address, served_path: NonEmptyStr }
-  | HttpServed { path: NonEmptyStr, status: Int }
+  | HttpServed { path: NonEmptyStr, status: HttpStatus }
 
 // The installed host's root filesystem as the host reports it: the mount source and the filesystem's own
 // creation time (ext4 records it in its superblock). Unread when the host did not answer or the filesystem
@@ -204,7 +206,7 @@ fn network_install_delivered(subject: NetworkInstallSubject, fetches: List<Insta
 fn network_install_seed_served(fetches: List<InstallFetchReading>, path: NonEmptyStr) -> Bool {
   any(fetches, f => match f {
     TftpDelivered { client: _, served_path: _ } => false
-    HttpServed { path: p, status: s } => p == path && s == 200
+    HttpServed { path: p, status: s } => p == path && http_status_is_success(status: s)
   })
 }
 
