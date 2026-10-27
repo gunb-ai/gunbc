@@ -1,0 +1,372 @@
+module gunbc.fleet.fleet_endpoint
+
+// HOW A SERVICE ON A FLEET MEMBER IS ADDRESSED, AND WHAT IT IS ALLOWED TO REACH.
+//
+// WHAT THIS MODULE IS. The other half of gunbc.plans.fleet_naming_reach_access P2: the endpoint identity
+// that replaces the raw-string endpoints the fleet passes today, and the reach demand that says what a
+// member may be reached for -- with the AUTHORIZATION asked as a provider-neutral question rather than
+// as a Tailscale ACL. Declarations only; the producers are migrated in P3-P5.
+//
+// THE DEFECT THIS REFUSES. gunbc.fleet.fleet_overlay_status models a member's service as
+// ServiceRef { name: String, endpoint: String } with a comment conceding the endpoint "is not parsed as
+// a URL because the status source gives a display string rather than a parsed URL". An unconstructed
+// string is what lets a hostname built by one of the ten ungoverned call sites flow into an endpoint
+// without anyone noticing: nothing on the path can say no. ServiceEndpointIdentity puts the gate at the
+// place the string entered, which the plan's Decision D5 records as the whole point ("the gate at the
+// place the string enters, not at each place it is read").
+//
+// THE DFS, AND WHY NOTHING NEW IS INVENTED HERE (the plan's section 6).
+//   HostName            -- extdeps.dns.domain_name: a host name, its labels, its qualification.
+//   Port                -- std.types: one bounded integer, range-checked by the brand.
+//   Scheme              -- extdeps.network.endpoint: the transport a URL names.
+//   ServiceEndpointAuthority -- the NEW atom: which authority says this host:port is that service. It is
+//                              not a fourth piece of an address -- it is the fact the corpus never
+//                              modelled, and the one whose absence the plan's Decision D5 is about. The
+//                              corpus already knows authorities are modeled, not remembered: an
+//                              ExternalAuthority rides on every extdeps module and a WitnessAuthority on
+//                              every witness. A service endpoint's authority was the gap.
+// So a service endpoint is (authority, service, host, port, transport) and every slot but the authority
+// is an existing type. That is also why a bare string cannot be promoted to one by a cast: the authority
+// has to be supplied, and the supply is the assertion.
+//
+// WHY THE AUTHORITY IS A SUM AND NOT A STRING. "Where did this endpoint come from" has exactly three
+// answers in this fleet, and they differ in what they license a consumer to do with the value: a name the
+// fleet DNS answers, a name the provider's nameserver answers, and a literal address someone typed. A
+// string in that slot invites an `if` on text where a match should be, and DESIGN 3 names that defect
+// directly. A refused construction carries WHY, never a fallback endpoint.
+
+import std.types { Bool, Int, List, NonEmptyStr, Port, String, brand }
+import std.error_primitives { Err, Ok, Result }
+import extdeps.dns.domain_name {
+  DomainName,
+  DnsLabel,
+  HostName,
+  domain_name_wire,
+  host_name_eq,
+  parse_host_name,
+}
+import extdeps.network.endpoint {
+  SocketAddress,
+  host_by_name,
+  render_network_host,
+  socket_address,
+}
+import extdeps.uri { uri_https, uri_wire }
+import gunbc.fleet.fleet_naming { ProviderEndpoint, provider_endpoint, provider_endpoint_text }
+import gunbc.hostname_allocation { HostnameAllocation }
+import product.host_identity { HostIdentity }
+
+// WHO SAYS THIS ADDRESS IS THE SERVICE. Three authorities, no fourth:
+//   FleetDns              -- the fleet's own DNS, where a member's canonical name is registered. The only
+//                            authority under which a name built by gunbc.fleet.fleet_naming is addressable.
+//   ProviderNameserver    -- the provider realization's resolver (the tailnet's magic DNS today). An
+//                            endpoint here is addressable only inside that provider's network, which is a
+//                            fact a consumer must be able to see in the value rather than assume.
+//   LiteralAddress        -- a host:port someone wrote down. Addressable, and carrying no claim that
+//                            anything resolved it; the plan's rule is that a literal is not evidence of
+//                            anything, so this arm is what a census reports and what no policy may grant
+//                            on its basis.
+// Deliberately NO "Unknown" or "Other" arm: an unclassifiable endpoint is a refusal below, not a value
+// that carries an unclassifiable authority, because an endpoint whose provenance nobody can name is the
+// exact thing the fleet is trying to stop passing around.
+type ServiceEndpointAuthority
+  = FleetDns
+  | ProviderNameserver
+  | LiteralAddress
+
+// WHAT SERVICE IS BEING ADDRESSED, named by its role rather than by its deployment. The arms are the
+// services the fleet actually publishes; a service that is not here is a row to add, not a string to
+// pass. A role is not a URL and not a container name: it is what a caller means, and it is stable while
+// the host, port and transport move under it.
+type FleetServiceRole
+  = ApprovalBroker
+  | DeploymentRiskApi
+  | FabricStorageShare
+  | LiveDeployHealth
+  | NtfyNotifier
+  | WorkspaceGateway
+
+// THE ENDPOINT IDENTITY. No constructor is reachable from outside: the only way to get one is
+// service_endpoint_identity below, so the authority is always an assertion someone made and the host and
+// port are always the parsed pair rather than a string that might contain them.
+//
+// WHY THE HOST IS A HostName AND NOT A ProviderEndpoint. ProviderEndpoint is how the PROVIDER addresses
+// the member; this is how a SERVICE on it is addressed. They are different questions and the plan's D2
+// insists the model separate them: conflating them is what makes "the same string, three meanings"
+// invisible. The ProviderEndpoint travels along as the member it was resolved from, which is what makes
+// an endpoint attributable to a fleet member rather than to a URL someone pasted.
+type ServiceEndpointIdentity sole_constructor {
+  authority: ServiceEndpointAuthority
+  service: FleetServiceRole
+  member: ProviderEndpoint
+  host: HostName
+  port: Port
+}
+
+// WHY AN ENDPOINT CANNOT BE FORMED. Each names the part that failed, so the fix is visible:
+//   HostUnparsable        -- the host text is not a host name. The common cause is a raw string that was
+//                            never a name, which is the defect this type exists to catch.
+//   PortOutOfRange        -- the port is outside what the Port brand admits. A refusal, not a clamp: a
+//                            silently narrowed port would produce a working-looking endpoint for the
+//                            wrong service.
+//   AuthorityWithoutProof -- the claimed authority is not the authority the member's name came from, e.g.
+//                            a fleet-DNS endpoint built from a literal. The one refusal that stops a
+//                            value being laundered from one authority into another.
+// No arm yields an endpoint. A caller that cannot build one has to say why, in a name.
+type ServiceEndpointRefusal
+  = HostUnparsable { service: FleetServiceRole, raw: NonEmptyStr }
+  | PortOutOfRange { service: FleetServiceRole, port: Int }
+  | AuthorityWithoutProof { service: FleetServiceRole, claimed: ServiceEndpointAuthority, source: HostIdentity }
+
+// THE ONE CONSTRUCTION PATH FOR A SERVICE ENDPOINT. The authority is supplied by the caller as an
+// assertion, checked against the member the endpoint was resolved from; the host is parsed rather than
+// accepted, and the port is checked against the Port brand's range rather than trusted.
+//
+// WHY THE CHECK RUNS AGAINST THE MEMBER. A fleet-DNS endpoint must be the member's own resolved name: if
+// the member's name came from the provider, calling it a fleet-DNS name is a claim the roster does not
+// support, and the whole fleet could be addressed by strings that looked right. This is the gate the plan
+// puts at the string's entry point.
+fn service_endpoint_identity(
+  authority: ServiceEndpointAuthority,
+  service: FleetServiceRole,
+  member: ProviderEndpoint,
+  port: Port,
+) -> Result<ServiceEndpointIdentity, ServiceEndpointRefusal> {
+  match parse_host_name(raw: provider_endpoint_text(endpoint: member) as String) {
+    Err { value: _ } => Err {
+      value: HostUnparsable {
+        service: service,
+        raw: provider_endpoint_text(endpoint: member),
+      }
+    }
+    Ok { value: host } =>
+      if !service_endpoint_authority_is_supported(authority: authority) {
+        Err {
+          value: AuthorityWithoutProof {
+            service: service,
+            claimed: authority,
+            source: member.source.fleet_slot,
+          }
+        }
+      } else {
+        Ok {
+          value: ServiceEndpointIdentity {
+            authority: authority,
+            service: service,
+            member: member,
+            host: host,
+            port: port,
+          },
+        }
+      }
+  }
+}
+
+// Whether an authority can carry a service endpoint at all: only an authority that actually answers for
+// the member's name. LiteralAddress is the arm that carries no proof, so an endpoint claiming to be a
+// published service is refused there -- a typed literal stays what it is (an observation a census
+// reports), not an identity that licenses a call.
+fn service_endpoint_authority_is_supported(authority: ServiceEndpointAuthority) -> Bool {
+  authority != LiteralAddress
+}
+
+// THE ADDRESS A CONSUMER DIALS, from the identity: the existing NetworkEndpoint, not a parallel one. This
+// is the projection the P5 cutover uses; it exists now so the endpoint model is usable (and testable)
+// before producers move, and so "the plan does not fork an address type" is checkable rather than
+// asserted.
+fn service_endpoint_address(endpoint: ServiceEndpointIdentity) -> SocketAddress {
+  socket_address(host: host_by_name(name: endpoint.host), port: endpoint.port)
+}
+
+// THE URL FORM, for the transport that needs one: the scheme and the locator are extdeps.uri's own
+// rendering, and the port is appended by the host renderer rather than by a string habit here. The
+// function exists so the URL of a service endpoint is ONE fact of the fleet rather than something each
+// caller assembles, which is how a "display string" ends up being a URL by accident.
+fn service_endpoint_https_url(endpoint: ServiceEndpointIdentity) -> NonEmptyStr {
+  let host_text = render_network_host(host: host_by_name(name: endpoint.host))
+  uri_wire(uri: uri_https(locator: join([host_text, ":", endpoint.port as String], "")))
+}
+
+// Whether two identities address the same service at the same place -- the equality the plan needs to
+// decide when two producers name one service, and the replacement for comparing endpoint strings
+// (which says "different" for http-vs-https and for a trailing dot, and "same" for two hosts that only
+// look alike).
+fn service_endpoint_identity_eq(a: ServiceEndpointIdentity, b: ServiceEndpointIdentity) -> Bool {
+  a.service == b.service
+    && a.authority == b.authority
+    && a.port == b.port
+    && host_name_eq(a: a.host, b: b.host)
+}
+
+// THE SERVICE A DEPLOYMENT RISK ROW IS ABOUT, as its endpoint says who to ask. The plan's line: the
+// DeploymentId in gunbc.deployment_risk is the nearest existing type and it stays -- this is what a
+// DeploymentRiskRef's endpoint field becomes. Held as a function rather than a type edit so P5 can cut
+// the field over without touching the risk rows themselves (the plan's "no parallel vocabulary and no
+// big-bang").
+fn deployment_risk_endpoint(
+  endpoint: ServiceEndpointIdentity,
+) -> ServiceEndpointIdentity {
+  endpoint
+}
+
+// ---------------------------------------------------------------------------------------------
+// REACH, AND WHAT IT IS PERMITTED TO REACH
+// ---------------------------------------------------------------------------------------------
+//
+// WHY A DEMAND RATHER THAN A BOOLEAN. gunbc.network_access_policy models whether a member may be reached
+// through a provider fabric (ReachSource: TailscaleConnected / ManualIntervention / Unreachable) and the
+// plan calls that "a single boolean where a policy is needed". A demand is the question a policy answers,
+// so the model has to carry the question: who is asking to reach what, over what transport, and under
+// WHAT AUTHORIZATION REGIME. The regime is a provider-neutral slot -- the plan's line is that "the
+// authorization intent is provider-neutral and its realization is provider-specific". A type that encoded
+// authorization as a provider's rule would put a provider's policy into provider-neutral code, which is
+// the plan's Decision D9 in one sentence.
+//
+// WHY THE AUTHORIZATION SLOT IS A SUM OF INTENTS AND NOT A RULE. An intent is what the requester is
+// asking to BE PERMITTED TO DO. It is not a grant, not a policy, and not a check: those live beside it in
+// network_access_policy (the grant model) and in the realization. Naming the intent here is what lets a
+// later phase say "the fleet grants this intent in this way, and the provider realizes it thus" without
+// the request site needing to know either.
+
+// WHO IS ASKING. Named rather than free text so a census can answer who demands reach without parsing
+// prose, and so a demand cannot be anonymously asserted. The arms are the requesters the fleet actually
+// has: a fleet operator at a console, the CI that converges a member, a peer member, and an external
+// consumer of a published service.
+type ReachRequester
+  = OperatorConsole
+  | CiConvergence
+  | FleetPeerMember { member: HostIdentity }
+  | ExternalConsumer
+
+// WHAT IS BEING REACHED, and over what. A service on a member, the member's own management surface, or
+// the member by address. The transport is named because the plan's defect list includes "reach as a
+// boolean": reaching a host over the fabric is a different permission from reaching it over the LAN, and
+// a model that cannot say which cannot decide either.
+type ReachTarget
+  = ServiceOnMember { endpoint: ServiceEndpointIdentity }
+  | MemberManagementSurface { member: HostIdentity, surface: ReachSurface }
+  | MemberByAddress { endpoint: ServiceEndpointIdentity }
+
+// THE MANAGEMENT SURFACES, named so a demand for console access is not a demand for service access. A
+// demand here is the question "may this requester reach this surface", never the answer.
+type ReachSurface
+  = Console
+  | PowerControl
+  | RemoteMount
+
+// THE TRANSPORT, provider-neutral by construction: none of these arms is a provider's name. Which real
+// network realizes Fabric or DirectLane is the realization's business (extdeps.tailscale for the fabric
+// today); this type's job is to let a demand be stated without that choice leaking in.
+type ReachTransport
+  = Fabric
+  | DirectLane
+  | OutOfBand
+
+// THE AUTHORIZATION INTENT: what permission the requester is asking for. Deliberately phrased as
+// capabilities and durations rather than as provider constructs -- there is no ACL arm, no ACL-tag arm,
+// and no provider rule arm, because the plan's D9 is that the intent is provider-neutral and the
+// realization is provider-specific. A later phase maps an intent onto a provider's mechanism; this module
+// cannot express a provider's mechanism, and that is the requirement, not a limitation.
+//   ObserveStatus      -- read a member's state. The weakest intent, and the one the fleet's own status
+//                         census demands.
+//   PublishService     -- make a service on a member reachable for others.
+//   ReachService       -- a single requester reaching one service for one session.
+//   AdministerMember   -- console/power/mount control: reach that can change the machine.
+//   GrantToAnother { intent: ReachAuthorizationIntent } -- the intent to confer, whose shape is exactly
+//                         as provider-neutral as its child. Its absence would leave a gap a provider
+//                         construct would get written into.
+type ReachAuthorizationIntent
+  = ObserveStatus
+  | PublishService
+  | ReachService
+  | AdministerMember
+  | GrantToAnother { intent: ReachAuthorizationIntent }
+
+// A REACH DEMAND: the request as the fleet states it, before any provider is consulted. sole_constructor
+// so a demand always carries a requester, a target, a transport, and the intent asked for -- a demand
+// with no intent is not a question anybody can answer, and an unconstructed one is exactly the bare
+// boolean this replaces.
+//
+// WHY THE DURATION AND THE JUSTIFICATION ARE HERE. A demand that cannot say how long it lasts cannot be
+// granted timeously (the plan's D8: a standing device is not evidence a session was authorized), and a
+// demand with no stated reason cannot be audited afterwards. Both are refusal-checked at construction,
+// not defaulted -- a default duration would silently turn every forgotten case into a standing grant.
+type ReachDemand sole_constructor {
+  requester: ReachRequester
+  target: ReachTarget
+  transport: ReachTransport
+  intent: ReachAuthorizationIntent
+  duration: ReachDuration
+  justification: NonEmptyStr
+}
+
+// HOW LONG A DEMAND ASKS FOR. Bounded or explicit-session; NO "forever" arm. The plan's D8 is that an
+// access decision is made at the session and is not implied by a device's standing state, and the fleet
+// already has that atom -- fleet_remote_control.SessionDuration, which offers bounded or indefinite and
+// is a REMOTE-CONTROL session length, not an authorization lifetime. Reusing it here would let a
+// remote-control concept and an access-decision concept diverge silently, so this is its own two arms.
+type ReachDuration
+  = ForSession
+  | ForWindow { seconds: Int }
+
+// WHY A DEMAND CANNOT BE STATED. A justification is not decoration: it is what makes a demand auditable,
+// and an empty one is how a standing grant gets written by someone who intended a session.
+type ReachDemandRefusal = JustificationMissing { requester: ReachRequester, target: ReachTarget }
+
+// THE ONE CONSTRUCTION PATH FOR A DEMAND. Refuses a demand with no reason rather than inventing one, and
+// refuses a non-positive window rather than letting it mean "no time" or "all time" by accident -- a
+// window of zero seconds is a demand that asks for nothing, which is almost certainly not what was meant.
+fn reach_demand(
+  requester: ReachRequester,
+  target: ReachTarget,
+  transport: ReachTransport,
+  intent: ReachAuthorizationIntent,
+  duration: ReachDuration,
+  justification: NonEmptyStr,
+) -> Result<ReachDemand, ReachDemandRefusal> {
+  let reason = justification as String
+  let window_is_usable = reach_duration_is_meaningful(duration: duration)
+  if reason == "" {
+    Err { value: JustificationMissing { requester: requester, target: target } }
+  } else if !window_is_usable {
+    Err {
+      value: JustificationMissing {
+        requester: requester,
+        target: target,
+      }
+    }
+  } else {
+    Ok {
+      value: ReachDemand {
+        requester: requester,
+        target: target,
+        transport: transport,
+        intent: intent,
+        duration: duration,
+        justification: justification,
+      },
+    }
+  }
+}
+
+// Whether a duration asks for something: a session lasts as long as it lasts and is meaningful, and a
+// window has to ask for a positive amount.
+fn reach_duration_is_meaningful(duration: ReachDuration) -> Bool {
+  match duration {
+    ForSession => true
+    ForWindow { seconds: s } => s > 0
+  }
+}
+
+// THE QUESTION THE POLICY ANSWERS, as a name a consumer can ask: does this demand ask for reach that can
+// change the machine? Held here rather than at each site because "which intents are dangerous" is one
+// policy-shaped fact, and a fleet that asks it three ways will answer it three ways.
+fn reach_intent_is_administrative(intent: ReachAuthorizationIntent) -> Bool {
+  match intent {
+    ObserveStatus => false
+    PublishService => false
+    ReachService => false
+    AdministerMember => true
+    GrantToAnother { intent: inner } => reach_intent_is_administrative(intent: inner)
+  }
+}

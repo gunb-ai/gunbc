@@ -1,0 +1,346 @@
+module gunbc.fleet.owned_host_incarnation
+
+// WHAT IT IS FOR A PHYSICAL MACHINE TO BECOME ONE OF OURS, AND WHAT ENDS THE PREVIOUS ONE.
+//
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2 for the second axis the
+// plan says the model lacks: "no owned-machine incarnation (a physical machine's life as an owned asset,
+// distinct from a hostname or a device record)". Declarations only -- no producer is migrated (P3-P5).
+//
+// WHY IT EXTENDS gunbc.machine_intake.prior_life_boundary INSTEAD OF MINTING BESIDE IT. That module is
+// where the fleet already answers "what was this machine before, and what happened to that record": it
+// holds the eight prior-life carriers, the content-addressed archive, the independent readback, and the
+// sealed receipt that says a boundary was established (PriorLifeBoundaryEstablished). An incarnation model
+// that minted its own notion of "the previous life ended" beside that would give the fleet two answers to
+// the one question the boundary exists to answer -- DESIGN 3's ungrounded duplicate, in the exact place
+// where a duplicate is most expensive, because a machine whose prior life was never bounded can come back
+// as a "new" member carrying an old machine's identity. So the fields below are READ from the boundary's
+// receipt and no field here means what a field there already means (the plan's wording: "the fields are
+// read, not re-thought").
+//
+// THE FACT THAT WAS MISSING. The boundary establishes that a prior life was archived; it does not, and
+// deliberately does not, say anything about the life that BEGINs afterwards -- its receipt is scoped to the
+// intake subject, not to an owned asset with an allocation. OwnedHostIncarnation is the successor the
+// boundary leaves open: a machine's life as an owned host, which starts only when the boundary is
+// established, carries the allocation that names it, and ends when the machine leaves ownership. Naming
+// that gap and filling it is why this is an extension rather than a new file about machines.
+//
+// WHY AN INCARNATION IS NOT A HOSTNAME AND NOT A DEVICE RECORD. A hostname outlives no one: it is a label
+// the roster allocates and can be re-allocated, so a hostname cannot tell you whether the machine answering
+// to it is the machine that was provisioned. A provider device record is the provider's view of an
+// endpoint, and a machine can lose and regain one (the plan's defect list: "a machine that returns is
+// treated as the same machine it was before it vanished"). An incarnation is neither: it is THIS spell of
+// this machine's ownership, and a boundary receipt is what makes it start.
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, brand }
+import std.error_primitives { Err, Ok, Result }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, content_hash_equal }
+import std.optional { Absent, Optional, Present }
+import gunbc.fleet.convergence_fold { StepInstanceKey, step_instance_key_eq }
+import gunbc.machine_intake.subject { MachineIntakeSubject }
+import gunbc.machine_intake.prior_life_boundary {
+  PriorLifeApplication,
+  prior_life_archive_digest,
+  PriorLifeArchive,
+  PriorLifeBoundaryArm,
+  PriorLifeBoundaryEstablished,
+  prior_life_receipt_application,
+  prior_life_receipt_archive,
+  prior_life_receipt_boundary,
+  prior_life_receipt_consumed_identity,
+  prior_life_receipt_key,
+  prior_life_receipt_realization,
+}
+import gunbc.hostname_allocation { HostnameAllocation, allocated_canonical_hostname }
+import gunbc.fleet.fleet_naming { FleetMemberLabel, fleet_member_label }
+import product.host_identity { HostIdentity }
+
+// THE INCARNATION'S IDENTITY. Distinct from a HostIdentity (which is a slot that persists across machines
+// -- the whole point of that type is that it survives a swap) and from a DnsLabel (which is a label the
+// roster can hand to a different machine). An incarnation id is minted per spell of ownership, so two
+// machines never share one and one machine never has two.
+type OwnedHostIncarnationId = NonEmptyStr where brand("OwnedHostIncarnationId")
+
+// WHO OWNS IT, in the sense the plan means by "owned" -- an asset of the fleet rather than a rented or
+// colo-owned box. The distinction matters because an owned machine's history is OURS to archive; a rented
+// machine's is a provider's, and an incarnation that claimed continuity across a tenancy would be
+// claiming a history nobody read.
+type IncarnationOwnership
+  = FleetOwnedAsset { asset_tag: NonEmptyStr }
+  | SupplierHeld { supplier: NonEmptyStr, tenancy: NonEmptyStr }
+
+// HOW THIS INCARNATION CAME TO BE. Named rather than implied because "the machine is here" is not an
+// origin: a machine that arrived through intake, a machine that came back from a repair, and a machine
+// that was rebuilt in place begin their lives differently and inherit different obligations.
+//
+// The boundary-carrying arms are the point: an incarnation BEGINS at an established prior-life boundary,
+// so the origin names the receipt that did it. FleetIntakeAdmitted carries the receipt as an Optional:
+// P2 is model-only, so no producer feeds a live receipt into a fleet incarnation yet, and the absence has
+// to be expressible -- and refused -- rather than unrepresentable. The other two origins do not
+// carry one because they do not need one, and the refusal below distinguishes the two cases rather than
+// letting them blur.
+type IncarnationOrigin
+  = FleetIntakeAdmitted { receipt: Optional<PriorLifeBoundaryEstablished> }
+  | PreexistingFleetMember
+  | RebuildInPlace { prior: OwnedHostIncarnationId }
+
+// HOW THE INCARNATION ENDED, or has not. Named because the end is what the next incarnation's boundary
+// has to answer to: a machine that left the fleet and a machine that was decommissioned are different
+// histories for whatever comes next, and "it went away" is the phrasing that lets a vanished machine
+// return as itself.
+type IncarnationTermination
+  = Ongoing
+  | ReturnedToSupplier { at: EpochMs }
+  | Decommissioned { at: EpochMs, archive: ContentHash }
+  | ReassignedToAnotherIncarnation { successor: OwnedHostIncarnationId }
+
+// THE INCARNATION, SEALED. No constructor is reachable from outside: the only way to hold one is
+// own_host_incarnation below, which is where the boundary requirement is enforced.
+//
+// WHY EACH FIELD IS HERE AND NOT ANOTHER'S. `boundary` is the archived prior life, read from the receipt
+// rather than re-derived; `consumed` is the identity instance whose life ENDED (the plan's defect: the
+// fleet models a member's birth and death but not the machine's), and it is kept because a successor that
+// does not name what it succeeded is a discontinuity described as a continuation. The allocation and the
+// label are kept because an incarnation with no name is a machine nobody can address, and because the
+// plan's first axis (names) and second axis (incarnations) are separate axes: a name can be re-allocated
+// to a later incarnation of a different machine, so neither one identifies the other.
+type OwnedHostIncarnation sole_constructor {
+  id: OwnedHostIncarnationId
+  slot: HostIdentity
+  ownership: IncarnationOwnership
+  origin: IncarnationOrigin
+  boundary: Optional<PriorLifeArchive>
+  consumed: Optional<StepInstanceKey>
+  allocation: HostnameAllocation
+  label: FleetMemberLabel
+  realization: NonEmptyStr
+  termination: IncarnationTermination
+}
+
+// WHY AN INCARNATION CANNOT BE OPENED. Each arm is a different defect and none of them yields a value:
+//   IntakeNeedsEstablishedBoundary -- intake was claimed and the receipt does not exist to be carried, so
+//       the prior life was never archived. This is the plan's rule that the fleet refuses rather than
+//       proceeding "with a warning".
+//   BoundaryApplicationUnconfirmed -- the receipt exists but its archive write is not an application that
+//       happened (it says ArchiveAlreadyHeld for a subject that had never been archived, or the leg was not
+//       completed within its deadline). A boundary whose write is not grounded is not a boundary.
+//   LabelNotThisSlot -- the label handed in was not built from the allocation handed in. The two axes must
+//       agree about which machine they are both describing; without this check an incarnation could carry
+//       a name that belongs to another member, which is the identity-confusion case the whole phase is
+//       about.
+// No arm falls back to an unarchived or unnamed incarnation.
+type IncarnationRefusal
+  = IntakeNeedsEstablishedBoundary { slot: HostIdentity, cause: NonEmptyStr }
+  | BoundaryApplicationUnconfirmed { slot: HostIdentity, cause: NonEmptyStr }
+  | LabelNotThisSlot { slot: HostIdentity, cause: NonEmptyStr }
+
+// THE ONE CONSTRUCTION PATH. Reads the boundary receipt for the archive, the application, the consumed
+// identity and the realization -- so those four facts have one authority (the boundary module) and this
+// type stores what it was given rather than holding a second copy that could disagree.
+fn own_host_incarnation(
+  id: OwnedHostIncarnationId,
+  slot: HostIdentity,
+  ownership: IncarnationOwnership,
+  origin: IncarnationOrigin,
+  allocation: HostnameAllocation,
+  label: FleetMemberLabel,
+  termination: IncarnationTermination,
+) -> Result<OwnedHostIncarnation, IncarnationRefusal> {
+  match member_label_belongs_to(allocation: allocation, label: label) {
+    // THE LABEL HANDED IN IS NOT THIS SLOT'S. The two axes of the plan -- names and incarnations -- are
+    // checked against each other HERE, at the seam, and not where the identity is later read. Without this
+    // arm an incarnation could carry the name of a different member, which is exactly the confusion this
+    // phase exists to remove: the machine that returns is handed the identity of the machine that left.
+    false => Err {
+      value: LabelNotThisSlot {
+        slot: slot,
+        cause: "the label handed in was not built from the allocation handed in" as NonEmptyStr,
+      }
+    }
+    true => match fleet_member_label(allocation: allocation) {
+      // THE POLICY ISSUES NO LABEL FOR THIS ROW, so no incarnation of it can be addressed. No fallback to
+      // an unnamed incarnation: an owned machine nobody can name is an owned machine nobody can audit.
+      Err { value: _ } => Err {
+        value: LabelNotThisSlot {
+          slot: slot,
+          cause: "the allocation carries no label the naming policy will enact" as NonEmptyStr,
+        }
+      }
+      Ok { value: minted } =>
+        // ONE AUTHORITY FOR THE NAME. The label stored is the one the policy mints from the allocation, not
+        // the one the caller preferred -- they agree here precisely because the check above passed, and
+        // storing the minted one means a consumer cannot see a spelling that drifted from the roster.
+        match origin_of_boundary(origin: origin, slot: slot) {
+          Err { value: r } => Err { value: r }
+          Ok { value: parts } => Ok {
+            value: OwnedHostIncarnation {
+              id: id,
+              slot: slot,
+              ownership: ownership,
+              origin: origin,
+              boundary: parts.boundary,
+              consumed: parts.consumed,
+              allocation: allocation,
+              label: minted,
+              realization: parts.realization,
+              termination: termination,
+            },
+          }
+        }
+    }
+  }
+}
+
+// THE BOUNDARY READING, in one place: what the boundary's receipt contributes to an incarnation, or the
+// refusal that stops it. Pre-existing members and in-place rebuilds inherit a boundary rather than
+// establishing one -- a rebuild in place continues the same owned life, and a pre-existing member's
+// boundary is whatever established the incarnation it is being added to, so neither is asked to produce a
+// receipt it never had. An intake admission with no receipt is the case that must refuse: it is the plan's
+// rule that the fleet refuses rather than proceeding "with a warning", and it is the case P2 is model-only
+// for -- no producer feeds a live receipt into a fleet incarnation yet, so the absence is expressible and
+// refused rather than unrepresentable.
+type BoundaryReading {
+  boundary: Optional<PriorLifeArchive>
+  consumed: Optional<StepInstanceKey>
+  realization: NonEmptyStr
+}
+
+fn origin_of_boundary(
+  origin: IncarnationOrigin,
+  slot: HostIdentity,
+) -> Result<BoundaryReading, IncarnationRefusal> {
+  match origin {
+    FleetIntakeAdmitted { receipt: Absent } => Err {
+      value: IntakeNeedsEstablishedBoundary {
+        slot: slot,
+        cause: "intake claims this machine was admitted and no boundary receipt is carried, so its prior life is not archived" as NonEmptyStr,
+      }
+    }
+    FleetIntakeAdmitted { receipt: Present { value: receipt } } =>
+      match prior_life_application_is_grounded(application: prior_life_receipt_application(r: receipt)) {
+        false => Err {
+          value: BoundaryApplicationUnconfirmed {
+            slot: slot,
+            cause: "the boundary receipt's archive write is not grounded, so the prior life is not archived" as NonEmptyStr,
+          }
+        }
+        true => Ok {
+          value: BoundaryReading {
+            boundary: Present { value: prior_life_receipt_archive(r: receipt) },
+            consumed: Present { value: prior_life_receipt_consumed_identity(r: receipt) },
+            realization: prior_life_receipt_realization(r: receipt),
+          },
+        }
+      }
+    PreexistingFleetMember => Ok {
+      value: BoundaryReading { boundary: Absent, consumed: Absent, realization: "fleet-record" as NonEmptyStr },
+    }
+    RebuildInPlace { prior: _ } => Ok {
+      value: BoundaryReading { boundary: Absent, consumed: Absent, realization: "rebuild-in-place" as NonEmptyStr },
+    }
+  }
+}
+
+// WHETHER THE BOUNDARY'S WRITE ACTUALLY HAPPENED. An archive that was already held is a grounded state;
+// an archive whose write leg did not finish inside its deadline is not. This asks the boundary module's
+// own sum the question -- it does not restate what "archived" means, which would be minting beside the
+// boundary in the one place where a restatement could go stale.
+fn prior_life_application_is_grounded(application: PriorLifeApplication) -> Bool {
+  match application {
+    ArchiveAlreadyHeld => true
+    ArchiveWritten { write: _, within: _ } => true
+  }
+}
+
+// THE BOUNDARY ARM, read rather than re-derived: which arm the boundary settled on. Exposed so a consumer
+// (the intake census, the return-reason audit) can ask what the boundary did without pattern-matching the
+// boundary module's sum at ten sites.
+fn incarnation_boundary_arm(origin: IncarnationOrigin) -> Optional<PriorLifeBoundaryArm> {
+  match origin {
+    // No receipt carried is not a boundary arm: the boundary never settled on anything, which is what
+    // the refusal at the mint said. Absent here means "no boundary exists", the same answer a
+    // pre-existing member gets, and the two are distinguished by `origin` itself.
+    FleetIntakeAdmitted { receipt: Absent } => Absent
+    FleetIntakeAdmitted { receipt: Present { value: receipt } } =>
+      Present { value: prior_life_receipt_boundary(r: receipt) }
+    PreexistingFleetMember => Absent
+    RebuildInPlace { prior: _ } => Absent
+  }
+}
+
+// THE RECEIPT KEY, when there is one, so an incarnation can cite the convergence step whose receipt began
+// it. Kept as an accessor for the same reason as the arm above: the key belongs to the boundary module, and
+// a consumer that wants it asks this module rather than reaching past it.
+fn incarnation_receipt_key(origin: IncarnationOrigin) -> Optional<StepInstanceKey> {
+  match origin {
+    FleetIntakeAdmitted { receipt: Absent } => Absent
+    FleetIntakeAdmitted { receipt: Present { value: receipt } } =>
+      Present { value: prior_life_receipt_key(r: receipt) }
+    PreexistingFleetMember => Absent
+    RebuildInPlace { prior: _ } => Absent
+  }
+}
+
+// WHETHER A LABEL IS THE ONE THIS ALLOCATION BUILDS. The two axes of the plan have to be checked against
+// each other at the seam, and this is that seam: an incarnation holding a label the roster would not
+// produce for its allocation is two sources of truth about one machine, which is the class of defect this
+// phase exists to remove.
+fn member_label_belongs_to(allocation: HostnameAllocation, label: FleetMemberLabel) -> Bool {
+  allocation.fleet_slot == label.source.fleet_slot
+    && (allocated_canonical_hostname(allocation: allocation) as String) == (label.label as String)
+}
+
+// WHETHER THIS INCARNATION IS STILL THE MACHINE'S LIFE. The question a consumer asks before it trusts an
+// identity it cached, and the reason the termination column exists: without it, a vanished machine and a
+// decommissioned one are the same value.
+fn incarnation_is_ongoing(incarnation: OwnedHostIncarnation) -> Bool {
+  match incarnation.termination {
+    Ongoing => true
+    ReturnedToSupplier { at: _ } => false
+    Decommissioned { at: _, archive: _ } => false
+    ReassignedToAnotherIncarnation { successor: _ } => false
+  }
+}
+
+// WHETHER TWO INCARNATIONS ARE THE SAME SPELL OF OWNERSHIP. Identity, not label comparison: two
+// incarnations with the same label are the same machine only if they are the same spell, and the whole
+// point of the type is that the label alone cannot answer this.
+fn owned_host_incarnation_eq(a: OwnedHostIncarnation, b: OwnedHostIncarnation) -> Bool {
+  (a.id as String) == (b.id as String)
+    && a.slot == b.slot
+    && owned_incarnation_boundary_agrees(a: a, b: b)
+}
+
+// WHETHER TWO INCARNATIONS AGREE ABOUT THE PRIOR LIFE. They agree when neither has one (two pre-existing
+// members) or when their archives are the same content. An incarnation that agrees with another about
+// everything except its archive is describing a different prior life, and that is not equality -- it is
+// the bug where a machine returns and is treated as itself.
+fn owned_incarnation_boundary_agrees(a: OwnedHostIncarnation, b: OwnedHostIncarnation) -> Bool {
+  match a.boundary {
+    Absent => match b.boundary {
+      Absent => true
+      Present { value: _ } => false
+    }
+    Present { value: mine } => match b.boundary {
+      Absent => false
+      Present { value: theirs } => content_hash_equal(
+        left: content_hash_of_archive(archive: mine),
+        right: content_hash_of_archive(archive: theirs),
+      )
+    }
+  }
+}
+
+// The archive's digest, asked of the boundary module rather than recomputed here: two ways of hashing one
+// archive is a second source for what the archive IS, and the boundary already owns that.
+fn content_hash_of_archive(archive: PriorLifeArchive) -> ContentHash {
+  prior_life_archive_digest(a: archive)
+}
+
+// THE MODULE THE INCARNATION WAS REALIZED FROM, kept as text carried in from the boundary receipt and
+// never compared to a provider's name here. A realization is a provider's business; an incarnation records
+// which one it came from so a dry receipt can never stand for a live one, and that is all the
+// provider-neutral model is permitted to say.
+fn incarnation_realization(incarnation: OwnedHostIncarnation) -> NonEmptyStr {
+  incarnation.realization
+}

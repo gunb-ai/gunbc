@@ -1,0 +1,378 @@
+module gunbc.fleet.fleet_overlay
+
+// THE FLEET'S OVERLAY CONTRACT: WHAT IT MEANS FOR A MEMBER TO BE ATTACHED, WITHOUT NAMING A PROVIDER.
+//
+// WHAT THIS MODULE IS. The model step of gunbc.plans.fleet_naming_reach_access P2 for the overlay axis:
+// the fleet's attachment and its member binding, declared provider-neutral. No producer is migrated and no
+// endpoint is cut over (P3-P5); the Tailscale realization stays where it is.
+//
+// WHY THIS FILE EXISTS AT ALL (the plan's thesis in one line). Tailscale is the FIRST realization of a
+// contract the fleet already depends on -- that a machine is addressable as a fleet member -- and the fleet
+// has been quoting that provider's vocabulary in provider-neutral code: gunbc.fleet.fleet_tailnet holds
+// fleet_tailnet_domain beside the URL builders; extdeps.network.reach names a FabricTunnel arm whose
+// refusal cause is FabricTunnelNotOperational; product.network_topology carries TailscaleOverlay,
+// TailscaleEndpoint and TailscaleMesh, and gunbc.fleet.fleet_intent_network uses those arms for the srv1 and
+// srv2 overlay rows. The plan's fix is a contract here and a realization beneath it, and P3 is the rename.
+// Declaring the contract is what makes the rename a move of one arm rather than a rewrite of the fleet.
+//
+// WHY IP ADDRESSES ARE NOT IN THE DURABLE CONTRACT. The plan is explicit: addresses leave the durable fleet
+// contract and remain observed locators behind an endpoint authority, historical evidence, topology facts,
+// and declared bootstrap or recovery attachments. That is not aesthetic -- an address is what a provider
+// reassigns, so a contract that carries one goes stale invisibly. Today only srv1 and srv2 have overlay rows
+// and those rows carry raw 100.x addresses (gunbc.fleet.fleet_intent_network srv1_tailscale_endpoint and
+// srv2_tailscale_endpoint); the two device IPs in extdeps.tailscale.acl are the same shape. Those are the
+// rows this contract replaces, and none of them is a reason to put an address in a type.
+//
+// THE ONE THING THIS MODULE MUST NOT DO IS NAME A PROVIDER. No arm, field or function below may mention a
+// provider: a provider word in the contract is the leak the plan spends P3 removing, and a contract that
+// names one provider cannot gain a second realization without being edited -- which is the defect (a
+// provider switch that forces consumer changes) rather than the design.
+//
+// FRONTIER, NOT FORK: THE PROVIDER'S DEVICE AND NODE IDs. A binding has to record the provider's device
+// identity and the provider's node identity, and BOTH belong to the Tailscale realization
+// (extdeps.tailscale.devices, the P1 census), not here -- the plan's rule is that device/node identity is
+// not a name in the fabric. Minting local stand-ins would be a fork: two homes for one upstream fact, which
+// is DESIGN 3's defect and silently mergeable-wrong, because two spellings of one device id can disagree
+// with nothing to catch it. So the binding carries the shape the fleet owns (subject, attachment,
+// incarnation, desired label, desired roles) and the frontier rows below name the two provider halves, what
+// owns them, and what closes them.
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, brand }
+import std.error_primitives { Err, Ok, Result }
+import std.optional { Absent, Optional, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_rows_well_formed }
+import gunbc.fleet.fleet_naming { FleetMemberLabel, fleet_member_label }
+import gunbc.fleet.owned_host_incarnation { OwnedHostIncarnation, OwnedHostIncarnationId, incarnation_is_ongoing }
+import gunbc.fleet.fleet_endpoint { ReachDemand }
+import gunbc.hostname_allocation { HostnameAllocation }
+import gunbc.fleet.fleet_enrollment {
+  FleetParticipation,
+  HostEnrollmentIntent,
+  participation_list_contains,
+  enrollment_for_host,
+}
+import product.host_identity { HostIdentity }
+
+// WHICH REALIZATION CARRIES AN ATTACHMENT, as a policy-selected label rather than a provider's name. The
+// brand means "a realization name, chosen by attachment policy"; the policy that chooses it is the ONE
+// place a provider is ever named, and it is not this module. A sum of provider arms here would be a
+// registry of providers inside provider-neutral code -- the leak this module exists to remove.
+type OverlayRealization = NonEmptyStr where brand("OverlayRealization")
+
+// THE ATTACHMENT'S KIND. The plan names three, and they differ in what they PROVE about reachability:
+//   ManagedOverlay     -- the member is attached to a managed overlay network. Today's realization is
+//                         Tailscale; that is a selection fact, not a type fact, which is why the word is not
+//                         here.
+//   SiteLan            -- the member is reachable on a site's LAN. Owned by the site plan; named so a
+//                         consumer can ask the question without inventing an arm of its own.
+//   BootstrapRecovery  -- a declared bootstrap or recovery attachment: the route used before a member joins
+//                         the overlay, or after it falls out. Its own arm is the plan's rule that the
+//                         bootstrap route must never depend on the overlay it is enrolling into.
+// No "Unknown" arm: an attachment whose kind nobody can name is a refusal below, not a value.
+type AttachmentKind
+  = ManagedOverlay
+  | SiteLan
+  | BootstrapRecovery
+
+// WHEN THE ATTACHMENT WAS SELECTED, and at which policy version. Carried because the plan's D8 is that an
+// access decision is made at the session and is not implied by standing state: an attachment IS standing
+// claim on a provider, and a fleet that cannot say when it selected one cannot audit why it still has it or
+// retire it.
+type AttachmentSelection {
+  selected_at: EpochMs
+  policy_version: NonEmptyStr
+}
+
+// THE ATTACHMENT, SEALED. sole_constructor: the only way to hold one is fleet_overlay_attachment, which is
+// where the rules below are enforced.
+//
+// WHY THE SUBJECT IS A HostIdentity AND NOT A LABEL. An attachment belongs to a machine slot; the label is
+// what the roster allocates to it. The plan keeps the two separate so a re-labelled member keeps its
+// attachments and a re-allocated label does not drag an attachment along with it. One subject with several
+// attachments is the plan's shape (the overlay, the site LAN, a declared bootstrap route), and the set is
+// what an attachment-selection policy chooses among.
+type FleetOverlayAttachment sole_constructor {
+  subject: HostIdentity
+  kind: AttachmentKind
+  realization: OverlayRealization
+  selection: AttachmentSelection
+}
+
+// THE BINDING, SEALED: what an attachment resolves to on the provider side, as the fleet needs to see it.
+//
+// WHY A BINDING IS A SEPARATE THING FROM AN ATTACHMENT. An attachment is the fleet's claim ("this member is
+// attached, under this policy"); a binding is the evidence for it on the provider's side. They are not one
+// object because they go stale separately: a machine can be attached per policy while its provider device is
+// keyless, expired, or simply absent from the provider's list -- and the plan's defect list is exactly about
+// a machine that "returns and is treated as the same machine it was before it vanished", which cannot be
+// detected while there is one blob to be stale.
+//
+// WHY THE DEVICE AND NODE IDS ARE NOT FIELDS (see the module header): frontier rows below, not stand-ins.
+//
+// WHY THE DESIRED LABEL IS A FleetMemberLabel AND NOT A STRING. The plan's sentence is that "a machine name
+// is not a device identity", and its corpus example is why: a name collision gives the new machine a suffix
+// like hostname-1, and the suffix stays after the conflicting machine is renamed. So this records the label
+// the fleet WANTS, obtained through the naming policy; the provider's name for the device is a provider fact
+// recorded where the provider can contradict it. Carrying the desired label through the branded type is what
+// lets a binding say "the provider is lying about this member's name" instead of merely holding a different
+// string.
+type OverlayMemberBinding sole_constructor {
+  subject: HostIdentity
+  attachment: FleetOverlayAttachment
+  incarnation: Optional<OwnedHostIncarnation>
+  desired_label: FleetMemberLabel
+  desired_roles: List<FleetParticipation>
+}
+
+// WHY AN ATTACHMENT CANNOT BE CLAIMED. Refusals, not warnings, each naming the fix:
+//   RealizationUnnamed          -- an attachment claimed with no realization to carry it. A claimed-but-
+//                                  unselected attachment is how a fleet accumulates reachability it believes
+//                                  it has.
+//   SelectionPolicyUnnamed      -- an attachment with no version at which it was selected: a standing
+//                                  attachment that cannot be audited cannot be retired.
+//   BindingForAnotherSubject    -- a binding whose allocation is not the attachment's subject.
+//   RoleNotEnrolled             -- a binding desiring a role the subject was never enrolled in. The roles
+//                                  are the plan's "already declared" set, so desiring an unenrolled one is a
+//                                  contradiction between two fleet records, not a wish.
+//   BindingNeedsALabel          -- the naming policy issues no label for the subject, so no binding may
+//                                  desire one. The refusal travels from gunbc.fleet.fleet_naming rather than
+//                                  being re-derived here.
+type OverlayRefusal
+  = RealizationUnnamed { subject: HostIdentity, kind: AttachmentKind }
+  | SelectionPolicyUnnamed { subject: HostIdentity, kind: AttachmentKind }
+  | BindingForAnotherSubject { subject: HostIdentity, kind: AttachmentKind }
+  | RoleNotEnrolled { subject: HostIdentity, role: FleetParticipation }
+  | BindingNeedsALabel { subject: HostIdentity, cause: NonEmptyStr }
+  | BindingIncarnationIsAnotherMachine {
+      subject: HostIdentity,
+      other_slot: HostIdentity,
+      incarnation: OwnedHostIncarnationId,
+    }
+  | BindingIncarnationHasEnded { subject: HostIdentity, incarnation: OwnedHostIncarnationId }
+
+// THE ONE CONSTRUCTION PATH FOR AN ATTACHMENT.
+fn fleet_overlay_attachment(
+  subject: HostIdentity,
+  kind: AttachmentKind,
+  realization: OverlayRealization,
+  selection: AttachmentSelection,
+) -> Result<FleetOverlayAttachment, OverlayRefusal> {
+  let version = (selection.policy_version as String).trim()
+  if overlay_realization_is_unnamed(realization: realization) {
+    Err { value: RealizationUnnamed { subject: subject, kind: kind } }
+  } else if version.length() == 0 {
+    Err { value: SelectionPolicyUnnamed { subject: subject, kind: kind } }
+  } else {
+    Ok {
+      value: FleetOverlayAttachment {
+        subject: subject,
+        kind: kind,
+        realization: realization,
+        selection: selection,
+      },
+    }
+  }
+}
+
+// THE ONE CONSTRUCTION PATH FOR A BINDING. The desired label comes from the naming policy applied to the
+// allocation of the SAME subject -- that identity check is the whole point: a binding cannot assert a label
+// the roster would not issue for the machine it binds, and it cannot desire a role the enrollment record
+// does not declare.
+fn overlay_member_binding(
+  attachment: FleetOverlayAttachment,
+  allocation: HostnameAllocation,
+  incarnation: Optional<OwnedHostIncarnation>,
+  desired_roles: List<FleetParticipation>,
+) -> Result<OverlayMemberBinding, OverlayRefusal> {
+  if allocation.fleet_slot != attachment.subject {
+    Err { value: BindingForAnotherSubject { subject: attachment.subject, kind: attachment.kind } }
+  } else {
+    match undeclared_role(subject: attachment.subject, desired: desired_roles) {
+      Present { value: role } => Err { value: RoleNotEnrolled { subject: attachment.subject, role: role } }
+      Absent => match incarnation_of_the_wrong_life(incarnation: incarnation, subject: attachment.subject) {
+        Present { value: r } => Err { value: r }
+        Absent => match fleet_member_label(allocation: allocation) {
+          Err { value: _ } => Err {
+            value: BindingNeedsALabel {
+              subject: attachment.subject,
+              cause: "the naming policy issues no label for this subject, so no binding may desire one" as NonEmptyStr,
+            }
+          }
+          Ok { value: label } => Ok {
+            value: OverlayMemberBinding {
+              subject: attachment.subject,
+              attachment: attachment,
+              incarnation: incarnation,
+              desired_label: label,
+              desired_roles: desired_roles,
+            },
+          }
+        }
+      }
+    }
+  }
+}
+
+// WHICH PHYSICAL LIFE THIS BINDING SPEAKS OF, checked where the binding is minted rather than where it is
+// read. Two refusals, because the two failures are fixed in different places:
+//   BindingIncarnationIsAnotherMachine -- the incarnation's slot is not the attachment's subject. This is the
+//     plan's corpus defect typed: the machine that returns and is treated as the machine that left. A slot
+//     carries labels and attachments across machines on purpose; an incarnation does not, so a binding that
+//     pairs one attachment to another machine's life is caught at its construction and not at the incident.
+//   BindingIncarnationHasEnded          -- the incarnation has been returned, decommissioned, or succeeded.
+//     Evidence about a life that ended is not evidence about the member attached now; the next incarnation
+//     needs its own boundary before a binding can cite it.
+fn incarnation_of_the_wrong_life(
+  incarnation: Optional<OwnedHostIncarnation>,
+  subject: HostIdentity,
+) -> Optional<OverlayRefusal> {
+  match incarnation {
+    // An absent incarnation is not a refusal HERE: the census may bind what it can see and record the
+    // missing life as a refusal of its own. overlay_member_evidence_is_citable is what says such a
+    // binding is not citable evidence.
+    Absent => Absent
+    Present { value: i } =>
+      if i.slot != subject {
+        Present {
+          value: BindingIncarnationIsAnotherMachine {
+            subject: subject,
+            other_slot: i.slot,
+            incarnation: i.id,
+          },
+        }
+      } else if !incarnation_is_ongoing(incarnation: i) {
+        Present { value: BindingIncarnationHasEnded { subject: subject, incarnation: i.id } }
+      } else {
+        Absent
+      }
+  }
+}
+
+// THE FIRST ROLE THE SUBJECT WAS NEVER ENROLLED IN, if any. Reported as the first offender rather than a
+// boolean because a refusal that names the role is fixable and a refusal that says "roles" is not. The
+// declared set is read from the enrollment record through the enrollment module's own membership test, so
+// "declared" has one meaning in the corpus.
+fn undeclared_role(
+  subject: HostIdentity,
+  desired: List<FleetParticipation>,
+) -> Optional<FleetParticipation> {
+  match enrollment_for_host(host: subject) {
+    Absent => first_of(desired)
+    Present { value: intent } =>
+      match filter(desired, r => !participation_list_contains(ps: intent.participation, wanted: r)).first() {
+        Absent => Absent
+        Present { value: offender } => Present { value: offender }
+      }
+  }
+}
+
+// THE HEAD OF A LIST, as an Optional. Used rather than an index so an empty list is a case instead of a
+// failure.
+fn first_of(items: List<FleetParticipation>) -> Optional<FleetParticipation> {
+  items.first()
+}
+
+// Whether a realization label actually names something. An empty realization is a claim with no carrier.
+// AN UNNAMED REALIZATION IS A NAME THAT CARRIES NOTHING. Emptiness alone was not enough to test: a
+// branded NonEmptyStr cannot be minted empty, so the only shape a caller can actually hand in is text that
+// NAMES NOTHING -- whitespace, or the placeholder sentinels an operator reaches for when the provider has
+// not answered. All three are unnamed, and the check refuses rather than trimming the name into shape: a
+// name that has to be repaired before it can be stored is a name that was never there.
+fn overlay_realization_is_unnamed(realization: OverlayRealization) -> Bool {
+  let text = (realization as String).trim()
+  text.length() == 0
+    || text == "unknown"
+    || text == "none"
+    || text == "TODO"
+}
+
+// THE DECLARED ROLES FOR A SUBJECT, read from the enrollment record rather than typed at a call site, so a
+// binding records what the fleet declared instead of what an author believed about it.
+fn declared_roles(subject: HostIdentity) -> List<FleetParticipation> {
+  match enrollment_for_host(host: subject) {
+    Absent => []
+    Present { value: intent } => intent.participation
+  }
+}
+
+// THE CONSUMER THE PLAN POINTS AT: which members the fleet claims on a managed overlay. The P4 census reads
+// this to enumerate attachments per realization; today it is what a status report asks before it says
+// anything about a member's reachability.
+fn managed_overlay_attachments(
+  attachments: List<FleetOverlayAttachment>,
+) -> List<FleetOverlayAttachment> {
+  filter(attachments, a => a.kind == ManagedOverlay)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE FRONTIER THIS MODULE LEAVES OPEN (DESIGN 3c: a declared frontier, never an invented stand-in)
+// ---------------------------------------------------------------------------------------------
+//
+// The plan requires two provider identities on a binding and one policy row behind attachment selection.
+// They are P1's and P4's to land, so they are recorded here as rows that must dissolve rather than as local
+// types that could disagree with the census. Every row is bound to a trigger: the day the named declaration
+// appears, the row retires -- which is what makes a frontier auditable instead of a comment.
+data fleet_overlay_provider_identity_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.fleet.fleet_overlay",
+      decl_name: "OverlayMemberBinding.provider_device_identity",
+    ),
+    reason: "the provider's device identity belongs on the binding and must not be named here: device identity is upstream provider vocabulary, not a name in the fabric, and the P1 census owns the devices API model (extdeps.tailscale.devices)" as NonEmptyStr,
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "DeviceId"),
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.fleet.fleet_overlay",
+      decl_name: "OverlayMemberBinding.provider_node_identity",
+    ),
+    reason: "the provider's node identity is not the member's name and its home is the realization; a local copy would give one device id two homes" as NonEmptyStr,
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "extdeps.tailscale.devices", decl_name: "NodeId"),
+    ),
+  ),
+  frontier_row_decl(
+    ref: decl_ref(
+      module_path: "gunbc.fleet.fleet_overlay",
+      decl_name: "FleetOverlayAttachment.selected_realization",
+    ),
+    reason: "which realization an attachment selects is a policy fact and no selection row exists yet; P2 declares the contract shape and P4 enrolls a realization onto it" as NonEmptyStr,
+    dissolution: bound_dissolution(
+      ref: decl_ref(module_path: "gunbc.fleet.fleet_overlay", decl_name: "fleet_overlay_realization_selection"),
+    ),
+  ),
+]
+
+// The frontier is well-formed by the roster-frontier module's own check, so a row that names nothing or
+// dissolves on nothing is a red claim rather than a decoration.
+fn fleet_overlay_frontier_is_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: fleet_overlay_provider_identity_frontier)
+}
+
+// A BINDING WITHOUT AN INCARNATION OR WITHOUT ROLES IS CONFUSION, NOT A PARTIAL FACT. The incarnation
+// says WHICH physical life this binding speaks of; a binding that omits it could be speaking of the
+// machine before its disk was wiped. And a member bound to no part is a member nothing has asked
+// any runner to do work on -- so neither shape is evidence.
+fn overlay_member_evidence_is_citable(
+  binding: OverlayMemberBinding,
+) -> Bool {
+  match binding.incarnation {
+    Absent => false
+    Present { value: _ } => match binding.desired_roles.first() {
+      Absent => false
+      Present { value: _ } => true
+    }
+  }
+}
+
+// THE INDEPENDENT-FACTS RULE THE PLAN INSISTS ON. An attachment is not a route, a route is not a grant, a
+// grant is not a pinned host key, and a host key is not a principal. The sum exists so a consumer that
+// conflates two of them has to say which, and so the confusion is a type error rather than a habit.
+type OverlayEvidenceConfusion
+  = AttachmentStoodInForRoute { binding: OverlayMemberBinding }
+  | RouteStoodInForGrant { binding: OverlayMemberBinding, demand: ReachDemand }
+  | HostKeyStoodInForPrincipal { binding: OverlayMemberBinding }
