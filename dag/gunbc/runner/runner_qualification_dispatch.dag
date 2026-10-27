@@ -16,11 +16,10 @@ import extdeps.transports.rest {
 import extdeps.github.effect { GitHubEffect, DispatchWorkflow, GitHubWorkflowRef }
 import extdeps.github.app { GitHubAppInstallationId }
 import extdeps.github.actions {
-  Workflow, Job, DispatchInput, InputString, RunnerSpec, RunsOnExpression, HostedRunner, SelfHosted,
+  Workflow, Job, DispatchInput, RunnerSpec, RunsOnExpression, HostedRunner, SelfHosted,
   WorkflowDispatch, Push, PullRequest, Schedule, WorkflowCall, WorkflowRunTriggered, MergeGroup,
   Step, RunStep, UsesStep,
 }
-import extdeps.languages.yaml.types { kv, yaml_string }
 import extdeps.github.expressions {
   ingest_template, context_name, Expression, Interpolation, LiteralText,
   ContextAccess, FunctionCall, StringLiteral, LogicalOr, LogicalAnd, Equals, NotEquals, LogicalNot,
@@ -61,6 +60,9 @@ import gunbc.witness.witness_floor_workflow { required_floor_claim_cost_artifact
 import extdeps.github.actions_artifacts { ActionsArtifact, ActionsArtifactList }
 import gunbc.runner.runner_host_unit_slot { HostUnitSlot, host_unit_slot_attempt }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
+import gunbc.runner.runner_qualification_floor_job {
+  qualification_attempt_dispatch_input, qualification_revision_dispatch_input, qualification_floor_revision_guard_step,
+}
 import gunbc.runner.runner_qualification_ref_pin {
   QualificationRefPin, QualificationBranchName, qualification_workflow_path, qualification_selected_workflow,
 }
@@ -99,35 +101,11 @@ import gunbc.runner.runner_qualification_ref_pin {
 // dispatch_qualification_floor takes the host-generic unit hold proof
 // (gunbc.host.managed_host_unit_hold UnitHoldProof) and refuses unless it is the slot's own host's.
 
-data qualification_attempt_dispatch_input: DispatchInput = DispatchInput {
-  name: "runner_attempt_label",
-  description: Present { value: "the per-boot attempt label the ephemeral qualification slot registered with; the floor job's runs-on reads it" },
-  required: true,
-  default: none,
-  type: InputString,
-}
-
 fn qualification_workflow_file_name() -> NonEmptyStr {
   match last(split(qualification_workflow_path() as String, "/")) {
     Present { value: f } => f as NonEmptyStr
     Absent => qualification_workflow_path()
   }
-}
-
-// THE REVISION THE FLOOR RUNS IS AN INPUT TOO (decision: eager-gull-22, 2026-10-04 -- sha-checkout).
-// A dispatch names a branch, and a branch can move between the pin's readback and the run; a ruleset
-// could not stop a delete-then-recreate, and the App that would administer it could remove it. So the
-// floor job itself checks out exactly this revision as its FIRST step and refuses before any other
-// step on a mismatch (qualification_floor_revision_guard_step), and collection refuses a run whose
-// head_sha is not the pinned revision (RunRevisionNotPinned). The residual -- an edit to the workflow
-// file on the qualification branch can drop the guard -- needs repository push, and is declared as
-// gunbc.recurring_failure_mode qualification_floor_guard_skippable_by_a_workflow_file_edit.
-data qualification_revision_dispatch_input: DispatchInput = DispatchInput {
-  name: "qualification_revision",
-  description: Present { value: "the pinned revision the floor must run; the floor job's first step checks it out and refuses on a mismatch before any other step" },
-  required: true,
-  default: none,
-  type: InputString,
 }
 
 fn qualification_dispatch_inputs(attempt: NonEmptyStr, revision: CommitSha) -> Map<String, String> {
@@ -136,33 +114,6 @@ fn qualification_dispatch_inputs(attempt: NonEmptyStr, revision: CommitSha) -> M
     key: qualification_revision_dispatch_input.name,
     value: revision as String,
   )
-}
-
-// THE GUARD, AS THE ONE STEP THE FLOOR JOB MUST BEGIN WITH. It fetches and checks out the revision
-// input into the runner's empty workspace and fails the job unless HEAD is exactly that revision; GitHub
-// skips every later step of a failed job unless the step opts in with an if: condition, which the floor
-// contract forbids (qualification_floor_admission). Its emission into the generated fleet-converge
-// workflow is owed with the qualification mode (the dispatch leg's wiring_owed).
-fn qualification_floor_revision_guard_step() -> Step {
-  RunStep {
-    name: Present { value: "Check out the pinned qualification revision and refuse on any mismatch" },
-    id: Present { value: "qualification_revision_guard" },
-    run: join([
-      "set -euo pipefail",
-      "git init -q .",
-      "git remote add origin \"https://github.com/$GITHUB_REPOSITORY\"",
-      "git fetch -q --no-tags --depth=1 origin \"$QUALIFICATION_REVISION\"",
-      "git checkout -q --force --detach FETCH_HEAD",
-      "observed=\"$(git rev-parse HEAD)\"",
-      "if [ \"$observed\" != \"$QUALIFICATION_REVISION\" ]; then echo \"QualificationRevisionMismatch: expected=$QUALIFICATION_REVISION observed=$observed\" >&2; exit 1; fi",
-    ], "\n"),
-    shell: none,
-    env: Present { value: [kv(key: "QUALIFICATION_REVISION", value: yaml_string(s: "${{ inputs.qualification_revision }}"))] },
-    working_directory: none,
-    if_condition: none,
-    continue_on_error: none,
-    timeout_minutes: none,
-  }
 }
 
 fn step_runs_after_a_failure(step: Step) -> Bool {

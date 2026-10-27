@@ -519,6 +519,19 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   )
 }
 
+// THE FLOOR A QUALIFICATION RUNS IS THIS JOB'S OWN WORK, NOT A SECOND SPELLING OF IT: the prelude and the subject
+// steps, which build the seed and run one `gunbc test` per emitted subject under the memory envelope. The checkout
+// is left out because a qualification job checks out its pinned revision with its own guard
+// (gunbc.runner.runner_qualification_floor_job), and the tail is left out because every tail step is conditioned
+// (parse-verdict restore and publish on main, the notice) and a qualification floor admits no step that can run past
+// a failure (gunbc.runner.runner_qualification_dispatch qualification_floor_admission).
+fn compiler_gate_floor_steps_after_checkout() -> List<Step> {
+  filter(
+    list_map(xs: concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()), f: fn(b) { b.step }),
+    s => s != compiler_gate_fleet_checkout_step(),
+  )
+}
+
 // Every declared ordinal carries a gated identity and receipts restore pair: the first ordinal whose
 // identity hit disables the later ones, and its receipts restore alone runs. The record step then
 // leaves the winning sha for the verb.

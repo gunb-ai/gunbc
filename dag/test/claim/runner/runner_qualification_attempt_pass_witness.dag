@@ -52,8 +52,10 @@ import gunbc.runner.runner_qualification_dispatch {
   QualificationDispatchSubject, QualificationSubjectStanding, QualificationSubjectRefused, SubjectSlotNotAttemptScoped,
   QualificationDispatch, QualificationDispatchRefused, QualificationDispatchCommitAmbiguous, DispatchTokenForAnotherInstallation,
   DispatchedQualificationRun, QualificationRunCollection, QualificationRunRefused, RunReadUnreadable,
-  qualification_attempt_dispatch_input, qualification_revision_dispatch_input, qualification_floor_revision_guard_step,
   qualification_dispatch_subject_over,
+}
+import gunbc.runner.runner_qualification_floor_job {
+  qualification_attempt_dispatch_input, qualification_revision_dispatch_input, qualification_floor_revision_guard_step,
 }
 import gunbc.runner.runner_qualification_attempt_pass {
   QualificationAttemptPass, AttemptPinRefused, AttemptPassed,
