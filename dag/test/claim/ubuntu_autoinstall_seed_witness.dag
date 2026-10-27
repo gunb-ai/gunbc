@@ -103,7 +103,7 @@ import extdeps.storage.types {
   StorageDevice,
 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
-import extdeps.ssh.keys { Ed25519, SshPublicKey }
+import extdeps.ssh.keys { Ed25519, SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
 import extdeps.toolchain.types { Aarch64, Architecture, Riscv64, X86_64 }
 import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, mac_addresses_are_equal, parse_mac_address }
 import extdeps.languages.yaml.types { YamlValue }
@@ -1293,7 +1293,20 @@ test fn the_arm_rendering_is_byte_identical_to_the_pre_rename_capture() -> Bool 
       match seed_document(seed: pair.seed) {
         DocumentRefused { reason: _ } => false
         DocumentBuilt { payload: _, content: content } =>
-          sha256_hex_of_text(text: content)
+          // ONE DELTA IS ALLOWED, AND IT IS NAMED RATHER THAN ASSUMED. #15136 (main, landed after this
+          // capture) closed the seed schema and made every renderer emit the CANONICAL key line — the same
+          // algorithm and base64 material, with the comment dropped, because a seed must not carry free text
+          // (merry-fox-82's hold at 0dd912cde58). That is a change to what a seed says, not to what the rename
+          // did, and it moves the ARM document too. So the control restores that one line to its pre-#15136
+          // spelling and demands the digest of the CAPTURED document, exactly: any other drift — a key
+          // reordered, a module renamed, an entry added, an indentation change — breaks it.
+          sha256_hex_of_text(
+            text: replace(
+              s: content,
+              from: ssh_public_key_canonical_line(k: provisioning_key),
+              to: ssh_public_key_line(k: provisioning_key),
+            )
+          )
             == "7044037d409ab316009b79f41f996bcf0b8c261ae2bf65f6a5e7b1e985f945c9"
       }
   }

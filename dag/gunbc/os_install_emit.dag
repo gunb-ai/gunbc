@@ -12,7 +12,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyDirectLayout,
   UbuntuAutoinstallLiveCommands,
 }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
@@ -58,7 +58,7 @@ fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
     kv(key: "lock_passwd", value: yaml_bool(b: user.lock_passwd)),
     kv(
       key: "ssh_authorized_keys",
-      value: yaml_sequence(elements: map(user.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k)))),
+      value: yaml_sequence(elements: map(user.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_canonical_line(k: k)))),
     ),
     kv(key: "shell", value: yaml_string(s: cloudinit_user_shell_text(shell: user.shell))),
     kv(key: "sudo", value: yaml_string(s: cloudinit_nopasswd_sudo_rule)),
@@ -104,7 +104,7 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     Present { value: ssh } => append(with_user_data, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_canonical_line(k: k))))),
         kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])
