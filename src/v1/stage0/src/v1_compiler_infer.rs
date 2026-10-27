@@ -26150,6 +26150,40 @@ pub fn param_is_generic_decl(
     }
 }
 
+fn diag_uni(tag: &str, payload: String) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    if COUNT.load(Ordering::SeqCst) > 600 {
+        return;
+    }
+    let seen = SEEN.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    if !seen.lock().unwrap().insert(format!("{}|{}", tag, payload)) {
+        return;
+    }
+    COUNT.fetch_add(1, Ordering::SeqCst);
+    eprintln!("{} {}", tag, payload);
+}
+
+fn diag_node_brief(n: Rc<Node>) -> String {
+    let inf = n
+        .inferred
+        .clone()
+        .map(|i| {
+            let t = format!("{:?}", (*i).clone());
+            t.chars().take(220).collect::<String>()
+        })
+        .unwrap_or("None".to_string());
+    format!(
+        "name={} children={} conn={:?} inferred={}",
+        n.name.clone(),
+        n.children.len(),
+        n.connective.clone(),
+        inf
+    )
+}
+
 pub fn unify_generics(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -26177,6 +26211,23 @@ pub fn unify_generics(
                 __found
             })
         {
+            {
+                let names: Vec<String> = generic_names.iter().cloned().collect();
+                diag_uni(
+                    "DIAGBIND",
+                    format!(
+                        "var={} generic_names={:?} formal=[{}] actual=[{}] acc_has={}",
+                        bind_name.clone(),
+                        names,
+                        diag_node_brief(formal.clone()),
+                        diag_node_brief(actual.clone()),
+                        match v1_rt::map_get(&acc, bind_name.clone()) {
+                            std::option::Option::None => false,
+                            Some(_) => true,
+                        }
+                    ),
+                );
+            }
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
                     v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone())

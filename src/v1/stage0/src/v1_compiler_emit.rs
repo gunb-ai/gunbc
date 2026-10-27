@@ -6860,7 +6860,7 @@ pub fn emit_typed_cast_shared(
                                         .clone()
                                         .map(|i| {
                                             let t = format!("{:?}", (*i).clone());
-                                            t.chars().take(160).collect::<String>()
+                                            t.chars().take(400).collect::<String>()
                                         })
                                         .unwrap_or("None".to_string());
                                     eprintln!(
