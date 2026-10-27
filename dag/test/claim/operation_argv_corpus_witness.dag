@@ -7,24 +7,7 @@ import gunbc.rung_drop { rung_drop_population, Enumerated, DerivedBy, DeclaredBy
 import std.algebra { fold_list, length, list_head, list_map, non_empty_to_list }
 import gunbc.rung_drop.operation_argv_closed_unevaluated_executable_unjudged { operation_argv_closed_unevaluated_executable_unjudged }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import std.operation_argv {
-  ArgvMaterialization,
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  ArgvRowClassification,
-  ArgvRowMaterialized,
-  ArgvRowExpressionResidue,
-  ArgvRowExecutablePositionRefused,
-  ArgvRowExecutableClosedUnevaluated,
-  ArgvRowOtherRefusal,
-  operation_argv_row_classify,
-  operation_argv_ref_label,
-  ShellTransportOperationRow,
-  operation_argv_bind_text,
-  operation_argv_classify,
-  operation_argv_refusal_label,
-  operation_argv_row_bindings,
-}
+import std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused, ArgvRowClassification, ArgvRowMaterialized, ArgvRowExpressionResidue, ArgvRowExecutablePositionRefused, ArgvRowExecutableClosedUnevaluated, ArgvRowOtherRefusal, operation_argv_row_classify, operation_argv_ref_label, ShellTransportOperationRow, operation_argv_bind_text, operation_argv_classify, operation_argv_refusal_label, operation_argv_row_bindings, shell_materialize_operation_argv }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

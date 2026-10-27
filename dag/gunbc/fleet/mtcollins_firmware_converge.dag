@@ -60,7 +60,7 @@ import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
 import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, EngineeringSample, ProductionPart,
 }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { Second, second_count, byte_size_count }
 import gunbc.machine_intake.ampere_smpro_observation { SmproProbeOutcome, smpro_outcome_word, smpro_outcome_text }
 import gunbc.fleet.mtcollins_firmware_baseline {
@@ -677,7 +677,7 @@ fn reading_satisfies(reading: EnsureObservation<FirmwareSemanticVersion>, desire
 }
 
 fn version_text(v: FirmwareSemanticVersion) -> String {
-  join([v.major as String, ".", v.minor as String, ".", v.patch as String], "")
+  join([nat_to_decimal_string(value: v.major), ".", nat_to_decimal_string(value: v.minor), ".", nat_to_decimal_string(value: v.patch)], "")
 }
 
 fn mismatch_reason(t: FirmwareTarget, desired: FirmwareSemanticVersion) -> String {
@@ -1284,7 +1284,7 @@ fn dry_step_commands(
   let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file)
   let flash = [
     concat(prefix, ["chassis", "status"]),
-    concat(prefix, ["-z", byte_size_count(b: step.procedure.upload_block) as String, "hpm", "upgrade", image_path as String, "force"]),
+    concat(prefix, ["-z", nat_to_decimal_string(value: byte_size_count(b: step.procedure.upload_block)), "hpm", "upgrade", image_path as String, "force"]),
   ]
   match readback_route_of(t: step.procedure.firmware_release.target) {
     HpmCheckComponent { component: _ } => concat(flash, [concat(prefix, ["hpm", "check"])])
