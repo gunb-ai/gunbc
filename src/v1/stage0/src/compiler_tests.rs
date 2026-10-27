@@ -4103,12 +4103,12 @@ would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_rel
              preamble gave {a} and {b}; one commit must give one sha256 \
              (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
         );
+        let c = build("c", false);
         // THE MEASUREMENT ITSELF, printed rather than transcribed: three hashes over one commit,
         // the last built the way the tree was built before this repair.
         eprintln!(
-            "seed-build-reproducibility commit {sha}: preamble a={a} b={b} (green arm, must be equal);              no-preamble c={c} (red arm, must differ from a)"
+            "seed-build-reproducibility commit {sha}: preamble a={a} b={b} (green arm, must be equal); no-preamble c={c} (red arm, must differ from a)"
         );
-        let c = build("c", false);
         assert!(
             c != a,
             "RED ARM NOT RED: commit {sha} built WITHOUT the seed-build preamble hashed {c}, equal \
