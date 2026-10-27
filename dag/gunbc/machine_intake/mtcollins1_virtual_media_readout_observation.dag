@@ -160,7 +160,8 @@ module gunbc.machine_intake.mtcollins1_virtual_media_readout_observation
 // sentence, which no hash can do and which is why the quoted values above are quoted from the
 // capture rather than paraphrased from memory.
 
-import std.types { Bool, Int, NonEmptyStr, List, EpochMs, list_length }
+import std.types { Bool, Int, NonEmptyStr, List, EpochMs, HttpStatus, list_length }
+import extdeps.ietf.http_semantics { HttpMethod }
 import std.optional { Present, Absent, optional_present, optional_absent }
 import std.list { list_member, first_where }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -217,10 +218,16 @@ type TransferProtocolReadout
 // mounted behind it. Recording which server answered each row is what makes "the Redfish service
 // exists / does not exist" a question that can be asked of the right subject. A row that stored
 // only a status code would reproduce the original error.
+// method and status use the repo's existing HTTP authorities rather than a fresh string/Int pair:
+// HttpMethod (extdeps.ietf.http_semantics, the RFC 9110 method set) and HttpStatus (std.types, an
+// Int refined to 100-599). Minting a parallel authority for a concept the repo already models is a
+// failed decomposition (DESIGN §2), and a NonEmptyStr method would let a row hold "GTE" -- a typo
+// no type checks -- while still passing the GET-only predicate. As HttpMethod, a write cannot be
+// spelled in a row that presents itself as a GET, and a status outside 100-599 cannot be stored.
 type BmcSurfaceProbeRow {
-  method: NonEmptyStr
+  method: HttpMethod
   path: NonEmptyStr
-  status: Int
+  status: HttpStatus
   served_by: NonEmptyStr
 }
 
@@ -228,6 +235,17 @@ type BmcSurfaceProbeRow {
 // against prose in each row.
 data redfish_server: NonEmptyStr = "AMI MegaRAC Redfish Service"
 data oem_web_server: NonEmptyStr = "lighttpd"
+
+// THE CREDENTIAL GAP, TYPED -- because a gap that is a value can be gated on and a gap that is a
+// comment cannot. It is stored ON the receipt rather than as a Bool plus a principal string: a
+// Bool/string pair leaves a state like "credential available, and here is a stale 'not
+// provisioned' principal" writable, where the string only means anything under the false arm.
+// Storing the sum makes the unavailable arm carry its principal and cause, and the available arm
+// carry nothing that could go stale. DESIGN §5: "Stronger than catching a wrong state is making it
+// unwritable."
+type B0CredentialGap
+  = GapNone
+  | GapCredentialUnreachable { principal: NonEmptyStr, cause: NonEmptyStr }
 
 // THE B0 RECEIPT, AS THIS PHASE ACTUALLY MET IT.
 type B0VirtualMediaReadout {
@@ -253,8 +271,9 @@ type B0VirtualMediaReadout {
   redfish_service_root_served: Bool
   // Which authentication mechanisms the controller offered for the refused VirtualMedia GET.
   offered_auth_schemes: List<NonEmptyStr>
-  credential_path_available: Bool
-  credential_principal: NonEmptyStr
+  // Whether the read-only credential could be reached from the observation lane, and if not, which
+  // principal was wanted and why it was unreachable. One value, not a flag plus a string.
+  credential_gap: B0CredentialGap
   // Whether a firmware converge was live against this unit when the ladder was taken: the check
   // that keeps a 401 from being read as a property of the surface.
   firmware_converge_live_at_observation: Bool
@@ -266,12 +285,12 @@ type B0VirtualMediaReadout {
   authenticated_refusal_captures: List<ContentHash>
 }
 
-fn redfish_row(path: NonEmptyStr, status: Int) -> BmcSurfaceProbeRow {
-  BmcSurfaceProbeRow { method: "GET", path: path, status: status, served_by: redfish_server }
+fn redfish_row(path: NonEmptyStr, status: HttpStatus) -> BmcSurfaceProbeRow {
+  BmcSurfaceProbeRow { method: GET, path: path, status: status, served_by: redfish_server }
 }
 
-fn oem_row(path: NonEmptyStr, status: Int) -> BmcSurfaceProbeRow {
-  BmcSurfaceProbeRow { method: "GET", path: path, status: status, served_by: oem_web_server }
+fn oem_row(path: NonEmptyStr, status: HttpStatus) -> BmcSurfaceProbeRow {
+  BmcSurfaceProbeRow { method: GET, path: path, status: status, served_by: oem_web_server }
 }
 
 // The ladder, row-for-row from the committed surface-ladder.txt of the instrumented pass
@@ -348,8 +367,10 @@ data mtcollins1_b0_virtual_media_readout: B0VirtualMediaReadout = B0VirtualMedia
   // TRUE, and the load-bearing half of the correction.
   redfish_service_root_served: true,
   offered_auth_schemes: b0_offered_auth_schemes,
-  credential_path_available: false,
-  credential_principal: b0_credential_principal,
+  credential_gap: GapCredentialUnreachable {
+    principal: b0_credential_principal,
+    cause: b0_credential_unreachable_cause,
+  },
   firmware_converge_live_at_observation: false,
   // 2026-10-27T04:00:12Z, the OBSERVER's wall clock at the first request of the instrumented pass.
   // Not the BMC's Date header and not a file mtime: the BMC clock is recorded separately in META.txt
@@ -423,7 +444,7 @@ fn ladder_answered_not(readout: B0VirtualMediaReadout, path: NonEmptyStr, status
 }
 
 fn ladder_is_get_only(readout: B0VirtualMediaReadout) -> Bool {
-  readout.ladder.all(r => r.method == "GET")
+  readout.ladder.all(r => r.method == GET)
 }
 
 // B0'S RULE, AS A FUNCTION THE NEXT PHASE MUST MATCH ON -- the operator's ruling of 2026-09-18,
@@ -509,19 +530,15 @@ data mtcollins1_b0_media_route: BmcMediaRouteAdmission =
 
 // THE GAP, TYPED -- because a gap that is a value can be gated on and a gap that is a comment
 // cannot.
-type B0CredentialGap
-  = GapNone
-  | GapCredentialUnreachable { principal: NonEmptyStr, cause: NonEmptyStr }
+// WHY the credential was unreachable, named once so the receipt and any later reader quote the
+// same sentence rather than paraphrasing it into drift.
+data b0_credential_unreachable_cause: NonEmptyStr =
+  "read-only credential unreachable from the observation lane: its Secret Manager container is dispatched only from the fleet-converge runner identity, and this container has no ADC, no workload-identity federation and no grant"
 
+// THE GAP, READ BACK OFF THE RECEIPT. There is no fold to run: the receipt stores the gap, so this
+// is a projection. It exists so a consumer names the datum rather than re-matching the record.
 fn b0_credential_gap(readout: B0VirtualMediaReadout) -> B0CredentialGap {
-  if readout.credential_path_available {
-    GapNone
-  } else {
-    GapCredentialUnreachable {
-      principal: readout.credential_principal,
-      cause: "read-only credential unreachable from the observation lane: its Secret Manager container is dispatched only from the fleet-converge runner identity, and this container has no ADC, no workload-identity federation and no grant",
-    }
-  }
+  readout.credential_gap
 }
 
 data mtcollins1_b0_credential_gap: B0CredentialGap =
