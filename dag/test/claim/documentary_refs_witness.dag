@@ -11,6 +11,8 @@ import gunbc.documentary_refs {
   documentary_ref_symbol_text,
   generated_document_declaration_refs,
   document_ledger_declaration_refs,
+  v1_maintenance_standing_ref,
+  required_gate_subjects_ref,
 }
 import gunbc.design_document { expected_design_md }
 import gunbc.design_ruling { DesignRuling, design_rulings, ruling_ledger_notes }
@@ -204,6 +206,10 @@ test fn documentary_refs_population_is_exactly_the_notes_complement() -> Bool {
   )
   length(xs: product) == length(xs: concat([v1_maintenance_standing_ref, required_gate_subjects_ref], complement))
     && all(complement, p => any(product, q => q.decl_name == p.decl_name && q.module_path == p.module_path))
+    && all(product, q =>
+      (q.decl_name == v1_maintenance_standing_ref.decl_name && q.module_path == v1_maintenance_standing_ref.module_path)
+        || (q.decl_name == required_gate_subjects_ref.decl_name && q.module_path == required_gate_subjects_ref.module_path)
+        || any(complement, p => p.decl_name == q.decl_name && p.module_path == q.module_path))
 }
 
 // THE INHABITANCE HALF. The fixture above derives the ruling facts from the rows' own references, so
