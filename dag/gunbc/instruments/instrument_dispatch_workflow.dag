@@ -11,6 +11,7 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.expressions {
   ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs,
+  Expression, FunctionCall, FromJSON, StringLiteral, Equals, LogicalAnd, LogicalOr,
   serialize_template, interpolate, runner_temp,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -18,7 +19,9 @@ import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputChoice,
   WorkflowPermissions, PermRead, ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
+  RunnerSpec, SelfHosted, RunsOnExpression,
 }
+import extdeps.languages.json.emit { json_str_list }
 import gunbc.action_use_admission {
   upload_artifact_action,
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
@@ -36,10 +39,13 @@ import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_g
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
   type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
-  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label,
+  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label,
   ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
+import gunbc.instruments.serving_benchmark_run { serving_benchmark_run_plan }
+import gunbc.runner.runner_registration_labels { gunbc_gpu_docker_label }
+import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
@@ -211,17 +217,22 @@ fn instrument_dispatch_labels() -> List<Label> {
     // The roster-reach inhabitance walk is the pairing claim of the roster-token witness: hours of interpreter time
     // over the runner and fleet pool, so it is run on purpose on the fleet and never as a merge gate.
     roster_reach_inhabitance_label(),
-    // The ambient-name census is dispatchable because its verdict reads the wave's rewritten modules over a
-    // prepared emitted compiler AND the merge-base tree (newly-refused versus already-refused), which
-    // outlives the bounded per-change runner and the interactive remote wait; a change to its comparison
-    // needs the real label executed at its own head, which only a dispatch of that ref gives.
+    // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
+    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
+    router_proxy_falsifier_label(),
+    // One serving-benchmark run needs the cell's GPUs and a GPU-capable docker daemon, which no per-change
+    // lane declares; it is dispatched on the fleet when the cell's operator books the window.
+    serving_benchmark_run_label(),
+    // The ambient-name census is the whole-tree binding census the NAMESPACE-XL waves and the generated import sweep
+    // read (v2.compiler.occurrence_binding_census): the emitted compiler's census-infer over dag + src/v2, which outlives
+    // the free remote runner's cap, so it is run on purpose here and never as a merge gate. It is dispatchable because
+    // its verdict reads the wave's rewritten modules over a prepared emitted compiler AND the merge-base tree
+    // (newly-refused versus already-refused); a change to that comparison needs the real label executed at its own
+    // head, which only a dispatch of that ref gives.
     ambient_name_census_label(),
     // The import sweep's controls (v2.workflow.roster_import_sweep roster_controls_report) run the sweep's fixture controls
     // in the interpreter, past the free remote runner's cap; a fixture run, so it carries no memory row.
     roster_import_sweep_controls_label(),
-    // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
-    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
-    router_proxy_falsifier_label(),
     // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
     // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
     credential_acquisition_systemd_rows_label(),
@@ -312,10 +323,87 @@ fn instrument_dispatch_memory_demands_fit_selected_target() -> Bool {
 }
 
 fn instrument_dispatch_memory_demands_are_dispatchable() -> Bool {
+  instrument_dispatch_labels_are_dispatchable(labels: list_map(xs: instrument_dispatch_memory_demands(), f: fn(d) { d.label }))
+}
+
+// A ROW KEYED BY A LABEL THE WORKFLOW CANNOT DISPATCH is a requirement nothing reads, so every per-label
+// row family (the memory demands above, the runner requirements below) is held to the dispatch options
+// through this one check.
+fn instrument_dispatch_labels_are_dispatchable(labels: List<Label>) -> Bool {
   let options = instrument_dispatch_label_options()
-  length(xs: filter(xs: instrument_dispatch_memory_demands(), predicate: fn(d) {
-    length(xs: filter(xs: options, predicate: fn(o) { o == render_label(l: d.label) })) == 0
+  length(xs: filter(xs: labels, predicate: fn(l) {
+    length(xs: filter(xs: options, predicate: fn(o) { o == render_label(l: l) })) == 0
   })) == 0
+}
+
+// THE RUNNER A DISPATCHED SUBJECT NEEDS BEYOND THE POOL'S LABELS IS A DECLARED FACT OF ITS LABEL, like its
+// memory. Most instruments run on any slot of the pool; a few need a capability only some slots carry, and
+// dispatching one of them onto a slot without it answers exit 2 (no observation) after the run has queued,
+// built and spent the slot. The row narrows the selector instead, so such a run waits for a slot that
+// carries every label it names. GitHub admits a runner holding ALL the labels runs-on names (the AND
+// semantics cited at extdeps.github.actions RunnerSpec), so a row's labels are added to the pool's, never
+// substituted for them, and a slot lacking the capability is never selected. A label with no row runs on
+// the pool as before.
+type InstrumentDispatchRunnerRequirement {
+  label: Label
+  runner_labels: List<String>
+}
+
+// The serving benchmark needs a GPU-capable docker daemon the job user owns (gunbc.runner.runner_registration_labels
+// gunbc_gpu_docker_label, granted only where gunbc.runner.runner_gpu_container_toolchain reads all four arms back)
+// on the host its cell plan names. The host is read from the instrument's own plan, so moving the benchmark to
+// another cell moves the dispatch with it.
+fn instrument_dispatch_runner_requirements() -> List<InstrumentDispatchRunnerRequirement> {
+  [
+    InstrumentDispatchRunnerRequirement {
+      label: serving_benchmark_run_label(),
+      runner_labels: [gunbc_gpu_docker_label, runner_host_label(host: serving_benchmark_run_plan.host)],
+    },
+  ]
+}
+
+fn instrument_dispatch_runner_requirements_are_dispatchable() -> Bool {
+  instrument_dispatch_labels_are_dispatchable(labels: list_map(xs: instrument_dispatch_runner_requirements(), f: fn(r) { r.label }))
+}
+
+// A requirement narrows a SELF-HOSTED label set. Under a hosted runner target there are no labels to add a
+// capability to, so a requirement row cannot be honored and the workflow is refused rather than emitted
+// with the requirement silently dropped.
+fn instrument_dispatch_runner_requirements_are_realizable() -> Bool {
+  match gunbc_ci_selected_runner_spec() {
+    SelfHosted { labels: _ } => true
+    _ => length(xs: instrument_dispatch_runner_requirements()) == 0
+  }
+}
+
+fn instrument_dispatch_runner_labels_json(labels: List<String>) -> Expression {
+  FunctionCall { function: FromJSON, args: [StringLiteral { value: json_str_list(items: labels) }] }
+}
+
+// THE JOB'S RUNNER: the pool's spec when no row exists; otherwise one runs-on expression that selects, for
+// the dispatched label, the pool's labels joined with that row's, and the pool's labels for every other
+// label. The selector is built as a typed expression (extdeps.github.expressions), not spelled as text.
+fn instrument_dispatch_runner() -> RunnerSpec {
+  let pool = gunbc_ci_selected_runner_spec()
+  match pool {
+    SelfHosted { labels: base } =>
+      if length(xs: instrument_dispatch_runner_requirements()) == 0 { pool } else {
+        RunsOnExpression {
+          expression: interpolate(expression: fold(reverse(instrument_dispatch_runner_requirements()), init: instrument_dispatch_runner_labels_json(labels: base), f: (acc, r) =>
+            LogicalOr {
+              left: LogicalAnd {
+                left: Equals {
+                  left: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] },
+                  right: StringLiteral { value: render_label(l: r.label) },
+                },
+                right: instrument_dispatch_runner_labels_json(labels: runner_label_set_union(a: base, b: r.runner_labels)),
+              },
+              right: acc,
+            })),
+        }
+      }
+    _ => pool
+  }
 }
 
 // THE GUARD IS ONE SCRIPT, EMITTED THROUGH v2.workflow.bash_emit LIKE ITS SIBLINGS; each declared row
@@ -617,7 +705,7 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   Job {
     id: instrument_dispatch_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: instrument_dispatch_runner(),
     environment: none,
     steps: instrument_dispatch_steps(seed: seed, guard: guard, script: script),
     needs: [],
@@ -689,6 +777,10 @@ fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOut
     InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a memory demand names a label that is not dispatchable" }
   } else if !instrument_dispatch_memory_demands_fit_selected_target() {
     InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a dispatchable label's declared memory demand exceeds the selected runner target's budget (gunbc.ci.ci_runner_target ci_runner_target_ram_speed_budget), so no runner this workflow targets can hold it" }
+  } else if !instrument_dispatch_runner_requirements_are_dispatchable() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a runner requirement names a label that is not dispatchable" }
+  } else if !instrument_dispatch_runner_requirements_are_realizable() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a runner requirement adds labels to the self-hosted pool's selector, and the selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not self-hosted, so the requirement cannot be honored" }
   } else if instrument_dispatch_labels_are_rostered() {
     match instrument_dispatch_seed_script() {
       Rejected { diagnostics: _ } =>
