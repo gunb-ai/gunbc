@@ -85,10 +85,20 @@ test fn printer_and_main_workspace_modes_remain_dispatchable() -> Bool {
 }
 
 // POSITIVE CONTROL for the exclusion conjunct above, and the reason it may not be dropped as
-// vacuous: the fleet_converge_spark_target_modes filter is LIVE on main, not vestigial — the
-// closed roster still carries the retired fleet's remaining mode, and it is excluded exactly once.
-// Delete the filter in the product and options grows by one, which this conjunct catches; delete
-// this control and the exclusion reads as a filter that never excludes anything.
+// vacuous. The product excludes a mode when fleet_converge_spark_target_modes names it, via
+// fleet_converge_mode_is_spark_target_mode inside fleet_converge_dispatchable_modes, and that filter
+// is LIVE on main rather than vestigial: the closed roster still carries seven retired spark_* modes
+// (SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe,
+// SparkWirelessLinkConverge, SparkGrantsObserve) and all seven are excluded, 81 roster entries down to
+// 74 options. This conjunct pins the excluded set's cardinality on one member — SparkGrants appears
+// exactly once in the exclusion list, exactly once in the roster, and zero times in options — because
+// that is what makes the exclusion check discriminating: delete the product's filter, or shrink the
+// exclusion list, and options grows while this control goes red. Delete this control instead and the
+// exclusion conjunct reads as a filter that never excludes anything.
+// (The exclusion is conditional in the product — fleet_converge_dispatchable_modes guards it with
+// `count(fleet_converge_spark_target_options) > 0 ||` — so it holds today because the Spark host
+// roster is empty. That is the product's own stated rule, not this claim's assumption; if a host is
+// ever re-rostered the filter flips open and this control is the thing that reports it.)
 test fn spark_target_exclusion_filter_is_live() -> Bool {
   count(filter(fleet_converge_spark_target_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "spark_grants")) == 1
     && count(filter(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m) == "spark_grants")) == 1
