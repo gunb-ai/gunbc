@@ -1552,7 +1552,16 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/long/bind_eval_by_execution.dag",
-      check_fns: [],
+      check_fns: [
+        "bind_source_pipeline_admits_holds",
+        "bind_source_driven_executes_holds",
+        "bind_direct_runtime_holds",
+        "bind_value_perturbation_red_holds",
+        "bind_fixture_producer_holds",
+        "bind_fixture_wrong_value_red_holds",
+        "bind_census_ingested_executes_holds",
+        "bind_census_ingested_wrong_value_red_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -1561,7 +1570,17 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/execution/long/loop_eval_by_execution.dag",
-      check_fns: [],
+      check_fns: [
+        "loop_source_pipeline_admits_holds",
+        "loop_source_driven_executes_holds",
+        "loop_source_driven_wrong_value_red_holds",
+        "loop_direct_runtime_holds",
+        "loop_value_perturbation_red_holds",
+        "loop_fixture_producer_holds",
+        "loop_fixture_wrong_value_red_holds",
+        "loop_census_ingested_executes_holds",
+        "loop_census_ingested_wrong_value_red_holds"
+      ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
@@ -1599,7 +1618,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/manual/bind_demand_driven_eval.dag",
-      check_fns: [],
+      check_fns: [
+        "bind_eval_counted_value_body_holds",
+        "bind_eval_divergent_value_rejects_holds",
+        "bind_eval_bound_reference_reads_value_holds",
+        "bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds",
+        "bind_eval_minted_occurrence_equal_reference_reads_holds",
+        "bind_eval_unbound_reference_refuses_holds",
+        "bind_eval_unbound_reference_default_algebra_refuses_holds"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -1678,7 +1705,14 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position.dag",
-      check_fns: [],
+      check_fns: [
+        "witness_computed_green",
+        "witness_bare_literal_red",
+        "witness_let_bound_red",
+        "witness_interp_literals_red",
+        "witness_lens_verdict_holds_on_computed",
+        "witness_lens_verdict_violation_on_bare_literal"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -1705,7 +1739,10 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb.dag",
-      check_fns: [],
+      check_fns: [
+        "witness_computed_facts_readback_holds",
+        "witness_literal_perturb_facts_readback_red"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -1752,7 +1789,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "dag/test/claim/orchestration_if_emit.dag",
-      check_fns: [],
+      check_fns: [
+        "orch_if_streq_empty_then_holds",
+        "orch_if_streq_empty_then_has_teeth_holds",
+        "orch_if_streq_else_holds",
+        "orch_if_exit_zero_negated_holds",
+        "orch_if_run_redirect_ignore_fail_holds",
+        "orch_if_log_matches_holds",
+        "orch_if_and_tests_holds"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
