@@ -340,3 +340,36 @@ test fn w_the_projected_entry_is_keyed_by_declaration_identity() -> Bool {
     }
   }
 }
+
+// RED: the reading for an unreadable answer is ABSENT, not a substituted zero. Before, a refused cash
+// answer and an unbounded ceiling each projected a zero reading beside their declared gap (five readings,
+// two gaps); now each axis carries its gap and no reading, so only the gap speaks for it. The positive
+// control is the no-purchase build, whose cash zero is a genuine reading and stays.
+test fn w_an_unreadable_answer_projects_no_reading_not_a_zero() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesRefused { refusals: _ } => false
+    PopulationRolesResolved { roles: fixture_roles } => {
+      let broken = BuildCandidate {
+        identity: dear_ref,
+        display_label: "unreadable" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingUnconstrainedByAnyLine),
+        cash: CashRefused { cause: CashLineUnfulfilled { part: part_ref } },
+      }
+      let owned = BuildCandidate {
+        identity: dear_ref,
+        display_label: "all from stock" as NonEmptyStr,
+        memory_capacity: one_terabyte,
+        wall_power: watt(count: 300),
+        memory_bandwidth: Bandwidth { count: 204800000000 },
+        resolutions: selection_fixture_resolution(fixture_roles: fixture_roles, lines: [], ceiling: CeilingDerived { builds: 31, bottlenecks: [purchase_line()], bottleneck_units: 992 }),
+        cash: CashNoPurchaseLines,
+      }
+      let eb = project_entry(candidate: broken, declared: Usd)
+      let eo = project_entry(candidate: owned, declared: Usd)
+      count(eb.readings) == 3 && count(eb.missing_inputs) == 2 && count(eo.readings) == 5
+    }
+  }
+}
