@@ -17,9 +17,12 @@ import gunbc.dispatch_replay_recording {
   recording_replay_admission, RecordingReplayAdmitted, RecordingReplayBaseMismatch,
   RecordedSuccess, RecordedExitCode, recorded_end_of, RecordedEndAdmitted, RecordedEndRefused,
   RecordedEndPairNotReproducible, RecordedEndOutOfRange, RecordedEndCollidesWithReplayRefusal, recording_object_hex,
+  RecordingProvenance, CapturedFromAttempt, PreparedByOperator, recording_provenance_word, recording_ref_of,
+  dispatch_replay_recording_frontier_decl_names,
+  recording_ref_prefix, recording_prepared_ref_prefix, recorded_end_of_status, RecordingPreparedEndAdmitted, RecordingPreparedEndRefused,
 }
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
-import std.roster_frontier { frontier_subject_eq }
+import std.roster_frontier { frontier_subject_eq, DeclSubject, PathSubject }
 import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultExitCode, ServiceResultOomKill }
 
 data base_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -27,12 +30,24 @@ data base_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 data tree_t: String = "cccccccccccccccccccccccccccccccccccccccc"
 
 fn fx_recording_text(base: String, status: Int) -> String {
-  join([base, ".", tree_t, ".", to_string(value: status), ".", if status == 0 { "success" } else { "exit-code" }], "")
+  join([base, ".", tree_t, ".", to_string(value: status), ".", if status == 0 { "success" } else { "exit-code" }, ".captured"], "")
 }
 
 // A fixture id is built only through the decode, the one constructor that admits GitObjectId parts.
 fn fx_recording(base: String, status: Int) -> RecordingId? {
   match recording_id_decode(text: fx_recording_text(base: base, status: status)) {
+    RecordingIdDecoded { id } => Present { value: id }
+    RecordingIdMalformed { text: _, reason: _ } => none
+  }
+}
+
+// The same end state under the other provenance: a five-part id whose last word is 'prepared'.
+fn fx_prepared_recording_text(base: String, status: Int) -> String {
+  join([base, ".", tree_t, ".", to_string(value: status), ".", if status == 0 { "success" } else { "exit-code" }, ".", recording_provenance_word(provenance: PreparedByOperator)], "")
+}
+
+fn fx_prepared_recording(base: String, status: Int) -> RecordingId? {
+  match recording_id_decode(text: fx_prepared_recording_text(base: base, status: status)) {
     RecordingIdDecoded { id } => Present { value: id }
     RecordingIdMalformed { text: _, reason: _ } => none
   }
@@ -132,21 +147,62 @@ test fn the_replay_request_word_and_kind_are_explicit() -> Bool {
 test fn decode_refuses_an_unreplayable_exit_status_or_pair() -> Bool {
   let b = base_a
   let t = tree_t
-  (match recording_id_decode(text: join([b, ".", t, ".78.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
-    && (match recording_id_decode(text: join([b, ".", t, ".256.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
-    && (match recording_id_decode(text: join([b, ".", t, ".0.exit-code"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
-    && (match recording_id_decode(text: join([b, ".", t, ".3.success"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
-    && (match recording_id_decode(text: join([b, ".", t, ".0.oom-kill"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
-    && (match recording_id_decode(text: join([b, ".", t, ".0.success"], "")) { RecordingIdDecoded { id: _ } => true  RecordingIdMalformed { text: _, reason: _ } => false })
+  (match recording_id_decode(text: join([b, ".", t, ".78.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".256.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.exit-code.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".3.success.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.oom-kill.captured"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([b, ".", t, ".0.success.captured"], "")) { RecordingIdDecoded { id: _ } => true  RecordingIdMalformed { text: _, reason: _ } => false })
 }
 
 // THE CAPTURE FRONTIER IS TRACKED IN THE CORPUS: its row is read by the closure census, so the dissolution trigger is
 // a citable fact and not a note. Mutation: drop dispatch_replay_recording_frontier_rows from
 // census_closure_frontier_row_groups and this goes red.
 test fn the_capture_frontier_is_enrolled_in_the_closure_census() -> Bool {
-  count(dispatch_replay_recording_frontier_rows) == 1
+  // Two rows: the capture operation and the prepare operation, each with no production caller.
+  count(dispatch_replay_recording_frontier_rows) == 2
     && all(
       dispatch_replay_recording_frontier_rows,
       row => any(census_closure_frontier_rows(), c => frontier_subject_eq(a: c.subject, b: row.subject)),
     )
+    && all(dispatch_replay_recording_frontier_decl_names(), name => any(dispatch_replay_recording_frontier_rows, row => match row.subject { DeclSubject { ref } => ref.decl_name as String == name  PathSubject { path: _ } => false }))
+}
+
+// PROVENANCE IS TYPED, NOT A PLACE IT IS FILED. Two arms, no default; the arm picks the namespace, so an id can
+// never name a ref in the other arm's namespace and `git for-each-ref refs/gunbc/recordings/` lists exactly the
+// receipts of real attempts. The fifth part is admitted only by its own word, so an id that does not say how it
+// came to exist is malformed rather than quietly captured -- and a manager result is never supplied to prepare, it
+// is derived from the status the unit ends with. Mutation: default the fifth part to CapturedFromAttempt in
+// recording_provenance_of_word (the unknown-word assertion goes red); render the provenance from a constant in
+// recording_ref_of, or point both arms at one prefix (both namespace assertions go red); accept a manager result as
+// a prepare argument and the derived-pair assertions go red.
+test fn the_provenance_arm_is_typed_and_picks_the_namespace() -> Bool {
+  let captured = match fx_recording(base: base_a, status: 0) { Absent => false  Present { value: fx } => match fx.provenance { CapturedFromAttempt => true  PreparedByOperator => false } }
+  let prepared = match fx_prepared_recording(base: base_a, status: 0) { Absent => false  Present { value: fx } => match fx.provenance { PreparedByOperator => true  CapturedFromAttempt => false } }
+  captured
+    && prepared
+    // The arm decides the namespace, and the two namespaces are disjoint.
+    && (match fx_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => recording_ref_of(id: fx) == concat(recording_ref_prefix, recording_id_text(id: fx))
+    })
+    && (match fx_prepared_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => recording_ref_of(id: fx) == concat(recording_prepared_ref_prefix, recording_id_text(id: fx))
+    })
+    && (match fx_prepared_recording(base: base_a, status: 0) {
+      Absent => false
+      Present { value: fx } => !string_contains(s: recording_ref_of(id: fx), pattern: recording_ref_prefix)
+    })
+    // A fourth part is malformed; a fifth part that is neither word is malformed; only the two words are admitted.
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.captured"], "")) { RecordingIdDecoded { id } => match id.provenance { CapturedFromAttempt => true  PreparedByOperator => false }  RecordingIdMalformed { text: _, reason: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.prepared"], "")) { RecordingIdDecoded { id } => match id.provenance { PreparedByOperator => true  CapturedFromAttempt => false }  RecordingIdMalformed { text: _, reason: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success.real"], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    && (match recording_id_decode(text: join([base_a, ".", tree_t, ".0.success."], "")) { RecordingIdMalformed { text: _, reason: _ } => true  RecordingIdDecoded { id: _ } => false })
+    // The prepared end is DERIVED from the status: 0 can only be success and any other admitted status only
+    // exit-code, and the replay refusal code is not mintable at all.
+    && (match recorded_end_of_status(status: 0) { RecordingPreparedEndAdmitted { end } => match end { RecordedSuccess => true  RecordedExitCode { status: _ } => false }  RecordingPreparedEndRefused { cause: _ } => false })
+    && (match recorded_end_of_status(status: 3) { RecordingPreparedEndAdmitted { end } => match end { RecordedExitCode { status } => status == 3  RecordedSuccess => false }  RecordingPreparedEndRefused { cause: _ } => false })
+    && (match recorded_end_of_status(status: 78) { RecordingPreparedEndRefused { cause: _ } => true  RecordingPreparedEndAdmitted { end: _ } => false })
 }

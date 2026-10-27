@@ -34,7 +34,8 @@ import gunbc.roadmap.roadmap_belt_actuate { belt_exec, ExecOk, ExecFailed, ExecR
 import gunbc.roadmap.roadmap_attempt_exit_spool { AttemptExitRecord, AttemptProcessExitedWith }
 import gunbc.dispatch_replay_recording {
   recording_capture, RecordingCaptured, RecordingCaptureRefused, RecordingCaptureExitUnreplayable, RecordedEndCollidesWithReplayRefusal, RecordingCaptureObjectUnusable,
-  recording_ref_of, recording_peel_to_tree_suffix, replay_refusal_exit_code,
+  RecordingCaptureAlreadyRecorded, recording_prepare, recording_ref_of, recording_id_part, recording_id_separator, recording_peel_to_tree_suffix,
+  replay_refusal_exit_code, recording_ref_prefix, recording_prepared_ref_prefix, recording_provenance_captured_word,
 }
 import gunbc.dispatch_replay_worker { replay_worker_cli }
 import gunbc.dispatch_replay_capture { recording_capture_for_instance }
@@ -238,8 +239,12 @@ fn replay_over(repo: String, work: String) -> Bool {
   }
 }
 
+// The id is the last '/'-separated segment of the ref the recording was written to. Taken by segment rather than
+// by cutting a fixed prefix length, because the two provenance arms live in two namespaces of different length --
+// cutting one prefix would silently mangle the other's id.
 fn recording_id_of(ref_name: String) -> String {
-  substring(s: ref_name, start: string_length(s: "refs/gunbc/recordings/"), end: string_length(s: ref_name))
+  let parts = ref_name.split(delimiter: "/")
+  recording_id_part(parts: parts, index: count(parts) - 1)
 }
 
 test fn a_recording_replays_its_tree_byte_for_byte_and_refuses_inexactly_in_a_real_repository() -> Bool {
@@ -308,7 +313,7 @@ fn capture_over(root: String) -> Bool {
     })
   let recorded = second && spooled
     && capture_records_written(instance: instance, base: base, outcome: CommitRecorded { node_id: capture_node, message: "result" }, head: result)
-  let ref_name = join(["refs/gunbc/recordings/", base, ".", result_tree, ".3.exit-code"], "")
+  let ref_name = join(["refs/gunbc/recordings/", base, ".", result_tree, ".3.exit-code.", recording_provenance_captured_word], "")
   let captured = recorded && exit_code_of(exit: recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)) == 0
   let ref_tree = git_out(dir: repo, args: ["rev-parse", concat(ref_name, recording_peel_to_tree_suffix)])
   let ref_parent = git_out(dir: repo, args: ["rev-parse", concat(ref_name, "^")])
@@ -325,4 +330,131 @@ test fn the_capture_entry_records_a_completed_attempt_from_its_own_records() -> 
   let observed = root.success && capture_over(root: root.path as String)
   let cleaned = shell.Remove.RecursiveForce(path: root.path)
   observed && cleaned.success
+}
+
+// THE PREPARED RECORDING, MINTED AND REPLAYED IN A REAL REPOSITORY (gunbc.dispatch_replay_recording
+// recording_prepare). The manager's lab question of 2026-10-27: prove the post-model path with an end state that
+// was NOT captured from an attempt, and prove it cannot pass as one. This runs the production mint over base,
+// result commit and exit status, then the production replay over the id it returns. It asserts four things the
+// captured arm cannot satisfy:
+//   - the ref lands in refs/gunbc/recordings-prepared/ and NOTHING appears under refs/gunbc/recordings/, so the
+//     listing of captured receipts stays exactly the receipts of real attempts;
+//   - the prepared end state replays like a captured one (tree, exit, HEAD still the base, worktree dirty) -- it is
+//     the same route, only the provenance differs;
+//   - the two arms are unreachable through each other: replaying the SAME base/tree/status under the captured word
+//     refuses, because no ref exists there;
+//   - the mint is create-only and refuses the replay refusal status, so an operator cannot forge a second recording
+//     over one already written, nor mint an end the replayed worker could not exit with.
+// Mutations: render the provenance from a constant in recording_ref_of (the namespace assertions go red, and the
+// cross-arm refusal goes green-to-red); default the fifth id part to captured in recording_provenance_of_word (the
+// cross-arm control replays, and goes red); let recording_prepare take a manager result instead of deriving it (no
+// admitted pair -- the status-3 assertion goes red); drop the create-only guard (the second mint goes red).
+test fn a_prepared_recording_lives_in_its_own_namespace_and_replays_like_a_captured_one() -> Bool {
+  let repo = shell.Mktemp.Dir()
+  let work = shell.Mktemp.Dir()
+  let observed = repo.success && work.success && prepared_over(repo: repo.path as String, work: work.path as String)
+  let cleaned_repo = shell.Remove.RecursiveForce(path: repo.path)
+  let cleaned_work = shell.Remove.RecursiveForce(path: work.path)
+  observed && cleaned_repo.success && cleaned_work.success
+}
+
+fn recording_id_text_with_provenance(text: String, word: String) -> String {
+  let parts = text.split(delimiter: recording_id_separator)
+  join(
+    [
+      recording_id_part(parts: parts, index: 0),
+      recording_id_separator,
+      recording_id_part(parts: parts, index: 1),
+      recording_id_separator,
+      recording_id_part(parts: parts, index: 2),
+      recording_id_separator,
+      recording_id_part(parts: parts, index: 3),
+      recording_id_separator,
+      word,
+    ],
+    "",
+  )
+}
+
+fn prepared_over(repo: String, work: String) -> Bool {
+  let built = git_ok(dir: repo, args: ["init", "-q"])
+    && git_ok(dir: repo, args: ["config", "user.name", "witness"])
+    && git_ok(dir: repo, args: ["config", "user.email", "witness@invalid"])
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "one").success
+    && commit_all(dir: repo, message: "base")
+  let base = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let staged = built
+    && Filesystem.Write(path: join([repo, "/a.txt"], ""), content: "two").success
+    && Filesystem.Write(path: join([repo, "/prepared.txt"], ""), content: "prepared candidate").success
+    && commit_all(dir: repo, message: "the candidate the prepared recording carries")
+  let result = git_out(dir: repo, args: ["rev-parse", "HEAD"])
+  let result_tree = git_out(dir: repo, args: ["rev-parse", concat(result, recording_peel_to_tree_suffix)])
+  // The account that replays has no identity, pinned before anything runs (see the captured claim).
+  let identity_blanked = git_ok(dir: repo, args: ["config", "--local", "user.name", ""])
+  if !staged || !identity_blanked {
+    false
+  } else {
+    match recording_prepare(repo_root: repo, base_sha: base, result_commit: result, exit_status: 3) {
+      RecordingCaptureRefused { cause: _ } => false
+    RecordingCaptured { id, ref_name } => {
+      let wt = join([work, "/prepared-attempt"], "")
+      let wt_other_word = join([work, "/captured-word"], "")
+      let added = git_ok(dir: repo, args: ["worktree", "add", "-q", "-b", "attempt/prepared", wt, base])
+        && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other_word, base])
+
+      // NAMESPACE: the ref is under the prepared prefix and nothing exists under the captured one.
+      // The ref exists under the prepared prefix and holds a commit whose TREE is the recorded tree and whose one
+      // parent is the base (the mint mints a fresh commit, so its sha is not the fixture's result commit -- asserting
+      // the tree and the parent is what says the end state is the one prepared). And nothing appears under the
+      // captured prefix, which is the listing a downstream reader or operator consults for receipts.
+      let in_prepared_namespace = string_contains(s: ref_name, pattern: recording_prepared_ref_prefix)
+        && !string_contains(s: ref_name, pattern: recording_ref_prefix)
+        && git_out(dir: repo, args: ["rev-parse", "--verify", ref_name]) != ""
+        && git_out(dir: repo, args: ["rev-parse", concat(ref_name, recording_peel_to_tree_suffix)]) == result_tree
+        && git_out(dir: repo, args: ["rev-parse", concat(ref_name, "^")]) == base
+        && git_out(dir: repo, args: ["for-each-ref", "--count=1", recording_ref_prefix]) == ""
+      let prepared_id = recording_id_of(ref_name: ref_name)
+      // THE PREPARED END STATE REPLAYS THROUGH THE SAME ROUTE: same tree, same exit, still uncommitted.
+      let replay_exit = exit_code_of(exit: replay_worker_cli(worktree: wt, repo_root: repo, recording_id: prepared_id))
+      let head_still_base = git_out(dir: wt, args: ["rev-parse", "HEAD"]) == base
+      let branch_still_base = git_out(dir: repo, args: ["rev-parse", "attempt/prepared"]) == base
+      let worktree_dirty = git_out(dir: wt, args: ["status", "--porcelain"]) != ""
+      let replayed_tree = git_out(dir: wt, args: ["write-tree"])
+      let belt_committed = belt_mints_commit_from(dir: wt, message: "dispatch checkpoint of the prepared replay")
+      let belt_tree = git_out(dir: wt, args: ["rev-parse", concat(git_out(dir: wt, args: ["rev-parse", "HEAD"]), recording_peel_to_tree_suffix)])
+      // THE ARMS ARE UNREACHABLE THROUGH EACH OTHER: the same four leading parts under the captured word name a ref
+      // that does not exist, so replay refuses rather than reaching into the prepared namespace.
+      let cross_word_exit = exit_code_of(
+        exit: replay_worker_cli(
+          worktree: wt_other_word,
+          repo_root: repo,
+          recording_id: recording_id_text_with_provenance(text: prepared_id, word: recording_provenance_captured_word),
+        ),
+      )
+      // CREATE-ONLY: the same mint over the same records refuses, naming the ref that exists.
+      let second = recording_prepare(repo_root: repo, base_sha: base, result_commit: result, exit_status: 3)
+      let second_refused = match second {
+        RecordingCaptureRefused { cause } => match cause { RecordingCaptureAlreadyRecorded { ref_name: written } => written == ref_name  _ => false }
+        RecordingCaptured { id: _, ref_name: _ } => false
+      }
+      // THE STATUS THE REPLAYED WORKER COULD NOT EXIT WITH IS NOT MINTABLE.
+      let refusal_status = match recording_prepare(repo_root: repo, base_sha: base, result_commit: result, exit_status: replay_refusal_exit_code) {
+        RecordingCaptureRefused { cause } => match cause { RecordingCaptureExitUnreplayable { cause: end_cause } => match end_cause { RecordedEndCollidesWithReplayRefusal { status } => status == replay_refusal_exit_code  _ => false }  _ => false }
+        RecordingCaptured { id: _, ref_name: _ } => false
+      }
+      added
+        && in_prepared_namespace
+        && replay_exit == 3
+        && head_still_base
+        && branch_still_base
+        && worktree_dirty
+        && replayed_tree == result_tree
+        && belt_committed
+        && belt_tree == result_tree
+        && cross_word_exit == replay_refusal_exit_code
+        && second_refused
+        && refusal_status
+      }
+    }
+  }
 }

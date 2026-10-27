@@ -43,6 +43,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 }
 import gunbc.dispatch_replay_recording {
   recording_capture,
+  recording_prepare,
   RecordingCaptured,
   RecordingCaptureRefused,
   RecordingCaptureRefusal,
@@ -116,6 +117,12 @@ fn replay_capture_refused(reason: String) -> ProcessExit {
   ExitFailure { code: 1, reason: join(["recording capture refused: ", reason], "") }
 }
 
+// A prepare refusal says 'prepare', so an operator reading the exit record of a failed mint is never told a
+// recording was captured when nothing was captured.
+fn replay_prepare_refused(reason: String) -> ProcessExit {
+  ExitFailure { code: 1, reason: join(["recording prepare refused: ", reason], "") }
+}
+
 fn recording_capture_for_instance(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> ProcessExit {
   match dispatch_replay_instance_admission(instance: instance) {
     ReplayRefusedOffLab { instance_id } =>
@@ -148,4 +155,35 @@ fn recording_capture_cli(instance_id: String, node_id: String, attempt_key: Stri
 
 fn srv1_lab_recording_capture_cli(node_id: String, attempt_key: String) -> ProcessExit {
   recording_capture_cli(instance_id: srv1_dashboard_lab_id as String, node_id: node_id, attempt_key: attempt_key)
+}
+
+// THE DECLARED MINT FOR A PREPARED RECORDING, the sibling of srv1_lab_recording_capture_cli. It is a declared
+// operation over values the operator names -- base, result commit, exit status -- and NOT a hand-written ref: the
+// tree is read from the object store over a commit that exists, the manager result is derived from the status
+// rather than accepted, and the write goes through recording_capture_write, which is create-only. That is what
+// keeps requirement 2's premise standing when the recording was not captured from an attempt: the operator supplies
+// the END STATE, never the receipt, and the type records that (provenance `prepared`, namespace
+// refs/gunbc/recordings-prepared/) so nothing downstream can read it as a real attempt's.
+//
+// The gate is the same one replay itself passes: off the lab instance this refuses with the same typed reason, and
+// no fallback. base_sha and result_commit are the untagged 40-hex forms (the same form recording_id_text renders);
+// exit_status is the status the replayed worker will exit with, or 0 for a clean success.
+fn recording_prepare_cli(instance_id: String, base_sha: String, result_commit: String, exit_status: Int) -> ProcessExit {
+  match dashboard_instance_for_id(instance_id: instance_id) {
+    DashboardInstanceIdUnknown { instance_id: unknown } => replay_prepare_refused(reason: join(["no declared dashboard instance ", unknown], ""))
+    DashboardInstanceForId { instance } =>
+      match dispatch_replay_instance_admission(instance: instance) {
+        ReplayRefusedOffLab { instance_id: off } =>
+          replay_prepare_refused(reason: join(["recordings are prepared only where replay is admitted (", srv1_dashboard_lab_id as String, "); instance ", off, " is not"], ""))
+        ReplayAdmittedOnInstance =>
+          match recording_prepare(repo_root: instance.repo_root as String, base_sha: base_sha, result_commit: result_commit, exit_status: exit_status) {
+            RecordingCaptured { id: _, ref_name: _ } => ExitSuccess
+            RecordingCaptureRefused { cause } => replay_prepare_refused(reason: replay_capture_refusal_reason(cause: cause))
+          }
+      }
+  }
+}
+
+fn srv1_lab_recording_prepare_cli(base_sha: String, result_commit: String, exit_status: Int) -> ProcessExit {
+  recording_prepare_cli(instance_id: srv1_dashboard_lab_id as String, base_sha: base_sha, result_commit: result_commit, exit_status: exit_status)
 }
