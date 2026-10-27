@@ -10481,8 +10481,12 @@ fn body_lower_paren_group_inner_optional(node: Node) -> Optional<Node> {
   }
 }
 
-// The group's inner expression has already been through the bottom-up fold, so it is read as the
-// value it lowered to; one it did not lower refuses at the group.
+// A GROUP IS ITS INNER EXPRESSION, whichever route reached it. On the bottom-up route the inner has
+// already been through the fold and is read as the value it lowered to. On the top-down route (the
+// group is the head of a postfix chain, `(f(x)).first()`) the inner is still the raw expression, which
+// neither read can see; it is then lowered by the one value reader every value position uses
+// (body_lower_value_lowered), which folds it itself and recurs through nested groups. Only an inner that
+// reader also declines refuses at the group.
 fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
   match body_lower_lowered_behind_shells_read(node: inner) {
     OperandRefLowered { lowered: lowered } => outcome_accepted(value: lowered)
@@ -10490,9 +10494,15 @@ fn body_lower_paren_group_lowered(group: Node, inner: Node) -> Outcome<Node> {
       match body_lower_operand_ref_read(node: inner) {
         OperandRefLowered { lowered: operand } => outcome_accepted(value: operand)
         OperandRefAbsent =>
-          outcome_rejected(
-            d: body_lower_diagnostic(reason: ^body_lowering_reason_paren_group_unread, n: group)
-          )
+          match body_lower_value_lowered(node: inner) {
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+            Accepted { value: Present { value: lowered }, diagnostics: d } =>
+              outcome_with_diagnostics(value: lowered, diagnostics: d)
+            Accepted { value: Absent, diagnostics: _ } =>
+              outcome_rejected(
+                d: body_lower_diagnostic(reason: ^body_lowering_reason_paren_group_unread, n: group)
+              )
+          }
         OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
       }
     OperandRefRefused { diagnostics: r } => Rejected { diagnostics: r }
