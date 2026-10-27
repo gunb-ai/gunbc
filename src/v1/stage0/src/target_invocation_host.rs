@@ -539,6 +539,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("serving-benchmark-run"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
