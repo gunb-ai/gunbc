@@ -23,6 +23,7 @@ module test.claim.runner.runner_user_session_label_witness
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
@@ -147,4 +148,22 @@ test fn the_deploy_slot_carries_no_user_session_label() -> Bool {
 test fn the_label_is_one_constant_every_producer_reads() -> Bool {
   gunbc_user_session_label == "gunbc-user-session"
     && !any(labels_of(host: operator_host_srv1), l => l == "gunbc_user_session")
+}
+
+// THE RECEIPT ENTRY. Each control above answers Bool (the claim lane's shape); this one folds them into a
+// process result so a single `gunbc run` of this function is the receipt for the whole file -- the run
+// refuses to map a Bool to an exit code, so without this there is no single green mark to paste.
+
+fn runner_user_session_label_witness_main() -> ProcessExit {
+  let passed = the_row_names_srv4_alone_as_holding_a_user_session()
+    && srv4_registers_with_the_user_session_label()
+    && an_unconverged_host_never_gains_the_label()
+    && the_row_grants_the_label_exactly_once()
+    && a_caller_cannot_grant_the_label_through_the_class_labels_argument()
+    && the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels()
+    && the_strip_does_not_disable_the_row_grant()
+    && a_ci_slot_label_set_follows_its_host_row()
+    && the_deploy_slot_carries_no_user_session_label()
+    && the_label_is_one_constant_every_producer_reads()
+  if passed { ExitSuccess {} } else { ExitFailure { code: 1 } }
 }
