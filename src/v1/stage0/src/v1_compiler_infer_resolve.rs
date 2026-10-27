@@ -17,6 +17,9 @@ pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra, SourceSpan,
 };
 pub use crate::std_types::{is_container_type, is_kernel_type};
+use crate::v1_compiler_infer_env::TypeRefMeasureBinding::{
+    TypeRefMeasureBound, TypeRefMeasureDisagreesWithProduction, TypeRefMeasureUnbound,
+};
 use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
@@ -26,7 +29,7 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
     lookup_unit_variant_phantom_type, substitute_type_slots, substitute_type_slots_scoped,
     symbol_index_lookup, type_ref_measure_binding_authority, width_resolution_declaration,
-    TypeBinding, TypeEnv, UnitVariantContribution, UnitVariantPhantomLookup,
+    TypeBinding, TypeEnv, TypeRefMeasureBinding, UnitVariantContribution, UnitVariantPhantomLookup,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
@@ -36,8 +39,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch, UnlistedImportUse,
-    UnresolvedType,
+    ArityMismatch, InternalError, TypeAliasCycle, TypeArgumentKindMismatch,
+    TypeRefMeasureBindingDisagreement, UnlistedImportUse, UnresolvedType,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::DeclarationMarker::Unmarked;
@@ -2232,14 +2235,28 @@ Rc::new(NodeResolveResult {
                                                     } else {
                                                         structurally_resolved.clone()
                                                     };
-                                                    if ((((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) == false)) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
-                                                    Rc::new(NodeResolveResult {
-    resolved: final_resolved.clone(),
-    diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), type_name.clone(), n.span.clone()), module_name.clone())]),
-})
+                                                    let measure_refusal = if (((masked.clone() && v1_rt::type_ref_hit_ne_bind_measure_active()) && (crate::std_types::is_kernel_type(type_name.clone()) == false)) && (crate::std_types::is_kernel_type(crate::v1_std_core::qualified_last_segment(type_name.clone())) == false)) {
+                                                    match crate::v1_compiler_infer_env::type_ref_measure_binding_authority(env.clone(), type_name.clone()) {
+    TypeRefMeasureBinding::TypeRefMeasureBound => Rc::new(vec![]),
+    TypeRefMeasureBinding::TypeRefMeasureUnbound => Rc::new(vec![crate::v1_std_core::make_error_node(crate::v1_compiler_infer_env::bare_name_miss_diagnostic(env.clone(), type_name.clone(), n.span.clone()), module_name.clone())]),
+    TypeRefMeasureBinding::TypeRefMeasureDisagreesWithProduction => Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TypeRefMeasureBindingDisagreement {
+    name: type_name.clone(),
+    production_route: "v1.compiler.infer_env lookup_qualified_module_projection (exact symbol_index hit on the qualified name)".to_string(),
+    span: n.span.clone(),
+}), module_name.clone())]),
+}
                                                 } else {
+                                                    Rc::new(vec![])
+                                                };
+                                                    if ((measure_refusal.clone().len() as i64) > 0)
                                                     {
-                                                        let unlisted_diags = if (((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) && (crate::v1_std_core::resolved_node_is_kernel_identity_for_name(n.clone(), type_name.clone()) == false)) {
+                                                        Rc::new(NodeResolveResult {
+                                                            resolved: final_resolved.clone(),
+                                                            diagnostics: measure_refusal.clone(),
+                                                        })
+                                                    } else {
+                                                        {
+                                                            let unlisted_diags = if (((masked.clone() && (v1_rt::map_is_empty(&env.source_visible_names.clone()) == false)) && (v1_rt::map_has(&env.source_visible_names.clone(), type_name.clone()) == false)) && (crate::v1_std_core::resolved_node_is_kernel_identity_for_name(n.clone(), type_name.clone()) == false)) {
                                                             Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::UnlistedImportUse {
     name: type_name.clone(),
     span: n.span.clone(),
@@ -2247,12 +2264,12 @@ Rc::new(NodeResolveResult {
                                                         } else {
                                                             Rc::new(vec![])
                                                         };
-Rc::new(NodeResolveResult {
-    resolved: final_resolved.clone(),
-    diagnostics: unlisted_diags.clone(),
-})
-}
-                                                }
+                                                            Rc::new(NodeResolveResult {
+                                                                resolved: final_resolved.clone(),
+                                                                diagnostics: unlisted_diags.clone(),
+                                                            })
+                                                        }
+                                                    }
                                                 }
                                                 std::option::Option::None => {
                                                     let n_is_error = if (n.inferred.clone()
