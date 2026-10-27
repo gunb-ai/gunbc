@@ -13,7 +13,8 @@ import gunbc.instrument_targets { ambient_name_census_label }
 
 // ONE RUNG DROP FOR THE CENSUS BUILT-IN'S TWO-ROUTE STANDING (NAMESPACE-XL; the bounded-drop form
 // ruled by tidy-ant-251 in side chat on gunb-ai/gunbc#15123, judged at c65239999c67). Naming
-// gunbc.compile_diagnostic_census `fn compile_dag_diagnostic_census(source: String) -> List<CompileDiagnosticCensusRow>`
+// gunbc.compile_diagnostic_census `fn compile_dag_diagnostic_census(source: String) -> CompileDiagnosticCensus`
+// (the census carrier, whose rows a reader reaches through census_blocking_rows / census_count_at_key)
 // gave the ambient seed built-in its ONE declared home (a root-coordinator decision by sleek-owl-397),
 // realized as a HostRealizedSeam that binds the existing host implementation by the declaration's
 // identity. Homing the name did NOT remove the ambient route, and this row says so as data rather
