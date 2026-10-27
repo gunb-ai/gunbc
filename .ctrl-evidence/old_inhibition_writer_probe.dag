@@ -1,0 +1,27 @@
+module test.claim.old_inhibition_writer_probe
+
+import std.types { String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.deploy_transition {
+  TransitionSubject, TransitionActor, LeaseAcquisition, LeaseAcquired, LeaseHeldBy, LeaseHeldUndecodable, LeaseUnobtainable,
+  LeaseCreateSucceeded, lease_acquisition_from_create, set_transition_inhibition, TransitionActuationCompleted, TransitionActuationRefused,
+}
+
+// THE CODE BEFORE THE SEAL WRITES ONE INHIBITION: the old tree's own set_transition_inhibition, under the old
+// tree's own path derivation (guard.subject.instance_root). Run from the pre-change tree; never committed.
+fn write_old(dir: String) -> ProcessExit {
+  match lease_acquisition_from_create(
+    subject: TransitionSubject { instance_root: dir, repo_root: join([dir, "/source"], ""), base_ref: "refs/remotes/origin/main", candidate: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    holder: TransitionActor { actor: "deployer", invocation: "run-1" },
+    outcome: LeaseCreateSucceeded,
+  ) {
+    LeaseAcquired(g) =>
+      match set_transition_inhibition(guard: g) {
+        TransitionActuationCompleted { detail: _ } => ExitSuccess
+        TransitionActuationRefused { cause: c } => exit_failure(reason: c)
+      }
+    LeaseHeldBy { record: _ } => exit_failure(reason: "no guard")
+    LeaseHeldUndecodable { cause: _ } => exit_failure(reason: "no guard")
+    LeaseUnobtainable { cause: _ } => exit_failure(reason: "no guard")
+  }
+}

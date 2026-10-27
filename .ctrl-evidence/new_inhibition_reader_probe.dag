@@ -1,0 +1,36 @@
+module test.claim.new_inhibition_reader_probe
+
+import std.types { String, NonEmptyStr, FilePath }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.roadmap.roadmap_dashboard_instance { isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.deploy_transition_store { transition_inhibition_store }
+import gunbc.deploy_transition { ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing, transition_phase_wire }
+
+// THE SEALED STORE READS THE MARKER THE OLD TREE WROTE: minted through the production mint over an instance rooted
+// at the old writer's directory. Never committed.
+fn read_new(dir: String) -> ProcessExit {
+  let instance = isolated_dashboard_instance(
+    deployment: deployment_id(name: "transition-readback" as NonEmptyStr),
+    instance_id: "transition-readback" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: dir as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18095,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    provision_transport: DashboardLocalProvision,
+  )
+  match transition_actuation_standing(inhibition: transition_inhibition_store(instance: instance)) {
+    ActuationInhibited { record: r } =>
+      if r.actor == "deployer" && r.invocation == "run-1" && r.candidate == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        && r.repo_root == join([dir, "/source"], "") && transition_phase_wire(phase: r.phase) == "in-force" {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["read a different record: ", r.actor, "/", r.invocation, " ", r.candidate], ""))
+      }
+    ActuationPermitted => exit_failure(reason: "the sealed store read no inhibition where the old tree wrote one")
+    ActuationStandingUnreadable { cause: c } => exit_failure(reason: join(["unreadable: ", c], ""))
+  }
+}
