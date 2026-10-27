@@ -1,0 +1,258 @@
+module gunbc.runner.runner_qualification_attempt_pass
+
+import std.types { Bool, CommitSha, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
+import std.optional { Absent, Present }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.github.actions_jit_runner { EncodedJitConfig }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.github_effect_perform { JitMintPerformance, JitMintReceived }
+import gunbc.runner.runner_host_unit_slot { HostUnitSlot, HostUnitSlotBound }
+import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
+import gunbc.runner.runner_jit_perform {
+  AuthorizedJitMintDispatch, JitCredentialDelivery, JitCredentialBoundToAttempt, JitCredentialNotDispatched, JitCredentialMintNotCreated,
+}
+import gunbc.runner.runner_jit_deregistration {
+  JitRegistration, JitSlotExit, SlotNeverLaunched, JitRunnerDeregistered, JitDeregistrationRefused, JitDeregistrationSubject,
+}
+import gunbc.runner.runner_jit_mint_binding {
+  JitMintBinding, jit_mint_binding, JitBoundMint, JitBindingDeregistration, JitBindingDeregistrationRan, JitBindingDeregistrationTokenRefused,
+}
+import gunbc.runner.runner_qualification_ref_pin {
+  QualificationRefPin, QualificationRefPinStanding, QualificationRefPinned, QualificationRefPinRefused, QualificationRefPinRefusal,
+  QualificationRefPinRemoval, QualificationBranchRemoved, QualificationBranchRemovalRefused, QualificationBranchName,
+  QualificationBranchNamed, QualificationBranchNameRefused, qualification_branch_name, qualification_runner_group_name,
+}
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationDispatchSubject, QualificationSubjectStanding, QualificationSubjectAdmitted, QualificationSubjectRefused, QualificationSubjectRefusal,
+  QualificationDispatch, QualificationDispatched, QualificationDispatchRefused, QualificationDispatchCommitAmbiguous, QualificationDispatchRefusal,
+  DispatchedQualificationRun, QualificationRunCollection, QualificationRunCollected,
+}
+import gunbc.runner.runner_service_slot_controller { ListenerRun, service_slot_exit_of, service_slot_credential_of }
+
+// THE ONE PASS OF THE mtcollins1 QUALIFICATION ROUTE (gunbc.plans.mtcollins1_ci_service_legs G2): the production
+// caller the four LegAuthorityImplemented legs of gunbc.runner.runner_throughput_qualification_route
+// mtcollins1_route_legs each owe, as one fold over the effects it sequences. Like
+// gunbc.runner.runner_service_slot_controller service_slot_pass_over, the order is the claim, so the effects are
+// parameters and a claim supplies stand-ins that read back what each was handed.
+//
+// THE ORDER, AND WHY EACH STEP IS WHERE IT IS.
+//   1. pin: ensure_qualification_ref_pin creates qualification/<attempt> at the revision and pins the dedicated
+//      group's selected workflow to it. It comes FIRST because the mint refuses a group restricted to any other
+//      workflow (the binding's selected_workflow is the slot's, qualification_selected_workflow of that branch).
+//   2. observe, then mint, through the one shared rule (gunbc.runner.runner_jit_mint_binding): the qualification
+//      attempt is a fourth binding value, not a copy of the sequence.
+//   3. admit: the sealed QualificationDispatchSubject is minted from the delivery's own dispatch, so the slot,
+//      the registration and the runner the collection joins on are the mint's.
+//   4. dispatch BEFORE launch. The launch is gunbc.runner.runner_throughput_qualification_route
+//      ephemeral_slot_command, a systemd-run --wait that returns when the ephemeral runner exits after its one
+//      job; a job dispatched to the attempt label queues against the registered, not yet online, JIT runner and
+//      is taken when the listener starts. Launching first would block before any dispatch existed.
+//   5. launch: only after a dispatch GitHub answered with a receipt. A refused dispatch queued nothing, and a
+//      commit-ambiguous one may have queued a job that no runner should take unobserved, so neither launches.
+//   6. collect: only a dispatched run is read back; its verdict is collect_qualification_run's, carried whole.
+//   7. deregister on EVERY arm after a dispatch was sent, ensure-style (readback absent is success), with the
+//      exit the launch produced; and unpin on every arm after the pin held. Neither is left to GitHub's
+//      ephemeral removal, which holds only when the one job ran.
+
+// THE FOURTH BINDING VALUE OF THE SHARED MINT RULE. Built only here, from a bound attempt slot and the signer
+// the run staged: the group is the dedicated qualification group and the workflow is the slot's own.
+fn qualification_attempt_mint_binding(slot: HostUnitSlot, signer: JwsSigningKeyRef) -> JitMintBinding
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_pass", decl_name: "qualification_attempt_pass_over")]
+{
+  jit_mint_binding(
+    subject: host_unit_registration_subject(standing: HostUnitSlotBound { slot: slot }),
+    runner_group_name: qualification_runner_group_name,
+    selected_workflow: slot.workflow,
+    signer: signer,
+  )
+}
+
+// THE DELIVERY AND THE DISPATCH IT CARRIES, OR NOTHING. The dispatch is read off the sealed BoundJitCredential,
+// never paired from elsewhere, so the subject admission compares the delivery with its own dispatch.
+type MintedAttempt {
+  dispatch: AuthorizedJitMintDispatch
+  delivery: JitCredentialDelivery
+  credential: EncodedJitConfig
+}
+
+fn minted_attempt_of(performance: JitMintPerformance) -> MintedAttempt? {
+  match performance {
+    JitMintReceived { delivery: d } =>
+      match d {
+        JitCredentialBoundToAttempt { bound: b } => Present { value: MintedAttempt { dispatch: b.dispatch, delivery: d, credential: b.credential } }
+        JitCredentialNotDispatched { refusal: _ } => none
+        JitCredentialMintNotCreated { outcome: _ } => none
+      }
+    _ => none
+  }
+}
+
+// WHAT HAPPENED BETWEEN THE MINT AND THE EXIT, ONE ARM PER PLACE THE PASS STOPPED. Each carries the outcome the
+// stopping step returned, so the receipt says why, not only that.
+type QualificationAttemptRun
+  = AttemptNotMinted
+  | AttemptSubjectRefused { refusal: QualificationSubjectRefusal }
+  | AttemptDispatchRefused { refusal: QualificationDispatchRefusal }
+  | AttemptDispatchAmbiguous { detail: NonEmptyStr }
+  | AttemptRan { listener: ListenerRun, collection: QualificationRunCollection }
+
+// THE DEREGISTRATION'S STANDING, as the service slot pass reports it: removed, or remaining with the reason.
+type QualificationAttemptRetirement
+  = AttemptNothingRegistered
+  | AttemptDeregistered { exit: JitSlotExit }
+  | AttemptRegistrationRemains { exit: JitSlotExit, detail: String, acknowledged: JitDeregistrationSubject? }
+
+// A REFUSED PIN CAN STILL HAVE CREATED THE BRANCH (the create is read back before the group is pinned), so the
+// pass removes the branch on that arm too whenever the attempt names one; an attempt that names no branch cannot
+// have created one, and the removal is then absent rather than skipped.
+type QualificationAttemptPass
+  = AttemptPinRefused { attempt: NonEmptyStr, refusal: QualificationRefPinRefusal, unpin: QualificationRefPinRemoval? }
+  | AttemptPassed { run: QualificationAttemptRun, retirement: QualificationAttemptRetirement, unpin: QualificationRefPinRemoval }
+
+fn attempt_exit_of(run: QualificationAttemptRun) -> JitSlotExit {
+  match run {
+    AttemptNotMinted => SlotNeverLaunched { cause: "the mint delivered no credential" as NonEmptyStr }
+    AttemptSubjectRefused { refusal: _ } => SlotNeverLaunched { cause: "the qualification subject was refused, so nothing was dispatched or launched" as NonEmptyStr }
+    AttemptDispatchRefused { refusal: _ } => SlotNeverLaunched { cause: "the dispatch was refused, so no job waits for this runner" as NonEmptyStr }
+    AttemptDispatchAmbiguous { detail: _ } => SlotNeverLaunched { cause: "the dispatch's commit is ambiguous, so the runner is not started to take a job nobody observed" as NonEmptyStr }
+    AttemptRan { listener: l, collection: _ } => service_slot_exit_of(run: l)
+  }
+}
+
+fn attempt_retirement_of(registration: JitRegistration?, exit: JitSlotExit, deregister: fn(JitRegistration, JitSlotExit) -> JitBindingDeregistration) -> QualificationAttemptRetirement {
+  match registration {
+    Absent => AttemptNothingRegistered
+    Present { value: r } =>
+      match deregister(r, exit) {
+        JitBindingDeregistrationTokenRefused { performance: _ } =>
+          AttemptRegistrationRemains { exit: exit, detail: "the installation token for the deregistration was not minted", acknowledged: none }
+        JitBindingDeregistrationRan { deregistration: d } =>
+          match d {
+            JitRunnerDeregistered { receipt: rc } => AttemptDeregistered { exit: rc.exit }
+            JitDeregistrationRefused { subject: s, exit: e, refusal: _ } =>
+              AttemptRegistrationRemains { exit: e, detail: "the deregistration readback did not show the runner absent", acknowledged: Present { value: s } }
+          }
+      }
+  }
+}
+
+fn attempt_run_after_subject(
+  subject: QualificationDispatchSubject,
+  credential: EncodedJitConfig,
+  slot: HostUnitSlot,
+  dispatch: fn(QualificationDispatchSubject) -> QualificationDispatch,
+  launch: fn(HostUnitSlot, EncodedJitConfig) -> ListenerRun,
+  collect: fn(DispatchedQualificationRun) -> QualificationRunCollection,
+) -> QualificationAttemptRun {
+  match dispatch(subject) {
+    QualificationDispatchRefused { subject: _, refusal: r } => AttemptDispatchRefused { refusal: r }
+    QualificationDispatchCommitAmbiguous { subject: _, detail: d } => AttemptDispatchAmbiguous { detail: d }
+    QualificationDispatched { run: dispatched } => {
+      let listener = launch(slot, credential)
+      AttemptRan { listener: listener, collection: collect(dispatched) }
+    }
+  }
+}
+
+fn attempt_run_after_pin(
+  pin: QualificationRefPin,
+  slot: HostUnitSlot,
+  minted: MintedAttempt?,
+  admit: fn(AuthorizedJitMintDispatch, HostUnitSlot, JitCredentialDelivery, QualificationRefPin) -> QualificationSubjectStanding,
+  dispatch: fn(QualificationDispatchSubject) -> QualificationDispatch,
+  launch: fn(HostUnitSlot, EncodedJitConfig) -> ListenerRun,
+  collect: fn(DispatchedQualificationRun) -> QualificationRunCollection,
+) -> QualificationAttemptRun {
+  match minted {
+    Absent => AttemptNotMinted
+    Present { value: m } =>
+      match admit(m.dispatch, slot, m.delivery, pin) {
+        QualificationSubjectRefused { refusal: r } => AttemptSubjectRefused { refusal: r }
+        QualificationSubjectAdmitted { subject: s } =>
+          attempt_run_after_subject(subject: s, credential: m.credential, slot: slot, dispatch: dispatch, launch: launch, collect: collect)
+      }
+  }
+}
+
+// THE PASS FOLD. The slot is a bound attempt slot (host_unit_slot_for AttemptSlot) and the revision is the one the
+// caller accepted (gunbc.fleet.fleet_revision_acceptance); both are inputs, every effect is a parameter.
+fn qualification_attempt_pass_over(
+  slot: HostUnitSlot,
+  attempt: NonEmptyStr,
+  revision: CommitSha,
+  signer: JwsSigningKeyRef,
+  pin: fn(NonEmptyStr, CommitSha) -> QualificationRefPinStanding,
+  observe: fn(JwsSigningKeyRef, NonEmptyStr) -> GitHubAppControlPlaneState,
+  mint: fn(JitMintBinding, GitHubAppControlPlaneState) -> JitBoundMint,
+  admit: fn(AuthorizedJitMintDispatch, HostUnitSlot, JitCredentialDelivery, QualificationRefPin) -> QualificationSubjectStanding,
+  dispatch: fn(QualificationDispatchSubject) -> QualificationDispatch,
+  launch: fn(HostUnitSlot, EncodedJitConfig) -> ListenerRun,
+  collect: fn(DispatchedQualificationRun) -> QualificationRunCollection,
+  deregister: fn(JitMintBinding, GitHubAppControlPlaneState, JitRegistration, JitSlotExit) -> JitBindingDeregistration,
+  unpin: fn(QualificationBranchName) -> QualificationRefPinRemoval,
+) -> QualificationAttemptPass
+  admit_callers: [
+    decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "pass_with"),
+  ]
+{
+  match pin(attempt, revision) {
+    QualificationRefPinRefused { attempt: a, refusal: r } =>
+      AttemptPinRefused {
+        attempt: a,
+        refusal: r,
+        unpin: match qualification_branch_name(attempt: a) {
+          QualificationBranchNameRefused { attempt: _, cause: _ } => none
+          QualificationBranchNamed { name: n } => Present { value: unpin(n) }
+        },
+      }
+    QualificationRefPinned { pin: p } => {
+      let binding = qualification_attempt_mint_binding(slot: slot, signer: signer)
+      let state = observe(signer, "the qualification route observes the gunbai-ci App control plane before minting its attempt's JIT registration" as NonEmptyStr)
+      let minted = mint(binding, state)
+      let run = attempt_run_after_pin(pin: p, slot: slot, minted: minted_attempt_of(performance: minted.performance), admit: admit, dispatch: dispatch, launch: launch, collect: collect)
+      let retirement = attempt_retirement_of(
+        registration: minted.registration,
+        exit: attempt_exit_of(run: run),
+        deregister: (r, e) => deregister(binding, state, r, e),
+      )
+      AttemptPassed { run: run, retirement: retirement, unpin: unpin(p.name) }
+    }
+  }
+}
+
+// THE GITHUB SIDE OF RETIREMENT, AND ONLY THAT: the registration read absent and the branch read absent. It is NOT
+// a slot retired -- the host side (the transient unit and its per-attempt tree on tmpfs observed gone, a
+// gunbc.runner.runner_teardown_receipt RunnerTeardownResult) is not an input of this fold, so nothing here may report
+// the attempt slot retired (qualification_attempt_pass_production_frontier).
+fn branch_removed(removal: QualificationRefPinRemoval) -> Bool {
+  match removal {
+    QualificationBranchRemoved { name: _, deleted: _ } => true
+    QualificationBranchRemovalRefused { name: _, cause: _ } => false
+  }
+}
+
+fn registration_removed(r: QualificationAttemptRetirement) -> Bool {
+  match r {
+    AttemptNothingRegistered => true
+    AttemptDeregistered { exit: _ } => true
+    AttemptRegistrationRemains { exit: _, detail: _, acknowledged: _ } => false
+  }
+}
+
+fn qualification_attempt_registration_and_branch_removed(pass: QualificationAttemptPass) -> Bool {
+  match pass {
+    AttemptPinRefused { attempt: _, refusal: _, unpin: u } =>
+      match u {
+        Absent => true
+        Present { value: removal } => branch_removed(removal: removal)
+      }
+    AttemptPassed { run: _, retirement: r, unpin: u } => registration_removed(r: r) && branch_removed(removal: u)
+  }
+}
+
+// WHAT THIS MODULE DOES NOT YET HAVE, carried as its frontier (DESIGN section 3c).
+data qualification_attempt_pass_production_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the qualification fleet-converge mode (gunbc.plans.mtcollins1_ci_service_legs G1), whose wet entry takes the slot host's unit hold, stages the gunbai-ci App key over WIF, mints one installation token and binds the real effects to qualification_attempt_pass_over: ensure_qualification_ref_pin, observe_jit_mint_control_plane, mint_for_binding, qualification_dispatch_subject, dispatch_qualification_floor, ephemeral_slot_command run over the anchored transport with the JIT config on stdin, collect_qualification_run then collect_qualification_instruments, deregister_binding_registration and remove_qualification_ref_pin. NOT ESTABLISHED, deferred: that production binding and its execution; the host-side teardown observation (gunbc.runner.runner_teardown_receipt, the per-attempt tree on tmpfs observed absent beside the registration). TRIGGER: G1 lands the mode and its floor job (qualification_dispatch_subject stops refusing SubjectAttemptInputUndeclared); the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, executes the real bindings."
+)

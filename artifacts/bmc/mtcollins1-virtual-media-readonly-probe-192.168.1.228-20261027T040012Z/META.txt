@@ -1,0 +1,95 @@
+probe: mtcollins1-virtual-media-readonly-probe (instrumented pass)
+subject: mtcollins1 (Foxconn Ampere Mt. Collins, Ami MegaRAC BMC)
+address: 192.168.1.228:443 (static reservation bmc-mtcollins1)
+endpoint_mac: 28:C1:3C:8A:D6:4C
+observer_session: fierce-lark-507 (dashboard node adhoc-b4222c87-d37)
+lane: gunbc.plans.boot_origin_bmc_media phase B0 (work items adhoc-b4222c87-d37, adhoc-9e4ea90a-fd0)
+method: out-of-band HTTPS GET only; anonymous; no writes; no in-band ipmitool
+observer_started_utc: 2026-10-27T04:00:12Z   (this container's wall clock)
+observer_finished_utc: 2026-10-27T04:00:15Z
+tls: self-signed BMC certificate; -k (insecure TLS) is required against BMCs and is the modeled
+     shape in extdeps.bmc.http (insecure-TLS axis)
+
+CLOCK_HANDLING, because the first pass of this probe got it wrong and the mistake was found in
+review. Two clocks are in play and they are NOT interchangeable:
+  * the OBSERVER clock -- this container's UTC clock, the only one used as the time of the
+    observation, stamped per request into surface-ladder.txt (observer_utc column) and reported as
+    observer_started_utc / observer_finished_utc above;
+  * the BMC's OWN clock -- the Date header the controller stamps on its responses.
+In this pass the two agree to about 3 seconds (first request: observer 04:00:12Z, BMC Date
+"Tue, 27 Oct 2026 04:00:09 GMT"), so the BMC clock is currently close to correct and there is no
+disagreement to adjudicate. That is a MEASUREMENT, not an assumption: the earlier pass
+(...T005424Z) carried a service-root Date header reading 26 Oct 10:45:43 GMT against an observer
+window of 00:54Z, a ~14h gap, which is why the two clocks are now recorded side by side instead of
+one being trusted implicitly. A BMC clock that is wrong is normal (a reflash resets it; see
+gunbc.recurring_failure_mode.firmware_reflash_resets_the_bmc_credential_it_needs) and is a reason
+never to date an observation by a response header or a file mtime. Neither is used here.
+
+WHAT THE LADDER ESTABLISHES, AND THE ONE THING IT CHANGES ABOUT THE READING.
+  * GET /redfish/v1/ -> 200 with Server "AMI MegaRAC Redfish Service". The controller DOES serve a
+    Redfish service on 0.45. This is the finding that retires the 0.32-era "serves no Redfish"
+    premise (gunbc.machine_intake.mtcollins1_access_observation, taken 2026-09-11 under 0.32, where
+    every /redfish path 404'd).
+  * Body verbatim: RedfishVersion "1.8.0", @odata.type "#ServiceRoot.v1_5_2.ServiceRoot" (that is
+    the ServiceRoot SCHEMA version, 1.5.2 -- NOT the Redfish protocol version, which is the
+    RedfishVersion field), Id "RootService", Name "Root Service", Vendor "AMI", Product "AMI Redfish
+    Server", UUID "2254ee50-beb6-1000-01e6-4cd68a3cc128", and top-level service links AccountService,
+    CertificateService, Chassis, CompositionService, EventService, JsonSchemas, Managers, Registries,
+    SessionService, Systems, Tasks, TelemetryService, UpdateService, plus Links.Sessions and an
+    Oem.Ami subtree (RtpVersion "13.02", configurations, InventoryDataStatus).
+  * EVERY Redfish resource and collection below the root -> 401, offering Basic and X-Auth-Token
+    (realm AMI_Redfish_Server). So TransferProtocolType, which lives in the VirtualMedia member
+    bodies, is not readable anonymously.
+  * TWO DIFFERENT SERVERS ANSWER THIS ONE ADDRESS, and the ladder shows it: the /redfish paths are
+    served by "AMI MegaRAC Redfish Service" while /api/session, /api/settings/media/general and /
+    are served by "lighttpd". The OEM surface and the Redfish surface are therefore separate
+    attestations, not one service's behaviour -- relevant because the 0.32 reading saw 404 on the
+    Redfish paths while the web root served 200, which is exactly what a lighttpd-only front looks
+    like. Reading "the box has no Redfish" off a host that serves 200 at / and 404 under /redfish
+    conflated the two servers; the Server header is what distinguishes them, and it is now captured.
+
+IDENTITY (why this is a read of the UNIT and not merely of an address) -- stated at the strength the
+capture actually supports.
+  * The FRU Board Extra in the committed intake capture is "28C13C8AD64C" and the reserved endpoint
+    MAC is 28:C1:3C:8A:D6:4C (artifacts/bmc/mtcollins1-intake-ipmi.json, endpoint_mac and
+    ipmi_fru_print_0).
+  * Reversing that MAC's byte order gives 4cd68a3cc128.
+  * The service root served in THIS pass carries UUID 2254ee50-beb6-1000-01e6-4cd68a3cc128, whose
+    final 12 hex digits are exactly 4cd68a3cc128.
+  * The host's own SMBIOS UUID, read from the machine in artifacts/bmc/mtcollins1-host-capture.txt,
+    is d5b80e46-903a-1000-01e6-4cd68a3cc128 -- which shares that same final-12-digits MAC encoding.
+  * WHAT THAT DOES AND DOES NOT PROVE. It does NOT show the BMC UUID and the SMBIOS UUID are equal;
+    they are NOT equal (they differ above the MAC field). What they share is the MAC encoding, and
+    the MAC is corroborated independently by the FRU Board Extra. So the claim the capture supports
+    is: the controller answering on 192.168.1.228 reports a UUID encoding the unit's own burned-in
+    BMC MAC, and the host on that board reports a UUID encoding the same MAC. The address, the
+    served Redfish service and the unit are the same box. No claim of UUID equality is made, because
+    the evidence does not carry one.
+
+TRANSIENT INFRASTRUCTURE, recorded because the first pass saw one and gunbc.code_to_infrastructure_failure
+rules retry-on-transient-infrastructure legal while retry-into-BMC-state is not. On the first pass a
+single /redfish/v1/ request came back 502 from an HTTP proxy on the observer's path -- an
+infrastructure box, not the controller -- and the retry read 200. No BMC state was involved and no
+retry was aimed at the controller. This instrumented pass recorded no such error.
+
+LIVE_STATE_CAUTION, inherited from the address. mtcollins1 is the standing boot target of
+gunbc.fleet.mtcollins_firmware_converge and the operator holds standing boot permission for it, so a
+boot run may have a media session mounted while this ladder is taken. Read the ladder as a SNAPSHOT
+of the SURFACE, never as a settled media state (gunbc.recurring_failure_mode
+.publish_over_a_path_a_reader_is_serving is the record of what reading a mid-state has cost).
+
+THE 401s HERE ARE UNAUTHENTICATED AND SO DO NOT DESCRIBE THE CREDENTIAL. Every request in this
+capture presented nothing; a 401 to an anonymous request is the endpoint behaving correctly, not
+evidence about any account. It is stated this way because the AUTHENTICATED 401 is a separate and
+UNEXPLAINED finding, and this capture must not be read as closing it: boot 6 (run 40264233543) was
+refused at https://192.168.1.228/redfish/v1/Systems with the pinned credential on 2026-10-26, its
+cause is UNKNOWN and is being tracked as its own lane by the manager. Two facts currently sit
+beside each other without a bridge: the IPMI lanplus account path on this box is PROVEN live at
+0.45 (boot 6 authenticated and read hpm check, mc info and fru print 0), yet the only recent
+committed REDFISH attempt with a credential returned 401. Same account, two protocols, one of them
+refusing -- nobody has explained why, so no explanation is offered here either. In particular this
+capture does NOT support "the credential was reset" or "rate limiting": neither is grounded.
+The one confounder that WAS checked: no mtcollins firmware-converge run was in flight when this
+ladder was taken (latest fleet-converge runs completed 2026-10-26T14:12Z, 21:05Z and 22:32Z, all
+before this probe), so these rows are not the artifact of a reflash restoring factory accounts mid-
+read (gunbc.recurring_failure_mode.firmware_reflash_resets_the_bmc_credential_it_needs).

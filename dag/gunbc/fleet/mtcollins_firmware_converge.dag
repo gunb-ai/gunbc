@@ -23,6 +23,7 @@ import extdeps.ampere.mt_collins_firmware_release {
   mt_collins_mb_cpld_v06_hpm,
 }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_argv }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ObservedByReceipt, TranscribedUncited }
@@ -1268,8 +1269,10 @@ fn converge_firmware(
 // extdeps.bmc.ipmi Tool service and running them from fleet-converge is the wet realization; it is NOT
 // built here, because a new fleet-converge mode or job needs the operator's sign-off (DESIGN, Building &
 // checks: the job roster is closed to growth), and this lane flashes no hardware.
-fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr) -> List<String> {
-  ["ipmitool", "-I", "lanplus", "-H", bmc_host as String, "-U", username as String, "-f", password_file as String]
+// The route's lanplus cipher suite goes through extdeps.bmc.ipmi ipmi_cipher_suite_argv, the one lanplus rendering:
+// Absent renders the prefix exactly as before.
+fn ipmitool_prefix(bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite: IpmiCipherSuite?) -> List<String> {
+  concat(["ipmitool", "-I", "lanplus"], concat(ipmi_cipher_suite_argv(suite: cipher_suite), ["-H", bmc_host as String, "-U", username as String, "-f", password_file as String]))
 }
 
 // The readback is rendered only on the route that can see the target; the SMpro route is realized by
@@ -1280,8 +1283,9 @@ fn dry_step_commands(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<List<String>> {
-  let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file)
+  let prefix = ipmitool_prefix(bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
   let flash = [
     concat(prefix, ["chassis", "status"]),
     concat(prefix, ["-z", nat_to_decimal_string(value: byte_size_count(b: step.procedure.upload_block)), "hpm", "upgrade", image_path as String, "force"]),
@@ -1302,11 +1306,12 @@ fn dry_realize(
   bmc_host: NonEmptyStr,
   username: NonEmptyStr,
   password_file: NonEmptyStr,
+  cipher_suite: IpmiCipherSuite?,
 ) -> List<List<String>> {
   match converge_firmware(baseline: baseline, world: world, records: records, boot: Absent) {
     FirmwareStepDue { target: _, decision: d } =>
       match d {
-        Apply { plan: step } => dry_step_commands(step: step, image_path: image_path, bmc_host: bmc_host, username: username, password_file: password_file)
+        Apply { plan: step } => dry_step_commands(step: step, image_path: image_path, bmc_host: bmc_host, username: username, password_file: password_file, cipher_suite: cipher_suite)
         Noop => []
         Refuse { reason: _ } => []
       }
