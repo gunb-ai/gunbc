@@ -313,7 +313,8 @@ fn dev_upstreams_json() -> String {
     + "\{\"name\":\"e1\",\"scheme\":\"https\",\"host\":\"127.0.0.1\",\"port\":19445,\"sni\":\"fakeb\",\"key\":\"ke1\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
     + "\{\"name\":\"e2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19106,\"key\":\"ke2\",\"model\":\"m-e\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
     + "\{\"name\":\"f1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19105,\"key\":\"kf\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
-    + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true}]"
+    + "\{\"name\":\"f2\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19107,\"key\":\"kf2\",\"model\":\"m-f\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":true},"
+    + "\{\"name\":\"g1\",\"scheme\":\"http\",\"host\":\"127.0.0.1\",\"port\":19108,\"key\":\"kg\",\"model\":\"m-g\",\"cap\":1,\"cache_locality\":\"engine_local\",\"in_service\":false}]"
 }
 
 fn dev_request(key: String, session: String, body: String, path: String) -> String {
@@ -512,6 +513,7 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
   let cap_contended = curl(arguments: ["-k", "-sS", "-i", "-Z", "--max-time", "30", "-H", "Authorization: Bearer ck-falsifier", "-H", "x-session-id: cap-1", "--data-binary", "\{\"model\":\"m-f\",\"q\":\"contended\"\}", "-w", "\n%\{http_code\}\n", "http://127.0.0.1:18445/v1/chat/completions?hold", "http://127.0.0.1:18445/v1/chat/completions?hold"])
   // After the contended turn releases, the SAME session still goes to f1: the binding survived a refusal.
   let cap_after_release = dev_request(key: "ck-falsifier", session: "cap-1", body: model_body(model: "m-f"), path: "/v1/chat/completions")
+  let drained = dev_request(key: "ck-falsifier", session: "drained-1", body: model_body(model: "m-g"), path: "/v1/chat/completions")
   let dev_stats = dev_get(key: "ck-falsifier", path: "/router/stats")
   let dev_stats_no_key = dev_get(key: "wrong", path: "/router/stats")
   let large = curl(arguments: ["-sS", "--max-time", "30", "-H", "x-case: large", "--data-binary", "@/usr/lib/libcrypto.so.3", "-w", "\n%\{http_code\}", "http://127.0.0.1:18443/v1/x"])
@@ -543,22 +545,26 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_red_wrong_client_key_answers_401", held: contains(s: dev_no_key, p: "\n401 exit=0"), observed: dev_no_key),
     // The row fields the binding rules read are the ones in the emitted file: a drained row is present
     // and false, an engine-local row is not silently shared, and every row carries the fields at all.
-    case_of(identity: "rows_carry_cache_locality_and_in_service", held: occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":false") == 1 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"") == 9 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"shared\"") == 2 && contains(s: dev_text(), needle: "u.cache_locality == ") && contains(s: dev_text(), needle: "engine_local") && contains(s: dev_text(), needle: "u.in_service ~= false"), observed: concat(to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":")), "/", to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"")))),
+    case_of(identity: "rows_carry_cache_locality_and_in_service", held: occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":") == 11 && occurrences(s: router_dev_first_party_json(), needle: "\"in_service\":false") == 0 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"") == 9 && occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"shared\"") == 2 && contains(s: dev_text(), needle: "u.cache_locality == ") && contains(s: dev_text(), needle: "engine_local") && contains(s: dev_text(), needle: "u.in_service ~= false"), observed: concat(to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":")), "/", to_string(occurrences(s: router_dev_first_party_json(), needle: "\"cache_locality\":\"engine_local\"")))),
     // A NAME CANNOT BE BOTH LIVE AND RETIRING. The guard is a function of the rows, so it is tested on
     // rows: clean on the shipped set, and red on each defect it exists to refuse -- a live name in
     // another row's retiring list, and one name retired by two rows at once.
-    case_of(identity: "a_retiring_name_that_is_live_or_double_claimed_is_refused", held: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => true Present { value: why } => false } && match router_dev_retiring_name_conflict(rows: dev_row(name: "live-one", retiring: ["live-two"]) :: dev_row(name: "live-two", retiring: []) :: []) { Present { value: why } => string_contains(s: why, pattern: "live-two") Absent => false } && match router_dev_retiring_name_conflict(rows: dev_row(name: "one", retiring: ["gone"]) :: dev_row(name: "two", retiring: ["gone"]) :: []) { Present { value: why } => string_contains(s: why, pattern: "more than one row") Absent => false }, observed: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => "clean" Present { value: why } => why }),
+    case_of(identity: "a_retiring_name_that_is_live_or_double_claimed_is_refused", held: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => true Present { value: why } => false } && match router_dev_retiring_name_conflict(rows: [dev_row(name: "live-one", retiring: ["live-two"]), dev_row(name: "live-two", retiring: [])]) { Present { value: why } => string_contains(s: why, pattern: "live-two") Absent => false } && match router_dev_retiring_name_conflict(rows: [dev_row(name: "one", retiring: ["gone"]), dev_row(name: "two", retiring: ["gone"])]) { Present { value: why } => string_contains(s: why, pattern: "more than one row") Absent => false }, observed: match router_dev_retiring_name_conflict(rows: router_dev_first_party_upstreams()) { Absent => "clean" Present { value: why } => why }),
     // THE USAGE METER IS RENDERED AND ITS COUNTERS ARE THE STATS DOCUMENT'S SOURCE. No fixture engine
     // reports usage, so every owned turn here must land as UNMEASURED rather than as zero tokens -- a
     // missing count is never a zero -- and with no quote row for these models the comparison figures are
     // absent, not invented. Owned spend is zero by construction.
     case_of(identity: "the_meter_tallies_owned_turns_and_never_invents_tokens", held: contains(s: dev_stats, p: "\"version\":2") && occurrences(s: dev_stats, needle: "\"billing\":\"owned\"") == 6 && occurrences(s: dev_stats, needle: "\"unmeasured_requests\":") == 6 && !contains(s: dev_stats, p: "\"comparison_pricing\"") && contains(s: dev_stats, p: "\"actual_spend_usd\":0"), observed: one_line(s: dev_stats)),
     // Effort is translated by the ROW dialect, per upstream model, before the body leaves the router.
+    // A DRAINED ENGINE IS UNREACHABLE, NOT MERELY UNPOPULAR. g1 is in the file with in_service false and
+    // no server behind its port: if the flag were ignored the turn would be proxied there and read 502,
+    // so 404 is what makes this row discriminate.
+    case_of(identity: "a_drained_upstream_answers_404_and_is_never_proxied", held: contains(s: drained, p: "\n404 exit=0") && contains(s: drained, p: "unknown model") && !contains(s: drained, p: "502"), observed: one_line(s: drained)),
     case_of(identity: "effort_translation_is_a_row_not_a_lua_literal", held: occurrences(s: dev_text(), needle: "ROUTER_EFFORT") >= 3 && contains(s: dev_text(), needle: "chat_template_kwargs") && contains(s: dev_text(), needle: "enable_thinking"), observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_EFFORT"))),
     // The comparison price is READ FROM A QUOTE ROW (figures, reference model, authority, reading date),
     // never written as a literal in the proxy's Lua.
     case_of(identity: "comparison_pricing_arrives_as_cited_rows", held: occurrences(s: dev_text(), needle: "ROUTER_COMPARISON[") == 3 && contains(s: dev_text(), needle: "reference_model") && contains(s: dev_text(), needle: "read_on") && contains(s: dev_text(), needle: "input_micro") && occurrences(s: dev_text(), needle: "0.15") == 0, observed: to_string(occurrences(s: dev_text(), needle: "ROUTER_COMPARISON["))),
-    case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
+    case_of(identity: "dev_models_lists_both_models_and_the_alias", held: contains(s: dev_models, p: "m-a") && contains(s: dev_models, p: "m-b") && contains(s: dev_models, p: "flash-next") && !contains(s: dev_models, p: "m-g") && contains(s: dev_models, p: "\n200 exit=0"), observed: dev_models),
     case_of(identity: "dev_routes_by_model_with_that_upstreams_key", held: contains(s: dev_a, p: "upstream=a auth=Bearer ka") && contains(s: dev_a, p: "\n200 exit=0"), observed: dev_a),
     case_of(identity: "dev_https_upstream_is_verified_against_its_pin", held: contains(s: dev_b, p: "upstream=b auth=Bearer kb") && contains(s: dev_b, p: "\n200 exit=0"), observed: dev_b),
     case_of(identity: "dev_red_certificate_outside_the_pins_answers_502", held: contains(s: dev_d, p: "\n502 exit=0") && !contains(s: dev_d, p: "upstream=d"), observed: dev_d),
@@ -634,6 +640,7 @@ fn falsifier_expected_identities() -> List<String> {
     "dev_bound_engine_local_session_at_cap_answers_429_and_never_re_routes",
     "dev_bound_session_behind_the_refusal_is_served_by_the_same_engine",
     "rows_carry_cache_locality_and_in_service",
+    "a_drained_upstream_answers_404_and_is_never_proxied",
     "effort_translation_is_a_row_not_a_lua_literal",
     "a_retiring_name_that_is_live_or_double_claimed_is_refused",
     "the_meter_tallies_owned_turns_and_never_invents_tokens",

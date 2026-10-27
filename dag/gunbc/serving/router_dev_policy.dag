@@ -175,7 +175,7 @@ fn router_dev_models_lines() -> List<String> {
     "if not ROUTER_KEYS[(h:match('^Bearer%s+(.+)$') or '')] then ngx.status = 401 ngx.say('\{\"error\":\{\"message\":\"invalid api key\",\"type\":\"authentication_error\"}}') return end",
     "local lens, order, all_len = \{}, \{}, nil",
     // A drained row is not advertised: a model with no live upstream, or a route to one, would be a
-    // promise the router cannot keep (srv3-strata is drained; see the in_service rows).
+    // promise the router cannot keep. See RouterDevUpstream.in_service.
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     "  if u.in_service ~= false then",
     "    local n = tonumber(u.max_model_len)",
@@ -229,11 +229,10 @@ fn router_dev_access_lines() -> List<String> {
     "local state = ngx.shared.router_state",
     "local function active(u) local n=state:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n=n+(state:get('active:' .. old) or 0) end return n end",
     "local candidates = \{}",
-    // An out-of-service row is out of the model entirely: it is not a candidate, is never picked,
-    // and is not reachable by a stale binding. srv3-strata is drained (operator decision
-    // 2026-10-26: srv3 DIMMs at 104 C with corrected ECC errors, strata-pool.service stopped and
-    // disabled until a larger chassis arrives); leaving a drained engine in the file only lets a
-    // hand edit or a stale binding reach it again.
+    // An out-of-service row is out of the model entirely: it is not a candidate, is never picked, and is
+    // not reachable by a stale binding. A drained engine left in the file only lets a hand edit or a
+    // stale binding reach it again, which is why the flag exists and why coming back online is a change
+    // to the row rather than an edit on the box.
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
     // ~= false, not truthiness: a row written by an older deploy (or a fixture) has no field, and an
     // absent field is a live engine. Only an explicit false drains one.
@@ -681,10 +680,11 @@ type RouterDevUpstream {
   // name here that is any row's live name or appears in two lists, so a live lane is never capped by its
   // twin's turns.
   retiring_names: List<String>
-  // False when the host is out of service (srv3: DIMMs at 104C with corrected ECC errors; strata-pool
-  // stopped and disabled by the operator on 2026-10-26 until a larger chassis arrives). An out-of-service
-  // row renders no upstream and no route, so a render cannot re-add it; coming back online is a change to
-  // this field, not an edit to a file on the box.
+  // False when the host is out of service. An out-of-service row renders no upstream, no route and no
+  // model entry, so a render cannot silently re-add it, and a stale binding cannot reach it; coming back
+  // online is a change to this field, not an edit to a file on the box. This is how srv3 was drained on
+  // 2026-10-26 (DIMMs at 104C with corrected ECC errors) and restored the same day with the memory
+  // capped at 40 W by a systemd drop-in -- both facts moved through this row, neither through nginx.conf.
   in_service: Bool
   // Where the engine keeps its prefix cache, which decides whether a bound session may move at the cap.
   cache_locality: RouterDevCacheLocality
@@ -782,7 +782,7 @@ fn no_members() -> List<JsonKeyValue> { [] }
 fn router_dev_first_party_upstreams() -> List<RouterDevUpstream> {
   [
     RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: "127.0.0.1", port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", cap: 4, max_model_len: 262144, overflow: false, path_prefix: "", retiring_names: [], in_service: true, cache_locality: Shared, effort_effects: qwen3_effort_rules() },
-    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-c1"], in_service: false, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
+    RouterDevUpstream { name: "srv3-strata", scheme: UpstreamHttp, host: "192.168.1.221", port: 18080, tls_name: Absent, model: "qwen3.8-flash-next-iq3_s", cap: 4, max_model_len: 229376, overflow: false, path_prefix: "", retiring_names: ["h11-c1"], in_service: true, cache_locality: EngineLocal, effort_effects: iq3_s_effort_rules() },
     // h11-a16 (x86): one engine per GPU, named by its PCI bus. The current buses are 85, 86, 87, 88, c5, c6,
     // c7, c8 on ports 18081-18088; the RTX 2000 Ada (c1) was removed, and its in-flight turns still drain
     // under srv3-strata's retiring list. A single 16 GB engine serves ~10-13 warm tok/s at 200k, so cap 2.
