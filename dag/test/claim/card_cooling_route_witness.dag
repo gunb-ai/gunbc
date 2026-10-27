@@ -9,7 +9,7 @@ import product.printed_chassis.card_cooling_route {
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
-import product.printed_chassis.chassis_clearances {Measured, DeclaredConservativeByOperator, card_end_rear_fan_clearance, neighbour_lane_width, chassis_gaps, gap_display, gap_may_be_printed_on, remeasure_before_print}
+import product.printed_chassis.chassis_clearances {Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, chassis_gaps, gap_display, gap_is_measured, gap_may_be_printed_on, remeasure_before_print}
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 
@@ -26,9 +26,9 @@ fn is_chassis_refusal(a: RouteAdmission) -> Bool { match a { RouteAdmitted {home
 // The operator-bound admission, kept separate from RouteAdmitted everywhere: `is_admitted` is TRUE only
 // for the caliper-grounded verdict, so no test can accidentally treat a declared bound as a measurement.
 fn is_admitted_on_operator_bound(a: RouteAdmission) -> Bool { match a { RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, margin: _} => true _ => false } }
-fn is_operator_admission_that_still_refuses_the_print(a: RouteAdmission) -> Bool {
+fn is_operator_admission_that_prints_as_a_fit_print(a: RouteAdmission) -> Bool {
   match a {
-    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: g, margin: _} => !gap_may_be_printed_on(g: g)
+    RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: g, margin: _} => gap_may_be_printed_on(g: g) && !gap_is_measured(g: g)
     _ => false
   }
 }
@@ -92,15 +92,24 @@ test fn w_plane_on_end_is_admitted_on_the_operators_bounds_and_the_rest_still_re
     && is_unmeasured_refusal(a: admit_home(home: BesideTheRow))
 }
 
-// ADMITTED IS NOT PRINTABLE, AND KEEPING THE TWO APART IS THE POINT OF THE SHAPE. The bound is the
-// operator's ruling about what a design may SPEND; a print commits their chassis to a shape, and the
-// caliper reading is still owed. A witness that let an admission imply a print would be exactly the
-// laundering this verdict shape exists to prevent.
-test fn w_the_admission_holds_the_print_until_the_gaps_are_read() -> Bool {
-  is_operator_admission_that_still_refuses_the_print(a: admit_home(home: PlaneOnEnd))
-    && !gap_may_be_printed_on(g: card_end_rear_fan_clearance)
-    && !gap_may_be_printed_on(g: neighbour_lane_width)
+// THE OPERATOR'S BOUND PRINTS, AND IT DOES NOT BECOME A MEASUREMENT BY DOING SO. Their two sentences
+// answered "can we print" as well as "is this admissible", and the exposure they accepted is one PLA plate
+// -- the fit print is itself the instrument that catches a wrong allowance. So gap_may_be_printed_on is
+// true for a declared bound. What must NOT move is the epistemic part: gap_is_measured stays false for the
+// same gap, and the reading is still listed as owed. A witness that conflated printable with measured is
+// the laundering this verdict shape exists to prevent, and a witness that refused the print would be
+// over-forbidding past a decision the owner of the chassis already made.
+test fn w_the_operators_bound_prints_without_becoming_a_measurement() -> Bool {
+  gap_may_be_printed_on(g: card_end_rear_fan_clearance)
+    && gap_may_be_printed_on(g: neighbour_lane_width)
+    && !gap_is_measured(g: card_end_rear_fan_clearance)
+    && !gap_is_measured(g: neighbour_lane_width)
+    && is_operator_admission_that_prints_as_a_fit_print(a: admit_home(home: PlaneOnEnd))
 }
+
+// THE TWO STANDINGS THAT ARE NOT RULINGS STILL REFUSE THE PRINT. An estimate is a guess about a fact that
+// nobody has ruled on, and an unread gap is nobody's claim at all: both keep refusing, so the print answer
+// tracks WHO DECIDED rather than how big the number is.
 
 // THE MARGIN IS THE BOUND'S, NOT THE READING'S. The route needs 37.5 mm behind the end and the bound
 // allows 70, so the margin is 32.5 mm -- taken against what the operator ALLOWED, and not against the
@@ -123,6 +132,20 @@ test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
   plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())
     == plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
     && plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()) == 37500
+}
+
+// THE SHARP OPEN POINT, PINNED AS AN ARITHMETIC FACT AND NOT AS A PARAGRAPH. The A16 end face is 97.84 mm;
+// the 8-pin connector claims a 26.0 mm band at its top end (2.56 mm from the edge to the connector's near
+// pin, 23.44 mm past its outer pin), leaving 71.84 mm of face clear of it. The BFB1012M housing is 94.4 mm
+// at its SHORTER edge. So the flat-on-end housing lies over the connector's keep-out band in either
+// orientation and at any placement on this face -- this is a size fact about this card and this fan, not a
+// placement mistake to be slid out of. Pinned so that a future change to either figure is noticed: if the
+// clearance ever becomes real, this witness fails and says so, rather than the part quietly becoming legal.
+test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card() -> Bool {
+  plane_on_end_face_clear_of_keepout_um(f: a16_end_face, d: a16_wall_design()) == 71840
+    && plane_on_end_keepout_crossing_um(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design) == 22400
+    && !plane_on_end_housing_clears_keepout(b: a16_blower_duct_design, f: a16_end_face, d: a16_wall_design())
+    && smaller_i(a: um(m: delta_bfb1012m_envelope.housing_length), b: um(m: delta_bfb1012m_envelope.housing_depth)) > plane_on_end_face_clear_of_keepout_um(f: a16_end_face, d: a16_wall_design())
 }
 
 // THE REFUSAL IS THE SAME CODE WITH A SMALLER NUMBER IN IT. Nothing below hand-writes a verdict: at 30 mm

@@ -34,9 +34,11 @@ import extdeps.fans.delta {delta_bfb1012m_envelope}
 // WHAT CHANGED 2026-10-26, AND WHAT DID NOT. The operator ruled on both of this home's blanks: 70 mm
 // behind the end, and "more than enough space on the sides". That converts the home from refused-by-an-
 // unmeasured-gap to ADMITTED ON AN OPERATOR BOUND -- a verdict of its own, not RouteAdmitted, because the
-// bound is a ruling about what the design may spend and not a report of what the chassis is. The print is
-// still refused (chassis_clearances gap_may_be_printed_on), the outlet's position on Delta's housing is
-// still unread, and the two remaining unread gaps still refuse the homes that need them.
+// bound is a ruling about what the design may spend and not a report of what the chassis is. Their ruling
+// also carried the print: the fit print is the instrument a wrong allowance is caught by, and it costs one
+// PLA plate. What did NOT change is the arithmetic of the other homes (deck-to-lid and the free side lane
+// are still unread and still refuse), the outlet's unread position on Delta's housing, and the fact that
+// nobody has measured anything here.
 //
 //   PLANE-ACROSS-ROW  the fan stands on its side wall, its outlet facing the window directly, as the
 //                     existing duct does: only the 33 mm thickness crosses the slot, which the 40.64 mm
@@ -134,9 +136,11 @@ fn a16_slot_pitch_um() -> Int { um(m: a16_blower_duct_design.slot_pitch) }
 // ADMITTED and ADMITTED ON AN OPERATOR BOUND ARE NOT THE SAME VERDICT, so they are not the same shape.
 // The first rests on a caliper reading: the chassis was measured and is bigger than the route needs. The
 // second rests on a ruling: the operator authored a conservative bound and the route's need is under it,
-// which is exactly what they said the bound was for. Only the second is available today, and it still
-// refuses the PRINT (gap_may_be_printed_on) -- a ruling about what a design may spend is not a report of
-// what the chassis is. Collapsing the two would let a declared 70 mm read as a measured one.
+// which is exactly what they said the bound was for. Only the second is available today. Both may print;
+// what they do not both do is KNOW: a caliper admission carries a fact about the chassis, an operator-bound
+// admission carries a decision about a design, and the difference has to survive in the shape or a declared
+// 70 mm reads as a measured one. The margin each carries is measured against a different authority too --
+// the reading in the first case, the bound in the second.
 type RouteAdmission
   = RouteAdmitted { home: BlowerHome, needs: List<RouteDemand> }
   | RouteAdmittedOnOperatorBound { home: BlowerHome, needs: List<RouteDemand>, on_bound: ChassisGap, margin: Micrometer }
@@ -156,7 +160,7 @@ fn route_admission_display(a: RouteAdmission) -> String {
     RouteAdmittedOnOperatorBound {home: h, needs: ns, on_bound: g, margin: mg} => join([
       blower_home_display(h: h), ": ADMITTED ON AN OPERATOR-DECLARED BOUND -- ", join(map(ns, n => demand_display(n: n)), "; "),
       "; needs ", to_string(value: um(m: mg) / 1000), " mm LESS than the bound allows; the bound is the operator's ruling, not a measurement (",
-      gap_display(g: g), "); the print itself is still refused until the gap is read with an instrument"], "")
+      gap_display(g: g), "); the print is admitted as a FIT PRINT on that ruling -- the part is the instrument that tests it"], "")
     RouteProposalOnly {home: h, needs: ns, on_estimate: g, margin: mg} => join([blower_home_display(h: h), ": PROPOSED ONLY -- ", join(map(ns, n => demand_display(n: n)), "; "), "; fits by ", to_string(value: um(m: mg) / 1000), " mm against an ESTIMATE (", gap_display(g: g), "); re-read before printing"], "")
     RouteRefusedByChassis {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and the chassis gives ", gap_display(g: g)], "")
     RouteHomeUnmeasured {home: h, unmet: n, gap: g} => join([blower_home_display(h: h), ": REFUSED -- needs ", demand_display(n: n), " and that gap is UNMEASURED -- ", gap_display(g: g)], "")
@@ -270,9 +274,11 @@ fn ask(gap: ChassisGap, need: Int, home: BlowerHome, unmet: RouteDemand) -> Rout
 //                        -> ADMITTED ON AN OPERATOR BOUND. This is the operator ruling of 2026-10-26 read
 //                        literally: they did not measure 70 mm, they ALLOWED 70 mm (gunbc.design_ruling
 //                        a16_rear_clearance_and_sides_are_operator_declared_bounds), and a design may be
-//                        admitted on a limit the owner of the chassis set for it. What the bound does NOT
-//                        buy is the print: gap_may_be_printed_on stays false, so a reader still owes the
-//                        caliper reading before material moves.
+//                        admitted on a limit the owner of the chassis set for it. The same ruling carries
+//                        the FIT PRINT -- the operator answered "can we print" with those two figures, and
+//                        the print is what catches a wrong one (chassis_clearances gap_may_be_printed_on).
+//                        The bound still buys no MEASUREMENT: gap_is_measured is false and the reading is
+//                        listed as owed, so nothing here mistakes a decision for an observation.
 //   spoken estimate      a guess at what the gap is, which admits nothing -- a 70 mm that turns out to be
 //                        64 mm is a cracked housing                                -> PROPOSED ONLY
 //   unread               nobody has looked                                            -> REFUSED

@@ -22,9 +22,12 @@ import std.optional {Present, Absent}
 // working limit, quoting the rough reading it comes from and saying which way it errs. "its like 73mm
 // but i want to be conservative" does not report a 70 mm gap; it rules that the design may spend 70.
 // The bound is not a measurement of the world and does not pretend to be one, so the caliper standing
-// is not its standing either -- but it IS the operator's own word about what the design may spend, and
-// a design may be admitted on a ruling the owner of the chassis gave. Printing on it is still refused
-// (gap_may_be_printed_on), because a print commits the chassis to a shape.
+// is not its standing either. What it IS is the operator's own word about what the design may spend --
+// and the owner of the chassis is also the person who decides whether to go ahead with a print. So a
+// declared bound admits a route AND carries a fit print (gap_may_be_printed_on), while gap_is_measured
+// stays false: spending a decision is not the same as having taken a reading, and the reading is still
+// listed as owed. An estimate keeps refusing the print, because an estimate is a guess about a fact that
+// nobody has ruled on.
 
 type ChassisGapStanding
   = CaliperByOperator { instrument: NonEmptyStr, date: NonEmptyStr, positions: NonEmptyStr }
@@ -97,15 +100,28 @@ fn gap_declared_basis(g: ChassisGap) -> NonEmptyStr? {
   }
 }
 
-// An estimate may carry a design through a PROPOSAL, but nothing may be printed on one without the
-// reading being taken again with an instrument. The bound is the width the reader put on the number.
+// WHAT A GAP'S STANDING ALLOWS, PRINTED. The three standings differ in KIND, and the print answer is not
+// monotone in how good the number is:
+//
+//   caliper reading    the chassis was measured               -> print
+//   declared bound     the operator AUTHORED the allowance    -> print, as a fit print
+//   spoken estimate    a guess at what the gap IS             -> refuse
+//   unread             nobody has looked                      -> refuse
+//
+// The declared bound prints because the operator ruled on it, and that ruling is theirs to make: the
+// question was whether to go ahead, and they answered it ("i would put 70mm for now - its like 73mm but i
+// want to be conservative", "yes, you can assume more than enough space on the sides, 70mm is fine"). The
+// exposure they accepted is one PLA print -- the part is cheap and the FIT PRINT is itself the instrument
+// that catches a wrong allowance, which is why spending their bound on the print does not need a caliper
+// first. A spoken estimate still refuses, and that is not an inconsistency: an estimate is a guess about a
+// fact, and nobody has ruled on it; a declared bound is a decision, and someone has. The standing stays
+// exactly as honest as it was -- printing on it does not make it a measurement, gap_is_measured is still
+// false and says so, and remeasure_before_print still lists it as a reading the chassis is owed.
 fn gap_may_be_printed_on(g: ChassisGap) -> Bool {
   match g {
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
     Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
-    // A declared bound admits a route and still refuses a print. The operator ruled what the design may
-    // SPEND; they did not report what the chassis IS, and a print commits the chassis to a shape.
-    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => false
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, reading: _, date: _, positions: _, basis: _, does_not_settle: _}} => true
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
   }
 }
@@ -225,7 +241,7 @@ fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
 fn remeasure_before_print(gaps: List<ChassisGap>) -> List<String> {
   fold(gaps, init: [], f: (acc, g) => match gap_obligation(g: g) {
     Present { value: o } => concat(acc, [gap_display(g: g)])
-    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else if gap_may_be_printed_on(g: g) { acc } else { concat(acc, [join(["re-read with an instrument before printing -- this gap is a declared bound, not a measurement: ", gap_display(g: g)], "")]) }
+    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else if gap_is_measured(g: g) { acc } else { concat(acc, [join(["printing on the operator's declared bound, on their ruling -- the bound is not a measurement and this reading is still owed: ", gap_display(g: g)], "")]) }
   })
 }
 
