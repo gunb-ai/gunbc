@@ -78,7 +78,7 @@ import std.algebra { Cons, Empty, contains, list_reverse }
 // WHAT REPLACES IT: nothing here. Every non-long, non-fixture identity is routed and executed,
 // its route carried by the claim that runs it
 // (`RequiredFloorClaim.execution_mode` — one route per identity, not a second vocabulary
-// restating it), and the interpreter's own typed `HermeticHostEffectRefused` classifies the
+// restating it), and the interpreter's own typed `HostEffectRefused` classifies the
 // residue that genuinely has no hermetic arm. That residue reaches the receipt as
 // `RequiredFloorOutcome.route_gap`, which BLOCKS: a claim that never reached its subject is
 // not green, and it is not a failure either — the two have different remedies and are
@@ -963,6 +963,17 @@ fn required_gate_authored_modules() -> List<String> {
     // v2.test.claim.body_lowering_call_node_occurrence is a FILE the required lane can execute, and
     // its own claim_batch run is on record -- green by execution at the head the fix PR landed with
     // (cite the run, never transcribe its output; the roster row's cost is the run's own pricing).
+    // RECEIPT (this edit, per Manager 3's ruling "same approved row, not roster growth"). Instrument:
+    // gunbc claim_batch over this module, executed on srv1 by the Manager-3 battery at this PR's final
+    // head, alongside the mutation-control runs on the two never-merge scratch branches --
+    // lane16/scratch-mutation-qualified-synthetic (the qualified call site back to its pre-fix bare
+    // node_synthetic shape) and lane16/scratch-mutation-is-rejected-geometry (the is site back to the
+    // ownership geometry the #14891 deferral rejected, Match root stamped from the pattern's own
+    // occurrence). Each control goes red exactly on the checks it discriminates and green elsewhere --
+    // the instrument's output says where, and it stays there: transcribing counts, verdicts per claim
+    // or commit SHAs into this comment would break the line above and DESIGN §6 ("a transcribed number
+    // rots unreachably"), and §4c says an annotation is never evidence. The citation this row carried
+    // at #14946's landing is retired by these runs.
     // Same exact grain
     // as the row above, for the same reason: one module, never a family selector. This module pins
     // what the census reader needs to be locatable at all -- native_census_owner_key answers Present
@@ -971,6 +982,23 @@ fn required_gate_authored_modules() -> List<String> {
     // resident-but-unread, the harm gunbc.recurring_failure_mode
     // witness_module_absent_from_the_executed_set records.
     "v2.test.claim.body_lowering_call_node_occurrence",
+    // THE NATIVE CENSUS CASCADE CONTROLS AND THE RESOLVE CONTROLS THEY REST ON (node adhoc-40e4ae25-e94),
+    // at exact module grain for the reason the rows above give; the family v2.test.claim.native_census.
+    // is not admitted. cascade_root_fan_out pins the census cascade's root and fan-out (gunbc#14978);
+    // infer_cascade pins that a variant of a refused coproduct is a resolve member of its provider, and
+    // declarer_refused carries that repair's discriminating REDs (gunbc#14985). Each was green by
+    // execution at the head of the change that adjudicated it (claim_batch, cited on that change, never
+    // transcribed here).
+    // ENROLLED, NOT EXECUTED: these rows place the modules in the required floor's selected subject, and
+    // NO LANE EXECUTES THAT SUBJECT. The manual floor runner is deleted
+    // (gunbc.rung_drop_amendment manual_required_floor_runner_deleted) and the required job evaluates no
+    // witness, so a red in any of the three reaches no merge. That loss is the declared drop
+    // gunbc.rung_drop v1_required_lanes_withdrawn, and these rows are retired by its trigger: native
+    // required-path judgment of the withdrawn population. Until then each module is still exposed to the
+    // harm gunbc.recurring_failure_mode witness_module_absent_from_the_executed_set records.
+    "v2.test.claim.native_census.cascade_root_fan_out",
+    "v2.test.claim.native_census.infer_cascade",
+    "v2.test.claim.name_resolve.declarer_refused",
   ]
 }
 
@@ -2069,11 +2097,8 @@ fn opaque_host_call_grandfather_population() -> List<String> {
       tail: Cons {
         head: "compile_dag_multi_module_fixture",
         tail: Cons {
-          head: "observe_declared_import_closure_symbol_binding",
-            tail: Cons {
-              head: "witness_layer_roots_compile_clean_check",
-              tail: Empty {}
-            }
+          head: "witness_layer_roots_compile_clean_check",
+          tail: Empty {}
         }
       }
     }

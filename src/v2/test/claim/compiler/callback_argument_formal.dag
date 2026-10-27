@@ -1,10 +1,10 @@
 module v2.test.claim.compiler.callback_argument_formal
 
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble }
-import v2.compiler.infer { infer, infer_type_equal_ignoring_provenance }
+import v2.compiler.infer { infer }
 import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected, Suggested, Unavailable, diagnostics_fatal, diagnostics_fatal_reason, diagnostics_has_reason }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol }
+import v2.std.node { node_equal_ignoring_provenance, Authored, Edge, Node, Positional, StructuralLabel, Symbol }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { Bool, String }
 
@@ -28,8 +28,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // MUTATIONS, each leaving the compiler runnable: removing the callback frame join (the callback subtree
 // inheriting its parent's frame unchanged) turns the positives and the Bool control red again; removing
-// the callback's signature from the argument judgment (infer_entries_with_callback_signatures) turns
-// the monomorphic positive and the wrong-return refusal red again.
+// the callback's own type (v2.compiler.infer infer_function_value_facts, the row that types a function value
+// from its frame and body -- v2.test.claim.compiler.function_value_type) turns the monomorphic positive and the
+// wrong-return refusal red again; removing the arity refutation (infer_entries_with_callback_arity_refutations)
+// turns the extra-parameter refusal red.
 
 data caf_prelude: String = "module p\n\ntype Res<T>\n  = Ok { value: T }\n  | Err\n\nfn h() -> Res<Int> {\n  Ok { value: 1 }\n}\n\nfn need_int(n: Int) -> Res<Int> {\n  Ok { value: n }\n}\n\n"
 
@@ -117,7 +119,7 @@ fn caf_same_type(a: Optional<Node>, b: Optional<Node>) -> Bool {
     Present { value: x } =>
       match b {
         Absent => false
-        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+        Present { value: y } => node_equal_ignoring_provenance(a: x, b: y)
       }
   }
 }

@@ -962,7 +962,7 @@ data known_red_marker_budget_exceeded: String = "ms EXCEEDED; cost="
 data known_red_marker_budget_unmeasured: String = "cost=UNMEASURED"
 data known_red_marker_ground_unpublished_mock: String = "no published mock case for a corpus-governed service"
 data known_red_marker_ground_filesystem_removal: String = "filesystem removal has no mock arm"
-// The third member of the closed ground set, from `hermetic_effect_ground_label`. It was absent from this
+// The third member of the closed ground set, from `effect_refusal_ground_label`. It was absent from this
 // file entirely: a NoMockResponse gap fell through the two tests below into a default, so the ledger
 // recorded a ground the transport never printed.
 data known_red_marker_ground_no_mock_response: String = "operation declares no mock_response"
@@ -1624,7 +1624,7 @@ fn known_red_route_gap_fields(body: String) -> Optional<ClaimAttemptTerminal> {
 }
 
 // THE ROUTE GAP'S GROUND, READ BACK OUT OF THE PRINT. The three sentences are the ones the transport
-// renders through `hermetic_effect_ground_label`; this inverts that render onto the union the ledger arm
+// renders through `effect_refusal_ground_label`; this inverts that render onto the union the ledger arm
 // requires -- exhaustively. It used to end in `else { NoMockResponse }`, which meant the third label was
 // never actually tested for and an unrecognized ground was REPORTED AS THAT LABEL. Now an unmapped ground
 // is `Absent`, so the row refuses instead of being filed under a ground nobody printed.

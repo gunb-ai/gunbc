@@ -1,0 +1,106 @@
+module test.claim.roster_import_sweep_native_control_witness
+
+import std.types { Bool, List, String }
+import std.optional { Absent, Optional, Present }
+import gunbc.instrument_targets {
+  instrument_bindings,
+  instrument_targets,
+  roster_import_sweep_native_binding,
+  roster_import_sweep_native_child_deadline,
+  roster_import_sweep_native_entry,
+  roster_import_sweep_native_label
+}
+import gunbc.instruments.roster_import_sweep_native {
+  expected_path,
+  first_diff,
+  manifest_path,
+  manifest_rows,
+  split_pipe_pair
+}
+import gunbc.target_binding { NativeClaimProgramProducer }
+
+// THE CONTROL POPULATION for //gunbc/instruments:roster-import-sweep-native, kept OUTSIDE the
+// entry module (an entry module is the corpus' one compiler pipeline entry; controls live in
+// witnesses the way dag.test.claim.native_effect_realization_admission_witness keeps them). Each
+// row goes red when the route it guards rots: a manifest that accepts a malformed row, a diff that
+// stops naming the first disagreeing byte, or a binding row retargeted away from
+// NativeClaimProgramProducer -- the last is the control that goes red if the native route is
+// REMOVED or FALLS BACK, because the producer IS the route (DESIGN section 3: the label's binding
+// is the single authority for how it runs; a fallback here would silently hand the sweep back to
+// the interpreter while still printing rows).
+// THE ROUTE CONTROL. The binding row names the emit+build+exec producer, the entry module and a
+// host deadline. Remove the row, or re-point the producer at any other arm, and these go red --
+// this is the control that goes red if the native route is REMOVED or FALLS BACK, because the
+// producer IS the route (DESIGN section 3: the label's binding is the single authority for how it
+// runs; a fallback here would silently hand the sweep back to the interpreter while still printing
+// rows).
+test fn the_binding_row_binds_the_entry_to_the_native_claim_program_producer() -> Bool {
+  let b = roster_import_sweep_native_binding()
+  b.target == roster_import_sweep_native_label()
+    && b.producer == NativeClaimProgramProducer {
+         entry: roster_import_sweep_native_entry()
+         deadline: roster_import_sweep_native_child_deadline()
+       }
+}
+
+test fn the_entry_is_the_instrument_module_itself() -> Bool {
+  roster_import_sweep_native_entry() == "dag/gunbc/instruments/roster_import_sweep_native.dag"
+}
+
+test fn the_label_joins_both_instrument_populations() -> Bool {
+  (instrument_targets() |> filter(t => t == roster_import_sweep_native_label()) |> count) == 1
+    && (instrument_bindings() |> filter(b => b.target == roster_import_sweep_native_label()) |> count) == 1
+}
+
+// THE MANIFEST GRAMMAR CONTROLS. A manifest is an input the emitted program does not trust; these
+// rows go red if a malformed row could ever become a sweep over the wrong path set.
+test fn a_row_without_a_pipe_is_no_row() -> Bool {
+  match split_pipe_pair(line: "no-pipe-at-all") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn a_row_with_two_pipes_is_no_row() -> Bool {
+  match split_pipe_pair(line: "a|b|c") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn a_row_with_an_empty_identity_is_no_row() -> Bool {
+  match split_pipe_pair(line: "|dag/x.dag") {
+    Absent => true
+    _ => false
+  }
+}
+
+test fn the_paths_column_keeps_its_commas() -> Bool {
+  match split_pipe_pair(line: "a|dag/x.dag,dag/y.dag") {
+    Present { value: p } => p.first == "a" && p.second == "dag/x.dag,dag/y.dag"
+    Absent => false
+  }
+}
+
+test fn comment_lines_and_blank_lines_are_skipped() -> Bool {
+  manifest_rows(paths: "# comment\n\na|dag/x.dag\n") |> count == 1
+}
+
+// THE DIFF CONTROL. A not-held row must name WHERE the emitted program and the oracle disagree,
+// byte first, before anyone re-runs the interpreter.
+test fn first_diff_names_the_byte_where_bytes_disagree() -> Bool {
+  first_diff(a: "EDIT 1 2 x\n", b: "EDIT 1 2 y\n") == "9:native[x\n] oracle[y\n]"
+}
+
+test fn first_diff_names_a_missing_tail_as_the_shared_prefix() -> Bool {
+  first_diff(a: "EDIT", b: "EDIT AND MORE") == "shared_prefix_ends_at=4"
+}
+
+test fn the_expected_file_lives_under_the_expected_directory_named_by_the_identity() -> Bool {
+  expected_path(identity: "node_dag_sweep")
+    == "docs/measurements/roster_import_sweep_native/expected/node_dag_sweep.txt"
+}
+
+test fn the_manifest_is_at_the_fixed_path_the_child_reads_without_arguments() -> Bool {
+  manifest_path() == "docs/measurements/roster_import_sweep_native/manifest.txt"
+}

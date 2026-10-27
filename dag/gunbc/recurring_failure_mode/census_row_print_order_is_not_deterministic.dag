@@ -1,0 +1,20 @@
+module gunbc.recurring_failure_mode.census_row_print_order_is_not_deterministic
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data census_row_print_order_is_not_deterministic: RecurringFailureMode = RecurringFailureMode {
+  identity: "census_row_print_order_is_not_deterministic" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the census producer prints each module rows in a canonical occurrence order that two runs of one tree reproduce byte for byte -- executed check = two census runs of one tree compared byte for byte, with no multiset normalization at the consumer" } },
+
+  receipts: [
+    "the native occurrence-binding census prints a module's rows in a different order from run to run. Measured by `gunbc test //gunbc/instruments:ambient-name-census` on base and on head of the wave-1 positive control (PR #14324 over #14317): 1070 of 1331 modules differed in print order alone and none differed as a multiset. The first gate compared rows in print order, so every partial module looked changed, ~993 module pairs went to evidence reads and the join, and the label timed out at 7200 s.",
+
+    "HARM: an order-sensitive comparison of two census runs reports changes that are not there, and its cost scales with the corpus rather than the change. The gate (gunbc.instruments.namespace_wave_occurrence_join rows_multiset_equal) compares rows as multisets, with a control (same rows in another print order is no change). ATTAINABLE CEILING: structurally guaranteed once the census prints each module's rows in a canonical order (occurrence order); today mechanically preventable at the consumer. NEXT-RUNG TRIGGER, at capability grain: the census producer prints rows in a deterministic order that two runs of one tree reproduce byte for byte. Owner routing: tidy-ant-251 (Manager 1, front-end: v2.compiler.occurrence_resolution_census).",
+  ],
+
+  evidence: [],
+}

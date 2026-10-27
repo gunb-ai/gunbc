@@ -1,0 +1,284 @@
+module test.claim.machine_intake.supermicro_bmc_reading_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import extdeps.firmware.types { firmware_semantic_version }
+import extdeps.bmc.endpoint { SupermicroAten }
+import extdeps.bmc.types { BootOverrideDisabled, BootOverrideModeUefi, BootTargetBiosSetup, BootTargetPxe }
+import extdeps.bmc.ipmi_sdr { SdrLineDecoded, SdrLineUnstructured }
+import extdeps.bmc.ipmitool_print_read { ipmi_cipher_suites_admitting_admin, ipmitool_sel_elist_rows, ipmi_cipher_suite_privileges_of_lan_print }
+import extdeps.bmc.ipmi_boot_selection { ipmi_boot_flags_reading_of_bootparam_get, ipmi_boot_selector_reading, IpmiSelectorModeled, IpmiSelectorUnmodeled, IpmiBootPxe }
+import extdeps.bmc.redfish_memory_inventory { redfish_memory_member_of }
+import extdeps.bmc.supermicro { SupermicroLicenceDcms, SupermicroLicenceSum, SupermicroLicenceOob, SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable }
+import gunbc.machine_intake.bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.bmc.supermicro_bmc_read {
+  SupermicroIdentityRead, SupermicroIdentityDisagrees, SupermicroIdentityRefused,
+  IdentityFromRedfishManager, IdentityFromGetDeviceId, IdentityFromCgiGenericInfo,
+  SupermicroResourceStanding, ResourceServed, ResourceLicenceRefused, ResourceRouteAbsent, ResourceUnreadable,
+  supermicro_bmc_identity, supermicro_boot_vendor_tokens, supermicro_boot_unaccounted_tokens, supermicro_dimm_reading_disagreements,
+}
+import gunbc.machine_intake.supermicro_bmc_reading {
+  SupermicroH11sslBmcReading, SupermicroH11sslRead, SupermicroH11sslReadRefused, SupermicroCapture,
+  supermicro_h11ssl_unit1_reading_2026_10_27, supermicro_h11ssl_unit2_reading, supermicro_h11ssl_reading,
+  supermicro_h11ssl_unit1_captures_2026_10_27,
+}
+import gunbc.machine_intake.supermicro_h11ssl_unit_observation { supermicro_h11ssl_unit1_bmc_mac }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// THE H11SSL BMC READINGS, END TO END: each claim runs the unit's committed captures through
+// gunbc.machine_intake.supermicro_bmc_reading (manifest, digest check, every reader of
+// gunbc.bmc.supermicro_bmc_read and the upstream decoders) and asserts what came out. The REDs change one
+// fact of a real capture and show the reading move.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn unit1() -> SupermicroH11sslBmcReading? {
+  match supermicro_h11ssl_unit1_reading_2026_10_27() {
+    SupermicroH11sslRead { reading: r } => Present { value: r }
+    SupermicroH11sslReadRefused { path: _, cause: _ } => none
+  }
+}
+
+fn unit2() -> SupermicroH11sslBmcReading? {
+  match supermicro_h11ssl_unit2_reading() {
+    SupermicroH11sslRead { reading: r } => Present { value: r }
+    SupermicroH11sslReadRefused { path: _, cause: _ } => none
+  }
+}
+
+// ── ITEM 1: IDENTITY AND FAMILY.
+fn unit1_is_supermicro_aten_01_52_25_by_manager_and_get_device_id_and_agrees_with_the_board(r: SupermicroH11sslBmcReading) -> Bool {
+  r.identity_agrees_with_catalog && match r.identity {
+      SupermicroIdentityRead { family: FamilyObserved { family: f }, version: v, release_modeled: m, sources: ss } =>
+        f == SupermicroAten && v == firmware_semantic_version(major: 1, minor: 52, patch: 25) && m
+          && ss == [IdentityFromRedfishManager, IdentityFromGetDeviceId]
+      SupermicroIdentityRead { family: FamilyUnobserved { discriminator: _ }, version: _, release_modeled: _, sources: _ } => false
+      SupermicroIdentityDisagrees { readings: _ } => false
+      SupermicroIdentityRefused { cause: _ } => false
+    }
+}
+
+// Unit 2 is licence-locked: no Manager resource, so its family is unobserved and does NOT agree with the
+// catalog, while its CGI page still reads 01.52.00.
+fn unit2_reads_01_52_00_from_the_cgi_with_its_family_unobserved(r: SupermicroH11sslBmcReading) -> Bool {
+  !r.identity_agrees_with_catalog && match r.identity {
+      SupermicroIdentityRead { family: FamilyUnobserved { discriminator: _ }, version: v, release_modeled: m, sources: ss } =>
+        v == firmware_semantic_version(major: 1, minor: 52, patch: 0) && m && ss == [IdentityFromCgiGenericInfo]
+      SupermicroIdentityRead { family: FamilyObserved { family: _ }, version: _, release_modeled: _, sources: _ } => false
+      SupermicroIdentityDisagrees { readings: _ } => false
+      SupermicroIdentityRefused { cause: _ } => false
+    }
+}
+
+// RED: two sources that name different releases disagree, and no version is chosen.
+test fn a_manager_and_cgi_naming_different_releases_disagree() -> Bool {
+  match supermicro_bmc_identity(
+    manager_body: Present { value: Filesystem.Read(path: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1.json").content },
+    cgi_generic_body: Present { value: Filesystem.Read(path: "artifacts/bmc/h11ssl-unit2-first-contact-generic-info.xml").content },
+    device_id_stdout: none,
+  ) {
+    SupermicroIdentityDisagrees { readings: rs } => rs.length() == 2
+    SupermicroIdentityRead { family: _, version: _, release_modeled: _, sources: _ } => false
+    SupermicroIdentityRefused { cause: _ } => false
+  }
+}
+
+// RED: a Get Device ID from another manufacturer refuses rather than reading as a Supermicro release.
+test fn a_get_device_id_from_another_manufacturer_refuses() -> Bool {
+  match supermicro_bmc_identity(manager_body: none, cgi_generic_body: none, device_id_stdout: Present { value: " 20 01 01 52 02 bf 7c 2b 00 03 1a 25 01 00 00" }) {
+    SupermicroIdentityRefused { cause: c } => string_contains(s: c, pattern: "manufacturer")
+    SupermicroIdentityRead { family: _, version: _, release_modeled: _, sources: _ } => false
+    SupermicroIdentityDisagrees { readings: _ } => false
+  }
+}
+
+// RED: a capture whose bytes no longer match the manifest refuses the whole reading.
+test fn a_capture_that_differs_from_its_manifest_digest_refuses_the_reading() -> Bool {
+  let tampered = map(supermicro_h11ssl_unit1_captures_2026_10_27, c =>
+    if ends_with(s: c.path as String, suffix: "sol-info-1.txt") { SupermicroCapture { path: c.path, sha256: "00", request: c.request, http_status: c.http_status } } else { c })
+  match supermicro_h11ssl_reading(bmc_mac: supermicro_h11ssl_unit1_bmc_mac, captures: tampered) {
+    SupermicroH11sslReadRefused { path: p, cause: _ } => ends_with(s: p as String, suffix: "sol-info-1.txt")
+    SupermicroH11sslRead { reading: _ } => false
+  }
+}
+
+// ── ITEM 2: LICENCE STANDING. Storage and FirmwareInventory are DCMS-gated; the licence query route does
+// not exist on 01.52.25; the Manager, Memory, Thermal and VirtualMedia resources are served; unit 2's root
+// is refused for any of SUM, DCMS, OOB.
+fn standing_of(r: SupermicroH11sslBmcReading, request: String) -> List<SupermicroResourceStanding> {
+  map(filter(r.resources, x => (x.request as String) == request), x => x.standing)
+}
+
+fn unit1_storage_is_dcms_gated_and_the_licence_query_route_is_absent(r: SupermicroH11sslBmcReading) -> Bool {
+      standing_of(r: r, request: "GET /redfish/v1/Systems/1/Storage") == [ResourceLicenceRefused { message_id: "SMC.1.0.OemLicenseNotPassed", any_of: [SupermicroLicenceDcms] }]
+        && standing_of(r: r, request: "GET /redfish/v1/UpdateService/FirmwareInventory") == [ResourceLicenceRefused { message_id: "SMC.1.0.OemLicenseNotPassed", any_of: [SupermicroLicenceDcms] }]
+        && standing_of(r: r, request: "GET /redfish/v1/Managers/1/LicenseManager/QueryLicense") == [ResourceRouteAbsent]
+        && standing_of(r: r, request: "GET /redfish/v1/Managers/1") == [ResourceServed]
+        && standing_of(r: r, request: "GET /redfish/v1/Systems/1/Memory") == [ResourceServed]
+        && standing_of(r: r, request: "GET /redfish/v1/Managers/1/VirtualMedia/CD1") == [ResourceServed]
+        && r.resources.length() == 22
+}
+
+fn unit2_redfish_root_is_refused_for_any_of_sum_dcms_oob(r: SupermicroH11sslBmcReading) -> Bool {
+  standing_of(r: r, request: "GET /redfish/v1") == [ResourceLicenceRefused { message_id: "Base.v1_4_0.OemLicenseNotPassed", any_of: [SupermicroLicenceSum, SupermicroLicenceDcms, SupermicroLicenceOob] }]
+}
+
+// ── ITEM 3: BOOT. Parameter 5 reads flag-invalid (no override in force), next-boot, EFI, selector 6 (BIOS
+// setup, a selector this model does not write); Redfish agrees: override Disabled, UEFI, BiosSetup, and its
+// AllowableValues carry UsbCd (Supermicro's token) and Floppy (DMTF, not modeled) as kept residue.
+fn unit1_boot_override_reads_the_same_from_ipmi_and_redfish(r: SupermicroH11sslBmcReading) -> Bool {
+      match r.boot_ipmi {
+        Absent => false
+        Present { value: b } => !b.flag_valid && !b.persistent && b.efi && b.device_selector == 6
+      }
+        && match r.boot_redfish {
+          Absent => false
+          Present { value: ObservationRefused { cause: _ } } => false
+          Present { value: ObservationEstablished { observed: o } } =>
+            o.enabled == BootOverrideDisabled && o.mode == Present { value: BootOverrideModeUefi } && o.target == BootTargetBiosSetup
+              && any(o.allowable_targets, t => t == BootTargetPxe)
+              && supermicro_boot_vendor_tokens(reading: o) == ["UsbCd"] && supermicro_boot_unaccounted_tokens(reading: o) == ["Floppy"]
+        }
+}
+
+// ── ITEM 4: SENSORS AND EVENTS through the existing SDR decode and the SEL row reader.
+fn decoded_reading(r: SupermicroH11sslBmcReading, name: String) -> List<String> {
+  flat_map(r.sdr, x => match x {
+    SdrLineDecoded { line: l } => if (l.name as String) == name { [l.reading_text as String] } else { [] }
+    SdrLineUnstructured { text: _ } => []
+  })
+}
+
+fn unit1_sdr_decodes_through_ipmi_sdr_and_the_sel_reads_whole(r: SupermicroH11sslBmcReading) -> Bool {
+      decoded_reading(r: r, name: "FAN3") == ["3400 RPM"] && decoded_reading(r: r, name: "CPU Temp") == ["63 degrees C"]
+        && decoded_reading(r: r, name: "GPU1 Temp") == ["87 degrees C"]
+        && match r.sel {
+          Absent => false
+          Present { value: rows } => rows.length() == 94
+        }
+}
+
+// ── ITEM 5: INVENTORY. Eight Redfish DIMMs read; the SEL's repeated "Memory Device Disabled" for DIMMH1
+// against Redfish's Enabled is recorded as a disagreement, not resolved. Unit 2's DIMM comes from the
+// licence-free SMBIOS page.
+fn unit1_reads_eight_dimms_and_records_the_dimmh1_disagreement(r: SupermicroH11sslBmcReading) -> Bool {
+      r.redfish_dimms.length() == 8
+        && all(r.redfish_dimms, a => match a { ObservationEstablished { observed: m } => m.capacity_mib == Present { value: 16384 }  ObservationRefused { cause: _ } => false })
+        && r.dimm_disagreements.length() == 1
+        && match first(r.dimm_disagreements) {
+          Absent => false
+          Present { value: d } => (d.locator as String) == "DIMMH1" && d.sel_record_ids.length() == 13
+        }
+}
+
+fn unit2_reads_its_dimm_through_smbios_without_a_licence(r: SupermicroH11sslBmcReading) -> Bool {
+  match r.smbios_dimms {
+      Present { value: SupermicroCgiPageRead { page: ds } } => ds.length() == 1
+      Present { value: SupermicroCgiSessionRedirect } => false
+      Present { value: SupermicroCgiUnreadable { cause: _ } } => false
+      Absent => false
+    }
+}
+
+// ── ITEM 6: VIRTUAL MEDIA, OFFERED NOT EXERCISED. CD1 publishes InsertMedia and has nothing inserted.
+fn unit1_offers_cd1_insert_media_with_nothing_inserted(r: SupermicroH11sslBmcReading) -> Bool {
+  match r.virtual_media {
+      Present { value: ObservationEstablished { observed: o } } =>
+        (o.member_id as String) == "CD1" && !o.inserted
+          && (o.insert_action_target as String) == "/redfish/v1/Managers/1/VirtualMedia/CD1/Actions/VirtualMedia.InsertMedia"
+      Present { value: ObservationRefused { cause: _ } } => false
+      Absent => false
+    }
+}
+
+// ── ITEM 7: SOL AND THE SESSION CIPHER. SOL is enabled at OPERATOR on port 623 at 115.2 kbps; of the listed
+// suites 3 and 17, only 3 admits an ADMINISTRATOR session (17's privilege slot is X, unused).
+fn unit1_sol_is_enabled_and_only_cipher_suite_3_admits_admin(r: SupermicroH11sslBmcReading) -> Bool {
+      match r.sol {
+        Absent => false
+        Present { value: s } => s.enabled && (s.privilege_level as String) == "OPERATOR" && s.payload_port == 623 && (s.volatile_bit_rate_kbps as String) == "115.2"
+      }
+        && match r.cipher_suites {
+          Absent => false
+          Present { value: ps } => ps.length() == 2 && ipmi_cipher_suites_admitting_admin(pairs: ps) == [3]
+        }
+}
+
+// THE TWO INHABITANCE CLAIMS: each unit's reading is produced ONCE from its committed captures through the
+// whole route, and every item above is asserted on that one reading.
+test fn unit1_reading_holds_every_item() -> Bool {
+  match unit1() {
+    Absent => false
+    Present { value: r } =>
+      unit1_is_supermicro_aten_01_52_25_by_manager_and_get_device_id_and_agrees_with_the_board(r: r)
+        && unit1_storage_is_dcms_gated_and_the_licence_query_route_is_absent(r: r)
+        && unit1_boot_override_reads_the_same_from_ipmi_and_redfish(r: r)
+        && unit1_sdr_decodes_through_ipmi_sdr_and_the_sel_reads_whole(r: r)
+        && unit1_reads_eight_dimms_and_records_the_dimmh1_disagreement(r: r)
+        && unit1_offers_cd1_insert_media_with_nothing_inserted(r: r)
+        && unit1_sol_is_enabled_and_only_cipher_suite_3_admits_admin(r: r)
+  }
+}
+
+test fn unit2_reading_holds_every_item() -> Bool {
+  match unit2() {
+    Absent => false
+    Present { value: r } =>
+      unit2_reads_01_52_00_from_the_cgi_with_its_family_unobserved(r: r)
+        && unit2_redfish_root_is_refused_for_any_of_sum_dcms_oob(r: r)
+        && unit2_reads_its_dimm_through_smbios_without_a_licence(r: r)
+  }
+}
+
+// ── INTERFACE REDS: one fact of a real capture changed, at the reader that owns it.
+fn capture(name: String) -> String { Filesystem.Read(path: name).content }
+
+data unit1_ipmitool: String = "artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/"
+
+// RED (item 5): with the SEL's slot renamed, the Enabled DIMMH1 has no disabling event and no disagreement.
+test fn without_a_sel_event_naming_the_slot_there_is_no_dimm_disagreement() -> Bool {
+  let member = redfish_memory_member_of(body: capture(name: "artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Systems_1_Memory_8.json"))
+  let real = ipmitool_sel_elist_rows(stdout: capture(name: concat(unit1_ipmitool, "sel-elist.txt")))
+  let renamed = ipmitool_sel_elist_rows(stdout: join(split(s: capture(name: concat(unit1_ipmitool, "sel-elist.txt")), delimiter: "@DIMMH1("), "@DIMMA9("))
+  match member {
+    ObservationRefused { cause: _ } => false
+    ObservationEstablished { observed: m } => match real {
+      Absent => false
+      Present { value: rows } => supermicro_dimm_reading_disagreements(members: [m], sel: rows).length() == 1
+        && match renamed {
+          Absent => false
+          Present { value: rows2 } => supermicro_dimm_reading_disagreements(members: [m], sel: rows2).length() == 0
+        }
+    }
+  }
+}
+
+// RED (item 7): with suite 3's privilege slot unused too, no suite admits an administrator.
+test fn with_every_cipher_slot_unused_no_suite_admits_admin() -> Bool {
+  let changed = join(split(s: capture(name: concat(unit1_ipmitool, "lan-print-1.txt")), delimiter: ": aXXXXXXXXXXXXXX"), ": XXXXXXXXXXXXXXX")
+  match ipmi_cipher_suite_privileges_of_lan_print(stdout: changed) {
+    Absent => false
+    Present { value: ps } => ps.length() == 2 && ipmi_cipher_suites_admitting_admin(pairs: ps).length() == 0
+  }
+}
+
+// RED (item 3): a valid once-PXE-EFI parameter reads as the modeled PXE selector; a truncated data field
+// has no reading.
+test fn a_valid_pxe_bootparam_reads_as_pxe_and_a_truncated_one_has_no_reading() -> Bool {
+  let real = capture(name: concat(unit1_ipmitool, "chassis-bootparam-get-5.txt"))
+  let pxe = join(split(s: real, delimiter: "Boot parameter data: 2018000000"), "Boot parameter data: a004000000")
+  let cut = join(split(s: real, delimiter: "Boot parameter data: 2018000000"), "Boot parameter data: 2018")
+  match ipmi_boot_flags_reading_of_bootparam_get(stdout: pxe) {
+    Absent => false
+    Present { value: b } => b.flag_valid && b.efi && !b.persistent && ipmi_boot_selector_reading(selector: b.device_selector) == IpmiSelectorModeled { device: IpmiBootPxe }
+  }
+    && match ipmi_boot_flags_reading_of_bootparam_get(stdout: cut) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match ipmi_boot_flags_reading_of_bootparam_get(stdout: real) {
+      Absent => false
+      Present { value: b } => ipmi_boot_selector_reading(selector: b.device_selector) == IpmiSelectorUnmodeled { selector: 6 }
+    }
+}

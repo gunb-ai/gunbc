@@ -1,0 +1,330 @@
+module test.claim.host.host_primary_network_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.upsert_decision { Noop, Apply, Refuse }
+import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_precheck, SplitOk, SplitRefused, SelfSubject, SubjectAbsent, ExecutorIdentityAbsent }
+import std.measure { bandwidth_count, byte_size_count }
+import extdeps.languages.yaml.types { YamlValue, kv, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv11, operator_host_srv12 }
+import extdeps.network.mac { mac_addresses_are_equal }
+import extdeps.netplan.netplan {
+  render_netplan_value, NetplanDocumentRendered, NetplanDocumentRefused,
+  SystemdNetworkd, NetworkManager, MatchByMacAddress, MatchByName,
+  netplan_try_outcome, NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable, NetplanTryOutcomePending,
+}
+import extdeps.cloud_init.cloud_init { cloud_init_network_config_disabled_text }
+import extdeps.ssh.client_options { serialize_ssh_client_options }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_ssh_password_client_options }
+import gunbc.runner.runner_host_file_converge { HostFileAbsent, HostFileIdentical }
+import gunbc.spark.fabric_rail_desired { fabric_rail_desired_for }
+import gunbc.host.host_primary_network_observed {
+  srv1_primary_network_receipt_2026_10_25, srv1_nic_boot_readings, srv1_i210_mac, srv1_x550_port1_mac,
+  selector_missed_boots, x550_link_speed_bearing, BelowNameplateOnEveryReadBoot, NameplateReachedOnSomeBoot, NoLinkRead,
+  aer_visibility, AerWithheldSince, AerReportedOnEveryReadBoot, srv1_x550_bets,
+}
+import gunbc.host.host_primary_network {
+  HostPrimaryNetworkDesired, PrimaryNetworkRow, srv1_primary_network_desired,
+  primary_network_row_for, PrimaryRowDeclared, PrimaryRowRenderRefused, PrimaryRowAwaitingRead, PrimaryRowUnmodeled,
+  primary_nic_admission, PrimaryNicAdmitted, PrimaryNicRefusedOpenBets,
+  PrimaryNetworkIpReads, primary_effective_verdict,
+  PrimaryEffectiveHolds, PrimaryNicNotPresent, PrimaryNicNoCarrier, PrimaryUplinkOnAnotherDevice, PrimaryNoDefaultRoute,
+  PrimaryAddressDiverges, PrimaryMtuDiverges, PrimaryRouteMetricDiverges, PrimaryEffectiveUnjudged,
+  PrimaryNetworkObservation, NetplanDirectoryListed, netplan_yaml_names,
+  plan_primary_network,
+  primary_network_cloud_init_guard,
+}
+import gunbc.host.host_primary_network_apply {
+  primary_network_try_launch, primary_network_stdin_holder_launch, PrimaryTryLaunchArgv, PrimaryTryLaunchRefused,
+  primary_network_staged_population, StagedNetplanReady, StagedNetplanRefused, StagedNetplanFile, primary_network_cleanup_steps,
+  primary_confirm_write, ConfirmWritten, ConfirmWriteFailed,
+  primary_try_settlement, TrySettled, TryUnsettled, primary_network_cleanup_plan,
+  primary_network_split_refusal,
+}
+
+// srv1's three one-line iproute2 reads as printed on 2026-10-25 (lo, the gunbc-tap* microvm links and
+// docker's veths trimmed from the link read; their addresses kept, since an address read holds them).
+data srv1_ip_links: String = "2: enxaa7a13da73d3: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\\    link/ether aa:7a:13:da:73:d3 brd ff:ff:ff:ff:ff:ff\n3: enP3p6s0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\\    link/ether 48:21:0b:81:c6:eb brd ff:ff:ff:ff:ff:ff\n4: enP3p3s0f0: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN mode DEFAULT group default qlen 1000\\    link/ether 48:21:0b:81:c6:e9 brd ff:ff:ff:ff:ff:ff\n5: enP3p3s0f1: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq state DOWN mode DEFAULT group default qlen 1000\\    link/ether 48:21:0b:81:c6:ea brd ff:ff:ff:ff:ff:ff\n21: tailscale0: <POINTOPOINT,MULTICAST,NOARP,UP,LOWER_UP> mtu 1280 qdisc fq_codel state UNKNOWN mode DEFAULT group default qlen 500\\    link/none \n22: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP mode DEFAULT group default \\    link/ether 6a:81:bb:e7:98:4f brd ff:ff:ff:ff:ff:ff\n"
+data srv1_ip_addrs: String = "1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever\n3: enP3p6s0    inet 192.168.1.203/24 metric 200 brd 192.168.1.255 scope global dynamic enP3p6s0\\       valid_lft 64259sec preferred_lft 64259sec\n6: gunbc-tap1    inet 172.30.1.1/30 brd 172.30.1.3 scope global gunbc-tap1\\       valid_lft forever preferred_lft forever\n21: tailscale0    inet 100.69.18.126/32 scope global tailscale0\\       valid_lft forever preferred_lft forever\n22: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\\       valid_lft forever preferred_lft forever\n"
+data srv1_ip_default_route: String = "default via 192.168.1.1 dev enP3p6s0 proto dhcp src 192.168.1.203 metric 200 \n"
+
+fn srv1_reads() -> PrimaryNetworkIpReads {
+  PrimaryNetworkIpReads { links: srv1_ip_links, ipv4_addresses: srv1_ip_addrs, ipv4_default_route: srv1_ip_default_route }
+}
+
+fn reads_with(links: String, addrs: String, route: String) -> PrimaryNetworkIpReads {
+  PrimaryNetworkIpReads { links: links, ipv4_addresses: addrs, ipv4_default_route: route }
+}
+
+// THE ROW IS srv1's READ: the NIC holding the lease, its renderer, MTU and the hand file's metric.
+test fn srv1_row_is_its_2026_10_25_read() -> Bool {
+  mac_addresses_are_equal(left: srv1_primary_network_desired.nic, right: srv1_i210_mac)
+    && mac_addresses_are_equal(left: srv1_primary_network_desired.nic, right: srv1_primary_network_receipt_2026_10_25.lease.holder)
+    && byte_size_count(b: srv1_primary_network_desired.mtu) == 1500
+    && (match srv1_primary_network_desired.renderer { SystemdNetworkd => true  NetworkManager => false })
+}
+
+fn srv1_row() -> PrimaryNetworkRow? {
+  match primary_network_row_for(host: operator_host_srv1) {
+    PrimaryRowDeclared { row: r } => Present { value: r }
+    PrimaryRowRenderRefused { host: _, cause: _ } => none
+    PrimaryRowAwaitingRead { change: _, read_obligation: _ } => none
+    PrimaryRowUnmodeled { host: _ } => none
+  }
+}
+
+fn emitted(v: YamlValue) -> String? {
+  match render_netplan_value(v: v) {
+    NetplanDocumentRendered { text: t } => Present { value: t }
+    NetplanDocumentRefused { path: _, reason: _ } => none
+  }
+}
+
+fn reads_back(text: String) -> Bool {
+  match ingest_yaml_source(src: text) { IngestedYaml { value: _ } => true  YamlIngestRejected { line: _, reason: _ } => false }
+}
+
+// THE EXPECTED DOCUMENT, written out as a value: matched by MAC, never by name, DHCP with the metric
+// and MTU the host already runs.
+data srv1_expected_netplan: YamlValue = yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [
+  kv(key: "version", value: yaml_int(n: 2)),
+  kv(key: "renderer", value: yaml_string(s: "networkd")),
+  kv(key: "ethernets", value: yaml_mapping(entries: [kv(key: "gunbc-primary", value: yaml_mapping(entries: [
+    kv(key: "match", value: yaml_mapping(entries: [kv(key: "macaddress", value: yaml_string(s: "48:21:0b:81:c6:eb"))])),
+    kv(key: "mtu", value: yaml_int(n: 1500)),
+    kv(key: "dhcp4", value: yaml_bool(b: true)),
+    kv(key: "dhcp4-overrides", value: yaml_mapping(entries: [kv(key: "route-metric", value: yaml_int(n: 200))])),
+  ]))])),
+]))])
+
+// THE ONE FILE IS THE EMITTER'S RENDERING OF THAT VALUE, and it reads back.
+test fn the_owned_netplan_document_matches_the_nic_by_mac() -> Bool {
+  match srv1_row() {
+    Absent => false
+    Present { value: r } =>
+      (match emitted(v: srv1_expected_netplan) { Present { value: t } => t == r.netplan_text  Absent => false })
+        && reads_back(text: r.netplan_text)
+        && string_contains(s: r.netplan_text, pattern: "48:21:0b:81:c6:eb")
+        && !string_contains(s: r.netplan_text, pattern: "enP3p6s0")
+  }
+}
+
+// THE SELECTOR THAT SURVIVES srv1's ENUMERATION. The MAC selects the I210 on every read boot; the hand
+// file's name selector misses it on the seven boots it enumerated as enP3p5s0.
+test fn the_mac_selector_holds_where_the_hand_files_name_selector_misses() -> Bool {
+  selector_missed_boots(selector: MatchByMacAddress { mac: srv1_i210_mac }, nic_mac: srv1_i210_mac, boots: srv1_nic_boot_readings) == 0
+    && selector_missed_boots(selector: MatchByName { name: "enP3p6s0" as NonEmptyStr }, nic_mac: srv1_i210_mac, boots: srv1_nic_boot_readings) == 7
+}
+
+// THE TWO BETS, AND WHAT THE READ SAYS ABOUT THEM: the X550 never reached its nameplate on ten read
+// boots, and AER has been withheld from the OS since 2026-10-24 03:36, so the PCIe bet's reading is
+// the BMC's event log.
+test fn the_link_speeds_and_aer_visibility_bear_on_the_bets() -> Bool {
+  (match x550_link_speed_bearing(boots: srv1_nic_boot_readings) {
+    BelowNameplateOnEveryReadBoot { read_boots: n, fastest: f } => n == 10 && bandwidth_count(b: f) == 1000000000
+    NameplateReachedOnSomeBoot => false
+    NoLinkRead => false
+  })
+    && (match aer_visibility(boots: srv1_nic_boot_readings) {
+      AerWithheldSince { boot_first_entry: b } => (b as String) == "2026-10-24T03:36:58Z"
+      AerReportedOnEveryReadBoot => false
+    })
+    && length(srv1_x550_bets()) == 2
+    && any(srv1_x550_bets(), b => string_contains(s: b.read_obligation as String, pattern: "BMC's SEL"))
+}
+
+// A NIC A BET BLAMES IS REFUSED AS PRIMARY; the I210 is admitted.
+test fn a_nic_blamed_by_an_open_bet_is_not_admitted_as_primary() -> Bool {
+  let x550_row = HostPrimaryNetworkDesired {
+    host: srv1_primary_network_desired.host,
+    nic: srv1_x550_port1_mac,
+    renderer: srv1_primary_network_desired.renderer,
+    addressing: srv1_primary_network_desired.addressing,
+    mtu: srv1_primary_network_desired.mtu,
+    adopted: srv1_primary_network_desired.adopted,
+  }
+  (match primary_nic_admission(d: srv1_primary_network_desired) { PrimaryNicAdmitted => true  PrimaryNicRefusedOpenBets { bets: _ } => false })
+    && (match primary_nic_admission(d: x550_row) { PrimaryNicRefusedOpenBets { bets: bs } => length(bs) == 2  PrimaryNicAdmitted => false })
+}
+
+// srv2 WAS MOVED BY HAND AND NOT READ: its row waits on the read; a host with no record has none.
+test fn srv2_awaits_its_read_and_an_unrecorded_host_is_unmodeled() -> Bool {
+  (match primary_network_row_for(host: operator_host_srv1) { PrimaryRowDeclared { row: _ } => true  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
+    && (match primary_network_row_for(host: operator_host_srv2) { PrimaryRowAwaitingRead { change: _, read_obligation: o } => string_contains(s: o as String, pattern: "sudo journal")  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowUnmodeled { host: _ } => false })
+    && (match primary_network_row_for(host: operator_host_srv3) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
+}
+
+// THE RUNNING NETWORK ON srv1's REAL READ HOLDS, AND STILL HOLDS UNDER THE OTHER ENUMERATION (the NIC
+// is found by MAC). Each RED changes one fact of the same read.
+test fn srv1s_running_network_is_the_rows_and_each_divergence_is_named() -> Bool {
+  let renamed = replace(s: srv1_ip_links, from: "enP3p6s0", to: "enP3p5s0")
+  let renamed_addrs = replace(s: srv1_ip_addrs, from: "enP3p6s0", to: "enP3p5s0")
+  let renamed_route = replace(s: srv1_ip_default_route, from: "enP3p6s0", to: "enP3p5s0")
+  (match primary_effective_verdict(d: srv1_primary_network_desired, reads: srv1_reads()) { PrimaryEffectiveHolds { device: dv } => (dv as String) == "enP3p6s0"  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: renamed, addrs: renamed_addrs, route: renamed_route)) { PrimaryEffectiveHolds { device: dv } => (dv as String) == "enP3p5s0"  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: replace(s: srv1_ip_links, from: "48:21:0b:81:c6:eb", to: "48:21:0b:81:c6:ee"), addrs: srv1_ip_addrs, route: srv1_ip_default_route)) { PrimaryNicNotPresent => true  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: replace(s: srv1_ip_links, from: "<BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq", to: "<NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc mq"), addrs: srv1_ip_addrs, route: srv1_ip_default_route)) { PrimaryNicNoCarrier { device: _ } => true  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: srv1_ip_addrs, route: "default via 192.168.1.1 dev enP3p3s0f1 proto dhcp src 192.168.1.185 metric 100 \n")) { PrimaryUplinkOnAnotherDevice { device: _, default_device: o } => (o as String) == "enP3p3s0f1"  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: srv1_ip_addrs, route: "")) { PrimaryNoDefaultRoute => true  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: replace(s: srv1_ip_addrs, from: "192.168.1.203/24", to: "192.168.1.185/24"), route: srv1_ip_default_route)) { PrimaryAddressDiverges { device: _, held: _, expected: e } => e == "192.168.1.203"  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: srv1_ip_links, addrs: srv1_ip_addrs, route: replace(s: srv1_ip_default_route, from: "metric 200", to: "metric 100"))) { PrimaryRouteMetricDiverges { held: _ } => true  _ => false })
+    && (match primary_effective_verdict(d: srv1_primary_network_desired, reads: reads_with(links: replace(s: srv1_ip_links, from: "UP,LOWER_UP> mtu 1500 qdisc mq", to: "UP,LOWER_UP> mtu 9000 qdisc mq"), addrs: srv1_ip_addrs, route: srv1_ip_default_route)) { PrimaryMtuDiverges { device: _, held: m } => byte_size_count(b: m) == 9000  _ => false })
+}
+
+// THE PLAN ON srv1 TODAY OWES AN APPLY THAT CHANGES FILES ONLY: both live files are foreign and the
+// owned one is absent. The same directory after the swap is Settled; an unread effective state refuses.
+test fn srv1s_plan_owes_a_file_only_apply_and_the_swapped_directory_settles() -> Bool {
+  let holds = primary_effective_verdict(d: srv1_primary_network_desired, reads: srv1_reads())
+  let today = plan_primary_network(d: srv1_primary_network_desired, observation: PrimaryNetworkObservation {
+    effective: holds,
+    directory: NetplanDirectoryListed { names: netplan_yaml_names(listing_stdout: "50-cloud-init.yaml\n60-enP3p6s0.yaml\n") },
+    owned: HostFileAbsent,
+  })
+  let after = plan_primary_network(d: srv1_primary_network_desired, observation: PrimaryNetworkObservation {
+    effective: holds,
+    directory: NetplanDirectoryListed { names: ["50-gunbc-primary-network.yaml"] },
+    owned: HostFileIdentical,
+  })
+  let unread = plan_primary_network(d: srv1_primary_network_desired, observation: PrimaryNetworkObservation {
+    effective: PrimaryEffectiveUnjudged { cause: "ip link: unreachable" as NonEmptyStr },
+    directory: NetplanDirectoryListed { names: ["50-gunbc-primary-network.yaml"] },
+    owned: HostFileIdentical,
+  })
+  (match today { Apply { plan: s } => s.foreign == ["50-cloud-init.yaml", "60-enP3p6s0.yaml"]  Noop => false  Refuse { reason: _ } => false })
+    && (match after { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false })
+    && (match unread { Refuse { reason: _ } => true  Noop => false  Apply { plan: _ } => false })
+}
+
+// THE TRY IS TWO TYPED TRANSIENT UNITS, NO SHELL: netplan try reads a FIFO and writes its outcome to
+// a file, and a second unit holds the FIFO's write end for a minute longer than the try can run.
+test fn the_try_is_two_typed_transient_units_over_one_fifo() -> Bool {
+  (match primary_network_try_launch() {
+    PrimaryTryLaunchArgv { argv: a } => a == ["systemd-run", "--unit=gunbc-primary-network-try", "--collect", "--property=StandardInput=file:/run/gunbc-primary-network/try.fifo", "--property=StandardOutput=file:/run/gunbc-primary-network/try.out", "--", "netplan", "try", "--timeout", "300"]
+    PrimaryTryLaunchRefused { cause: _ } => false
+  })
+    && (match primary_network_stdin_holder_launch() {
+      PrimaryTryLaunchArgv { argv: a } => a == ["systemd-run", "--unit=gunbc-primary-network-try-stdin", "--collect", "--property=StandardOutput=file:/run/gunbc-primary-network/try.fifo", "--", "sleep", "360"]
+      PrimaryTryLaunchRefused { cause: _ } => false
+    })
+}
+
+fn srv1_staged(foreign: List<String>) -> List<StagedNetplanFile> {
+  match srv1_row() {
+    Absent => []
+    Present { value: r } => match primary_network_staged_population(r: r, foreign: foreign) { StagedNetplanReady { files: fs } => fs  StagedNetplanRefused { cause: _ } => [] }
+  }
+}
+
+// THE TRIED POPULATION LIVES IN /run/netplan: the owned file, and an empty document shadowing each
+// foreign file, so /etc/netplan is untouched until the readback holds; the cleanup removes exactly
+// what was staged.
+test fn the_tried_population_shadows_the_foreign_files_from_run() -> Bool {
+  let staged = srv1_staged(foreign: ["50-cloud-init.yaml", "60-enP3p6s0.yaml"])
+  length(staged) == 3
+    && (match first(staged) { Present { value: f } => (f.name as String) == "50-gunbc-primary-network.yaml" && f.content == (match srv1_row() { Present { value: r } => r.netplan_text  Absent => "" })  Absent => false })
+    && all(skip(xs: staged, n: 1), f => (match emitted(v: yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [kv(key: "version", value: yaml_int(n: 2))]))])) { Present { value: t } => f.content == t  Absent => false }))
+    && (match first(primary_network_cleanup_steps(staged: staged)) {
+      Present { value: st } => st.argv == ["rm", "-f", "--", "/run/netplan/50-gunbc-primary-network.yaml", "/run/netplan/50-cloud-init.yaml", "/run/netplan/60-enP3p6s0.yaml"]
+      Absent => false
+    })
+}
+
+// THE VERDICT IS netplan's OWN LINE, and a revert is never read as acceptance (both arrive with exit 0).
+test fn the_try_outcome_is_read_from_netplans_own_output() -> Bool {
+  (match netplan_try_outcome(stdout: "Do you want to keep these settings?\n\n\nPress ENTER before the timeout to accept the new configuration\n\n\nChanges will revert in 297 seconds\r\nConfiguration accepted.\n") { NetplanTryAccepted => true  _ => false })
+    && (match netplan_try_outcome(stdout: "Changes will revert in   1 seconds\r\nReverting.\n") { NetplanTryReverted => true  _ => false })
+    && (match netplan_try_outcome(stdout: "Changes will revert in 120 seconds\r") { NetplanTryOutcomePending => true  _ => false })
+    && (match netplan_try_outcome(stdout: "br0: reverting custom parameters for bridges and bonds is not supported\n\nPlease carefully review the configuration and use 'netplan apply' directly.\n") { NetplanTryRefusedNotRevertable => true  _ => false })
+}
+
+// EVERY ADMINISTRATOR LEG IS A FRESH CONNECTION: the password session shares no master.
+test fn the_administrator_session_shares_no_connection() -> Bool {
+  any(serialize_ssh_client_options(options: fleet_ssh_password_client_options(trust: [], principal: "x" as NonEmptyStr)), w => w == "ControlPath=none")
+}
+
+// THE GUARD IS cloud-init's NETWORK SWITCH, under /etc/cloud/cloud.cfg.d.
+test fn the_cloud_init_guard_turns_off_only_the_network_writer() -> Bool {
+  let g = primary_network_cloud_init_guard()
+  g.content == "network: \{config: disabled}\n"
+    && g.content == (cloud_init_network_config_disabled_text as String)
+    && starts_with(s: g.path as String, prefix: "/etc/cloud/cloud.cfg.d/")
+}
+
+// THE FABRIC RAIL IS THE SAME DOCUMENT MODEL AND THE SAME EMITTER: its document for srv11 is the
+// rendering of the value its own renderer wrote by hand before, key for key, and it reads back.
+data srv11_expected_rail: YamlValue = yaml_mapping(entries: [kv(key: "network", value: yaml_mapping(entries: [
+  kv(key: "version", value: yaml_int(n: 2)),
+  kv(key: "renderer", value: yaml_string(s: "NetworkManager")),
+  kv(key: "ethernets", value: yaml_mapping(entries: [
+    kv(key: "gunbc-fabric", value: yaml_mapping(entries: [
+      kv(key: "match", value: yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: "enp1s0f1np1"))])),
+      kv(key: "addresses", value: yaml_sequence(elements: [yaml_string(s: "192.168.110.18/24")])),
+      kv(key: "mtu", value: yaml_int(n: 9000)),
+      kv(key: "dhcp4", value: yaml_bool(b: false)),
+      kv(key: "dhcp6", value: yaml_bool(b: false)),
+      kv(key: "link-local", value: yaml_sequence(elements: [])),
+      kv(key: "optional", value: yaml_bool(b: true)),
+    ])),
+    kv(key: "gunbc-fabric-twin", value: yaml_mapping(entries: [
+      kv(key: "match", value: yaml_mapping(entries: [kv(key: "name", value: yaml_string(s: "enP2p1s0f1np1"))])),
+      kv(key: "dhcp4", value: yaml_bool(b: false)),
+      kv(key: "dhcp6", value: yaml_bool(b: false)),
+      kv(key: "link-local", value: yaml_sequence(elements: [])),
+      kv(key: "optional", value: yaml_bool(b: true)),
+    ])),
+  ])),
+]))])
+
+test fn the_fabric_rail_document_is_the_same_model_and_emitter() -> Bool {
+  match fabric_rail_desired_for(host: operator_host_srv11) {
+    Absent => false
+    Present { value: d } =>
+      match d.netplan {
+        NetplanDocumentRefused { path: _, reason: _ } => false
+        NetplanDocumentRendered { text: t } =>
+          (match emitted(v: srv11_expected_rail) { Present { value: e } => e == t  Absent => false }) && reads_back(text: t)
+      }
+  }
+}
+
+// A READBACK TAKEN FROM THE SUBJECT ITSELF NEVER CROSSES ITS UPLINK, so the shared executor/subject
+// predicate refuses a slot on srv1 converging srv1 (by its runner slot name, not its hostname), admits a
+// slot on srv3, and this mode's refusal names the uplink rather than the host-file modes' drain.
+test fn the_readback_vantage_must_be_another_host() -> Bool {
+  (match fleet_converge_split_precheck(executor_runner_name: Present { value: "actions-runner@srv1-3" }, subject_host: Present { value: "srv1" }) {
+    SplitRefused { reason: why } => string_contains(s: primary_network_split_refusal(reason: why), pattern: "never crosses the uplink")
+    SplitOk { executor_runner_name: _, subject_host: _ } => false
+  })
+    && (match fleet_converge_split_precheck(executor_runner_name: Present { value: "actions-runner@srv3-2" }, subject_host: Present { value: "srv1" }) {
+      SplitOk { executor_runner_name: _, subject_host: h } => h == "srv1"
+      SplitRefused { reason: _ } => false
+    })
+}
+
+// A CONFIRMATION IS DELIVERED ONLY WHEN ITS WRITE SAYS SO: timeout's 124 or dd's own failure is a try
+// that never heard the newline, and the apply goes on to settle it, never to Confirmed.
+test fn a_confirmation_write_that_failed_is_not_a_confirmation() -> Bool {
+  (match primary_confirm_write(exit_code: 0, stderr: "") { ConfirmWritten => true  ConfirmWriteFailed { cause: _ } => false })
+    && (match primary_confirm_write(exit_code: 124, stderr: "") { ConfirmWriteFailed { cause: c } => string_contains(s: c as String, pattern: "124")  ConfirmWritten => false })
+    && (match primary_confirm_write(exit_code: 1, stderr: "dd: failed to open") { ConfirmWriteFailed { cause: c } => string_contains(s: c as String, pattern: "dd: failed to open")  ConfirmWritten => false })
+}
+
+// NOTHING IS CLEANED UP UNDER AN UNSETTLED TRY: while netplan's outcome is pending the cleanup plan is
+// empty, so neither the /run shadows nor the FIFO holder are touched under its timeout and revert;
+// each terminal outcome admits the full cleanup.
+test fn an_unsettled_try_admits_no_cleanup_and_a_terminal_one_admits_it_all() -> Bool {
+  let staged = srv1_staged(foreign: ["50-cloud-init.yaml"])
+  let full = primary_network_cleanup_steps(staged: staged)
+  length(full) == 2
+    && (match primary_try_settlement(o: NetplanTryOutcomePending) { TryUnsettled => true  TrySettled { outcome: _ } => false })
+    && length(primary_network_cleanup_plan(settlement: primary_try_settlement(o: NetplanTryOutcomePending), staged: staged)) == 0
+    && all([NetplanTryAccepted, NetplanTryReverted, NetplanTryRefusedNotRevertable], o =>
+      length(primary_network_cleanup_plan(settlement: primary_try_settlement(o: o), staged: staged)) == length(full))
+}
+
+// THE OWNED POPULATION IS THE ROWS' HOSTS: a Spark host, whose /etc/netplan carries the fabric rail and
+// NetworkManager's Wi-Fi profiles, has no row and cannot be the target of an apply.
+test fn a_spark_host_is_outside_the_owned_population() -> Bool {
+  all([operator_host_srv11, operator_host_srv12], h =>
+    match primary_network_row_for(host: h) { PrimaryRowUnmodeled { host: _ } => true  PrimaryRowDeclared { row: _ } => false  PrimaryRowRenderRefused { host: _, cause: _ } => false  PrimaryRowAwaitingRead { change: _, read_obligation: _ } => false })
+}

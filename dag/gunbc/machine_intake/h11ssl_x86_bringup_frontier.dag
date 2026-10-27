@@ -1,0 +1,260 @@
+module gunbc.machine_intake.h11ssl_x86_bringup_frontier
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.roster_frontier { FrontierRow, DeclSubject, frontier_row_decl }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE x86 BRING-UP GAP CENSUS FOR SUPERMICRO H11SSL UNIT 1 (2026-10-24).
+//
+// The operator is installing this unit's OS BY HAND
+// (gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt) and ruled: record the gaps,
+// fill them afterwards. A MODELED x86 bring-up of this board -- one where a pass, not a human at a
+// console, brings the OS up -- needs every capability below and has none of them. Each row files one
+// gap with the symbol the corpus actually has (verified 2026-10-24, not assumed), and the TRIGGER
+// that retires the row; rows are deleted in the same change as their fill, per the roster_frontier
+// contract. Where a capability exists only in an Altra/ARM or MegaRAC spelling, that spelling is
+// the cited boundary the fill must cross.
+//
+// THE SEVEN GAPS AND THE SYMBOLS CHECKED:
+//
+// G1 x86 Ubuntu autoinstall seed/IMAGE. Exists: gunbc.provisioning.altra_autoinstall_seed
+//    (autoinstall/v1 user-data) and gunbc.provisioning.provisioning_arm, both Aarch64-bound --
+//    admit_altra_autoinstall_target refuses a target whose architecture is not Aarch64
+//    (PlatformUnsupported). For x86: none exists.
+//
+// G2 install-to-disk route for THIS board. Exists: gunbc.srv3.srv3_os_install_actuate
+//    (srv3_os_install_actuator_plan_refuses_on_unestablished_path; the bmcweb + srv3_nbd_proxy_serve
+//    actuation) and gunbc.srv3.srv3_seeded_install_media -- srv3/Altra/MegaRAC-scoped. For H11SSL:
+//    none exists.
+//
+// G3 x86 network boot at the srv4 PXE edge. Exists: gunbc.network_boot_delivery
+//    (join_network_boot_delivery, whose client admission is the UEFI projection of the rows of
+//    uefi_pxe_admitted_architectures, now Aarch64 and X86_64) and gunbc.site_pxe_edge (one pxe-service
+//    per served chain; the converge's amd64 row is Unpinned until its grub.cfg rendering is bound);
+//    extdeps.firmware.ipxe ships ipxe_arm64_efi_snponly and no x86_64 target -- and per the route
+//    settled 2026-10-24 (gunbc.plans.network_install_architecture_rows, #15060) the x86 first stages
+//    are the Ubuntu signed chain (shim + grub netboot builds), not an x86 iPXE. For x86 UEFI
+//    PXE/HTTP boot: none exists.
+//
+// G4 BMC virtual-media route for THIS BMC. Exists: extdeps.bmc.redfish_virtual_media (Redfish
+//    virtual-media insert model) and gunbc.machine_intake.megarac_media_attach MegaRacAttachRoute,
+//    both gated on extdeps.bmc.endpoint BmcFirmwareFamily, whose closed set is OpenBmc | AmiMegaRac.
+//    The H11SSL's AST2500 (extdeps.bmc.aspeed_ast2500) with its ATEN-family IPMI/web stack matches
+//    NEITHER -- the corpus records that non-membership at
+//    gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_bmc_firmware_family_standing
+//    as a TranscribedUncited figure awaiting the datasheet read. For this board's virtual media:
+//    none exists; the fill first admits (or refuses-with-spelling) the family, then grows an attach
+//    route against it.
+//
+// G5 DIMM and storage census readers for THIS BMC. Exists: extdeps.bmc.redfish_memory_inventory
+//    (redfish_memory_dimm_inventory), extdeps.bmc.ipmi_sdr, extdeps.bmc.ipmi_sel, and
+//    extdeps.bmc.ipmi FruPrint with its parse in extdeps.board_authority BoardFruIdentity. MISSING
+//    for this BMC: a storage/drive census -- NO Redfish Storage/Drives or ipmitool storage reader
+//    exists anywhere in the corpus (not even for MegaRAC) -- and any reader above wired to an
+//    AST2500/ATEN endpoint, whose family sits outside the two the readers are written against. The
+//    observation module (gunbc.machine_intake.supermicro_h11ssl_unit_observation) keeps DIMM figures
+//    relayed for exactly this reason.
+//
+// G6 adopting a hand-installed host into the fleet. Exists: gunbc.host.host_identity_adopt
+//    (HostIdentityAdoptReceipt -- the SSH transport identity of a host it PROBES) and
+//    gunbc.host.host_identity_assimilation (the converged-state fold, which must NOT be called for
+//    an effect no route realized -- DESIGN §4d). What does NOT exist: the shape this unit needs --
+//    adoption that begins from an operator-DECLARED install with no prior modeled effect (no minted
+//    boot-media key, no provisioned standing; cf. gunbc.boot_medium_key_mint, which the modeled
+//    converge mode mints and a hand install never had).
+//
+// G7 host PRIMARY-NETWORK authority for this host (row filed 2026-10-25, on quiet-fox-556's handoff
+//    for gunbc#15100 -- the census date on the other rows stands). Exists on main:
+//    gunbc.fleet.fleet_intent_network host_lan_address -- the Optional fleet record the converge's
+//    fresh-connection readback judges against -- and it is Absent for this host today. The authority
+//    itself (gunbc.host.host_primary_network: a row = NIC by MAC -- netplan match.macaddress, no
+//    ifname/PCI path -- plus renderer, DHCP addressing, route metric, MTU, owning every
+//    /etc/netplan *.yaml and cloud-init's network switch; the converge
+//    gunbc.host.host_primary_network_apply does FleetHostFileSubject core writes then netplan try
+//    in a transient unit with on-disk rollback and a readback from a host OTHER than the target) is
+//    DRAFT in PR gunbc#15100 and NOT on main as of 2026-10-25 -- citing it as existing would be
+//    fabrication. The route is not arch-bound, but the try wrapper renders a wait-online command
+//    from the row's renderer, so this host's row must state the renderer the hand install used --
+//    which the receipt holds NotRelayed (network_config_report). For H11SSL unit 1: none exists --
+//    neither the observed NIC/netplan/lease receipt, nor a derived desired row, nor the LAN record.
+//
+// FILL ORDER (dependency-first; each step independently landable; the machine-readable order is
+// h11ssl_x86_bringup_fill_order, consumed by
+// test.claim.supermicro_h11ssl_x86_bringup_frontier_witness):
+//   1. The BMC family spelling (G4's precondition): FILLED -- extdeps.bmc.endpoint SupermicroAten, its
+//      authority extdeps.bmc.supermicro, and the read-only readers gunbc.bmc.supermicro_bmc_read; the
+//      row is deleted.
+//   2. G5 readers (read-only): they exercise the family answer against the live BMC WITHOUT writes,
+//      and the post-upgrade intake is the first consumer -- the cheapest capability that makes
+//      future units observable.
+//   3. G6 adoption shape: turns THIS already-installed unit into a fleet member; depends on neither
+//      image nor boot work.
+//   4. G7 primary-network intake: the read-only NIC/netplan/lease receipt, the desired row derived
+//      from it, and the fleet LAN record -- it follows G6 because host_lan_address is keyed by the
+//      HostIdentity adoption mints, and its renderer field is filled from the hand install's relayed
+//      network config. Nothing to build on the authority side until gunbc#15100 lands; this host's
+//      ROWS are the fill.
+//   5. G1 seed/image: the largest new modeling surface (arch-gate inversion + x86 seed content), and
+//      it gates only G2's happy path.
+//   6. G3 x86 network boot: needs G1's artifacts and the signed shim+grub loader chain served whole
+//      by the edge per gunbc.plans.network_install_architecture_rows (#15060 -- the approved route;
+//      iPXE stays the ARM row's chain), and edits the srv4 PXE edge's admission set -- the most
+//      site-wide change, done last of the enablers.
+//   7. G2 install-to-disk route: composes G1 (media), G3 (boot path), G4 (media attach) on the
+//      srv3-actuate shape -- the capstone, not the first brick.
+
+data h11ssl_x86_bringup_virtual_media_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake.megarac_media_attach", decl_name: "MegaRacAttachRoute")
+data h11ssl_x86_bringup_dimm_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.bmc.redfish_memory_inventory", decl_name: "redfish_memory_dimm_inventory")
+data h11ssl_x86_bringup_storage_reader_gap_subject: DeclarationRef = decl_ref(module_path: "extdeps.boards.supermicro_h11ssl", decl_name: "supermicro_h11ssl_storage_support")
+data h11ssl_x86_bringup_adoption_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.host.host_identity_adopt", decl_name: "HostIdentityAdoptReceipt")
+data h11ssl_x86_bringup_primary_network_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.fleet.fleet_intent_network", decl_name: "host_lan_address")
+data h11ssl_x86_bringup_seed_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "admit_altra_autoinstall_target")
+data h11ssl_x86_bringup_pxe_edge_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.network_boot_delivery", decl_name: "uefi_pxe_admitted_architectures")
+data h11ssl_x86_bringup_install_route_gap_subject: DeclarationRef = decl_ref(module_path: "gunbc.srv3.srv3_os_install_actuate", decl_name: "srv3_os_install_actuator_plan_refuses_on_unestablished_path")
+
+// ---- G4a (BMC firmware family) is FILLED and its row deleted (roster_frontier contract): extdeps.bmc.endpoint
+// BmcFirmwareFamily admits SupermicroAten with its authority extdeps.bmc.supermicro; extdeps.boards.supermicro_h11ssl
+// supermicro_h11ssl_bmc_firmware_family_standing is CitedToAuthority and supermicro_h11ssl_catalog declares the
+// family; gunbc.machine_intake.supermicro_bmc_reading reads unit 1's firmware family and version (Manager Oem key
+// + Get Device ID, 01.52.25) and checks it against that catalog row.
+
+// ---- G4b: virtual media on this BMC (fill-order step 1's payload) ----
+
+data h11ssl_virtual_media_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a virtual-media insert/eject route for this board's BMC exists as a modeled effect -- the shape of gunbc.machine_intake.megarac_media_attach MegaRacAttachRoute, spelled against the admitted AST2500/ATEN family, with its insert receipt, eject pair, and an e2e witness on a real attach. An attach route that only compiles against MegaRac, a Redfish virtual-media model with no route consuming it for this family, or the ATEN applet driven by hand, is not this trigger." as NonEmptyStr
+)
+
+data h11ssl_virtual_media_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_virtual_media_gap_subject,
+  reason: "virtual media exists only as MegaRacAttachRoute (MegaRAC) and extdeps.bmc.redfish_virtual_media behind the family gate; nothing can attach an ISO to this board's BMC, which is why the 2026-10-24 install went to the operator's hands",
+  dissolution: h11ssl_virtual_media_dissolution,
+)
+
+// ---- G5a: DIMM census reader for this BMC (fill-order step 2) ----
+
+data h11ssl_dimm_census_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a reader returns this BMC's populated DIMMs -- the shape of extdeps.bmc.redfish_memory_inventory redfish_memory_dimm_inventory, spelled against the admitted AST2500/ATEN family or an IPMI FRU/SDR path -- and gunbc.machine_intake.supermicro_h11ssl_unit_observation supermicro_h11ssl_unit_readings carries a READ arm for its memory figures rather than only relayed ones. A hand-transcribed SDR table, or a reader written only against the two modeled families that never runs here, is not this trigger." as NonEmptyStr
+)
+
+data h11ssl_dimm_census_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_dimm_reader_gap_subject,
+  reason: "the DIMM reader exists only for Redfish MemoryCollections behind the two modeled families; the 2026-10-24 RAM addition cannot be census-verified over this BMC today, so the intake carries relayed DIMM figures under reading obligations",
+  dissolution: h11ssl_dimm_census_dissolution,
+)
+
+// ---- G5b: storage/drive census reader for this BMC (fill-order step 2) ----
+
+data h11ssl_storage_census_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a storage/drive census reader exists for this BMC -- a Redfish Storage/Drives collection read or an ipmitool storage path -- returning this unit's drives and health, and a storage inventory arm of gunbc.machine_intake.supermicro_h11ssl_unit_observation consumes its READ rather than relayed-only inventory. A reader for a different board's BMC, or drive figures the operator relayed and the observation module recorded in relayed arms, is not this trigger." as NonEmptyStr
+)
+
+// The subject is the board's storage-support boundary (extdeps.boards.supermicro_h11ssl
+// supermicro_h11ssl_storage_support): what lanes the board CAN boot from, while nothing reads what
+// IS in the bays.
+data h11ssl_storage_census_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_storage_reader_gap_subject,
+  reason: "no storage/drive census reader exists anywhere in the corpus (not even for MegaRAC), and none exists for this BMC; the SSD boot drive the operator added 2026-10-24 has no read-only route to an inventory figure",
+  dissolution: h11ssl_storage_census_dissolution,
+)
+
+// ---- G6: adopting a hand-installed host (fill-order step 3) ----
+
+data h11ssl_hand_install_adoption_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the fleet adoption path consumes a hand-installed host -- a typed intake turns gunbc.machine_intake.supermicro_h11ssl_unit1_hand_install_receipt's declared record into an adoption candidate, gunbc.host.host_identity_adopt produces a HostIdentityAdoptReceipt for this unit whose identity came from the adopted host's own probed state with the declared-departure record as its prior, and a witness shows a hand-installed host reaching fleet membership without any modeled provisioned boot of its own. Adopting a host the modeled routes themselves provisioned (the srv3 path), or recording the hand install without connecting it to adoption, is not this trigger." as NonEmptyStr
+)
+
+data h11ssl_hand_install_adoption_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_adoption_gap_subject,
+  reason: "host_identity_adopt adopts hosts whose SSH identity it PROBES; no typed route adopts a host whose existence was DECLARED by the operator with no prior modeled effect, which is exactly the H11SSL unit 1 situation after the hand install",
+  dissolution: h11ssl_hand_install_adoption_dissolution,
+)
+
+// ---- G7: host primary-network authority for this host (fill-order step 4) ----
+
+data h11ssl_primary_network_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: this unit is under the fleet primary-network authority -- gunbc.fleet.fleet_intent_network host_lan_address returns present for its HostIdentity (the readback the converge judges against is judgable), and the authority side is complete for it: an observed NIC/netplan/lease receipt of its MACs, drivers, link speeds, /etc/netplan files and the cloud-init network switch (the shape of gunbc.host.host_primary_network_observed srv1_primary_network_receipt_2026_10_25, once gunbc#15100 lands), a HostPrimaryNetworkDesired row derived from that receipt whose renderer field states the renderer the HAND install used (its network_config_report, relayed from NotRelayed -- the try wrapper renders the wait-online command from it), and the gunbc.host.host_primary_network_apply readback having judged a fresh connection from a host OTHER than this one. Recording an address in prose, or a desired row with the renderer defaulted rather than relayed, is not this trigger." as NonEmptyStr
+)
+
+data h11ssl_primary_network_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_primary_network_gap_subject,
+  reason: "host_lan_address is Absent for this host and no observed NIC/netplan/lease receipt or derived desired row exists for it; the authority that would own them (gunbc.host.host_primary_network, gunbc#15100) is draft, not on main, and the hand install's network config is a NotRelayed field on the install receipt",
+  dissolution: h11ssl_primary_network_dissolution,
+)
+
+// ---- G1: x86 autoinstall seed (fill-order step 5) ----
+
+data h11ssl_x86_autoinstall_seed_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: an x86_64 Ubuntu autoinstall seed and image route exist the way the arm64 ones do -- the shape of gunbc.provisioning.altra_autoinstall_seed plus gunbc.provisioning.provisioning_arm and the extdeps.provisioning seeded-remaster chain, with the Aarch64 admission inverted to an x86_64 admission (the extdeps.toolchain.types Architecture x86 spellings) and the seed content corrected for x86 -- and a witness renders the seed for a named x86 target. A hand-edited seed on a USB stick, or the arm64 seed with its arch constant relabeled, is not this trigger." as NonEmptyStr
+)
+
+data h11ssl_x86_autoinstall_seed_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_seed_gap_subject,
+  reason: "the autoinstall seed is ARM-only by construction: admit_altra_autoinstall_target refuses any non-Aarch64 target with PlatformUnsupported, so no x86 unit can be seeded today",
+  dissolution: h11ssl_x86_autoinstall_seed_dissolution,
+)
+
+// ---- G3: x86 network boot at the srv4 PXE edge (fill-order step 6) ----
+
+data h11ssl_x86_network_boot_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the srv4 PXE edge serves an x86_64 UEFI client end to end THROUGH THE APPROVED LOADER ROUTE -- the signed Ubuntu chain (shimx64.efi.signed.latest, grubnetx64.efi.signed served as grubx64.efi, grub.cfg, casper vmlinuz, initrd) served whole as loader-chain rows per gunbc.plans.network_install_architecture_rows (the route settled 2026-10-24 by merry-fox-82, PR #15060): gunbc.network_boot_delivery uefi_pxe_admitted_architectures admits the x86_64 UEFI spelling, gunbc.network_boot_delivery's client-mode admission admits it, the chain's members carry pins verified at placement and at readback, and a site PXE edge standing covers that client with a witnessed DHCP/BOOTP offer on the LAN. NOT this trigger: an x86 iPXE build (iPXE is the ARM row's one-member chain and stays that way), a BIOS-mode-only path, a chain member placed without its pin check, or an admission constant flipped without the standing and the witness." as NonEmptyStr
+)
+
+data h11ssl_x86_network_boot_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_pxe_edge_gap_subject,
+  reason: "x86_64 UEFI is admitted as a row (gunbc.network_boot_delivery uefi_pxe_admitted_architectures) and the edge renders the Ubuntu amd64 signed chain, but gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins holds the amd64 row Unpinned until its grub.cfg rendering binds the seed origin, nothing is placed on srv4, and no x86 client has been served",
+  dissolution: h11ssl_x86_network_boot_dissolution,
+)
+
+// ---- G2: install-to-disk route for this board (fill-order step 7, the capstone) ----
+
+data h11ssl_install_to_disk_dissolution: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: a modeled pass brings an OS onto this board's boot disk without a human at the console -- the shape of gunbc.srv3.srv3_os_install_actuate (plan refusal, seeded-image resolution, media attach, boot-order selection, the installed-system-booted-from-local-target check) spelled for the H11SSL with its BMC family, consuming the x86 seeded media and this BMC's virtual-media route, and an e2e pass completes on a unit. The operator installing by hand while the hand-install receipt records it is the CURRENT realization this row exists to retire -- it is not this trigger; nor is a route that compiles without ever attaching media to a real AST2500/ATEN BMC." as NonEmptyStr
+)
+
+data h11ssl_install_to_disk_frontier: FrontierRow = frontier_row_decl(
+  ref: h11ssl_x86_bringup_install_route_gap_subject,
+  reason: "the only install-to-disk route is gunbc.srv3.srv3_os_install_actuate, scoped to srv3's Altra + MegaRAC pairing; H11SSL has no install route, which is the gap the 2026-10-24 hand install worked around",
+  dissolution: h11ssl_install_to_disk_dissolution,
+)
+
+// THE FOLD (DESIGN §3c): gunbc.census_closure_frontier enrolls these rows into the dissolution
+// census; the hand-install receipt names this module as where its install's missing route lives;
+// test.claim.supermicro_h11ssl_x86_bringup_frontier_witness exercises the roster.
+data h11ssl_x86_bringup_frontier_rows: List<FrontierRow> = [
+  h11ssl_virtual_media_frontier,
+  h11ssl_dimm_census_frontier,
+  h11ssl_storage_census_frontier,
+  h11ssl_hand_install_adoption_frontier,
+  h11ssl_primary_network_frontier,
+  h11ssl_x86_autoinstall_seed_frontier,
+  h11ssl_x86_network_boot_frontier,
+  h11ssl_install_to_disk_frontier,
+]
+
+// THE FILL ORDER, as data (the prose in the header is commentary; this is the authority with a
+// consumer). Each entry names a gap row's subject decl in the order the fills should land,
+// dependency-first; the last entry is the capstone that composes the others.
+data h11ssl_x86_bringup_fill_order: List<DeclarationRef> = [
+  h11ssl_x86_bringup_dimm_reader_gap_subject,
+  h11ssl_x86_bringup_storage_reader_gap_subject,
+  h11ssl_x86_bringup_adoption_gap_subject,
+  h11ssl_x86_bringup_primary_network_gap_subject,
+  h11ssl_x86_bringup_seed_gap_subject,
+  h11ssl_x86_bringup_pxe_edge_gap_subject,
+  h11ssl_x86_bringup_virtual_media_gap_subject,
+  h11ssl_x86_bringup_install_route_gap_subject,
+]
+
+// The fill order visits every gap exactly once: the witness checks this against the roster, so a gap
+// added without a position (or a position without a gap) fails there rather than in review.
+fn h11ssl_x86_bringup_fill_order_covers_every_gap() -> Bool {
+  all(h11ssl_x86_bringup_fill_order, s => any(h11ssl_x86_bringup_frontier_rows, row => match row.subject {
+    DeclSubject { ref: x } => x == s
+    _ => false
+  }))
+    && all(h11ssl_x86_bringup_frontier_rows, row => any(h11ssl_x86_bringup_fill_order, s => match row.subject {
+    DeclSubject { ref: x } => x == s
+    _ => false
+  }))
+}

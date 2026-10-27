@@ -1041,7 +1041,7 @@ test fn every_refusal_is_classified_and_neither_class_is_the_default() -> Bool {
 // `known_red_route_gap_ground_of` reads the ground back out of it, and now that that read is exhaustive (the
 // old one defaulted to `NoMockResponse`), a fixture without a real label decodes to nothing. It used to have
 // none, which is how the default went unnoticed: the fixture was as invented as the line it stood for
-// (src/v1/stage0/src/bin/claim_batch.rs:399-404, `hermetic_effect_ground_label`).
+// (src/v1/stage0/src/bin/claim_batch.rs:399-404, `effect_refusal_ground_label`).
 fn route_gap_verdict(subject: KnownRedSubject) -> String {
   route_gap_verdict_ground(subject: subject, ground: known_red_marker_ground_unpublished_mock)
 }

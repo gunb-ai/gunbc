@@ -53,7 +53,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.machine { Byte }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Atom,
   Arrow,
   ComputationNode,
@@ -154,7 +154,7 @@ fn bind_runtime_diagnostic(n: Node) -> Diagnostic {
 fn bind_runtime_int_is_one(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
-      (p.primitive_type == bind_i64_node()) && (count(p.bytes) == 1)
+      (node_same_occurrence(a: p.primitive_type, b: bind_i64_node())) && (count(p.bytes) == 1)
     _ => false
   }
 }

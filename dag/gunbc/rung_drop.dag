@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.algebra { FreeSemigroup, non_empty_to_list }
 import std.optional { Optional, Present, Absent }
 import std.removal_tombstone { RemovalTombstone }
+import std.decl_ref { DeclarationRef }
 import extdeps.bazel.label { Label, render_label }
 import gunbc.instrument_targets { instrument_targets }
 import gunbc.guarantee_rung {
@@ -141,7 +142,7 @@ import gunbc.guarantee_rung {
 // WHICH SIDE OF THE PROJECTION LINE THESE FILES SIT ON, because the answer decides whether the
 // separation can survive. They are HAND-AUTHORED. `gunbc.generated_artifact` emits exactly three
 // `.dag` artifacts, all under `dag/gunbc/stage0/`, and no registry row names anything here; the one
-// generated artifact in this family is `docs/design-rung-drops.md`, which these rows feed. So today
+// generated artifact in this family is `gunbc.design_ledgers` `expected_design_rung_drops_md`, which these rows feed. So today
 // nothing regenerates a row file and the blank lines survive because no producer touches them. If a
 // producer is ever given these files, EMITTING THE SEPARATION IS PART OF ITS CONTRACT: an emitter
 // that renders a row without it silently restores the defect on the first projection, and would do
@@ -343,6 +344,7 @@ fn uncounted_cause_label(c: UncountedCause) -> String {
 type RungDropPopulation
   = Enumerated { members: FreeSemigroup<String> }
   | DerivedBy { label: Label }
+  | DeclaredBy { declaration: DeclarationRef }
   | NotYetCounted { cause: UncountedCause }
 
 // THE TOTAL CONSTRUCTOR FOR A POPULATION DERIVED FROM A LIST: a list with a member is Enumerated, an
@@ -497,11 +499,19 @@ fn population_clause(p: Optional<RungDropPopulation>) -> String {
   }
 }
 
+// A DECLARED POPULATION IS A CITATION OF THE ONE DECLARATION THAT HOLDS THE MEMBERS, for a list whose
+// home is a closure this module cannot import (the v1 seed: rung-drop rows compile on dag and src/v2
+// only). It is UNREADABLE: nothing here resolves the declaration or joins its members, so a citation's
+// shape is not a population anyone counted. It is an admitted unreadable cause beside NotYetCounted
+// (every_unreadable_standing_drop_is_not_yet_counted), and the drop's rung rests on whatever enforces
+// the cited list where it lives, never on this row. Trigger to make it readable: a declaration-resolution
+// capability that resolves the reference and reads its members from here.
 fn rung_drop_population_label(p: RungDropPopulation) -> String {
   match p {
     Enumerated { members: ms } => join(non_empty_to_list(xs: ms), ", ")
     NotYetCounted { cause: c } => concat("not yet counted (", concat(uncounted_cause_label(c: c), ")"))
     DerivedBy { label: l } => concat("derived by `gunbc test ", concat(render_label(l: l), "`"))
+    DeclaredBy { declaration: d } => concat("declared by ", concat(d.module_path as String, concat(" ", concat(d.decl_name as String, " (unread here: no declaration-resolution capability)"))))
   }
 }
 
@@ -515,6 +525,7 @@ fn rung_drop_population_is_readable(p: RungDropPopulation) -> Bool {
     Enumerated { members: _ } => true
     NotYetCounted { cause: _ } => false
     DerivedBy { label: l } => length(xs: filter(instrument_targets(), t => render_label(l: t) == render_label(l: l))) == 1
+    DeclaredBy { declaration: _ } => false
   }
 }
 
@@ -702,12 +713,14 @@ fn population_is_not_yet_counted(d: RungDrop) -> Bool {
       NotYetCounted { cause: _ } => true
       Enumerated { members: _ } => false
       DerivedBy { label: _ } => false
+      DeclaredBy { declaration: _ } => true
     }
     Absent => false
   }
 }
 
-// THE ONLY ADMITTED CAUSE OF UNREADABILITY IS A TYPED NotYetCounted POPULATION: an unknown DerivedBy
+// THE ONLY ADMITTED CAUSES OF UNREADABILITY ARE A TYPED NotYetCounted POPULATION AND A DeclaredBy
+// CITATION (a population nothing on this side can count yet, with its home named): an unknown DerivedBy
 // label or any other unreadable shape is a new defect and refuses.
 fn every_unreadable_standing_drop_is_not_yet_counted(ds: List<RungDrop>) -> Bool {
   length(xs: filter(unreadable_standing_drops(ds: ds), d => !population_is_not_yet_counted(d: d))) == 0

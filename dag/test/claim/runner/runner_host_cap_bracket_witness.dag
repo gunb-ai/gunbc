@@ -1,15 +1,16 @@
 module test.claim.runner.runner_host_cap_bracket_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.filesystem_model { ModeledFilesystem, filesystem_bindings, filesystem_operation, file_step, fs_read, fs_list, fs_write, fs_delete, fs_resolved }
 import product.host_identity { HostIdentity }
-import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, RunnerHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
+import gunbc.runner.runner_host_file_converge { cap_phase_after_drain_over, runner_host_cap_phase_text, runner_host_cap_files, RunnerHostFileSubject, FleetHostFilesApply, AdministratorPrivilegeAvailable, RunnerHostCapPhase, CapPhaseWithheld, CapPhaseRan, CapPhaseNotOwed, CapPhaseObserved, runner_host_file_subject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused, runner_host_fabric_member_units }
 import std.optional { Absent, Present }
 import std.algebra { string_contains, list_head, skip }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant { Read, Write, ServiceOpTree, NamespacePosition, ModeledRealization, LifecycleByConstruction, Grant, Envelope }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.operation_argv { InputTextList, OperationInputBinding, OperationRef }
-import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin }
+import v2.std.operation_realization { OperationRealization, OperationBinding, OperationStep, OperationObserved, OperationCall, ShellObserved, DispatchRecord, virtual_clock_origin, operation_input_text }
 import v2.std.witness_evaluation { WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted, evaluate_in_witness_frame, witness_diagnostic_rendered_reason }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
@@ -100,6 +101,13 @@ import gunbc.runner.runner_host_cap_bracket {
   ReleaseFitsEnvelope,
   ReleaseMayOutliveCancellation,
   HostCapDrainPolicy,
+  BracketHolder,
+  HolderIdentified,
+  HolderNotOnSubject,
+  HolderUnidentified,
+  bracket_holder_leaf,
+  bracket_holder_unit_of_leaf,
+  bracket_units_to_bracket,
 }
 
 // THE CONTROLS FOR THE DRAIN BRACKET'S DECISIONS, over supplied readings (the boundary these claims
@@ -239,14 +247,22 @@ test fn a_drained_host_is_drained_even_when_time_is_up() -> Bool {
   is_drained(s: bracket_wait_step(closure: AdmissionMaskOnly, readings: [drained(n: "01")], ticks_left: 0, time_up: true))
 }
 
-// THE STEP BUDGET IS THE POLICY'S THREE FIGURES, and a smaller one refuses before anything is masked.
+// THE STEP BUDGET FOLDS OVER THE POLICY'S FIGURES — INCLUDING THE DERIVED WAIT BOUND — and a smaller
+// one refuses before anything is masked. This is the operator-required proof that
+// host_cap_bracket_budget folds over wait_bound: the assertions are written as folds over the policy's
+// OWN fields, so if the budget stopped folding over the derived bound (or the bound stopped being the
+// declared-timeout fold), these go red. No literal may name the bound here.
 test fn the_budget_is_drain_plus_operations_plus_release() -> Bool {
-  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) == 2700 + 600 + 240
+  second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy))
+    == second_count(s: runner_host_cap_drain_policy.wait_bound)
+      + second_count(s: runner_host_cap_drain_policy.operations_allowance)
+      + second_count(s: runner_host_cap_drain_policy.release_allowance)
 }
 
 test fn a_budget_short_of_the_bracket_refuses_before_masking() -> Bool {
-  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3539)) { BudgetCannotCover { needed: n, given: g } => second_count(s: n) == 3540 && second_count(s: g) == 3539 BudgetCovers => false })
-    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: 3540)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
+  let needed = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
+  (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: needed - 1)) { BudgetCannotCover { needed: n, given: g } => (second_count(s: n) as Int) == needed && (second_count(s: g) as Int) == needed - 1 BudgetCovers => false })
+    && (match bracket_budget_verdict(policy: runner_host_cap_drain_policy, given: second(count: needed)) { BudgetCovers => true BudgetCannotCover { needed: _, given: _ } => false })
 }
 
 // INTERRUPTION AFTER THE MASK. The driver is killed after masking; the release entry then meets a unit
@@ -521,12 +537,64 @@ fn bracket_realization(legs: List<Leg>, roster: List<RosterAt>, environment: Lis
       OperationBinding { at: gh_get_organization_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).org_stdout) } },
       OperationBinding { at: gh_list_runners_operation, handler: fn(state, call) { observed_exit(state: state, code: 0, stdout: roster_answer_at(roster: roster, state: state).list_stdout) } },
       environment_binding(get: fn(state) { environment }),
+      // THE HOLDER LEDGER'S Filesystem.Read/List/Write/Delete, answered from the seeded model -- and ONLY
+      // those four ops, hand-bound from the model's own primitives (the same handlers filesystem_bindings
+      // installs, minus the shell.Move/Mkdir/Path legs the bracket route never dispatches; binding ops the
+      // frame neither grants nor reaches is where this frame was refusing to install). The lens is CONSTANT
+      // (get ignores the ssh step counter, put discards): these single-pass claims never write a ledger and
+      // re-read it in the same run, so the ledger always reads Absent -> LedgerFresh, which is the ordinary
+      // state of a slot that has never deferred.
+      OperationBinding { at: filesystem_operation(operation: "Read"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem read was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => file_step(state: state, observation: fs_read(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path)))
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "List"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem list was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => file_step(state: state, observation: fs_list(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path)))
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "Write"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem write was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => {
+            let w = fs_write(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path), content: "", create_new: false)
+            file_step(state: state, observation: w.observation)
+          }
+        }
+      } },
+      OperationBinding { at: filesystem_operation(operation: "Delete"), handler: fn(state, call) {
+        match operation_input_text(invocation: call.invocation, name: "path") {
+          Absent => OperationHarnessFault { reason: "a filesystem delete was dispatched without a path" as NonEmptyStr }
+          Present { value: path } => {
+            let w = fs_delete(fs: bracket_model_fs(), path: fs_resolved(cwd: "/", path: path))
+            file_step(state: state, observation: w.observation)
+          }
+        }
+      } },
     ], wall_clock_bindings(get: fn(state) { ModeledWallClock { unix_at_origin: 1790000000, step: std.measure.second_displacement(count: 0), jumps: [] } })),
     advance: fn(state, _now) { state },
   }
 }
 
-data bracket_services: List<String> = ["ssh.Session", "shell.PosixCommandV", "shell.Env", "github.CliOrganizations", "github.CliOrgSelfHostedRunners", "Clock"]
+data bracket_services: List<String> = ["ssh.Session", "shell.PosixCommandV", "shell.Env", "github.CliOrganizations", "github.CliOrgSelfHostedRunners", "Clock", "Filesystem"]
+
+// THE BRACKET'S DURABLE LEDGER READS AND WRITES THROUGH THE Filesystem SERVICE, so the frame grants it
+// and answers it from a seeded model (same discipline as test.claim.modeled_filesystem_witness). The
+// holder's slot directory EXISTS and the ledger FILE does not: the ordinary host state for a slot that
+// has never deferred is no file at all, which folds to FilesystemFileAbsent and then LedgerFresh. The
+// lens keeps the filesystem CONSTANT across the run (single-pass claims: none here asserts a write that
+// a later leg re-reads), so the Int step counter still drives the ssh legs.
+fn bracket_model_fs() -> ModeledFilesystem {
+  ModeledFilesystem {
+    directories: ["/", "/opt", "/opt/actions-runner", "/opt/actions-runner/srv3-01", "/opt/actions-runner/srv3-02", "/opt/actions-runner/srv3-03"],
+    files: [],
+    refused_reads: [],
+    stats: [],
+  }
+}
 
 fn bracket_grant(service: String, verb: std.effect_grant.Verb) -> Grant {
   Grant {
@@ -1117,8 +1185,8 @@ test fn an_unread_roster_at_the_reread_prevents_the_stop() -> Bool {
 // The residual is declared in the refusal text itself: the window between the last reading and the stop.
 test fn the_declared_residual_and_frontier_are_typed_and_the_wire_renders_them() -> Bool {
   let w = listener_restart_residual_wire()
-  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 3
-    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker)")
+  length(listener_reregistration_frontier.triggers) == 2 && length(listener_restart_residual.window_opens_after) == 4
+    && string_contains(s: w, pattern: "(mask, roster busy=false, no Runner.Worker, current registration)")
     && any(listener_reregistration_frontier.triggers, t => match t { UpstreamAtomicBusyRefusingAdmissionClose => true LongLivedSlotReregistrationRoute => false })
     && string_contains(s: w, pattern: "residual: ") && string_contains(s: w, pattern: "frontier: ")
     && string_contains(s: w, pattern: "an upstream-documented atomic busy-refusing admission close AND a re-registration route for long-lived slots")
@@ -1193,10 +1261,17 @@ fn flow_run(legs: List<Leg>, roster: List<RosterAt>, owned: List<NonEmptyStr>) -
   bracket_run_over(legs: legs, roster: roster, environment: route_environment(), body: fn(target, context) {
     cap_phase_after_drain_over(
       subject: RunnerHostFileSubject { host: "srv1" as HostIdentity, target: target, desired_units: [u(n: "01")], retired_units: [], fabric_units: [] },
-      context: context, mode: RunnerHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
+      context: context, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable, desired: gunbc_runner_slot_desired(),
       // What the drain certified: one typed record per admitted idle listener, the shape the bracket's own
       // verdict carries. The flow controls below assert this reaches the receipt.
-      owned: owned, certified: [CertifiedListener { unit: u(n: "01"), registration: minted(n: "01", tag: slot_current_mint_tag) as NonEmptyStr }])
+      owned: owned, certified: [CertifiedListener { unit: u(n: "01"), registration: minted(n: "01", tag: slot_current_mint_tag) as NonEmptyStr }],
+      // THE HOLDER IS THE SLOT THE BRACKET PHYSICALLY RUNS ON -- here slot 02, distinct from the unit under
+      // test. The holder is never observed for admission and never bracketed (that exclusion is srv3's fix);
+      // its own verdict is its live cgroup read-back, and the holder's unit never appears in the drained,
+      // gated or foreign sets these controls read. The holder claims themselves run against the judgment
+      // layer (slot_cap_holder_verdict) in runner_slot_cap_converge_witness, where every read-back shape
+      // is a control rather than a leg sequence.
+      holder: HolderIdentified { unit: u(n: "02") })
   })
 }
 
@@ -1265,4 +1340,76 @@ test fn a_withheld_cap_phase_renders_no_certification() -> Bool {
       BracketRunReturned { value: v, legs: _, calls: _ } => !string_contains(s: runner_host_cap_phase_text(phase: v), pattern: "caps-certified=")
       BracketRunEnded { cause: _ } => false
     }
+}
+
+// ─── THE HOLDER, PARSED FROM ITS OWN CGROUP PATH (the pure legs of bracket_holder_identify) ───────
+// THE BRACKET REFUSES UNLESS IT CAN SAY WHICH SLOT IT RUNS ON, and the step from the job's own cgroup
+// leaf to a unit name is decided here, by the fleet's ONE runner-unit parser. These are the fail-closed
+// legs: given a leaf, who is the holder? A runner leaf names its unit; a leaf that is not a runner unit
+// says the job is not on the subject host (naming the leaf); a malformed runner leaf refuses. (The join to
+// the environment and the host's registration -- Filesystem.Read of /proc/self/cgroup, RUNNER_NAME, the
+// .runner file -- runs in production over the same legs the bracket's other ssh claims script.)
+test fn a_runner_cgroup_leaf_identifies_the_holder_unit() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/system-actions\\x2drunner.slice/actions-runner@srv3-02.service")) {
+    HolderIdentified { unit: u } => (u as String) == "actions-runner@srv3-02.service"
+    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "zzz-never")
+    HolderNotOnSubject { why: _ } => false
+  }
+}
+
+// A LEAF THAT IS NOT A RUNNER UNIT IS NOT A FAILURE. A dispatcher job (or any other unit on the host)
+// provably occupies no slot this pass manages, so there is nothing to exclude and the bracket takes every
+// desired unit -- the pre-holder behaviour. Folding this into the refusal arm would mean a host could only
+// ever be cap-converged from one of its own slots, a narrowed target with no safety to show for it.
+test fn a_non_runner_leaf_says_the_job_is_not_on_the_subject_host() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/nginx.service")) {
+    HolderNotOnSubject { why: w } => string_contains(s: w, pattern: "not an actions-runner@ unit") && string_contains(s: w, pattern: "nginx.service")
+    HolderIdentified { unit: _ } => false
+    HolderUnidentified { cause: _ } => false
+  }
+}
+
+// THE EXCLUSION SET, EXPRESSED ONCE (review 86600; DESIGN §3: each fact lives in exactly one place).
+// An identified holder removes exactly its own unit and nothing else; a job that is not on the subject
+// host removes nothing, so the remote converge still brackets EVERY desired unit. A pass that dropped a
+// second unit here, or dropped none for an identified holder, fails one of these two.
+test fn an_identified_holder_removes_only_its_own_unit() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02"), u(n: "03")]
+  let kept = bracket_units_to_bracket(units: wanted, holder: HolderIdentified { unit: u(n: "02") })
+  length(kept) == 2 && !any(kept, x => x == u(n: "02")) && any(kept, x => x == u(n: "01")) && any(kept, x => x == u(n: "03"))
+}
+
+test fn a_job_off_the_subject_host_brackets_every_desired_unit() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02"), u(n: "03")]
+  let kept = bracket_units_to_bracket(units: wanted, holder: HolderNotOnSubject { why: "the job runs on a dispatcher" })
+  length(kept) == 3 && all(wanted, x => any(kept, y => x == y))
+}
+
+// A LEAF WITH NOTHING IN IT -- a job sitting in the root cgroup, whose unified line carries only slashes
+// -- occupies no unit either, and is named as such instead of being cast to a string that has nothing to
+// name. (A job in a SLICE root still has that slice's name as its leaf, and lands in the arm above.)
+test fn an_empty_leaf_says_the_job_holds_no_slot() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "///")) {
+    HolderNotOnSubject { why: w } => string_contains(s: w, pattern: "no leaf unit")
+    HolderIdentified { unit: _ } => false
+    HolderUnidentified { cause: _ } => false
+  }
+}
+
+test fn a_holder_outside_the_desired_units_removes_nothing() -> Bool {
+  let wanted = [u(n: "01"), u(n: "02")]
+  length(bracket_units_to_bracket(units: wanted, holder: HolderIdentified { unit: u(n: "09") })) == 2
+}
+
+test fn a_malformed_instance_leaf_refuses_naming_the_leaf() -> Bool {
+  match bracket_holder_unit_of_leaf(leaf: bracket_holder_leaf(relative_path: "system.slice/actions-runner@.service")) {
+    HolderUnidentified { cause: c } => string_contains(s: c, pattern: "cannot be parsed")
+    HolderIdentified { unit: _ } => false
+    HolderNotOnSubject { why: _ } => false
+  }
+}
+
+test fn the_leaf_is_the_last_path_component_ignoring_slashes() -> Bool {
+  bracket_holder_leaf(relative_path: "system.slice/actions-runner@srv3-02.service/") == "actions-runner@srv3-02.service"
+    && bracket_holder_leaf(relative_path: "/system.slice//actions-runner@01.service///") == "actions-runner@01.service"
 }

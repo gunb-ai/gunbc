@@ -49,7 +49,6 @@ type LensIdV0
   | MutationAdequacy
   | RealizationVocabularyContainment
   | RosterRegistry
-  | ScheduleLens
   | SimulatedRelationship
   | StructuralSimilarity
   | Subsumption
@@ -307,11 +306,6 @@ data lens_registry_v0_realization_vocabulary_containment: LensRegistryEntryV0 = 
   module_path: Bound { path: "v2.lens.realization_vocabulary_containment" }
 }
 
-data lens_registry_v0_schedule_lens: LensRegistryEntryV0 = {
-  lens_id: ScheduleLens
-  module_path: Bound { path: "v2.lens.schedule_lens" }
-}
-
 data lens_registry_v0_simulated_relationship: LensRegistryEntryV0 = {
   lens_id: SimulatedRelationship
   module_path: Bound { path: "v2.lens.simulated_relationship" }
@@ -418,7 +412,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_realization_vocabulary_containment,
   lens_registry_v0_roster_registry,
-  lens_registry_v0_schedule_lens,
   lens_registry_v0_simulated_relationship,
   lens_registry_v0_structural_similarity,
   lens_registry_v0_subsumption,

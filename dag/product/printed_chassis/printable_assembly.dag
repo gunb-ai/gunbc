@@ -8,7 +8,7 @@ import product.printed_chassis.assembly_geometry {
   Primitive, Block, RoundPrism, AssemblyPart, MechanicalInterface, Printed, Purchased, Metal, Clearance, Cassette, FixedFrame,
   LayOnXZ, LayOnXY, LayOnYZ, InterfaceStatus, Proposed, OriginalPlateFitOnly, Unresolved, FastenerKind, M3PanelClamp,
   PrintedRetainingPin, M4FanThroughBolt, M4SocketThroughBolt, BoardSupportPending, ProtectedDcBranch, BondingHardwarePending,
-  FanSelfTappingScrew, FrictionFitPlug,
+  FanSelfTappingScrew, FrictionFitPlug, FrictionFitSleeve, LocatingSleeveNoRetention, M3IntoCardInsert,
 }
 import product.printed_chassis.assembly_inventory { required_slots_json }
 import product.printed_chassis.export_profile { exercised_stl_knobs }
@@ -26,18 +26,26 @@ import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_
 // cassette_review all_parts). It was already a distinct selection -- a different part set from the
 // residential print assembly -- reached implicitly through review_realization main. Naming it keeps
 // the two from being confused for one another.
-type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16InletDuct
+// The four A16 axial roots are the two card mounts, each as a full duct and as a fit ring; the blower
+// root is the radial-blower duct on the plug mount.
+type PrintedAssemblyRoot = ResidentialCassette | CassetteRackReview | A16PlugDuct | A16SleeveDuct | A16PlugFitRing | A16SleeveFitRing | A16BlowerDuct
+
+data printed_assembly_roots: List<PrintedAssemblyRoot> = [ResidentialCassette, CassetteRackReview, A16PlugDuct, A16SleeveDuct, A16PlugFitRing, A16SleeveFitRing, A16BlowerDuct]
 
 fn printed_assembly_root_wire(root: PrintedAssemblyRoot) -> String {
   match root {
     ResidentialCassette => "residential-cassette"
     CassetteRackReview => "cassette-rack-review"
-    A16InletDuct => "a16-inlet-duct"
+    A16PlugDuct => "a16-plug-duct"
+    A16SleeveDuct => "a16-sleeve-duct"
+    A16PlugFitRing => "a16-plug-fit-ring"
+    A16SleeveFitRing => "a16-sleeve-fit-ring"
+    A16BlowerDuct => "a16-blower-duct"
   }
 }
 
 fn printed_assembly_root_from_wire(s: String) -> PrintedAssemblyRoot? {
-  fold([ResidentialCassette, CassetteRackReview, A16InletDuct], init: none, f: (acc, r) =>
+  fold(printed_assembly_roots, init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
       Absent => if printed_assembly_root_wire(root: r) == s { Present { value: r } } else { none }
@@ -78,7 +86,7 @@ fn part_json(p: AssemblyPart) -> JsonValue {
  json_object(members:[json_kv(key:"id",value:text(s:p.id)),json_kv(key:"name",value:text(s:p.name)),json_kv(key:"kind",value:text(s:match p.kind {Printed=>"printed",Purchased=>"purchased",Metal=>"metal",Clearance=>"clearance"})),json_kv(key:"scope",value:text(s:match p.scope {Cassette=>"cassette",FixedFrame=>"fixed"})),json_kv(key:"adds",value:json_array(elements:p.adds |> map(a=>primitive_json(p:a)))),json_kv(key:"cuts",value:json_array(elements:p.cuts |> map(a=>primitive_json(p:a)))),json_kv(key:"at_um",value:xyz(p:p.at)),json_kv(key:"explode_um",value:xyz(p:p.explode)),json_kv(key:"print_plane",value:text(s:match p.print_plane {LayOnXZ=>"XZ",LayOnXY=>"XY",LayOnYZ=>"YZ"})),json_kv(key:"notes",value:text(s:p.notes))])
 }
 fn fastener_display(f: FastenerKind) -> String {
- match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved" FanSelfTappingScrew=>"Fan self-tapping screw into the printed plate" FrictionFitPlug=>"Friction-fit plug, no hardware"}
+ match f {M3PanelClamp=>"M3 top-accessible panel clamp + nut" M4SocketThroughBolt=>"M4 socket through-bolt + washers + nut" M4FanThroughBolt=>"M4 diagonal through-bolt + nut" PrintedRetainingPin=>"Broad-grip printed retaining pin" BoardSupportPending=>"Standoff hardware unresolved" ProtectedDcBranch=>"Rated protected/isolatable DC branch" BondingHardwarePending=>"Permanent metal bonding hardware unresolved" FanSelfTappingScrew=>"Fan self-tapping screw into the printed plate" FrictionFitPlug=>"Friction-fit plug, no hardware" FrictionFitSleeve=>"Friction-fit sleeve, no hardware" LocatingSleeveNoRetention=>"Locating sleeve, not retained: hold or tape the blower in place" M3IntoCardInsert=>"M3 screw into a threaded insert on the card"}
 }
 fn status_display(s: InterfaceStatus) -> String {match s {Proposed=>"proposed" OriginalPlateFitOnly=>"original plate fit passed; new stack proposed" Unresolved=>"unresolved"}}
 fn interface_json(i: MechanicalInterface) -> JsonValue {

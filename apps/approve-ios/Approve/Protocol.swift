@@ -156,6 +156,6 @@ struct ApprovalPushHint: Equatable {
 
 enum Base64Url {
     static func encode(_ d: Data) -> String {
-        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        d.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
     }
 }

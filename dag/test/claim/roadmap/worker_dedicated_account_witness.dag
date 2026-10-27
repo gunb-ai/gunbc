@@ -1,5 +1,10 @@
 module test.claim.roadmap.worker_dedicated_account_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement {
+  dispatch_attempt_unit_stem, dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list,
+  dispatch_attempt_private_git_dir, dispatch_attempt_state_path_for_instance,
+  dispatch_attempt_worker_log_path_for_instance, session_process_bounds,
+}
 import std.types { Bool, NonEmptyStr, List, String, Int, FilePath }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal, file_mode_of_octal_text }
 // THE WALK'S OWN PROGRAM IDENTITY, for the pairing claim's leg that requires every grant argv to BE a
@@ -44,15 +49,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardVerifyProviderAuth, dashboard_instance_provision_plan,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator {
-  dispatch_attempt_unit_stem, dispatch_review_unit_properties,
-  dispatch_worker_git_writable_paths, dispatch_worker_writable_path_list,
-  dispatch_attempt_worker_git_entry_directories, dispatch_attempt_worker_git_entry_migration,
-  dispatch_repository_shared_posture_commands, dispatch_attempt_private_git_dir,
-  dispatch_worker_unit_properties, dispatch_attempt_state_path_for_instance,
-  dispatch_attempt_worker_log_path_for_instance, dispatch_codex_home,
+  dispatch_review_unit_properties, dispatch_attempt_worker_git_entry_directories,
+  dispatch_attempt_worker_git_entry_migration, dispatch_repository_shared_posture_commands,
+  dispatch_worker_unit_properties,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.host.host_layout { attempt_exit_spool_root }
 import extdeps.systemd { NoNewPrivilegesProperty, RestrictSUIDSGIDProperty }
 import extdeps.systemd.systemd_run { SystemdRunProperty, NamedUnitSetting, EmptyCapabilityBoundingSet }
@@ -67,8 +68,9 @@ import gunbc.fleet.fleet_posix_accounts {
   fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_worker_shared_group_gid,
   fleet_posix_operator_user, fleet_posix_ci_runner_user, fleet_automation_user, fleet_posix_root_user,
   fleet_srv1_observed_numeric_ids,
-  fleet_posix_worker_supplementary_groups, fleet_root_equivalent_group_names,
+  fleet_posix_worker_supplementary_groups,
 }
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
 
 // WORKER-ROOT-EQUIVALENT-1, DECLARATION-LEVEL ONLY (rung stays Mitigatable; see
 // gunbc.rung_drop.worker_root_equivalent_socket_denylist). The worker unit's User= is a dedicated account that holds
@@ -154,8 +156,8 @@ test fn the_lab_attempt_directories_are_shared_with_the_worker() -> Bool {
 
 // THE PROVIDER-CREDENTIAL DIRECTORY IS THE ATTEMPT'S HOME, AND ITS MODE KEEPS OTHERS OUT (the security
 // reading bright-moth-475 asked me to confirm FROM THE MODEL): a dedicated-worker attempt runs the
-// provider with HOME = the provider-state directory -- dispatch_codex_home is the same authority the
-// instance's provider-state root resolves to -- so the worker must be able to read it (it is the
+// provider with HOME = the provider-state directory -- codex_spawn_argv reads that home from the
+// instance's provider-state root, the authority asserted below -- so the worker must be able to read it (it is the
 // provider's own auth/config/session state), and grouping it to the shared attempt group is required,
 // not incidental. The declared mode is DirectoryOwnerGroupWritableSetgid (02770): owner rwx, group rwx,
 // NO other bits -- so the regroup hands the attempt group access and nothing to any other account.
@@ -163,7 +165,6 @@ test fn the_provider_credential_directory_is_the_attempt_home_and_admits_only_th
   let lab = srv1_lab_dashboard_instance()
   let provider_dir = dashboard_instance_provider_state_directory(instance: lab)
   (owned_path_text(t: provider_dir) == (dashboard_instance_provider_state_root(instance: lab) as String))
-    && (owned_path_text(t: provider_dir) == dispatch_codex_home)
     && declared_owner_group(t: provider_dir) == (fleet_posix_worker_shared_group_name as String)
     && declared_mode_octal(t: provider_dir) == declared_directory_mode_octal(m: DirectoryOwnerGroupWritableSetgid)
     && declared_mode_octal(t: provider_dir) == "2770"

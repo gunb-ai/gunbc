@@ -295,7 +295,7 @@ pub fn ihc_expr_data_label(e: Rc<Node>) -> String {
 pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<HoleTypeReading> {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
-            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si.clone());
+            let label = crate::v1_compiler_infer::type_node_label(rt.clone(), si);
             if (label.clone() == "String".to_string()) {
                 Rc::new(HoleTypeReading::HoleTypedString)
             } else {
@@ -1076,7 +1076,7 @@ pub fn ihc_summary_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
             }
             __result
         });
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string()), v1_rt::concat("v1_fused_adjacent_holes ".to_string(), ((Rc::new({ let mut __result = Vec::new(); for r in c.rows.clone().iter().cloned() { if r.fused.clone() { __result.push(r); } } __result }).len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels.clone())))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(Rc::new(vec!["oracle v1 (v1.compiler.infer, each hole's own type before the template is typed String; PR2b's v2 infer must agree on every row or name each disagreement)".to_string(), v1_rt::concat("subjects ".to_string(), ((c.lexical.clone().len() as i64)).to_string()), v1_rt::concat("holes ".to_string(), ((c.rows.clone().len() as i64)).to_string()), v1_rt::concat("body_holes ".to_string(), ((body.clone().len() as i64)).to_string()), v1_rt::concat("transport_holes ".to_string(), ((transport.clone().len() as i64)).to_string()), v1_rt::concat("v1_fused_adjacent_holes ".to_string(), ((Rc::new({ let mut __result = Vec::new(); for r in c.rows.clone().iter().cloned() { if r.fused.clone() { __result.push(r); } } __result }).len() as i64)).to_string())]), ihc_tally_lines("body_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_type_category(r.reading.clone())); } __result })))), v1_rt::concat(ihc_tally_lines("body_shape_by_type".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(ihc_shape_label(r.shape.clone()), " ".to_string()), ihc_type_category(r.reading.clone()))); } __result }))), ihc_tally_lines("body_other_type".to_string(), ihc_tally(other_labels)))), v1_rt::concat(v1_rt::concat(ihc_tally_lines("v1_coercion".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in body.iter().cloned() { __result.push(ihc_v1_coercion(r.clone())); } __result }))), ihc_tally_lines("transport_reading".to_string(), ihc_tally(Rc::new({ let mut __result = Vec::new(); for r in transport.iter().cloned() { __result.push(ihc_transport_reading(r.clone())); } __result })))), ihc_completeness_lines(c.clone())))
     }
 }
 
@@ -1092,14 +1092,14 @@ pub fn ihc_census_from_sources(
                 g.clone(),
                 result.source_indices.clone(),
                 sources.clone(),
-                subjects.clone(),
+                subjects,
             )),
         }
     }
 }
 
 pub fn ihc_corpus_standing(c: Rc<IhcCensus>) -> String {
-    if ((ihc_completeness_lines(c.clone()).len() as i64) == 0) {
+    if ((ihc_completeness_lines(c).len() as i64) == 0) {
         "CORPUS complete".to_string()
     } else {
         "CORPUS incomplete".to_string()
@@ -1110,7 +1110,7 @@ pub fn interpolation_hole_census_from_sources(
     sources: Rc<Vec<Rc<SourceFile>>>,
     subjects: Rc<Vec<String>>,
 ) -> String {
-    match ihc_census_from_sources(sources.clone(), subjects.clone()) {
+    match ihc_census_from_sources(sources, subjects) {
         std::option::Option::None => "REFUSED\tcompile_to_resolved produced no graph".to_string(),
         Some(c) => v1_rt::concat(
             v1_rt::concat(
@@ -1257,7 +1257,7 @@ pub fn ihc_identity_join_not_count_holds() -> bool {
 pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let subjects = interpolation_hole_census_subjects(sources.clone());
-        match ihc_census_from_sources(sources.clone(), subjects.clone()) {
+        match ihc_census_from_sources(sources.clone(), subjects) {
             std::option::Option::None => {
                 "REFUSED\tcompile_to_resolved produced no graph".to_string()
             }

@@ -1,10 +1,45 @@
 module gunbc.host.host_identity_adopt
 
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.disposition { Disposition }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.deployed_intent_v0 { DeployedIntentV0 }
-import gunbc.host.host_identity_knob { HostIdentityKnobKey }
+import std.content_hash { ContentHash, as_content_hash_structural, content_hash_atom }
+import std.realization_reconcile { reconciliation_converged }
+import extdeps.ssh.known_hosts { known_hosts_host_field }
 import product.host_identity { HostIdentity }
-import std.content_hash { ContentHash }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+  operator_host_srv4,
+}
+import gunbc.fleet.fleet_intent { ComputeHost, srv1_host, srv2_host }
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_observed_short_hostname,
+  deployed_intent_v0_adopt_observed_base,
+}
+import gunbc.host.host_effect {
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+  FleetSsh,
+  EmitArtifactThenThinRun,
+  NodeControlPlane,
+  HostOs,
+  Srv3ReceiptEmit,
+  host_effect_identity_evidence,
+}
+import gunbc.host.host_effect_realize { host_effect_apply }
+import gunbc.host.host_identity_knob { HostIdentityKnobKey, host_identity_knob_key }
+import gunbc.host.host_identity_observation {
+  HostIdentityObservation,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+  host_identity_observation_nonempty,
+}
 
 
 type HostIdentityAdoptReceipt {

@@ -47,6 +47,8 @@ import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, ya
 //   background_modes   UIBackgroundModes -- remote-notification, so an approval push wakes the app.
 //   server_host        ApproveServerHost -- read by ServerConfig at launch.
 //   apns_environment   ApproveApnsEnvironment -- read by ServerConfig at launch.
+//   short_version      CFBundleShortVersionString -- approval_app_bundle_version, the verifier's row.
+//   build_number       CFBundleVersion -- approve_build_number.
 // apns_environment is xcconfig-substituted from Config/Team.xcconfig. server_host is NOT: it is the
 // broker's public host (gunbc.auth.approval_broker_placement approval_broker_public_host_from), the
 // same composition the approval links are issued against, written into the spec as a value. It was
@@ -60,6 +62,8 @@ type ApproveAppInfo {
   server_host: String
   apns_environment: String
   google_redirect_scheme: String
+  short_version: String
+  build_number: String
 }
 
 fn approve_app_info(server_host: NonEmptyStr, google_redirect_scheme: String) -> ApproveAppInfo {
@@ -72,6 +76,8 @@ fn approve_app_info(server_host: NonEmptyStr, google_redirect_scheme: String) ->
     server_host: server_host as String,
     apns_environment: "$(APNS_ENVIRONMENT)",
     google_redirect_scheme: google_redirect_scheme,
+    short_version: approval_app_bundle_version as String,
+    build_number: approve_build_number,
   }
 }
 
@@ -84,7 +90,9 @@ fn approve_info_properties(i: ApproveAppInfo) -> List<PlistEntry> {
     background_modes_entry(modes: i.background_modes),
     plist_entry(key: "ApproveServerHost", value: plist_string(s: i.server_host)),
     plist_entry(key: "ApproveApnsEnvironment", value: plist_string(s: i.apns_environment)),
-    url_scheme_entry(scheme: i.google_redirect_scheme)
+    url_scheme_entry(scheme: i.google_redirect_scheme),
+    plist_entry(key: "CFBundleShortVersionString", value: plist_string(s: i.short_version)),
+    plist_entry(key: "CFBundleVersion", value: plist_string(s: i.build_number))
   ]
 }
 
@@ -125,6 +133,9 @@ data approve_project_settings: List<BuildSetting> = [
   build_setting_bool(name: GccTreatWarningsAsErrors, on: true)
 ]
 
+// The generated Info.plist carries CFBundleShortVersionString and CFBundleVersion as these same rows
+// (approve_info_properties): XcodeGen writes the plist from its properties and does not substitute
+// the build settings into it, so a plist that omitted them shipped XcodeGen's default 1.0.
 // THE BUNDLE IDENTIFIER AND MARKETING VERSION ARE THE APP ATTEST VERIFIER'S ROWS
 // (gunbc.auth.approval_app_attest_config), read here rather than restated: the server admits an
 // attestation only for that App ID and CFBundleShortVersionString, so the build and the verifier

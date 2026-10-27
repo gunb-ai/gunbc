@@ -8,3 +8,4 @@ import std.types { String }
 // values check_layout / parse_population consume (layout policy, declared refusal classes).
 data cli_verb_check_layout: String = "check-layout"
 data cli_verb_parse_population: String = "parse-population"
+data cli_verb_select_spelled_modules: String = "select-spelled-modules"
