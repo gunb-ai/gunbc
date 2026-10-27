@@ -162,39 +162,78 @@ test fn wla_int8_minus_129_refuses() -> Bool {
   wla_reason_of(type_name: "Int8", literal: "-129") == ^infer_reason_literal_outside_machine_width
 }
 
-// WIDTH CROSSINGS at a width-typed formal, under gunbc.design_ruling coercion_is_the_implicit_safe_subset
-// (DESIGN §4: an implicit route must be total, exact, semantics-preserving, unique, pure and consent-free).
-// A widening literal (an in-range value of the narrower signedness carried into a wider width) is total,
-// exact and unique, so it is accepted implicitly. A narrowing or sign-changing literal can lose information
-// — it is not exact — so it refuses implicit coercion with the width's own typed, located reason; a named
-// conversion route is the way across that boundary (v2.compiler.convert covers width change).
-// The shape matches the fixture's other claims: a literal as the argument of a call whose formal is the
-// named width type, peers identical, so any refusal is the crossing's and not a slip of the fixture.
+// LITERAL BOUNDARY at a wider formal, under gunbc.design_ruling coercion_is_the_implicit_safe_subset
+// (DESIGN section 4: an implicit route must be total, exact, semantics-preserving, unique, pure and
+// consent-free). These are boundary (1) of gunbc.recurring_failure_mode
+// .a_width_constrained_integer_admits_a_value_outside_its_width — a bare Int literal at a width position,
+// the same class wla_uint8_300_refuses covers; named for the literal boundary, not for a value crossing
+// (see the typed crossing claims below for that). The named route for changing a value's width is
+// std.machine_width_range machine_width_admits plus the std.machine_word named operations
+// (word_wrapping_add, word_checked_add); there is no implicit narrowing or signedness change.
+// Peers are identical across each pair, so any refusal is the crossing's and not a slip of the fixture.
 
-// CONTROL: 127, in range of both UInt8 and Int16, is accepted implicitly at the wider UInt16 formal —
-// a same-signedness widening is total and exact, so no declared route is required at the call.
+// A literal whose value needs the wider width is accepted at the wider formal (total, exact).
 fn wla_widen_src(literal: String) -> String {
   concat(concat("module p\n\nimport std.integer { UInt8, Int8, UInt16 }\n\nfn w(n: UInt16) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  w(n: ", literal), ")\n}\n")
 }
 
-test fn wla_uint16_127_widens_implicitly() -> Bool {
+test fn wla_literal_127_is_admitted_at_uint16() -> Bool {
   wla_reason(src: wla_widen_src(literal: "127")) == ^accepted
 }
 
-// CONTROL FOR THE RED: the same 1000 is accepted at the UInt16 formal it fits — the refusal below is the
-// crossing's, not the literal's.
-test fn wla_uint16_1000_is_admitted() -> Bool {
+// CONTROL FOR THE RED BELOW: the same 1000 is accepted at the UInt16 formal it fits — the refusal is the
+// boundary's, not the literal's.
+test fn wla_literal_1000_is_admitted_at_uint16() -> Bool {
   wla_reason(src: wla_widen_src(literal: "1000")) == ^accepted
 }
 
-// RED: 1000, in range of UInt16 but outside UInt8, at a UInt8 formal refuses implicit coercion with the
-// width's own reason — the narrowing is not exact, so the boundary admits only a named conversion route.
+// RED: 1000, in range of UInt16 but outside UInt8, at a UInt8 formal refuses with the width's own reason
+// — the literal is not in the target width's range, so the boundary admits only the checked route.
 fn wla_narrow_src(literal: String) -> String {
   concat(concat("module p\n\nimport std.integer { UInt8, Int8 }\n\nfn n(n: UInt8) -> Bool {\n  true\n}\n\nfn uses() -> Bool {\n  n(n: ", literal), ")\n}\n")
 }
 
-test fn wla_uint8_1000_narrowing_refuses() -> Bool {
+test fn wla_literal_1000_refuses_at_uint8() -> Bool {
   wla_reason(src: wla_narrow_src(literal: "1000")) == ^infer_reason_literal_outside_machine_width
+}
+
+// TYPED CROSSINGS at a width formal: a value already TYPED at one width, passed to a formal typed at
+// another. Every reason below was read from execution before it was written (gunbc run of the probe
+// through this fixture's own harness), and the claims assert what the compiler DOES, not what the
+// ruling will eventually license. A width is a checked refinement on Int that stays a bound, so today
+// every crossing of a DIFFERENT width — widening, narrowing or signedness change — refuses inhabitance
+// at the formal; only the same-width application passes, and that is the positive control that makes
+// the refusals discriminating (a fixture slip would refuse all four). The implicit-widening half of the
+// ruling is NOT yet realized at typed crossings: that is the carrier boundary (3), whose restoration
+// trigger the row names as a capability (v2.compiler.infer sees Compose through a sealed head), with
+// owner programs S1a (gunbc#15110) and S1b. The named route for a width change is std.machine_width_range
+// machine_width_admits plus the std.machine_word named operations (word_wrapping_add, word_checked_add).
+
+fn wla_typed_src(body: String) -> String {
+  concat("module p\n\nimport std.integer { UInt8, Int8, UInt16 }\n\n", body)
+}
+
+// CONTROL: same width at the formal — inhabitance holds and the application passes.
+test fn wla_typed_uint8_to_uint8_is_admitted() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g8(n: UInt8) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  g8(n: u)\n}\n")) == ^accepted
+}
+
+// RED: a value typed UInt16 at a UInt8 formal refuses at the formal; the same-width control above shows
+// the refusal is the crossing's.
+test fn wla_typed_uint16_to_uint8_refuses() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g8(n: UInt8) -> Bool {\n  true\n}\n\nfn uses(u: UInt16) -> Bool {\n  g8(n: u)\n}\n")) == ^application_argument_does_not_inhabit
+}
+
+// RED: the signedness change UInt8 -> Int8 is not widening and refuses at the formal.
+test fn wla_typed_uint8_to_int8_refuses() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn i8(n: Int8) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  i8(n: u)\n}\n")) == ^application_argument_does_not_inhabit
+}
+
+// Today the widening direction refuses too (the ruling's implicit half is not realized at typed
+// crossings; see the block comment and the row's boundary-(3) deferral). This claim goes RED exactly
+// when S1a/S1b land the implicit safe subset here — it pins where that change must land.
+test fn wla_typed_uint8_to_uint16_refuses_until_implicit_widening_lands() -> Bool {
+  wla_reason(src: wla_typed_src(body: "fn g16(n: UInt16) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  g16(n: u)\n}\n")) == ^application_argument_does_not_inhabit
 }
 
 // SUPPLIED INPUTS: the expected type is built as the node infer normalizes to, Compose<carrier, MachineWidth<bits>>,
