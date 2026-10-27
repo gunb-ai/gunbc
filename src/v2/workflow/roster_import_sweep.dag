@@ -124,7 +124,7 @@ type RosterHomeScope
   = AllHomes
   | OneHome { home: QualifiedName, rows: RosterRowSelection }
   // ONE GENERATED ROW (tidy-ant-251's ruling on gunbc#14761's re-derivation): a row NO hand table holds, derived from
-  // one unique answer of the global_bare migration oracle (v2.compiler.occurrence_binding_census
+  // one unique answer of the global_bare migration oracle (v2.compiler.occurrence_resolution_census
   // binding_unbound_oracle_line) by roster_generated_row_of_oracle_line. It names exactly one row and one home by
   // construction, so a mutating run under it is still one home, and roster_head_rows stays the table of ambient homes only.
   | OneGeneratedRow { row: RosterHeadRow }
@@ -3856,7 +3856,7 @@ fn roster_one_companion(c: RosterCompanion, parse_root: Node, spans: SpanIndex, 
 // read into the typed row a OneGeneratedRow run sweeps. Only `unique` with an owning module is a row: the spelling is
 // both the call and the import name, the owning module is the home. Every other answer is a typed refusal that names
 // it, so an ambiguous or absent name is listed and never picked. The line comes from the
-// //gunbc/instruments:ambient-name-census label's run (v2.compiler.occurrence_binding_census), never from a hand file.
+// //gunbc/instruments:ambient-name-census label's run (v2.compiler.occurrence_resolution_census), never from a hand file.
 type RosterGeneratedRow
   = GeneratedRow { row: RosterHeadRow }
   | GeneratedRowRefused { reason: RosterRefusalReason }
