@@ -77,6 +77,7 @@ data the_initial_convergence_is_the_only_approval: DesignRuling = DesignRuling {
   decided: "2026-10-25",
   section: "3b",
   provenance: "Operator ruling, refining one_approval_route_for_every_privileged_action for effects that recur: \"ultimately the initial convergence is the only thing being approved, everything else is just granted THAT approval (assuming its sufficient)\", with the aim that \"anything sensitive [is] done through an approval\" rather than through revision or branch pinning. The operator approves one convergence through the broker route; each effect that convergence entails runs inside the attempt that claimed that approval and is admitted against its std.scoped_authorization OperatorGrant (plan identity, scopes, expiry, claim), and an insufficient approval is a fresh request, never a widening. Applied in gunbc.auth.authorization_pattern_selection as WitnessDischarge EntailedByApprovedConvergence and the ApprovedConvergenceGrant candidate, and in gunbc.auth.privileged_effect_census convergence_lineage_defects, which admits a lineage root only where the root itself selects OperatorApprovedCapability; the srv1 host-root writes take the srv1 root-mutation job's approval as their root.",
+  standing: LedgerOnly { reason: "operator refinement routing recurring effects inside the one approved initial convergence, owned by gunbc.auth.authorization_pattern_selection and gunbc.auth.privileged_effect_census; DESIGN.md states the broker route and pattern selection but does not cite this ruling" },
 }
 
 data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
@@ -437,6 +438,7 @@ data cross_tree_admission_is_namespace_membership: DesignRuling = DesignRuling {
   decided: "2026-10-25",
   section: "3",
   provenance: "Operator ratified 2026-10-25 (escalation msg_6f0857a6) a decision by root coordinator sleek-owl-397, relayed by tidy-ant-251, on the per-root fundamentality defect, where native resolve denied every dag->v2 import that the seed admits: fix the model and do not move the importers. Narrowed the same day from 'rank per namespace' to membership, with no direction rule, once the namespace-grain import census showed one 23-namespace cycle spanning both trees, so any strict order would deny live edges that no ruling forbids. A crossing is admitted when both namespaces have a row in gunbc.source_layout_namespaces and refused when either has none; the storage lookup is the one enforcement site, and the population route asks the same membership read; name resolution keeps only the active-root denials. Applied in gunbc#15080 (v2.std.cross_tree.import_model cross_tree_import_admitted).",
+  standing: CitedInDesign {},
 }
 
 data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
@@ -444,6 +446,7 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   decided: "2026-10-25",
   section: "Building & checks",
   provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
+  standing: LedgerOnly { reason: "operator extension of the native claim-route denominator to the docker CLI service for the router proxy falsifier, owned by std.compiler_entry native_claim_route_denominator; DESIGN.md states the native-process-effect route and the seed discipline but does not cite this ruling" },
 }
 
 fn design_rulings() -> List<DesignRuling> {
