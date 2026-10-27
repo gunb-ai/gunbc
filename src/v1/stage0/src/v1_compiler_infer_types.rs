@@ -83,7 +83,43 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
+
+pub fn diag_mint_trace(tag: &str, id: &str) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static SEEN: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashSet<String>>,
+    > = std::sync::OnceLock::new();
+    static COUNT: AtomicUsize = AtomicUsize::new(0);
+    if (COUNT.load(Ordering::SeqCst) > 600) {
+        return;
+    }
+    let bt: String = std::backtrace::Backtrace::force_capture().to_string();
+    let frames: Vec<String> = bt
+        .lines()
+        .filter(|l| l.contains("v1_compiler") && !l.contains("diag_mint_trace"))
+        .take(9)
+        .map(|l| {
+            let t = l.trim();
+            let f = t.split(" at ").next().unwrap_or(t);
+            f.trim().to_string()
+        })
+        .collect();
+    let key = format!("{}|{}|{}", tag, id, frames.join("<-"));
+    let seen = SEEN.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()));
+    {
+        let mut g = seen.lock().unwrap();
+        if !g.insert(key.clone()) {
+            return;
+        }
+    }
+    COUNT.fetch_add(1, Ordering::SeqCst);
+    eprintln!("{} id={} :: {}", tag, id, frames.join(" <- "));
+}
+
 pub fn type_variable_node(id: String) -> Rc<Node> {
+    if (id.clone() == "T".to_string() || id.clone() == "K".to_string() || id.clone() == "V".to_string() || id.clone() == "empty_list_element".to_string() || id.clone() == "__element__".to_string()) {
+        diag_mint_trace("MINT-TYPES", id.as_str());
+    }
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
@@ -1927,10 +1963,13 @@ pub fn apply_type_substitution(
                                         receiver.clone(),
                                     ));
                                 match crate::std_types::container_param_name(rname.clone(), 1) {
-                                    Some(n) => Rc::new(KernelTypeBuild {
-                                        ty: type_variable_node(n.clone()),
-                                        diagnostics: Rc::new(vec![]),
-                                    }),
+                                    Some(n) => {
+                                        eprintln!("DIAGMINTC rname={} n={}", rname.clone(), n.clone());
+                                        Rc::new(KernelTypeBuild {
+                                            ty: type_variable_node(n.clone()),
+                                            diagnostics: Rc::new(vec![]),
+                                        })
+                                    }
                                     std::option::Option::None => Rc::new(KernelTypeBuild {
                                         ty: missing_kernel_container_profile_type(rname.clone()),
                                         diagnostics: Rc::new(vec![

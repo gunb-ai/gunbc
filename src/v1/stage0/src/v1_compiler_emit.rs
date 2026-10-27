@@ -6854,7 +6854,31 @@ pub fn emit_typed_cast_shared(
                     emit_error_expr(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat("unsupported cast from ".to_string(), src_ty.clone()),
+                                {
+                                    let __d = source_type
+                                        .inferred
+                                        .clone()
+                                        .map(|i| {
+                                            let t = format!("{:?}", (*i).clone());
+                                            t.chars().take(120).collect::<String>()
+                                        })
+                                        .unwrap_or("None".to_string());
+                                    eprintln!(
+                                        "DIAGCAST src_ty={} inferred={} name={} children={}",
+                                        src_ty.clone(),
+                                        __d,
+                                        source_type.name.clone(),
+                                        source_type.children.len()
+                                    );
+                                    crate::v1_compiler_infer_types::diag_mint_trace(
+                                        "DIAGCASTTRACE",
+                                        src_ty.as_str(),
+                                    );
+                                    v1_rt::concat(
+                                        "unsupported cast from ".to_string(),
+                                        src_ty.clone(),
+                                    )
+                                },
                                 " to ".to_string(),
                             ),
                             ty_str.clone(),

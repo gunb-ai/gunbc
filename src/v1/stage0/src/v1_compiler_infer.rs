@@ -11696,6 +11696,9 @@ pub fn optional_cast_diags(
 }
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
+    if (id.clone() == "T".to_string() || id.clone() == "K".to_string() || id.clone() == "V".to_string() || id.clone() == "empty_list_element".to_string() || id.clone() == "__element__".to_string()) {
+        crate::v1_compiler_infer_types::diag_mint_trace("MINT-INFER", id.as_str());
+    }
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
