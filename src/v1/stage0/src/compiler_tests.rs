@@ -6002,6 +6002,117 @@ mod compiler_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // A DECLARATION'S MEMBERS ARE NOT ITS TYPE ARGUMENTS (v1.compiler.emit_rust
+    // type_node_is_declaration_structure). Specimen: every fold(.., init: child_walk_init(), ..) in
+    // v2.compiler.resolve rendered `|acc: _, ..|` for the non-generic ChildWalk, because the closure
+    // walk descended into ChildWalk's fields, reached a leaf the fn's environment does not bind, and
+    // read the miss as an unbound generic. THE REDS: a declaration item and a coproduct body whose
+    // member is such a leaf answer `not generic` from both walks that read leaves, and so does a
+    // reference whose `inferred` is that body. THE CONTROLS: a leaf neither the environment nor the fn
+    // binds still reads unbound and one the fn binds reads bound; an item spelled by itself still
+    // answers through its formals; and the real route annotates a declared record accumulator.
+    #[test]
+    fn fold_declared_accumulator_is_not_read_as_an_unbound_generic() {
+        use crate::v1_std_core::{Connective, Node, ParsedModuleItemKind};
+        let si = std::rc::Rc::new(HashMap::new());
+        let env = crate::v1_compiler_infer_env::empty_type_env();
+        let none_bound = std::rc::Rc::new(im::Vector::<String>::new());
+        let t_bound = std::rc::Rc::new(im::Vector::from(vec!["T".to_string()]));
+        let closure = |n: std::rc::Rc<Node>, g: std::rc::Rc<im::Vector<String>>| {
+            crate::v1_compiler_emit_rust::type_node_has_closure_unbound_generic_atom(
+                n,
+                g,
+                env.clone(),
+                si.clone(),
+            )
+        };
+        let variable = |n: std::rc::Rc<Node>| {
+            crate::v1_compiler_emit_rust::type_node_has_unbound_type_variable(
+                n,
+                none_bound.clone(),
+                si.clone(),
+            )
+        };
+        let unbindable = named_type_node("Shared");
+        assert!(
+            closure(unbindable.clone(), none_bound.clone()),
+            "a leaf the environment does not bind and the fn does not bind reads unbound"
+        );
+        assert!(
+            !closure(named_type_node("T"), t_bound.clone()),
+            "a generic the fn binds is bound"
+        );
+        let mut free_member = (*named_type_node("pending")).clone();
+        free_member.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::TypeVariable {
+                id: "x".to_string(),
+            },
+        ));
+        let mut item = (*shaped_type_node(
+            "Walk",
+            vec![unbindable.clone(), std::rc::Rc::new(free_member)],
+        ))
+        .clone();
+        item.module_item_kind = ParsedModuleItemKind::ModuleItemTypeDeclaration;
+        let item = std::rc::Rc::new(item);
+        assert!(
+            !closure(item.clone(), none_bound.clone()),
+            "a declaration item's members are not its type arguments"
+        );
+        assert!(
+            !variable(item.clone()),
+            "a member's type variable is not the item's"
+        );
+        let mut body = (*shaped_type_node("Optional", vec![named_type_node("Absent")])).clone();
+        body.connective = Connective::Disj;
+        let body = std::rc::Rc::new(body);
+        assert!(
+            !closure(body.clone(), none_bound.clone()),
+            "a coproduct body's arms are not type arguments"
+        );
+        let mut reference = (*shaped_type_node("Optional", vec![named_type_node("T")])).clone();
+        reference.inferred = Some(std::rc::Rc::new(
+            crate::v1_std_core::InferredNode::Resolved { node: body.clone() },
+        ));
+        assert!(
+            !closure(std::rc::Rc::new(reference), t_bound.clone()),
+            "a reference is spelled by its own arguments, not its declaration's arms"
+        );
+        let mut formal_item = (*named_type_node("Holder")).clone();
+        formal_item.module_item_kind = ParsedModuleItemKind::ModuleItemTypeDeclaration;
+        formal_item.params = std::rc::Rc::new(vec![named_type_node("T")].into());
+        let formal_item = std::rc::Rc::new(formal_item);
+        assert!(
+            closure(formal_item.clone(), none_bound.clone()),
+            "an item spelled by itself names its formals, unbound here"
+        );
+        assert!(
+            !closure(formal_item.clone(), t_bound.clone()),
+            "and bound where the fn binds them"
+        );
+        use crate::v1_compiler_compile::SourceFile;
+        let walker = std::rc::Rc::new(SourceFile { path: "fixtures/fold_declared_accumulator/walker.dag".to_string(), content: concat!(
+            "module hom.walker\n\ntype Item {\n  k: Int\n}\n\ntype Walk {\n  ordinal: Int\n  items: List<Item>\n}\n\n",
+            "fn walk_init() -> Walk {\n  Walk { ordinal: 0, items: [] }\n}\n\n",
+            "fn walk_step(w: Walk, i: Item) -> Walk {\n  Walk { ordinal: w.ordinal + i.k, items: w.items }\n}\n\n",
+            "fn walk_ordinal(w: Walk) -> Int {\n  w.ordinal\n}\n\n",
+            "fn declared(xs: List<Item>) -> Int {\n  walk_ordinal(w: fold(xs, init: walk_init(), f: fn(acc, e) { walk_step(w: acc, i: e) }))\n}\n").to_string() });
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(vec![walker].into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let emitted = result
+            .files
+            .iter()
+            .find(|f| f.path.contains("hom_walker"))
+            .map(|f| f.content.clone())
+            .unwrap_or_default();
+        assert!(
+            emitted.contains("fold(walk_init(), |acc: Rc<Walk>,"),
+            "the real route annotates a declared record accumulator:\n{emitted}"
+        );
+    }
+
     // A SAME-LEAF TYPE ANYWHERE MUST NOT CHANGE ANOTHER MODULE'S EMISSION. hom.user returns the kernel
     // optional's Absent; hom.edge declares an unrelated enum that also has an Absent variant. With the
     // leaf-keyed type summaries, adding hom.coll (a coproduct it declares as Optional) replaced the
