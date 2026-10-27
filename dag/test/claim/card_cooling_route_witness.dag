@@ -1,6 +1,6 @@
 module test.claim.card_cooling_route_witness
 
-import std.types {Bool}
+import std.types {Bool, NonEmptyStr, String}
 import std.measure {micrometer}
 import product.printed_chassis.card_cooling_route {
   PlaneOnEnd, PlaneAcrossRowStanding, OverTheRow, BesideTheRow,
@@ -9,7 +9,9 @@ import product.printed_chassis.card_cooling_route {
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
-import product.printed_chassis.chassis_clearances {Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, chassis_gaps, gap_display, gap_is_measured, gap_may_be_printed_on, remeasure_before_print}
+import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room_um, remeasure_before_print}
+import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
+import std.measure {watt_count, measure_count}
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 
@@ -281,4 +283,128 @@ test fn w_t10_and_a2_rows_carry_no_unbacked_numbers() -> Bool {
 test fn w_a_fourth_card_is_one_more_row() -> Bool {
   length(list: card_rows) == 3
     && length(list: all_rows_bench_list()) > length(list: card_rows)
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE 2026-10-27 READINGS, THE LARGEST PLANFORM, THE SCROLL, AND THE AIR THE A16 NEEDS
+// ---------------------------------------------------------------------------------------------
+//
+// The readings are the operator's, spoken; what they refuse and what they leave is derived. These
+// witnesses pin the derived numbers so a later edit cannot quietly move a verdict, and they pin the
+// STANDING of every reading too -- an estimate that started admitting would be the interesting bug.
+
+test fn w_the_six_2026_10_27_readings_are_carried_and_none_of_them_admits_anything() -> Bool {
+  let names = ["clear gap between the two cards", "each card to the front face of the chassis fans", "8-pin power connector latch projection into the port", "free lane beside the card row", "deck to chassis lid, behind the plug end", "outer face of the outermost card to the chassis edge"]
+  fold(names, init: true, f: (ok, n) => match chassis_gap(name: n) {
+    Present { value: g } => ok && gap_is_estimate(g: g) && string_contains(s: gap_display(g: g), pattern: "estimated by the operator")
+    Absent => false
+  })
+}
+
+test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothing() -> Bool {
+  // '60mm until it touches the heatsink', with this repository's 10 mm width on a by-eye figure: the
+  // beside-the-row home needs 98.4 mm across that lane, so it refuses, and the refusal names the lane.
+  let room = gap_room_um(g: side_lane_width)
+  let need = beside_the_row_demand(b: a16_blower(), d: a16_wall_design())
+  let verdict = ask(gap: side_lane_width, need: need, home: BesideTheRow, unmet: RouteDemand { name: "housing width across the free lane", needed: shape_um(m: need), of_gap: "free lane beside the card row" })
+  room == 50000 && need == 98400 && match verdict {
+    Present { value: r } => match r {
+      RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "free lane beside the card row"
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+test fn w_the_lid_refuses_the_over_the_row_home_and_the_card_height_is_subtracted_first() -> Bool {
+  let riser = shape_um(m: 6000)
+  let need = over_the_row_height(f: a16_end_face, d: a16_wall_design(), b: a16_blower(), riser: riser)
+  let verdict = ask(gap: deck_to_lid_clearance, need: need, home: OverTheRow {riser: riser}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: need), of_gap: "deck to chassis lid, behind the plug end" })
+  // 120 mm floor-to-lid, with its width taken off: 110000. The demand carries the card's own 97840.
+  gap_room_um(g: deck_to_lid_clearance) == 110000 && need == 143340 && match verdict {
+    Present { value: r } => match r {
+      RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "deck to chassis lid, behind the plug end"
+      _ => false
+    }
+    Absent => false
+  }
+}
+
+test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_pair_span() -> Bool {
+  // 56.56 mm of overhang against pitch + the estimated gap = 40.64 + 41 = 81.64 mm. Comparing the
+  // overhang against the 46 mm gap alone would refuse this and would be wrong; the margin is pinned so a
+  // future edit cannot swap the comparison without failing here.
+  flat_on_end_pair_need(b: a16_blower()) == 56560 && flat_on_end_pair_span() == 81640 && string_contains(s: flat_on_end_twin_verdict(), pattern: "clear, with 25080 um to spare")
+}
+
+test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_extent() -> Bool {
+  let d = a16_wall_design()
+  let beside = shape_max_for_home(home: BesideTheRow, d: d, riser: 6000)
+  let plane = shape_max_for_home(home: PlaneOnEnd, d: d, riser: 6000)
+  // Beside the row: 50000 of lane, less two walls and two band clearances = 42000 across the lane; and the
+  // extent no reading reaches (fan thickness toward a lid that was never read at deck height) says "no cap".
+  measure_count(m: beside.across_the_binding_gap.at_most) == 42000 && beside.across_the_binding_gap.measured
+    && beside.behind_the_end.measured == false && string_contains(s: extent_display(e: beside.behind_the_end), pattern: "no cap")
+    // Flat on the end, two ducted cards: capped by the pair span, not by the card's height.
+    && measure_count(m: plane.across_the_binding_gap.at_most) == 81640
+    && measure_count(m: plane.along_the_row.at_most) == 97840
+}
+
+test fn w_the_end_cap_scroll_is_capped_by_the_space_between_two_ducted_cards() -> Bool {
+  let d = a16_wall_design()
+  let at_40 = scroll_max_wheel_diameter_um(wheel_width_over_diameter: 40, d: d)
+  // At a wheel 40% as wide as it is tall, the wheel would need 70 mm of rear room only at a 165 mm
+  // diameter, and the card's own height caps it at 97.84 -- so neither of those binds; the 81.64 mm the two
+  // ducted cards leave across the slot does.
+  measure_count(m: at_40.at_most) == 81640 && string_contains(s: at_40.capped_by, pattern: "between the two cards")
+    && scroll_run_back_um(wheel_diameter_um: 81640, wheel_width_over_diameter: 40, d: d) == 36656
+}
+
+test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_lid_and_the_rear() -> Bool {
+  let d = a16_wall_design()
+  // At 60% width the rear bound bites first: (70000 - 4000) * 100 / 60 = 110000 -- no; check the other way,
+  // a wheel so fat that the declared 70 mm behind the end caps it below the card's height: at 90%, 73333.
+  let at_90 = scroll_max_wheel_diameter_um(wheel_width_over_diameter: 90, d: d)
+  measure_count(m: at_90.at_most) == 81640 && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: 90), "\n"), pattern: "ratio: 90 percent")
+}
+
+test fn w_both_cards_intakes_face_each_other_across_the_inter_card_gap() -> Bool {
+  // The operator's own numbers put 'a few mm' on one outer side, so neither card can drink through the
+  // wall; card 0 faces the 60 mm heatsink lane and card 1 faces the gap between the cards. The consequence
+  // -- both intakes in the same air -- is what the fit print is for.
+  string_contains(s: scroll_intake_facing(card_index: 0, card_count: 2), pattern: "60mm until it touches the heatsink")
+    && string_contains(s: scroll_intake_facing(card_index: 1, card_count: 2), pattern: "inter-card gap")
+    && scroll_intake_facing(card_index: 2, card_count: 2) == "no such card in the row"
+}
+
+test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_direction() -> Bool {
+  // The datasheet carries no airflow requirement, so this is the only honest form: the flow that carries the
+  // board's cited maximum power at a rise somebody allows, verified by exhaust_thermal's own forward run.
+  let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
+  watts == 250 && required_flow_rise_check(heat_watts: watts, rise_k: 15) && required_flow_rise_check(heat_watts: 195, rise_k: 20)
+    // A smaller allowed rise must need more air, never less.
+    && required_flow_ml_per_s(heat_watts: watts, rise_k: 10) > required_flow_ml_per_s(heat_watts: watts, rise_k: 20)
+}
+
+test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() -> Bool {
+  // At a 15 K allowance across the whole air path the A16 at its 250 W maximum wants about 13.8 L/s of free
+  // air; the BFB1012M is rated 10.666 L/s. So one BFB1012M cannot hold the card 15 K above intake -- the
+  // honest reading is that the rise would have to be nearer 19-20 K, which is the number the operator gets
+  // to decide. Both figures stay in the report, and the report does not pretend the rating was measured: it
+  // is a transcribed listing figure at zero static pressure.
+  let flow = required_flow_ml_per_s(heat_watts: 250, rise_k: 15)
+  // Pinned to the arithmetic the corpus's own cited properties give: 250 W at 15 K over rho = 1.204 g/m3
+  // and cp = 1005 J/kg K is 13775 mL/s, and the conversion reproduces the BFB1012M listing's own pair
+  // (10666 mL/s is printed there as 22.60 CFM), which is the conversion's best available check.
+  flow == 13775 && ml_per_s_to_cfm(ml: flow) == 2919 && ml_per_s_to_cfm(ml: 10666) == 2260
+    && flow > 10666 && string_contains(s: bfb1012m_flow_context(), pattern: "10666 mL/s free air")
+    && string_contains(s: bfb1012m_flow_context(), pattern: "TranscribedUncited")
+}
+
+test fn w_the_scroll_report_says_it_is_a_shape_and_not_a_part() -> Bool {
+  let rows = scroll_fit_report()
+  length(list: rows) == 5
+    && string_contains(s: join(rows, "\n"), pattern: "percent")
+    && string_contains(s: join(rows, "\n"), pattern: "fits a wheel at most")
+    && string_contains(s: join(rows, "\n"), pattern: "no vendor, no model, no datasheet")
 }

@@ -618,16 +618,6 @@ fn scroll_intake_facing(card_index: Int, card_count: Int) -> String {
 
 // THE ANSWER FOR THE OPERATOR'S SHAPE, as text: the largest wheel under the readings, at the wheel-width
 // ratio the design assumes, per home, and where each card's intake faces.
-fn scroll_fit_report(wheel_width_over_diameter: Int) -> List<String> {
-  let d = a16_wall_design()
-  [join(["the operator's end-cap scroll, at a wheel width/diameter ratio of ", to_string(value: wheel_width_over_diameter),
-         " percent, fits a wheel ", extent_display(e: scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d))], ""),
-   join(["  at that diameter it reaches ", to_string(value: scroll_run_back_um(wheel_diameter_um: measure_count(m: scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d).at_most), wheel_width_over_diameter: wheel_width_over_diameter, d: d) / 1000),
-         " mm behind the end, against the 70 mm the operator declared"], ""),
-   join(["  card 0 (nearest the wall): ", scroll_intake_facing(card_index: 0, card_count: 2)], ""),
-   join(["  card 1 (the heatsink side): ", scroll_intake_facing(card_index: 1, card_count: 2)], ""),
-   "  and the shape is hypothetical: no vendor, no model, no datasheet. Nothing here says a part exists; it says what size the chassis would accept if one does."]
-}
 
 // ================================================================================================
 // THE AIRFLOW THE A16 NEEDS -- AND WHY IT IS A FUNCTION AND NOT A NUMBER
@@ -662,6 +652,12 @@ fn required_flow_ml_per_s(heat_watts: Int, rise_k: Int) -> Int {
   if denom <= 0 { 0 } else { (heat_watts * 1000000 + denom - 1) / denom }
 }
 
+// mL/s to CFM, rounded to the nearest whole cubic foot per minute. 1 CFM = 471.9474 mL/s, so the factor is
+// 1e6/471.9474; the rounding is stated rather than hidden because these figures get compared with a fan's
+// free-air rating, and a CFM rounded down flatters a fan. Checked by the witness against the BFB1012M's own
+// listing, which prints 22.60 CFM next to 10666 mL/s.
+fn ml_per_s_to_cfm(ml: Int) -> Int { (ml * 1000000 + 4719474 / 2) / 4719474 }
+
 // The same, checked back through the corpus's own forward function: exhaust_rise at the flow this returns
 // must give a rise no greater than asked. That is the witness, and it is why the derivation above is allowed
 // to exist next to exhaust_thermal instead of duplicating it.
@@ -692,14 +688,38 @@ fn airflow_required_at_rises() -> List<String> {
   let rises = [5, 10, 15, 20, 30]
   map(rises, k => join(["at ", to_string(value: k), " K of rise across the whole air path, one A16 at its maximum ",
                         to_string(value: watts), " W needs at least ", to_string(value: required_flow_ml_per_s(heat_watts: watts, rise_k: k)),
-                        " mL/s of free air (", to_string(value: required_flow_ml_per_s(heat_watts: watts, rise_k: k) * 2 / 60),
-                        " CFM to two digits) -- the rise is an operator allowance, not a reading"], ""))
+                        " mL/s of free air (", to_string(value: ml_per_s_to_cfm(ml: required_flow_ml_per_s(heat_watts: watts, rise_k: k))),
+                        " CFM) -- the rise is an operator allowance, not a reading"], ""))
 }
 
 // WHAT THE BFB1012M ACTUALLY MOVES, for comparison, and the standing of that figure: a transcribed free-air
 // rating from the listing, at zero static pressure, which is not the flow it will deliver in a scroll.
 fn bfb1012m_flow_context() -> String {
   let flow = millilitre_per_second_count(f: delta_bfb1012m_rating.free_air_flow)
-  join(["the BFB1012M is rated at ", to_string(value: flow), " mL/s free air -- ", to_string(value: flow * 2 / 60),
-        " CFM to two digits, at zero static pressure and with the listing's standing (TranscribedUncited, not an instrument reading). Against the curve above it says whether a scroll of the size the chassis accepts could move the heat at all"], "")
+  join(["the BFB1012M is rated at ", to_string(value: flow), " mL/s free air -- ", to_string(value: ml_per_s_to_cfm(ml: flow)),
+        " CFM, at zero static pressure and with the listing's standing (TranscribedUncited, not an instrument reading). Against the curve above it says whether a scroll of the size the chassis accepts could move the heat at all"], "")
+}
+
+// The report at a stated wheel-width ratio, and the ratio this repository reports at by default. The ratio
+// is NOT from a datasheet -- there is none -- it is a named placeholder for a hypothetical shape, chosen in
+// the middle of the range such a wheel occupies, so that the fit answer can be read without the reader
+// having to supply a parameter. scroll_fit_report at other ratios is the honest way to read the answer as a
+// range, and the witnesses sweep it rather than trusting the default.
+fn scroll_fit_report() -> List<String> { scroll_fit_report_at(wheel_width_over_diameter: 40) }
+
+fn scroll_fit_report_at(wheel_width_over_diameter: Int) -> List<String> {
+  concat([join(["wheel width/diameter ratio: ", to_string(value: wheel_width_over_diameter),
+                " percent -- a named placeholder for a shape with no datasheet behind it, not a transcribed figure"], "")],
+         scroll_fit_report_body(wheel_width_over_diameter: wheel_width_over_diameter))
+}
+
+fn scroll_fit_report_body(wheel_width_over_diameter: Int) -> List<String> {
+  let d = a16_wall_design()
+  let widest = scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d)
+  [join(["the operator's end-cap scroll fits a wheel ", extent_display(e: widest)], ""),
+   join(["  at that diameter it reaches ", to_string(value: scroll_run_back_um(wheel_diameter_um: measure_count(m: widest.at_most), wheel_width_over_diameter: wheel_width_over_diameter, d: d) / 1000),
+         " mm behind the end, against the 70 mm the operator declared"], ""),
+   join(["  card 0 (nearest the wall): ", scroll_intake_facing(card_index: 0, card_count: 2)], ""),
+   join(["  card 1 (the heatsink side): ", scroll_intake_facing(card_index: 1, card_count: 2)], ""),
+   "  and the shape is hypothetical: no vendor, no model, no datasheet. Nothing here says a part exists; it says what size the chassis would accept if one does."]
 }
