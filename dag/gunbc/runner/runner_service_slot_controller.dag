@@ -49,7 +49,7 @@ import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import extdeps.uuid { uuid_of }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_deregistration {
-  JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, JitRegistration, JitDeregistration, JitRunnerDeregistered,
+  JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, SlotListenerOutcomeUnobserved, JitRegistration, JitDeregistration, JitRunnerDeregistered,
   JitDeregistrationRefused, JitDeregistrationSubject,
 }
 import gunbc.runner.runner_jit_perform {
@@ -135,12 +135,14 @@ fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot:
 type ListenerRun
   = ListenerNotLaunched { cause: NonEmptyStr }
   | ListenerExited { exit_code: Int }
+  | ListenerOutcomeUnobserved { cause: NonEmptyStr }
 
 // EVERY ARM MAPS TO AN EXIT, SO EVERY ARM DEREGISTERS: a listener that never started leaves a
 // registration exactly as one that ran a job does.
 fn service_slot_exit_of(run: ListenerRun) -> JitSlotExit {
   match run {
     ListenerNotLaunched { cause: c } => SlotNeverLaunched { cause: c }
+    ListenerOutcomeUnobserved { cause: c } => SlotListenerOutcomeUnobserved { cause: c }
     ListenerExited { exit_code: code } =>
       if code == 0 {
         SlotListenerExitedClean

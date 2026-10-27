@@ -316,18 +316,42 @@ fn unit_hold_not_on_store_host(key: NonEmptyStr, decision: UnitHoldStoreExecutor
 // OBSERVING that process gone FROM THE HOLDER'S OWN NAMESPACE; from any other it cannot look. An operator
 // maintenance hold is deliberately not a process (it outlives the session that took it), so it is
 // never recovered; a host reset-return hold names no process yet, so it is never recovered either.
+// A PROCESS-HELD RUN IS ONE SHAPE, WHATEVER KIND OF RUN IT IS (DESIGN section 6b, root generalization). The boot
+// run and the KVM observer probe each carried the same run id, process identity and pid namespace, with the tag,
+// detail, label, decode, liveness route and maintenance refusal copied per kind; the qualification run would have
+// been the third copy. So the run is one arm and its KIND is a closed sum that owns the only facts the kinds differ
+// in: the owner tag and the label's words. The tags are unchanged, so an owner string already in the store decodes
+// to the same holder.
+type ProcessHeldRunKind = BootRunKind | KvmObserverProbeKind | QualificationRunKind
+
+data process_held_run_kinds: List<ProcessHeldRunKind> = [BootRunKind, KvmObserverProbeKind, QualificationRunKind]
+
+fn process_held_run_tag(k: ProcessHeldRunKind) -> String {
+  match k {
+    BootRunKind => "boot-run:"
+    KvmObserverProbeKind => "kvm-observer:"
+    QualificationRunKind => "qualification-run:"
+  }
+}
+
+fn process_held_run_noun(k: ProcessHeldRunKind) -> String {
+  match k {
+    BootRunKind => "the boot run "
+    KvmObserverProbeKind => "the KVM observer probe run "
+    QualificationRunKind => "the qualification run "
+  }
+}
+
 type UnitHoldOwner
   = OperatorMaintenance { reason: NonEmptyStr }
-  | BootRun { run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr }
+  | ProcessHeldRun { kind: ProcessHeldRunKind, run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr }
   | HostResetReturn { attempt: NonEmptyStr }
-  | KvmObserverProbe { run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr }
 
 fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: _ } => "operator-maintenance:"
-    BootRun { run_id: _, process: _, pid_namespace: _ } => "boot-run:"
+    ProcessHeldRun { kind: k, run_id: _, process: _, pid_namespace: _ } => process_held_run_tag(k: k)
     HostResetReturn { attempt: _ } => "host-reset-return:"
-    KvmObserverProbe { run_id: _, process: _, pid_namespace: _ } => "kvm-observer:"
   }
 }
 
@@ -335,9 +359,8 @@ fn unit_hold_owner_tag(o: UnitHoldOwner) -> String {
 fn unit_hold_owner_detail(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => r as String
-    BootRun { run_id: r, process: p, pid_namespace: n } => concat(r as String, process_hold_text(p: p, pid_namespace: n))
+    ProcessHeldRun { kind: _, run_id: r, process: p, pid_namespace: n } => concat(r as String, process_hold_text(p: p, pid_namespace: n))
     HostResetReturn { attempt: a } => a as String
-    KvmObserverProbe { run_id: r, process: p, pid_namespace: n } => concat(r as String, process_hold_text(p: p, pid_namespace: n))
   }
 }
 
@@ -348,13 +371,12 @@ fn unit_hold_owner_ref(o: UnitHoldOwner) -> DurableHoldOwnerRef {
 fn unit_hold_owner_label(o: UnitHoldOwner) -> String {
   match o {
     OperatorMaintenance { reason: r } => concat("operator maintenance: ", r as String)
-    BootRun { run_id: r, process: p, pid_namespace: _ } => join(["the boot run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
+    ProcessHeldRun { kind: k, run_id: r, process: p, pid_namespace: _ } => join([process_held_run_noun(k: k), r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
     HostResetReturn { attempt: a } => concat("host reset-return attempt ", a as String)
-    KvmObserverProbe { run_id: r, process: p, pid_namespace: _ } => join(["the KVM observer probe run ", r as String, " (process ", to_string(p.pid), " on boot ", p.boot_id as String, ")"], "")
   }
 }
 
-// THE DECODE IS TOTAL OVER THE FOUR TAGS AND REFUSES ANYTHING ELSE: an owner string written by
+// THE DECODE IS TOTAL OVER THE TAGS AND REFUSES ANYTHING ELSE: an owner string written by
 // something other than this module is not guessed into a kind.
 type UnitHoldOwnerDecode
   = UnitHoldOwnerDecoded { owner: UnitHoldOwner }
@@ -365,48 +387,37 @@ fn unit_hold_owner_detail_after(raw: String, tag: String) -> NonEmptyStr? {
   if rest == "" { none } else { Present { value: rest as NonEmptyStr } }
 }
 
+// A PROCESS-HELD RUN'S DETAIL IS ITS RUN ID, THE MARKER, AND THE PROCESS HOLD, decoded once for every kind.
+fn decode_process_held_run(raw: String, kind: ProcessHeldRunKind) -> UnitHoldOwnerDecode {
+  match unit_hold_owner_detail_after(raw: raw, tag: process_held_run_tag(k: kind)) {
+    Absent => UnitHoldOwnerUnrecognized { raw: raw }
+    Present { value: d } => {
+      let halves = split(s: d as String, delimiter: process_hold_marker)
+      if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
+        UnitHoldOwnerUnrecognized { raw: raw }
+      } else {
+        match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
+          Present { value: h } => UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: kind, run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
+          Absent => UnitHoldOwnerUnrecognized { raw: raw }
+        }
+      }
+    }
+  }
+}
+
 fn decode_unit_hold_owner(owner: DurableHoldOwnerRef) -> UnitHoldOwnerDecode {
   let raw = owner as String
   let op = unit_hold_owner_tag(o: OperatorMaintenance { reason: "x" as NonEmptyStr })
-  let boot = unit_hold_owner_tag(o: BootRun { run_id: "x" as NonEmptyStr, process: ProcessIdentity { boot_id: "x" as NonEmptyStr, pid: 1, start_time: "x" as NonEmptyStr }, pid_namespace: "x" as NonEmptyStr })
   let reset = unit_hold_owner_tag(o: HostResetReturn { attempt: "x" as NonEmptyStr })
-  let probe = unit_hold_owner_tag(o: KvmObserverProbe { run_id: "x" as NonEmptyStr, process: ProcessIdentity { boot_id: "x" as NonEmptyStr, pid: 1, start_time: "x" as NonEmptyStr }, pid_namespace: "x" as NonEmptyStr })
   if starts_with(s: raw, prefix: op) {
     match unit_hold_owner_detail_after(raw: raw, tag: op) { Present { value: d } => UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
-  } else if starts_with(s: raw, prefix: boot) {
-    match unit_hold_owner_detail_after(raw: raw, tag: boot) {
-      Absent => UnitHoldOwnerUnrecognized { raw: raw }
-      Present { value: d } => {
-        let halves = split(s: d as String, delimiter: process_hold_marker)
-        if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
-          UnitHoldOwnerUnrecognized { raw: raw }
-        } else {
-          match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
-            Present { value: h } => UnitHoldOwnerDecoded { owner: BootRun { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
-            Absent => UnitHoldOwnerUnrecognized { raw: raw }
-          }
-        }
-      }
-    }
-  } else if starts_with(s: raw, prefix: probe) {
-    match unit_hold_owner_detail_after(raw: raw, tag: probe) {
-      Absent => UnitHoldOwnerUnrecognized { raw: raw }
-      Present { value: d } => {
-        let halves = split(s: d as String, delimiter: process_hold_marker)
-        if count(halves) != 2 || text_at(xs: halves, i: 0) == "" {
-          UnitHoldOwnerUnrecognized { raw: raw }
-        } else {
-          match process_hold_decode(text: concat("boot=", text_at(xs: halves, i: 1))) {
-            Present { value: h } => UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: text_at(xs: halves, i: 0) as NonEmptyStr, process: h.process, pid_namespace: h.pid_namespace } }
-            Absent => UnitHoldOwnerUnrecognized { raw: raw }
-          }
-        }
-      }
-    }
   } else if starts_with(s: raw, prefix: reset) {
     match unit_hold_owner_detail_after(raw: raw, tag: reset) { Present { value: d } => UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: d } }  Absent => UnitHoldOwnerUnrecognized { raw: raw } }
   } else {
-    UnitHoldOwnerUnrecognized { raw: raw }
+    match first(filter(process_held_run_kinds, k => starts_with(s: raw, prefix: process_held_run_tag(k: k)))) {
+      Present { value: k } => decode_process_held_run(raw: raw, kind: k)
+      Absent => UnitHoldOwnerUnrecognized { raw: raw }
+    }
   }
 }
 
@@ -420,7 +431,7 @@ fn operator_maintenance_owner(reason: NonEmptyStr) -> DurableHoldOwnerRef {
 }
 
 fn boot_run_owner(run_id: NonEmptyStr, process: ProcessIdentity, pid_namespace: NonEmptyStr) -> DurableHoldOwnerRef {
-  unit_hold_owner_ref(o: BootRun { run_id: run_id, process: process, pid_namespace: pid_namespace })
+  unit_hold_owner_ref(o: ProcessHeldRun { kind: BootRunKind, run_id: run_id, process: process, pid_namespace: pid_namespace })
 }
 
 // ── THE PROOF: MINTED ONLY INSIDE THE LIVE ACQUIRE'S FileHoldAcquired ARM ──────────────────────
@@ -463,8 +474,8 @@ fn unit_hold_refusal(outcome: FileHoldAcquireOutcome) -> NonEmptyStr? {
 }
 
 // ── RECOVERING A HOLD WHOSE HOLDER WAS OBSERVED DEAD ───────────────────────────────────────────
-// Only a holder whose owner names a process can be observed, so only a decoded BootRun or
-// KvmObserverProbe is looked at;
+// Only a holder whose owner names a process can be observed, so only a decoded ProcessHeldRun
+// (a boot run, a KVM observer probe or a qualification run) is looked at;
 // every other owner is reported as not recoverable. The liveness verdict is bound to the holder and
 // generation the refused acquire saw, and the recovery re-reads the slot, so a hold that changed hands
 // in between is not the one freed. Age is never an input.
@@ -476,8 +487,7 @@ type HolderLivenessRoute
 
 fn holder_liveness_route(holder: DurableHoldOwnerRef) -> HolderLivenessRoute {
   match decode_unit_hold_owner(owner: holder) {
-    UnitHoldOwnerDecoded { owner: BootRun { run_id: _, process: p, pid_namespace: n } } => HolderObserveProcess { process: p, pid_namespace: n }
-    UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: _, process: p, pid_namespace: n } } => HolderObserveProcess { process: p, pid_namespace: n }
+    UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: _, run_id: _, process: p, pid_namespace: n } } => HolderObserveProcess { process: p, pid_namespace: n }
     UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
       HolderNotObservable { cause: "an operator maintenance hold is not bound to a process; only the operator releases it" as NonEmptyStr }
     UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: _ } } =>
@@ -646,7 +656,32 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Un
         SelfUnidentified { cause: c } =>
           UnitHoldRefused { reason: join(["this probe cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
         SelfIdentified { process: p, pid_namespace: n } =>
-          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: p, pid_namespace: n }))
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: run_id, process: p, pid_namespace: n }))
+      }
+  }
+}
+
+// THE QUALIFICATION RUN TAKES THE SAME SLOT (gunbc.plans.mtcollins1_ci_service_legs G1b). It writes nothing to the
+// controller, but it starts a runner on the unit and dispatches a floor to it, and a boot, a reset or maintenance
+// taking the unit underneath it would measure, or destroy, a run nobody accounted for; dispatch_qualification_floor
+// refuses without this hold's proof (gunbc.runner.runner_qualification_dispatch hold_covers_slot_host). Its owner
+// names its process, so a run that dies holding it is recovered by the next acquirer once observed dead, and a
+// cancelled run is released by process_held_run_release_decision for its own kind and run.
+fn qualification_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
+  admit_callers: [
+    decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_under_hold"),
+  ]
+{
+  match unit_hold_admission_for(host: host as NonEmptyStr) {
+    UnitHoldHostNotManaged { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotManaged { host: h })
+    UnitHoldHostNotRequired { host: h } => unit_hold_not_admitted(admission: UnitHoldHostNotRequired { host: h })
+    UnitHoldHostUndecided { host: h } => unit_hold_not_admitted(admission: UnitHoldHostUndecided { host: h })
+    UnitHoldHostAdmitted { subject: subject } =>
+      match self_process_identity() {
+        SelfUnidentified { cause: c } =>
+          UnitHoldRefused { reason: join(["this qualification run cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; nothing started"], "") as NonEmptyStr }
+        SelfIdentified { process: p, pid_namespace: n } =>
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: run_id, process: p, pid_namespace: n }))
       }
   }
 }
@@ -654,13 +689,13 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Un
 // THE PROBE'S always() RELEASE, SCOPED TO ITS OWN RUN (eager-owl-205, 2026-09-30). A cancel or a step
 // timeout after the probe acquired leaves the hold with no proof in hand, so a separate step that runs
 // under always() observes the slot and frees it ONLY when the holder decodes to
-// KvmObserverProbe { run_id } for THIS run, releasing at the generation it observed (the store's
+// ProcessHeldRun { kind: KvmObserverProbeKind, run_id } for THIS run, releasing at the generation it observed (the store's
 // compare-and-set). A free slot, another owner -- an operator, a boot, another probe run -- or an
 // unreadable slot is a reported no-op, never a release; a slot that moved between the observation and
 // the commit is stale, and is left as it is.
 //
 // A runner that dies, or a job cancelled at its backstop, runs no always() step. Its probe hold names
-// the holding process (KvmObserverProbe's ProcessIdentity and pid namespace), so the next acquirer of
+// the holding process (its ProcessHeldRun's ProcessIdentity and pid namespace), so the next acquirer of
 // the unit recovers it once that process is OBSERVED dead (unit_hold_acquire's observed-dead recovery,
 // gunbc#12555), exactly as it recovers a dead boot run's.
 type ProbeHoldReleaseDecision
@@ -670,6 +705,12 @@ type ProbeHoldReleaseDecision
   | ProbeHoldUnobservable { cause: String }
 
 fn probe_hold_release_decision(observed: DurableHoldObservation, run_id: NonEmptyStr) -> ProbeHoldReleaseDecision {
+  process_held_run_release_decision(observed: observed, kind: KvmObserverProbeKind, run_id: run_id)
+}
+
+// THE ALWAYS() RELEASE OF ANY PROCESS-HELD RUN, SCOPED TO ITS OWN KIND AND RUN: the probe's rule above, which a
+// cancelled qualification run needs for the same reason.
+fn process_held_run_release_decision(observed: DurableHoldObservation, kind: ProcessHeldRunKind, run_id: NonEmptyStr) -> ProbeHoldReleaseDecision {
   match observed {
     HoldSlotAbsent => ProbeHoldFreeNoop
     HoldSlotFree { generation: _, released_by: _ } => ProbeHoldFreeNoop
@@ -677,9 +718,9 @@ fn probe_hold_release_decision(observed: DurableHoldObservation, run_id: NonEmpt
     HoldObservationUnavailable { cause: _ } => ProbeHoldUnobservable { cause: "the store could not be read" }
     HoldSlotHeld { generation: g, owner: o } =>
       match decode_unit_hold_owner(owner: o) {
-        UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r, process: p, pid_namespace: n } } =>
-          if (r as String) == (run_id as String) { ProbeHoldReleaseAt { owner: o, generation: g } }
-          else { ProbeHoldForeignNoop { holder: unit_hold_owner_label(o: KvmObserverProbe { run_id: r, process: p, pid_namespace: n }) } }
+        UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: k, run_id: r, process: p, pid_namespace: n } } =>
+          if k == kind && (r as String) == (run_id as String) { ProbeHoldReleaseAt { owner: o, generation: g } }
+          else { ProbeHoldForeignNoop { holder: unit_hold_owner_label(o: ProcessHeldRun { kind: k, run_id: r, process: p, pid_namespace: n }) } }
         UnitHoldOwnerDecoded { owner: other } => ProbeHoldForeignNoop { holder: unit_hold_owner_label(o: other) }
         UnitHoldOwnerUnrecognized { raw: raw } => ProbeHoldForeignNoop { holder: raw }
       }
@@ -971,12 +1012,10 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
       match decode_unit_hold_owner(owner: o) {
         UnitHoldOwnerUnrecognized { raw: r } =>
           exit_failure(reason: join([label, ": held by an owner this module did not write, so it is not released from here: ", r], ""))
-        UnitHoldOwnerDecoded { owner: BootRun { run_id: r, process: p, pid_namespace: n } } =>
-          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: BootRun { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next boot recovers it if that run is observed dead"], ""))
+        UnitHoldOwnerDecoded { owner: ProcessHeldRun { kind: k, run_id: r, process: p, pid_namespace: n } } =>
+          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: ProcessHeldRun { kind: k, run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next acquirer recovers it if that run is observed dead"], ""))
         UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: a } } =>
           exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold"], ""))
-        UnitHoldOwnerDecoded { owner: KvmObserverProbe { run_id: r, process: p, pid_namespace: n } } =>
-          exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: KvmObserverProbe { run_id: r, process: p, pid_namespace: n }), ", not by maintenance; that run frees its own hold, and the next acquirer recovers it if that run is observed dead"], ""))
         UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
           match file_hold_release_assess(root: unit_hold_store_root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
             FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: concat(label, ": slot moved before release; re-run"))
