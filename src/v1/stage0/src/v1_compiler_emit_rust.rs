@@ -6064,32 +6064,6 @@ pub fn rust_phantom_zst_marker_def(vname: String, indexed: bool) -> String {
     }
 }
 
-pub fn phantom_marker_name_shadowed_by_real_type_item(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    vname: String,
-) -> bool {
-    {
-        let mut __found = false;
-        for item in items.iter().cloned() {
-            if ((crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
-                == vname.clone())
-                && (crate::v1_compiler_emit_core_support::is_type_alias_item(
-                    item.clone(),
-                    source_indices.clone(),
-                ) || crate::v1_compiler_emit_core_support::is_type_decl_item(
-                    item.clone(),
-                    source_indices.clone(),
-                )))
-            {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PhantomZstMarker {
     pub name: String,
@@ -6132,7 +6106,7 @@ pub fn collect_phantom_zst_markers(
                                 env.clone(),
                                 child.clone(),
                             );
-                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                            if (is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
                                 && !{
                                     let mut __found = false;
                                     for m in inner.iter().cloned() {
@@ -6143,11 +6117,6 @@ pub fn collect_phantom_zst_markers(
                                     }
                                     __found
                                 })
-                                && !phantom_marker_name_shadowed_by_real_type_item(
-                                    items.clone(),
-                                    env.source_indices.clone(),
-                                    vname.clone(),
-                                ))
                             {
                                 v1_rt::concat(
                                     inner.clone(),
