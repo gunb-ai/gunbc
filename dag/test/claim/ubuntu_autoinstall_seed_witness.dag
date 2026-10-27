@@ -115,7 +115,7 @@ import gunbc.provisioning.public_nocloud_seed {
   public_nocloud_seed_user_data,
   seed_credential_keys,
 }
-import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
 import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
 import extdeps.uri { Https, Uri }
 import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
@@ -344,7 +344,15 @@ data attempt_two: IntakeAttemptId = "intake-20261017-0002" as IntakeAttemptId
 data unit_key_bound_a: UnitKeyStanding = UnitKeyBound { key: unit_a_key }
 data unit_key_bound_b: UnitKeyStanding = UnitKeyBound { key: unit_b_key }
 data unit_key_unbound: UnitKeyStanding = UnitKeyRefused { cause: BoardSerialAbsent }
+// TWO FAMILIES, BECAUSE THE BOARDS HAVE TWO. The Altra's BMC is ASPEED AST2500 under Ampere's MegaRAC
+// build (extdeps.ampere.mt_collins_product_brief.bmc). The H11SSL's is not: Supermicro states its
+// X11/H11/H12 BMC is built on the AST2500 and that the stack's files carry ATEN International's
+// copyright (extdeps.bmc.supermicro), which is why extdeps.bmc.endpoint adds SupermicroAten as its own
+// family rather than letting MegaRAC — a different vendor's build — stand in for it. Asserting MegaRAC
+// on the x86 board would have been a claim about hardware the tree already says otherwise about, and
+// the family is not decorative here: it enters the admitted standing AND the rendered token.
 data bmc_family_observed: BmcFirmwareFamilyStanding = FamilyObserved { family: AmiMegaRac }
+data h11ssl_bmc_family: BmcFirmwareFamilyStanding = FamilyObserved { family: SupermicroAten }
 data bmc_family_unobserved: BmcFirmwareFamilyStanding = FamilyUnobserved {
   discriminator: "AST2500 firmware string never read" as NonEmptyStr,
 }
@@ -1119,10 +1127,10 @@ test fn a_runner_role_is_refused_a_seed() -> Bool {
 // a_architecture_with_no_rows_is_refused: what the gate refuses is an architecture nobody has admitted a
 // package row for, not an architecture that merely differs from the first board this module served.
 test fn an_x86_64_unit_is_admitted_by_its_rows() -> Bool {
-  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: h11ssl_bmc_family, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
     TargetAdmitted { standing: standing } =>
       match standing {
-        ProvisioningTargetStanding { architecture: X86_64, bmc_firmware: AmiMegaRac, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68 } => true
+        ProvisioningTargetStanding { architecture: X86_64, bmc_firmware: SupermicroAten, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68 } => true
         _ => false
       }
     TargetRefused { reason: _ } => false
@@ -1151,7 +1159,7 @@ test fn an_architecture_with_no_rows_is_refused() -> Bool {
 // drift from the door's own verdict: if the amd64 rows are ever deleted, this becomes a refusal and every test
 // below fails loudly rather than installing an unverified seed.
 fn target_x86() -> ProvisioningTargetAdmission {
-  admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, )
+  admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: h11ssl_bmc_family, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, )
 }
 
 // THE amd64 INSTALL SET IS THE ADMITTED amd64 ROWS *PLUS* THE ONE PACKAGE THAT PROMPTS.
@@ -1234,6 +1242,10 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
                 // amd64-microcode ARRIVES AS AN INSTALL DRIVER TOO. pkg: and the apt row above are two different
                 // acts — install this, versus what the seed writes — and both must be present for this board.
                 && rendered.contains(needle: "pkg:amd64-microcode")
+                // THE BMC FAMILY IS RENDERED TOO, AND IT IS THE H11SSL'S OWN: Supermicro's X11/H11 stack is
+                // ATEN-lineage on the AST2500 (extdeps.bmc.supermicro), not Ampere's MegaRAC build. Pinning the
+                // token is what makes that a checked claim rather than a fixture that happens to say so.
+                && rendered.contains(needle: "bmc=supermicro-aten")
                 // NO PASSWORD FIELD EXISTS ANYWHERE IN THE DOCUMENT THIS SEED WRITES.
                 && (match seed_document(seed: seed) {
                      DocumentRefused { reason: _ } => false
