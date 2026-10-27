@@ -3734,7 +3734,7 @@ fn native_refusal_origin_label(origin: NativeRefusalOrigin) -> String {
 // identity minted by v2.compiler.resolve declarer_refused_diagnostic), `-` when the fatal carries none, so a consumer
 // judges a cascade by the named declarer and never by the reason text.
 fn native_census_refusal_cause_line(positions: NativeCensusPositionTable, entry: NativeCensusModule, origin: NativeRefusalOrigin, first: NonEmptyDiagnostics) -> String {
-  "binding_refusal_cause\t" + entry.module + "\t" + native_refusal_origin_label(origin: origin) + "\t" + symbol_lexeme(sym: diagnostics_fatal(d: first).reason) + "\t" + occurrence_binding_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions))) + "\t" + native_census_cause_declarer_text(chain: first)
+  "binding_refusal_cause\t" + entry.module + "\t" + native_refusal_origin_label(origin: origin) + "\t" + symbol_lexeme(sym: diagnostics_fatal(d: first).reason) + "\t" + occurrence_resolution_locus_text(locus: native_census_at_locus(at: native_census_locate_fatal(chain: first, path: entry.path, positions: positions))) + "\t" + native_census_cause_declarer_text(chain: first)
 }
 
 fn native_census_cause_declarer_text(chain: NonEmptyDiagnostics) -> String {
