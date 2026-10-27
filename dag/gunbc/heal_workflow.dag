@@ -131,7 +131,7 @@ data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 // plausible output is fabricated). The dispatch input is declared above as `base_sha`.
 data heal_base_sha_read: String = interpolate(expression: LogicalOr {
   left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] },
-  right: ContextAccess { context: Inputs, path: ["base_sha"] }
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_base_sha_input.name] }
 })
 
 data heal_workflow_name: String = "heal"
