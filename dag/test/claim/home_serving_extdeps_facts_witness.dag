@@ -8,7 +8,7 @@ import std.measure {
   basis_point_count, token_count_value,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
-import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
   nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog,
@@ -38,6 +38,7 @@ fn package_is_add_in_card(p: GpuPackageForm) -> Bool {
     PcieAddInCard => true
     SxmModule => false
     IntegratedComputePackage => false
+    GpuOnMultiGpuBoard => false
   }
 }
 
@@ -46,6 +47,7 @@ fn package_is_sxm(p: GpuPackageForm) -> Bool {
     SxmModule => true
     PcieAddInCard => false
     IntegratedComputePackage => false
+    GpuOnMultiGpuBoard => false
   }
 }
 
@@ -132,8 +134,24 @@ test fn w_purchase_candidates_are_add_in_cards_and_sxm_are_references() -> Bool 
     && !catalog_sku_in(rows: home_serving_add_in_card_catalog_rows, row: nvidia_b200_sxm_catalog)
     && catalog_sku_in(rows: home_serving_reference_sxm_catalog_rows, row: nvidia_b200_sxm_catalog)
     && catalog_sku_in(rows: home_serving_reference_sxm_catalog_rows, row: nvidia_b300_sxm_catalog)
-    && !dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier)
-    && string_contains(s: dissolution_description(condition: home_serving_accelerator_field_p4_frontier), pattern: "P4 home-serving selection")
+    // THE FRONTIER IS BOUND NOW, AND THAT IS A DIFFERENT FACT FROM "A CARD WAS CHOSEN".
+    // This conjunct used to require the frontier UNBOUND, with the trigger text as its only
+    // evidence — which was honest while the only thing that could bind it was someone picking a
+    // card, and false the moment the consuming fold existed. std.dissolution is explicit that
+    // dissolution_is_bound answers a CARRIER-SHAPE question: it calls dissolution_status with
+    // present_decls: [], so BoundDissolution reports Pending-or-Fired either way and the predicate
+    // distinguishes only "bound to a DeclarationRef" from "written into a description string". So
+    // this conjunct now checks the thing that actually changed — the frontier names the consuming
+    // fold instead of describing it — and the no-card-chosen fact is claimed where it can be seen,
+    // in test.claim.home_serving_candidate_field_witness::home_serving_live_verdict_is_never_a_pick_and_never_empty,
+    // which calls the fold and fails if any arm is SelectedWithin. Requiring unbound here would
+    // have kept a satisfied §3c frontier artificially open just so a sentence about "not yet"
+    // could keep riding on it.
+    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier)
+    && string_contains(
+         s: dissolution_description(condition: home_serving_accelerator_field_p4_frontier),
+         pattern: "gunbc.serving.home_serving_candidate_field::select_home_serving_candidate"
+       )
 }
 
 test fn w_pro6000_workstation_sku_is_not_the_server_sku() -> Bool {

@@ -258,7 +258,9 @@ pub fn rust_crate_package_idents(package_names: Rc<Vec<String>>) -> Rc<PackageId
                 bindings: Rc::new(vec![]),
                 refusal: std::option::Option::None,
             }),
-            |acc: _, package_name: String| package_ident_step(acc, package_name.clone()),
+            |acc: Rc<PackageIdentFold>, package_name: String| {
+                package_ident_step(acc, package_name.clone())
+            },
         );
         match folded.refusal.clone() {
             Some(cause) => Rc::new(PackageIdentSetOutcome::PackageIdentSetRefused {
@@ -277,7 +279,9 @@ pub fn package_ident_bound(
 ) -> Option<String> {
     bindings.iter().cloned().fold(
         std::option::Option::None,
-        |found: _, binding: Rc<PackageIdentBinding>| match (binding.package_name.clone()
+        |found: Option<String>, binding: Rc<PackageIdentBinding>| match (binding
+            .package_name
+            .clone()
             == package_name.clone())
         {
             true => Some(binding.ident.clone()),

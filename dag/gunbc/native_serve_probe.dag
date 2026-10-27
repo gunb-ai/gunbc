@@ -261,11 +261,11 @@ fn native_serve_clock_reading_order(reading: String) -> Int? {
 fn native_serve_clock_failure(identity: String, body: String) -> String {
   let lines = split(s: body, delimiter: "\n") |> filter(l => l != "")
   if (lines |> count) != 2 { concat(identity, concat(": expected two readings, got [", concat(body, "]"))) } else {
-    let first = match lines |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
-    let second = match lines |> skip(1) |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
-    match first {
+    let first_reading = match lines |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
+    let second_reading = match lines |> skip(1) |> first { Present { value: l } => native_serve_clock_reading_order(reading: l)  Absent => none }
+    match first_reading {
       Absent => concat(identity, concat(": first reading is not a plausible UTC second: [", concat(body, "]")))
-      Present { value: a } => match second {
+      Present { value: a } => match second_reading {
         Absent => concat(identity, concat(": second reading is not a plausible UTC second: [", concat(body, "]")))
         Present { value: b } => if b >= a { "" } else { concat(identity, concat(": readings went backwards: [", concat(body, "]"))) }
       }

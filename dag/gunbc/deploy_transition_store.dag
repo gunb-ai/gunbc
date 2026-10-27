@@ -1,6 +1,6 @@
 module gunbc.deploy_transition_store
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, Bool }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
