@@ -366,11 +366,11 @@ data hypothetical_blower_shape: NonEmptyStr = "hypothetical planform; no vendor,
 
 // One extent of such a shape, and what produced it. `cap` is the gap that capped it; where no reading
 // reaches that far, the extent is reported as unmeasured rather than as a number nobody took.
-data ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
+type ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
 
 // A shape's three roles, named by what the extent DOES in the home rather than by an axis, because a home
 // rotates the fan and it is the role that has to fit the gap.
-data BlowerShape { across_the_binding_gap: ShapeExtent, along_the_row: ShapeExtent, behind_the_end: ShapeExtent }
+type BlowerShape { across_the_binding_gap: ShapeExtent, along_the_row: ShapeExtent, behind_the_end: ShapeExtent }
 
 // A cap of this value or less means the model refuses to name one: no measurement reaches it.
 fn no_cap() -> ShapeExtent {
