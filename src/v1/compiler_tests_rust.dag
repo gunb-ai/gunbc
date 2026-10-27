@@ -2764,7 +2764,7 @@ fn ct_measure_unit_variant_exact_one_test() -> String {
     "        let mut env_value = (*crate::v1_compiler_infer_env::empty_type_env()).clone();\n",
     "        env_value.unit_variant_index = crate::v1_rt::rc_map_insert(crate::v1_rt::rc_empty_map(), \"Alpha\".to_string(), by_parent);\n",
     "        env_value.unit_variant_index_observed = observed;\n",
-    "        crate::v1_compiler_infer_env::type_ref_measure_binding_authority(std::rc::Rc::new(env_value), \"Alpha\".to_string())\n",
+    "        matches!(crate::v1_compiler_infer_env::type_ref_measure_binding_authority(std::rc::Rc::new(env_value), \"Alpha\".to_string()), crate::v1_compiler_infer_env::TypeRefMeasureBinding::TypeRefMeasureBound)\n",
     "    }\n",
     "\n",
     "    fn alpha_contributions(parents: &[(&str, i64)]) -> std::rc::Rc<HashMap<String, std::rc::Rc<crate::v1_compiler_infer_env::UnitVariantContribution>>> {\n",

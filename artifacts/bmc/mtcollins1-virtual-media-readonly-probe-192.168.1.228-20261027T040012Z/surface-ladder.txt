@@ -1,0 +1,25 @@
+B0 unauthenticated surface ladder -- mtcollins1 (192.168.1.228:443) -- out-of-band, read-only HTTPS GET only
+observer session: fierce-lark-507 (dashboard node adhoc-b4222c87-d37)
+observer_started_utc: 2026-10-27T04:00:12Z
+clock: observer_started_utc / observer_finished_utc / observer_utc are THIS CONTAINER's wall clock (UTC).
+       bmc_date is the Date header the CONTROLLER stamped on its own response -- the BMC's own
+       clock, which is skewed against the observer (see META.txt clock_skew). The BMC clock is
+       never used as the observation time; only the observer columns are.
+
+PATH                                       CODE  OBSERVER_UTC          BMC_DATE              SERVER_OR_AUTH
+/redfish                                   200   2026-10-27T04:00:12Z  Tue, 27 Oct 2026 04:00:09 GMT AMI MegaRAC Redfish Service
+/redfish/v1                                200   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:10 GMT AMI MegaRAC Redfish Service
+/redfish/v1/                               200   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:10 GMT AMI MegaRAC Redfish Service
+/redfish/v1/Systems                        401   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:10 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Managers                       401   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:10 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Managers/Self                  401   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:10 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Managers/Self/VirtualMedia     401   2026-10-27T04:00:13Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Systems/1                      401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Systems/1/VirtualMedia         401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/Chassis                        401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/SessionService                 401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/redfish/v1/AccountService                 401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT AMI MegaRAC Redfish Service | WWW-Authenticate: Basic realm="AMI_Redfish_Server",X-Auth-Token realm="AMI_Redfish_Server"
+/api/session                               404   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT lighttpd
+/api/settings/media/general                401   2026-10-27T04:00:14Z  Tue, 27 Oct 2026 04:00:11 GMT lighttpd
+/                                          200   2026-10-27T04:00:15Z  Tue, 27 Oct 2026 04:00:12 GMT lighttpd
+observer_finished_utc: 2026-10-27T04:00:15Z
