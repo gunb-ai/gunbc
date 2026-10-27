@@ -329,8 +329,13 @@ fn release_bins_roster_text(product: ReleaseBinsProduct) -> String {
 // which locations are normalized away and therefore which bytes come out. The hazard is concrete,
 // not hypothetical: on a key hit the job restores cached bins and SKIPS the build (fleet-converge's
 // `outcome != 'reuse'` guards), so a preamble change that moved the bytes without moving the key
-// would restore pre-change binaries and call them current. Dropping a remap prefix now moves the key,
-// and the falsifier named in docs/measurements/seed_build_reproducibility checks the byte claim.
+// would restore pre-change binaries and call them current. Dropping a remap prefix moves this digest,
+// and therefore moves the key, so the stale-restore path is closed by this row alone. The byte claim
+// itself is checked by an ON-DEMAND instrument, not by this row and not by any enrolled gate:
+// src/v1/stage0/src/compiler_tests.rs::seed_build_reproducibility_falsifier, which is #[ignore]d
+// because it runs cold release builds and the required path does not run v1 unit tests -- see
+// docs/measurements/seed_build_reproducibility and the rung on
+// gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
 fn release_bins_seed_build_environment_digest() -> String {
   join(["sha256:", sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: repo_self_build_env_preamble())))], "")
 }

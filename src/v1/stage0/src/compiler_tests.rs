@@ -3357,7 +3357,10 @@ mod compiler_tests {
                             continue;
                         }
                         *observed += 1;
-                        assert_eq!(formal["declaration_bound_conformance"]["name"], "String", "formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv");
+                        assert_eq!(
+                            formal["declaration_bound_conformance"]["name"], "String",
+                            "formal conformance must retain the callee declaration's String identity instead of being peeled through the caller TypeEnv"
+                        );
                         assert_eq!(
                             formal["declaration_bound_conformance"]["span"]["file"],
                             "<kernel:String>",
@@ -3372,7 +3375,11 @@ mod compiler_tests {
                         } else {
                             0
                         };
-                        assert_eq!(application["matched_argument_index"].as_i64(), Some(expected_argument), "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation");
+                        assert_eq!(
+                            application["matched_argument_index"].as_i64(),
+                            Some(expected_argument),
+                            "named arguments written in reverse order must stay paired by parameter identity; positional carriage is silently wrong and still typechecks because Left and Right share a representation"
+                        );
                     }
                 }
             }
@@ -3956,29 +3963,120 @@ mod compiler_tests {
     #[ignore] // three cold release builds of the seed on the remote runner; run with
               // `cargo test --lib -- --ignored seed_build_reproducibility_falsifier`
     fn seed_build_reproducibility_falsifier() {
-        // WHAT THIS KEEPS HONEST. The seed-build reproducibility repair claims one commit gives one
-        // sha256, because gunbc.repo.repo_self_build repo_self_build_env_preamble normalizes the four
-        // absolute paths rustc fuses into .rodata (checkout, target dir, registry home, sysroot) and
-        // pins the build identity to the tree. That claim is worth nothing unless it can go red, so
-        // this builds the seed three ways and compares bytes.
+        // WHAT THIS KEEPS HONEST, AND WHAT IT DOES NOT PROVE. The seed-build reproducibility repair
+        // claims one commit gives one sha256, because gunbc.repo.repo_self_build
+        // repo_self_build_env_preamble normalizes the absolute paths rustc fuses into .rodata
+        // (checkout, target dir, registry home, sysroot) and pins the build identity to the tree.
+        // The claim is worth nothing unless it can go red, so this runs four arms.
         //
-        //   GREEN: one commit, two INDEPENDENT clones, distinct CARGO_HOME and CARGO_TARGET_DIR each,
-        //          both built through the preamble -> equal sha256.
-        //   RED:   the same commit built WITHOUT the preamble -> must differ from the green pair.
+        //   (1) STRUCTURAL, FREE, PER PAIR. The pairs are read out of
+        //       dag/gunbc/repo/repo_self_build.dag (its SeedBuildRemap records plus the one string
+        //       literal that spells the flag) and required, pair by pair, in the committed step --
+        //       both directions, so a pair lost by the authority and a pair hand-added to a workflow
+        //       both fail. The cardinality must be four, and each pair must be well formed: its
+        //       source must be a $GUNBC_SEED_* variable that the same block assigns AND exports.
+        //       These are the ways a prefix becomes silently ineffective, and the byte arms below
+        //       cannot see them: if a pair vanishes from the authority, both clones lose it together
+        //       and still hash identically.
+        //   (2) GREEN, EXPENSIVE (two cold seed builds): one commit, two INDEPENDENT clones, distinct
+        //       CARGO_HOME and CARGO_TARGET_DIR each, both through the preamble -> equal sha256.
+        //   (3) RED, EXPENSIVE (one more cold seed build): the same commit built WITHOUT the preamble
+        //       -> must differ from the green pair.
         //
-        // The red arm is not decoration. Measured on commit a430c878e5cf: two clean clones at
-        // different paths hashed b8c24b3d... and ec03f8ac..., while those same two clones built
-        // through the preamble hashed 442c89e5... on both. Drop a remap prefix, or drop the preamble
-        // from a step, and the green arm goes red; if the remap were silently doing nothing, the red
-        // arm goes red. A build that was already reproducible without the fix passes neither arm.
+        // THE RED ARM IS PER-PREAMBLE, NOT PER-PREFIX, AND THAT IS A COST DECISION STATED OUT LOUD.
+        // A per-prefix byte arm needs one full cold build per prefix (any RUSTFLAGS change
+        // invalidates everything), i.e. six builds, which passes the remote runner's 1h cap. Manager
+        // ruling 2026-10-27 authorized keeping the whole-preamble red arm with the cost named. The
+        // per-prefix before-side is measured, not assumed: on a430c878e5cf two clean clones at
+        // different paths hashed b8c24b3d... and ec03f8ac..., the same two clones through the
+        // preamble hashed 442c89e5... on both, and the manager's control without the remap gave
+        // 141b29b0... vs 2941d394.... Recorded on
+        // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
         //
-        // THE PREAMBLE IS READ FROM THE COMMITTED WORKFLOW, NOT RE-SPELLED HERE. Re-spelling the
-        // flags in this test would make the test a second source of truth, and it would then keep
-        // passing after the authority lost a prefix. The emitted step text is what CI actually
-        // executes, so that is what gets exercised -- and reading it makes a second refusal legible
-        // for free: if the preamble is ever removed from a seed-build step, this test refuses to run.
-        // It is read from the CLONE, so the script under test and the binary it produces are the
-        // same commit even while the working tree moves.
+        // RUNG (DESIGN section 4b). This label is #[ignore]d because it performs cold release builds,
+        // and the required path does not run v1 unit tests, so nothing enrolls it: it is an ON-DEMAND
+        // instrument, and the rung recorded on that RFM row is the authority on that, not this
+        // comment. The capability that would raise the rung is named there.
+        //
+        // THE PREAMBLE IS READ FROM THE COMMITTED WORKFLOW, NOT RE-SPELLED HERE. Reading the emitted
+        // step (rather than calling the .dag function) exercises what CI actually executes, and a
+        // removed preamble makes the read below refuse: that is the removal this control exists to
+        // catch. It is read from the CLONE, so the script under test and the binary it produces are
+        // the same commit even while the working tree moves.
+        fn authority_remaps(text: &str) -> Vec<(String, String)> {
+            // The SeedBuildRemap records, read from the authority's own source. Comment lines are
+            // skipped so this comment cannot be mistaken for a record.
+            let mut out: Vec<(String, String)> = Vec::new();
+            for line in text.lines() {
+                let t = line.trim();
+                if t.starts_with("//") || !t.starts_with("SeedBuildRemap {") {
+                    continue;
+                }
+                let field = |key: &str| -> String {
+                    let pat = format!("{key}: \"");
+                    match t.find(&pat) {
+                        Some(i) => {
+                            let rest = &t[i + pat.len()..];
+                            rest.split('"').next().unwrap_or("").to_string()
+                        }
+                        None => String::new(),
+                    }
+                };
+                let record = (field("variable"), field("stable"));
+                assert!(
+                    !record.0.is_empty() && !record.1.is_empty(),
+                    "SeedBuildRemap record in gunbc.repo.repo_self_build is missing a field: {t}"
+                );
+                out.push(record);
+            }
+            out
+        }
+
+        fn authority_flag_spelling(text: &str) -> String {
+            // The ONE place the .dag spells the flag. Two spellings would mean the emitted flag and
+            // the asserted flag can drift apart, which is the whole defect this test guards.
+            let mut found: Vec<String> = Vec::new();
+            for line in text.lines() {
+                let t = line.trim();
+                if t.starts_with("//") {
+                    continue;
+                }
+                for probe in ["\" --remap-path-prefix=\"", "\"--remap-path-prefix=\""] {
+                    if t.contains(probe) {
+                        let spelling = probe.trim_matches('"').trim().to_string();
+                        if !found.contains(&spelling) {
+                            found.push(spelling);
+                        }
+                    }
+                }
+            }
+            assert_eq!(
+                found.len(),
+                1,
+                "gunbc.repo.repo_self_build spells the remap flag {} times in string literals; it \
+                 must be spelled exactly once, in remap_segments -- otherwise what the preamble \
+                 emits and what this control asserts can drift apart: {found:?}",
+                found.len()
+            );
+            found.into_iter().next().expect("checked non-empty above")
+        }
+
+        // The modeled serializer renders the RUSTFLAGS value as one word of adjacent quoted segments
+        // (`'-D warnings'` `'--remap-path-prefix='` `"$GUNBC_SEED_CHECKOUT"` …). Reading tokens from
+        // the text with its POSIX quotes removed gives the command the shell runs once that quoting
+        // has been performed, which is the level the pair facts live at.
+        fn remap_tokens_in(block: &str) -> Vec<String> {
+            let unquoted = block.replace("'", "");
+            let mut out: Vec<String> = Vec::new();
+            for word in unquoted.split_whitespace() {
+                let token = word.trim_matches('"').trim();
+                if token.starts_with("--remap-path-prefix=") && !out.contains(&token.to_string()) {
+                    out.push(token.to_string());
+                }
+            }
+            out
+        }
+
         let root = {
             let out = std::process::Command::new("git")
                 .args(["rev-parse", "--show-toplevel"])
@@ -4002,7 +4100,7 @@ mod compiler_tests {
         let work = std::env::temp_dir().join(format!("gunbc-seed-repro-{sha}"));
         let _ = std::fs::remove_dir_all(&work);
         std::fs::create_dir_all(&work).expect("create scratch dir");
-        let build = |tag: &str, use_preamble: bool| -> String {
+        let build = |tag: &str, use_preamble: bool| -> (String, String) {
             let dir = work.join(tag);
             let cloned = std::process::Command::new("git")
                 .args([
@@ -4014,50 +4112,41 @@ mod compiler_tests {
                 .status()
                 .expect("git clone");
             assert!(cloned.success(), "clone {tag} failed");
-            let script = {
-                let cargo_line = "cargo build --release -p v1-compiler --bin gunbc";
-                if !use_preamble {
-                    cargo_line.to_string()
-                } else {
-                    let yaml = std::fs::read_to_string(dir.join(".github/workflows/witnesses.yml"))
-                        .expect("read the committed witnesses workflow");
-                    let mut lines = yaml.lines();
-                    let start =
-                        lines.position(|l| l.trim_start().starts_with("GUNBC_SEED_CHECKOUT="));
-                    let start = start.expect(
-                        "the seed-build preamble is absent from the witnesses floor build step: \
-                         repo_self_build_env_preamble is no longer consumed there, so the step's \
-                         seed sha256 is runner-relative again (this is the removal the falsifier \
-                         exists to catch, not a test to relax)",
-                    );
-                    // Re-read from that offset and take the block through the identity guard's `fi`.
-                    let block: Vec<&str> = yaml
-                        .lines()
-                        .skip(start)
-                        .scan(false, |done, l| {
-                            if *done {
-                                return None;
-                            }
-                            *done = l.trim() == "fi";
-                            Some(l)
-                        })
-                        .collect();
-                    let preamble = block.join("\n");
-                    for needle in [
-                        "--remap-path-prefix=$GUNBC_SEED_CHECKOUT=/build/checkout",
-                        "--remap-path-prefix=$GUNBC_SEED_TARGET=/build/target",
-                        "--remap-path-prefix=$GUNBC_SEED_CARGO_HOME=/build/cargo-home",
-                        "--remap-path-prefix=$GUNBC_SEED_SYSROOT=/build/rust",
-                    ] {
-                        assert!(
-                            preamble.contains(needle),
-                            "the committed seed-build preamble lost \
-a remap prefix ({needle}); the seed binary would keep that absolute path baked in, so its sha256 \
-would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
-                        );
-                    }
-                    format!("{preamble}\n{cargo_line}")
-                }
+            let cargo_line = "cargo build --release -p v1-compiler --bin gunbc";
+            let preamble = if !use_preamble {
+                String::new()
+            } else {
+                let yaml = std::fs::read_to_string(dir.join(".github/workflows/witnesses.yml"))
+                    .expect("read the committed witnesses workflow");
+                let start = yaml
+                    .lines()
+                    .position(|l| l.trim_start().starts_with("GUNBC_SEED_CHECKOUT="));
+                let start = start.expect(
+                    "the seed-build preamble is absent from the witnesses floor build step: \
+                     repo_self_build_env_preamble is no longer consumed there, so the step's seed \
+                     sha256 is runner-relative again (this is the removal the falsifier exists to \
+                     catch, not a test to relax)",
+                );
+                // Re-read from that offset and take the block through the identity guard's `fi`.
+                // The terminator is a line ENDING in `fi`, not a line EQUAL to it: the modeled
+                // route serializes a guard as one line (`if …; then …; fi`), so the block ends on
+                // the guard's own line rather than on a standalone bash keyword.
+                yaml.lines()
+                    .skip(start)
+                    .scan(false, |done, l| {
+                        if *done {
+                            return None;
+                        }
+                        *done = l.trim().ends_with("fi");
+                        Some(l)
+                    })
+                    .collect::<Vec<&str>>()
+                    .join("\n")
+            };
+            let script = if use_preamble {
+                format!("{preamble}\n{cargo_line}")
+            } else {
+                cargo_line.to_string()
             };
             let cargo_home = work.join(format!("cargo-home-{tag}"));
             let target = work.join(format!("target-{tag}"));
@@ -4088,22 +4177,88 @@ would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_rel
                 "sha256sum failed for {}",
                 bin.display()
             );
-            String::from_utf8(out.stdout)
+            let hash = String::from_utf8(out.stdout)
                 .expect("utf8 digest")
                 .split_whitespace()
                 .next()
                 .expect("a digest")
-                .to_string()
+                .to_string();
+            (hash, preamble)
         };
-        let a = build("a", true);
-        let b = build("b", true);
+
+        let (a, preamble) = build("a", true);
+        let (b, _) = build("b", true);
+
+        // ---- arm 1: the free structural arms, per pair, over the clone that produced `a` ----
+        let authority =
+            std::fs::read_to_string(work.join("a").join("dag/gunbc/repo/repo_self_build.dag"))
+                .expect("read the preamble authority from the clone");
+        let flag = authority_flag_spelling(&authority);
+        let remaps = authority_remaps(&authority);
+        let pairs: Vec<String> = remaps
+            .iter()
+            .map(|record| format!("{flag}${}={}", record.0, record.1))
+            .collect();
+        // The cardinality tripwire: the authority names the four absolute locations rustc fuses.
+        // A dropped pair cannot be caught by the byte arms (both clones lose it together), so it is
+        // caught here or nowhere.
+        assert_eq!(
+            pairs.len(),
+            4,
+            "gunbc.repo.repo_self_build repo_self_seed_build_remaps declares {} pairs; the repair \
+             names four absolute locations rustc fuses into the seed (checkout, target dir, \
+             registry home, sysroot). A pair dropped from this list would vanish from every emitted \
+             step and the green arm would still pass, because both clones lose it together.",
+            pairs.len()
+        );
+        let emitted = remap_tokens_in(&preamble);
+        // Every containment check runs against the quote-stripped block, so none of them is
+        // accidentally a check on the serializer's quoting style rather than on the command.
+        let checks = preamble.replace("'", "");
+        for pair in &pairs {
+            assert!(
+                emitted.contains(pair),
+                "the committed seed-build preamble lost a remap pair ({pair}) that the authority \
+                 declares; the seed binary would keep that absolute path baked in, so its sha256 \
+                 would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
+            );
+        }
+        for seen in &emitted {
+            assert!(
+                pairs.contains(seen),
+                "the committed seed-build preamble carries a remap pair ({seen}) the authority does \
+                 not declare: a workflow gained a hand-added prefix, which is a second source of \
+                 truth beside gunbc.repo.repo_self_build"
+            );
+            let pair = seen
+                .strip_prefix("--remap-path-prefix=")
+                .expect("shape established above");
+            let split = pair.split_once('=').unwrap_or(("", ""));
+            assert!(
+                split.0.starts_with("$GUNBC_SEED_") && split.1.starts_with("/build/"),
+                "remap pair {seen} is malformed: the source must be a $GUNBC_SEED_* variable and \
+                 the target a /build/* stable name"
+            );
+            let variable = split.0.strip_prefix("$").expect("checked above");
+            assert!(
+                checks.contains(&format!("{variable}="))
+                    && checks.contains(&format!("export {variable}")),
+                "remap pair {seen} reads a variable the preamble never assigns and exports, so the \
+                 flag would name an empty path -- which rustc accepts silently, the exact failure \
+                 mode where the binary keeps absolute paths and every receipt still says success"
+            );
+        }
+
+        // ---- arm 2: the green arm ----
         assert_eq!(
             a, b,
             "GREEN ARM BROKEN: commit {sha} built from two independent clones through the seed-build \
              preamble gave {a} and {b}; one commit must give one sha256 \
              (gunbc.recurring_failure_mode.seed_sha256_is_runner_relative)"
         );
-        let c = build("c", false);
+
+        // ---- arm 3: the red arm ----
+        let (c, _) = build("c", false);
         // THE MEASUREMENT ITSELF, printed rather than transcribed: three hashes over one commit,
         // the last built the way the tree was built before this repair.
         eprintln!(
@@ -4112,9 +4267,9 @@ would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_rel
         assert!(
             c != a,
             "RED ARM NOT RED: commit {sha} built WITHOUT the seed-build preamble hashed {c}, equal \
-             to the preamble-built {a}. Either the remap prefixes do nothing, or this module's \
-             variance disappeared for a reason unrelated to the repair -- either way the falsifier \
-             has stopped discriminating and must be re-aimed, not deleted."
+             to the preamble-built {a}. Either the remap is doing nothing, or this module's variance \
+             disappeared for a reason unrelated to the repair -- either way the falsifier has \
+             stopped discriminating and must be re-aimed, not deleted."
         );
         let _ = std::fs::remove_dir_all(&work);
     }
@@ -6202,10 +6357,16 @@ would be runner-relative (gunbc.recurring_failure_mode.seed_sha256_is_runner_rel
             )
         };
         let user = || {
-            src("fixtures/same_leaf_optional/user.dag", "module hom.user\nimport std.optional { Optional, Present, Absent }\n\nfn nothing_here(x: Int) -> Optional<Int> {\n  Absent\n}\n")
+            src(
+                "fixtures/same_leaf_optional/user.dag",
+                "module hom.user\nimport std.optional { Optional, Present, Absent }\n\nfn nothing_here(x: Int) -> Optional<Int> {\n  Absent\n}\n",
+            )
         };
         let coll = || {
-            src("fixtures/same_leaf_optional/coll.dag", "module hom.coll\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n")
+            src(
+                "fixtures/same_leaf_optional/coll.dag",
+                "module hom.coll\n\ntype Optional\n  = CollisionWrapped { value: Int }\n  | CollisionEmpty\n",
+            )
         };
         let emitted_user = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {
             let result = crate::v1_compiler_compile::compile_sources(
