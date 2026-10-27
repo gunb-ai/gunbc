@@ -1658,7 +1658,7 @@ fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
   fold_list(
     xs: xs,
     empty: ListInitLag { kept: Empty, pending: Absent },
-    cons: fn(acc: ListInitLag<T>, item: T) {
+    cons: fn(acc, item) {
       match acc.pending {
         Absent => ListInitLag { kept: acc.kept, pending: Present { value: item } }
         Present { value: p } =>
