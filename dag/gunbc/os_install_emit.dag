@@ -14,7 +14,7 @@ import extdeps.os.ubuntu_autoinstall {
   StoragePolicyDirectLayout,
   UbuntuAutoinstallLiveCommands,
 }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line }
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
@@ -60,11 +60,37 @@ fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
     kv(key: "lock_passwd", value: yaml_bool(b: user.lock_passwd)),
     kv(
       key: "ssh_authorized_keys",
+      // The user table only exists on the key-only route (AutoinstallIdentityPosture.UserDataOnly), which is
+      // the route the public seed contract governs, so canonical is the only spelling that can be admitted.
       value: yaml_sequence(elements: map(user.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_canonical_line(k: k)))),
     ),
     kv(key: "shell", value: yaml_string(s: cloudinit_user_shell_text(shell: user.shell))),
     kv(key: "sudo", value: yaml_string(s: cloudinit_nopasswd_sudo_rule)),
   ]
+}
+
+// AN AUTHORIZED KEY IS WRITTEN TWO WAYS, AND THE ENTRY ROUTE DECIDES WHICH — because the two routes ship
+// this document somewhere with different rules.
+//
+// * UserDataOnly is the key-only posture, and its document is what
+//   gunbc.provisioning.public_nocloud_seed.admit_public_nocloud_seed seals for the PXE edge to serve. That
+//   contract admits only the CANONICAL public key line: keytype plus blob, no comment, because sshd(8)'s
+//   comment field is free text and a public volume must not carry it (merry-fox-82's hold at 0dd912cd, cited
+//   on public_nocloud_seed.seed_public_key_line). Emit the comment there and the mint refuses the seed.
+// * WithIdentity is the seeded-handle route, and its document goes to a BMC-staged NoCloud volume and to
+//   srv3's seeded ISO. Those volumes are not published, and the fleet's own live installs (srv3_ubuntu_autoinstall,
+//   srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso — all WithIdentity, all with an ssh section)
+//   have ALWAYS carried the commented line. Canonicalizing there would have been a quiet edit to documents
+//   live installs consume, stripping their key comments with nothing recording it — DESIGN.md §4b, no silent
+//   regression. The witness test the_identity_route_still_writes_commented_authorized_keys pins those bytes.
+//
+// So this is not "two renderers for the same thing": the posture is the fact that determines the rules, and
+// it is read off the declared coproduct rather than inferred from a flag.
+fn autoinstall_authorized_key_line(posture: AutoinstallIdentityPosture, k: SshPublicKey) -> String {
+  match posture {
+    UserDataOnly { users: _ } => ssh_public_key_canonical_line(k: k)
+    WithIdentity { identity: _, user_data: _ } => ssh_public_key_line(k: k)
+  }
 }
 
 fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
@@ -113,7 +139,8 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     Present { value: ssh } => append(with_user_data, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_canonical_line(k: k))))),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k =>
+          yaml_string(s: autoinstall_authorized_key_line(posture: payload.identity_posture, k: k))))),
         kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])

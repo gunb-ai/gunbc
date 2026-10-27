@@ -1254,6 +1254,12 @@ test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
                          && !content.contains(needle: "identity")
                          && content.contains(needle: "lock_passwd: true")
                          && content.contains(needle: "allow-pw: false")
+                         // THE KEY LINE IS CANONICAL ON THIS ROUTE: algorithm and blob, and NOT the commented
+                         // spelling the fixture would produce. The two spellings differ only by the trailing
+                         // comment, so asserting both directions is what stops the srv3/srv4 byte-identity
+                         // guarantee from being bought by weakening the public seed contract.
+                         && content.contains(needle: ssh_public_key_canonical_line(k: provisioning_key))
+                         && !content.contains(needle: ssh_public_key_line(k: provisioning_key))
                          // THE DOCUMENT FITS THE CLOSED PUBLIC NoCloud SCHEMA. Not an approximation checked
                          // key by key here: the real mint runs on the real rendered tree and its own audit
                          // says admitted. This is the row that fails first if the emitter and the schema ever
@@ -1305,20 +1311,15 @@ test fn the_arm_rendering_is_byte_identical_to_the_pre_rename_capture() -> Bool 
       match seed_document(seed: pair.seed) {
         DocumentRefused { reason: _ } => false
         DocumentBuilt { payload: _, content: content } =>
-          // ONE DELTA IS ALLOWED, AND IT IS NAMED RATHER THAN ASSUMED. #15136 (main, landed after this
-          // capture) closed the seed schema and made every renderer emit the CANONICAL key line — the same
-          // algorithm and base64 material, with the comment dropped, because a seed must not carry free text
-          // (merry-fox-82's hold at 0dd912cde58). That is a change to what a seed says, not to what the rename
-          // did, and it moves the ARM document too. So the control restores that one line to its pre-#15136
-          // spelling and demands the digest of the CAPTURED document, exactly: any other drift — a key
-          // reordered, a module renamed, an entry added, an indentation change — breaks it.
-          sha256_hex_of_text(
-            text: replace(
-              s: content,
-              from: ssh_public_key_canonical_line(k: provisioning_key),
-              to: ssh_public_key_line(k: provisioning_key),
-            )
-          )
+          // RAW BYTES, NO ALLOWANCE, NO RESTORATION. #15136 closed the public seed schema and required the
+          // CANONICAL key line (algorithm + blob, no comment — a published seed must not carry sshd(8) free
+          // text, merry-fox-82's hold at 0dd912cde58). That rule binds the KEY-ONLY route, whose document is
+          // the one published; this ARM document travels on a BMC-staged volume and a seeded ISO, and its
+          // route keeps the commented line it has always written (see os_install_emit's
+          // autoinstall_authorized_key_line). So the captured digest is demanded EXACTLY, with nothing
+          // substituted first: a rename that reworded, reordered, retyped or "tidied" a single byte of the
+          // aarch64 document fails here, and so would any future attempt to canonicalize this route.
+          sha256_hex_of_text(text: content)
             == "7044037d409ab316009b79f41f996bcf0b8c261ae2bf65f6a5e7b1e985f945c9"
       }
   }

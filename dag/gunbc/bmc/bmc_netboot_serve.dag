@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.types { NonEmptyStr, String, Int, List, Port }
 import std.algebra { list_append }
 import extdeps.uri { Uri, Http, Https, uri_wire }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, nocloud_seedfrom_kernel_arg }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, WithIdentity, UserDataOnly, nocloud_seedfrom_kernel_arg }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
@@ -350,9 +350,14 @@ fn bmc_netboot_instance_id(plan: BmcNetbootServePlan) -> Optional<NonEmptyStr> {
 
 fn bmc_netboot_staging_refused_instance_id() -> BmcNetbootStaging {
   BmcNetbootStagingRefused {
-    reason: "bmc-netboot cannot stage a key-only (user-data) seed: nocloud/meta-data needs an instance-id, "
-      "this plan's comes from its identity hostname, and the only cited rule for the field derives it from a "
-      "client MAC a serve plan does not yet have" as NonEmptyStr,
+    reason: join(
+      [
+        "bmc-netboot cannot stage a key-only (user-data) seed: nocloud/meta-data needs an instance-id, ",
+        "this plan's comes from its identity hostname, and the only cited rule for the field derives it ",
+        "from a client MAC a serve plan does not yet have",
+      ],
+      "",
+    ) as NonEmptyStr,
   }
 }
 

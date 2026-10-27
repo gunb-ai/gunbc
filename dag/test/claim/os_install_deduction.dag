@@ -9,7 +9,7 @@ import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendere
 import std.types { Bool }
 import std.live_tree { LiveTreeDisposition }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall_on_iso }
+import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall, srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -146,6 +146,33 @@ test fn direct_layout_emits_storage_yaml() -> Bool {
     AutoinstallUserDataRefused { reason: _ } => false
     AutoinstallUserDataRendered { content: ud } => ud.contains("layout:") && ud.contains("direct")
   }
+}
+
+// THE IDENTITY ROUTE STILL WRITES THE COMMENTED AUTHORIZED-KEY LINE — pinned in bytes, not asserted.
+// gunbc.os_install_emit writes an authorized key two ways and the ENTRY ROUTE decides, because the two routes
+// ship the document somewhere with different rules: the key-only route's document is published on a public
+// NoCloud volume, where the seed contract admits keytype+blob and no comment, while the identity route's goes
+// to a BMC-staged volume and to srv3's seeded ISO. Canonicalizing the identity route too would have stripped
+// the comments off documents LIVE INSTALLS consume, with nothing recording it (DESIGN.md §4b). The three
+// payloads below are the fleet's live autoinstalls; each is a WithIdentity payload with an ssh section, so each
+// is exactly where a silent byte change would have landed. The expected lines are literals on purpose — a
+// witness that calls the renderer to produce its own expectation checks nothing.
+fn renders_identity_route_key_line(payload: UbuntuAutoinstallPayload, line: String) -> Bool {
+  match autoinstall_user_data(payload: payload) {
+    AutoinstallUserDataRefused { reason: _ } => false
+    AutoinstallUserDataRendered { content: ud } => ud.contains(line)
+  }
+}
+
+data macbook_key_line_with_comment: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF macbook-m4"
+
+data automation_key_line_with_comment: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc"
+
+test fn the_identity_route_still_writes_commented_authorized_keys() -> Bool {
+  renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall, line: macbook_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall, line: automation_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall_on_iso, line: macbook_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv4_ubuntu_autoinstall_on_iso, line: automation_key_line_with_comment)
 }
 
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
