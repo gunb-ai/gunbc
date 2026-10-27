@@ -17,6 +17,7 @@ import std.algebra { Cons, Empty }
 import std.resources { Network }
 import std.serialization { Text }
 import extdeps.transports.rest { RestResult }
+import std.integer { int_to_decimal_string }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto
@@ -118,7 +119,7 @@ fn github_workflow_run_id_of_wire(n: Int) -> GitHubWorkflowRunId {
 }
 
 fn github_workflow_run_id_wire_text(id: GitHubWorkflowRunId) -> String {
-  id.value as String
+  int_to_decimal_string(value: id.value)
 }
 
 fn github_workflow_run_id_from_wire_text(text: String) -> GitHubWorkflowRunId? {

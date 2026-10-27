@@ -1,5 +1,6 @@
 module test.claim.runner.runner_qualification_dispatch_witness
 
+import std.nat { nat_to_decimal_string }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import std.algebra { Cons, Empty }
@@ -746,7 +747,7 @@ fn recorded_floor_job() -> WorkflowJobRun {
 // bytes refuse, because a receipt bounded by another cgroup measured another subject.
 test fn the_collect_decoder_reads_a_recorded_required_run() -> Bool {
   (match decode_job_instruments(job: recorded_floor_job(), log: recorded_v2_bootstrap_receipt_log, slot_unit: recorded_v2_bootstrap_slot_unit as NonEmptyStr) {
-    SubjectReadingsRead { readings: rs } => count(rs) == 2 && join(map(rs, r => second_count(r.wall) as String), ",") == "813,870"
+    SubjectReadingsRead { readings: rs } => count(rs) == 2 && join(map(rs, r => nat_to_decimal_string(value: second_count(r.wall))), ",") == "813,870"
     SubjectReadingsRefused { refusal: _ } => false
   })
     && (match decode_job_instruments(job: recorded_floor_job(), log: recorded_v2_bootstrap_receipt_log, slot_unit: "gunbc-qualification-mtcollins1-q-20261004-1.service" as NonEmptyStr) {

@@ -6,6 +6,7 @@ module test.claim.runner.runner_qualification_subject_readings_witness
 // says the envelope was violated or whose numbers show an OOM kill or swap, a receipt bounded outside the slot, a
 // garbled receipt, and a job record without steps.
 
+import std.nat { nat_to_decimal_string }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { second_count, byte_size_count }
@@ -59,7 +60,7 @@ test fn a_recorded_required_run_decodes_to_one_reading_per_subject_step() -> Boo
   match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: recorded_v2_bootstrap_receipt_log, slot_unit: slot(), rows: emitted_subject_build_rows()) {
     SubjectReadingsRead { readings: rs } =>
       count(rs) == 2
-        && join(rs |> map(r => second_count(r.wall) as String), ",") == "813,870"
+        && join(rs |> map(r => nat_to_decimal_string(value: second_count(r.wall))), ",") == "813,870"
         && (rs |> all(r => is_held(r: r.receipt) && byte_size_count(b: r.receipt.peak) == 14481920000 && (match r.receipt.limit_high { CgroupMemoryLimited { bytes: b } => byte_size_count(b: b) == 22548578304 _ => false })))
     SubjectReadingsRefused { refusal: _ } => false
   }

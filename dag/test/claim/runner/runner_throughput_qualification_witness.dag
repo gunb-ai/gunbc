@@ -66,7 +66,7 @@ import gunbc.runner.runner_throughput_qualification {
   AssessedFact, SlotMemoryEnvelope, SubjectWallsAgainstFleetBaseline, ConcurrentCohortAtWidth,
   RunnerCohortEvidence, NoCohortObserved, CohortObserved, run_key,
 }
-import std.nat { Nat, nat_range_inclusive }
+import std.nat { Nat, nat_range_inclusive, nat_to_decimal_string }
 import std.observation { AttemptOccurrenceId }
 import product.capacity.cohort_observation {
   CohortReading, CohortSeatReading, SeatSettlement, SeatSettledAs, SeatSucceeded, SeatFailed, seal_cohort,
@@ -86,6 +86,7 @@ import gunbc.runner.runner_throughput_qualification_route {
   SubjectMemoryReceipts, SubjectStepWalls, ConcurrentCohortSeatWindows, qualification_instrument_wire, qualification_instrument_producer,
 }
 import gunbc.runner.runner_microvm_network { HostChainDefaultDrop, TapScopedFinalDrop }
+import std.integer { int_to_decimal_string }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -459,7 +460,7 @@ test fn the_subject_and_baseline_readings_decode_from_the_recorded_run() -> Bool
   let s = subject_readings()
   let b = baseline_readings()
   count(s) == count(emitted_subject_build_rows()) && count(b) == count(s) && count(s) >= 1
-    && join(map(s, r => second_count(r.wall) as String), ",") == join(map(b, r => second_count(r.wall) as String), ",")
+    && join(map(s, r => nat_to_decimal_string(value: second_count(r.wall))), ",") == join(map(b, r => nat_to_decimal_string(value: second_count(r.wall))), ",")
     && (s |> all(r => string_contains(s: r.receipt.cgroup as String, pattern: slot_unit() as String)))
 }
 
@@ -541,7 +542,7 @@ test fn a_unit_whose_effective_high_is_not_the_selected_high_is_refused() -> Boo
 // A RECEIPT BOUNDED BY ANOTHER HIGH MEASURED ANOTHER ENVELOPE, and a run with no subject step read carries no receipt
 // at all: both refuse on the bound axis, never as a run with no memory.
 test fn a_receipt_under_another_high_or_no_receipt_is_refused_on_the_bound_axis() -> Bool {
-  let want = byte_size_count(b: slot_high()) as String
+  let want = nat_to_decimal_string(value: byte_size_count(b: slot_high()))
   let other = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=21474836480"), unit: slot_unit())
   let unlimited = readings_of(log: attempt_log_with(from: concat("limit_high=", want), to: "limit_high=max"), unit: slot_unit())
   count(other) == count(subject_readings()) && count(unlimited) == count(subject_readings())
@@ -616,7 +617,7 @@ test fn a_subject_read_twice_refuses_the_roster() -> Bool {
 // RUN B'S PEAK REACHES memory.high; RUN A IS THE RECORDED CLEAN RUN. The host must not deliver: memory takes the
 // maximum peak over every subject step of every run, so the clean run cannot hide the pinned one.
 test fn a_run_that_pinned_the_high_line_is_not_hidden_by_a_clean_run() -> Bool {
-  let high = byte_size_count(b: slot_high()) as String
+  let high = nat_to_decimal_string(value: byte_size_count(b: slot_high()))
   let pinned = readings_of(log: attempt_log_with(from: "peak_bytes=14481920000", to: concat("peak_bytes=", high)), unit: slot_unit())
   let a = assess_unobserved(selection: selection(), runs: [good_run(id: run_a), varied_run(id: run_b, subjects: pinned)])
   count(pinned) == count(subject_readings()) && !assessment_holds(a: a)
@@ -685,7 +686,7 @@ test fn delivery_needs_a_sealed_concurrent_cohort_at_the_derived_width() -> Bool
   let apart = map(ids, id => if id.value == 35447067201 { CohortSeatReading { seat: id, source: AttemptOccurrenceId { attempt: "cohort-1" as NonEmptyStr, id: github_workflow_run_id_wire_text(id: id) as NonEmptyStr }, ready_at: t(n: 5), started_at: t(n: 50), ended_at: t(n: 60), settlement: SeatSettledAs { settled: SeatSucceeded } } } else { seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded }) })
   w >= 2
     && concurrency_is(a: assess_unobserved(selection: selection(), runs: runs), want: "no concurrent cohort was observed")
-    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", (w - 1) as String, " seats but the derived width is ", w as String], ""))
+    && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: map(short, id => seat_reading(id: id, settlement: SeatSettledAs { settled: SeatSucceeded })))), want: join(["the cohort ran ", int_to_decimal_string(value: w - 1), " seats but the derived width is ", int_to_decimal_string(value: w)], ""))
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: failed)), want: "cohort seat 35447067201 failed: floor phase refused")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: stranger)), want: "a cohort seat is not one of the assessed runs: 35447099999")
     && concurrency_is(a: assess_runner_throughput(selection: selection(), runs: runs, baseline: baseline(), cohort: cohort_of(seats: apart)), want: "the seats were never all active at once")
@@ -918,11 +919,11 @@ fn ephemeral_slot_words_carry_fleet_shape(reading: SystemdRunCommandReading) -> 
     SystemdRunCommandReady { command: command } => {
       let argv = argv_words(command: command)
       let has_quota_word = argv |> any(w => string_contains(s: w, pattern: "--property=CPUQuota="))
-      (argv |> any(w => w == concat("--property=MemoryMax=", byte_size_count(b: gunbc_runner_slot_desired().memory_max) as String)))
+      (argv |> any(w => w == concat("--property=MemoryMax=", nat_to_decimal_string(value: byte_size_count(b: gunbc_runner_slot_desired().memory_max)))))
         && (match gunbc_runner_slot_desired().cpu_quota {
           SlotCpuQuotaUnbounded => !has_quota_word
           CpuQuotaResolved { threads: t } =>
-            argv |> any(w => w == concat("--property=CPUQuota=", concat((hardware_thread_count_value(t: t) * 100) as String, "%")))
+            argv |> any(w => w == concat("--property=CPUQuota=", concat(nat_to_decimal_string(value: hardware_thread_count_value(t: t) * 100), "%")))
         })
     }
   }

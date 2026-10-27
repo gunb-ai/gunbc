@@ -53,6 +53,7 @@ import extdeps.github.app { GitHubInstallationTokenPermissions, github_installat
 import extdeps.github.effect { contents_write, pull_requests_write }
 import gunbc.auth.github_apps { gunbai_bot_declared, gunbai_bot_app_pem_secret, gunbai_bot_declared_installation_id, gunbai_bot_host_signing_key }
 import gunbc.repository { gunbc_repository }
+import std.integer { int_to_decimal_string }
 
 // THE HOME OF A PERFORMED GitHubEffect. extdeps.github.effect is the effect SHAPE; the services in
 // extdeps.github.* are REST realizations bound to it (gunbc#10923); this module is the workflow
@@ -424,7 +425,7 @@ type WorkflowJobLogRead sole_constructor {
 }
 
 fn read_job_log_with(token: ControllerInstallationToken, owner: NonEmptyStr, repo: NonEmptyStr, job_id: Int) -> WorkflowJobLogRead uses net: Network {
-  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: job_id as String)
+  let read = github.WorkflowRuns.DownloadJobLogsForWorkflowRun(auth_token: token.token, owner: owner as String, repo: repo as String, job_id: int_to_decimal_string(value: job_id))
   WorkflowJobLogRead {
     job_id: job_id,
     log: match read {
