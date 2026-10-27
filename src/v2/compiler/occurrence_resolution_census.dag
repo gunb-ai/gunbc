@@ -1,4 +1,4 @@
-module v2.compiler.occurrence_binding_census
+module v2.compiler.occurrence_resolution_census
 
 import std.algebra { Cons, Empty, FreeMonoid, fold_list, length, list_at_optional, list_snoc_item, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, map_support_keys, map_contains_key }
 import std.optional { Optional, Present, Absent }
@@ -15,14 +15,14 @@ import v2.compiler.type_declaration_use_census { type_ref_text, ref_text, as_arr
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string, declaration_reference_path_optional }
 import v2.std.symbol_index { SymbolIndex, GlobalBareLookup, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_global_unique_lookup }
 import v2.compiler.resolve {
-  ResolvedTree, OccurrenceBinding, OccurrenceBindingRecord, OccurrenceBindingEntry, occurrence_binding_duplicates, ResolvedReferenceIdentity,
+  ResolvedTree, OccurrenceResolution, OccurrenceResolutionRecord, OccurrenceResolutionEntry, occurrence_resolution_duplicates, ResolvedReferenceIdentity,
   ResolvedToKernelSymbol, ResolvedToDeclaration,
   BoundByLexicalBinder, BoundToParameter, BoundToTypeParameter, BoundToDeclaration, BoundAmbient, BoundByExpectedType, BoundByGeneratedReference,
   AmbientBindingTable, AmbientKernelTypeSpelling, AmbientKernelCanonicalSymbol, AmbientPrimitiveAuthority, AmbientCollectionRoster
 }
 
 // THE PER-MODULE BINDING CENSUS: one row for every reference occurrence resolve recorded, read off the
-// ONE binding record (v2.compiler.resolve ResolvedTree.occurrence_bindings), never re-derived. It is the
+// ONE binding record (v2.compiler.resolve ResolvedTree.occurrence_resolutions), never re-derived. It is the
 // census the NAMESPACE-XL waves are driven from (operator ruling 2026-10-15: every name the corpus uses
 // is an ordinary declaration reached by import) -- the BoundAmbient rows are what is left to move -- and
 // the per-occurrence half of the namespace-wave binding diff
@@ -44,7 +44,7 @@ type BindingSourceClass
   | SourceExpectedType
   | SourceGeneratedReference
 
-type OccurrenceBindingCensusRow {
+type OccurrenceResolutionCensusRow {
   module: String
   authored: String
   ordinal: Int
@@ -56,9 +56,9 @@ type OccurrenceBindingCensusRow {
 // What one module contributed: its rows, the occurrences resolve recorded with two different bindings (a resolver defect the
 // exactly-one-source control refuses on), and the occurrences whose authored spelling did not read
 // (reported, never keyed under a guessed spelling).
-type OccurrenceBindingContribution {
+type OccurrenceResolutionContribution {
   module: String
-  rows: List<OccurrenceBindingCensusRow>
+  rows: List<OccurrenceResolutionCensusRow>
   duplicate_records: Int
   unreadable_spellings: Int
   unrecorded_references: Int
@@ -123,7 +123,7 @@ fn resolved_identity_target(identity: ResolvedReferenceIdentity) -> String {
 // compilations do not share. A lexical binding that changed WHICH binder answered still changes the
 // source or the ordinal of something the diff sees only when the spelling's population moves; this
 // census does not claim to observe a lexical re-binding that keeps both.
-fn occurrence_binding_source(binding: OccurrenceBinding) -> BindingSourceClass {
+fn occurrence_resolution_source(binding: OccurrenceResolution) -> BindingSourceClass {
   match binding {
     BoundByLexicalBinder { binding: _ } => SourceLexicalBinder
     BoundToParameter { path: _ } => SourceParameter
@@ -135,7 +135,7 @@ fn occurrence_binding_source(binding: OccurrenceBinding) -> BindingSourceClass {
   }
 }
 
-fn occurrence_binding_target(binding: OccurrenceBinding) -> String {
+fn occurrence_resolution_target(binding: OccurrenceResolution) -> String {
   match binding {
     BoundByLexicalBinder { binding: _ } => "lexical"
     BoundToParameter { path: p } => qualified_name_to_dotted_string(qn: p)
@@ -149,7 +149,7 @@ fn occurrence_binding_target(binding: OccurrenceBinding) -> String {
 
 type BindingCensusFold {
   ordinals: Map<String, Int>
-  rows: List<OccurrenceBindingCensusRow>
+  rows: List<OccurrenceResolutionCensusRow>
   unreadable: Int
 }
 
@@ -161,24 +161,24 @@ fn binding_census_locus(loci: Map<OccurrenceId, SourceLineCol>, id: OccurrenceId
 // THE ENCODING BOUNDARY of a locus: `<line>:<byte column>`, or `-` for an occurrence the span index does not record.
 // Absence is the Optional's Absent arm everywhere else; this is the one place it becomes text, and a reader parses `-`
 // back to Absent at its own single boundary.
-fn occurrence_binding_locus_text(locus: Optional<SourceLineCol>) -> String {
+fn occurrence_resolution_locus_text(locus: Optional<SourceLineCol>) -> String {
   match locus {
     Present { value: lc } => to_string(lc.line) + ":" + to_string(lc.byte_column.value)
     Absent => "-"
   }
 }
 
-fn occurrence_binding_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceBindingContribution {
-  let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_bindings), key: fn(id) { id.value }, order: int_total_order())
+fn occurrence_resolution_contribution(module: String, tree: ResolvedTree, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceResolutionContribution {
+  let ids = list_sort_by_key(xs: map_support_keys(m: tree.occurrence_resolutions), key: fn(id) { id.value }, order: int_total_order())
   let split = unrecorded_split_walk(tree: tree, n: tree.root, order_head: false, acc: UnrecordedSplit { other: [], declared_order: [] })
   let unrecorded = split.other
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
-    match map_lookup(m: tree.occurrence_bindings, key: id) {
+    match map_lookup(m: tree.occurrence_resolutions, key: id) {
       Absent => acc
       Present { value: record } => binding_census_step(module: module, acc: acc, record: record, locus: binding_census_locus(loci: loci, id: id))
     }
   })
-  OccurrenceBindingContribution {
+  OccurrenceResolutionContribution {
     module: module,
     rows: folded.rows,
     duplicate_records: length(xs: tree.duplicate_binding_records),
@@ -309,8 +309,8 @@ fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
     Absent => false
     Present { value: _ } =>
       match n.occurrence_id {
-        OccurrenceMinted { id: id } => !map_contains_key(m: tree.occurrence_bindings, key: id)
-        OccurrenceProjected { id: id, caused_by: _ } => !map_contains_key(m: tree.occurrence_bindings, key: id)
+        OccurrenceMinted { id: id } => !map_contains_key(m: tree.occurrence_resolutions, key: id)
+        OccurrenceProjected { id: id, caused_by: _ } => !map_contains_key(m: tree.occurrence_resolutions, key: id)
         OccurrenceSynthetic => false
         OccurrencePending { caused_by: _ } => false
       }
@@ -321,7 +321,7 @@ fn declaration_reference_unrecorded(tree: ResolvedTree, n: Node) -> Bool {
 // binder (lexical, parameter, type parameter) wins the ancestor chain before any import is consulted, so
 // no wave's import can re-bind it, and counting its occurrences would shift the ordinals of a spelling
 // that is also a module-level name for no reason the diff cares about.
-fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
+fn occurrence_resolution_is_module_level(binding: OccurrenceResolution) -> Bool {
   match binding {
     BoundByLexicalBinder { binding: _ } => false
     BoundToParameter { path: _ } => false
@@ -339,7 +339,7 @@ fn occurrence_binding_is_module_level(binding: OccurrenceBinding) -> Bool {
 
 // Every stopgap table answers a module-level name. Written as its own match because the seed's Rust
 // emitter rendered the all-wildcard pattern `BoundAmbient { table: _, identity: _ }` as the bare unit
-// path `OccurrenceBinding::BoundAmbient` (E0533 in the emitted crate, PR #14112), and binding the
+// path `OccurrenceResolution::BoundAmbient` (E0533 in the emitted crate, PR #14112), and binding the
 // table keeps the pattern a struct pattern.
 // Workaround row: gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x); delete when the emitter keeps the braces.
 fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
@@ -351,15 +351,15 @@ fn ambient_table_is_module_level(table: AmbientBindingTable) -> Bool {
   }
 }
 
-fn binding_census_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
-  if occurrence_binding_is_module_level(binding: record.binding) {
+fn binding_census_step(module: String, acc: BindingCensusFold, record: OccurrenceResolutionRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
+  if occurrence_resolution_is_module_level(binding: record.binding) {
     binding_census_module_level_step(module: module, acc: acc, record: record, locus: locus)
   } else {
     acc
   }
 }
 
-fn binding_census_module_level_step(module: String, acc: BindingCensusFold, record: OccurrenceBindingRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
+fn binding_census_module_level_step(module: String, acc: BindingCensusFold, record: OccurrenceResolutionRecord, locus: Optional<SourceLineCol>) -> BindingCensusFold {
   match record.authored {
     Absent => BindingCensusFold { ordinals: acc.ordinals, rows: acc.rows, unreadable: acc.unreadable + 1 }
     Present { value: qn } =>
@@ -370,12 +370,12 @@ fn binding_census_module_level_step(module: String, acc: BindingCensusFold, reco
       }
       BindingCensusFold {
         ordinals: map_insert(acc.ordinals, spelling, ordinal + 1),
-        rows: list_snoc_item(xs: acc.rows, item: OccurrenceBindingCensusRow {
+        rows: list_snoc_item(xs: acc.rows, item: OccurrenceResolutionCensusRow {
           module: module,
           authored: spelling,
           ordinal: ordinal,
-          source: occurrence_binding_source(binding: record.binding),
-          target: occurrence_binding_target(binding: record.binding),
+          source: occurrence_resolution_source(binding: record.binding),
+          target: occurrence_resolution_target(binding: record.binding),
           locus: locus
         }),
         unreadable: acc.unreadable
@@ -385,17 +385,17 @@ fn binding_census_module_level_step(module: String, acc: BindingCensusFold, reco
 
 // ONE PRINTED LINE PER ROW, the shape the host-side readers split on. Tab-separated so a dotted path or
 // a kernel symbol never collides with the separator.
-fn occurrence_binding_census_line(row: OccurrenceBindingCensusRow) -> String {
-  "binding" + occurrence_binding_row_fields(row: row)
+fn occurrence_resolution_census_line(row: OccurrenceResolutionCensusRow) -> String {
+  "binding" + occurrence_resolution_row_fields(row: row)
 }
 
 // A row's fields after its kind word; a complete row and a partial row (binding_partial) share them.
-fn occurrence_binding_row_fields(row: OccurrenceBindingCensusRow) -> String {
-  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target + "\t" + occurrence_binding_locus_text(locus: row.locus)
+fn occurrence_resolution_row_fields(row: OccurrenceResolutionCensusRow) -> String {
+  "\t" + row.module + "\t" + row.authored + "\t" + to_string(row.ordinal) + "\t" + binding_source_label(source: row.source) + "\t" + row.target + "\t" + occurrence_resolution_locus_text(locus: row.locus)
 }
 
-fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> List<String> {
-  let bound = fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_binding_census_line(row: row)) })
+fn occurrence_resolution_contribution_lines(c: OccurrenceResolutionContribution) -> List<String> {
+  let bound = fold_list(xs: c.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: occurrence_resolution_census_line(row: row)) })
   let rows = fold_list(xs: c.declarations, empty: bound, cons: fn(acc, d) { list_snoc_item(xs: acc, item: "binding_declaration\t" + c.module + "\t" + d.name + "\tfn\t" + d.signature) })
   list_snoc_item(
     xs: fold_list(
@@ -414,7 +414,7 @@ fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> Li
 // module still prints binding_unreached and stays refused.
 //
 // Its VALIDITY is carried here, in the observation channel, never in resolve, with the exactly-one-source
-// semantics a resolved module already has (v2.compiler.resolve occurrence_binding_duplicates): a repeat
+// semantics a resolved module already has (v2.compiler.resolve occurrence_resolution_duplicates): a repeat
 // EQUAL to the first record is one occurrence recorded twice and dedupes; a record that DISAGREES makes
 // the whole partial observation unusable, so its rows are withheld and only the count is printed; an
 // occurrence whose authored spelling did not read is counted, never keyed under a guessed spelling.
@@ -427,18 +427,18 @@ fn occurrence_binding_contribution_lines(c: OccurrenceBindingContribution) -> Li
 // compilations does not establish which occurrence corresponds to which. Every row therefore ends with its
 // source locus (`<line>:<byte column>`, v2.compiler.source_root_eval native_census_binding_loci), the provenance
 // a cross-compilation correspondence is verified on; a reader joins on it, never on the ordinal.
-type OccurrenceBindingPartial {
+type OccurrenceResolutionPartial {
   module: String
-  rows: List<OccurrenceBindingCensusRow>
+  rows: List<OccurrenceResolutionCensusRow>
   conflicting: Int
   unreadable: Int
 }
 
-fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceBindingPartial {
+fn occurrence_resolution_partial(module: String, entries: List<OccurrenceResolutionEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> OccurrenceResolutionPartial {
   let records = fold_list(xs: entries, empty: empty_map(), cons: fn(m, e) {
     if map_contains_key(m: m, key: e.reference) { m } else { map_insert(m: m, key: e.reference, value: e.record) }
   })
-  let conflicting = map_support_keys(m: fold_list(xs: occurrence_binding_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
+  let conflicting = map_support_keys(m: fold_list(xs: occurrence_resolution_duplicates(entries: entries), empty: empty_map(), cons: fn(m, id) { map_insert(m: m, key: id, value: true) }))
   let ids = list_sort_by_key(xs: map_support_keys(m: records), key: fn(id) { id.value }, order: int_total_order())
   let folded = fold_list(xs: ids, empty: BindingCensusFold { ordinals: empty_map(), rows: [], unreadable: 0 }, cons: fn(acc, id) {
     match map_lookup(m: records, key: id) {
@@ -446,7 +446,7 @@ fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEnt
       Present { value: record } => binding_census_step(module: module, acc: acc, record: record, locus: binding_census_locus(loci: loci, id: id))
     }
   })
-  OccurrenceBindingPartial {
+  OccurrenceResolutionPartial {
     module: module,
     rows: if length(xs: conflicting) == 0 { folded.rows } else { [] },
     conflicting: length(xs: conflicting),
@@ -454,10 +454,10 @@ fn occurrence_binding_partial(module: String, entries: List<OccurrenceBindingEnt
   }
 }
 
-fn occurrence_binding_partial_lines(module: String, entries: List<OccurrenceBindingEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> List<String> {
-  let p = occurrence_binding_partial(module: module, entries: entries, loci: loci)
+fn occurrence_resolution_partial_lines(module: String, entries: List<OccurrenceResolutionEntry>, loci: Map<OccurrenceId, SourceLineCol>) -> List<String> {
+  let p = occurrence_resolution_partial(module: module, entries: entries, loci: loci)
   list_snoc_item(
-    xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_binding_row_fields(row: row)) }),
+    xs: fold_list(xs: p.rows, empty: [], cons: fn(acc, row) { list_snoc_item(xs: acc, item: "binding_partial" + occurrence_resolution_row_fields(row: row)) }),
     item: "binding_partial_module\t" + module + "\t" + to_string(length(xs: p.rows)) + "\t" + to_string(p.conflicting) + "\t" + to_string(p.unreadable)
   )
 }

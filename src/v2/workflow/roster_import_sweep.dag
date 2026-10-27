@@ -56,7 +56,7 @@ import v2.std.node { Atom, Authored, ComputationNode, Conj, Edge, Match, Node, P
 import v2.std.provenance { RecordedSourceExtent, SourceExtentKnown, span_index_extent, span_index_textual_locus_optional, SpanIndex }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_insert, symbol_index_mark_module_root }
-import v2.compiler.occurrence_binding_census { binding_unbound_oracle_line }
+import v2.compiler.occurrence_resolution_census { binding_unbound_oracle_line }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
 
 // RULING-B ROSTER IMPORT SWEEP (#14003 / #14017), computed from the PARSED program, not from text.
@@ -377,6 +377,8 @@ fn roster_head_rows() -> List<RosterHeadRow> {
     RosterHeadRow { call: "list_push", import_name: "list_push", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: KeepHead },
     // sha256_hex_of_text: UTF-8 encode, SHA-256, lowercase hex; one declared home beside sha256_hex_digest (sleek-owl-397).
     RosterHeadRow { call: "sha256_hex_of_text", import_name: "sha256_hex_of_text", home: qualified_name_from_dotted_string(dotted: "std.content_hash"), labels: [], head: KeepHead },
+    // compile_dag_diagnostic_census is the census builtin's one declared home (root-coordinator decision, sleek-owl-397).
+    RosterHeadRow { call: "compile_dag_diagnostic_census", import_name: "compile_dag_diagnostic_census", home: qualified_name_from_dotted_string(dotted: "gunbc.compile_diagnostic_census"), labels: [], head: KeepHead },
     // NAMESPACE-XL wave 1 (tidy-ant-251's H2/H4 rulings, #14233): chars has one declared home.
     RosterHeadRow {
       call: "chars",
@@ -3931,7 +3933,7 @@ fn roster_control_generated_row_refuses(name: String, line: String) -> String {
 }
 
 // THE PRODUCER'S OWN LINES PARSE AS THE PARSER EXPECTS (the pairing claim of the supplied-line control above): an index
-// built here is handed to the census's real producer, v2.compiler.occurrence_binding_census binding_unbound_oracle_line,
+// built here is handed to the census's real producer, v2.compiler.occurrence_resolution_census binding_unbound_oracle_line,
 // and its output is parsed. A unique answer yields the row (home = the owning module root); ambiguous, absent and
 // unavailable answers refuse. A change to the producer's field order or answer words turns this red.
 fn roster_control_oracle_producer_pairing() -> String {

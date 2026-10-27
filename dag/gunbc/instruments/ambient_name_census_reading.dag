@@ -10,7 +10,7 @@ import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitPr
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
-// read off resolve's one binding record (v2.compiler.occurrence_binding_census), and one
+// read off resolve's one binding record (v2.compiler.occurrence_resolution_census), and one
 // `binding_module` line per module that resolved, or one `binding_unreached` line per module that did
 // not. This module is the host-side reader the instrument row hands its runs to, and it decides:
 //
@@ -271,8 +271,8 @@ fn census_observation_text(tree_stdout: String) -> String {
     + (distinct_lines(lines: partial_lines(stdout: tree_stdout)) |> join(separator: "\n")) + "\n"
 }
 
-// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_binding_census
-// occurrence_binding_partial_lines), forwarded as printed. They never count as observation of the module:
+// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_resolution_census
+// occurrence_resolution_partial_lines), forwarded as printed. They never count as observation of the module:
 // observed_modules reads only binding_module, and the module's binding_unreached line still stands. The
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
@@ -307,10 +307,10 @@ fn ambient_name_census_standing(
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
     |> map(l => "rewritten\t" + l + "\t" + module_subjects_text(attribution: attribution, module: field_at(line: l, index: 0)))
   let subject_lines = map_keys(observed) |> map(m => "module_subjects\t" + m + "\t" + module_subjects_text(attribution: attribution, module: m))
-  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_binding_census UnrecordedSplit): declared-order
+  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_resolution_census UnrecordedSplit): declared-order
   // heads no one resolves, printed by module and path and counted, never refused and never hidden.
   let unanswered = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unanswered\t")))
-  // THE GLOBAL_BARE MIGRATION ORACLE'S ROWS (v2.compiler.occurrence_binding_census binding_unbound_oracle_line), forwarded
+  // THE GLOBAL_BARE MIGRATION ORACLE'S ROWS (v2.compiler.occurrence_resolution_census binding_unbound_oracle_line), forwarded
   // verbatim with one count per answer word. They are the generated import sweep's row source
   // (v2.workflow.roster_import_sweep roster_generated_row_of_oracle_line), so this label is their executing route; they
   // are observation only and no exit below reads them.
