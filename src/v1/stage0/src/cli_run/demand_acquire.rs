@@ -359,7 +359,8 @@ fn read_layout_module(
     })))
 }
 
-/// `gunbc.rung_drop.roster` and `gunbc.recurring_failure_mode.roster` have no file;
+/// The `DERIVED_ROW_ROSTERS` modules (`gunbc.rung_drop.roster`, `gunbc.recurring_failure_mode.roster`,
+/// `gunbc.guarantee_stall.roster`) have no file;
 /// the tree walk mints them in memory (`derived_row_roster::acquire_dir_files`).
 fn read_derived_roster_module(
     name: &str,

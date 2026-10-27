@@ -7,7 +7,7 @@ import std.optional { Present }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.bmc.megarac { megarac_firmware_0_32, megarac_firmware_0_45_3 }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
-import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_image_name }
 import gunbc.machine_intake.mtcollins1_census_image { mtcollins1_census_image_stem }
 import gunbc.runner.runner_host_medium { runner_host_medium_image_stem }
@@ -39,10 +39,10 @@ import gunbc.machine_intake.megarac_media_attach {
   presented_convergence,
   presented_media,
 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
-  MtCollins1EndMedia,
-  EndMediaObserved,
-  EndMediaNotTaken,
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
+  MegaRacEndMedia,
+  MegaRacEndMediaObserved,
+  MegaRacEndMediaNotTaken,
   EndMediaRelease,
   EndReleaseKeptHostOn,
   EndReleaseWithheld,
@@ -51,14 +51,16 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
   EndReleaseGateKeep,
   EndReleaseGateWithhold,
   EndReleaseGateAdmit,
-  PoweredOffAfterCensusEnd,
-  PoweredOffWithoutCensusEnd,
-  PoweredOnAfterAttempt,
-  PowerAfterUnobserved,
-  PowerAfterNotTaken,
   end_release_gate,
   end_release_residue,
   outcome_with_end_release,
+}
+import gunbc.host.boot_attempt {
+  PoweredOffAfterTerminal,
+  PoweredOffWithoutTerminal,
+  PoweredOnAfterAttempt,
+  PowerAfterUnobserved,
+  PowerAfterNotTaken,
 }
 
 // THE END OF AN ATTEMPT RELEASES ITS OWN SESSION. Boot run 39868779331 ended with its census row Started
@@ -66,7 +68,7 @@ import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle {
 // attempts (40038339650, 40070230626) met that row at redirection_status 19 and refused. Every input is a
 // supplied configurations body or detach evidence at the release's own pure folds
 // (gunbc.machine_intake.megarac_media_attach own_session_release_step, own_session_end_of_detach) and the
-// bundle's gate and residue (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle end_release_gate,
+// bundle's gate and residue (gunbc.machine_intake.megarac_boot_diagnostic_bundle end_release_gate,
 // end_release_residue, outcome_with_end_release). The real producer is
 // gunbc.machine_intake.megarac_boot_media_attach megarac_release_boot_session from
 // gunbc.machine_intake.mtcollins1_boot_run mtcollins1_boot_actuate, whose route the acceptance matrix
@@ -202,9 +204,9 @@ test fn a_host_left_on_keeps_its_session() -> Bool {
 }
 
 test fn a_host_observed_off_admits_the_release_and_an_unobserved_one_withholds_it() -> Bool {
-  (match end_release_gate(power_after: PoweredOffAfterCensusEnd) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
-    && (match end_release_gate(power_after: PoweredOffWithoutCensusEnd) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
-    && (match end_release_gate(power_after: PowerAfterUnobserved { observation: ChassisUnreadable }) { EndReleaseGateWithhold { reason: _ } => true  _ => false })
+  (match end_release_gate(power_after: PoweredOffAfterTerminal) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
+    && (match end_release_gate(power_after: PoweredOffWithoutTerminal) { EndReleaseGateAdmit { power: ChassisPowerRead { power_on: false } } => true  _ => false })
+    && (match end_release_gate(power_after: PowerAfterUnobserved { reason: "the chassis read did not answer" }) { EndReleaseGateWithhold { reason: _ } => true  _ => false })
     && (match end_release_gate(power_after: PowerAfterNotTaken { reason: "fixture" }) { EndReleaseGateWithhold { reason: _ } => true  _ => false })
 }
 
@@ -246,8 +248,8 @@ test fn every_other_release_is_residue_naming_its_cause() -> Bool {
     && residue_present(r: EndReleaseRan { result: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "401" }, session_release: SessionReleaseNotAttempted, baseline: none } }, pattern: "did not run: session refused: 401")
 }
 
-fn observed(end_release: EndMediaRelease) -> MtCollins1EndMedia {
-  EndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, end_release: end_release }
+fn observed(end_release: EndMediaRelease) -> MegaRacEndMedia {
+  MegaRacEndMediaObserved { look: MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "look fixture" }, session_release: SessionReleaseNotAttempted, baseline: none }, end_release: end_release }
 }
 
 // A success that left its session behind is a failure naming it; a failure keeps its own cause first.

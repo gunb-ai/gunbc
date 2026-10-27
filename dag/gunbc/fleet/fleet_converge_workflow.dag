@@ -803,7 +803,7 @@ data fleet_converge_fleet_identity_step_if: String = concat(concat("!(", fleet_c
 //     identity from the agent;
 //   - extdeps.bmc.ipmi Tool.SelListAuthenticated and extdeps.bmc.http redfish.Http
 //     GetSystemsCollection/GetMemoryCollection/GetMemory/GetProcessorCollection/GetProcessor, the
-//     readonly reads of gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle -- the same BMC
+//     readonly reads of gunbc.machine_intake.megarac_boot_diagnostic_bundle -- the same BMC
 //     credential, by -f for ipmitool and through a per-attempt gunbc.auth.netrc_binding netrc,
 //     shredded on every path, for curl;
 //   - extdeps.tools.env shell.Env.Get, extdeps.tools.sleep Delay.Seconds, extdeps.clock Clock.Now --

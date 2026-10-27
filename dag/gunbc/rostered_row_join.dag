@@ -28,8 +28,10 @@ import std.types { String, List }
 // not carry the names they were bound from -- `DeclFact`'s initializer projection reports the same
 // kind for a literal and for a reference to another declaration. So no Accepted program can ask
 // "which declarations does this list name". The names are readable only from the parse, which is
-// where the join therefore executes: `v1_compiler.cli_run.rostered_row_join`, inside the required-CI
-// PARSE phase, riding the index that phase has already built. That is the same shape and the same
+// where the join is implemented: `v1_compiler.cli_run.rostered_row_join`, over a parse-sweep index.
+// IT HAS NO CALLER: nothing on the required path runs it, so this enrolment establishes no refusal
+// (`gunbc.recurring_failure_mode` `a_drops_rederivation_instrument_sits_in_the_population_it_measures`).
+// It was written for a required-CI parse phase that no longer reaches it. That is the same shape and the same
 // reason as `claim_executor` `phase_roster_findings`, which joins the host phase enum against
 // `gunbc.required_ci_phase_roster` on every required run.
 //
@@ -87,7 +89,7 @@ data rostered_row_joins: List<RosteredRowJoin> = [
     row_type: GuaranteeStallRows,
     declared_type_name: "GuaranteeStall",
     roster_module: "gunbc.guarantee_stall.roster",
-    roster_declaration: "all_guarantee_stalls",
+    roster_declaration: "guarantee_stall_roster",
   },
   RosteredRowJoin {
     row_type: RecurringFailureModeRows,

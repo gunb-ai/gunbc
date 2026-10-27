@@ -3,7 +3,9 @@ module gunbc.ci.ci_spec
 import gunbc.fleet.printer_workflow_artifact { printer_workflow_receipt_path }
 import gunbc.claim_executor_cli { claim_executor_relative_path }
 
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake.mtcollins1_boot_row {
+  mtcollins1_kvm_observer_dir
+}
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
