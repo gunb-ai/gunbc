@@ -3473,7 +3473,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
 // declared under any other name. dag/test/claim/litsymbol_is_symbol.dag
 // caret_symbol_named_type_is_not_the_minted_carrier is that assertion's RED.
 fn is_minted_caret_symbol(n: Node) -> Bool {
-  n == symbol_type
+  n.name == "Symbol"
 }
 
 fn kernel_value_declared_type_mismatch_bounded(
