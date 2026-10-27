@@ -6855,20 +6855,20 @@ pub fn emit_typed_cast_shared(
                         v1_rt::concat(
                             v1_rt::concat(
                                 {
-                                    let __d = source_type
+                                    let __d = expr
                                         .inferred
                                         .clone()
                                         .map(|i| {
                                             let t = format!("{:?}", (*i).clone());
-                                            t.chars().take(120).collect::<String>()
+                                            t.chars().take(160).collect::<String>()
                                         })
                                         .unwrap_or("None".to_string());
                                     eprintln!(
                                         "DIAGCAST src_ty={} inferred={} name={} children={}",
                                         src_ty.clone(),
                                         __d,
-                                        source_type.name.clone(),
-                                        source_type.children.len()
+                                        expr.name.clone(),
+                                        expr.children.len()
                                     );
                                     crate::v1_compiler_infer_types::diag_mint_trace(
                                         "DIAGCASTTRACE",
