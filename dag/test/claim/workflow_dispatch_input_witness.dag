@@ -634,6 +634,12 @@ test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Boo
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
+test fn the_gpu_container_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerGpuContainerToolchainConverge))
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
