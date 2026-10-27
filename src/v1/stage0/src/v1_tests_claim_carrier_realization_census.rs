@@ -323,7 +323,7 @@ pub fn typed_occurrence_rows(
             {
                 let param_rows = n.params.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, p: Rc<Node>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, p: Rc<Node>| {
                         v1_rt::concat(
                             acc,
                             typed_occurrence_rows(
@@ -375,24 +375,23 @@ pub fn typed_occurrence_rows(
                 } else {
                     n.children.clone()
                 };
-                let arg_rows =
-                    arg_children
-                        .iter()
-                        .cloned()
-                        .fold(no_typed_rows(), |acc: _, a: Rc<Node>| {
-                            v1_rt::concat(
-                                acc,
-                                typed_occurrence_rows(
-                                    module_file.clone(),
-                                    enclosing.clone(),
-                                    v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
-                                    a.clone(),
-                                    env.clone(),
-                                    type_decls.clone(),
-                                    si.clone(),
-                                ),
-                            )
-                        });
+                let arg_rows = arg_children.iter().cloned().fold(
+                    no_typed_rows(),
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, a: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            typed_occurrence_rows(
+                                module_file.clone(),
+                                enclosing.clone(),
+                                v1_rt::concat(position_kind.clone(), "/type_arg".to_string()),
+                                a.clone(),
+                                env.clone(),
+                                type_decls.clone(),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                );
                 v1_rt::concat(
                     Rc::new(vec![typed_decision_row(
                         module_file.clone(),
@@ -419,10 +418,9 @@ pub fn typed_field_rows(
     type_decls: Rc<TypeDeclIndex>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
-    fields
-        .iter()
-        .cloned()
-        .fold(no_typed_rows(), |acc: _, fld: Rc<Node>| {
+    fields.iter().cloned().fold(
+        no_typed_rows(),
+        |acc: Rc<Vec<Rc<TypedCarrierRow>>>, fld: Rc<Node>| {
             v1_rt::concat(
                 acc,
                 typed_occurrence_rows(
@@ -435,7 +433,8 @@ pub fn typed_field_rows(
                     si.clone(),
                 ),
             )
-        })
+        },
+    )
 }
 
 pub fn typed_item_rows(
@@ -453,7 +452,7 @@ pub fn typed_item_rows(
             if crate::v1_compiler_infer_types::is_coproduct_type(item.clone()) {
                 item.children.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, variant: Rc<Node>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, variant: Rc<Node>| {
                         v1_rt::concat(
                             acc,
                             typed_field_rows(
@@ -484,20 +483,23 @@ pub fn typed_item_rows(
             crate::v1_compiler_emit_rust::function_value_params(item.params.clone())
                 .iter()
                 .cloned()
-                .fold(no_typed_rows(), |acc: _, prm: Rc<Node>| {
-                    v1_rt::concat(
-                        acc,
-                        typed_occurrence_rows(
-                            module_file.clone(),
-                            enclosing.clone(),
-                            "fn_signature_param".to_string(),
-                            crate::v1_std_core::param_node_type_expr(prm.clone()),
-                            env.clone(),
-                            type_decls.clone(),
-                            si.clone(),
-                        ),
-                    )
-                })
+                .fold(
+                    no_typed_rows(),
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, prm: Rc<Node>| {
+                        v1_rt::concat(
+                            acc,
+                            typed_occurrence_rows(
+                                module_file.clone(),
+                                enclosing.clone(),
+                                "fn_signature_param".to_string(),
+                                crate::v1_std_core::param_node_type_expr(prm.clone()),
+                                env.clone(),
+                                type_decls.clone(),
+                                si.clone(),
+                            ),
+                        )
+                    },
+                )
         };
         let return_rows = if ((item.body.clone() == std::option::Option::None)
             || crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()))
@@ -528,11 +530,9 @@ pub fn typed_module_rows(
 ) -> Rc<Vec<Rc<TypedCarrierRow>>> {
     {
         let module_file = crate::v1_std_core::authored_name_at(si.clone(), m.module.clone());
-        m.items
-            .clone()
-            .iter()
-            .cloned()
-            .fold(no_typed_rows(), |acc: _, item: Rc<Node>| {
+        m.items.clone().iter().cloned().fold(
+            no_typed_rows(),
+            |acc: Rc<Vec<Rc<TypedCarrierRow>>>, item: Rc<Node>| {
                 v1_rt::concat(
                     acc,
                     typed_item_rows(
@@ -543,7 +543,8 @@ pub fn typed_module_rows(
                         si.clone(),
                     ),
                 )
-            })
+            },
+        )
     }
 }
 
@@ -738,14 +739,15 @@ pub fn typed_row_tsv(r: Rc<TypedCarrierRow>) -> String {
 }
 
 pub fn typed_census_tsv(rows: Rc<Vec<Rc<TypedCarrierRow>>>) -> String {
-    rows.iter()
-        .cloned()
-        .fold(typed_census_header(), |acc: String, r: _| {
+    rows.iter().cloned().fold(
+        typed_census_header(),
+        |acc: String, r: Rc<TypedCarrierRow>| {
             v1_rt::concat(
                 v1_rt::concat(acc, "\n".to_string()),
                 typed_row_tsv(r.clone()),
             )
-        })
+        },
+    )
 }
 
 pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
@@ -764,7 +766,7 @@ pub fn typed_census_from_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
                 .clone();
                 typed_census_tsv(g.modules.clone().iter().cloned().fold(
                     no_typed_rows(),
-                    |acc: _, m: Rc<TypedModule>| {
+                    |acc: Rc<Vec<Rc<TypedCarrierRow>>>, m: Rc<TypedModule>| {
                         v1_rt::concat(
                             acc,
                             typed_module_rows(

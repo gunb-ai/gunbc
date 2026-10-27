@@ -95,7 +95,7 @@ data redfish_http_hardwired_transport_note: String = "§3(b) declared debt: ever
 // GetResourceByPath IS THE ONE READ THAT FOLLOWS A LINK THE SERVICE PUBLISHED. DSP0266 makes a
 // resource's `@odata.id` and a collection's `Members@odata.nextLink` URIs the client follows as
 // given, so the path is an input carried exactly, never assembled from an Id; its consumer
-// (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) admits only same-origin /redfish/v1/
+// (gunbc.machine_intake.megarac_boot_diagnostic_bundle) admits only same-origin /redfish/v1/
 // paths before calling it, because the request presents a credential. It binds stderr and
 // exit_code beside the body because curl exit 7 (connection refused or unreachable), 28
 // (timeout) and 22 with "error: 401" (authentication refused) are different diagnoses, and it

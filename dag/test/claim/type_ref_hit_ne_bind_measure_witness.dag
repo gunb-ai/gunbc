@@ -7,6 +7,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
   census_blocking_rows,
+  census_count_at_key,
   census_rows_of_class,
   census_total_count
 }
@@ -16,7 +17,7 @@ import gunbc.type_ref_hit_ne_bind_measure.authority {
   type_ref_hit_ne_bind_measure_dissolve_trigger,
   type_ref_hit_ne_bind_measure_rung_note
 }
-import std.types { String, Bool }
+import std.types { String, Bool, Int }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -86,4 +87,56 @@ test fn dissolve_trigger_names_n2_canonical_fold() -> Bool {
   string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "occurrence_binding_from_candidates")
     && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "OccurrenceBindingResult")
     && string_contains(s: dissolution_description(condition: type_ref_hit_ne_bind_measure_dissolve_trigger), pattern: "containment-binding-cross-module-type-references-design.md")
+}
+
+// THE QUALIFIED ARM'S THIRD ANSWER (gunbc#15097). A qualified reference production resolves --
+// v1.compiler.infer_env lookup_qualified_module_projection, an exact symbol_index hit -- binds
+// under the measure when its qualifier is an ancestor (row7) or a module this module imports,
+// selectively or whole. When it is neither, the two routes disagree, and the measure refuses
+// with its own class, TypeRefMeasureBindingDisagreement, never UnresolvedType: the declaration
+// resolves, so UnresolvedType would misname the cause. A qualified name with no exact hit is
+// unresolved on both routes and stays UnresolvedType. Each claim is keyed on class AND subject,
+// and each source names the subject twice (parameter and return), so every count is exactly 2
+// or exactly 0.
+fn keyed_blocking_count(source: String, diagnostic_class: String, subject: String) -> Int {
+  match census_of(source: source) {
+    CensusObserved { rows: rows } =>
+      census_count_at_key(rows: rows, diagnostic_class: diagnostic_class, subject_name: subject, blocking: true)
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data qualified_unresolvable_source: String = "module type_ref_q_nosuch\nimport std.effect_grant \{ Envelope \}\nfn f(x: std.effect_grant.NoSuchVerb) -> std.effect_grant.NoSuchVerb \{ x \}\n"
+
+data qualified_selective_import_source: String = "module type_ref_q_selective\nimport std.effect_grant \{ Envelope \}\nfn f(x: std.effect_grant.Verb) -> std.effect_grant.Verb \{ x \}\n"
+
+data qualified_whole_import_source: String = "module type_ref_q_whole\nimport std.effect_grant\nfn f(x: std.effect_grant.Verb) -> std.effect_grant.Verb \{ x \}\n"
+
+// std.effect_grant is in this closure only because extdeps.transports.rest imports it; this
+// module imports neither it nor anything under it.
+data qualified_reached_not_imported_source: String = "module type_ref_q_transitive\nimport extdeps.transports.rest \{ RestResult \}\nfn f(x: std.effect_grant.Verb) -> std.effect_grant.Verb \{ x \}\n"
+
+test fn qualified_ref_with_no_declaration_still_blocks_as_unresolved_type() -> Bool {
+  keyed_blocking_count(source: qualified_unresolvable_source, diagnostic_class: "UnresolvedType", subject: "std.effect_grant.NoSuchVerb") == 2
+    && keyed_blocking_count(source: qualified_unresolvable_source, diagnostic_class: "TypeRefMeasureBindingDisagreement", subject: "std.effect_grant.NoSuchVerb") == 0
+}
+
+test fn qualified_ref_into_a_selectively_imported_module_binds() -> Bool {
+  keyed_blocking_count(source: qualified_selective_import_source, diagnostic_class: "UnresolvedType", subject: "std.effect_grant.Verb") == 0
+    && keyed_blocking_count(source: qualified_selective_import_source, diagnostic_class: "TypeRefMeasureBindingDisagreement", subject: "std.effect_grant.Verb") == 0
+}
+
+test fn qualified_ref_into_a_wholly_imported_module_binds() -> Bool {
+  keyed_blocking_count(source: qualified_whole_import_source, diagnostic_class: "UnresolvedType", subject: "std.effect_grant.Verb") == 0
+    && keyed_blocking_count(source: qualified_whole_import_source, diagnostic_class: "TypeRefMeasureBindingDisagreement", subject: "std.effect_grant.Verb") == 0
+}
+
+test fn qualified_ref_production_resolves_but_neither_imported_nor_contained_refuses_as_disagreement() -> Bool {
+  keyed_blocking_count(source: qualified_reached_not_imported_source, diagnostic_class: "TypeRefMeasureBindingDisagreement", subject: "std.effect_grant.Verb") == 2
+    && keyed_blocking_count(source: qualified_reached_not_imported_source, diagnostic_class: "UnresolvedType", subject: "std.effect_grant.Verb") == 0
+}
+
+test fn contained_qualified_ref_binds_without_a_disagreement() -> Bool {
+  keyed_blocking_count(source: row7_self_module_qualified_source, diagnostic_class: "UnresolvedType", subject: "type_ref_row7.LocalT") == 0
+    && keyed_blocking_count(source: row7_self_module_qualified_source, diagnostic_class: "TypeRefMeasureBindingDisagreement", subject: "type_ref_row7.LocalT") == 0
 }

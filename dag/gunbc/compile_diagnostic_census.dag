@@ -115,6 +115,27 @@ type CompileDiagnosticCensus
   = CensusObserved { rows: List<CompileDiagnosticCensusRow> }
   | CensusNotRunnable { cause: NonEmptyStr }
 
+// THE ONE DECLARED HOME OF THE CENSUS BUILTIN (NAMESPACE-XL; root-coordinator decision, sleek-owl-397). The
+// ambient name compile_dag_diagnostic_census is the host builtin described above (cli_run
+// compile_dag_diagnostic_census, typed by the v1.compiler.infer_method builtin_function_registry row); this
+// declaration is its importable callable, beside the vocabulary its result inhabits, so a caller reaches it by
+// `import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census }`. Realization: a HostRealizedSeam
+// self-call, bound by THIS declaration's identity through its std.primitive_projection row
+// (primitive_compile_dag_diagnostic_census); no realization reaches the body, and a target without one refuses at
+// realization rather than falling back to the spelling. It adds no judgment and no Rust: the seam is the existing
+// builtin, so it dissolves with compile_diagnostic_census_hand_rust_dissolve_trigger. No std.primitives
+// *_contract row ever admitted the name (it is only a builtin_registry_surface_names entry, which mirrors the
+// registry that still holds it), so there is no contract to retire. Consumers: the declared-home claims
+// (test.claim.compile_dag_diagnostic_census_declared_home) import it today; gunbc.compile_census_probe, whose
+// census_rows_for gunbc.namespace_cut.migration_kit calls, still calls the ambient spelling. TRIGGER for that
+// caller: the namespace gate tip (branch gate/namespace-tip, owner wise-moth-707) imports this declaration at
+// census_rows_for through the roster_import_sweep row this change adds. The other bare callers (listed by
+// `gunbc test //gunbc/instruments:ambient-name-census`) move with a corpus-wide generated declared-import sweep
+// for this name, its own wave, which then retires the v1 typing admission of the bare spelling.
+fn compile_dag_diagnostic_census(source: String) -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(source: source)
+}
+
 // Pure reads over ROWS, never over the census. The selectors take List<CompileDiagnosticCensusRow>,
 // so the only way to obtain rows is to MATCH the coproduct - which makes reading a row list out of
 // a CensusNotRunnable structurally unwritable rather than warned against. An earlier cut exported

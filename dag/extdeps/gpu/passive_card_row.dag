@@ -1,0 +1,120 @@
+module extdeps.gpu.passive_card_row
+
+import std.types {Bool, Int, NonEmptyStr, String, List}
+import std.measure {Micrometer, MillilitrePerSecond, Watt}
+import std.optional {Present, Absent}
+import extdeps.external_authority {CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt}
+
+// ═══ A CARD ROW: ONE DUCT DESIGN, CARDS AS DATA ═══
+//
+// The duct is ONE concept (DESIGN.md section 2): a blower, a plug and flange onto a card's measured end
+// face, and a route into that card's fin opening. What differs per card is the ENVELOPE the duct has to
+// match and the AIR the card needs. So a card is a row, and a fourth card is one more row -- nothing in
+// product.printed_chassis.card_cooling_route branches on which card it is.
+//
+// A row's field is populated in exactly one of two ways and there is no third:
+//
+//   FromCitedFigure   it was read off a named vendor document, with the standing that document earns
+//                     (CitedToAuthority when this repository read the figure, TranscribedUncited when it
+//                     was transcribed second-hand -- which always carries the obligation to read it back).
+//   NeedsReading      no document in this repository carries it, and no number stands here until one
+//                     does. The field names what to read, on which physical feature, and by whom.
+//
+// A passive card's REQUIRED AIRFLOW is never a guess: a vendor page that says "passive cooling" and
+// publishes no CFM has told us the card needs airflow and NOT told us how much, and a duct sized to a
+// feeling is how a fleet of cards cooks. Absent airflow means the row is not printable.
+
+type RowField<V>
+  = FromCitedFigure { value: V, standing: CitedFigureStanding }
+  | NeedsReading { read_obligation: NonEmptyStr }
+
+fn row_field_value<V>(field: RowField<V>) -> V? {
+  match field { FromCitedFigure {value: v, standing: _} => Present { value: v } NeedsReading {read_obligation: _} => Absent }
+}
+
+fn row_field_is_readable<V>(field: RowField<V>) -> Bool {
+  match field { FromCitedFigure {value: _, standing: _} => true NeedsReading {read_obligation: _} => false }
+}
+
+fn row_field_obligation<V>(field: RowField<V>) -> NonEmptyStr? {
+  match field {
+    FromCitedFigure {value: _, standing: TranscribedUncited {read_obligation: o}} => Present { value: o }
+    FromCitedFigure {value: _, standing: _} => Absent
+    NeedsReading {read_obligation: o} => Present { value: o }
+  }
+}
+
+fn row_field_stands_on_authority<V>(field: RowField<V>) -> Bool {
+  match field { FromCitedFigure {value: _, standing: CitedToAuthority {authority: _}} => true FromCitedFigure {value: _, standing: _} => false NeedsReading {read_obligation: _} => false }
+}
+
+// What a physical card must be measured on before its row can print. Kept as data on the row, not as a
+// paragraph in a PR: the operator carries the row's obligations to the bench, and a row whose list is
+// non-empty is by construction not printable.
+type CardRow {
+  id: NonEmptyStr
+  // The card's own end face, the thing the duct's plug and flange seat against. For the A16 this is
+  // MEASURED (product.printed_chassis.gpu_duct a16_end_face); the vendor briefs publish no end-face
+  // drawing for any of these cards, so every other row starts where the A16 started -- with a caliper.
+  end_face_length: RowField<Micrometer>
+  end_face_width: RowField<Micrometer>
+  card_thickness: RowField<Micrometer>
+  // The opening the duct's outlet must reach: the cooler's fin face, its extent, and how deep the fins
+  // sit behind that face. "Passive" tells us this exists; it never tells us where.
+  fin_face_extent: RowField<Micrometer>
+  fin_face_depth: RowField<Micrometer>
+  // Power and air. TDP without airflow is not a cooling requirement, and airflow without TDP is not a
+  // claim about this card -- both are separate fields with separate obligations.
+  tdp: RowField<Watt>
+  required_airflow: RowField<MillilitrePerSecond>
+  bracket: RowField<NonEmptyStr>
+  // The documents this row was built from, or the probe that looked for them and found nothing. A row
+  // with no sources asserts nothing and says where to look.
+  sources: List<NonEmptyStr>
+}
+
+fn row_fields(row: CardRow) -> List<RowField<Int>> {
+  // Every field, as one list, so "is this row sealed" cannot quietly forget a field the way a hand-written
+  // conjunction does. The Int here is a witness only; the fields' values are never read through it.
+  [witness(field: row.end_face_length), witness(field: row.end_face_width), witness(field: row.card_thickness),
+   witness(field: row.fin_face_extent), witness(field: row.fin_face_depth), witness(field: row.tdp),
+   witness(field: row.required_airflow), witness(field: row.bracket)]
+}
+
+fn witness<V>(field: RowField<V>) -> RowField<Int> {
+  match field { FromCitedFigure {value: _, standing: s} => FromCitedFigure {value: 0, standing: s} NeedsReading {read_obligation: o} => NeedsReading {read_obligation: o} }
+}
+
+fn unread(name: NonEmptyStr, field: RowField<Int>) -> List<String> {
+  match row_field_obligation(field: field) {
+    Present { value: o } => [join([name as String, ": ", o as String], "")]
+    Absent => []
+  }
+}
+
+// The row's bench list, in the order a person would read it at the machine. Built from the same field
+// list the seal test reads, so a field cannot be sealed in one place and missing from the other.
+fn row_unread_fields(row: CardRow) -> List<String> {
+  concat(
+    concat(concat(unread(name: "end face length", field: witness(field: row.end_face_length)), unread(name: "end face width", field: witness(field: row.end_face_width))),
+           concat(unread(name: "card thickness", field: witness(field: row.card_thickness)), unread(name: "fin face extent", field: witness(field: row.fin_face_extent)))),
+    concat(concat(unread(name: "fin depth behind fin face", field: witness(field: row.fin_face_depth)), unread(name: "TDP", field: witness(field: row.tdp))),
+           concat(unread(name: "required airflow", field: witness(field: row.required_airflow)), unread(name: "bracket", field: witness(field: row.bracket)))))
+}
+
+// A row prints only when EVERY field carries a value AND every value carries a standing that permits
+// printing. A TranscribedUncited figure is a number somebody typed and prints nothing until it is read
+// back against the document; an operator reading (ObservedByReceipt) is evidence about one physical card
+// and seals a field for THAT card, which is exactly how the A16's end face was sealed.
+fn row_is_sealed(row: CardRow) -> Bool {
+  row_fields(row: row).all(field => match field {
+    FromCitedFigure {value: _, standing: CitedToAuthority {authority: _}} => true
+    FromCitedFigure {value: _, standing: ObservedByReceipt {observed: _}} => true
+    FromCitedFigure {value: _, standing: TranscribedUncited {read_obligation: _}} => false
+    NeedsReading {read_obligation: _} => false
+  })
+}
+
+fn row_display(row: CardRow) -> String {
+  join([row.id as String, ": ", if row_is_sealed(row: row) { "sealed, printable" } else { join([to_string(value: length(list: row_unread_fields(row: row))), " field(s) await reading (", to_string(value: length(list: row.sources)), " source(s) noted)"], "") }], "")
+}

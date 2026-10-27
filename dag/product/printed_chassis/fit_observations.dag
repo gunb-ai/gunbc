@@ -14,3 +14,20 @@ data rear_fan_fit_provenance: EvidenceProvenance = EvidenceProvenance {
 fn fan_fit_display() -> String {
  if rear_fan_fit.value.original_plate_accepts_fan {"Operator reports the original printed rear fan plate fits (4 October 2026). The revised frame/guard stack remains proposed; no further gauge sequence."} else {"Original plate fit not established."}
 }
+
+// THE PLUG FIT RING FITS. Recorded 2026-10-26 by the operator, after the ring printed out-of-band
+// (artifacts/printing/a16-plug-fit-ring/manual-start-2026-10-26.json). This is the fact the fit ring was
+// printed to produce: it says the MEASURED END FACE -- product.printed_chassis.gpu_duct a16_end_face, the
+// caliper record every duct dimension is derived from -- is a usable datum on a real card, because a ring
+// machined from it seats on the card. What it does NOT establish: any length, the duct's route, the
+// blower's fit, or clearance to anything in the chassis. It is one part on one card, reported by hand.
+type PlugFitRingProposition { ring_seats_on_a16: Bool }
+data plug_fit_ring_fit: RecordedFact<PlugFitRingProposition> = RecordedFact {
+ id:"a16-plug-fit-ring-fit-2026-10-26",value:PlugFitRingProposition {ring_seats_on_a16:true},
+}
+data plug_fit_ring_fit_provenance: EvidenceProvenance = EvidenceProvenance {
+ entity:"operator-conversation/a16-plug-fit-ring-fit-2026-10-26",activity:"manual-print-and-hand-fit",agent:"operator",
+}
+fn plug_fit_ring_fit_display() -> String {
+ if plug_fit_ring_fit.value.ring_seats_on_a16 {"Operator reports the printed A16 plug fit ring fits (26 October 2026), which confirms the measured end face and the plug/flange geometry as a datum. No length, duct route, blower fit or chassis clearance follows from it."} else {"Plug fit ring fit not established."}
+}
