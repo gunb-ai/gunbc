@@ -18,7 +18,7 @@ import gunbc.serving.serving_provision_derivation {
 }
 import std.algebra { length }
 import product.fabric.serving_recipe {
-  ServingRecipe, ServingModelArtifact, ServingStartRoute, WeightsNamedUnpinned, StartRouteUnread, StartFromObjectStoreObserved,
+  ServingRecipe, ServingModelArtifact, ServingStartRoute, WeightsNamedUnpinned, WeightsPinnedAtHub, StartFromHubPinned, StartRouteUnread, StartFromObjectStoreObserved,
   SettingOperatorPolicy, serving_recipe_qwen3_8_27b_nvfp4_ninfer, serving_recipe_flash_next_lab_vllm,
 }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
@@ -183,6 +183,30 @@ test fn a_vllm_recipe_on_an_unread_or_observed_start_refuses_with_its_cause() ->
     _ => false
   })
     && (match serving_provision_derive(recipe: unpinned) {
+      ServingProvisionRefusedStartSource { cause: _ } => true
+      _ => false
+    })
+}
+
+// THE ARMS #15222 OWED THE NINFER LEG (2026-10-27 main break, DESIGN §6b: enumerate the siblings of
+// the match you extend). Adding ServingStartSource::StartSourceHubPinned and
+// ServingWeightsSource::WeightsPinnedAtHub left serving_provision_from_ninfer matching neither, which
+// made the whole closure non-exhaustive at resolve. These rows drive both new arms so the refusals are
+// green by execution, not by parse. A ninfer recipe must refuse a Hub-pinned START (the leg fetches a
+// placed artifact; a pinned revision is not one) and a Hub-pinned WEIGHTS source (a checkpoint with no
+// object-store placement is no NinferArtifactSource) — each with its own typed cause, never a wildcard.
+test fn a_hub_pinned_start_or_source_refuses_the_ninfer_leg_typed() -> Bool {
+  (match serving_provision_derive(recipe: qwen_with_start(start: StartFromHubPinned {
+    hub_fallback: false,
+    standing: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+  })) {
+    ServingProvisionRefusedStartSource { cause: _ } => true
+    _ => false
+  })
+    && (match serving_provision_derive(recipe: qwen_with_model(model: ServingModelArtifact {
+      source: WeightsPinnedAtHub { checkpoint: qwen3_8_flash_next_manifest, quantization: Present { value: "nvfp4" as NonEmptyStr } },
+      served_model_id: serving_recipe_qwen3_8_27b_nvfp4_ninfer.model.served_model_id,
+    })) {
       ServingProvisionRefusedStartSource { cause: _ } => true
       _ => false
     })

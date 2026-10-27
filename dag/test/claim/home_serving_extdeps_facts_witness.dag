@@ -56,6 +56,8 @@ fn pcie5_x16(link: PcieLink?) -> Bool {
     Absent => false
     Present { value: l } => match l.generation {
       Gen5 => l.lane_count == 16
+      Gen1 => false
+      Gen2 => false
       Gen3 => false
       Gen4 => false
     }

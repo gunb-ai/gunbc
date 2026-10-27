@@ -128,6 +128,15 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
         WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
         WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
         WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+        // A recipe that STARTS from placed weights but carries a HUB PIN has no placement to resolve:
+        // the pin is the bytes, and there is no object-store placement to fetch them from. Same answer
+        // as the named-and-unpinned arm for the same reason — nothing is placed — but spelled separately
+        // so the mismatch stays visible: an arm here is a per-variant STANDING, not a catch-all (a
+        // wildcard would silently absorb any future ServingWeightsSource variant). This arm is what
+        // #15222 owed when it added WeightsPinnedAtHub (§6b: enumerate the siblings of the match you
+        // extend); without it the whole closure through product.fabric.serving_recipe refuses to
+        // resolve as non-exhaustive.
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
       }
     StartFromHubPinned { hub_fallback: fb, standing: sd } =>
       match recipe.model.source {
