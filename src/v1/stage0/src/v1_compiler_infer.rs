@@ -13365,7 +13365,7 @@ pub fn infer_call_arguments_generic_pass(
                 let __lbl_f = type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone());
                 let __lbl_a = type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone());
                 let __subst_pairs: Vec<String> = st.subst.iter().map(|(k,v)| format!("{}={}", k, type_node_label(v.clone(), scope.type_env.source_indices.clone()))).collect();
-                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), __lbl_f, __lbl_a, __subst_pairs);
+                eprintln!("DIAGARG mod={:?} caller={:?} i={} arg={:?} is_lambda={} formal={} actual={} chain={} subst={:?}", scope.module_name, scope.caller_decl_name, pair.0, crate::v1_std_core::arg_name_at(a.clone(), scope.type_env.source_indices.clone()), is_lambda_expr(crate::v1_std_core::arg_value(a.clone())), type_node_label(formal_raw.clone(), scope.type_env.source_indices.clone()), type_node_label(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), scope.type_env.source_indices.clone()), diag_chain(crate::v1_compiler_infer_types::resolved_type(ar.typed.clone()), 2), st.subst.iter().map(|(k,v)| format!("{}={}",k,type_node_label(v.clone(),scope.type_env.source_indices.clone()))).collect::<Vec<_>>());
             }
             let next_subst = if !has_formal.clone() {
                 st.subst.clone()
@@ -26177,6 +26177,21 @@ fn generic_binding_candidate_is_evidence(candidate: Rc<Node>, source_indices: Rc
     }
     crate::v1_compiler_infer_types::is_fully_resolved(cursor.clone(), source_indices.clone())
 }
+
+fn diag_chain(n: Rc<Node>, depth: u32) -> String {
+    let head = match n.inferred.clone().as_deref() {
+        None => "None".to_string(),
+        Some(x) => {
+            let t = format!("{:?}", x);
+            t.chars().take(70).collect::<String>()
+        }
+    };
+    let kids: Vec<String> = if depth == 0 { vec![] } else { n.children.iter().map(|c| diag_chain(c.clone(), depth - 1)).collect() };
+    let kid_txt = if kids.is_empty() { "".to_string() } else { format!(" kids=[{}]", kids.join(" | ")) };
+    format!("{{inf={} conn={:?} nc={} ann={} label={} {}}}", head, n.connective, n.children.len(), n.type_annotation.is_some(), type_node_label(n.clone(), EMPTY_SI.with(|m| m.clone())), kid_txt)
+}
+
+thread_local! { static EMPTY_SI: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(HashMap::new()); }
 
 pub fn unify_generics(
     formal: Rc<Node>,
