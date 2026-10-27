@@ -44,6 +44,13 @@ import gunbc.provisioning.network_install_receipt {
   InstalledRootUnbacked,
   InstalledRootDevice,
   InstalledRootUnread,
+  InstallerRecordReading,
+  InstallerRecordRead,
+  InstallerRecordAbsent,
+  InstallerRecordUnread,
+  InstallerRecordNotRead,
+  InstallerRecordNotOnInstalledRoot,
+  InstallerRecordPredatesAttempt,
   InstallFileTrust,
   AuthenticatedUnderSecureBoot,
   RestsOnControlledNetwork,
@@ -81,6 +88,8 @@ data other_client: Eui48Address = mac_address(octet1: 0, octet2: 37, octet3: 144
 data started: EpochMs = 1790000000000
 
 data formatted: EpochMs = 1790000600000
+
+data installed: EpochMs = 1790002400000
 
 data read_at: EpochMs = 1790003600000
 
@@ -153,6 +162,7 @@ fn installed_host(secure_boot: SecureBootObservation) -> InstalledHostReading {
   InstalledHostReading {
     interface_macs: [other_client, client],
     root: disk_root(created_at: formatted),
+    installer_record: InstallerRecordRead { written_at: installed },
     secure_boot: secure_boot,
     observed_at: read_at,
   }
@@ -176,7 +186,7 @@ fn receipt_of(r: NetworkInstallReadings) -> NetworkInstallReceipt? {
 fn gaps_of(r: NetworkInstallReadings) -> List<NetworkInstallGap> {
   match receipt_of(r: r) {
     Present { value: InstallNotEstablished { subject: _, gaps: gs } } => non_empty_to_list(xs: gs)
-    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, secure_boot: _, trust: _, observed_at: _ } } => []
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } } => []
     Absent => []
   }
 }
@@ -189,11 +199,12 @@ fn gaps_of(r: NetworkInstallReadings) -> List<NetworkInstallGap> {
 // configuration, the initrd and the seed rest on the controlled onboarding network.
 test fn a_complete_install_under_secure_boot_is_installed_to_disk_with_typed_trust() -> Bool {
   match receipt_of(r: good(secure_boot: SecureBootEnabled)) {
-    Present { value: InstalledToDisk { subject: _, client_class: c, root_chain: ch, root_disk_serial: serial, root_created_at: t, secure_boot: sb, trust: tr, observed_at: o } } =>
+    Present { value: InstalledToDisk { subject: _, client_class: c, root_chain: ch, root_disk_serial: serial, root_created_at: t, installer_record_at: r, secure_boot: sb, trust: tr, observed_at: o } } =>
       c == UefiX86_64
         && non_empty_to_list(xs: ch) == [root_partition, root_disk]
         && serial == Present { value: "S4EWNX0R123456" }
         && t == formatted
+        && r == installed
         && o == read_at
         && sb == SecureBootEnforced
         && non_empty_to_list(xs: tr) == [
@@ -212,7 +223,7 @@ test fn a_complete_install_under_secure_boot_is_installed_to_disk_with_typed_tru
 // every file rests on the controlled network.
 test fn secure_boot_off_puts_every_file_on_the_controlled_network() -> Bool {
   match receipt_of(r: good(secure_boot: SecureBootDisabled)) {
-    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, secure_boot: sb, trust: tr, observed_at: _ } } =>
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: sb, trust: tr, observed_at: _ } } =>
       sb == SecureBootNotEnforced
         && length(non_empty_to_list(xs: tr)) == 6
         && all(non_empty_to_list(xs: tr), t => match t {
@@ -281,34 +292,34 @@ test fn a_seed_answered_404_was_not_served() -> Bool {
 }
 
 test fn a_host_without_the_clients_mac_is_not_this_install() -> Bool {
-  let host = InstalledHostReading { interface_macs: [other_client], root: disk_root(created_at: formatted), secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [other_client], root: disk_root(created_at: formatted), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [HostDoesNotCarryClientMac { client: client }]
 }
 
 // The live installer still running: casper's root is an overlay, with no block device under it.
 test fn the_live_installers_overlay_root_is_not_installed_to_disk() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootUnbacked { source: "overlay" }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootUnbacked { source: "overlay" }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootNotOnBlockDevice { source: "overlay" }]
 }
 
 // An OS already on the disk before the attempt started is not this attempt's install.
 test fn a_root_filesystem_older_than_the_attempt_is_not_this_install() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1780000000000), secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1780000000000), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootPredatesAttempt { created_at: 1780000000000, started_at: started }]
 }
 
 test fn a_root_filesystem_newer_than_its_reading_is_refused() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1790009999999), secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1790009999999), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootPostdatesReading { created_at: 1790009999999, observed_at: read_at }]
 }
 
 // Every gap is reported, in the fold's fixed order, never only the first.
 test fn every_gap_is_reported_in_order() -> Bool {
-  let host = InstalledHostReading { interface_macs: [], root: InstalledRootUnread { why: "ssh refused" }, secure_boot: SecureBootUnobserved { reason: "ssh refused" }, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [], root: InstalledRootUnread { why: "ssh refused" }, installer_record: InstallerRecordUnread { why: "ssh refused" }, secure_boot: SecureBootUnobserved { reason: "ssh refused" }, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassUnread { why: "no log" }, fetches: [], host: host)) == [
     ClientClassNotMeasured { why: "no log" },
     MemberNotDelivered { served_path: "bootx64.efi" },
@@ -319,6 +330,7 @@ test fn every_gap_is_reported_in_order() -> Bool {
     SeedNotServed { path: seed_path },
     HostDoesNotCarryClientMac { client: client },
     InstalledRootNotRead { why: "ssh refused" },
+    InstallerRecordNotRead { why: "ssh refused" },
     SecureBootNotMeasured { observation: SecureBootUnobserved { reason: "ssh refused" } },
   ]
 }
@@ -327,14 +339,36 @@ test fn every_gap_is_reported_in_order() -> Bool {
 // kind, not the path, refuses it, and the chain never reaches a disk (review 86916).
 test fn a_loop_backed_root_is_not_installed_to_disk() -> Bool {
   let loop0 = InstalledRootDevice { name: "loop0", kind: LsblkLoop }
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/loop0", chain: FreeSemigroup { head: loop0, tail: [] }, disk_serial: Absent, created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/loop0", chain: FreeSemigroup { head: loop0, tail: [] }, disk_serial: Absent, created_at: formatted }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootOnNonDiskDevice { device: loop0 }, InstalledRootChainEndsBeforeDisk { last: loop0 }]
 }
 
 // A root over a partition whose disk the reading did not reach is not established on a disk.
 test fn a_chain_that_stops_before_the_disk_is_refused() -> Bool {
-  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [] }, disk_serial: Absent, created_at: formatted }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [] }, disk_serial: Absent, created_at: formatted }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
   gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
     == [InstalledRootChainEndsBeforeDisk { last: root_partition }]
+}
+
+fn host_with_record(record: InstallerRecordReading) -> InstalledHostReading {
+  InstalledHostReading { interface_macs: [client], root: disk_root(created_at: formatted), installer_record: record, secure_boot: SecureBootEnabled, observed_at: read_at }
+}
+
+// A disk formatted during the attempt, booted, carrying the MAC, but with no installer record on its root: the
+// installer did not finish, and a formatted disk is not an install (merry-fox-82's side-chat review).
+test fn a_formatted_disk_without_the_installers_record_is_not_installed() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordAbsent)))
+    == [InstallerRecordNotOnInstalledRoot { path: "/var/log/installer/autoinstall-user-data" }]
+}
+
+// A record left by an earlier install whose root this attempt reformatted is not this attempt's completion.
+test fn an_installer_record_older_than_the_attempt_is_not_this_attempts() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordRead { written_at: 1780000000000 })))
+    == [InstallerRecordPredatesAttempt { written_at: 1780000000000, started_at: started }]
+}
+
+test fn an_unread_installer_record_withholds_the_receipt() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordUnread { why: "permission denied" })))
+    == [InstallerRecordNotRead { why: "permission denied" }]
 }
