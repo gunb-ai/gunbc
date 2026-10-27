@@ -7,12 +7,51 @@ import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.durable_compare_and_set {CasGeneration,cas_generation_count,CasStoreFailure,CasSlotObservationRefused,CasGenerationPublicationRefused,CasGenerationSpaceExhausted,cas_unreadable_slot_detail}
 import std.durable_exclusive_hold {DurableHoldOwnerRef,DurableHoldReleaseRef,HoldSlotHeld,durable_hold_owner_equal}
 import gunbc.durable_exclusive_hold_file_store {file_hold_acquire,FileHoldAcquired,file_hold_release_assess,FileHoldReleasePlanned,file_hold_release_commit,FileHoldReleased,observe_file_hold}
+import gunbc.process_hold_identity {process_hold_text,process_hold_marker,process_hold_decode,text_at,self_process_identity,SelfIdentified,SelfUnidentified}
+import gunbc.build_cache.build_cache_instance {ProcessIdentity}
+import std.optional {Present,Absent}
 
 // One fleet controller owns scheduling; printer lifetimes overlap inside that hold.
 // Existing single starts also acquire it, so a legacy entry cannot race a batch.
 // A crashed/uncertain owner remains held until the existing dead-holder recovery
 // protocol establishes recovery; merely using the same owner text does not re-enter.
 data hold_key:NonEmptyStr = "fleet-print-controller"
+
+// THE OWNER NAME IS THE AUTHORIZATION PLUS THE PROCESS THAT TOOK THE SLOT, the pattern
+// gunbc.host.managed_host_unit_hold and extdeps.realization.materialization_store_local already
+// write: <escalation_id> ++ process_hold_text. The escalation id keeps the slot readable as an
+// authorization (the reconciliation census matches on it); the process part is what makes the
+// holder observable at all, so a controller that died can be proven dead instead of leaving the
+// slot held forever. Where this host cannot name its own process (/proc unreadable), the owner
+// falls back to the authorization ALONE, which is exactly the shape of the pre-existing holds; the
+// recovery arm below treats that as unobservable rather than letting an unidentifiable holder
+// conclude anything about itself.
+fn printer_execution_hold_owner_text(escalation_id:NonEmptyStr) -> NonEmptyStr {
+  match self_process_identity() {
+    SelfIdentified{process:p,pid_namespace:n}=>concat(escalation_id as String,process_hold_text(p:p,pid_namespace:n)) as NonEmptyStr
+    SelfUnidentified{cause:_}=>escalation_id
+  }
+}
+
+// THE RENDERED OWNER'S PROCESS PART, decoded back or named as unobservable. The marker splits the
+// authorization from the process fields (same split the other roots use), and a holder with no
+// marker names no process at all: that is not a corruption, it is a hold written before owners
+// carried a process, and the caller decides what an unobservable holder is worth.
+type PrinterExecutionHoldHolder
+  = PrinterExecutionHoldHolderProcess { escalation_id:NonEmptyStr, process:ProcessIdentity, pid_namespace:NonEmptyStr }
+  | PrinterExecutionHoldHolderUnobservable { cause:NonEmptyStr }
+
+fn printer_execution_hold_holder(holder:DurableHoldOwnerRef) -> PrinterExecutionHoldHolder {
+  let halves = split(s:holder as String,delimiter:process_hold_marker)
+  if count(halves) != 2 || text_at(xs:halves,i:0) == "" {
+    PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner names no process this module can observe (it was written without one, or not by this module)" as NonEmptyStr }
+  } else {
+    match process_hold_decode(text:concat("boot=",text_at(xs:halves,i:1))) {
+      Present{value:h}=>PrinterExecutionHoldHolderProcess { escalation_id:text_at(xs:halves,i:0) as NonEmptyStr, process:h.process, pid_namespace:h.pid_namespace }
+      Absent=>PrinterExecutionHoldHolderUnobservable { cause:"the holder's owner carries a process part this module cannot decode" as NonEmptyStr }
+    }
+  }
+}
 type PrinterExecutionHold sole_constructor {owner:DurableHoldOwnerRef,generation:CasGeneration}
 fn hold_current(hold:PrinterExecutionHold) -> Bool {
  match observe_file_hold(root:printer_start_claim_directory,key:hold_key) {

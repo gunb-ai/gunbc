@@ -61,7 +61,7 @@ fn approve_and_print(printer: String, path: String, digest: String, version: Str
             PollObservedAt { standing: s, observed_at: at } => match approval_gate_from_poll(poll: s, request: request, observed_at: at) {
               GateRefused { cause: c } => exit_failure(reason: approval_refusal_text(cause: c))
               GateAdmitted { authorization: authorization } =>
-                with_execution_hold(owner:request.escalation_id,use:h=>start_authorized(hold:h,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
+                with_execution_hold(owner:printer_execution_hold_owner_text(escalation_id:request.escalation_id),use:h=>start_authorized(hold:h,printer:p,path:path,digest:digest,version:version as NonEmptyStr,token_source:token_source,session:session,authorization:authorization,request:request))
             }
           }
         }
