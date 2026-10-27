@@ -49,7 +49,8 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_key_admission, trust_root_tag_value_admission,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
   IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
-  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
+  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population,
+  iam_bootstrap_journal_cells, ceremony_cell_phrase, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
@@ -80,6 +81,32 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
+// A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. `data iam_bootstrap_stages` is the run's
+// folded row and stays a single-line literal (#14608: the host parser silently does not admit multi-line
+// membership rows -- that is exactly how trust-root-tags and journal-bucket vanished on 2026-10-27: the
+// run executed 10 stages, wrote no receipt for the other two, and cost no refusal, because every in-run
+// check folded over the row itself). THE CLAIMS ARE WHAT PIN THE ROW TO THIS PREDICATE: every owed
+// stage must appear, in order, or the witness refuses (test.claim.
+// gcp_iam_bootstrap_journal_first_use_witness the_folded_stage_row_covers_every_owed_stage). The
+// populations here are the SAME ones the capability stage writes and the post-run proof folds, so a
+// stage whose work is declared cannot quietly drop out of a run.
+fn iam_bootstrap_stage_owed(stage: IamBootstrapStage) -> Bool {
+  match stage {
+    BootstrapServices => count(iam_bootstrap_required_services) > 0
+    BootstrapIdentities => count(iam_bootstrap_bound_secrets()) > 0 || count(iam_bootstrap_stage_identities(stage: BootstrapIdentities)) > 0
+    BootstrapTrustRootTags => count(ceremony_trust_root_cells()) > 0
+    BootstrapRoles => count(iam_bootstrap_roles) > 0
+    BootstrapDeny => count(iam_bootstrap_deny_policies()) > 0
+    BootstrapAuthorityCleanup => true
+    BootstrapCapabilities => count(iam_bootstrap_root_ceremony_bindings()) > 0
+    BootstrapJournalBucket => count(iam_bootstrap_journal_cells()) > 0
+    BootstrapProbeAuthority => true
+    BootstrapPrivilegeReadback => true
+    BootstrapProbeCleanup => true
+    BootstrapWorkflowTrust => true
+  }
+}
+
 data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
@@ -99,7 +126,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapProbeCleanup => [BootstrapProbeAuthority]
     BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback, BootstrapProbeCleanup]
   }
-  all(required, prerequisite => any(completed, done => done == prerequisite))
+  all(filter(required, prerequisite => iam_bootstrap_stage_owed(stage: prerequisite)), prerequisite => any(completed, done => done == prerequisite))
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
@@ -759,6 +786,48 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // A create-only local receipt starts before cloud effects. Each stage has its own receipt; a
 // process loss leaves its started record visible. Named creates and etag-fenced additions can be
 // re-observed under a new receipt identity, never silently counted as completed from an exit code.
+// ── THE POST-RUN PROOF OF THE CELLS THIS CEREMONY OWNS ─────────────────────────
+// The delta refuses ROOT CEREMONY CELLS MISSING over exactly the cells the owner relation
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner) hands to this ceremony, and its refusal
+// tells the operator this ceremony repairs them. That claim is only honest if the ceremony itself can
+// fail when it has not established them. It could not: every in-run check folded over whatever the
+// folded stage list happened to execute, and the observer readback deliberately withholds nothing from
+// ceremony-owned cells the observer cannot reach (their standing is this ceremony's own work). So a
+// ceremony that never ran the journal-bucket or trust-root-tags stage wrote nothing, produced no
+// refusal, and exited 0 while the next fleet-converge refused on its own behalf (the 2026-10-27
+// incident, receipt iam-ceremony-20261027T055742Z: 10 of 12 stage receipts, no setIamPolicy in the
+// REST log, ExitSuccess). THE CEREMONY NOW PROVES ITS OWN POPULATION WITH ITS OWN TOKEN AFTER THE
+// FOLD, AND REFUSES LOUDLY IF ANY CELL IT OWNS IS NOT ESTABLISHED. Fail-closed: an absent or unreadable
+// policy counts as not established. The wording of each cell is ceremony_cell_phrase, the same phrase
+// the delta's refusal uses, so the two sides cannot drift into two dialects (DESIGN section 3).
+type CeremonySubjectReading { subject: IamBootstrapResource, reading: PolicyReading }
+
+fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -> List<String> {
+  flat_map(iam_bootstrap_ceremony_owned_cells(), b =>
+    match filter(readings, r => iam_bootstrap_resource_key(resource: r.subject) == iam_bootstrap_resource_key(resource: b.resource)).first() {
+      Absent => [ceremony_cell_phrase(b: b)]
+      Present { value: r } => match r.reading {
+        PolicyObserved { policy } => if gcp_cell_in(c: b.cell, xs: gcp_policy_cells(p: policy)) { [] } else { [ceremony_cell_phrase(b: b)] }
+        PolicyResourceAbsent => [ceremony_cell_phrase(b: b)]
+        PolicyUnreadable { cause } => [concat(ceremony_cell_phrase(b: b), " (policy unreadable: ", cause, ")")]
+      }
+    })
+}
+
+// THE POPULATION THE POST-RUN PROOF COVERS: every cell the owner relation gives this ceremony. THE
+// SAME FILTER THE DELTA'S ROOT-CELL CHECK FOLDS (root_cell_repair_ceremony over the same roster), so
+// one population drives both sides of the ceremony/delta meaning (DESIGN section 2).
+fn iam_bootstrap_ceremony_owned_cells() -> List<IamBootstrapBinding> {
+  distinct_by_key(xs: iam_bootstrap_root_ceremony_bindings(), key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+}
+
+fn ceremony_owned_proof_refusal(readings: List<CeremonySubjectReading>) -> String {
+  let outstanding = ceremony_unestablished_cell_phrases(readings: readings)
+  if count(outstanding) == 0 { "" } else {
+    concat("ROOT CEREMONY CELLS NOT ESTABLISHED: this ceremony owns these cells and its own policy read does not show them bound: ", join(outstanding, "; "))
+  }
+}
+
 fn iam_bootstrap_apply() -> ProcessExit {
   let receipt = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
   let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
@@ -782,11 +851,17 @@ fn iam_bootstrap_apply() -> ProcessExit {
             else if outcome != "" { IamBootstrapProgress { completed: prior.completed, refusal: outcome } }
             else { IamBootstrapProgress { completed: prior.completed + [stage], refusal: "" } }
           })
+        // THE POST-RUN PROOF RUNS AFTER THE FOLD AND BEFORE THE AUTHORITY WITHDRAWALS: it measures what
+        // this run established, read with the ceremony's own token, so a stage that vanished from the
+        // folded list -- or whose write silently no-oped -- cannot green the ceremony.
+        let proof_readings = map(roster_subjects(roster: iam_bootstrap_ceremony_owned_cells()), s =>
+          CeremonySubjectReading { subject: s, reading: iam_bootstrap_read_policy(resource: s, token: token) })
+        let owned_proof = ceremony_owned_proof_refusal(readings: proof_readings)
         let probe_cleanup = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
         let deny_cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
         let cleanup = concat(probe_cleanup, if probe_cleanup != "" && deny_cleanup != "" { "; " } else { "" }, deny_cleanup)
-        if result.refusal == "" && cleanup == "" { ExitSuccess }
-        else { exit_failure(reason: concat(result.refusal, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
+        if result.refusal == "" && cleanup == "" && owned_proof == "" { ExitSuccess }
+        else { exit_failure(reason: concat(result.refusal, if owned_proof == "" { "" } else { concat(if result.refusal == "" { "" } else { "; " }, owned_proof) }, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
       }
     }
   } }
