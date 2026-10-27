@@ -12,6 +12,7 @@ import extdeps.systemd {
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
   NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty,
+  RestartProperty, TimeoutStopSecProperty,
   systemd_unit_property_wire, PartOf, Unit }
 
 data systemd_property_directive_overlap_scope: ConstructionMechanism = SingleAuthority
@@ -180,6 +181,8 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     RestrictSUIDSGIDProperty => SettableDirective
     UMaskProperty => SettableDirective
     DelegateProperty => SettableDirective
+    RestartProperty => SettableDirective
+    TimeoutStopSecProperty => SettableDirective
   }
 }
 
@@ -220,7 +223,7 @@ data systemd_unit_property_members: List<SystemdUnitProperty> = [
   PrivateTmpProperty, ReadWritePathsProperty, ReadOnlyPathsProperty, InaccessiblePathsProperty, BindPathsProperty, RemainAfterExitProperty, RuntimeMaxSecProperty, CollectModeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,
   InvocationIDProperty, FragmentPathProperty, JobProperty,
-  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty,
+  NoNewPrivilegesProperty, RestrictSUIDSGIDProperty, UMaskProperty, DelegateProperty, RestartProperty, TimeoutStopSecProperty,
 ]
 
 fn settable_property_wires() -> List<String> {

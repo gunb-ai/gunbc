@@ -2,6 +2,7 @@ module gunbc.host.anchored_host_transport
 
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
+import gunbc.actions_run_binding { actions_run_attempt_label_of_run }
 import std.algebra { trim }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
@@ -548,6 +549,16 @@ fn anchored_host_transport_live(host: HostIdentity, attempt_raw: String) -> Anch
         }
       }
     }
+  }
+}
+
+// THE LIVE TRANSPORT FOR THIS RUN: the SSH context's attempt-owned path is the run's own label
+// (gunbc.actions_run_binding actions_run_attempt_label, prefixed by the mode), so a re-run never shares a path with the
+// run it repeats. The lost-boot sweep and the service-slot start both reach their host this way.
+fn anchored_host_transport_for_run(host: HostIdentity, prefix: String) -> AnchoredHostBinding {
+  match actions_run_attempt_label_of_run(prefix: prefix) {
+    Absent => AnchoredBindingRefused { cause: "GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the SSH context has no attempt-owned path" }
+    Present { value: label } => anchored_host_transport_live(host: host, attempt_raw: label as String)
   }
 }
 

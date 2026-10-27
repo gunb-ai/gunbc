@@ -768,9 +768,9 @@ fn service_slot_stop_exit(stop: ServiceSlotStop) -> ProcessExit {
 }
 
 // THE UNIT'S ExecStart AND ExecStop, rendered by the one builder the microVM controller's unit uses, over this
-// module's two entries. CONSUMER FRONTIER (DESIGN section 3c): no emitter consumes either today. The named consumer is
-// the service-slot start mode (gunbc.plans.mtcollins1_ci_service_legs F1, PR 4b), which starts each unit with this
-// ExecStart, this ExecStop and a TimeoutStopSec long enough for one deregistration with readback.
+// module's two entries. CONSUMER (DESIGN section 3c): the service-slot start (gunbc.runner.runner_service_slot_start
+// service_slot_unit_start_command), which starts each unit with this ExecStart, this ExecStop and a TimeoutStopSec of one
+// deregistration with readback.
 data service_slot_controller_entry_file: String = "dag/gunbc/runner/runner_service_slot_controller.dag"
 
 data service_slot_controller_entry_function: String = "service_slot_controller_main"

@@ -1114,6 +1114,16 @@ data site_pxe_edge_converge_edge_beside_the_broker_route: DivergenceReason = Div
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the site_pxe_edge_converge apply mode files an access_request (gunbc.auth.access_request) for its re-derived srv4 write and activation set and executes it only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing post-apply readback of files, units, served digests and the HTTP listening socket. NOT satisfied by a GitHub environment reviewer gate or by a merry-fox-82 relay alone." as NonEmptyStr),
 }
 
+// THE SERVICE-SLOT START (gunbc.runner.runner_service_slot_start; gunbc.plans.mtcollins1_ci_service_legs F1). It starts one
+// transient controller unit per member of the subject host's current service population, over the one live anchored
+// transport, on a dispatch naming the host. Same shape as the fleet host file converge: host-root reach over the fleet
+// SSH edge, a human attending each dispatch, and therefore the same divergence from the approval-capability selection
+// under the 2026-10-22 ruling.
+data service_slot_start_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
+  statement: "the service-slot start starts transient system units on the subject host -- one controller per member of its current boot's service population -- over the anchored fleet SSH edge, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the host, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the service_slot_start mode files an access_request (gunbc.auth.access_request) for the units it will start on the named host and starts them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), with the existing ActiveState readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone."),
+}
+
 data host_primary_network_converge_edge_beside_the_broker_route: DivergenceReason = DivergenceReason {
   statement: "the primary network converge replaces a fleet host's /etc/netplan inside a netplan try and writes cloud-init's network switch, as the administrator over the fleet SSH edge from an observer host, under a key released only to a main-pinned dispatch; every instance is a dispatch in which the operator names the target and the observer, so a human attends it, and the operator ruling of 2026-10-22 names the approval broker route as the only approval for attendable host-root reach. No authority adapter requests a capability for this mode, so the dispatch click and the merge to main are its only consent" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the host_primary_network_converge mode files an access_request (gunbc.auth.access_request) for its staged files and its netplan try on the named target and executes them only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability), keeping its fresh-connection readback. NOT satisfied by a GitHub environment reviewer gate or by the administrator edge alone" as NonEmptyStr),
@@ -1210,6 +1220,12 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     },
     realized: RealizedFederatedGrant,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_service_slot_start", decl_name: "service_slot_start_over"),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, over the anchored fleet SSH edge: start one transient controller unit per member of the host's current boot service population (WorkingDirectory the baked release locus, ExecStart and ExecStop the controller's entries, Restart=always), then read each unit's ActiveState back" as NonEmptyStr),
+    realized: RealizedAdministratorEdge,
+    divergence_reason: Present { value: service_slot_start_edge_beside_the_broker_route },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
