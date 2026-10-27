@@ -5,6 +5,7 @@ use self::BareOccurrenceBinding::*;
 use self::GlobalBareLookupState::*;
 use self::TypeNodeDeclarationReading::*;
 use self::TypeNodeUnidentifiedCause::*;
+use self::TypeRefMeasureBinding::*;
 use self::TypeReferenceDeclarationReading::*;
 use self::UnitVariantPhantomLookup::*;
 pub use crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows;
@@ -2130,32 +2131,6 @@ impl UnitVariantPhantomLookup {
     }
 }
 
-pub fn type_declaration_in_own_scope_with_spelling(env: Rc<TypeEnv>, name: String) -> bool {
-    {
-        let own = match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-            Some(binding) => Some(binding.clone()),
-            std::option::Option::None => {
-                match v1_rt::map_get(&env.authored_import_names.clone(), name.clone()) {
-                    Some(_) => lookup_binding_by_name(env.clone(), name.clone()),
-                    std::option::Option::None => std::option::Option::None,
-                }
-            }
-        };
-        match own.clone() {
-            Some(binding) => {
-                ((binding.resolved.module_item_kind.clone()
-                    == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                    && binding_declares_name(
-                        binding.clone(),
-                        name.clone(),
-                        env.source_indices.clone(),
-                    ))
-            }
-            std::option::Option::None => false,
-        }
-    }
-}
-
 pub fn lookup_unit_variant_phantom_type(
     env: Rc<TypeEnv>,
     variant_name: String,
@@ -2264,9 +2239,32 @@ pub fn static_width_index_declaring_module(env: Rc<TypeEnv>) -> Option<String> {
     }
 }
 
-pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> bool {
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum TypeRefMeasureBinding {
+    TypeRefMeasureBound,
+    TypeRefMeasureDisagreesWithProduction,
+    TypeRefMeasureUnbound,
+}
+
+pub fn type_ref_qualifier_is_imported_module(env: Rc<TypeEnv>, qualifier: String) -> bool {
+    {
+        let mut __found = false;
+        for p in env.parents.clone().iter().cloned() {
+            if (p.module_path.clone() == qualifier.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> TypeRefMeasureBinding {
     match lookup_binding_on_chain(env.clone(), name.clone()) {
-        Some(_) => true,
+        Some(_) => TypeRefMeasureBinding::TypeRefMeasureBound,
         std::option::Option::None => {
             let variant_resolves =
                 match (*lookup_unit_variant_phantom_type(env.clone(), name.clone())).clone() {
@@ -2275,17 +2273,31 @@ pub fn type_ref_measure_binding_authority(env: Rc<TypeEnv>, name: String) -> boo
                     UnitVariantPhantomLookup::UnitVariantPhantomEvidenceUnavailable => false,
                 };
             if variant_resolves.clone() {
-                true
+                TypeRefMeasureBinding::TypeRefMeasureBound
             } else {
                 {
                     let prefix = qualified_all_but_last(name.clone());
-                    if type_ref_module_path_is_containment_prefix(prefix, env.module_path.clone()) {
-                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
-                            Some(_) => true,
-                            std::option::Option::None => false,
-                        }
+                    if (prefix.clone() == "".to_string()) {
+                        TypeRefMeasureBinding::TypeRefMeasureUnbound
                     } else {
-                        false
+                        match symbol_index_lookup(env.symbol_index.clone(), name.clone()) {
+                            std::option::Option::None => {
+                                TypeRefMeasureBinding::TypeRefMeasureUnbound
+                            }
+                            Some(_) => {
+                                if (type_ref_module_path_is_containment_prefix(
+                                    prefix.clone(),
+                                    env.module_path.clone(),
+                                ) || type_ref_qualifier_is_imported_module(
+                                    env.clone(),
+                                    prefix.clone(),
+                                )) {
+                                    TypeRefMeasureBinding::TypeRefMeasureBound
+                                } else {
+                                    TypeRefMeasureBinding::TypeRefMeasureDisagreesWithProduction
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -4500,3 +4512,10 @@ pub fn alias_rhs_head_of_declaration(
         std::option::Option::None => std::option::Option::None,
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureBound;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureDisagreesWithProduction;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TypeRefMeasureUnbound;
