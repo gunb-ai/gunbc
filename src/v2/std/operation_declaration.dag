@@ -2,8 +2,8 @@ module v2.std.operation_declaration
 
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { Bool, List, Map }
-import std.optional { Absent, Optional, Present }
-import std.algebra { fold_list, list_snoc_item, empty_map, map_insert, map_lookup }
+import std.optional { Absent, Optional, Present, optional_absent }
+import std.algebra { fold_list, list_snoc_item }
 import std.effects { EffectShape, KeySource, ReadEffect, ExecuteEffect }
 import v2.std.text { String }
 import v2.std.integer { Int }
@@ -370,17 +370,28 @@ data operation_declaration_roster: List<OperationDeclaration> = [
 fn operation_declaration_for(
   declaration: DeclarationRef
 ) -> Optional<OperationDeclaration> {
-  // The seed is annotated (the corpus idiom, as in v2.compiler.name_resolve's closure maps): an
-  // unannotated empty_map() here leaves the fold's accumulator type params uninferable in the
-  // emitted Rust, and the module fails to compile under the instrument's emitted build.
-  let empty: Map<DeclarationRef, OperationDeclaration> = empty_map()
-  map_lookup(
-    m: fold_list(
-      xs: operation_declaration_roster,
-      empty: empty,
-      cons: fn(acc, row) { map_insert(m: acc, key: row.declaration, value: row) }
-    ),
-    key: declaration
+  // THE JOIN IS THE SIBLING AUTHORITY'S OWN: std.primitive_projection -- the roster this roster is a
+  // 1:1 image of -- finds a row by folding to the first key match, and uses no map index at all. The
+  // map-index version here was the instrument's refusal: `lookup(fold_list(roster, empty_map(), ...))`
+  // emits as v1_rt::rc_empty_map::<_, _>(), whose accumulator element type is left as an inference
+  // variable, and rustc resolves the value to Rc<HashMap<..>> against the map's expected
+  // HashMap<.., Rc<OperationDeclaration>> -- error[E0308] mismatched types at
+  // v2_std_operation_declaration.rs:268:78, which is why the bounded std-closure B0 run refused. An
+  // annotated let seed does not help: the emitter drops the annotation on empty_map() (corpus
+  // instances of the pattern all feed a variable or a field, never a direct map_lookup argument).
+  //
+  // First-match and last-match agree while the key universe stays unique, which is what
+  // no_declaration_key_is_declared_twice_holds guards, so this is the same function with the emitted
+  // coercion removed.
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: optional_absent(),
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => if declaration_ref_eq(a: row.declaration, b: declaration) { Present { value: row } } else { acc }
+      }
+    }
   )
 }
 
