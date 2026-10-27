@@ -12,7 +12,7 @@ import v2.std.node { symbol_lexeme, named_edge_sort_key }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts, decl_facts }
 import extdeps.gpu.types {
-  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, gpu_catalog_row_eq
+  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, OamModule, gpu_catalog_row_eq
 }
 import extdeps.gpu.nvidia {
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
@@ -303,6 +303,7 @@ fn p4_row_is_add_in_card(row: GpuModelCatalogRow) -> Bool {
     SxmModule => false
     IntegratedComputePackage => false
     GpuOnMultiGpuBoard => false
+    OamModule => false
   }
 }
 
@@ -312,6 +313,7 @@ fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
     SxmModule => true
     IntegratedComputePackage => false
     GpuOnMultiGpuBoard => false
+    OamModule => false
   }
 }
 

@@ -103,9 +103,13 @@ type GpuSmCacheGeometry {
 // GA107s behind an on-board PCIe switch). Its row describes ONE GPU; the card itself is a
 // GpuBoardCatalogRow, which owns the board-level facts (power, thermal, host link) that no single
 // GPU of it has.
+// OamModule is an OCP Accelerator Module (OAI-OAM): the open mezzanine AMD's MI250X/MI300X/MI3x5X and
+// Intel's Data Center GPU Max 1350/1550 ship as. It is NOT SxmModule -- SXM is NVIDIA's own socket and
+// an OAM part does not seat in an HGX baseboard -- and like SxmModule it is not a purchasable add-in card.
 type GpuPackageForm
   = PcieAddInCard
   | SxmModule
+  | OamModule
   | IntegratedComputePackage
   | GpuOnMultiGpuBoard
 
@@ -181,6 +185,23 @@ type GpuModelCatalogRow {
 fn gpu_catalog_row_eq(a: GpuModelCatalogRow, b: GpuModelCatalogRow) -> Bool {
   (a.vendor.legal_name as String) == (b.vendor.legal_name as String)
     && (a.model as String) == (b.model as String)
+}
+
+// A ROW WHOSE FIGURES WERE TRANSCRIBED, NOT READ: FactCitation's sibling for the figures a row carries
+// that no figure_citations entry grounds. A census row may cite some fields to the page this repository
+// read them off and carry the rest second-hand; this entry says, once per row, where the rest came from
+// and what would ground them. The standing is the one vocabulary every figure uses (CitedFigureStanding),
+// never a second one. Keyed by the catalog identity gpu_catalog_row_eq reads (vendor and model), so a
+// consumer joins it to a row without a name-to-declaration table.
+type GpuCatalogTranscription {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn gpu_catalog_transcription_matches(t: GpuCatalogTranscription, row: GpuModelCatalogRow) -> Bool {
+  (t.vendor.legal_name as String) == (row.vendor.legal_name as String)
+    && (t.model as String) == (row.model as String)
 }
 
 fn gpu_catalog_bandwidth_count(row: GpuModelCatalogRow) -> Nat? {

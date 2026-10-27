@@ -1,0 +1,204 @@
+module test.claim.gpu_market_census_witness
+
+// THE CENSUS ROWS ARE WHAT THEIR STANDING SAYS THEY ARE. Each extdeps.gpu product-line module cites a
+// figure only to a page that states it and records every other figure as transcribed; these claims run
+// that rule over every row rather than over the rows someone thought to check, and each has a control
+// that goes red when the rule is broken.
+
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { NamedField, decl_field_eq, decl_field_ref }
+import std.measure { bandwidth, bandwidth_count, gibibyte, gibibyte_to_byte_size }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.external_authority { CitedToAuthority, FactCitation }
+import extdeps.gpu.types {
+  GpuCatalogTranscription,
+  GpuModelCatalogRow,
+  PcieAddInCard,
+  gpu_catalog_bandwidth,
+  gpu_catalog_row_eq,
+  gpu_catalog_transcription_matches,
+}
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen1, pcie_link_bandwidth }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_5090_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_rtx_pro_6000_server_catalog,
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+  nvidia_h200_nvl_catalog,
+  nvidia_rtx_2000_ada_catalog,
+}
+import extdeps.gpu.nvidia_a16 { nvidia_a16_gpu_catalog }
+import extdeps.gpu.nvidia_data_center {
+  nvidia_data_center_catalog_rows,
+  nvidia_data_center_catalog_transcriptions,
+  nvidia_tesla_p40_catalog,
+  nvidia_tesla_t10_16_gb_catalog,
+  nvidia_cmp_170hx_8_gb_catalog,
+  wikipedia_list_of_nvidia_gpus_authority,
+}
+import extdeps.gpu.nvidia_workstation { nvidia_workstation_catalog_rows, nvidia_workstation_catalog_transcriptions }
+import extdeps.gpu.nvidia_geforce { nvidia_geforce_catalog_rows, nvidia_geforce_catalog_transcriptions }
+import extdeps.gpu.amd_instinct { amd_instinct_catalog_rows, amd_instinct_catalog_transcriptions, amd_instinct_mi300x_catalog }
+import extdeps.gpu.amd_radeon_pro { amd_radeon_pro_catalog_rows, amd_radeon_pro_catalog_transcriptions }
+import extdeps.gpu.amd_radeon { amd_radeon_catalog_rows, amd_radeon_catalog_transcriptions }
+import extdeps.gpu.intel { intel_catalog_rows, intel_catalog_transcriptions }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Rows a census list imports from the module that already models them. Their figures' standing is that
+// module's to state, so the transcription join below does not judge them.
+data census_reused_rows: List<GpuModelCatalogRow> = [
+  nvidia_rtx_5090_catalog,
+  nvidia_rtx_pro_6000_workstation_catalog,
+  nvidia_rtx_pro_6000_max_q_catalog,
+  nvidia_rtx_pro_6000_server_catalog,
+  nvidia_rtx_pro_5000_48gb_catalog,
+  nvidia_rtx_pro_5000_72gb_catalog,
+  nvidia_b200_sxm_catalog,
+  nvidia_b300_sxm_catalog,
+  nvidia_h200_nvl_catalog,
+  nvidia_rtx_2000_ada_catalog,
+  nvidia_a16_gpu_catalog,
+]
+
+fn row_count_in(row: GpuModelCatalogRow, rows: List<GpuModelCatalogRow>) -> Nat {
+  count(rows |> filter(r => gpu_catalog_row_eq(a: r, b: row)))
+}
+
+fn field_cited(row: GpuModelCatalogRow, field: NonEmptyStr) -> Bool {
+  count(row.figure_citations |> filter(c => decl_field_eq(a: c.fact.field, b: NamedField { field_name: field }))) == 1
+}
+
+fn present_figure_cited<V>(value: V?, row: GpuModelCatalogRow, field: NonEmptyStr) -> Bool {
+  match value {
+    Present { value: _ } => field_cited(row: row, field: field)
+    Absent => true
+  }
+}
+
+// Every figure the row carries is grounded by exactly one figure_citations entry.
+fn row_fully_cited(row: GpuModelCatalogRow) -> Bool {
+  field_cited(row: row, field: "memory")
+    && field_cited(row: row, field: "microarchitecture")
+    && present_figure_cited(value: row.memory_bandwidth, row: row, field: "memory_bandwidth")
+    && present_figure_cited(value: row.tdp_watts, row: row, field: "tdp_watts")
+    && present_figure_cited(value: row.boost_clock, row: row, field: "boost_clock")
+    && present_figure_cited(value: row.execution_lane_count, row: row, field: "execution_lane_count")
+    && present_figure_cited(value: row.interconnect, row: row, field: "interconnect")
+}
+
+// THE JOIN: a row this census authored is fully cited, or exactly one transcription entry says where
+// its other figures came from. A row with an uncited figure and no entry is a figure with no standing.
+fn census_row_has_standing(row: GpuModelCatalogRow, transcriptions: List<GpuCatalogTranscription>) -> Bool {
+  row_count_in(row: row, rows: census_reused_rows) > 0
+    || row_fully_cited(row: row)
+    || count(transcriptions |> filter(t => gpu_catalog_transcription_matches(t: t, row: row))) == 1
+}
+
+fn census_list_has_standing(rows: List<GpuModelCatalogRow>, transcriptions: List<GpuCatalogTranscription>) -> Bool {
+  count(rows |> filter(r => !census_row_has_standing(row: r, transcriptions: transcriptions))) == 0
+}
+
+// The converse: an entry naming no row (a renamed or deleted card) is a stale claim about nothing.
+fn census_transcriptions_name_rows(rows: List<GpuModelCatalogRow>, transcriptions: List<GpuCatalogTranscription>) -> Bool {
+  count(transcriptions |> filter(t => count(rows |> filter(r => gpu_catalog_transcription_matches(t: t, row: r))) != 1)) == 0
+}
+
+fn census_list_identities_unique(rows: List<GpuModelCatalogRow>, peers: List<List<GpuModelCatalogRow>>) -> Bool {
+  count(rows |> filter(r => fold(peers, init: 0, f: (acc, p) => acc + row_count_in(row: r, rows: p)) != 1)) == 0
+}
+
+test fn w_census_identities_are_unique_within_each_vendor() -> Bool {
+  let nv = [nvidia_data_center_catalog_rows, nvidia_workstation_catalog_rows, nvidia_geforce_catalog_rows]
+  let am = [amd_instinct_catalog_rows, amd_radeon_pro_catalog_rows, amd_radeon_catalog_rows]
+  census_list_identities_unique(rows: nvidia_data_center_catalog_rows, peers: nv)
+    && census_list_identities_unique(rows: nvidia_workstation_catalog_rows, peers: nv)
+    && census_list_identities_unique(rows: nvidia_geforce_catalog_rows, peers: nv)
+    && census_list_identities_unique(rows: amd_instinct_catalog_rows, peers: am)
+    && census_list_identities_unique(rows: amd_radeon_pro_catalog_rows, peers: am)
+    && census_list_identities_unique(rows: amd_radeon_catalog_rows, peers: am)
+    && census_list_identities_unique(rows: intel_catalog_rows, peers: [intel_catalog_rows])
+}
+
+test fn w_every_census_row_has_figure_standing() -> Bool {
+  census_list_has_standing(rows: nvidia_data_center_catalog_rows, transcriptions: nvidia_data_center_catalog_transcriptions)
+    && census_list_has_standing(rows: nvidia_workstation_catalog_rows, transcriptions: nvidia_workstation_catalog_transcriptions)
+    && census_list_has_standing(rows: nvidia_geforce_catalog_rows, transcriptions: nvidia_geforce_catalog_transcriptions)
+    && census_list_has_standing(rows: amd_instinct_catalog_rows, transcriptions: amd_instinct_catalog_transcriptions)
+    && census_list_has_standing(rows: amd_radeon_pro_catalog_rows, transcriptions: amd_radeon_pro_catalog_transcriptions)
+    && census_list_has_standing(rows: amd_radeon_catalog_rows, transcriptions: amd_radeon_catalog_transcriptions)
+    && census_list_has_standing(rows: intel_catalog_rows, transcriptions: intel_catalog_transcriptions)
+}
+
+test fn w_every_transcription_names_exactly_one_census_row() -> Bool {
+  census_transcriptions_name_rows(rows: nvidia_data_center_catalog_rows, transcriptions: nvidia_data_center_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: nvidia_workstation_catalog_rows, transcriptions: nvidia_workstation_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: nvidia_geforce_catalog_rows, transcriptions: nvidia_geforce_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: amd_instinct_catalog_rows, transcriptions: amd_instinct_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: amd_radeon_pro_catalog_rows, transcriptions: amd_radeon_pro_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: amd_radeon_catalog_rows, transcriptions: amd_radeon_catalog_transcriptions)
+    && census_transcriptions_name_rows(rows: intel_catalog_rows, transcriptions: intel_catalog_transcriptions)
+}
+
+// RED CONTROL for the join: a row carrying a bandwidth no citation grounds, with no transcription entry,
+// has no standing. If census_row_has_standing answered true here, the claim above would prove nothing.
+data uncited_control_row: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "census control card",
+  microarchitecture: "control",
+  package: PcieAddInCard,
+  execution_lane_count: none,
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)), memory_kind: Dram },
+  memory_bandwidth: Present { value: bandwidth(count: 400000000000) },
+  boost_clock: none,
+  tdp_watts: none,
+  compute_capability: none,
+  supported_runtimes: [],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
+  figure_citations: [],
+  dense_tensor_throughput: [],
+}
+
+test fn w_red_control_uncited_row_without_transcription_has_no_standing() -> Bool {
+  !census_row_has_standing(row: uncited_control_row, transcriptions: nvidia_data_center_catalog_transcriptions)
+}
+
+// A bandwidth both sources state alike reads back cited to the page that states it, at that page's figure.
+test fn w_agreeing_bandwidth_reads_back_cited_to_wikipedia() -> Bool {
+  match gpu_catalog_bandwidth(row: nvidia_tesla_p40_catalog) {
+    Present { value: f } => bandwidth_count(b: f.rate) == 345600000000
+      && match f.standing { CitedToAuthority { authority: a } => a == wikipedia_list_of_nvidia_gpus_authority, _ => false }
+    Absent => false
+  }
+}
+
+// A bandwidth only the snapshot states is carried but not readable as cited: the consumer that divides by
+// a bandwidth gets Absent for the T10 until a datasheet is read.
+test fn w_snapshot_only_bandwidth_is_not_read_as_cited() -> Bool {
+  match nvidia_tesla_t10_16_gb_catalog.memory_bandwidth { Present { value: _ } => true, Absent => false }
+    && match gpu_catalog_bandwidth(row: nvidia_tesla_t10_16_gb_catalog) { Present { value: _ } => false, Absent => true }
+}
+
+// Where the sources disagree (the snapshot's 10.3 TB/s against the revision's 5.3 TB/s for the MI300X),
+// the row carries neither.
+test fn w_conflicting_bandwidth_is_absent() -> Bool {
+  match amd_instinct_mi300x_catalog.memory_bandwidth { Present { value: _ } => false, Absent => true }
+}
+
+// The CMP mining board's link is the Gen1 x4 it trains at, so its host bandwidth is four Gen1 lanes:
+// 4 x 2.5 GT/s x 8b/10b = 1 GB/s.
+test fn w_cmp_170hx_link_is_four_gen1_lanes() -> Bool {
+  match nvidia_cmp_170hx_8_gb_catalog.interconnect {
+    Present { value: link } => link.generation == Gen1 && link.lane_count == 4
+      && bandwidth_count(b: pcie_link_bandwidth(link: link)) == 1000000000
+    Absent => false
+  }
+}

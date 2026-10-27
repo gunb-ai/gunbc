@@ -158,7 +158,7 @@ test fn level_one_folds_only_the_samples_inside_its_window() -> Bool {
   }
 }
 
-// GPU-b's only level-two sample shows an idle gen-1 link: PcieLink holds Gen3-Gen5, so that GPU has no
+// GPU-b's only level-two sample shows an idle gen-1 link: the reader admits only Gen3-Gen5, so that GPU has no
 // reading at level two rather than a generation the driver did not print, and admission will name it.
 test fn a_gpu_whose_link_never_trained_has_no_level_reading() -> Bool {
   match level(ts: fx_telemetry_levels, active: 2) {
