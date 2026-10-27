@@ -230,7 +230,8 @@ test fn wla_typed_uint8_to_int8_refuses() -> Bool {
 }
 
 // Today the widening direction refuses too (the ruling's implicit half is not realized at typed
-// crossings; see the block comment and the row's boundary-(3) deferral). This claim goes RED exactly
+// crossings; see the block comment and the row's boundary-(3) restoration trigger and owner programs,
+// S1a gunbc#15110 and S1b — the row records boundary (3) as NOT stalled). This claim goes RED exactly
 // when S1a/S1b land the implicit safe subset here — it pins where that change must land.
 test fn wla_typed_uint8_to_uint16_refuses_until_implicit_widening_lands() -> Bool {
   wla_reason(src: wla_typed_src(body: "fn g16(n: UInt16) -> Bool {\n  true\n}\n\nfn uses(u: UInt8) -> Bool {\n  g16(n: u)\n}\n")) == ^application_argument_does_not_inhabit
