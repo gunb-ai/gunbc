@@ -266,6 +266,16 @@ fn ipmi_cipher_suite_of_id(id: Int) -> IpmiCipherSuite? {
   first(filter(ipmi_cipher_suite_table, s => s.id == id))
 }
 
+// THE OPERATIONS TAKE THE SUITE AS WORDS, NOT AS THE TYPE: a stated divergence (DESIGN 3b). The typed suite is
+// rendered here, by this one function, and each diagnostic.ipmi.Tool operation receives the words as
+// cipher_suite_argv: List<String>, because (1) std.operation_argv shell_materialize_operation_argv refuses a call in
+// an argv element as ArgvExpressionUnsupported (its own declared residue, operation_argv_expression_residue_note),
+// and the byte-equality control over mtcollins1's argv (test.claim.bmc.ipmi_cipher_suite_argv_witness) materializes
+// through it; and (2) a sealed record input does not splice at execution: the seed splices only a native List or a
+// std.compilers.cli_surface ProcessArgvExpansion into an argv and renders any other record as one Debug-text word
+// (gunbc.recurring_failure_mode a_record_in_an_argv_position_becomes_its_debug_text). The operations switch to
+// cipher_suite: IpmiCipherSuite? when argv element evaluation lands in std.operation_argv, or when the seed splices
+// a declared sealed role type.
 fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
   match suite {
     Absent => []
