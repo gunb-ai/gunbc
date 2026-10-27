@@ -3,6 +3,8 @@
 
 use self::AliasWalkEnd::*;
 use self::BrandNominalVerdict::*;
+use self::BuiltinResultArguments::*;
+use self::BuiltinResultAtCall::*;
 use self::CallArgumentFormalSelection::*;
 use self::CarrierMatch::*;
 use self::DeclaredTypePosition::*;
@@ -10439,6 +10441,109 @@ match value.inferred.clone().as_deref().cloned() {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum BuiltinResultAtCall {
+    BuiltinResultReady { node: Rc<Node> },
+    BuiltinResultDeclarationAbsent { qualified: String },
+}
+
+pub fn builtin_result_at_call(bt: Rc<Node>, scope: Rc<InferScope>) -> Rc<BuiltinResultAtCall> {
+    {
+        let module_path = crate::v1_compiler_infer_env::qualified_all_but_last(bt.name.clone());
+        if (((bt.inferred.clone() != std::option::Option::None)
+            || (bt.connective.clone() != Connective::NoConnective))
+            || (module_path.clone() == "".to_string()))
+        {
+            Rc::new(BuiltinResultAtCall::BuiltinResultReady { node: bt.clone() })
+        } else {
+            match crate::v1_compiler_infer_env::declaration_node_of_ref(
+                crate::std_decl_ref::decl_ref(
+                    module_path.clone(),
+                    crate::v1_std_core::qualified_last_segment(bt.name.clone()),
+                ),
+                scope.type_env.clone(),
+            ) {
+                std::option::Option::None => {
+                    Rc::new(BuiltinResultAtCall::BuiltinResultDeclarationAbsent {
+                        qualified: bt.name.clone(),
+                    })
+                }
+                Some(decl) => {
+                    if ((bt.children.clone().len() as i64) == 0) {
+                        Rc::new(BuiltinResultAtCall::BuiltinResultReady { node: decl.clone() })
+                    } else {
+                        match (*builtin_result_arguments_at_call(
+                            bt.children.clone(),
+                            scope.clone(),
+                        ))
+                        .clone()
+                        {
+                            BuiltinResultArguments::BuiltinResultArgumentsReady {
+                                nodes: args,
+                                ..
+                            } => Rc::new(BuiltinResultAtCall::BuiltinResultReady {
+                                node: crate::v1_compiler_infer_env::node_with_inferred(
+                                    crate::v1_compiler_infer_env::node_with_children(
+                                        bt.clone(),
+                                        args.clone(),
+                                    ),
+                                    Some(Rc::new(InferredNode::Resolved { node: decl.clone() })),
+                                ),
+                            }),
+                            BuiltinResultArguments::BuiltinResultArgumentAbsent {
+                                qualified: q,
+                                ..
+                            } => Rc::new(BuiltinResultAtCall::BuiltinResultDeclarationAbsent {
+                                qualified: q.clone(),
+                            }),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn builtin_result_declaration_absent_message(func_name: String, qualified: String) -> String {
+    v1_rt::concat("builtin '".to_string(), v1_rt::concat(func_name.clone(), v1_rt::concat("' returns ".to_string(), v1_rt::concat(qualified.clone(), ", which this module's closure does not declare: import the module that declares it".to_string()))))
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum BuiltinResultArguments {
+    BuiltinResultArgumentsReady { nodes: Rc<Vec<Rc<Node>>> },
+    BuiltinResultArgumentAbsent { qualified: String },
+}
+
+pub fn builtin_result_arguments_at_call(
+    arguments: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<BuiltinResultArguments> {
+    arguments.iter().cloned().fold(
+        Rc::new(BuiltinResultArguments::BuiltinResultArgumentsReady {
+            nodes: Rc::new(vec![]),
+        }),
+        |acc: Rc<BuiltinResultArguments>, a: Rc<Node>| match (*acc.clone()).clone() {
+            BuiltinResultArguments::BuiltinResultArgumentAbsent { qualified: _, .. } => acc.clone(),
+            BuiltinResultArguments::BuiltinResultArgumentsReady { nodes: ready, .. } => {
+                match (*builtin_result_at_call(a.clone(), scope.clone())).clone() {
+                    BuiltinResultAtCall::BuiltinResultReady { node: r, .. } => {
+                        Rc::new(BuiltinResultArguments::BuiltinResultArgumentsReady {
+                            nodes: v1_rt::concat(ready.clone(), Rc::new(vec![r.clone()])),
+                        })
+                    }
+                    BuiltinResultAtCall::BuiltinResultDeclarationAbsent {
+                        qualified: q, ..
+                    } => Rc::new(BuiltinResultArguments::BuiltinResultArgumentAbsent {
+                        qualified: q.clone(),
+                    }),
+                }
+            }
+        },
+    )
+}
+
 pub fn infer_tier2b_builtin_with_kernel_diags(
     func_name: String,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -15861,7 +15966,20 @@ match bare_s.clone() {
                                 if (!callee_is_body_binding.clone() && (crate::v1_compiler_infer_method::infer_builtin_call_type(func_name.clone()) != std::option::Option::None)) {
                                     {
                                         let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name.clone(), typed_args.clone(), scope.clone(), span.clone());
-let bt = tier2b.bt.clone();
+let result_at_call = builtin_result_at_call(tier2b.bt.clone(), scope.clone());
+let call_inferred = match (*result_at_call.clone()).clone() {
+    BuiltinResultAtCall::BuiltinResultReady { node: r, .. } => Some(Rc::new(InferredNode::Resolved {
+    node: r.clone(),
+})),
+    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: q, .. } => Some(Rc::new(InferredNode::CompilerError {
+    message: builtin_result_declaration_absent_message(func_name.clone(), q.clone()),
+    span: span.clone(),
+})),
+};
+let result_declaration_diags = match (*result_at_call.clone()).clone() {
+    BuiltinResultAtCall::BuiltinResultReady { node: _, .. } => Rc::new(vec![]),
+    BuiltinResultAtCall::BuiltinResultDeclarationAbsent { qualified: q, .. } => Rc::new(vec![inference_error(builtin_result_declaration_absent_message(func_name.clone(), q.clone()), span.clone(), scope.module_name.clone())]),
+};
 let call_semantics = if (func_name.clone() == "lookup".to_string()) {
                                             Some(Rc::new(CallSemantics::LookupCallSemantics {
     target: Rc::new(CallTargetIdentity::RuntimePrimitiveCall {
@@ -15878,10 +15996,8 @@ Rc::new(InferResult {
     typed: crate::v1_std_core::make_named_expr_node(texpr.occurrence_identity.clone(), func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: call_semantics.clone(),
     descent_evidence: std::option::Option::None,
-}), typed_arg_nodes.clone(), Some(Rc::new(InferredNode::Resolved {
-    node: bt.clone(),
-})), span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
-    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone())))),
+}), typed_arg_nodes.clone(), call_inferred, span.clone(), crate::v1_std_core::node_name_span(texpr.clone())),
+    emissions: infer_emissions_concat(arg_emissions.clone(), infer_emissions_of_diagnostics(v1_rt::concat(result_declaration_diags.clone(), v1_rt::concat(tier2b.kernel_diags.clone(), builtin_text_argument_crossing_diags(func_name.clone(), typed_args.clone(), scope.clone()))))),
 })
 }
                                 } else {
@@ -16418,7 +16534,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 Some(first_type) => Rc::new(v1_rt::list_skip(&joined_arm_types.clone(), 1))
                     .iter()
                     .cloned()
-                    .fold(first_type.clone(), |acc: _, t: Rc<Node>| {
+                    .fold(first_type.clone(), |acc: Rc<Node>, t: Rc<Node>| {
                         crate::v1_compiler_infer_types::prefer_specific_type(
                             acc,
                             t.clone(),

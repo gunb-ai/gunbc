@@ -12,6 +12,7 @@ import gunbc.roadmap.roadmap_event_carrier_directory { roadmap_event_carrier_dir
 import gunbc.compute.host_capacity { compute_root_directory }
 import gunbc.fabric.fabric_storage_placement { fabric_storage_directory_demands }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_directory }
+import gunbc.roadmap.roadmap_session_attempt_slots_root { session_attempt_slots_directory }
 import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_directory, cursor_attempt_runtime_directory }
 
 // THE ONLY LIST OF AN INSTANCE'S DIRECTORIES. Every row is the demand its consumer declares -- the
@@ -24,7 +25,7 @@ import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_dire
 //
 // THIS IS STILL A CONSUMER LIST, AND THAT IS ITS DECLARED LIMIT. A consumer that writes a directory
 // and is not listed here gets no creator; the composition cannot see it. D14 step 4
-// (docs/plans/ensure-closure-design.md section 12) is what derives the demand from the code that
+// (`gunbc.plans.ensure_closure_design` section 12) is what derives the demand from the code that
 // writes, at which point this list stops being authored. Until then, adding a directory writer means
 // declaring its demand in its own module and adding one row here.
 //
@@ -47,5 +48,6 @@ fn dashboard_instance_directory_demands(realization: ProdRoleRealization, instan
     credential_acquisition_slots_directory(instance: instance),
     cursor_attempt_runtime_directory(instance: instance),
     worktree_claim_slots_directory(instance: instance),
+    session_attempt_slots_directory(instance: instance),
   ], fabric_storage_directory_demands(realization: realization, instance: instance)))
 }

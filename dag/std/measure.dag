@@ -84,6 +84,7 @@ type Scale =
   | Milli
   | One
   | Sixty
+  | ThirtySixHundred
   | RackUnitHeight
   | SquareFootArea
 
@@ -115,6 +116,7 @@ fn scale_exponent(s: Scale) -> Int? {
     DegreeAngle    => none
     TurnAngle      => none
     Sixty =>  none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  =>  Present { value:   3 }
@@ -186,6 +188,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     DegreeAngle => none
     TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
+    ThirtySixHundred => Present { value: minutes_per_hour() * seconds_per_minute() }
     RackUnitHeight => none
     SquareFootArea => none
     Atto  => none
@@ -224,6 +227,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     DegreeAngle => none
     TurnAngle => none
     Sixty => none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  => none
@@ -806,6 +810,21 @@ fn events_per_minute(count: Nat) -> EventsPerMinute {
 }
 
 fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+  measure_count(r)
+}
+
+// A per-hour count of discrete events, the hourly sibling of EventsPerMinute at the ISO 8601
+// seconds-per-hour scale (minutes_per_hour x seconds_per_minute). A per-minute and a per-hour figure
+// cannot be compared or assigned across without a modeled conversion, so an hourly completion rate
+// never rides in a per-minute carrier scaled by hand. First consumer: the completed-turns-per-hour
+// quantity of gunbc.serving.serving_benchmark_run_receipt.
+type EventsPerHour = Measure<Frequency, ThirtySixHundred, Nat>
+
+fn events_per_hour(count: Nat) -> EventsPerHour {
+  Measure { count: count }
+}
+
+fn events_per_hour_count(r: EventsPerHour) -> Nat {
   measure_count(r)
 }
 
