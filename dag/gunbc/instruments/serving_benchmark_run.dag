@@ -8,7 +8,7 @@ import std.measure { mebibyte_count, byte_size, kibibyte_count, token_count_valu
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.docker { DockerMount, BindMount }
-import extdeps.docker.create_spec { DockerCreateSpec, DockerEnvAssignment, NamespaceHost, NamespacePrivate, RestartNo, docker_container_resource_flags }
+import extdeps.docker.create_spec { DockerCreateSpec, DockerEnvAssignment, NamespaceHost, NamespacePrivate, RestartNo, docker_create_arguments_without_verb }
 import extdeps.docker.cli_service { DockerCli }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.linux.proc_cpuinfo { parse_proc_cpuinfo, ProcCpuinfoParsed, ProcCpuinfoUnreadable }
@@ -92,7 +92,7 @@ fn env(name: String, value: String) -> DockerEnvAssignment {
 }
 
 fn create(s: DockerCreateSpec) -> Int {
-  DockerCli.CreateWithFlags(docker: sb_docker(), name: s.name, network: sb_host_network(), flags: docker_container_resource_flags(spec: s), image: s.image, command: s.command).exit_code
+  DockerCli.CreateWithFlags(docker: sb_docker(), arguments: docker_create_arguments_without_verb(spec: s)).exit_code
 }
 
 type Ran {

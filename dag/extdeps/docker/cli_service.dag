@@ -122,19 +122,20 @@ service DockerCli {
     transport shell { argv: [docker, "rm", "-f", name] }
   }
 
-  // `docker create` with the resource flags extdeps.docker.cli docker_container_resource_flags renders
-  // from a DockerCreateSpec (--gpus, --mount, --env, ...): the subcommand is fixed, and the flags come from
-  // the one renderer every container plan in this repository uses, never hand-assembled. stdout carries
-  // the new container's id.
+  // `docker create` for one container plan. The subcommand is fixed here and NOTHING ELSE is spelled
+  // by the caller: `arguments` is extdeps.docker.create_spec docker_create_arguments_without_verb —
+  // the one renderer every container plan in this repository uses (identity, restart policy,
+  // resources, image, command) — so no caller can silently drop --ipc, --shm-size or --restart,
+  // and no caller can hand-assemble the identity flags. stdout carries the new container's id.
   operation CreateWithFlags {
     requires opaque
-    input { docker: NonEmptyStr, name: NonEmptyStr, network: NonEmptyStr, flags: List<String>, image: NonEmptyStr, command: List<String> }
+    input { docker: NonEmptyStr, arguments: List<String> }
     output {
       exit_code: Int from "exit_code"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    transport shell { argv: [docker, "create", "--name", name, "--network", network, flags, image, command] }
+    transport shell { argv: [docker, "create", arguments] }
   }
 
   // `docker stop -t <seconds>`: SIGTERM, then SIGKILL after the grace, so a sampler flushes its file.

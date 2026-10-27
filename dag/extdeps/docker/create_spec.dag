@@ -159,15 +159,19 @@ fn docker_container_image_and_command(spec: DockerCreateSpec) -> List<String> {
   concat([spec.image as String], spec.command)
 }
 
-fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+fn docker_create_arguments_without_verb(spec: DockerCreateSpec) -> List<String> {
   concat(
     concat(
       concat(
-        concat(["create"], docker_container_identity_flags(spec: spec)),
+        docker_container_identity_flags(spec: spec),
         ["--restart", docker_restart_policy_wire(p: spec.restart) as String],
       ),
       docker_container_resource_flags(spec: spec),
     ),
     docker_container_image_and_command(spec: spec),
   )
+}
+
+fn docker_create_arguments(spec: DockerCreateSpec) -> List<String> {
+  concat(["create"], docker_create_arguments_without_verb(spec: spec))
 }
