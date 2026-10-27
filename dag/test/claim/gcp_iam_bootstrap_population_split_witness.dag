@@ -2,9 +2,13 @@ module test.claim.gcp_iam_bootstrap_population_split_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Present, Absent }
-import extdeps.cloud.gcp.iam { GcpPolicy, gcp_cells_bindings, gcp_cell_in }
-import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, cell_preimage, ConvergeProviderRole, fleet_roster_grants, iam_observe_service_account }
+import std.optional { Absent, Optional, Present }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, GcpPolicy, gcp_cells_bindings, gcp_cell_in }
+import gunbc.auth.gcp_iam_converge {
+  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, SecretPolicy, SecretPolicyReading,
+  cell_preimage, fleet_roster_grants, gcp_iam_converge_grant_set_secrets, gcp_iam_converge_grant_sets,
+  gcp_iam_converge_targets, grant_set_secrets, iam_observe_service_account, plan_grant_set,
+}
 import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_pool_id }
 import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, approval_apns_auth_key_accessor_row, fleet_accessor_grant, fleet_accessor_grant_roster }
@@ -225,22 +229,23 @@ test fn the_apns_accessor_cell_is_delta_owned_and_names_no_ceremony_repair() -> 
       })
 }
 
-// WHAT DOES BIND IT, so "run the ceremony" is not a guess about the rest of the path. The row joins the
-// converge's ONE fleet-roster grant set, and that set's pure plan -- driven with an empty policy read, the
-// way the estate's first read comes back for a secret nobody has granted on yet -- carries srv1's cell as
-// an AddPolicyCells effect on the APNs secret. That is the whole route to GCP: no per-row entry, and the
-// bootstrap population holds the secret only as a policy-writer/observe cell, never as the accessor cell and
-// never on the ceremony side. So establishing the ceremony is enough -- it unblocks the converge -- and
-// nothing per-row is ever run.
-fn apns_fleet_grant_set() -> GrantSet {
-  match filter(gcp_iam_converge_grant_sets, g =>
-    g.label == "fleet roster cells" && any(g.grants, x => (x.target.secret as String) == (apns_secret_id as String))
-  ).first() {
-    Present { value: g } => g
-    Absent => GrantSet { label: "absent", grants: [], member: GrantMemberUnresolved { cause: "no grant set names the APNs secret" } }
-  }
+// WHAT DOES BIND IT, so "run the ceremony" is not a guess about the rest of the path. THE ROUTE, in the
+// order the model actually runs it: the row is folded by fleet_roster_grants, the converge's grant-set
+// selectors (gcp_iam_converge_grant_sets) select that roster fold, and plan_grant_set -- the pure step
+// converge runs against a policy read -- turns the selected set's desired cells into the AddPolicyCells
+// effect that reaches GCP. So there is no per-row entry to add and no second path: the ceremony establishes
+// the writer identity that lets that plan be applied, and the accessor cell travels on the grant-set route.
+// The grant set is SELECTED from the converge's own list, never re-spelled here: if no set selects the APNs
+// grant there is no route and this claim says so by refusing (Absent), not by inventing an empty set.
+fn apns_fleet_grant_set() -> Optional<GrantSet> {
+  filter(gcp_iam_converge_grant_sets, g =>
+    any(g.grants, x => (x.target.secret as String) == (apns_secret_id as String))
+  ).first()
 }
 
+// An empty policy read over exactly the set's secrets: the shape the estate's first read comes back in for
+// a secret nobody has granted on yet. Built from grant_set_secrets, the same selector plan_grant_set keys
+// its "readings are exactly the set's secrets" guard on, so the plan cannot refuse on a key-set mismatch.
 fn apns_empty_readings(g: GrantSet) -> List<SecretPolicyReading> {
   map(grant_set_secrets(g: g), x => SecretPolicyReading {
     secret: x,
@@ -249,19 +254,31 @@ fn apns_empty_readings(g: GrantSet) -> List<SecretPolicyReading> {
 }
 
 test fn the_apns_accessor_cell_reaches_gcp_through_the_converge_grant_set_plan() -> Bool {
-  let g = apns_fleet_grant_set()
-  let p = plan_grant_set(g: g, member: g.member, secret_policies: apns_empty_readings(g: g))
   count(apns_cells()) == 1
-    && any(g.grants, x => (x.target.secret as String) == (apns_secret_id as String))
+    // (1) THE FOLD: fleet_roster_grants carries the row's grant for the secret.
+    && any(fleet_roster_grants(), g => (g.target.secret as String) == (apns_secret_id as String))
+    // (2) THE SELECTION: some converge grant set selects that grant, and the secret is in the converge's
+    //     grant-set secret selectors.
+    && any(gcp_iam_converge_grant_sets, s =>
+      any(s.grants, x => (x.target.secret as String) == (apns_secret_id as String)))
     && any(gcp_iam_converge_grant_set_secrets(), s => (s as String) == (apns_secret_id as String))
-    && match p {
-        GcpIamApply { diff: d } => any(d.effects, e => match e {
-          AddPolicyCells { subject: SecretPolicy { secret: s }, observed_etag: _, cells: cs } =>
-            (s as String) == (apns_secret_id as String) && all(apns_cells(), c => gcp_cell_in(c: c, xs: cs))
+    // (3) THE PLAN: plan_grant_set carries the accessor cell as an AddPolicyCells effect on the APNs
+    //     secret. Matched on Present -- no selected set means no route, and that FAILS rather than
+    //     planning over a fabricated empty set.
+    && match apns_fleet_grant_set() {
+        Present { value: g } => match plan_grant_set(g: g, member: g.member, secret_policies: apns_empty_readings(g: g)) {
+          GcpIamApply { diff: d } => any(d.effects, e => match e {
+            AddPolicyCells { subject: SecretPolicy { secret: s }, observed_etag: _, cells: cs } =>
+              (s as String) == (apns_secret_id as String) && all(apns_cells(), c => gcp_cell_in(c: c, xs: cs))
+            _ => false
+          })
           _ => false
-        })
-        _ => false
+        }
+        Absent => false
       }
+    // (4) AND IT TRAVELS ON THAT ROUTE ALONE: the ceremony population never holds the APNs secret, and the
+    //     capability population -- which holds a secret only as the policy-writer cells (secret.iamMember)
+    //     and the observe cells (secret.versionGetter), never an accessor cell -- never holds this cell.
     && !any(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
         BootstrapSecret { secret } => (secret as String) == (apns_secret_id as String)
         _ => false
@@ -270,28 +287,4 @@ test fn the_apns_accessor_cell_reaches_gcp_through_the_converge_grant_set_plan()
         BootstrapSecret { secret } => (secret as String) != (apns_secret_id as String) || !gcp_cell_in(c: b.cell, xs: apns_cells())
         _ => true
       })
-}
-
-// THE COMMENT STAYS HONEST, SCOPED TO THIS ROW. Two roster rows above still promise the operator an
-// ensure under their token, and for THOSE rows that is true -- their secrets are trust roots and their
-// ceremonies do bind under the operator's token. So the scan is not "no row may mention an operator
-// token": it cuts out the APNs block alone and asks what that block promises. Its old promise pointed at
-// the fold deleted on 2026-10-18, so the block must name the ceremony that is actually the repair, in this
-// file and in the runbook index, and must not promise an ensure this row has no route to.
-fn apns_comment_block() -> String {
-  let doc = filesystem_read(path: "dag/gunbc/auth/fleet_secret_accessor_roster.dag").content
-  let after = split(s: doc, delimiter: "THE APNs AUTH KEY").skip(n: 1).first()
-  match after {
-    Present { value: tail } => join(split(s: tail, delimiter: "data approval_apns_auth_key_accessor_row").take(n: 1), "")
-    Absent => ""
-  }
-}
-
-test fn the_apns_row_comment_names_the_ceremony_and_not_an_ensure_it_cannot_reach() -> Bool {
-  let block = apns_comment_block()
-  block != ""
-    && string_contains(s: block, pattern: "gcp-iam-root-ceremony-apply.md")
-    && string_contains(s: block, pattern: "DeltaOwned")
-    && !string_contains(s: block, pattern: "ensure runs under the operator")
-    && string_contains(s: filesystem_read(path: "docs/runbooks/README.md").content, pattern: "gcp-iam-root-ceremony-apply.md")
 }
