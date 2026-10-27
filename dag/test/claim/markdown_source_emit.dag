@@ -5,11 +5,12 @@ import std.markdown {
   MarkdownTableCell, MarkdownTableRow, HeadingLevel,
   H1, H2, H3, H4, H5, H6,
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
-  CodeBlock, BlockquoteBlock, TableBlock,
+  CodeBlock, CodeText, CodeSymbolRef, SymbolRefInline, BlockquoteBlock, TableBlock,
   TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
   CheckboxState, Checked, Unchecked,
   MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
 }
+import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref, decl_field_ref, decl_type_parameter_ref }
 import extdeps.languages.markdown {
   MarkdownSpellings, commonmark_gfm_spellings,
   ingest_markdown_source, ingest_markdown_source_with,
@@ -74,7 +75,7 @@ fn sample_doc() -> MarkdownDocument {
           MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      CodeBlock { segments: [CodeText { text: "let x = 1;\n" }] },
       TableBlock {
         header: MarkdownTableRow {
           cells: [
@@ -138,7 +139,7 @@ test fn witness_exact_bytes() -> Bool {
 }
 
 fn code_only_doc(code: String) -> MarkdownDocument {
-  MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
+  MarkdownDocument { blocks: [ CodeBlock { segments: [CodeText { text: code }] } ] }
 }
 
 test fn witness_code_block_closing_fence_on_own_line() -> Bool {
@@ -195,3 +196,34 @@ test fn witness_row_driven_bullet() -> Bool {
   (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
 }
 
+// A CITED SYMBOL IS SERIALIZED AS A CODE SPAN OF ITS ONE CANONICAL SPELLING, so typing a citation that
+// was hand-spelled in the spaced form changes no byte of a projected document. Each arm of CitedSymbol
+// (module; declaration; declaration field) is compared with the CodeInline the author used to write,
+// in a paragraph and inside a code block, and the field arm's spelling is asserted literally so a
+// renderer that dropped the field would not compare equal to itself.
+fn one_paragraph(inlines: List<MarkdownInline>) -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: [ParagraphBlock { inlines: inlines }] })
+}
+
+test fn witness_symbol_ref_serializes_as_its_canonical_code_span() -> Bool {
+  one_paragraph(inlines: [TextInline { text: "see " }, SymbolRefInline { symbol: ModuleSymbol { module: ModuleIdentity { name: "std.markdown" } } }])
+    == one_paragraph(inlines: [TextInline { text: "see " }, CodeInline { text: "std.markdown" }])
+  && one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.markdown", decl_name: "CodeBlock") } }])
+    == one_paragraph(inlines: [CodeInline { text: "std.markdown CodeBlock" }])
+  && one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_field_ref(module_path: "std.markdown", decl_name: "CodeText", field_name: "text") } }])
+    == "`std.markdown CodeText.text`\n"
+}
+
+test fn witness_code_symbol_ref_serializes_as_its_canonical_spelling() -> Bool {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: [CodeBlock { segments: [CodeText { text: "x // " }, CodeSymbolRef { symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.markdown", decl_name: "CodeBlock") } }, CodeText { text: "\n" }] }] })
+    == serialize_markdown_source(doc: code_only_doc(code: "x // std.markdown CodeBlock\n"))
+}
+
+// A FIELD AND A TYPE PARAMETER ARE DIFFERENT COMPONENTS OF A DECLARATION, so they must not render in
+// one form (a dot for a field, angle brackets for a type parameter): the typed carrier distinguishes them, and a renderer that collapsed them would make a
+// reader unable to tell which one a document names.
+test fn witness_field_and_type_parameter_citations_render_distinctly() -> Bool {
+  let field = one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_field_ref(module_path: "std.decl_ref", decl_name: "ModuleIdentity", field_name: "name") } }])
+  let parameter = one_paragraph(inlines: [SymbolRefInline { symbol: DeclarationSymbol { reference: decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T") } }])
+  field == "`std.decl_ref ModuleIdentity.name`\n" && parameter == "`std.optional Optional<T>`\n"
+}

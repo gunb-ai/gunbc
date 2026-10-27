@@ -325,7 +325,7 @@ test fn witness_dominated_entry_names_its_dominator() -> Bool {
     && winning_axis_count_of(s: standing, dominator: id_cheap_strong) == 2
     && winning_axis_count_of(s: standing, dominator: id_dear_strong) == 1
     && string_contains(s: pareto_label(s: standing), pattern: "dominated by ")
-    && string_contains(s: pareto_label(s: standing), pattern: "test.claim.pareto_selection_witness::entry_cheap_strong")
+    && string_contains(s: pareto_label(s: standing), pattern: "test.claim.pareto_selection_witness entry_cheap_strong")
 }
 
 // CONTROL 2. A genuine trade-off keeps both entries on the frontier with the sensitivities

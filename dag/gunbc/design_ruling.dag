@@ -1,9 +1,9 @@
 module gunbc.design_ruling
 
 import std.types { String }
-import std.decl_ref { DeclarationRef, decl_ref }
-import std.markdown { MarkdownDocument, MarkdownBlock, HeadingBlock, TextInline, H1 }
-import gunbc.plans.md_helpers { h2, p, hr }
+import std.decl_ref { DeclarationRef, DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref }
+import std.markdown { MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, TextInline, H1 }
+import gunbc.plans.md_helpers { h2, p, hr, tx, cite, pi }
 import extdeps.languages.markdown { serialize_markdown_source }
 
 // THE DATED OPERATOR RULINGS DESIGN.md STATES, HELD AS ROWS RATHER THAN NARRATED INLINE.
@@ -25,28 +25,28 @@ type DesignRuling {
   reference: DeclarationRef
   decided: String
   section: String
-  provenance: String
+  provenance: List<MarkdownInline>
 }
 
 data conformance_needs_attention: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "conformance_needs_attention"),
   decided: "2026-09-06",
   section: "3b",
-  provenance: "Operator: \"it needs more attention than it has received because it is incredibly important\". The same day the operator named the climb the printing-press direction: derive the touched domains at plan admission, before any worker runs.",
+  provenance: [tx(text: "Operator: \"it needs more attention than it has received because it is incredibly important\". The same day the operator named the climb the printing-press direction: derive the touched domains at plan admission, before any worker runs.")],
 }
 
 data consumption_interrogated_separately: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "consumption_interrogated_separately"),
   decided: "2026-09-06",
   section: "3c",
-  provenance: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.",
+  provenance: [tx(text: "Operator: adding dangling modeling is interrogated separately, and the consumption must be understood well.")],
 }
 
 data authorization_pattern_is_a_selection: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "authorization_pattern_is_a_selection"),
   decided: "2026-09-19",
   section: "3b",
-  provenance: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.",
+  provenance: [tx(text: "Added to the conformance domain row on that date; the census gunbc.auth.privileged_effect_census classifies every site by executing the selection.")],
 }
 
 data one_approval_route_for_every_privileged_action: DesignRuling = DesignRuling {
@@ -67,119 +67,119 @@ data coercion_is_the_implicit_safe_subset: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset"),
   decided: "2026-09-26",
   section: "4",
-  provenance: "Operator ruling.",
+  provenance: [tx(text: "Operator ruling.")],
 }
 
 data text_crossings_go_through_the_unfold: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "text_crossings_go_through_the_unfold"),
   decided: "2026-09-27",
   section: "4",
-  provenance: "Operator ruling revising XL-0T to option B; Ruling 3 (String is FreeMonoid<Char>) stands. Its first execution falsified the withdrawn leaf-name identity wall.",
+  provenance: [tx(text: "Operator ruling revising XL-0T to option B; Ruling 3 (String is FreeMonoid<Char>) stands. Its first execution falsified the withdrawn leaf-name identity wall.")],
 }
 
 data epistemic_humility_is_symmetric: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "epistemic_humility_is_symmetric"),
   decided: "2026-09-10",
   section: "4d",
-  provenance: "Operator ruling; receipts gunbc-private #54 (over-assertion) and gunbc#10954 (over-prohibition).",
+  provenance: [tx(text: "Operator ruling; receipts gunbc-private #54 (over-assertion) and gunbc#10954 (over-prohibition).")],
 }
 
 data chain_re_derivation: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "chain_re_derivation"),
   decided: "2026-09-15",
   section: "6b",
-  provenance: "Operator ruling, stated separately because the opposite is the default habit. Specimens: #11401 (resolve rebuilt corpus-wide state per module; repaired upstream with one shared ResolutionContext per native ingest in v2.compiler.compile), #11422 (every ordered Choice is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one), #11444 (the emitter tail-call lowering is_tco_identity_passthrough was itself the earliest unjustified boundary, so the local repair was right).",
+  provenance: [tx(text: "Operator ruling, stated separately because the opposite is the default habit. Specimens: #11401 (resolve rebuilt corpus-wide state per module; repaired upstream with one shared ResolutionContext per native ingest in v2.compiler.compile), #11422 (every ordered Choice is owed one prepared plan, so per-token dispatch was the wrong link, not a slow one), #11444 (the emitter tail-call lowering is_tco_identity_passthrough was itself the earliest unjustified boundary, so the local repair was right).")],
 }
 
 data root_generalization_closes_breadth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "root_generalization_closes_breadth"),
   decided: "2026-10-16",
   section: "6b",
-  provenance: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.",
+  provenance: [tx(text: "Operator ruling, amended 2026-10-16 after side-chat review: the method is named root generalization, with anti-unification (Plotkin) as its formal core, and lives in 6b beside chain re-derivation rather than in its own section. Root-cause repair fixes depth; this closes breadth. A new case that needs new code is first asked whether it is another instance of what existing leaves already do; if so, every leaf of that shape is collected, generalized to the least general rule at the earliest unjustified boundary (6b), and deleted (3, delete-first), repeating while the generalizations form a family. The horizontal half was filed as a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling with a recognition rule addressed to authors, which did not work: three fork families grew in one week while it existed (type-alias identity at node_type_compatible call sites, #13941 #14069 #13974 #14043 #14057; v1 Rust trait-bound pipelines, #13978 #14010 #14020; qualified-call resolution, #13925 #14085 #14089); positive specimens #14151 #14193 #13872 #14187). So the check is placed on the reviewer: a repeated pattern is rejected until the author answers with a stated reason not to generalize or a named trigger and follow-up, and the reviewer accepts or rejects that answer; no answer is a reject.")],
 }
 
 data v2_better_than_the_seed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v2_better_than_the_seed"),
   decided: "2026-10-02",
   section: "7",
-  provenance: "Operator ruling; neither a byte-identical fixed point nor behavioural equivalence to the seed is the goal.",
+  provenance: [tx(text: "Operator ruling; neither a byte-identical fixed point nor behavioural equivalence to the seed is the goal.")],
 }
 
 data instrument_is_a_row_not_a_flag: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "instrument_is_a_row_not_a_flag"),
   decided: "2026-09-16",
   section: "Building & checks",
-  provenance: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.",
+  provenance: [tx(text: "Operator ruling; `--self-host` was withdrawn in the change that added //gunbc/instruments:self-host.")],
 }
 
 data job_roster_closed_to_growth: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "job_roster_closed_to_growth"),
   decided: "2026-09-04",
   section: "Building & checks",
-  provenance: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.",
+  provenance: [tx(text: "Operator ruling cutting three of seven jobs. On 2026-09-15 the same reasoning cut the push-on-main trigger: the merge queue's required run already proves the landing sha.")],
 }
 
 data v1_withdrawn_one_required_job: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_withdrawn_one_required_job"),
   decided: "2026-10-09",
   section: "Building & checks",
-  provenance: "Operator ruling (the v1 withdrawal, gunbc#13658 and gunbc#13641). The lanes floor, generated, rust-unit-tests and seed were deleted; the loss is gunbc.rung_drop v1_required_lanes_withdrawn.",
+  provenance: [tx(text: "Operator ruling (the v1 withdrawal, gunbc#13658 and gunbc#13641). The lanes floor, generated, rust-unit-tests and seed were deleted; the loss is gunbc.rung_drop v1_required_lanes_withdrawn.")],
 }
 
 data memory_envelope_is_part_of_the_verdict: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "memory_envelope_is_part_of_the_verdict"),
   decided: "2026-10-09",
   section: "Building & checks",
-  provenance: "Operator ruling issued with the v1 withdrawal.",
+  provenance: [tx(text: "Operator ruling issued with the v1 withdrawal.")],
 }
 
 data regeneration_jobs_added_to_roster: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "regeneration_jobs_added_to_roster"),
   decided: "2026-10-11",
   section: "Building & checks",
-  provenance: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.",
+  provenance: [tx(text: "Roster growth by two non-required jobs, heal-publish.yml and drift-watch.yml, recorded as approved by default: escalation msg_6b00c6a2-c66c-4f41-a3bf-b76dc9d8ab4e went unanswered inside the dashboard's 15-minute window, so its recommended option was recorded; this is not an explicit yes to the two-job split. The operator's own words cover the capability: at 2026-10-11T03:01:08Z 'could you make the regeneration CI step and we can see?', and at 2026-10-11T03:15:35Z 'OK - agreed with your rec - P and D are not urgent' on the proposal of a Tier S push-back plus a Tier O scheduled read-only check.")],
 }
 
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "project_documentation_projections_are_not_checkout_artifacts"),
   decided: "2026-10-13",
   section: "3",
-  provenance: "Operator work item on session silent-otter-245: stop committing generated projections whose only consumer is ProjectDocumentation. DESIGN.md stays committed because every session loads it. Plan markdown, ROADMAP, and the docs ledgers are written on demand.",
+  provenance: [tx(text: "Operator work item on session silent-otter-245: stop committing generated projections whose only consumer is ProjectDocumentation. DESIGN.md stays committed because every session loads it. Plan markdown, ROADMAP, and the docs ledgers are written on demand.")],
 }
 
 data harness_default_requirement_places_on_operator_endpoint: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "harness_default_requirement_places_on_operator_endpoint"),
   decided: "2026-10-11",
   section: "3b",
-  provenance: "Operator, in their own words to the lab session: 'could you just make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend'. It overrules the rule in gunbc.harness.harness_seat harness_requirement_placement that AnyAdmittedModel lands only on a fleet seat; dispatch already defaults to the harness.",
+  provenance: [tx(text: "Operator, in their own words to the lab session: 'could you just make our harness pick this pod, and for our dispatch to pick the harness instead of the claude backend'. It overrules the rule in gunbc.harness.harness_seat harness_requirement_placement that AnyAdmittedModel lands only on a fleet seat; dispatch already defaults to the harness.")],
 }
 
 data cardinality_one_concept: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cardinality_one_concept"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One cardinality concept, existing structural authorities. `std.optional.Optional`, `std.algebra.FreeMonoid` and `std.algebra.FreeSemigroup` remain the authorities for optional values, possibly-empty sequences and nonempty sequences. Cardinality facts compose at named structural positions and measures; they do not replace the value's structure or collapse nesting. Redundant flags and competing carriers are consolidated through complete consumer cuts. Applies to every layer and the whole repository. Subject of the permanent Cardinality / absence conformance domain.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One cardinality concept, existing structural authorities. "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.optional", decl_name: "Optional") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid") }), tx(text: " and "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "std.algebra", decl_name: "FreeSemigroup") }), tx(text: " remain the authorities for optional values, possibly-empty sequences and nonempty sequences. Cardinality facts compose at named structural positions and measures; they do not replace the value's structure or collapse nesting. Redundant flags and competing carriers are consolidated through complete consumer cuts. Applies to every layer and the whole repository. Subject of the permanent Cardinality / absence conformance domain.")],
 }
 
 data dag_absence_is_one_meaning: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dag_absence_is_one_meaning"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One DAG absence meaning; foreign and domain meanings preserved. DAG absence uses the declared `Absent` constructor. The independent `none`/`null` typing and sentinel semantics are retired by complete cohorts. This does not delete faithful foreign null models, reason-bearing refusals, progress states or policy meanings; their conversion to Optional, when appropriate, is explicit and declared.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): One DAG absence meaning; foreign and domain meanings preserved. DAG absence uses the declared `Absent` constructor. The independent `none`/`null` typing and sentinel semantics are retired by complete cohorts. This does not delete faithful foreign null models, reason-bearing refusals, progress states or policy meanings; their conversion to Optional, when appropriate, is explicit and declared.")],
 }
 
 data explicit_present_is_the_authoring_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "explicit_present_is_the_authoring_policy"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Explicit `Present` is the current authoring policy. Optional values are not implicitly wrapped or extracted through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through section 4's law (ruling `gunbc.design_ruling coercion_is_the_implicit_safe_subset`): a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Explicit `Present` is the current authoring policy. Optional values are not implicitly wrapped or extracted through checker exceptions, branch-join tricks or target emission. A future implicit injection is permissible only through section 4's law (ruling "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "coercion_is_the_implicit_safe_subset") }), tx(text: "): a declared route that is total, exact, semantics-preserving, unique, pure and consent-free, represented in the typed program. Until such a route is admitted, author `Present` explicitly.")],
 }
 
 data optional_sugar_is_declaration_bound: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "optional_sugar_is_declaration_bound"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): `T?` is declaration-bound sugar. `T?` denotes the canonical Optional declaration application and introduces its precise acquisition dependency. Local homonyms cannot redirect it. A missing or incompatible authority refuses; it never recreates a kernel mint. This grants no broad ambient prelude and does not make constructor names available unqualified.")],
 }
 
 data where_refinements_retire_for_checked_constructors: DesignRuling = DesignRuling {
@@ -200,105 +200,105 @@ data nonemptiness_is_constructed_or_proved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Nonemptiness is constructed or proved, then consumed. `FreeSemigroup` is used where a nonempty sequence is the value contract. A possibly-empty producer enters a nonempty consumer only through established evidence or explicit checked admission. A type name, arbitrary predicate callback or sealed wrapper alone does not establish the claimed guarantee. General bound propagation is delivered by roadmap node `cardinality-vertical-slice`; its Required activation is `extended-admission-cardinality`.")],
 }
 
 data production_is_main_only_lab_admits_integration: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "production_is_main_only_lab_admits_integration"),
   decided: "2026-10-13",
   section: "3",
-  provenance: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Each DesiredDeployment row carries the one branch it admits (production and srv2: main; lab: its integration branch, gunbc.roadmap.roadmap_dashboard_instance srv1_lab_publication_base_branch). bright-moth-475 is the session that produced the plan, not a second admitted branch. One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the CI and operator-local apply; the CLI does not re-answer it with a production literal.",
+  provenance: [tx(text: "Operator plan 2026-10-13. Narrows the 2026-10-09 fleet-converge ruling that an empty --candidate-branch admits any nonempty checkout (gunbc.fleet.fleet_converge_plan_cli fleet_converge_deploy_branch_admits). Each DesiredDeployment row carries the one branch it admits (production and srv2: main; lab: its integration branch, gunbc.roadmap.roadmap_dashboard_instance srv1_lab_publication_base_branch). bright-moth-475 is the session that produced the plan, not a second admitted branch. One decision, gunbc.live_deploy.pre_swap_admission target_branch_admission, is consulted by the CI and operator-local apply; the CLI does not re-answer it with a production literal.")],
 }
 
 data native_first_complete_cuts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_first_complete_cuts"),
   decided: "2026-10-13",
   section: "3b",
-  provenance: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.",
+  provenance: [tx(text: "Operator rulings, 2026-10-13, recorded by the cardinality-absence program (roadmap node cardinality-absence): Native-first complete cuts, with eventual repository-wide retirement. Complete native consumer cohorts are prioritized; each migrated cohort uses one semantic authority across its participating layers and has no legacy fallback. The remainder is explicit, identity-based and shrink-only; counts are observations, not acceptance oracles. Whole-corpus naming cleanup and unrelated target completion do not gate the typed native closure. The parent roadmap node `cardinality-absence` cannot close until the retained paths are covered and the obsolete production authorities and migration allowances are gone.")],
 }
 
 data machine_mode_names_drop_the_unit: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "machine_mode_names_drop_the_unit"),
   decided: "2026-10-14",
   section: "3",
-  provenance: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. Approved: the eight mtcollins1_* fleet-converge modes drop the unit from their names and take the subject as a workflow input, with no board-family prefix, in one atomic transition with no aliases (the 2026-10-03 rulings stand, live GCP IAM names byte-identical). The proposed managed_host_* spellings are HELD by the operator's later adoption of one_physical_machine_boot_transaction: the boot modes are named after that transaction once the old roots are deleted, and the executor-side census QEMU modes as executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge. The hand-authored mtcollins-canary.yml is retired.",
+  provenance: [tx(text: "Operator, to session merry-fox-82, approving the managed-host untangle cut-7 names: 'yeah those names sound fine to me, just record it. Please retire that yml if it's hand written'. Approved: the eight mtcollins1_* fleet-converge modes drop the unit from their names and take the subject as a workflow input, with no board-family prefix, in one atomic transition with no aliases (the 2026-10-03 rulings stand, live GCP IAM names byte-identical). The proposed managed_host_* spellings are HELD by the operator's later adoption of one_physical_machine_boot_transaction: the boot modes are named after that transaction once the old roots are deleted, and the executor-side census QEMU modes as executor_host_census_qemu_host_observe and executor_host_census_qemu_toolchain_converge. The hand-authored mtcollins-canary.yml is retired.")],
 }
 
 data one_physical_machine_boot_transaction: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "one_physical_machine_boot_transaction"),
   decided: "2026-10-14",
   section: "3",
-  provenance: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine', then adopting the side-chat design review of 2026-10-14 ('could we make sure to clean up all the machine stuff'). Every physical machine is booted through one transaction surface. A modeled request identifies the exact physical subject, desired target, revision and terminal requirement; observed control and delivery capabilities select the strategy; no workflow branches on the machine's label, board name or fleet participation. Boot is reusable by arrival qualification, OS provisioning, reset and recovery and does not own those lifecycles. Executor, serving and management are roles a machine holds, not machine kinds. gunbc.managed_host is not the universal machine population: BMC, provider, PXE, local-target and future control mechanisms are adapters behind physical-machine control standings. The mtcollins1 boot run, gunbc.srv3 boot-once and gunbc.host_reset_return controller actuation are replacement-migration roots that migrate to this transaction and are deleted.",
+  provenance: [tx(text: "Operator, to session merry-fox-82: 'i needed all the srvN boot/convergence aligned with mtcollins ... i just want a unified boot workflow in the end' and 'no matter the machine', then adopting the side-chat design review of 2026-10-14 ('could we make sure to clean up all the machine stuff'). Every physical machine is booted through one transaction surface. A modeled request identifies the exact physical subject, desired target, revision and terminal requirement; observed control and delivery capabilities select the strategy; no workflow branches on the machine's label, board name or fleet participation. Boot is reusable by arrival qualification, OS provisioning, reset and recovery and does not own those lifecycles. Executor, serving and management are roles a machine holds, not machine kinds. gunbc.managed_host is not the universal machine population: BMC, provider, PXE, local-target and future control mechanisms are adapters behind physical-machine control standings. The mtcollins1 boot run, gunbc.srv3 boot-once and gunbc.host_reset_return controller actuation are replacement-migration roots that migrate to this transaction and are deleted.")],
 }
 
 data physical_and_guest_control_remain_distinct: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "physical_and_guest_control_remain_distinct"),
   decided: "2026-10-14",
   section: "3",
-  provenance: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.",
+  provenance: [tx(text: "Operator, adopting the side-chat design review of 2026-10-14 given to session merry-fox-82. Physical machines and microVM guests do not share inventory, controller, media or power interfaces. They may share runtime identity, OS and configuration convergence, workload assignment, attempt and incarnation vocabulary, and independent-readback transaction semantics after the physical boot or guest start boundary.")],
 }
 
 data fan_policy_is_one_fleet_management_workflow: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fan_policy_is_one_fleet_management_workflow"),
   decided: "2026-10-17",
   section: "3",
-  provenance: "Operator, to session merry-fox-82, answering whether the boot may set BMC fan control back to automatic: 'yes it can set the fan control back to whatever the fan policy demands, which is probably managed at a different layer - basically make sure all the machines share a fan policy somewhere' and 'personally i wouldn't tie fan policy to boot - its a separate management workflow entirely, you can have it gate boot if you want, but it needs to be modeled separately regardless'. Fan policy is one fleet-wide authority that every fan-controlled physical host shares (microVM guests have no fan controller and do not inhabit it), converged by its own management workflow, which may write BMC fan control to whatever the policy demands. The boot transaction does not own, author or independently decide fan policy, and may consume the fan-policy convergence standing as an admission gate. Any fan-control restoration a boot initiates must consume or invoke that one convergence authority; boot may not carry a boot-owned or per-family fan policy path of its own. A per-BMC-family fan route (MegaRAC, OpenBMC, Supermicro) is an adapter behind that one policy, never a policy of its own. The operator also reports that the mtcollins1 fans were under automatic management with a 20 percent setting in force, recorded as an operator account, not a machine reading.",
+  provenance: [tx(text: "Operator, to session merry-fox-82, answering whether the boot may set BMC fan control back to automatic: 'yes it can set the fan control back to whatever the fan policy demands, which is probably managed at a different layer - basically make sure all the machines share a fan policy somewhere' and 'personally i wouldn't tie fan policy to boot - its a separate management workflow entirely, you can have it gate boot if you want, but it needs to be modeled separately regardless'. Fan policy is one fleet-wide authority that every fan-controlled physical host shares (microVM guests have no fan controller and do not inhabit it), converged by its own management workflow, which may write BMC fan control to whatever the policy demands. The boot transaction does not own, author or independently decide fan policy, and may consume the fan-policy convergence standing as an admission gate. Any fan-control restoration a boot initiates must consume or invoke that one convergence authority; boot may not carry a boot-owned or per-family fan policy path of its own. A per-BMC-family fan route (MegaRAC, OpenBMC, Supermicro) is an adapter behind that one policy, never a policy of its own. The operator also reports that the mtcollins1 fans were under automatic management with a 20 percent setting in force, recorded as an operator account, not a machine reading.")],
 }
 
 data dimm_population_is_admitted_permissively: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dimm_population_is_admitted_permissively"),
   decided: "2026-10-17",
   section: "4d",
-  provenance: "Operator, to session merry-fox-82, after mtcollins1 booted a mixed RDIMM population: 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or a committed observation of that platform, and the DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted. This row cites no run: the populations and verdicts behind it are recorded with their own evidence.",
+  provenance: [tx(text: "Operator, to session merry-fox-82, after mtcollins1 booted a mixed RDIMM population: 'we have to be as permissive as possible with ram combinations - it eases burden on humans/tech while installing - managing infinite combinations of ddr4 ram is not worth the time' and 'we have to model those interactions per platform if needed - in general, we assume same rank same type (RDIMM, etc) different speed is valid'. Standing direction: a DIMM population is not refused for mixing speeds when rank and module type agree; that default is a typed operator assumption, not a vendor fact. A platform may narrow or widen it only through a per-platform row citing its upstream or a committed observation of that platform, and the DRAM firmware's own training verdict on the booted population is the authority on what a unit actually accepted. This row cites no run: the populations and verdicts behind it are recorded with their own evidence.")],
 }
 
 data mtcollins1_ci_runner_enrolment_approved: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_ci_runner_enrolment_approved"),
   decided: "2026-10-17",
   section: "6",
-  provenance: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.",
+  provenance: [tx(text: "Operator, to session merry-fox-82, asked whether to approve enrolling mtcollins1 as a CI runner host: 'regarding mtcollins, yes, we need stateless runner registration'. The operator approves enrolling mtcollins1 for CI runner participation through gunbc.ci.ci_fleet and gunbc.fleet.fleet_enrollment, served by the diskless runner host route (gunbc.runner.runner_host_medium; the 2026-10-03 ephemeral diskless ruling in gunbc.session_residency). Runner registration must be stateless: slots are re-registered by each boot from modeled state, with no registration state surviving on the host between boots. The slot count is derived from the measured capture, never authored.")],
 }
 
 data mtcollins1_in_memory_app_credential_per_boot: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "mtcollins1_in_memory_app_credential_per_boot"),
   decided: "2026-10-17",
   section: "3",
-  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) is a separate ruling, fleet_converge_modes_are_outside_the_job_roster.",
+  provenance: [tx(text: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q1 of the mtcollins1 stateless runner registration design (whether the diskless runner host may hold a GitHub App installation credential so its slots mint their own JIT registrations, the srv1 microVM slot controller precedent): 'Q1. yes'. Approved: a GitHub App credential pushed to mtcollins1 after each boot over the controlled-host route, held in memory only, so the on-host slot loop can mint, deliver and deregister one ephemeral JIT runner per job through gunbc.runner.runner_jit_perform and gunbc.runner.runner_jit_deregistration. The credential is never written to the host's disk and never committed; a powered-off host holds none. Whether a new fleet-converge mode counts toward job_roster_closed_to_growth (Q3) is a separate ruling, fleet_converge_modes_are_outside_the_job_roster.")],
 }
 
 data fleet_converge_modes_are_outside_the_job_roster: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "fleet_converge_modes_are_outside_the_job_roster"),
   decided: "2026-10-17",
   section: "Building & checks",
-  provenance: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q3 of the mtcollins1 stateless runner registration design. merry-fox-82 asked: '(b) No, modes are operations inside the existing workflow, and your rule is only about the list of jobs CI runs on pull requests'. The operator answered: 'b is preferred', and clarified: 'for this stuff i really don't care about github workflows - its just a convenience for us for WIF i believe'. For fleet operations the GitHub workflow is only the realization that obtains workload-identity-federation credentials (transport), never the authority: what a mode does is decided by the .dag model and the ruling it cites, so adding or changing a mode needs no roster sign-off. SCOPE: a new mode of gunbc.fleet.fleet_converge_workflow is an operation inside the existing dispatch-only fleet-converge workflow and does not count toward job_roster_closed_to_growth. That ruling still governs the jobs CI runs on pull requests and merge groups, and adding one of those still needs operator sign-off. This ruling does not exempt a mode from authorization: a mode that writes to a machine or to GitHub still cites the ruling or authorization pattern that admits its effect.",
+  provenance: [tx(text: "Operator, relayed by session merry-fox-82 to session snappy-koi-83, answering question Q3 of the mtcollins1 stateless runner registration design. merry-fox-82 asked: '(b) No, modes are operations inside the existing workflow, and your rule is only about the list of jobs CI runs on pull requests'. The operator answered: 'b is preferred', and clarified: 'for this stuff i really don't care about github workflows - its just a convenience for us for WIF i believe'. For fleet operations the GitHub workflow is only the realization that obtains workload-identity-federation credentials (transport), never the authority: what a mode does is decided by the .dag model and the ruling it cites, so adding or changing a mode needs no roster sign-off. SCOPE: a new mode of gunbc.fleet.fleet_converge_workflow is an operation inside the existing dispatch-only fleet-converge workflow and does not count toward job_roster_closed_to_growth. That ruling still governs the jobs CI runs on pull requests and merge groups, and adding one of those still needs operator sign-off. This ruling does not exempt a mode from authorization: a mode that writes to a machine or to GitHub still cites the ruling or authorization pattern that admits its effect.")],
 }
 
 data operator_delegates_fan_control_to_the_fleet_policy: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_delegates_fan_control_to_the_fleet_policy"),
   decided: "2026-10-17",
   section: "3",
-  provenance: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).",
+  provenance: [tx(text: "Operator, to session merry-fox-82, on fan control: 'Regarding fan control, you can do whatever you want.' The operator delegates fan-control writes to the fleet fan policy and its convergence workflow (fan_policy_is_one_fleet_management_workflow); binding a BMC fan-control write route needs no further per-route operator approval. Every write still passes the authorization-pattern selection, independent readback and the standing safety rule (the thermal guard trips toward automatic, and every exit leaves automatic control enabled).")],
 }
 
 data v1_seed_emitted_byte_write_exception: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "v1_seed_emitted_byte_write_exception"),
   decided: "2026-10-16",
   section: "3",
-  provenance: "Operator, to session swift-badger-498, on where the brand logo PNG writer's byte write lives: 'could we somehow put it in rust emission? like i'd rather hardcode a rust script in emit_Rust or something than put it in the interpreter - and then can you try to constrain that to be as small as possible?' and 'yeah please try this out, and make sure the hacky bits are minimal as possible'. An exact exception to the v1 purpose test (gunbc.v1.v1_maintenance_standing v1_seed_standing), not an admission: it serves the logo work, not self-hosting, and PublicSurfaceGrowth and NewLanguageBehavior fire. Scope: the Filesystem.WriteBytes file transport verb write_bytes on the Rust target only (v1.compiler.emit FileWriteBytes, v1.compiler.emit_rust file_write_bytes_expr); the interpreter refuses it. Consumer gunbc.design.brand_mark_assets_cli; control gunbc test //gunbc/instruments:brand-mark-assets. The std.bytes octets_bytes host seam in the same change is a defect repair, not covered here: emitted programs calling it panicked on an unsupported cast. Settles no boundary of either refused class. DISSOLVES when v2 native emission realizes Filesystem.WriteBytes on the Rust target: the write_bytes rows and file_write_bytes_expr are then deleted from the seed, and gunbc test //gunbc/instruments:brand-mark-assets stays as the control.",
+  provenance: [tx(text: "Operator, to session swift-badger-498, on where the brand logo PNG writer's byte write lives: 'could we somehow put it in rust emission? like i'd rather hardcode a rust script in emit_Rust or something than put it in the interpreter - and then can you try to constrain that to be as small as possible?' and 'yeah please try this out, and make sure the hacky bits are minimal as possible'. An exact exception to the v1 purpose test (gunbc.v1.v1_maintenance_standing v1_seed_standing), not an admission: it serves the logo work, not self-hosting, and PublicSurfaceGrowth and NewLanguageBehavior fire. Scope: the Filesystem.WriteBytes file transport verb write_bytes on the Rust target only (v1.compiler.emit FileWriteBytes, v1.compiler.emit_rust file_write_bytes_expr); the interpreter refuses it. Consumer gunbc.design.brand_mark_assets_cli; control gunbc test //gunbc/instruments:brand-mark-assets. The std.bytes octets_bytes host seam in the same change is a defect repair, not covered here: emitted programs calling it panicked on an unsupported cast. Settles no boundary of either refused class. DISSOLVES when v2 native emission realizes Filesystem.WriteBytes on the Rust target: the write_bytes rows and file_write_bytes_expr are then deleted from the seed, and gunbc test //gunbc/instruments:brand-mark-assets stays as the control.")],
 }
 
 data flex_market_policy_is_operator_decided: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_market_policy_is_operator_decided"),
   decided: "2026-10-15",
   section: "3d",
-  provenance: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the fleet cap (initially $1.34/h, raised by flex_fleet_cap_raised_to_three_dollars), and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.",
+  provenance: [tx(text: "Operator, via deep-otter-797 on gunbc#14014. The interruptible flex market's policy grounds are operator decisions: bid levels 3/5, 4/5 and 1 of the class median, the 5/4 held switch premium, the fleet cap (initially $1.34/h, raised by flex_fleet_cap_raised_to_three_dollars), and the objective that lower cost per GiB-hour is better (cost and fungibility only). They are cited to this row, never to a pull request. Empirical couplings, that more samples make a productive-hour reading reliable or that price predicts preemption, stay TranscribedUncited bets, so a choice resting on one is FlexLevelNeedsEvidence until a cited authority is supplied.")],
 }
 
 data flex_fleet_cap_raised_to_three_dollars: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_fleet_cap_raised_to_three_dollars"),
   decided: "2026-10-16",
   section: "3d",
-  provenance: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.",
+  provenance: [tx(text: "Operator, via deep-otter-797 on gunbc#14150: the interruptible flex fleet rate cap is raised from $1.34/h to $3.00/h (it covers two Flash-Next cards at about $1.40/h each); raising the cap is fine, the limit is not a big deal long-term. This supersedes only the cap figure in flex_market_policy_is_operator_decided; the $50 trial total is unchanged.")],
 }
 
 // THE INSTRUMENT FLEET RUNS IN PARALLEL; THE EDGE THE OLD GROUP IMPOSED IS NOT RESTORED AND IS NOT
@@ -343,28 +343,28 @@ data flex_operator_template_v2: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"),
   decided: "2026-10-16",
   section: "4d",
-  provenance: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.",
+  provenance: [tx(text: "Operator, via deep-otter-797 on gunbc#14150: both flex serving templates are operator policy, not empirical readings. The Qwen3.8-27B NVFP4 ninfer template ('qwen oct 11'): the vastai/vllm:v0.30.0-cuda-13.0 host image, 32 GiB disk, no cache tier, published port 8000. The Qwen3.8-Flash-Next template: 400 GiB disk, host RAM and disk session-cache tiers at one half of the host each, published port 8000, and an object-store (R2) start with no Hugging Face fallback. They are choices, so they carry this ruling as their standing. This does NOT cover empirical figures: the 580 driver floor, the 1 GiB name/VRAM tolerance and throughput stay TranscribedUncited, and anything computed from them is Estimated, never established.")],
 }
 
 data flex_first_recipe_is_flash_next: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_first_recipe_is_flash_next"),
   decided: "2026-10-18",
   section: "3d",
-  provenance: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.",
+  provenance: [tx(text: "Operator, via deep-otter-797 (Flex L1): the first flex recipe is Flash-Next on the RTX PRO 6000 Blackwell class (Workstation, Max-Q and Server editions); 27B-on-ninfer stays modelled and is not selected. The Vast template filters read from the operator's Vast account on 2026-10-18 (cuda_max_good >= 13, cpu_ram >= 128000 MB, gpu_ram >= 90000 MB, inet_down >= 1000, verified) are operator policy under flex_market_policy_is_operator_decided; the gpu_ram floor replaces the 1 GiB name/VRAM tolerance as the VRAM screen. The driver floor is not policy: it derives from the CUDA 13 the filter requires and is cited to NVIDIA's CUDA toolkit release notes. Throughput and price stay operator readings.")],
 }
 
 data runner_host_sudoers_is_installed: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_sudoers_is_installed"),
   decided: "2026-10-18",
   section: "3b",
-  provenance: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.",
+  provenance: [tx(text: "Operator decision, default (dashboard msg_b6241e41, relayed by sleek-owl-397), reversing the 2026-09-22 decision that the rendered gunbc-ghrunner.sudoers stays modeled and uninstalled: the RENDERED rule alone is installed on the runner hosts at /etc/sudoers.d/gunbc-ghrunner through gunbc.runner.runner_host_file_converge, validated by visudo on the staging path before the rename, 0440 root-owned, read back and compared, refusing typed on any mismatch, with no catch-all and no widening beyond the rendered lines. Cause: srv3 apply 39127216304 and srv4 apply 39128728092 failed at the first host-wide grant (sudo: a password is required) because nothing installed the file.")],
 }
 
 data runner_listener_admission_is_mask_roster_and_no_worker: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_listener_admission_is_mask_roster_and_no_worker"),
   decided: "2026-10-21",
   section: "4b",
-  provenance: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.",
+  provenance: [tx(text: "Operator ruling B at the root of the runner host cap bracket (sleek-owl-397, relayed by clever-crane-830): a running idle listener is admitted to the write and its stop only when its unit is masked, the organization roster says its registration is busy=false and its cgroup holds no Runner.Worker, all re-read immediately before the stop; there is no deregister because nothing re-registers a long-lived slot; the read-to-stop window is a typed residual (gunbc.runner.runner_host_cap_bracket listener_restart_residual) and re-registration a declared frontier (listener_reregistration_frontier). Supersedes the mask-only closure for running idle listeners.")],
 }
 
 data emit_build_subjects_are_the_two_compiler_products: DesignRuling = DesignRuling {
@@ -445,7 +445,7 @@ fn design_rulings() -> List<DesignRuling> {
 fn ruling_blocks(r: DesignRuling) -> List<MarkdownBlock> {
   [
     h2(text: concat(r.reference.decl_name as String, " — ", r.decided, " — §", r.section)),
-    p(text: r.provenance),
+    pi(inlines: r.provenance),
   ]
 }
 
@@ -454,7 +454,11 @@ fn expected_design_rulings_md() -> String {
     blocks: concat(
       [
         HeadingBlock { level: H1, inlines: [TextInline { text: "gunbc — design rulings" }] },
-        p(text: "Generated on demand from `gunbc.design_ruling`. `DESIGN.md` states each rule and cites its row; a row carries only the date, the section and the provenance, never a second copy of the rule."),
+        pi(inlines: [
+          tx(text: "Generated on demand from "),
+          cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.design_ruling" } }),
+          tx(text: ". `DESIGN.md` states each rule and cites its row; a row carries only the date, the section and the provenance, never a second copy of the rule."),
+        ]),
         hr(),
       ],
       flat_map(design_rulings(), r => ruling_blocks(r: r)),

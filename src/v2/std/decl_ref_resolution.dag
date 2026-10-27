@@ -7,10 +7,10 @@ import v2.compiler.name_resolve { ResolutionContext }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { fold_list, list_snoc_item, map_lookup, Empty }
 import v2.std.integer { Int }
-import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme }
+import v2.std.node { Node, named_edge_sort_key, symbol_intern_lexeme, symbol_lexeme }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc, qualified_name_to_dotted_string }
-import v2.std.symbol_index { MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_entry_at }
+import v2.std.symbol_index { symbol_index_declared_type_params_at, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_entry_at }
 import v2.std.type_binder { GenericTypeDecl, PlainTypeDecl, TypeAlias, OpaqueTypeDecl, NotATypeDecl, type_decl_view }
 
 // G1 cited-symbol resolution (feature:cited-symbol-resolution): every typed DeclarationRef resolves
@@ -71,7 +71,11 @@ fn declaration_field_owner_node(declaration: Node) -> Node {
   }
 }
 
-fn decl_ref_named_field_present(ref: DeclarationRef, declaration: Node) -> Bool {
+// A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER'S HEADER (std.decl_ref DeclField), of a generic
+// function as much as of a generic type, so it is read from the one record of what a declaration binds:
+// v2.std.symbol_index symbol_index_declared_type_params_at at the declaring path. A field is a labelled
+// child of the declaration's member node.
+fn decl_ref_component_present(ref: DeclarationRef, declaration: Node, declaring: QualifiedName, context: ResolutionContext) -> Bool {
   match ref.field {
     WholeDeclaration => true
     NamedField { field_name: f } =>
@@ -79,7 +83,11 @@ fn decl_ref_named_field_present(ref: DeclarationRef, declaration: Node) -> Bool 
         xs: node_labeled_child_edges(node: declaration_field_owner_node(declaration: declaration)),
         predicate: fn(e) { named_edge_sort_key(e: e) == f as String }
       )
-    TypeParameter { name: _ } => false
+    TypeParameter { name: n } =>
+      any(
+        xs: symbol_index_declared_type_params_at(index: context.symbol_index, qualified_path: declaring),
+        predicate: fn(s) { symbol_lexeme(sym: s) == n as String }
+      )
   }
 }
 
@@ -122,7 +130,7 @@ fn resolve_declaration_ref_at(
   match symbol_index_entry_at(index: context.symbol_index, qualified_path: declaring) {
     Absent => DeclarationRefDeclarationAbsent { reference: ref }
     Present { value: declaration } =>
-      if decl_ref_named_field_present(ref: ref, declaration: declaration) {
+      if decl_ref_component_present(ref: ref, declaration: declaration, declaring: declaring, context: context) {
         DeclarationRefResolved {
           declaration_identity: DeclarationIdentity {
             qualified_name: qualified_name_to_dotted_string(qn: declaring),

@@ -49,7 +49,7 @@ fn emission_combined_read_preserves_content_order_and_origin_multiplicity() -> B
     && result.origins == emission_contribution_origins(contribution: contribution)
     && result.source == "ABCD" && match result.origins {
     EmissionOriginsIncomplete { observed, missing } =>
-      (observed |> map(origin => declaration_ref_display_key(ref: origin)) |> join(separator: "|")) == "fixture.runtime::root|fixture.runtime::empty|fixture.runtime::leaf|fixture.runtime::nested|fixture.runtime::leaf"
+      (observed |> map(origin => declaration_ref_display_key(ref: origin)) |> join(separator: "|")) == "fixture.runtime root|fixture.runtime empty|fixture.runtime leaf|fixture.runtime nested|fixture.runtime leaf"
         && declaration_ref_eq(a: missing.head.producer, b: unknown)
         && missing.head.cause == ("first" as NonEmptyStr)
         && (missing.tail |> count == 1)

@@ -1,7 +1,8 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr, List }
-import std.algebra { collection_concat_shape }
+import std.types { NonEmptyStr, List, Char }
+import std.algebra { FreeMonoid, collection_concat_shape }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
 
 // A TYPE PARAMETER IS A NAMED COMPONENT OF ITS OWNER DECLARATION, declared in the owner's header,
 // exactly as a field is declared in its body. So a reference to one is identified by
@@ -121,19 +122,96 @@ fn declaration_ref_in_list(target: DeclarationRef, refs: List<DeclarationRef>) -
   fold(refs, init: false, f: fn(acc, r) { acc || declaration_ref_eq(a: target, b: r) })
 }
 
+// THE ONE RENDERED SPELLING of a DeclarationRef, for every reader-facing surface (documents, briefs,
+// diagnostics, receipts): the module path, then the declaration after a space, then a field after a dot
+// or a type parameter in angle brackets (a field and a type parameter are distinct components of the
+// declaration, so they never share a spelling). std.markdown cited_symbol_spelling delegates here, so a
+// citation has no second spelling (review 86159 on gunb-ai/gunbc#14803). It is a PRESENTATION: nothing
+// may key, hash or compare identity on it; identity is declaration_ref_eq, and a hashed key is
+// declaration_ref_digest.
 fn declaration_ref_display_key(ref: DeclarationRef) -> String {
   match ref.field {
     WholeDeclaration =>
-      concat(ref.module_path as String, concat("::", ref.decl_name as String))
+      concat(ref.module_path as String, concat(" ", ref.decl_name as String))
     NamedField { field_name: f } =>
-      concat(
-        ref.module_path as String,
-        concat("::", concat(ref.decl_name as String, concat("::", f as String))),
-      )
+      concat(ref.module_path as String, concat(" ", concat(ref.decl_name as String, concat(".", f as String))))
     TypeParameter { name: t } =>
-      concat(
-        ref.module_path as String,
-        concat("::", concat(ref.decl_name as String, concat("::<", concat(t as String, ">")))),
-      )
+      concat(ref.module_path as String, concat(" ", concat(ref.decl_name as String, concat("<", concat(t as String, ">")))))
   }
 }
+
+// A DeclarationRef's HASHED IDENTITY, from its complete structure (module path, declaration name, and
+// the field arm with its name) and never from a rendered spelling, so changing how a reference is
+// displayed cannot move any key built on it.
+fn declaration_ref_field_digest(field: DeclField) -> Fnv1a64Structural {
+  match field {
+    WholeDeclaration => content_hash_atom(value: "whole-declaration" as NonEmptyStr)
+    NamedField { field_name: f } =>
+      content_hash_tagged_structural(tag: "named-field" as NonEmptyStr, payload: content_hash_atom(value: f))
+    TypeParameter { name: t } =>
+      content_hash_tagged_structural(tag: "type-parameter" as NonEmptyStr, payload: content_hash_atom(value: t))
+  }
+}
+
+// A DeclarationRef's TOTAL ORDER, from its structure: module path, then declaration name, then the
+// field arm (whole declaration, then a named field, then a type parameter, each name compared within
+// its arm). An order read off the rendered spelling would move whenever the spelling did.
+fn declaration_field_rank(field: DeclField) -> Int {
+  match field {
+    WholeDeclaration => 0
+    NamedField { field_name: _ } => 1
+    TypeParameter { name: _ } => 2
+  }
+}
+
+fn declaration_field_name(field: DeclField) -> String {
+  match field {
+    WholeDeclaration => ""
+    NamedField { field_name: f } => f as String
+    TypeParameter { name: t } => t as String
+  }
+}
+
+fn declaration_ref_before(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  if a.module_path != b.module_path {
+    (a.module_path as String) < (b.module_path as String)
+  } else if a.decl_name != b.decl_name {
+    (a.decl_name as String) < (b.decl_name as String)
+  } else if declaration_field_rank(field: a.field) != declaration_field_rank(field: b.field) {
+    declaration_field_rank(field: a.field) < declaration_field_rank(field: b.field)
+  } else {
+    declaration_field_name(field: a.field) < declaration_field_name(field: b.field)
+  }
+}
+
+fn declaration_ref_digest(ref: DeclarationRef) -> Fnv1a64Structural {
+  content_hash_tagged_structural(
+    tag: "declaration-ref" as NonEmptyStr,
+    payload: content_hash_combine_structural(
+      left: content_hash_atom(value: ref.module_path),
+      right: content_hash_combine_structural(
+        left: content_hash_atom(value: ref.decl_name),
+        right: declaration_ref_field_digest(field: ref.field),
+      ),
+    ),
+  )
+}
+
+// THE IDENTITY OF A MODULE, as distinct from any path that stores it. A record rather than a bare
+// String so a path cannot be passed where an identity is required: the confusion is unwritable rather
+// than merely labelled. It lives here, beside DeclarationRef, as the one authority for naming a module;
+// it moved down from v2.lens.module_impact_query because std.decl_ref sits inside that lens's import
+// closure (through v2.lens.module_graph), so the lens could not be imported from here. The name is
+// structural text, FreeMonoid<Char>, exactly the type v2.std.text String names: the move keeps the
+// representation, so a value hashed or compared by name (gunbc.repo.repo_atlas_projection places every
+// module by a hash of it) reads the same as before.
+type ModuleIdentity {
+  name: FreeMonoid<Char>
+}
+
+// WHAT A DOCUMENT CITES: a declaration (optionally a field or type parameter of it) or a whole module.
+// The rendered spelling is one function of the carrier (std.decl_ref declaration_ref_display_key), so a
+// document holds no second spelling of the name it cites.
+type CitedSymbol
+  = DeclarationSymbol { reference: DeclarationRef }
+  | ModuleSymbol { module: ModuleIdentity }

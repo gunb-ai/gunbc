@@ -15,7 +15,7 @@ module v2.compiler.decl_ref_disposition_roster
 //   BindTargetDeleted            -- a scaffold row whose bind target was deleted with no named successor; re-pointing or retiring it is an operator verdict on the debt (DESIGN 5).
 //   HostBuiltinSeam              -- a bind into the v1 seed's builtin registry, outside the v2 index.
 //   DataRowFieldNotResolvable    -- a NamedField citation into a `data` row's literal value; v2.std.decl_ref_resolution
-//                                   decl_ref_named_field_present reads only the labelled children of a type declaration, so a
+//                                   decl_ref_component_present reads only the labelled children of a type declaration, so a
 //                                   correct field of a data row reads as FieldAbsent. The citation stays NamedField (never widened
 //                                   to WholeDeclaration). dissolve-on: the resolver reads the fields of a data row's literal.
 //   ProductLabelTypedAsDeclarationRef -- a MEANING FORK (DESIGN 3): an ExternalSubjectRef carries the upstream product's own label

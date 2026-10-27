@@ -12,11 +12,12 @@ import gunbc.roadmap.roadmap_review_role {
   ConformanceAnswer, Conforms, DivergesStated, DivergesUnstated, conformance_answer_verdict, review_answer_instruction, ReviewReason,
 }
 import gunbc.roadmap.roadmap_review_criteria { review_criteria, review_criteria_grounded_in_the_argument, review_criterion_by_key, review_criteria_homes_match_their_algebra, review_criterion_identity_text, review_home_text, conformance_criterion_from_domain }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key, decl_ref }
+import std.decl_ref { DeclarationRef, DeclarationSymbol, declaration_ref_display_key, declaration_ref_digest, decl_ref }
 import gunbc.design_argument { YesIsADefect, ConformanceThreeValued, conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_domain_homes }
 import gunbc.design_document { expected_design_md, conformance_domain_section }
 import extdeps.languages.markdown { serialize_markdown_source }
-import std.markdown { MarkdownDocument }
+import std.markdown { MarkdownDocument, cited_symbol_spelling }
+import gunbc.plans.md_helpers { tx }
 import gunbc.roadmap.roadmap_workflow_stage { WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentActive, WorkflowSegmentPending }
 import gunbc.worker_lifecycle { WorkerProcessAbsent, WorkerProcessRunning, WorkerProcessExited }
 
@@ -126,7 +127,7 @@ test fn a_stated_divergence_is_admitted_and_an_unstated_one_requests_changes() -
 test fn every_conformance_domain_carries_a_label_owns_and_boundary() -> Bool {
   count(conformance_domains) > 0
     && all(conformance_domains, d => match review_criterion_by_key(key: d.key) {
-      Present { value: _ } => d.label != "" && d.owns != "" && count(d.boundaries) > 0 && all(d.boundaries, b => b != "")
+      Present { value: _ } => d.label != "" && count(d.owns) > 0 && count(d.boundaries) > 0 && all(d.boundaries, b => count(b) > 0)
       Absent => false
     })
 }
@@ -144,8 +145,8 @@ fn synthetic_domain(label: String, owns: String) -> ConformanceDomain {
     label: label,
     question: "Is this a test?",
     tells: ["a synthetic tell that exists only in this test"],
-    owns: owns,
-    boundaries: ["a synthetic boundary"],
+    owns: [tx(text: owns)],
+    boundaries: [[tx(text: "a synthetic boundary")]],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup { label: "Synthetic group", purpose: "exists only in this test", homes: synthetic_homes(head: "Bool", tail: ["Unit"]) },
       tail: [],
@@ -160,15 +161,15 @@ test fn a_one_element_conformance_home_list_renders_as_before() -> Bool {
     "**Boundary.** a synthetic boundary\n\n",
     "**Existing authorities**\n\n",
     "- **Synthetic group** — exists only in this test\n",
-    "  - `std.types::Bool`\n",
+    "  - `std.types Bool`\n",
   ], "")
   let d = ConformanceDomain {
     key: "test-one-home",
     label: "one element domain",
     question: "Is this a test?",
     tells: ["a synthetic tell that exists only in this test"],
-    owns: "one home is enough",
-    boundaries: ["a synthetic boundary"],
+    owns: [tx(text: "one home is enough")],
+    boundaries: [[tx(text: "a synthetic boundary")]],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
         label: "Synthetic group",
@@ -197,8 +198,8 @@ test fn a_synthetic_conformance_domain_produces_exactly_one_design_section() -> 
     "**Boundary.** a synthetic boundary\n\n",
     "**Existing authorities**\n\n",
     "- **Synthetic group** — exists only in this test\n",
-    "  - `std.types::Bool`\n",
-    "  - `std.types::Unit`\n",
+    "  - `std.types Bool`\n",
+    "  - `std.types Unit`\n",
   ], "")
   rendered_domain(d: synthetic_domain(label: "synthetic test domain", owns: "this domain exists only to prove the renderer is a pure function of its input")) == expected
 }
@@ -210,7 +211,7 @@ test fn production_conformance_domains_appear_in_generated_design() -> Bool {
   string_contains(s: md, pattern: "3b. Conformance")
     && all(conformance_domains, d =>
       string_contains(s: md, pattern: concat("### ", d.label))
-        && all(conformance_domain_homes(d: d), h => string_contains(s: md, pattern: concat("`", concat(review_home_text(h: h), "`"))))
+        && all(conformance_domain_homes(d: d), h => string_contains(s: md, pattern: concat("`", concat(cited_symbol_spelling(symbol: DeclarationSymbol { reference: h }), "`"))))
     )
 }
 
@@ -237,10 +238,31 @@ test fn conformance_reader_text_does_not_affect_plan_revision() -> Bool {
       let id = review_criterion_identity_text(c: c)
       string_contains(s: id, pattern: "conformance-extdeps")
         && string_contains(s: id, pattern: "conformance-three-valued")
-        && string_contains(s: id, pattern: "extdeps.external_authority::ExternalModelScope")
+        && string_contains(s: id, pattern: declaration_ref_digest(ref: decl_ref(module_path: "extdeps.external_authority", decl_name: "ExternalModelScope")).digest as String)
     }
     Absent => false
   }
+}
+
+// A RENDERER-ONLY CHANGE CANNOT MOVE THE PLAN REVISION (review 86159 on gunb-ai/gunbc#14803). Every home
+// of every conformance criterion enters the identity as its structural digest and never as its rendered
+// spelling, so changing std.decl_ref declaration_ref_display_key leaves review_criterion_identity_text,
+// and the ReviewPlan revision hashed from it, unchanged. Red if a home is hashed by its spelling again.
+// The fabric row's question quotes two of its homes by name, so a spelling may reach the identity
+// through the criterion's own prose; it may not reach it through the homes.
+test fn a_home_enters_the_criterion_identity_by_structure_not_by_spelling() -> Bool {
+  let conformance = filter(review_criteria, c => match c.answer { ConformanceThreeValued => true  YesIsADefect => false })
+  count(conformance) > 0
+    && all(conformance, c => {
+      let id = review_criterion_identity_text(c: c)
+      let prose = join([c.question, join(c.tells, "|")], "|")
+      count(c.homes) > 0
+        && all(c.homes, h => {
+          let spelling = declaration_ref_display_key(ref: h)
+          string_contains(s: id, pattern: declaration_ref_digest(ref: h).digest as String)
+            && (!string_contains(s: id, pattern: spelling) || string_contains(s: prose, pattern: spelling))
+        })
+    })
 }
 
 test fn every_conformance_domain_is_a_criterion_whose_brief_names_its_homes() -> Bool {

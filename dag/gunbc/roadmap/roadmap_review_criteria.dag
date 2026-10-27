@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_review_criteria
 
 import std.types { String, Bool, List }
 import std.syllogism { Proposition }
-import std.decl_ref { DeclarationRef, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_display_key, declaration_ref_digest }
 import gunbc.design_argument { design_propositions, design_rows, DesignRow, PropositionReview, DefectReview, ConformanceReview, PropositionReviewDisposition, ReviewableOnChange, NotReviewableOnChange, ReviewAnswerAlgebra, YesIsADefect, ConformanceThreeValued, ConformanceDomain, conformance_domain_homes }
 
 // ONE CRITERION PER DESIGN PROPOSITION, ONE REVIEWER PER CRITERION. A review that asks "is this
@@ -139,6 +139,8 @@ fn review_criterion_homes_text(c: ReviewCriterion) -> String {
 // depends on. Homes and the answer algebra change what a verdict MEANS, so a revision that hashed only
 // key, question and tells would let an approval produced under old homes or yes/no semantics be reused
 // for a call whose meaning had moved (review on gunbc#10679).
+// A home enters by its structural digest (std.decl_ref declaration_ref_digest), never its rendered
+// spelling, so changing how a reference is displayed does not restart every in-flight review.
 fn review_answer_key(a: ReviewAnswerAlgebra) -> String {
   match a {
     YesIsADefect => "yes-is-a-defect"
@@ -147,7 +149,7 @@ fn review_answer_key(a: ReviewAnswerAlgebra) -> String {
 }
 
 fn review_criterion_identity_text(c: ReviewCriterion) -> String {
-  join([c.key, "|", c.question, "|", join(c.tells, "|"), "|", review_answer_key(a: c.answer), "|", join(map(c.homes, h => review_home_text(h: h)), "|")], "")
+  join([c.key, "|", c.question, "|", join(c.tells, "|"), "|", review_answer_key(a: c.answer), "|", join(map(c.homes, h => declaration_ref_digest(ref: h).digest as String), "|")], "")
 }
 
 fn review_criterion_tells_heading(a: ReviewAnswerAlgebra) -> String {

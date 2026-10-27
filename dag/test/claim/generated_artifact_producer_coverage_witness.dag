@@ -70,7 +70,7 @@ test fn a_planted_artifact_whose_producer_is_outside_the_population_refuses_by_n
   count(refusals) == 1
     && all(refusals, c => coverage_is_uncovered_at(c: c, path: "planted/never-generated.yml"))
     && all(refusals, c => generated_artifact_producer_coverage_rendered(c: c)
-         == "generated artifact planted/never-generated.yml UNCOVERED: producer test.claim.generated_artifact_producer_coverage_witness::planted_uncovered_producer declaration-absent")
+         == "generated artifact planted/never-generated.yml UNCOVERED: producer test.claim.generated_artifact_producer_coverage_witness planted_uncovered_producer declaration-absent")
 }
 
 // THE REFUSAL IS ON THE PLANT, NOT ON ITS NEIGHBOURS: the real rows beside the plant stay covered

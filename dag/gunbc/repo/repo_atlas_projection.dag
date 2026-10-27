@@ -4,8 +4,8 @@ import std.content_hash { content_hash_atom }
 import v2.lens.module_graph { ModuleDeclarationFact, map_lookup_where_rejected_unreachable }
 import std.types { Map }
 import std.optional { Optional, Present, Absent }
+import std.decl_ref { ModuleIdentity }
 import v2.lens.module_impact_query {
-  ModuleIdentity,
   ImpactReading,
   ImpactStanding,
   impact_module_eq,

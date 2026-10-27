@@ -2,9 +2,14 @@
 // Source module: std.decl_ref
 
 use self::CitationIndexCoverage::*;
+use self::CitedSymbol::*;
 use self::DeclField::*;
-pub use crate::std_algebra::collection_concat_shape;
-pub use crate::std_types::{List, NonEmptyStr};
+pub use crate::std_algebra::{collection_concat_shape, FreeMonoid};
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural,
+    Fnv1a64Structural,
+};
+pub use crate::std_types::{Char, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -128,29 +133,107 @@ pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
     match (*ref_.field.clone()).clone() {
         DeclField::WholeDeclaration => v1_rt::concat(
             ref_.module_path.clone(),
-            v1_rt::concat("::".to_string(), ref_.decl_name.clone()),
+            v1_rt::concat(" ".to_string(), ref_.decl_name.clone()),
         ),
         DeclField::NamedField { field_name: f, .. } => v1_rt::concat(
             ref_.module_path.clone(),
             v1_rt::concat(
-                "::".to_string(),
+                " ".to_string(),
                 v1_rt::concat(
                     ref_.decl_name.clone(),
-                    v1_rt::concat("::".to_string(), f.clone()),
+                    v1_rt::concat(".".to_string(), f.clone()),
                 ),
             ),
         ),
         DeclField::TypeParameter { name: t, .. } => v1_rt::concat(
             ref_.module_path.clone(),
             v1_rt::concat(
-                "::".to_string(),
+                " ".to_string(),
                 v1_rt::concat(
                     ref_.decl_name.clone(),
-                    v1_rt::concat("::<".to_string(), v1_rt::concat(t.clone(), ">".to_string())),
+                    v1_rt::concat("<".to_string(), v1_rt::concat(t.clone(), ">".to_string())),
                 ),
             ),
         ),
     }
+}
+
+pub fn declaration_ref_field_digest(field: Rc<DeclField>) -> Rc<Fnv1a64Structural> {
+    match (*field.clone()).clone() {
+        DeclField::WholeDeclaration => {
+            crate::std_content_hash::content_hash_atom("whole-declaration".to_string())
+        }
+        DeclField::NamedField { field_name: f, .. } => {
+            crate::std_content_hash::content_hash_tagged_structural(
+                "named-field".to_string(),
+                crate::std_content_hash::content_hash_atom(f.clone()),
+            )
+        }
+        DeclField::TypeParameter { name: t, .. } => {
+            crate::std_content_hash::content_hash_tagged_structural(
+                "type-parameter".to_string(),
+                crate::std_content_hash::content_hash_atom(t.clone()),
+            )
+        }
+    }
+}
+
+pub fn declaration_field_rank(field: Rc<DeclField>) -> i64 {
+    match (*field.clone()).clone() {
+        DeclField::WholeDeclaration => 0,
+        DeclField::NamedField { field_name: _, .. } => 1,
+        DeclField::TypeParameter { name: _, .. } => 2,
+    }
+}
+
+pub fn declaration_field_name(field: Rc<DeclField>) -> String {
+    match (*field.clone()).clone() {
+        DeclField::WholeDeclaration => "".to_string(),
+        DeclField::NamedField { field_name: f, .. } => f.clone(),
+        DeclField::TypeParameter { name: t, .. } => t.clone(),
+    }
+}
+
+pub fn declaration_ref_before(a: Rc<DeclarationRef>, b: Rc<DeclarationRef>) -> bool {
+    if (a.module_path.clone() != b.module_path.clone()) {
+        (a.module_path.clone() < b.module_path.clone())
+    } else {
+        if (a.decl_name.clone() != b.decl_name.clone()) {
+            (a.decl_name.clone() < b.decl_name.clone())
+        } else {
+            if (declaration_field_rank(a.field.clone()) != declaration_field_rank(b.field.clone()))
+            {
+                (declaration_field_rank(a.field.clone()) < declaration_field_rank(b.field.clone()))
+            } else {
+                (declaration_field_name(a.field.clone()) < declaration_field_name(b.field.clone()))
+            }
+        }
+    }
+}
+
+pub fn declaration_ref_digest(ref_: Rc<DeclarationRef>) -> Rc<Fnv1a64Structural> {
+    crate::std_content_hash::content_hash_tagged_structural(
+        "declaration-ref".to_string(),
+        crate::std_content_hash::content_hash_combine_structural(
+            crate::std_content_hash::content_hash_atom(ref_.module_path.clone()),
+            crate::std_content_hash::content_hash_combine_structural(
+                crate::std_content_hash::content_hash_atom(ref_.decl_name.clone()),
+                declaration_ref_field_digest(ref_.field.clone()),
+            ),
+        ),
+    )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModuleIdentity {
+    pub name: Rc<Vec<Char>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum CitedSymbol {
+    DeclarationSymbol { reference: Rc<DeclarationRef> },
+    ModuleSymbol { module: Rc<ModuleIdentity> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

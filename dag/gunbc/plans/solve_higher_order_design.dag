@@ -2,7 +2,7 @@ module gunbc.plans.solve_higher_order_design
 
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
-import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
+import std.markdown { MarkdownBlock, CodeBlock, CodeText, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, hr }
 import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
 
@@ -25,7 +25,7 @@ fn solve_higher_order_design_body() -> List<MarkdownBlock> {
     hr(),
     h2(text: "The decomposition — structural exists, numerical is three orthogonal facts"),
     CodeBlock {
-      code: "solve_numeric  ≜  Loop(\n                    body:       step( residual(model, candidate) ),   // solver method = extdeps handler\n                    measure:    finite_measure  ⊢ TerminationProof,   // termination.dag — separate from descent\n                    accept_when: residual_within(contract),           // typed norm/units/bound contract — semantics\n                    on_exhaust:  Refuse{ iters, residual }            // §5 fail-closed\n                  )\n// STRUCTURAL solving already exists: ConstraintGraph / solve_constraints (constraints.dag). NUMERICAL solving is ABSENT."
+      segments: [CodeText { text: "solve_numeric  ≜  Loop(\n                    body:       step( residual(model, candidate) ),   // solver method = extdeps handler\n                    measure:    finite_measure  ⊢ TerminationProof,   // termination.dag — separate from descent\n                    accept_when: residual_within(contract),           // typed norm/units/bound contract — semantics\n                    on_exhaust:  Refuse{ iters, residual }            // §5 fail-closed\n                  )\n// STRUCTURAL solving already exists: ConstraintGraph / solve_constraints (constraints.dag). NUMERICAL solving is ABSENT." }]
     },
     TableBlock {
       header: row(cells: [cell(text: "fact (numerical, when built)"), cell(text: "what it is"), cell(text: "grounded on")]),

@@ -1,0 +1,50 @@
+module test.claim.decl_ref_presentation_witness
+
+import std.decl_ref {
+  DeclarationSymbol,
+  decl_ref,
+  decl_field_ref,
+  decl_type_parameter_ref,
+  declaration_ref_display_key,
+  declaration_ref_digest,
+  declaration_ref_before,
+}
+import std.markdown { cited_symbol_spelling }
+
+// ONE SPELLING OF A DeclarationRef (review 86159 on gunb-ai/gunbc#14803). std.markdown cited_symbol_spelling
+// delegates to std.decl_ref declaration_ref_display_key, so a document citation and every other rendering of
+// one reference are the same characters. Each field arm is asserted against a literal, so a second renderer
+// that drifted in any arm, or a delegate that dropped the field, is red.
+test fn a_citation_and_the_display_key_are_one_spelling_on_every_field_arm() -> Bool {
+  let whole = decl_ref(module_path: "std.optional", decl_name: "Optional")
+  let field = decl_field_ref(module_path: "std.decl_ref", decl_name: "ModuleIdentity", field_name: "name")
+  let parameter = decl_type_parameter_ref(module_path: "std.optional", decl_name: "Optional", parameter: "T")
+  declaration_ref_display_key(ref: whole) == "std.optional Optional"
+    && declaration_ref_display_key(ref: field) == "std.decl_ref ModuleIdentity.name"
+    && declaration_ref_display_key(ref: parameter) == "std.optional Optional<T>"
+    && cited_symbol_spelling(symbol: DeclarationSymbol { reference: whole }) == declaration_ref_display_key(ref: whole)
+    && cited_symbol_spelling(symbol: DeclarationSymbol { reference: field }) == declaration_ref_display_key(ref: field)
+    && cited_symbol_spelling(symbol: DeclarationSymbol { reference: parameter }) == declaration_ref_display_key(ref: parameter)
+}
+
+// THE HASHED IDENTITY IS THE STRUCTURE. A field and a type parameter of one name are different references,
+// so their digests differ, and an equal reference built twice has one digest.
+test fn the_digest_separates_the_field_arms_and_is_stable_for_one_reference() -> Bool {
+  let field = decl_field_ref(module_path: "m.a", decl_name: "D", field_name: "T")
+  let parameter = decl_type_parameter_ref(module_path: "m.a", decl_name: "D", parameter: "T")
+  let whole = decl_ref(module_path: "m.a", decl_name: "D")
+  (declaration_ref_digest(ref: field).digest as String) != (declaration_ref_digest(ref: parameter).digest as String)
+    && (declaration_ref_digest(ref: field).digest as String) != (declaration_ref_digest(ref: whole).digest as String)
+    && (declaration_ref_digest(ref: whole).digest as String) == (declaration_ref_digest(ref: decl_ref(module_path: "m.a", decl_name: "D")).digest as String)
+}
+
+// THE ORDER IS THE STRUCTURE, NOT THE SPELLING. A module path that is a prefix of another sorts first
+// whatever separator the display key uses; it decides std.decision's equal-score tie (identity_ref_before),
+// which a spelling change previously could flip.
+test fn the_order_reads_module_then_declaration_then_field_arm() -> Bool {
+  declaration_ref_before(a: decl_ref(module_path: "m.a", decl_name: "z"), b: decl_ref(module_path: "m.a.b", decl_name: "a"))
+    && !declaration_ref_before(a: decl_ref(module_path: "m.a.b", decl_name: "a"), b: decl_ref(module_path: "m.a", decl_name: "z"))
+    && declaration_ref_before(a: decl_ref(module_path: "m.a", decl_name: "D"), b: decl_field_ref(module_path: "m.a", decl_name: "D", field_name: "f"))
+    && declaration_ref_before(a: decl_field_ref(module_path: "m.a", decl_name: "D", field_name: "z"), b: decl_type_parameter_ref(module_path: "m.a", decl_name: "D", parameter: "A"))
+    && !declaration_ref_before(a: decl_ref(module_path: "m.a", decl_name: "D"), b: decl_ref(module_path: "m.a", decl_name: "D"))
+}

@@ -6,7 +6,9 @@ import std.markdown {
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock,
   TaskListBlock, BlockquoteBlock,
   TextInline, H1, H2, H3, CheckboxState, Unchecked, ThematicBreak,
+  MarkdownInline, SymbolRefInline,
 }
+import std.decl_ref { CitedSymbol }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
@@ -23,3 +25,11 @@ fn tasks(items: List<MarkdownTaskItem>) -> MarkdownBlock { TaskListBlock { items
 fn todo(text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: Unchecked, blocks: [p(text: text)] } }
 fn task(state: CheckboxState, text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
 fn hr() -> MarkdownBlock { ThematicBreak }
+
+// A PARAGRAPH, ITEM OR CELL THAT CITES A SYMBOL carries it as a SymbolRefInline beside its text, so the
+// citation is a typed reference the decl-ref census resolves rather than characters in a string.
+fn tx(text: String) -> MarkdownInline { TextInline { text: text } }
+fn cite(symbol: CitedSymbol) -> MarkdownInline { SymbolRefInline { symbol: symbol } }
+fn pi(inlines: List<MarkdownInline>) -> MarkdownBlock { ParagraphBlock { inlines: inlines } }
+fn li_inlines(inlines: List<MarkdownInline>) -> MarkdownListItem { MarkdownListItem { blocks: [pi(inlines: inlines)] } }
+fn cell_inlines(inlines: List<MarkdownInline>) -> MarkdownTableCell { MarkdownTableCell { inlines: inlines } }

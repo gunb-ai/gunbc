@@ -2,12 +2,12 @@ module gunbc.design_document
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock,
-  HeadingBlock, TextInline, H1, CodeBlock,
+  HeadingBlock, TextInline, H1, CodeBlock, CodeText,
 }
-import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, hr }
+import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, hr, tx, cite, pi, li_inlines }
+import std.decl_ref { DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.design_ruling {
-  DesignRuling,
   where_refinements_retire_for_checked_constructors,
   job_roster_closed_to_growth,
   regeneration_jobs_added_to_roster,
@@ -28,31 +28,43 @@ import gunbc.design_ruling {
   project_documentation_projections_are_not_checkout_artifacts,
 }
 import gunbc.documentary_refs {
-  documentary_ref_symbol_text,
   v1_maintenance_standing_ref,
   required_gate_subjects_ref,
 }
 import gunbc.design_argument { conformance_domains, ConformanceDomain, ConformanceHomeGroup, conformance_home_list, conformance_domain_home_groups }
-import gunbc.roadmap.roadmap_review_criteria { review_home_text }
 import gunbc.required_ci_contract_epoch { required_ci_context_name }
 
 // THE DOCUMENT CARRIES RULES, NOT THEIR HISTORY. A dated operator ruling is cited by its
-// gunbc.design_ruling row -- `ruling(r:)` renders the row's own reference -- and the row keeps
+// gunbc.design_ruling row -- the paragraph cites the row's own reference as a typed symbol -- and the row keeps
 // when, where and on whose words; the rule itself is stated only here. Narrating the ruling here as well
 // would be two representations of one fact, and the narration is what had grown the file.
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
-fn ruling(r: DesignRuling) -> String {
-  concat("(ruling ", concat(documentary_ref_symbol_text(reference: r.reference), ")"))
-}
-
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),
-    p(text: "`README.md` and `CLAUDE.md` symlink here; this is the single source of truth. It is a projection of `gunbc.design_document` and is never hand-edited. v1 is the `gunbc` CLI and v2's seed; v2 is active."),
+    pi(inlines: [
+      tx(text: "`README.md` and `CLAUDE.md` symlink here; this is the single source of truth. It is a projection of "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.design_document" } }),
+      tx(text: " and is never hand-edited. v1 is the `gunbc` CLI and v2's seed; v2 is active."),
+    ]),
     p(text: "The document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it, or an independent peer, never a restatement. The principles apply to this document too."),
-    p(text: concat("It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); declared rung drops under `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`); dated operator rulings in `gunbc.design_ruling`, cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact ", concat(ruling(r: project_documentation_projections_are_not_checkout_artifacts), ". Write it on demand (`gunbc.instruments.generated_artifact_gate` `documentation_wet`). Plans that still project committed markdown stay linked from the section that governs them."))),
+    pi(inlines: [
+      tx(text: "It carries reasoning only, because it is loaded in full on every turn of every session while ledgers grow without bound. The ledgers live apart: recurring failure modes one class per file under `dag/gunbc/recurring_failure_mode/` (combined view: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.docs_projection_gate", decl_name: "regen") }),
+      tx(text: "); declared rung drops under "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.rung_drop" } }),
+      tx(text: " (combined view: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.docs_projection_gate", decl_name: "regen") }),
+      tx(text: "); dated operator rulings in "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.design_ruling" } }),
+      tx(text: ", cited below by symbol. A plan's authority is its `.dag` carrier; generated plan markdown whose only consumer is ProjectDocumentation is not a checkout artifact (ruling "),
+      cite(symbol: DeclarationSymbol { reference: project_documentation_projections_are_not_checkout_artifacts.reference }),
+      tx(text: "). Write it on demand ("),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.generated_artifact_gate", decl_name: "documentation_wet") }),
+      tx(text: "). Plans that still project committed markdown stay linked from the section that governs them."),
+    ]),
     hr(),
   ]
 }
@@ -85,7 +97,11 @@ fn section_2_blocks() -> List<MarkdownBlock> {
       li(text: "**Horizontal — one concept, every scale and breadth.** Model a concept once and derive every use; at the right layer nanosecond memoization and broad infra deployment are the same concept. *e.g.* `dag/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows, one axis rather than 10 types."),
       li(text: "**Deep — every concept decomposed to grounded atoms.** Nothing is opaque that is not *genuinely* atomic. The move is `decompress → map → reduce`: reveal the structure the source names, map each part onto the concept that already exists (DFS the concept DAG first), reduce duplicates. A `String` leaf hiding named parts is anemic modeling. *e.g.* `\"LGA4926\"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }`, the number a grounded `Int` rather than a fresh enum."),
     ]),
-    p(text: "**Minimize the demand graph before materializing its answers.** A repeated computation is first evidence about why the same semantic fact is demanded again, not yet a cache obligation. The order of questions, whose structural authority is `std.materialization_ladder`:"),
+    pi(inlines: [
+      tx(text: "**Minimize the demand graph before materializing its answers.** A repeated computation is first evidence about why the same semantic fact is demanded again, not yet a cache obligation. The order of questions, whose structural authority is "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.materialization_ladder" } }),
+      tx(text: ":"),
+    ]),
     ol(items: [
       li(text: "**Is the repetition authored duplication?** When several demands have a shared-state least common ancestor, carry, rewire or share the first value. Caching a later request only makes redundant work cheap and suppresses the signal that would rank it for deletion."),
       li(text: "**Is there a reuse obligation at all?** One undeclared pure demand may recompute. Isolated consumers, declared replay, or unbounded future siblings instead create one reuse obligation at their least common visible ancestor."),
@@ -103,7 +119,17 @@ fn section_3_blocks() -> List<MarkdownBlock> {
     p(text: "Minimization holds only if each fact lives in exactly one place. The recurring violation is **nicknaming — a second name for one concept** — which duplicates work at the meaning layer and again in everything generated from it. A fork is always consolidated later, so it is a correctness concern, not a style one. Until enforceable this is diligence: model the accepted universal frameworks (classical logic, set theory, algebra) faithfully, and in `extdeps/` the real upstream spec — cite the source, keep its real names, declare its version, model what the API actually returns."),
     p(text: "Single authority governs meaning, not only symbols. Nicknaming's dual is a **meaning fork**: one name, two materially different meanings. Within one naming surface and one declared version or epoch, holding a name constant may not silently change obligations, quality floor, refusal behavior, billing consequence or remedy; the same spelling in distinct scopes, or across a declared version transition, is legitimate. A materially different contract needs a materially different name."),
     p(text: "Two corollaries. The import graph's only structural law is **acyclicity**: the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule. And a fact's home is its *layer*, not its file."),
-    p(text: concat("**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in `gunbc.source_layout`, and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and there is no tree direction. A crossing between the trees is admitted when both namespaces have a row in that layout, either way, and refused when either has none (`v2.std.cross_tree.import_model` `cross_tree_import_admitted`) ", concat(ruling(r: cross_tree_admission_is_namespace_membership), ", enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: `gunbc.plans.source_layout_authority`."))),
+    pi(inlines: [
+      tx(text: "**The name-to-path mapping is a single authority too, and it runs one way.** Module `a.b.c` is stored at `<root(a)>/b/c.dag`, where `root(v2)` is `src/v2` and `root(a)` is `dag/a` for every other top-level namespace: paths follow names, never the reverse. A location that must be read out of a file is a second authority for one fact, and makes finding one module cost reading all of them (§2). Which namespaces exist is declared top-down in "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.source_layout" } }),
+      tx(text: ", and a file outside that layout is not compilable. The rule fixes where a module is stored, not which way imports point: acyclicity stays the import graph's only structural law, and there is no tree direction. A crossing between the trees is admitted when both namespaces have a row in that layout, either way, and refused when either has none ("),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "v2.std.cross_tree.import_model", decl_name: "cross_tree_import_admitted") }),
+      tx(text: ") (ruling "),
+      cite(symbol: DeclarationSymbol { reference: cross_tree_admission_is_namespace_membership.reference }),
+      tx(text: "), enforced through the storage lookup. The argument and the one-PR cutover that brings the corpus under the rule: "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.plans.source_layout_authority" } }),
+      tx(text: "."),
+    ]),
     p(text: "The load-bearing consequence: **interface, realization and policy are three facts.** `extdeps/` owns a dependency's *interface shape*; *transport* (shell, REST, SDK) is one of N handlers bound to it; *business policy* (which base ref, which flag) is a workflow fact. Policy has leaked when an argv carries a literal it should receive as a parameter; transport has fused when an operation is forked per transport. **The dispatch that selects a realization is itself realization**, so it sits peripheral."),
     p(text: "*e.g.* one vendor concept once forked three ways by rigor — `CpuVendor`/`DramManufacturer` closed enums beside a stringly `GpuFacts.vendor` — dissolved into one generic `Vendor<Domain>` whose cited company entities live one file each in `extdeps/vendor/`. Likewise `dag/std/os.dag` projects per-vendor rows with no `match`, while the rows and the product-to-vendor dispatch live in `extdeps/os/`."),
     p(text: "**Cite the symbol, not the position.** A `file:line` pointer is a second, positional naming scheme that any edit above the line silently invalidates. Name the module and symbol; a position is carried only where no symbol exists (a generated artifact, a data row, a line inside a blob), and then beside the symbol, never as the citation. A stale symbol is decidable from the `Node` tree; a line is not reachable from it at all."),
@@ -112,22 +138,26 @@ fn section_3_blocks() -> List<MarkdownBlock> {
     p(text: "**The pairing obligation:** every supplied boundary owes ONE INHABITANCE CLAIM that the real producer emits that shape, asserting the ROUTE and not only the answer, and SUPPLYING INPUTS MAY NEVER REMOVE THE LAST EXECUTION OF THE REAL PATH — deleting the integration must make a control fail. A designed fixture can stay green after its world moves by reaching the same verdict another way; the inhabitance claim is what turns a supplied hypothesis into a reading."),
     h3(text: "Replacement migrations cut over at the root"),
     p(text: "When two structures answer one semantic question and one is to disappear, the change is a **replacement migration**: editing X leaf-upward keeps its root alive while every intermediate state becomes load-bearing, and a surviving X is an **attractor** whose vocabulary keeps shaping decisions premised on an assumption scheduled to die."),
-    p(text: concat("So the default is **delete-first**: uproot the root early, then fix forward minimally, solving each surfaced problem from first principles rather than restoring its old binding. In a fail-closed substrate **the deletion is the census — but only over the population a run compiles**. Outside the required gate (",
-      concat(documentary_ref_symbol_text(reference: required_gate_subjects_ref),
-      ", the closures of the entries those rows emit, so nearly every root is outside it) a dependent can stop resolving while the required job reports SUCCESS, so **for a root outside the gate, enumerate the consumers by name before you delete**. What cannot break loudly is covered by a declared, bounded §4b rung drop, never by silence."))),
+    pi(inlines: [
+      tx(text: "So the default is **delete-first**: uproot the root early, then fix forward minimally, solving each surfaced problem from first principles rather than restoring its old binding. In a fail-closed substrate **the deletion is the census — but only over the population a run compiles**. Outside the required gate ("),
+      cite(symbol: DeclarationSymbol { reference: required_gate_subjects_ref }),
+      tx(text: ", the closures of the entries those rows emit, so nearly every root is outside it) a dependent can stop resolving while the required job reports SUCCESS, so **for a root outside the gate, enumerate the consumers by name before you delete**. What cannot break loudly is covered by a declared, bounded §4b rung drop, never by silence."),
+    ]),
     p(text: "Two carve-outs:"),
     ul(items: [
       li(text: "**A gap-intolerant boundary keeps the staged form:** Y in shadow, then one transition that switches the root and deletes X."),
       li(text: "**Where no Y can hold the boundary, X stays frozen:** no new investment, no new rows on its growth surfaces."),
     ]),
     p(text: "**Atomic describes the authority transition, not the effort:** X's authority ends in one motion, Y never falls back to, resolves through or derives from X (X may serve as an offline differential oracle), and the minimum Y preserves every required refusal."),
-    p(text: concat("Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is ",
-      concat(documentary_ref_symbol_text(reference: v1_maintenance_standing_ref),
-      ", which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate."))),
+    pi(inlines: [
+      tx(text: "Frozen is the wrong state for a production-critical X whose replacement paused indefinitely, which is the v1 seed's situation; v1 is semantics-frozen, maintenance-active, under a PURPOSE test: a change is admitted when it serves the v2 self-host program. The authority is "),
+      cite(symbol: DeclarationSymbol { reference: v1_maintenance_standing_ref }),
+      tx(text: ", which also records that an active-maintenance arm becomes absorbing if every proposal classifies as admissible, and that its vocabulary is enforced by review, not by a gate."),
+    ]),
     p(text: "The full doctrine (operative loop, consumer-relative root, disposition census, root-first cut search, terminal receipt): → [replacement migration doctrine](docs/plans/replacement-migration-doctrine.md); cut programs → [floor-cut](docs/plans/floor-cut-replacement-plan.md) · [namespace-cut](docs/plans/namespace-cut-replacement-plan.md)."),
     h3(text: "External upstream decomposition"),
     p(text: "One concept, one authority unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit it. Each independently versioned upstream product, implementation, engine, vendor or specification has its own extdeps module. A generic hub may define agnostic shapes but may not enumerate concrete products, dispatch among them, carry product version rows, or store consumer coverage state. Observations this repository makes are receipts in the observing layer, not facts of the observed upstream; a missing observation is a downstream coverage obligation, never an `Unobserved` property inside the upstream module."),
-    CodeBlock { code: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join" },
+    CodeBlock { segments: [CodeText { text: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join" }] },
     p(text: "A Chrome change must not require editing Safari’s module. Adding Opera must not widen a generic browser-product enum."),
   ]
 }
@@ -138,22 +168,22 @@ fn section_3_blocks() -> List<MarkdownBlock> {
 fn conformance_home_group_item(g: ConformanceHomeGroup) -> MarkdownListItem {
   li_blocks(blocks: [
     p(text: join(["**", g.label, "** — ", g.purpose], "")),
-    ul(items: map(conformance_home_list(h: g.homes), h => li(text: concat("`", concat(review_home_text(h: h), "`"))))),
+    ul(items: map(conformance_home_list(h: g.homes), h => li_inlines(inlines: [cite(symbol: DeclarationSymbol { reference: h })]))),
   ])
 }
 
 fn conformance_boundary_blocks(d: ConformanceDomain) -> List<MarkdownBlock> {
   if count(d.boundaries) == 1 {
-    map(d.boundaries, b => p(text: concat("**Boundary.** ", b)))
+    map(d.boundaries, b => pi(inlines: concat([tx(text: "**Boundary.** ")], b)))
   } else {
-    [p(text: "**Boundaries.**"), ul(items: map(d.boundaries, b => li(text: b)))]
+    [p(text: "**Boundaries.**"), ul(items: map(d.boundaries, b => li_inlines(inlines: b)))]
   }
 }
 
 fn conformance_domain_section(d: ConformanceDomain) -> List<MarkdownBlock> {
   concat(
     concat(
-      [h3(text: d.label), p(text: concat("**Owns.** ", d.owns))],
+      [h3(text: d.label), pi(inlines: concat([tx(text: "**Owns.** ")], d.owns))],
       conformance_boundary_blocks(d: d),
     ),
     [
@@ -170,16 +200,32 @@ fn conformance_domain_blocks() -> List<MarkdownBlock> {
 fn section_3b_blocks() -> List<MarkdownBlock> {
   concat([
     h2(text: "3b. Conformance (§2–§3 applied to a change)"),
-    p(text: concat("**Conformance is §2–§3 applied to a change in motion** ", concat(ruling(r: conformance_needs_attention), ". A change touches concept domains — it caches, holds something exclusively, places work, restates an upstream fact — and for each the corpus already has a home module. The question is: **does this change inhabit the existing model of each domain it touches, and where it does not, does it say why?** The answer is three-valued:"))),
+    pi(inlines: [
+      tx(text: "**Conformance is §2–§3 applied to a change in motion** (ruling "),
+      cite(symbol: DeclarationSymbol { reference: conformance_needs_attention.reference }),
+      tx(text: "). A change touches concept domains — it caches, holds something exclusively, places work, restates an upstream fact — and for each the corpus already has a home module. The question is: **does this change inhabit the existing model of each domain it touches, and where it does not, does it say why?** The answer is three-valued:"),
+    ]),
     ul(items: [
       li(text: "**Conforms.**"),
       li(text: "**Diverges with a stated reason** — admitted, and often correct."),
       li(text: "**Diverges with no reason** — the only red, because an unstated divergence forks the authority (§3) and its author was the one person who could cheaply say whether it was intended."),
     ]),
     p(text: "A two-valued reading loses the middle and either blocks every deliberate departure or admits every accidental one."),
-    p(text: concat("A domain is added by adding a row with its home; the leasing row's authorization-pattern clause was added that way ", concat(ruling(r: authorization_pattern_is_a_selection), ". A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. Criterion keys are distinct (`gunbc.roadmap.roadmap_review_criteria` `review_criterion_identities_are_unique`) but not semantically exclusive, so two criteria may report one defect from two perspectives."))),
+    pi(inlines: [
+      tx(text: "A domain is added by adding a row with its home; the leasing row's authorization-pattern clause was added that way (ruling "),
+      cite(symbol: DeclarationSymbol { reference: authorization_pattern_is_a_selection.reference }),
+      tx(text: "). A domain whose home does not yet exist is a modeling obligation (§6), not a row; a home that does not resolve is a §3 citation defect; a home that owns only part of the row's claimed scope is a scope mismatch on the row. Single authority (§3) keeps naming and citation, minimize-redundancy (§2) keeps copied work, and conformance owns *inhabitance*. Criterion keys are distinct ("),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.roadmap.roadmap_review_criteria", decl_name: "review_criterion_identities_are_unique") }),
+      tx(text: ") but not semantically exclusive, so two criteria may report one defect from two perspectives."),
+    ]),
     p(text: "**On the ladder (§4b)** a reviewer over a finished diff is *mitigation*. The climb: which domains a change touches is derivable before any worker runs — from the modules its plan imports and the vocabulary it introduces that a home already owns — so plan admission can name the homes in the brief and spawn only the reviewers the change reaches, leaving the roster as the safety net."),
-    p(text: "The roster is modeled in `gunbc.design_argument` `conformance_domains`, and `gunbc.roadmap.roadmap_review_criteria` derives one reviewer from each row; the reviewer's question and tells live in its brief. Each domain below states:"),
+    pi(inlines: [
+      tx(text: "The roster is modeled in "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_argument", decl_name: "conformance_domains") }),
+      tx(text: ", and "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.roadmap.roadmap_review_criteria" } }),
+      tx(text: " derives one reviewer from each row; the reviewer's question and tells live in its brief. Each domain below states:"),
+    ]),
     ul(items: [
       li(text: "**Owns** — the part of a change reviewed under this domain."),
       li(text: "**Boundary** — a nearby responsibility owned elsewhere."),
@@ -191,7 +237,11 @@ fn section_3b_blocks() -> List<MarkdownBlock> {
 fn section_3c_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "3c. Consumption (who consumes a change, and how)"),
-    p(text: concat("Conformance asks whether a change inhabits existing models; **consumption asks the converse of every model it adds: who consumes it, and by what executing route** ", concat(ruling(r: consumption_interrogated_separately), ". §5 already rules that a typecheck and a grep are not consumers, but folded into other questions it let a diff add a well-shaped type, a row and a witness that the row exists while nothing read the row. A declaration nothing consumes is §2's redundant work in its purest form."))),
+    pi(inlines: [
+      tx(text: "Conformance asks whether a change inhabits existing models; **consumption asks the converse of every model it adds: who consumes it, and by what executing route** (ruling "),
+      cite(symbol: DeclarationSymbol { reference: consumption_interrogated_separately.reference }),
+      tx(text: "). §5 already rules that a typecheck and a grep are not consumers, but folded into other questions it let a diff add a well-shaped type, a row and a witness that the row exists while nothing read the row. A declaration nothing consumes is §2's redundant work in its purest form."),
+    ]),
     p(text: "For each added declaration, **name the consumer** (fold, entry point, realization, emitted artifact) **and the executing route**, or classify it: consumed in this change; consumed by a named later change (a declared frontier, with its trigger); or dangling — the only red, however well modeled. Tells: a `pub` declaration with no call site in the closure, a row no fold reads, a module nothing imports, a witness asserting existence rather than exercising behavior, consumption claimed in the PR body but absent from the diff."),
     p(text: "**On the ladder (§4b)** the reviewer is *mitigation*. A declaration's consumers are already a fact of the namespace tree, so the unconsumed set is derivable at ingestion and plan admission can refuse a dangling set before any worker runs. Until then this is the one criterion that reads a change from its consumers inward."),
   ]
@@ -200,8 +250,20 @@ fn section_3c_blocks() -> List<MarkdownBlock> {
 fn section_3d_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "3d. Selection precedes convergence"),
-    p(text: "**Selection precedes convergence.** A convergence primitive (`std.goal_assessment`, `ensure`) neither enumerates subjects nor chooses a realization: it assesses a caller-supplied goal against an independent observation, or decides Noop/Apply/Refuse over a caller-supplied requirement with independent readback. Choosing inside convergence is the conflation forbidden here; the selection authority sits before those folds, in `std.decision`."),
-    p(text: "**Pareto assessment is not realization selection.** `std.pareto` computes dominance and the frontier: axis identities rather than positions, per-axis orientation, interval readings, `Incomparable` distinct from `DominanceUndecided`, and refusal on missing or duplicated funded-axis readings. A front of two is not a winner. Realization selection is the policy-bound operation that produces one desired realization; it **consumes** `std.pareto` and must not redeclare its vocabulary — a second decision algebra is the §3 fork."),
+    pi(inlines: [
+      tx(text: "**Selection precedes convergence.** A convergence primitive ("),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.goal_assessment" } }),
+      tx(text: ", `ensure`) neither enumerates subjects nor chooses a realization: it assesses a caller-supplied goal against an independent observation, or decides Noop/Apply/Refuse over a caller-supplied requirement with independent readback. Choosing inside convergence is the conflation forbidden here; the selection authority sits before those folds, in "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.decision" } }),
+      tx(text: "."),
+    ]),
+    pi(inlines: [
+      tx(text: "**Pareto assessment is not realization selection.** "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.pareto" } }),
+      tx(text: " computes dominance and the frontier: axis identities rather than positions, per-axis orientation, interval readings, `Incomparable` distinct from `DominanceUndecided`, and refusal on missing or duplicated funded-axis readings. A front of two is not a winner. Realization selection is the policy-bound operation that produces one desired realization; it **consumes** "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.pareto" } }),
+      tx(text: " and must not redeclare its vocabulary — a second decision algebra is the §3 fork."),
+    ]),
     p(text: "The result is scoped, never `Optimal`: `SelectedWithin` binds a `SelectionReceipt` (subject, candidate-field identity and standing, constraint authority, funded axes, evidence snapshot, Pareto survivors, policy authority, selected identity). A change to any of those is a **different decision**, so a stale choice is detectable. The other outcomes:"),
     ul(items: [
       li(text: "Unresolved evidence is `SelectionNeedsEvidence`."),
@@ -209,7 +271,13 @@ fn section_3d_blocks() -> List<MarkdownBlock> {
       li(text: "A candidate violating a hard constraint is excluded *before* Pareto, never ranked."),
       li(text: "An incomplete subject — required (objective-term × decision-variable) cells are an identity join, and terms drop only with order preservation — refuses: absence is not irrelevance, and `SelectedWithin` may not mint over an incomplete closure."),
     ]),
-    p(text: "Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. `std.decision` is consumed (`product.fleet_operating_point` `fleet_operating_point_selection`), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence."),
+    pi(inlines: [
+      tx(text: "Ranking work on a funded multi-axis field **is** this law applied to authorship, so §6 does not restate it. "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.decision" } }),
+      tx(text: " is consumed ("),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "product.fleet_operating_point", decl_name: "fleet_operating_point_selection") }),
+      tx(text: "), so §3b's decision row names it; that row checks inhabitance only, and the hard laws above stay with this section's reviewer. The effectful cycle after selection — admission, actuation with uncertain completion, independent observation — has no consumed home yet (first consumer: the fleet admission spine); a receipt cannot substitute for readback, and an actuation return cannot mint convergence."),
+    ]),
   ]
 }
 
@@ -222,9 +290,27 @@ fn section_4_blocks() -> List<MarkdownBlock> {
       li(text: "*e.g.* `dag/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed."),
       li(text: "*e.g.* **one grammar, read in both directions.** Ingest selects a production forward to fold surface syntax into a core `Node`; emit selects from the *same* rows backward, so a new target language is rows in `extdeps/languages/`, never an edit to the fold. Coercion is the same move sideways: a homomorphism check."),
     ]),
-    p(text: concat("**Coercion is the implicit-safe subset of declared conversions** ", concat(ruling(r: coercion_is_the_implicit_safe_subset), ". An implicit route must be total, exact, semantics-preserving, unique, pure and consent-free; a phase that changes interpretation, needs proof, may lose information, needs a policy or has competing routes refuses implicit coercion, and the author names a conversion plan. Every phase stays represented in the typed program. Target realization may refuse to realize a plan but never decides whether a conversion is legal, so a target's cast table is not the source language's semantics. *e.g.* `Bool` does not implicitly inhabit `Int`; `true as Int` refuses unless it names a declared route such as `bool_indicator`."))),
-    p(text: concat("Where-refinements are retired in favour of checked constructors returning `Optional` ", concat(ruling(r: where_refinements_retire_for_checked_constructors), "."))),
-    p(text: concat("**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** ", concat(ruling(r: text_crossings_go_through_the_unfold), ". `v2.std.text` `String` is `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other. The only route between them is the Unicode scalar unfold, `gunbc.structural_realization_bindings` `literal_homomorphism_rows` `UnicodeScalarSequenceUnfold`. Type compatibility keys on the exact declaration a position resolves to, never its leaf name; the unfold is not a property of literals, so a non-literal value at a crossing takes the same route or refuses; and the untranslated crossings inside the emitted compiler are measured and dispositioned under `gunbc.rung_drop.text_boundary_identity_wall`, whose standing follows the measurement."))),
+    pi(inlines: [
+      tx(text: "**Coercion is the implicit-safe subset of declared conversions** (ruling "),
+      cite(symbol: DeclarationSymbol { reference: coercion_is_the_implicit_safe_subset.reference }),
+      tx(text: "). An implicit route must be total, exact, semantics-preserving, unique, pure and consent-free; a phase that changes interpretation, needs proof, may lose information, needs a policy or has competing routes refuses implicit coercion, and the author names a conversion plan. Every phase stays represented in the typed program. Target realization may refuse to realize a plan but never decides whether a conversion is legal, so a target's cast table is not the source language's semantics. *e.g.* `Bool` does not implicitly inhabit `Int`; `true as Int` refuses unless it names a declared route such as `bool_indicator`."),
+    ]),
+    pi(inlines: [
+      tx(text: "Where-refinements are retired in favour of checked constructors returning `Optional` (ruling "),
+      cite(symbol: DeclarationSymbol { reference: where_refinements_retire_for_checked_constructors.reference }),
+      tx(text: ")."),
+    ]),
+    pi(inlines: [
+      tx(text: "**Text has two representations of one type, and every crossing goes through the declared unfold or refuses** (ruling "),
+      cite(symbol: DeclarationSymbol { reference: text_crossings_go_through_the_unfold.reference }),
+      tx(text: "). "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "v2.std.text", decl_name: "String") }),
+      tx(text: " is `FreeMonoid<Char>`; the kernel `String` is host text; neither is a nickname for the other. The only route between them is the Unicode scalar unfold, "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.structural_realization_bindings", decl_name: "literal_homomorphism_rows") }),
+      tx(text: " `UnicodeScalarSequenceUnfold`. Type compatibility keys on the exact declaration a position resolves to, never its leaf name; the unfold is not a property of literals, so a non-literal value at a crossing takes the same route or refuses; and the untranslated crossings inside the emitted compiler are measured and dispositioned under "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.rung_drop.text_boundary_identity_wall" } }),
+      tx(text: ", whose standing follows the measurement."),
+    ]),
   ]
 }
 
@@ -249,7 +335,15 @@ fn section_4b_blocks() -> List<MarkdownBlock> {
       li(text: "**Dissolution on climb — production handling only, never the evidence.** A climb deletes the lower-rung production machinery it obsoletes, but the discriminating RED and positive control **stay enrolled**; an expecting-red probe that greens when its wall lands becomes a permanent regression control."),
     ]),
     p(text: "At a service boundary rung honesty is commercial: an opaque dimension needs a falsifiable quality floor with a named consequence (billing, remedy or refusal), or the claim is marketing. Below-floor delivery refuses or discharges the remedy; materially different delivery is its own named, priced product; losing the ability to verify a floor is a declared drop that may force refusal and never licenses silent below-floor delivery."),
-    p(text: "Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in `gunbc.rung_drop` (combined view: `gunbc.instruments.docs_projection_gate` `regen`). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it."),
+    pi(inlines: [
+      tx(text: "Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row under `dag/gunbc/recurring_failure_mode/` ("),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+      tx(text: "): invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.rung_drop" } }),
+      tx(text: " (combined view: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.docs_projection_gate", decl_name: "regen") }),
+      tx(text: "). The two are separate because they are appended separately, and this document names neither population so that an append never regenerates it."),
+    ]),
     p(text: "**The floor first, the differentiator above it.** gunbc must hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and no higher capability compensates a failure there. Above it, because the substrate carries causal, cardinality, algebraic, effect, ownership, cost and realization facts, the ladder reaches classes ordinary compilers leave to tests and postmortems: an empty collection into a nonempty consumer, recursion without descent proof, a non-idempotent effect under retry, a blown complexity bound, a realization that does not preserve behavior."),
     p(text: "The promise is **not** that every property becomes impossible, but that every modeled class climbs to its highest honest rung with ceiling and residual risk explicit. The compiler does not invent intent, prove unmodeled reality or lift arbitrary predicates to proof, and a brand or `Validated<T>` is cosmetic until construction enforces it. Rung census and climb plan: → [compiler-guarantee recovery gap analysis](docs/plans/compiler-guarantee-recovery-gap-analysis.md)."),
   ]
@@ -267,13 +361,23 @@ fn section_4d_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "4d. Epistemic humility (what the corpus may assert about the world)"),
     p(text: "A consequence of A2 and A3 applied to authored claims about the world, and a peer of §4b: §4b governs what the compiler can guarantee about a program; this section governs what the corpus may assert about the world."),
-    p(text: concat("The obligation is symmetric ", concat(ruling(r: epistemic_humility_is_symmetric), ":"))),
+    pi(inlines: [
+      tx(text: "The obligation is symmetric (ruling "),
+      cite(symbol: DeclarationSymbol { reference: epistemic_humility_is_symmetric.reference }),
+      tx(text: "):"),
+    ]),
     ul(items: [
       li(text: "**Do not assert as deduced what is only inferred.** An inference is a bet: typed as a bet, neither deleted nor promoted. A reader who consumes it as fact is the defect."),
       li(text: "**Do not over-generalize a prohibition.** Forbidding more than the evidence supports costs opportunities nobody sees, so it looks like rigor. This is not §5's never-trap (claiming construction for an undecidable class); it is forbidding more of the world than the cited variables support."),
       li(text: "**Do assert what you are confident in.** A fact declined is a wall that does not exist. Under-asserting is not humility."),
     ]),
-    p(text: "The homes: `extdeps.external_authority` `CitedFigureStanding` = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` carries a figure's evidentiary standing in its type, an uncited figure naming what would ground it; and `strategy.node_rental` `SupplierHypothesis`, whose only arm answering true requires a cited discriminator. The cautionary specimen: `product.node_power_envelope` `altra_two_dpc_ceilings` were self-declared `TranscribedUncited`, and `effective_data_rate` consumed them as a wall — a typed bet consumed as deduced fact, whatever the sources later say."),
+    pi(inlines: [
+      tx(text: "The homes: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "extdeps.external_authority", decl_name: "CitedFigureStanding") }),
+      tx(text: " = `CitedToAuthority { authority }` | `TranscribedUncited { read_obligation }` carries a figure's evidentiary standing in its type, an uncited figure naming what would ground it; and `strategy.node_rental` `SupplierHypothesis`, whose only arm answering true requires a cited discriminator. The cautionary specimen: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "product.node_power_envelope", decl_name: "altra_two_dpc_ceilings") }),
+      tx(text: " were self-declared `TranscribedUncited`, and `effective_data_rate` consumed them as a wall — a typed bet consumed as deduced fact, whatever the sources later say."),
+    ]),
   ]
 }
 
@@ -318,7 +422,11 @@ fn section_6_blocks() -> List<MarkdownBlock> {
 fn section_6b_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "6b. Chain re-derivation (how a defect is worked)"),
-    p(text: concat("§2, §3 and §5 applied to debugging, and how §6's root-cause rule is discharged ", concat(ruling(r: chain_re_derivation), ". A defect is observed at one link `c` of a dependency slice `a → b → c → d`. Patching `c` where it misbehaves, when the fault is upstream, encodes an undeclared fact about `a` or `b` — validation where construction was available (§5), a second authority (§3), redundant with the derivation it shadows (§2) — and the defect recurs at the next consumer of the same fact."))),
+    pi(inlines: [
+      tx(text: "§2, §3 and §5 applied to debugging, and how §6's root-cause rule is discharged (ruling "),
+      cite(symbol: DeclarationSymbol { reference: chain_re_derivation.reference }),
+      tx(text: "). A defect is observed at one link `c` of a dependency slice `a → b → c → d`. Patching `c` where it misbehaves, when the fault is upstream, encodes an undeclared fact about `a` or `b` — validation where construction was available (§5), a second authority (§3), redundant with the derivation it shadows (§2) — and the defect recurs at the next consumer of the same fact."),
+    ]),
     p(text: "The method:"),
     ol(items: [
       li(text: "Identify the producer-to-consumer slice the defect sits in."),
@@ -328,16 +436,32 @@ fn section_6b_blocks() -> List<MarkdownBlock> {
       li(text: "Re-realize the downstream links rather than patching them; leave sound upstream links alone."),
       li(text: "Use measurement to falsify or confirm the derivation, never to choose the repair."),
     ]),
-    p(text: "If the earliest unjustified boundary is `c`, the local fix *is* the root-cause repair. *e.g.* resolve once rebuilt corpus-wide state per module, and the repair was upstream: one shared `ResolutionContext` per native ingest in `v2.compiler.compile`. By contrast, when the emitter's own tail-call lowering was the earliest unjustified boundary, the local repair was the right one."),
-    p(text: "**Measurement is the adversary, not the selector.** It locates the failing route, prioritizes the slice and confirms the old computation is gone; a sound reading states beforehand which multiplicity collapses, which route disappears and which outputs stay equal, and a contradiction from a reconciled instrument falsifies the claim (a failed reconciliation falsifies the instrument). But a number underdetermines the chain. Targeting one axis (make resolve 10% faster) yields a cache, batch, pool or knob at the measured link that moves cost rather than removing it; such a mechanism is right only when derived from the demand graph, a complete identity and an admitted provider (`std.materialization_ladder`)."),
+    pi(inlines: [
+      tx(text: "If the earliest unjustified boundary is `c`, the local fix *is* the root-cause repair. *e.g.* resolve once rebuilt corpus-wide state per module, and the repair was upstream: one shared `ResolutionContext` per native ingest in "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "v2.compiler.compile" } }),
+      tx(text: ". By contrast, when the emitter's own tail-call lowering was the earliest unjustified boundary, the local repair was the right one."),
+    ]),
+    pi(inlines: [
+      tx(text: "**Measurement is the adversary, not the selector.** It locates the failing route, prioritizes the slice and confirms the old computation is gone; a sound reading states beforehand which multiplicity collapses, which route disappears and which outputs stay equal, and a contradiction from a reconciled instrument falsifies the claim (a failed reconciliation falsifies the instrument). But a number underdetermines the chain. Targeting one axis (make resolve 10% faster) yields a cache, batch, pool or knob at the measured link that moves cost rather than removing it; such a mechanism is right only when derived from the demand graph, a complete identity and an admitted provider ("),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "std.materialization_ladder" } }),
+      tx(text: ")."),
+    ]),
     ul(items: [
       li(text: "**Owned components get opened.** An external upstream stays a black box with an honestly modeled contract; an owned component whose contract is missing, violated, duplicated or insufficient must be opened."),
       li(text: "**No level is presumed correct**, including the structure the slice sits in (§4d turned inward). Touching code is taking responsibility for it."),
       li(text: "**There are no special layers.** The seed, the emitter or a load-bearing stage raises the evidence bar for landing, not an exemption from the read."),
     ]),
-    p(text: "The tells: a symptom-link fix with no statement of why that link is the earliest unjustified boundary; a guard for a state earlier links could have made unwritable; a second fix to one link in a short time; a percentage on one axis as justification; knowing *that* `c` is wrong without being able to say what `a` and `b` established — the line-stop. The class is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`."),
+    pi(inlines: [
+      tx(text: "The tells: a symptom-link fix with no statement of why that link is the earliest unjustified boundary; a guard for a state earlier links could have made unwritable; a second fix to one link in a short time; a percentage on one axis as justification; knowing *that* `c` is wrong without being able to say what `a` and `b` established — the line-stop. The class is "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+      tx(text: " `symptom_link_patched_without_the_earliest_unjustified_boundary`."),
+    ]),
     h3(text: "Root generalization (closing breadth)"),
-    p(text: concat("Chain re-derivation fixes depth: it finds the earliest unjustified link of one slice. A rule repaired correctly at that link can still live in sibling leaves, and the repair then reaches one of them ", concat(ruling(r: root_generalization_closes_breadth), ". Root generalization closes breadth, and its formal core is anti-unification, Plotkin's least general generalization (G. D. Plotkin, \"A note on inductive generalization\", Machine Intelligence 5, 1970): the most specific rule of which every observed case is an instance. A leaf that answers one case beside leaves that answer its siblings is §3's fork, consolidated later at the price of every leaf written in between."))),
+    pi(inlines: [
+      tx(text: "Chain re-derivation fixes depth: it finds the earliest unjustified link of one slice. A rule repaired correctly at that link can still live in sibling leaves, and the repair then reaches one of them (ruling "),
+      cite(symbol: DeclarationSymbol { reference: root_generalization_closes_breadth.reference }),
+      tx(text: "). Root generalization closes breadth, and its formal core is anti-unification, Plotkin's least general generalization (G. D. Plotkin, \"A note on inductive generalization\", Machine Intelligence 5, 1970): the most specific rule of which every observed case is an instance. A leaf that answers one case beside leaves that answer its siblings is §3's fork, consolidated later at the price of every leaf written in between."),
+    ]),
     ol(items: [
       li(text: "**Detect.** A new case seems to need new code: is it another instance of what existing leaves already do? The trigger is the second local implementation of one rule."),
       li(text: "**Collect** every leaf of that shape, layer by layer to the root: sibling arms, sibling call sites of the same general check, sibling helpers, the same rule in v1 and v2, other stages and targets. The enumeration is the fork census, stated in the change."),
@@ -347,14 +471,26 @@ fn section_6b_blocks() -> List<MarkdownBlock> {
     ]),
     p(text: "Done means a new ordinary case is data, not control flow: adding it edits a row, not a branch."),
     p(text: "Families that grew leaf by leaf: alias identity at type-compatibility call sites, per-trait bound pipelines, and qualified-call resolution; receipts and positive specimens are in the ruling and the reviewer brief."),
-    p(text: "The vertical half is `gunbc.recurring_failure_mode` `symptom_link_patched_without_the_earliest_unjustified_boundary`; the horizontal half is `gunbc.recurring_failure_mode` `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`, whose recognition rule is addressed to the author, who stops when the prompting instance is fixed. So the same question is asked of the reviewer, for every domain: `gunbc.design_argument` row `s6b.root-generalization`. A repeated pattern is rejected until the author answers why it should not be generalized (§3b, diverges with a stated reason) or that it should be but not now, naming the trigger and follow-up (§4b); the reviewer accepts or rejects that answer, and no answer is a reject."),
+    pi(inlines: [
+      tx(text: "The vertical half is "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+      tx(text: " `symptom_link_patched_without_the_earliest_unjustified_boundary`; the horizontal half is "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+      tx(text: " `a_rule_is_applied_at_the_site_that_prompted_it_and_not_its_sibling`, whose recognition rule is addressed to the author, who stops when the prompting instance is fixed. So the same question is asked of the reviewer, for every domain: "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.design_argument" } }),
+      tx(text: " row `s6b.root-generalization`. A repeated pattern is rejected until the author answers why it should not be generalized (§3b, diverges with a stated reason) or that it should be but not now, naming the trigger and follow-up (§4b); the reviewer accepts or rejects that answer, and no answer is a reject."),
+    ]),
   ]
 }
 
 fn section_7_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
-    p(text: concat("The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. The `.dag` graph is the truth and Rust is one realization — a seed that shrinks toward zero. v2 emits its own sources, proven **by execution**: the emitted module compiles and holds its own `.dag` contract on a discriminating corpus. **The bar is that v2 is better than the seed, not that it resembles it** ", concat(ruling(r: v2_better_than_the_seed), ". The seed is a regression oracle, never a specification: a divergence is either a *v2 regression* (a defect) or a *seed defect* v2 does not carry forward and records as a correction. The seed reading something one way is evidence of what v2 must not lose, never by itself why v2 reads it that way — so neither a byte-identical fixed point nor behavioral equivalence is the goal; both would cement the seed's warts."))),
+    pi(inlines: [
+      tx(text: "The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. The `.dag` graph is the truth and Rust is one realization — a seed that shrinks toward zero. v2 emits its own sources, proven **by execution**: the emitted module compiles and holds its own `.dag` contract on a discriminating corpus. **The bar is that v2 is better than the seed, not that it resembles it** (ruling "),
+      cite(symbol: DeclarationSymbol { reference: v2_better_than_the_seed.reference }),
+      tx(text: "). The seed is a regression oracle, never a specification: a divergence is either a *v2 regression* (a defect) or a *seed defect* v2 does not carry forward and records as a correction. The seed reading something one way is evidence of what v2 must not lose, never by itself why v2 reads it that way — so neither a byte-identical fixed point nor behavioral equivalence is the goal; both would cement the seed's warts."),
+    ]),
     p(text: "The seed shrinks across a **typed self-host frontier**: each module is *self-emitted* (green by execution) or *seed-retained*, and a retained module is a declared row with reason and migration trigger, never a silent escape hatch. Its tests are data; its ontology dissolves into `std/`."),
     p(text: "The payoff is that **language design opens up.** It is normally locked by cost: a new check means owning a compiler fork, a new language means an adoption problem. Here a wall is a **row** (no fork), and because the substrate is medium-agnostic, that row applies *on top of an existing language* (no adoption): a domain's bug class can be made extinct in Rust or TypeScript without forking their compilers. It is sound exactly where ingest is lossless and fail-closed where it is not — any language, with a typed honesty boundary about where the wall holds. This is §1's convention-to-necessity at the meta-level, bounded by §5 (decidability) and §6 (displaced cost, not elegance)."),
   ]
@@ -363,22 +499,88 @@ fn section_7_blocks() -> List<MarkdownBlock> {
 fn failure_modes_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Recurring failure modes (instances of §3–§5, kept for pattern-matching)"),
-    p(text: "One file per class under `dag/gunbc/recurring_failure_mode/` (`gunbc.recurring_failure_mode`), each with its recognition rule and receipts. They are a ledger, not a consequence, so they live there and are not indexed here: an index in this file would regenerate it on every append."),
+    pi(inlines: [
+      tx(text: "One file per class under `dag/gunbc/recurring_failure_mode/` ("),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+      tx(text: "), each with its recognition rule and receipts. They are a ledger, not a consequence, so they live there and are not indexed here: an index in this file would regenerate it on every append."),
+    ]),
   ]
 }
 
 fn building_checks_blocks() -> List<MarkdownBlock> {
   [
     h2(text: "Building & checks"),
-    p(text: "The CI contract. From a bare clone, start at `gunbc.contributor_onboarding_path` (combined view: `gunbc.instruments.docs_projection_gate` `regen`): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document."),
+    pi(inlines: [
+      tx(text: "The CI contract. From a bare clone, start at "),
+      cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.contributor_onboarding_path" } }),
+      tx(text: " (combined view: "),
+      cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.docs_projection_gate", decl_name: "regen") }),
+      tx(text: "): the walked path to a first landed change, the CLIs, local checks, hooks and regeneration, and a reading order for this document."),
+    ]),
     ul(items: [
-      li(text: concat("**CI is one required job.** `gunbc.witness.compiler_gate_workflow` emits `.github/workflows/witnesses.yml`; the required context is the job `", concat(required_ci_context_name as String, concat("`, run on the fleet for every pull request and merge_group ", concat(ruling(r: v1_withdrawn_one_required_job), ". It builds the seed, then runs one `gunbc test <label>` step per row of `gunbc.emitted_subject_build_gate` `emitted_subject_build_rows` (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused."))))),
-      li(text: concat("**A non-required job repairs two generated populations and judges nothing.** `gunbc.heal_workflow` runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and `gunbc.heal_publisher_workflow` pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. `gunbc.drift_watch_workflow` runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy (`gunbc.tier_o_artifact_emit` `tier_o_artifacts`); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author (`gunbc.rung_drop` `v1_required_lanes_withdrawn`); the two added jobs are recorded at ", concat(ruling(r: regeneration_jobs_added_to_roster),"."))),
-      li(text: concat("**The memory envelope is part of the verdict** ", concat(ruling(r: memory_envelope_is_part_of_the_verdict), ". Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered (`gunbc.host.memory_envelope`; slot shape `gunbc.runner.runner_slot_desired`)."))),
+      li_inlines(inlines: [
+        tx(text: "**CI is one required job.** "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.witness.compiler_gate_workflow" } }),
+        tx(text: " emits `.github/workflows/witnesses.yml`; the required context is the job `"),
+        tx(text: required_ci_context_name as String),
+        tx(text: "`, run on the fleet for every pull request and merge_group (ruling "),
+        cite(symbol: DeclarationSymbol { reference: v1_withdrawn_one_required_job.reference }),
+        tx(text: "). It builds the seed, then runs one `gunbc test <label>` step per row of "),
+        cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows") }),
+        tx(text: " (today `//gunbc/instruments:self-host` and `//gunbc/instruments:v2-native-cli`): the seed emits a v2 closure, cargo builds it fresh, and the built binary runs against its controls. A fork pull request has no required check — unobserved, not excused."),
+      ]),
+      li_inlines(inlines: [
+        tx(text: "**A non-required job repairs two generated populations and judges nothing.** "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.heal_workflow" } }),
+        tx(text: " runs on same-repository pull requests that touch the generation inputs, converges the stage0 mirrors to the seed's own fixed point and rewrites the seed-build artifacts, and "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.heal_publisher_workflow" } }),
+        tx(text: " pushes the result as one bot commit, compare-and-set on the head, with a receipt naming each artifact. A fork pull request gets a notice, and a non-converging round pushes nothing. "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.drift_watch_workflow" } }),
+        tx(text: " runs on a schedule, reads the default branch and fails with one typed, located finding per drifted workflow, runner sudoers, githook, `.gitignore`, `.gitattributes` or fci1 context, each naming its remedy ("),
+        cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.tier_o_artifact_emit", decl_name: "tier_o_artifacts") }),
+        tx(text: "); it writes nothing. Neither is a required context and neither refuses a merge; every other generated artifact is left to its author ("),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.rung_drop" } }),
+        tx(text: " `v1_required_lanes_withdrawn`); the two added jobs are recorded at (ruling "),
+        cite(symbol: DeclarationSymbol { reference: regeneration_jobs_added_to_roster.reference }),
+        tx(text: ")."),
+      ]),
+      li_inlines(inlines: [
+        tx(text: "**The memory envelope is part of the verdict** (ruling "),
+        cite(symbol: DeclarationSymbol { reference: memory_envelope_is_part_of_the_verdict.reference }),
+        tx(text: "). Each subject step refuses a run no cgroup `memory.max` bounds, prints a memory receipt at exit, and refuses on any OOM kill or any swap whatever the producer answered ("),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.host.memory_envelope" } }),
+        tx(text: "; slot shape "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.runner.runner_slot_desired" } }),
+        tx(text: ")."),
+      ]),
       li(text: concat("**What a green `", concat(required_ci_context_name as String, "` does not say.** Nothing on the required path evaluates a witness, refuses a module outside the two emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document included — with its authority. That loss is one declared drop, `gunbc.rung_drop` `v1_required_lanes_withdrawn`, whose population is re-derived by `gunbc test //gunbc/instruments:required-lane-resolution-census` and whose trigger is the native compiler judging that population. A new verdict joins the gate as a row judged by a binary built from the seed's emission, never as a lane handing the corpus to the v1 interpreter."))),
-      li(text: concat("**The job roster is closed to growth** ", concat(ruling(r: job_roster_closed_to_growth), ": adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`."))),
-      li(text: concat("**Measurements are `gunbc test <label>`** ", concat(ruling(r: instrument_is_a_row_not_a_flag), ". A label is a row in `gunbc.instrument_targets` bound through `gunbc.target_binding` `TargetProducer`, never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2)."))),
-      li(text: concat("**Instrument measurements queue per dispatch, not one behind all** ", concat(ruling(r: instrument_measurement_queues_run_in_parallel), ". `gunbc.instruments.instrument_dispatch_workflow` `instrument_dispatch_concurrency_group` keys the workflow's concurrency group on the dispatch ref plus the dispatch label, so two unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped -- a queued run cancelled without signal was the failure the instrument fleet recorded on 2026-10-03 (`instrument_dispatch_workflow`, the scalar-cancel history). The global group never isolated one run from another, so removing it costs no guarantee: the authority that keeps an instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue -- `gunbc.runner.runner_slot_desired` declares the per-slot shape and `gunbc.host.memory_envelope` enforces it (memory.high throttles early, memory.max refuses late, `MemorySwapMax: 0` refuses an overrun rather than paging it) -- per the operator's ruling recorded in that row's provenance. That is what isolation MEANS for an instrument run; it is not a claim that the live fleet carries it today. Live runner units drift from the declared shape -- a `MemorySwapMax` of 32 GiB where the slot declares 0, read on the fleet 2026-10-21 -- the class at `gunbc.recurring_failure_mode` `the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot against the slot declared for that host, refusing on drift. Until that trigger runs, parallel instrument measurements rest on a declared authority that is not fully installed, and this document records that instead of assuming it holds."))),
+      li_inlines(inlines: [
+        tx(text: "**The job roster is closed to growth** (ruling "),
+        cite(symbol: DeclarationSymbol { reference: job_roster_closed_to_growth.reference }),
+        tx(text: "): adding a job needs operator sign-off; the reasoning an author owes is stated at `witness_floor_lane_jobs`."),
+      ]),
+      li_inlines(inlines: [
+        tx(text: "**Measurements are `gunbc test <label>`** (ruling "),
+        cite(symbol: DeclarationSymbol { reference: instrument_is_a_row_not_a_flag.reference }),
+        tx(text: "). A label is a row in "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.instrument_targets" } }),
+        tx(text: " bound through "),
+        cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.target_binding", decl_name: "TargetProducer") }),
+        tx(text: ", never a flag on `claim_executor`. Exit 0 means the observation held, 1 that it did not, 2 that there was no observation (an unknown label refuses with 2)."),
+      ]),
+      li_inlines(inlines: [
+        tx(text: "**Instrument measurements queue per dispatch, not one behind all** (ruling "),
+        cite(symbol: DeclarationSymbol { reference: instrument_measurement_queues_run_in_parallel.reference }),
+        tx(text: "). "),
+        cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.instruments.instrument_dispatch_workflow", decl_name: "instrument_dispatch_concurrency_group") }),
+        tx(text: " keys the workflow's concurrency group on the dispatch ref plus the dispatch label, so two unrelated measurements proceed at once while one measurement on one ref cannot run twice against itself; the queue is `max` and cancellation stays off, so a pending run is never dropped -- a queued run cancelled without signal was the failure the instrument fleet recorded on 2026-10-03 (`instrument_dispatch_workflow`, the scalar-cancel history). The global group never isolated one run from another, so removing it costs no guarantee: the authority that keeps an instrument run from harming another job on the shared self-hosted pool is the SLOT, not the queue -- "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.runner.runner_slot_desired" } }),
+        tx(text: " declares the per-slot shape and "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.host.memory_envelope" } }),
+        tx(text: " enforces it (memory.high throttles early, memory.max refuses late, `MemorySwapMax: 0` refuses an overrun rather than paging it) -- per the operator's ruling recorded in that row's provenance. That is what isolation MEANS for an instrument run; it is not a claim that the live fleet carries it today. Live runner units drift from the declared shape -- a `MemorySwapMax` of 32 GiB where the slot declares 0, read on the fleet 2026-10-21 -- the class at "),
+        cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.recurring_failure_mode" } }),
+        tx(text: " `the_live_runner_unit_memory_shape_drifts_from_the_declared_slot`, whose next-rung trigger is a scheduled live read of every fleet slot against the slot declared for that host, refusing on drift. Until that trigger runs, parallel instrument measurements rest on a declared authority that is not fully installed, and this document records that instead of assuming it holds."),
+      ]),
     ]),
   ]
 }

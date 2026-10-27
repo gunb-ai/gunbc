@@ -1684,7 +1684,7 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
                             && (r.carrier.clone() == "signature_param_type".to_string()))
                             && (r.path.clone() == "xs/arg".to_string()))
                             && (gi_declaration_label(r.declaration.clone())
-                                == "gic.a::head_of::<T>".to_string()))
+                                == "gic.a head_of<T>".to_string()))
                         {
                             __found = true;
                             break;
@@ -1726,7 +1726,7 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
                                 == "formal_declaration_bound_conformance".to_string()))
                             && (r.path.clone() == "q".to_string()))
                             && (gi_declaration_label(r.declaration.clone())
-                                == "gic.a::same_spelling_as_a_record_parameter::<Q>".to_string()))
+                                == "gic.a same_spelling_as_a_record_parameter<Q>".to_string()))
                         {
                             __found = true;
                             break;

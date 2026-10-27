@@ -5,7 +5,7 @@ import std.markdown {
   MarkdownTableCell, MarkdownTableRow, HeadingLevel,
   H1, H2, H3, H4, H5, H6,
   HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock, TaskListBlock,
-  CodeBlock, BlockquoteBlock, TableBlock,
+  CodeBlock, CodeText, BlockquoteBlock, TableBlock,
   TextInline, EmphasisInline, StrongInline, CodeInline, LinkInline, ImageInline,
   CheckboxState, Checked, Unchecked,
   MarkdownAlignment, AlignNone, AlignLeft, AlignCenter, AlignRight,
@@ -67,7 +67,7 @@ fn sample_readme_doc() -> MarkdownDocument {
           },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      CodeBlock { segments: [CodeText { text: "let x = 1;\n" }] },
     ],
   }
 }

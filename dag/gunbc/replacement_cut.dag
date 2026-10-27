@@ -9,7 +9,7 @@ import std.content_hash {
 // decl_ref itself is deliberately NOT imported: the admit_callers annotations below already
 // resolved it before this module imported anything from std.decl_ref, and adding the name to the
 // import block is the shadowing hazard rather than tidiness.
-import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key, declaration_ref_digest }
 
 // THE MECHANICAL PLANNING CARRIER FOR REPLACEMENT MIGRATIONS (DESIGN section 3 standing rule,
 // operator-directed 2026-08-15; hardened per the 2026-08-15 planning-thread review). A
@@ -432,20 +432,16 @@ fn tag_digest(tag: NonEmptyStr) -> Fnv1a64Structural {
 
 fn boundary_consumer_key_digest(key: BoundaryConsumerKey) -> Fnv1a64Structural {
   content_hash_combine_structural(
-    left: decl_ref_digest(ref: key.consumer),
-    right: decl_ref_digest(ref: key.consumed_old_authority),
+    left: declaration_ref_digest(ref: key.consumer),
+    right: declaration_ref_digest(ref: key.consumed_old_authority),
   )
-}
-
-fn decl_ref_digest(ref: DeclarationRef) -> Fnv1a64Structural {
-  content_hash_atom(value: declaration_ref_display_key(ref: ref) as NonEmptyStr)
 }
 
 fn decl_ref_list_digest(tag: NonEmptyStr, items: List<DeclarationRef>) -> Fnv1a64Structural {
   fold(
     items,
     init: tag_digest(tag: tag),
-    f: fn(acc, item) { content_hash_combine_structural(left: acc, right: decl_ref_digest(ref: item)) },
+    f: fn(acc, item) { content_hash_combine_structural(left: acc, right: declaration_ref_digest(ref: item)) },
   )
 }
 
@@ -497,8 +493,8 @@ fn census_digest(census: BoundaryCensus) -> Fnv1a64Structural {
             left: acc,
             right: content_hash_combine_structural(
               left: content_hash_combine_structural(
-                left: decl_ref_digest(ref: c.consumer),
-                right: decl_ref_digest(ref: c.consumed_old_authority),
+                left: declaration_ref_digest(ref: c.consumer),
+                right: declaration_ref_digest(ref: c.consumed_old_authority),
               ),
               right: disposition_digest(d: c.disposition),
             ),

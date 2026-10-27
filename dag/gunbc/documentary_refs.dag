@@ -7,7 +7,7 @@ import gunbc.design_ruling { design_rulings }
 // THE SYSTEMS A GENERATED DOCUMENT NAMES, CARRIED AS TYPED REFERENCES RATHER THAN SPELLED IN PROSE.
 // gunbc.doc_graph_roots already does exactly this for HAND-AUTHORED documents: HandAuthoredDocBind
 // carries primary_work plus additional_works as DeclarationRef rows, and
-// v2.lens.cited_symbol_resolution resolves that population against live declaration facts and
+// v2.std.decl_ref_resolution resolves that population against live declaration facts and
 // refuses a missing, ambiguous, or field-absent reference. Generated documents had no equivalent,
 // so a system named inside gunbc.design_document existed only as characters inside a string literal
 // -- unreachable by that lens and by every other structural reader.
@@ -32,8 +32,9 @@ import gunbc.design_ruling { design_rulings }
 // ONE ROW PER SYSTEM THE GENERATED DESIGN DOCUMENT NAMES IN A MIGRATED PARAGRAPH, and the rendered
 // bytes come from these rows rather than beside them. A row typed here while the paragraph
 // independently spells the same name would be two representations of one fact, which is the shape
-// this program exists to remove -- so the paragraph builds its symbol text by rendering the row,
-// and a rename that moves the row moves the document.
+// this program exists to remove -- so the paragraph cites the row as a std.markdown SymbolRefInline,
+// whose one spelling is std.decl_ref declaration_ref_display_key, and a rename that moves the row moves
+// the document.
 
 data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
@@ -42,10 +43,6 @@ data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.
 // one required lane now compiles the import closures of the entries these rows emit, so this is the
 // declaration that says what "inside the required gate" means.
 data required_gate_subjects_ref: DeclarationRef = decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows")
-
-fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
-  concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
-}
 
 fn generated_document_declaration_refs() -> List<DeclarationRef> {
   concat(

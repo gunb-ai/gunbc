@@ -2,7 +2,9 @@ module gunbc.design_argument
 
 import std.types { String, List }
 import std.algebra { FreeSemigroup, non_empty_to_list }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, DeclarationSymbol, ModuleSymbol, ModuleIdentity, decl_ref }
+import std.markdown { MarkdownInline }
+import gunbc.plans.md_helpers { tx, cite }
 import std.syllogism { Argument, Axiom, NonLogicalAxiom, Proposition }
 
 // A NONEMPTY COLLECTION OF DECLARATION REFERENCES IS FreeSemigroup. A domain with no home has
@@ -62,8 +64,8 @@ type ConformanceDomain {
   label: String
   question: String
   tells: List<String>
-  owns: String
-  boundaries: List<String>
+  owns: List<MarkdownInline>
+  boundaries: List<List<MarkdownInline>>
   home_groups: FreeSemigroup<ConformanceHomeGroup>
 }
 
@@ -90,9 +92,9 @@ data conformance_domains: List<ConformanceDomain> = [
       "an extdeps module that carries our own policy, an observation this repository made, a coverage state, or a product-specific dispatch among upstreams",
       "a generic extdeps hub enumerating concrete products or versions instead of one module per independently versioned upstream"
     ],
-    owns: "Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (section 3, external upstream decomposition).",
+    owns: [tx(text: "Facts governed by an independently versioned upstream: a specification, product, implementation, vendor, protocol, unit or tool. Each such upstream has its own extdeps module (section 3, external upstream decomposition).")],
     boundaries: [
-      "Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.",
+      [tx(text: "Product policy, observations this repository makes, dispatch among upstreams and coverage state belong to the consuming layer, never to extdeps.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -115,9 +117,9 @@ data conformance_domains: List<ConformanceDomain> = [
       "a shell or host call that executes what a realization handler already binds",
       "an output attached to a request that did not succeed, or a cache read that cannot say what produced the hit"
     ],
-    owns: "Faithfully storing and executing an admitted identity and result contract: completeness, readback, retention, transport, refusal and binding, with no substituting, truncating or bypassing the admitted key. Cache purity is one discriminator, not the whole domain.",
+    owns: [tx(text: "Faithfully storing and executing an admitted identity and result contract: completeness, readback, retention, transport, refusal and binding, with no substituting, truncating or bypassing the admitted key. Cache purity is one discriminator, not the whole domain.")],
     boundaries: [
-      "The key relation itself belongs to keys / hashing; this domain begins once the identity and contract are admitted.",
+      [tx(text: "The key relation itself belongs to keys / hashing; this domain begins once the identity and contract are admitted.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -158,10 +160,10 @@ data conformance_domains: List<ConformanceDomain> = [
       "a one-off or irreversible effect performed by a dispatched run under the federated identity with no approval request, or a recurring effect gated on a per-run phone tap",
       "a dashboard-only or checkout-only action performed by prose instruction with no std.human_intervention row naming the step"
     ],
-    owns: "Exclusive or bounded use of a resource, and the authorization a privileged effect requires.",
+    owns: [tx(text: "Exclusive or bounded use of a resource, and the authorization a privileged effect requires.")],
     boundaries: [
-      "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.",
-      "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.",
+      [tx(text: "A slot whose generation line is an audit trail keeps it whole; a slot whose only fact is its head uses the distinct windowed operations, a separate contract rather than a mode.")],
+      [tx(text: "Which authorization pattern performs a privileged effect is a section 3d selection, not a call-site choice; its census classifies every current site by executing the selection.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -247,11 +249,11 @@ data conformance_domains: List<ConformanceDomain> = [
       "a provider status, a requested action or a dashboard event treated as proof of usable capacity, completed work or a released liability",
       "a decision that could not see a fact the system holds elsewhere and that decides whether the action helps (a worker waiting on its manager read as waiting on compute)"
     ],
-    owns: "Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.",
+    owns: [tx(text: "Selection, allocation, placement and admission of compute resources. product.capacity and product.fabric are the shared authority, consumed by compute cells and by inference serving.")],
     boundaries: [
-      "Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).",
-      "Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.",
-      "Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.",
+      [tx(text: "Compute cells and serving share the priced selection fold but not one occupancy model: a compute cell is stateless between grants and settles money, while a serving seat holds a loaded, quality-conditioned replica ([serving capacity home ruling](docs/plans/serving-capacity-home-ruling.md)).")],
+      [tx(text: "Whether a choice is attributable to its objective, constraints, candidates and evidence belongs to the decision / selection domain and std.decision; this row only checks that a resource choice reaches that authority with the work's declared objective rather than a local one.")],
+      [tx(text: "Buyer headroom (what a demand will pay minus a supplier's ask) is not margin: product.fabric.contention withdrew that reading, so a matching change may not book it as earned.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -310,10 +312,10 @@ data conformance_domains: List<ConformanceDomain> = [
       "a deadline or availability bound priced as a very large valuation instead of held as a hard constraint",
       "an engine-internal choice among admissible execution alternatives (tracking grain, execution partition, fusion, batching, cache versus recompute, placement, specialization) made by a local threshold, ranked list, queue tier or cost rule that neither consumes select_realization nor states beside itself why that authority is inapplicable; a mechanism is such a choice when it selects among admitted alternatives that differ in obligations, constraints, funded objective axes or observable consequences (a FIFO pop order that decides which of differently valued work waits is a priority policy), while canonicalization, protocol-mandated order and mechanically equivalent internal choices remain implementation unless evidence or policy makes their difference material"
     ],
-    owns: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, eval realization, and the demand engine's own realization and materialization choices (execution grain and partition, fusion, batching, cache versus recompute, placement; gunbc.plans.demand_engine_program section 2.2 and M4) are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.",
+    owns: [tx(text: "A choice that stays attributable to its subject, candidate field, constraints, evidence and policy; this domain exposes accidental forks of that authority. Every use case that matches demand with supply or chooses how a demanded result is realized onboards here, through one interface rather than its own scoring: it supplies the required outcome, the owners' objectives and time valuations, the constraints and commitments, and each candidate's consequences as readings on declared axes, then realizes and reads back the selected plan. Fabric allocation, CI runner placement, compute sold beside internal work, standing buy orders matched against a scanned marketplace, eval realization, and the demand engine's own realization and materialization choices (execution grain and partition, fusion, batching, cache versus recompute, placement; gunbc.plans.demand_engine_program section 2.2 and M4) are named consumers. A rough estimate is an admitted reading with its standing, and improving it does not create a new choosing mechanism.")],
     boundaries: [
-      "The hard selection laws stay with the section 3d reviewer.",
-      "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.",
+      [tx(text: "The hard selection laws stay with the section 3d reviewer.")],
+      [tx(text: "Goal assessment (std.goal_assessment) checks an already chosen state; it is a boundary of this domain, not a member.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -354,10 +356,10 @@ data conformance_domains: List<ConformanceDomain> = [
       "a second derivation of the same named relation in the same declared scope, or one relation substituted for another (occurrence identity read as computation identity, a request key read as an artifact key, a locator read as entity identity) -- one subject may lawfully carry entity, demand, evaluation, result-content, occurrence, revision and locator keys",
       "a cache or memo key that omits a declared input the result depends on"
     ],
-    owns: "The key relation: what is identified, in what scope, from what complete canonical preimage, under what equality and collision rules, and whether its declared inputs are complete.",
+    owns: [tx(text: "The key relation: what is identified, in what scope, from what complete canonical preimage, under what equality and collision rules, and whether its declared inputs are complete.")],
     boundaries: [
-      "Faithfully realizing an admitted identity belongs to materialization / realization.",
-      "Demand identity and the dependency read set are a declared frontier, entering when M1 of `gunbc.plans.demand_engine_program` lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).",
+      [tx(text: "Faithfully realizing an admitted identity belongs to materialization / realization.")],
+      [tx(text: "Demand identity and the dependency read set are a declared frontier, entering when M1 of "), cite(symbol: ModuleSymbol { module: ModuleIdentity { name: "gunbc.plans.demand_engine_program" } }), tx(text: " lands their carriers. The relation model is [keying-relation-design.md](docs/plans/keying-relation-design.md).")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -406,10 +408,10 @@ data conformance_domains: List<ConformanceDomain> = [
       "an unavailable reading suppressed into a numeric default (a zero, a na that prints as a number) instead of a MeasuredUnavailable arm naming its cause",
       "a site recorded as migrated in gunbc.observation_emit_census while the active producer bypasses the projection the row names"
     ],
-    owns: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.",
+    owns: [tx(text: "Process reports traceable to the facts and occurrences they describe: the owning domain establishes the fact, the observation model represents its occurrence, a renderer encodes it, and a bound effect delivers it.")],
     boundaries: [
-      "Producing bytes is not delivery.",
-      "A repository population measured at a revision stays with gunbc.repository_census_observation.",
+      [tx(text: "Producing bytes is not delivery.")],
+      [tx(text: "A repository population measured at a revision stays with gunbc.repository_census_observation.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {
@@ -458,11 +460,11 @@ data conformance_domains: List<ConformanceDomain> = [
       "a possibly-empty producer enters a nonempty consumer without evidence; an operation preserves a lower bound it can invalidate; or unmeasured cardinality is treated as zero",
       "a cardinality flag or metadata field independently restates structure already carried by the type and can disagree with it",
     ],
-    owns: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: `gunbc.design_ruling cardinality_one_concept`, `gunbc.design_ruling dag_absence_is_one_meaning`, `gunbc.design_ruling explicit_present_is_the_authoring_policy`, `gunbc.design_ruling optional_sugar_is_declaration_bound`, `gunbc.design_ruling nonemptiness_is_constructed_or_proved`, `gunbc.design_ruling native_first_complete_cuts`.",
+    owns: [tx(text: "Presence and absence, optional-layer nesting, collection emptiness and nonemptiness, and the preservation of these facts from source through typing, execution, realization and declared ingestion conversions. Cardinality belongs to a named position and measure within the value's structure. Operator rulings of 2026-10-13, applying to every layer: "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "cardinality_one_concept") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "dag_absence_is_one_meaning") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "explicit_present_is_the_authoring_policy") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "optional_sugar_is_declaration_bound") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "nonemptiness_is_constructed_or_proved") }), tx(text: ", "), cite(symbol: DeclarationSymbol { reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "native_first_complete_cuts") }), tx(text: ".")],
     boundaries: [
-      "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.",
-      "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.",
-      "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.",
+      [tx(text: "Failure causes, search progress, policy states and independently governed upstream null or missing states retain their own meanings. Factor their optional parts without erasing those distinctions; classify by contract, not by a variant-name suffix.")],
+      [tx(text: "Conversion legality is section 4's judgment. This domain checks inhabitance and preservation; target realization cannot authorize a conversion, and a stated departure does not waive another design obligation.")],
+      [tx(text: "Data cardinality is not evaluation multiplicity or a termination proof. The existing bound witnesses are not a claim that general collection-interval propagation or every acceptance path is implemented.")],
     ],
     home_groups: FreeSemigroup {
       head: ConformanceHomeGroup {

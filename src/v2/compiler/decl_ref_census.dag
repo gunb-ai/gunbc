@@ -21,7 +21,7 @@ import v2.std.integer { Int }
 import v2.extdeps.languages.dag { dag_string_literal_value_symbol_optional }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.type_binder { edge_is_type_alias, type_alias_wrapper_is, type_decl_wrapper_target }
-import v2.std.node { Authored, Node, NodeFold, Positional, StructuralLabel, fold_node, symbol_lexeme }
+import v2.std.node { Authored, Bind, Edge, Branch, ComputationNode, Loop, Match, Node, NodeFold, Positional, StructuralLabel, Transform, TypeNode, Value, fold_node, symbol_lexeme }
 import v2.std.node_query { construct_field_edges, construct_tag_path_optional }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_spine_shape_present, qualified_name_to_dotted_string }
 import v2.compiler.decl_ref_disposition_roster { CitedDeclaration, CitedSpan, ComputedDeclName, DeclRefDisposition, DeclRefSubject, decl_ref_disposition_roster }
@@ -29,10 +29,12 @@ import gunbc.source_layout { layout_module_storage_path }
 import v2.std.text { String, string_all_chars_in, string_any_char_in }
 
 // THE DECLARATION-REFERENCE AND PROSE-SYMBOL CENSUS (a pure reader; the verb is
-// v2.compiler.source_root_eval `decl-ref-census`). Two populations, one resolver:
+// v2.compiler.source_root_eval `decl-ref-census`). Three populations, one resolver:
 //
 //   * every `DeclarationRef { module_path: "..", decl_name: "..", field: .. }` literal of the RESOLVED
 //     Node trees (constructs whose tag resolves to std.decl_ref DeclarationRef), resolved by v2.std.decl_ref_resolution against the native ingest's ResolutionContext;
+//   * every `ModuleSymbol { module: ModuleIdentity { name: ".." } }` construct (a document citing a
+//     whole module as a std.decl_ref CitedSymbol), judged against the ingest's declared module names;
 //   * every backtick span inside a string literal of the files the caller scopes in (the
 //     recurring-failure-mode and rung_drop ledgers), classified by the CLOSED grammar below.
 //
@@ -66,6 +68,8 @@ type ProseSpan {
 type DeclRefCensus {
   refused_files: List<String>
   cited: List<CitedRef>
+  modules: List<CitedModule>
+  absent_modules: List<CitedModule>
   resolutions: List<DeclarationRefResolution>
   prose: List<ProseSpan>
   sites: List<String>
@@ -90,8 +94,19 @@ fn token_string_body(t: Token) -> Optional<String> {
 // itself a citation, an identity-grain distinction (the tag resolves to the roster's own arm).
 type LiteralScan {
   cited: List<CitedRef>
+  modules: List<CitedModule>
   unreadable: List<String>
 }
+
+// A MODULE CITED AS A TYPED SYMBOL: a std.decl_ref ModuleSymbol construct whose ModuleIdentity carries a
+// string-literal name. It is judged by the one name-to-storage authority the census already holds (the
+// declared module names of the ingest), the same lookup a DeclarationRef's module_path passes through.
+type CitedModule {
+  file: Symbol
+  module: String
+}
+
+data module_symbol_path: String = "std.decl_ref.ModuleSymbol"
 
 data declaration_ref_path: String = "std.decl_ref.DeclarationRef"
 
@@ -267,7 +282,7 @@ fn declared_field_of(v: Optional<Node>, lc: LiteralCtx) -> Optional<DeclField> {
 }
 
 fn literal_unreadable(scan: LiteralScan, file: Symbol) -> LiteralScan {
-  LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
+  LiteralScan { cited: scan.cited, modules: scan.modules, unreadable: list_snoc_item(xs: scan.unreadable, item: symbol_lexeme(sym: file)) }
 }
 
 fn literal_scan_add(scan: LiteralScan, file: Symbol, n: Node, lc: LiteralCtx) -> LiteralScan {
@@ -279,17 +294,19 @@ fn literal_scan_add(scan: LiteralScan, file: Symbol, n: Node, lc: LiteralCtx) ->
       }
     Present { value: m } =>
       match string_value(n: field_target(n: n, name: "decl_name")) {
-        Absent => LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: subject_key(s: ComputedDeclName { file: symbol_lexeme(sym: file), module_path: m })) }
+        Absent => LiteralScan { cited: scan.cited, modules: scan.modules, unreadable: list_snoc_item(xs: scan.unreadable, item: subject_key(s: ComputedDeclName { file: symbol_lexeme(sym: file), module_path: m })) }
         Present { value: d } =>
           match declared_field_of(v: field_target(n: n, name: "field"), lc: lc) {
             Absent =>
               LiteralScan {
                 cited: scan.cited,
+                modules: scan.modules,
                 unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), concat(" field-tag=", match authored_path_text(n: field_target_or_self(n: n)) { Present { value: t } => t  Absent => "none" })))
               }
             Present { value: fld } =>
               LiteralScan {
                 cited: list_snoc_item(xs: scan.cited, item: CitedRef { file: file, ref: DeclarationRef { module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr, field: fld } }),
+                modules: scan.modules,
                 unreadable: scan.unreadable
               }
           }
@@ -301,17 +318,160 @@ fn node_literal_scan_children(file: Symbol, n: Node, scan: LiteralScan, lc: Lite
   fold(n.children, init: scan, f: fn(acc, e) { node_literal_scan(file: file, n: e.target, scan: acc, lc: lc) })
 }
 
+// A ModuleSymbol construct cites the module its ModuleIdentity names. One whose name is not a string
+// literal (a pattern, or a module computed at run time) cites nothing by spelling, exactly as a
+// DeclarationRef construct with neither field a literal does.
+fn module_symbol_add(scan: LiteralScan, file: Symbol, n: Node) -> LiteralScan {
+  let name = match field_target(n: n, name: "module") {
+    Absent => optional_absent()
+    Present { value: m } => string_value(n: field_target(n: m, name: "name"))
+  }
+  match name {
+    Present { value: s } => LiteralScan { cited: scan.cited, modules: list_snoc_item(xs: scan.modules, item: CitedModule { file: file, module: s }), unreadable: scan.unreadable }
+    Absent => scan
+  }
+}
+
+fn is_module_symbol_tag(spelling: String, lc: LiteralCtx) -> Bool {
+  if last_segment(spelling: spelling) != "ModuleSymbol" {
+    false
+  } else {
+    match expand_spelling(spelling: spelling, lc: lc) {
+      Present { value: path } => path == module_symbol_path
+      Absent => false
+    }
+  }
+}
+
+// A DeclarationRef BUILT BY std.decl_ref's OWN CONSTRUCTORS is the same citation as the literal, and the
+// literal-only reader left every one of them unjudged. The call is identified the way a literal's tag
+// is: its head's spelling, expanded through the module's own import rows, is one of the constructors
+// below. Its arguments are the named edges of the call, read as string literals exactly as a literal's
+// fields are; a constructor whose module_path or decl_name is not a literal is a computed construction,
+// the same ComputedDeclName/unreadable arm a literal takes.
+type DeclRefConstructor
+  = ConstructsWholeDeclaration
+  | ConstructsNamedField
+  | ConstructsTypeParameter
+
+fn decl_ref_constructor_of(path: String) -> Optional<DeclRefConstructor> {
+  if path == concat(decl_ref_module, ".decl_ref") {
+    optional_present(value: ConstructsWholeDeclaration)
+  } else if path == concat(decl_ref_module, ".decl_field_ref") {
+    optional_present(value: ConstructsNamedField)
+  } else if path == concat(decl_ref_module, ".decl_type_parameter_ref") {
+    optional_present(value: ConstructsTypeParameter)
+  } else {
+    optional_absent()
+  }
+}
+
+// The callee is the application's first edge; its atom identity is the spelling the author wrote.
+fn callee_identity(children: List<Edge>) -> Optional<Symbol> {
+  match list_head(xs: children) {
+    Absent => optional_absent()
+    Present { value: e } => edge_atom_identity(e: e)
+  }
+}
+
+fn edge_atom_identity(e: Edge) -> Optional<Symbol> {
+  node_atom_identity_optional(node: e.target)
+}
+
+fn call_constructor(n: Node, lc: LiteralCtx) -> Optional<DeclRefConstructor> {
+  match n.kind {
+    ComputationNode { behavior: Transform } =>
+      match callee_identity(children: n.children) {
+        Absent => optional_absent()
+        Present { value: id } =>
+          match expand_spelling(spelling: symbol_lexeme(sym: id), lc: lc) {
+            Absent => optional_absent()
+            Present { value: path } => decl_ref_constructor_of(path: path)
+          }
+      }
+    ComputationNode { behavior: Value } => optional_absent()
+    ComputationNode { behavior: Branch } => optional_absent()
+    ComputationNode { behavior: Loop } => optional_absent()
+    ComputationNode { behavior: Bind } => optional_absent()
+    ComputationNode { behavior: Match } => optional_absent()
+    TypeNode { connective: _ } => optional_absent()
+  }
+}
+
+fn call_argument(n: Node, name: String) -> Optional<Node> {
+  fold(
+    n.children,
+    init: optional_absent(),
+    f: fn(acc, e) {
+      match e.label {
+        Authored { name: label } => if symbol_lexeme(sym: label) == name { optional_present(value: e.target) } else { acc }
+        StructuralLabel { label: _ } => acc
+        Positional => acc
+      }
+    }
+  )
+}
+
+fn constructor_field(n: Node, ctor: DeclRefConstructor) -> Optional<DeclField> {
+  match ctor {
+    ConstructsWholeDeclaration => optional_present(value: WholeDeclaration)
+    ConstructsNamedField =>
+      match string_value(n: call_argument(n: n, name: "field_name")) {
+        Present { value: s } => optional_present(value: NamedField { field_name: s as NonEmptyStr })
+        Absent => optional_absent()
+      }
+    ConstructsTypeParameter =>
+      match string_value(n: call_argument(n: n, name: "parameter")) {
+        Present { value: s } => optional_present(value: TypeParameter { name: s as NonEmptyStr })
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn constructor_call_add(scan: LiteralScan, file: Symbol, n: Node, ctor: DeclRefConstructor) -> LiteralScan {
+  match string_value(n: call_argument(n: n, name: "module_path")) {
+    Absent =>
+      match string_value(n: call_argument(n: n, name: "decl_name")) {
+        Absent => literal_unreadable(scan: scan, file: file)
+        Present { value: _ } => literal_unreadable(scan: scan, file: file)
+      }
+    Present { value: m } =>
+      match string_value(n: call_argument(n: n, name: "decl_name")) {
+        Absent => LiteralScan { cited: scan.cited, modules: scan.modules, unreadable: list_snoc_item(xs: scan.unreadable, item: subject_key(s: ComputedDeclName { file: symbol_lexeme(sym: file), module_path: m })) }
+        Present { value: d } =>
+          match constructor_field(n: n, ctor: ctor) {
+            Absent => LiteralScan { cited: scan.cited, modules: scan.modules, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " constructor-field ", m, " ", d)) }
+            Present { value: fld } =>
+              LiteralScan {
+                cited: list_snoc_item(xs: scan.cited, item: CitedRef { file: file, ref: DeclarationRef { module_path: m as NonEmptyStr, decl_name: d as NonEmptyStr, field: fld } }),
+                modules: scan.modules,
+                unreadable: scan.unreadable
+              }
+          }
+      }
+  }
+}
+
 fn node_literal_scan(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
+  match call_constructor(n: n, lc: lc) {
+    Present { value: ctor } => constructor_call_add(scan: scan, file: file, n: n, ctor: ctor)
+    Absent => node_literal_scan_construct(file: file, n: n, scan: scan, lc: lc)
+  }
+}
+
+fn node_literal_scan_construct(file: Symbol, n: Node, scan: LiteralScan, lc: LiteralCtx) -> LiteralScan {
   match tag_path_text(n: n) {
     Present { value: p } =>
       if last_segment(spelling: p) == cited_declaration_spelling {
         scan
+      } else if is_module_symbol_tag(spelling: p, lc: lc) {
+        module_symbol_add(scan: scan, file: file, n: n)
       } else {
         match head_class(spelling: p, lc: lc) {
           HeadIsDeclarationRef => literal_scan_add(scan: scan, file: file, n: n, lc: lc)
           HeadBareUnbacked =>
             literal_scan_add(
-              scan: LiteralScan { cited: scan.cited, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " bare-head ", p)) },
+              scan: LiteralScan { cited: scan.cited, modules: scan.modules, unreadable: list_snoc_item(xs: scan.unreadable, item: concat(symbol_lexeme(sym: file), " bare-head ", p)) },
               file: file,
               n: n,
               lc: lc
@@ -346,7 +506,7 @@ fn root_aliases_declaration_ref(root: Node) -> Bool {
 }
 
 fn declaration_ref_literals(file: Symbol, root: Node, lc: LiteralCtx) -> LiteralScan {
-  node_literal_scan(file: file, n: root, scan: LiteralScan { cited: [], unreadable: [] }, lc: lc)
+  node_literal_scan(file: file, n: root, scan: LiteralScan { cited: [], modules: [], unreadable: [] }, lc: lc)
 }
 
 // ---- prose --------------------------------------------------------------------------------
@@ -826,7 +986,7 @@ fn span_counts(xs: List<ProseSpan>) -> SpanCounts {
 }
 
 fn decl_ref_census_exit(c: DeclRefCensus) -> Int {
-  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + count_refused_spans(xs: c.prose, refused: c.refused_files) + length(xs: unrostered_unreadable(c: c)) + length(xs: unmatched_roster_rows(c: c)) == 0 {
+  if count_refused_resolutions(xs: c.resolutions, refused: c.refused_files) + length(xs: c.absent_modules) + count_refused_spans(xs: c.prose, refused: c.refused_files) + length(xs: unrostered_unreadable(c: c)) + length(xs: unmatched_roster_rows(c: c)) == 0 {
     0
   } else {
     1
@@ -926,7 +1086,10 @@ fn decl_ref_refusal_lines(c: DeclRefCensus) -> List<String> {
           }
         }
       ),
-      right: fold_list(xs: unrostered_unreadable(c: c), empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref unreadable-literal ", f)) })
+      right: list_append(
+        left: fold_list(xs: c.absent_modules, empty: [], cons: fn(acc, m) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref module-symbol-absent ", symbol_lexeme(sym: m.file), " `", m.module, "`")) }),
+        right: fold_list(xs: unrostered_unreadable(c: c), empty: [], cons: fn(acc, f) { list_snoc_item(xs: acc, item: concat("[decl-ref-census] ref unreadable-literal ", f)) })
+      )
     )
   )
 }
@@ -943,6 +1106,7 @@ fn decl_ref_census_lines(c: DeclRefCensus) -> List<String> {
         " seed_layer=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).seed_layer),
         " uncheckable=", to_string(n: arm_counts(xs: c.resolutions, refused: c.refused_files).uncheckable),
         " unreadable=", to_string(n: length(xs: unrostered_unreadable(c: c)))),
+      concat("[decl-ref-census] module_symbols=", to_string(n: length(xs: c.modules)), " absent=", to_string(n: length(xs: c.absent_modules))),
       concat("[decl-ref-census] prose spans=", to_string(n: length(xs: c.prose)),
         " resolves=", to_string(n: span_counts(xs: c.prose).resolves),
         " stale=", to_string(n: span_counts(xs: c.prose).stale),
@@ -971,7 +1135,7 @@ fn top_level_namespaces(all: List<String>) -> List<String> {
   )
 }
 
-data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], cited: [], resolutions: [], prose: [], sites: [], unreadable: [] }
+data empty_decl_ref_census: DeclRefCensus = DeclRefCensus { refused_files: [], cited: [], modules: [], absent_modules: [], resolutions: [], prose: [], sites: [], unreadable: [] }
 
 // ONE FILE'S CONTRIBUTION, reduced at once: the driver tokenizes a file, calls this and drops the
 // tokens, so the census never holds the corpus's token lists (the whole-tree variant exhausted a
@@ -988,11 +1152,22 @@ fn site_of_resolution(file: Symbol, r: DeclarationRefResolution) -> List<String>
   }
 }
 
-fn decl_ref_census_of_literals(literals: LiteralScan, context: ResolutionContext) -> DeclRefCensus {
+fn decl_ref_census_of_literals(literals: LiteralScan, known: Map<String, Bool>, context: ResolutionContext) -> DeclRefCensus {
   let cited = literals.cited
   DeclRefCensus {
     refused_files: [],
     cited: cited,
+    modules: literals.modules,
+    absent_modules: fold_list(
+      xs: literals.modules,
+      empty: [],
+      cons: fn(acc, m) {
+        match map_lookup(m: known, key: m.module) {
+          Present { value: _ } => acc
+          Absent => list_snoc_item(xs: acc, item: m)
+        }
+      }
+    ),
     resolutions: fold_list(
       xs: cited,
       empty: [],
@@ -1014,6 +1189,8 @@ fn decl_ref_census_of_prose(
   DeclRefCensus {
     refused_files: [],
     cited: [],
+    modules: [],
+    absent_modules: [],
     resolutions: [],
     prose: prose_spans_of(file: file, tokens: tokens, namespaces: namespaces, known: known, context: context),
     sites: [],
@@ -1025,6 +1202,8 @@ fn decl_ref_census_merge(left: DeclRefCensus, right: DeclRefCensus) -> DeclRefCe
   DeclRefCensus {
     refused_files: left.refused_files,
     cited: list_append(left: left.cited, right: right.cited),
+    modules: list_append(left: left.modules, right: right.modules),
+    absent_modules: list_append(left: left.absent_modules, right: right.absent_modules),
     resolutions: list_append(left: left.resolutions, right: right.resolutions),
     prose: list_append(left: left.prose, right: right.prose),
     sites: list_append(left: left.sites, right: right.sites),

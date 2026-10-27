@@ -9,6 +9,9 @@ import std.markup {
   UrlContext,
 
 }
+import std.decl_ref { CitedSymbol, DeclarationSymbol, ModuleSymbol, declaration_ref_display_key }
+import std.coercion { unicode_scalar_fold }
+
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
 type MarkdownInline
@@ -18,6 +21,34 @@ type MarkdownInline
   | CodeInline { text: String }
   | LinkInline { inlines: List<MarkdownInline>, url: String }
   | ImageInline { alt: String, url: String }
+  | SymbolRefInline { symbol: CitedSymbol }
+
+// A cited symbol's spelling: a module renders as its name, which is structural text and reaches host text
+// through the declared crossing (std.coercion unicode_scalar_fold); a declaration renders through the one
+// spelling its carrier owns (std.decl_ref declaration_ref_display_key), never a second one here.
+fn cited_symbol_spelling(symbol: CitedSymbol) -> String {
+  match symbol {
+    ModuleSymbol { module: m } => unicode_scalar_fold(xs: m.name)
+    DeclarationSymbol { reference: r } => declaration_ref_display_key(ref: r)
+  }
+}
+
+// A CODE BLOCK'S TEXT, with any symbol it cites carried as the symbol rather than as characters, so a
+// citation inside code is a reference the substrate resolves and not a string a scanner must find.
+type CodeSegment
+  = CodeText { text: String }
+  | CodeSymbolRef { symbol: CitedSymbol }
+
+fn code_segment_text(segment: CodeSegment) -> String {
+  match segment {
+    CodeText { text } => text
+    CodeSymbolRef { symbol } => cited_symbol_spelling(symbol: symbol)
+  }
+}
+
+fn code_segments_text(segments: List<CodeSegment>) -> String {
+  join(map(segments, s => code_segment_text(segment: s)), "")
+}
 
 type MarkdownListItem { blocks: List<MarkdownBlock> }
 
@@ -35,7 +66,7 @@ type MarkdownBlock
   | ParagraphBlock { inlines: List<MarkdownInline> }
   | UnorderedListBlock { items: List<MarkdownListItem> }
   | OrderedListBlock { items: List<MarkdownListItem> }
-  | CodeBlock { code: String }
+  | CodeBlock { segments: List<CodeSegment> }
   | TaskListBlock { items: List<MarkdownTaskItem> }
   | TableBlock {
       header: MarkdownTableRow,
@@ -67,6 +98,12 @@ fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<Fragment> {
         tag: "code",
         attributes: [],
         children: [ FragmentText { content: text } ],
+      } ]
+    SymbolRefInline { symbol } =>
+      [ Element {
+        tag: "code",
+        attributes: [],
+        children: [ FragmentText { content: cited_symbol_spelling(symbol: symbol) } ],
       } ]
     EmphasisInline { inlines } =>
       [ Element {
@@ -162,7 +199,7 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         attributes: [],
         children: markdown_inlines_to_fragments(inlines: inlines),
       }
-    CodeBlock { code } =>
+    CodeBlock { segments } =>
       Element {
         tag: "pre",
         attributes: [],
@@ -170,7 +207,7 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
           Element {
             tag: "code",
             attributes: [],
-            children: [ FragmentText { content: code } ],
+            children: [ FragmentText { content: code_segments_text(segments: segments) } ],
           },
         ],
       }

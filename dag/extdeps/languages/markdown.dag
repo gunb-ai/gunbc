@@ -29,6 +29,7 @@ import std.markup {
   Rejected,
 }
 import std.markdown {
+  cited_symbol_spelling,
   MarkdownDocument,
   MarkdownBlock,
   MarkdownInline,
@@ -53,6 +54,9 @@ import std.markdown {
   CodeInline,
   LinkInline,
   ImageInline,
+  SymbolRefInline,
+  CodeText,
+  code_segments_text,
   H1,
   H2,
   H3,
@@ -207,6 +211,8 @@ fn md_inline_text(inline: MarkdownInline, sp: MarkdownSpellings) -> String {
       join([sp.strong_delim, md_render_inlines(inlines: inlines, sp: sp), sp.strong_delim], "")
     CodeInline { text } =>
       join([sp.code_span_delim, text, sp.code_span_delim], "")
+    SymbolRefInline { symbol } =>
+      join([sp.code_span_delim, cited_symbol_spelling(symbol: symbol), sp.code_span_delim], "")
     LinkInline { inlines, url } =>
       md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp)
     ImageInline { alt, url } =>
@@ -228,7 +234,7 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
         HeadingBlock { level: _, inlines: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
         UnorderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
         OrderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
-        CodeBlock { code: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        CodeBlock { segments: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
         TaskListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
         TableBlock { header: _, alignments: _, rows: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
         BlockquoteBlock { blocks: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
@@ -242,7 +248,7 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
         TaskListBlock { items: _ } => concat("\n", md_nested(block: b, sp: sp, depth: depth + 1))
         HeadingBlock { level: _, inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
         ParagraphBlock { inlines: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
-        CodeBlock { code: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
+        CodeBlock { segments: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
         TableBlock { header: _, alignments: _, rows: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
         BlockquoteBlock { blocks: _ } => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
         ThematicBreak => concat("\n\n", concat(repeat_string(s: sp.list_indent, n: depth + 1), md_block(block: b, sp: sp)))
@@ -373,8 +379,8 @@ fn md_block(block: MarkdownBlock, sp: MarkdownSpellings) -> String {
       md_ordered(items: items, sp: sp, depth: 0)
     TaskListBlock { items } =>
       md_tasklist(items: items, sp: sp, depth: 0)
-    CodeBlock { code } =>
-      md_code_block(code: code, sp: sp)
+    CodeBlock { segments } =>
+      md_code_block(code: code_segments_text(segments: segments), sp: sp)
     TableBlock { header, alignments, rows } =>
       md_table(header: header, alignments: alignments, rows: rows, sp: sp)
     BlockquoteBlock { blocks } =>
@@ -498,7 +504,7 @@ fn md_task_item(line: String, sp: MarkdownSpellings) -> MarkdownTaskItem {
 fn md_parse_code(block_lines: List<String>) -> MarkdownBlock {
   let inner = block_lines.skip(n: 1).take(n: block_lines.length() - 2)
   CodeBlock {
-    code: if inner == [] { "" } else { concat(join(inner, "\n"), "\n") },
+    segments: [ CodeText { text: if inner == [] { "" } else { concat(join(inner, "\n"), "\n") } } ],
   }
 }
 
@@ -560,6 +566,7 @@ fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlSchem
   match inline {
     TextInline { text: _ } => Absent
     CodeInline { text: _ } => Absent
+    SymbolRefInline { symbol: _ } => Absent
     ImageInline { alt: _, url } => markdown_url_validation(url: url)
     LinkInline { inlines, url } =>
       match markdown_url_validation(url: url) {
@@ -605,7 +612,7 @@ fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlS
 
 fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
   match block {
-    CodeBlock { code: _ } => Absent
+    CodeBlock { segments: _ } => Absent
     HeadingBlock { level: _, inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
     ParagraphBlock { inlines } =>
