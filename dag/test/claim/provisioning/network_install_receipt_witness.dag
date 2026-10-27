@@ -1,0 +1,374 @@
+module test.claim.provisioning.network_install_receipt_witness
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.algebra { FreeSemigroup, non_empty_to_list, skip }
+import std.optional { Absent, Present }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.ietf.http_semantics { http_not_found }
+import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.tools.util_linux_lsblk { LsblkDisk, LsblkPart, LsblkLoop }
+import extdeps.toolchain.types { X86_64 }
+import extdeps.provisioning.dhcp_client_arch { UefiX86_64, UefiArm64 }
+import extdeps.provisioning.network_boot { FirmwareSignatureDatabase, ShimVendorCertificate, ShimLockProtocol }
+import product.placement_supply { SiteIdentity }
+import gunbc.machine_intake.subject { UnitKey }
+import gunbc.network_boot_delivery { ControlledNetworkTrustObservation }
+import gunbc.secure_boot_observation { SecureBootObservation, SecureBootEnabled, SecureBootDisabled, SecureBootUnobserved }
+import gunbc.provisioning.provisioning_arm { AttemptBinding }
+import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused }
+import gunbc.fleet.site_pxe_edge_converge {
+  SitePxeEdgeInstallBinding,
+  SitePxeEdgePinnedChain,
+  SitePxeEdgeChainPinned,
+  SitePxeEdgeChainUnpinned,
+  site_pxe_edge_chain_pins,
+}
+import gunbc.provisioning.network_install_receipt {
+  NetworkInstallSubject,
+  NetworkInstallReadings,
+  NetworkInstallReceipt,
+  InstalledToDisk,
+  InstallNotEstablished,
+  NetworkInstallGap,
+  InstallClientClassReading,
+  ClientClassRead,
+  ClientClassUnread,
+  InstallFetchReading,
+  TftpDelivered,
+  HttpServed,
+  InstalledHostReading,
+  InstalledRootRead,
+  InstalledRootReading,
+  InstalledRootUnbacked,
+  InstalledRootDevice,
+  InstalledRootUnread,
+  InstallerRecordReading,
+  InstallerRecordRead,
+  InstallerRecordAbsent,
+  InstallerRecordUnread,
+  InstallerRecordNotRead,
+  InstallerRecordNotOnInstalledRoot,
+  InstallerRecordPredatesAttempt,
+  InstallFileTrust,
+  AuthenticatedUnderSecureBoot,
+  RestsOnControlledNetwork,
+  SecureBootEnforced,
+  SecureBootNotEnforced,
+  ClientClassNotMeasured,
+  ClientClassReadForOtherClient,
+  ClientClassCodeUnrecognized,
+  ClientClassNotTheChains,
+  MemberNotDelivered,
+  SeedNotServed,
+  HostDoesNotCarryClientMac,
+  InstalledRootNotRead,
+  InstalledRootNotOnBlockDevice,
+  InstalledRootOnNonDiskDevice,
+  InstalledRootChainEndsBeforeDisk,
+  InstalledRootPredatesAttempt,
+  InstalledRootPostdatesReading,
+  SecureBootNotMeasured,
+  network_install_receipt,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── Supplied values at the receipt's boundary ──────────────────────────────────────────────────
+// The chain is the PRODUCTION amd64 row (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_chain_pins, its second
+// row), so the paths and verifiers the receipt checks are the ones the edge would serve. The client, the clock and
+// the readings are fixtures: no unit's MAC is used, because which host NIC belongs to which unit is not yet
+// confirmed by the operator.
+
+data client: Eui48Address = mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 1)
+
+data other_client: Eui48Address = mac_address(octet1: 0, octet2: 37, octet3: 144, octet4: 0, octet5: 0, octet6: 2)
+
+data started: EpochMs = 1790000000000
+
+data formatted: EpochMs = 1790000600000
+
+data installed: EpochMs = 1790002400000
+
+data read_at: EpochMs = 1790003600000
+
+data ground_ref: DeclarationRef = decl_ref(module_path: "test.claim.provisioning.network_install_receipt_witness", decl_name: "ground")
+
+data ground: ControlledNetworkTrustObservation = ControlledNetworkTrustObservation { site: "onboarding-fixture" as SiteIdentity, observation: ground_ref, observed_at: 1789999000000 }
+
+fn fixture_user_data() -> YamlValue {
+  yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+    kv(key: "version", value: yaml_int(n: 1)),
+    kv(key: "ssh", value: yaml_mapping(entries: [
+      kv(key: "install-server", value: yaml_bool(b: true)),
+      kv(key: "authorized-keys", value: yaml_sequence(elements: [yaml_string(s: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8g")])),
+      kv(key: "allow-pw", value: yaml_bool(b: false)),
+    ])),
+  ]))])
+}
+
+fn amd64_chain() -> SitePxeEdgePinnedChain? {
+  match skip(xs: site_pxe_edge_chain_pins, n: 1).first() {
+    Present { value: SitePxeEdgeChainPinned { chain: c } } => if c.architecture == X86_64 { Present { value: c } } else { Absent }
+    Present { value: SitePxeEdgeChainUnpinned { architecture: _, obligation: _ } } => Absent
+    Absent => Absent
+  }
+}
+
+fn subject() -> NetworkInstallSubject? {
+  match amd64_chain() {
+    Absent => Absent
+    Present { value: c } => match admit_public_nocloud_seed(client_mac: client, user_data: fixture_user_data()) {
+      PublicSeedRefused { findings: _ } => Absent
+      PublicSeedAdmitted { seed: sd } => Present { value: NetworkInstallSubject {
+        attempt: AttemptBinding { unit: "fixture-unit" as UnitKey, attempt: "attempt-1" },
+        chain: c,
+        binding: SitePxeEdgeInstallBinding { seed: sd },
+        started_at: started,
+        ground: ground,
+      } }
+    }
+  }
+}
+
+// The paths an independent reader expects: the amd64 chain's members by their served names, GRUB's per-MAC
+// configuration (the GRUB manual's "01-" plus the dashed lowercase MAC) in place of the fallback, and the seed.
+data per_mac_cfg: NonEmptyStr = "grub/grub.cfg-01-00-25-90-00-00-01"
+
+data seed_path: NonEmptyStr = "seed/00-25-90-00-00-01/user-data"
+
+fn all_fetches() -> List<InstallFetchReading> {
+  [
+    TftpDelivered { client: client, served_path: "bootx64.efi" },
+    TftpDelivered { client: client, served_path: "grubx64.efi" },
+    TftpDelivered { client: client, served_path: per_mac_cfg },
+    TftpDelivered { client: client, served_path: "vmlinuz" },
+    TftpDelivered { client: client, served_path: "initrd" },
+    HttpServed { path: seed_path, status: 200 },
+  ]
+}
+
+// The installed root as lsblk --inverse reads it: the direct layout's root partition, then the whole disk.
+data root_partition: InstalledRootDevice = InstalledRootDevice { name: "nvme0n1p2", kind: LsblkPart }
+
+data root_disk: InstalledRootDevice = InstalledRootDevice { name: "nvme0n1", kind: LsblkDisk }
+
+fn disk_root(created_at: EpochMs) -> InstalledRootReading {
+  InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [root_disk] }, disk_serial: Present { value: "S4EWNX0R123456" }, created_at: created_at }
+}
+
+fn installed_host(secure_boot: SecureBootObservation) -> InstalledHostReading {
+  InstalledHostReading {
+    interface_macs: [other_client, client],
+    root: disk_root(created_at: formatted),
+    installer_record: InstallerRecordRead { written_at: installed },
+    secure_boot: secure_boot,
+    observed_at: read_at,
+  }
+}
+
+fn readings(class: InstallClientClassReading, fetches: List<InstallFetchReading>, host: InstalledHostReading) -> NetworkInstallReadings {
+  NetworkInstallReadings { client_class: class, fetches: fetches, host: host }
+}
+
+fn good(secure_boot: SecureBootObservation) -> NetworkInstallReadings {
+  readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: installed_host(secure_boot: secure_boot))
+}
+
+fn receipt_of(r: NetworkInstallReadings) -> NetworkInstallReceipt? {
+  match subject() {
+    Absent => Absent
+    Present { value: s } => Present { value: network_install_receipt(subject: s, readings: r) }
+  }
+}
+
+fn gaps_of(r: NetworkInstallReadings) -> List<NetworkInstallGap> {
+  match receipt_of(r: r) {
+    Present { value: InstallNotEstablished { subject: _, gaps: gs } } => non_empty_to_list(xs: gs)
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: _, trust: _, observed_at: _ } } => []
+    Absent => []
+  }
+}
+
+// ── The receipt is minted ────────────────────────────────────────────────────────────────────────
+
+// POSITIVE CONTROL. Option 93 = 7 (x64 UEFI under the IANA registry), every member delivered at the path this
+// client reads, its seed served, and an installed host carrying its MAC on a disk formatted during the attempt.
+// Under a measured Secure Boot, shim, GRUB and the kernel are authenticated by their upstream verifiers, and the
+// configuration, the initrd and the seed rest on the controlled onboarding network.
+test fn a_complete_install_under_secure_boot_is_installed_to_disk_with_typed_trust() -> Bool {
+  match receipt_of(r: good(secure_boot: SecureBootEnabled)) {
+    Present { value: InstalledToDisk { subject: _, client_class: c, root_chain: ch, root_disk_serial: serial, root_created_at: t, installer_record_at: r, secure_boot: sb, trust: tr, observed_at: o } } =>
+      c == UefiX86_64
+        && non_empty_to_list(xs: ch) == [root_partition, root_disk]
+        && serial == Present { value: "S4EWNX0R123456" }
+        && t == formatted
+        && r == installed
+        && o == read_at
+        && sb == SecureBootEnforced
+        && non_empty_to_list(xs: tr) == [
+          AuthenticatedUnderSecureBoot { served_path: "bootx64.efi", verifier: FirmwareSignatureDatabase },
+          AuthenticatedUnderSecureBoot { served_path: "grubx64.efi", verifier: ShimVendorCertificate },
+          RestsOnControlledNetwork { served_path: per_mac_cfg, ground: ground },
+          AuthenticatedUnderSecureBoot { served_path: "vmlinuz", verifier: ShimLockProtocol },
+          RestsOnControlledNetwork { served_path: "initrd", ground: ground },
+          RestsOnControlledNetwork { served_path: seed_path, ground: ground },
+        ]
+    _ => false
+  }
+}
+
+// Secure Boot measured OFF: the receipt still records the install, and states that no signature was enforced:
+// every file rests on the controlled network.
+test fn secure_boot_off_puts_every_file_on_the_controlled_network() -> Bool {
+  match receipt_of(r: good(secure_boot: SecureBootDisabled)) {
+    Present { value: InstalledToDisk { subject: _, client_class: _, root_chain: _, root_disk_serial: _, root_created_at: _, installer_record_at: _, secure_boot: sb, trust: tr, observed_at: _ } } =>
+      sb == SecureBootNotEnforced
+        && length(non_empty_to_list(xs: tr)) == 6
+        && all(non_empty_to_list(xs: tr), t => match t {
+          RestsOnControlledNetwork { served_path: _, ground: g } => g == ground
+          AuthenticatedUnderSecureBoot { served_path: _, verifier: _ } => false
+        })
+    _ => false
+  }
+}
+
+// ── REDs: each discriminating reading withholds the receipt with its own located gap ─────────────
+
+test fn an_unmeasured_secure_boot_state_withholds_the_receipt() -> Bool {
+  gaps_of(r: good(secure_boot: SecureBootUnobserved { reason: "efivar not read" }))
+    == [SecureBootNotMeasured { observation: SecureBootUnobserved { reason: "efivar not read" } }]
+}
+
+test fn an_unmeasured_client_class_withholds_the_receipt() -> Bool {
+  gaps_of(r: readings(class: ClientClassUnread { why: "no dnsmasq log line" }, fetches: all_fetches(), host: installed_host(secure_boot: SecureBootEnabled)))
+    == [ClientClassNotMeasured { why: "no dnsmasq log line" }]
+}
+
+// 9 is EBC under the registry (RFC 4578's printed table calls it x86-64): no admitted class, never guessed.
+test fn option_93_code_9_is_unrecognized_not_x86() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 9 }, fetches: all_fetches(), host: installed_host(secure_boot: SecureBootEnabled)))
+    == [ClientClassCodeUnrecognized { code: 9 }]
+}
+
+test fn an_arm64_class_against_the_amd64_chain_is_refused() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 11 }, fetches: all_fetches(), host: installed_host(secure_boot: SecureBootEnabled)))
+    == [ClientClassNotTheChains { measured: UefiArm64, chain: X86_64 }]
+}
+
+test fn a_class_read_for_another_client_is_not_this_clients() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: other_client, code: 7 }, fetches: all_fetches(), host: installed_host(secure_boot: SecureBootEnabled)))
+    == [ClientClassReadForOtherClient { read: other_client }]
+}
+
+// GRUB read the fallback configuration (which only returns to the next boot device), not this client's: the
+// per-MAC configuration is undelivered, whatever else was fetched.
+test fn the_fallback_configuration_is_not_this_clients_configuration() -> Bool {
+  let fetches = filter(all_fetches(), f => match f {
+    TftpDelivered { client: _, served_path: p } => p != per_mac_cfg
+    HttpServed { path: _, status: _ } => true
+  }) + [TftpDelivered { client: client, served_path: "grub/grub.cfg" }]
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: fetches, host: installed_host(secure_boot: SecureBootEnabled)))
+    == [MemberNotDelivered { served_path: per_mac_cfg }]
+}
+
+test fn a_member_delivered_to_another_client_is_not_delivered() -> Bool {
+  let fetches = filter(all_fetches(), f => match f {
+    TftpDelivered { client: _, served_path: p } => p != "vmlinuz"
+    HttpServed { path: _, status: _ } => true
+  }) + [TftpDelivered { client: other_client, served_path: "vmlinuz" }]
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: fetches, host: installed_host(secure_boot: SecureBootEnabled)))
+    == [MemberNotDelivered { served_path: "vmlinuz" }]
+}
+
+test fn a_seed_answered_404_was_not_served() -> Bool {
+  let fetches = filter(all_fetches(), f => match f {
+    TftpDelivered { client: _, served_path: _ } => true
+    HttpServed { path: _, status: _ } => false
+  }) + [HttpServed { path: seed_path, status: http_not_found() }]
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: fetches, host: installed_host(secure_boot: SecureBootEnabled)))
+    == [SeedNotServed { path: seed_path }]
+}
+
+test fn a_host_without_the_clients_mac_is_not_this_install() -> Bool {
+  let host = InstalledHostReading { interface_macs: [other_client], root: disk_root(created_at: formatted), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [HostDoesNotCarryClientMac { client: client }]
+}
+
+// The live installer still running: casper's root is an overlay, with no block device under it.
+test fn the_live_installers_overlay_root_is_not_installed_to_disk() -> Bool {
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootUnbacked { source: "overlay" }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootNotOnBlockDevice { source: "overlay" }]
+}
+
+// An OS already on the disk before the attempt started is not this attempt's install.
+test fn a_root_filesystem_older_than_the_attempt_is_not_this_install() -> Bool {
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1780000000000), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootPredatesAttempt { created_at: 1780000000000, started_at: started }]
+}
+
+test fn a_root_filesystem_newer_than_its_reading_is_refused() -> Bool {
+  let host = InstalledHostReading { interface_macs: [client], root: disk_root(created_at: 1790009999999), installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootPostdatesReading { created_at: 1790009999999, observed_at: read_at }]
+}
+
+// Every gap is reported, in the fold's fixed order, never only the first.
+test fn every_gap_is_reported_in_order() -> Bool {
+  let host = InstalledHostReading { interface_macs: [], root: InstalledRootUnread { why: "ssh refused" }, installer_record: InstallerRecordUnread { why: "ssh refused" }, secure_boot: SecureBootUnobserved { reason: "ssh refused" }, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassUnread { why: "no log" }, fetches: [], host: host)) == [
+    ClientClassNotMeasured { why: "no log" },
+    MemberNotDelivered { served_path: "bootx64.efi" },
+    MemberNotDelivered { served_path: "grubx64.efi" },
+    MemberNotDelivered { served_path: per_mac_cfg },
+    MemberNotDelivered { served_path: "vmlinuz" },
+    MemberNotDelivered { served_path: "initrd" },
+    SeedNotServed { path: seed_path },
+    HostDoesNotCarryClientMac { client: client },
+    InstalledRootNotRead { why: "ssh refused" },
+    InstallerRecordNotRead { why: "ssh refused" },
+    SecureBootNotMeasured { observation: SecureBootUnobserved { reason: "ssh refused" } },
+  ]
+}
+
+// The live installer's squashfs is a /dev node too (a loop device) and is mounted during the attempt: the device
+// kind, not the path, refuses it, and the chain never reaches a disk (review 86916).
+test fn a_loop_backed_root_is_not_installed_to_disk() -> Bool {
+  let loop0 = InstalledRootDevice { name: "loop0", kind: LsblkLoop }
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/loop0", chain: FreeSemigroup { head: loop0, tail: [] }, disk_serial: Absent, created_at: formatted }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootOnNonDiskDevice { device: loop0 }, InstalledRootChainEndsBeforeDisk { last: loop0 }]
+}
+
+// A root over a partition whose disk the reading did not reach is not established on a disk.
+test fn a_chain_that_stops_before_the_disk_is_refused() -> Bool {
+  let host = InstalledHostReading { interface_macs: [client], root: InstalledRootRead { source: "/dev/nvme0n1p2", chain: FreeSemigroup { head: root_partition, tail: [] }, disk_serial: Absent, created_at: formatted }, installer_record: InstallerRecordRead { written_at: installed }, secure_boot: SecureBootEnabled, observed_at: read_at }
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host))
+    == [InstalledRootChainEndsBeforeDisk { last: root_partition }]
+}
+
+fn host_with_record(record: InstallerRecordReading) -> InstalledHostReading {
+  InstalledHostReading { interface_macs: [client], root: disk_root(created_at: formatted), installer_record: record, secure_boot: SecureBootEnabled, observed_at: read_at }
+}
+
+// A disk formatted during the attempt, booted, carrying the MAC, but with no installer record on its root: the
+// installer did not finish, and a formatted disk is not an install (merry-fox-82's side-chat review).
+test fn a_formatted_disk_without_the_installers_record_is_not_installed() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordAbsent)))
+    == [InstallerRecordNotOnInstalledRoot { path: "/var/log/installer/autoinstall-user-data" }]
+}
+
+// A record left by an earlier install whose root this attempt reformatted is not this attempt's completion.
+test fn an_installer_record_older_than_the_attempt_is_not_this_attempts() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordRead { written_at: 1780000000000 })))
+    == [InstallerRecordPredatesAttempt { written_at: 1780000000000, started_at: started }]
+}
+
+test fn an_unread_installer_record_withholds_the_receipt() -> Bool {
+  gaps_of(r: readings(class: ClientClassRead { client: client, code: 7 }, fetches: all_fetches(), host: host_with_record(record: InstallerRecordUnread { why: "permission denied" })))
+    == [InstallerRecordNotRead { why: "permission denied" }]
+}

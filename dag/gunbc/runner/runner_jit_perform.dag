@@ -137,6 +137,7 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "binding_dispatch"),
   decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "delivering_mint"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "dispatched"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "delivering_mint"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_jit_dispatch_refuses_when_the_attempt_binding_is_deferred"),
   decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
   decl_ref(module_path: "test.claim.runner.runner_attempt_launch_witness", decl_name: "planned_with"),
@@ -240,6 +241,7 @@ fn receive_jit_mint(
 ) -> JitCredentialDelivery admit_callers: [
   decl_ref(module_path: "test.claim.runner.runner_service_slot_pass_witness", decl_name: "delivering_mint"),
   decl_ref(module_path: "gunbc.github_effect_perform", decl_name: "jit_mint_performance_of_generate"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "delivering_mint"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_refused_dispatch_delivers_nothing_even_from_a_minted_credential"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_an_authorized_dispatch_delivers_nothing_when_the_mint_was_not_created"),
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_minted_credential_is_bound_to_the_dispatched_attempt"),
