@@ -126,6 +126,7 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
     StartFromPlacedWeights =>
       match recipe.model.source {
         WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
         WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
       }
     StartFromHubPinned { hub_fallback: fb, standing: sd } =>
