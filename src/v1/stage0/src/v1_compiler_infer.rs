@@ -17728,17 +17728,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             let span = texpr.span.clone();
             let cast_inner = crate::v1_std_core::cast_expr(texpr.clone());
             let target_type = crate::v1_std_core::cast_target(texpr.clone());
-            let operand_alone =
-                infer_expr(cast_inner.clone(), scope.clone(), std::option::Option::None);
-            let inner_result = if cast_operand_instantiated_by_target(
-                cast_inner.clone(),
-                operand_alone.typed.clone(),
-                scope.clone(),
-            ) {
-                infer_expr(cast_inner.clone(), scope.clone(), Some(target_type.clone()))
-            } else {
-                operand_alone.clone()
-            };
+            let inner_result = infer_expr(cast_inner, scope.clone(), std::option::Option::None);
             let inner_typed = inner_result.typed.clone();
             let inner_emissions = inner_result.emissions.clone();
             let si = scope.type_env.source_indices.clone();
@@ -18210,101 +18200,6 @@ pub fn field_base_is_in_flight_lambda_param(base: Rc<Node>, scope: Rc<InferScope
         }
         _ => false,
     }
-}
-
-pub fn cast_operand_instantiated_by_target(
-    operand: Rc<Node>,
-    inferred: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> bool {
-    if equality_operand_is_empty_list_literal(operand.clone()) {
-        true
-    } else {
-        match (*operand.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => {
-                let unsolved = unsolved_type_variable_ids(
-                    crate::v1_compiler_infer_types::resolved_type(inferred),
-                    0,
-                );
-                let enclosing = enclosing_fn_generic_names(scope);
-                (((unsolved.clone().len() as i64) > 0)
-                    && !{
-                        let mut __found = false;
-                        for id in unsolved.iter().cloned() {
-                            if {
-                                let mut __found = false;
-                                for g in enclosing.iter().cloned() {
-                                    if (g.clone() == id.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            } {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    })
-            }
-            _ => false,
-        }
-    }
-}
-
-pub fn unsolved_type_variable_ids(n: Rc<Node>, depth: i64) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (depth.clone() >= 16) {
-            Rc::new(vec![])
-        } else {
-            {
-                let here = match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::TypeVariable { id: id, .. }) => Rc::new(vec![id.clone()]),
-                    Some(InferredNode::Resolved { node: resolved, .. }) => {
-                        unsolved_type_variable_ids(
-                            resolved.clone(),
-                            v1_rt::int_add(depth.clone(), 1),
-                        )
-                    }
-                    _ => Rc::new(vec![]),
-                };
-                v1_rt::concat(
-                    here.clone(),
-                    v1_rt::concat(
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for ch in n.children.clone().iter().cloned() {
-                                __result.extend(
-                                    (*unsolved_type_variable_ids(
-                                        crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                                        v1_rt::int_add(depth.clone(), 1),
-                                    ))
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        }),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in n.params.clone().iter().cloned() {
-                                __result.extend(
-                                    (*unsolved_type_variable_ids(
-                                        crate::v1_std_core::param_node_type_expr(p.clone()),
-                                        v1_rt::int_add(depth.clone(), 1),
-                                    ))
-                                    .iter()
-                                    .cloned(),
-                                );
-                            }
-                            __result
-                        }),
-                    ),
-                )
-            }
-        }
-    })
 }
 
 pub fn is_unsolved_empty_list_element(n: Rc<Node>) -> bool {

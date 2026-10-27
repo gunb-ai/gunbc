@@ -304,6 +304,12 @@ type SignedArmAgreement
   | SignedArmDisagrees { reason: SignedViewDisagreement }
 
 // A grounded NATURAL carrier: a Peano view whose declared extent is the naturals.
+// "is this extent the naturals" is asked through integer_extent_within, the file's one
+// inclusion order on IntegerExtent -- as equality, i.e. each extent lies within the
+// other (antisymmetry). It is NOT re-decided by a hand-written arm match here: this is
+// the same question `kernel_grounding_crossing` below answers through that order, and a
+// second arm beside it would be a second path that can disagree the day a machine-width
+// arm joins IntegerExtent (DESIGN section 6b, root generalization).
 fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRef) -> Bool {
   rows |> any(r =>
     declaration_ref_eq(a: r.carrier, b: d)
@@ -311,10 +317,8 @@ fn declaration_is_grounded_natural(rows: List<KernelGrounding>, d: DeclarationRe
         PeanoGroundingView => true
         SignedGroundingView { nonnegative: _, negative: _ } => false
       })
-      && (match r.extent {
-        UnboundedNaturals => true
-        UnboundedIntegers => false
-      }))
+      && integer_extent_within(inner: r.extent, outer: UnboundedNaturals)
+      && integer_extent_within(inner: UnboundedNaturals, outer: r.extent))
 }
 
 fn signed_arm_agreement(arm: KernelGroundingArm, constructors: List<GroundedConstructorShape>) -> SignedArmAgreement {
