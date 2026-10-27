@@ -2219,8 +2219,9 @@ fn run_ambient_name_census(
             text(&base_probed.join("\n")),
         ),
     ];
-    if let Some(kit) = &kit {
+    if let (Some(kit), Some((kit_root, _))) = (&kit, &kit_inputs) {
         args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+        args.push((Some("kit_root".to_string()), text(kit_root)));
     }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),

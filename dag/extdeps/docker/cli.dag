@@ -100,6 +100,18 @@ fn docker_device_words(d: DockerDeviceMapping) -> List<String> {
   ["--device", join([d.host_path as String, ":", d.container_path as String, ":", d.cgroup_permissions as String], "")]
 }
 
+// A CDI DEVICE IS NOT A DEVICE NODE, AND THE DIFFERENCE IS THE WORD SHAPE. docker_device_words above
+// renders the `host:container:perms` triple, which is correct for a path like /dev/nvidia0 and
+// REJECTED for a CDI name: measured on srv1 2026-10-25 as the job user over its own rootless daemon,
+// `docker run --rm --device nvidia.com/gpu=all:nvidia.com/gpu=all:rwm ubuntu:24.04 nvidia-smi -L`
+// exits 125 with `docker: nvidia.com/gpu=all is not an absolute path`, while the same run with the
+// bare name `--device nvidia.com/gpu=all` lists the GPU and exits 0. Docker resolves a CDI name
+// through the generated spec and applies the spec's own permissions, so a caller that passed a triple
+// would be quoting the acceptance path with a syntax that cannot work — and would then be tempted to
+// conclude the host lacks the capability. Kept separate from docker_device_words rather than widened
+// into it, because a DockerDeviceMapping's fields are FilePath-typed and a CDI name is not a path.
+fn docker_cdi_device_words(device: NonEmptyStr) -> List<String> { ["--device", device as String] }
+
 fn docker_cap_add_words(c: NonEmptyStr) -> List<String> { ["--cap-add", c as String] }
 
 // ── ONE CONTAINER PLAN, TWO VERB PROJECTIONS ─────────────────────────────────────────────────
@@ -774,3 +786,26 @@ fn docker_run_ephemeral_command(image: NonEmptyStr, gpus_all: Bool, mounts: List
 fn docker_image_pull_command(image: NonEmptyStr) -> ArgvCommand {
   argv_command(program: docker_program(), arguments: ["image", "pull", image as String])
 }
+
+// THE GPU CONTAINER ACCEPTANCE RUN, AS ONE RENDERED COMMAND. This is the shape the fleet's GPU gates
+// ask on a host: a container, run by the job user through the job user's OWN rootless daemon, that
+// sees a device. It is spelled here rather than at the call site because the two things that make it
+// an acceptance run and not a smoke test are each load-bearing and each easy to lose when retyped:
+//   * --rm, so a probe that dies cannot leave a container that later reads as capacity;
+//   * the BARE CDI device name (docker_cdi_device_words), not the path triple — see the measurement
+//     recorded there, where the triple is refused with exit 125 while the bare name lists the GPU.
+// The rendered words are the command measured to work, not an approximation of it: on srv1 2026-10-25,
+// as the job user over its own socket, `docker run --rm --device nvidia.com/gpu=all ubuntu:24.04
+// nvidia-smi -L` printed the GPU and exited 0. The probe is nvidia-smi -L because it lists devices
+// through the driver nodes the CDI spec made present, which is the question "did the device reach the
+// container", as distinct from whether the host's driver stack is healthy.
+fn docker_gpu_cdi_probe_run_command(image: NonEmptyStr, device: NonEmptyStr, probe_argv: List<String>) -> ArgvCommand {
+  argv_command(
+    program: docker_program(),
+    arguments: concat(
+      concat(["run", "--rm"], docker_cdi_device_words(device: device)),
+      concat([image as String], probe_argv),
+    ),
+  )
+}
+

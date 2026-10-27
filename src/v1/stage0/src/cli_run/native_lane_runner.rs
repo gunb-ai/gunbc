@@ -5106,8 +5106,8 @@ fn run_census_scoped_with(
 ///
 /// The compiler is built from `source_roots` (this checkout's); the subjects are read from `population_roots`, which
 /// are `source_roots` themselves unless a caller reads another tree with this checkout's compiler (the base receipt).
-/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the kit's own root
-/// added to the source roots and the kit's fixture modules as its subjects
+/// THE KIT RUN is one more `census-scoped`, over the same prepared binary, with the `dag` root replaced by
+/// the corpus-plus-kit overlay (`kit_overlay_roots`) and the kit's fixture modules as its subjects
 /// (`gunbc.instruments.ambient_name_census_reading` `ambient_census_kit_subjects`). It is a separate
 /// run so the union above, and every row it prints, is exactly what it was without the kit. A reader that
 /// declares no kit (`None`) gets no kit run.
@@ -5161,8 +5161,7 @@ pub fn run_census_controls_and_subjects(
                 .iter()
                 .map(|subject| format!("//{}:all", subject.replace('.', "/")))
                 .collect();
-            let mut kit_roots = source_roots.to_vec();
-            kit_roots.push(kit_root.to_string());
+            let kit_roots = kit_overlay_roots(source_roots, Path::new(kit_root))?;
             Some(run_census_scoped_with(
                 &preparation.binary_path,
                 &kit_labels,
@@ -5172,6 +5171,90 @@ pub fn run_census_controls_and_subjects(
         None => None,
     };
     Ok((controls, union, kit, probe))
+}
+
+/// THE KIT'S SOURCE ROOTS: `source_roots` with the `dag` root replaced by ONE overlay of the corpus `dag`
+/// tree and the kit fixtures. A native source root binds exactly one governed tree
+/// (`v2.cli.source_root_bindings` `source_root_bindings`), so the kit tree passed as a second `dag` root
+/// refuses `SourceRootsDuplicated`. The overlay is a hard-link tree beside the kit root, rebuilt on every
+/// run: directories are created, files are linked, nothing is copied. A kit fixture whose path is a
+/// corpus file refuses `KitFixtureShadowsCorpus`, never shadows it.
+fn kit_overlay_roots(source_roots: &[String], kit_root: &Path) -> Result<Vec<String>, String> {
+    let refuse = |cause: &str, detail: String| {
+        format!("AMBIENT-NAME-CENSUS REFUSAL cause={cause} — {detail}")
+    };
+    let corpus = source_roots
+        .iter()
+        .position(|root| {
+            Path::new(root)
+                .file_name()
+                .is_some_and(|name| name == "dag")
+        })
+        .ok_or_else(|| {
+            refuse(
+                "KitOverlayNoDagRoot",
+                format!("no dag source root among {source_roots:?}"),
+            )
+        })?;
+    let overlay_parent = kit_root
+        .parent()
+        .ok_or_else(|| refuse("KitOverlayRootUnplaced", kit_root.display().to_string()))?
+        .with_file_name("kit_overlay");
+    let _ = std::fs::remove_dir_all(&overlay_parent);
+    let overlay = overlay_parent.join("dag");
+    link_tree(Path::new(&source_roots[corpus]), &overlay)
+        .map_err(|e| refuse("KitOverlayLinkFailed", e))?;
+    overlay_kit(kit_root, &overlay, kit_root).map_err(|(cause, detail)| refuse(cause, detail))?;
+    let mut roots = source_roots.to_vec();
+    roots[corpus] = overlay.to_string_lossy().into_owned();
+    Ok(roots)
+}
+
+fn link_tree(from: &Path, to: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(to).map_err(|e| format!("{}: {e}", to.display()))?;
+    for entry in std::fs::read_dir(from).map_err(|e| format!("{}: {e}", from.display()))? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let target = to.join(entry.file_name());
+        if entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+            link_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::hard_link(entry.path(), &target)
+                .map_err(|e| format!("{} -> {}: {e}", entry.path().display(), target.display()))?;
+        }
+    }
+    Ok(())
+}
+
+fn overlay_kit(from: &Path, to: &Path, kit_root: &Path) -> Result<(), (&'static str, String)> {
+    let failed = |e: String| ("KitOverlayLinkFailed", e);
+    std::fs::create_dir_all(to).map_err(|e| failed(format!("{}: {e}", to.display())))?;
+    for entry in std::fs::read_dir(from).map_err(|e| failed(format!("{}: {e}", from.display())))? {
+        let entry = entry.map_err(|e| failed(e.to_string()))?;
+        let target = to.join(entry.file_name());
+        if entry
+            .file_type()
+            .map_err(|e| failed(e.to_string()))?
+            .is_dir()
+        {
+            overlay_kit(&entry.path(), &target, kit_root)?;
+        } else if target.exists() {
+            let fixture = entry.path();
+            let fixture = fixture.strip_prefix(kit_root).unwrap_or(&fixture);
+            return Err((
+                "KitFixtureShadowsCorpus",
+                format!("kit fixture dag/{} is a corpus file", fixture.display()),
+            ));
+        } else {
+            std::fs::hard_link(entry.path(), &target).map_err(|e| {
+                failed(format!(
+                    "{} -> {}: {e}",
+                    entry.path().display(),
+                    target.display()
+                ))
+            })?;
+        }
+    }
+    Ok(())
 }
 
 /// ONE NATIVE CHILD, REAPED BY `wait4` (in `measured_spawn_trampoline`) SO ITS OWN RUSAGE IS READ. `getrusage(RUSAGE_CHILDREN)` in
@@ -5627,6 +5710,48 @@ fn run_required_v2_native_inner(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn kit_overlay_links_the_corpus_and_refuses_a_shadowing_fixture() {
+        let base = std::env::temp_dir().join(format!("nlr-kit-overlay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let write = |path: std::path::PathBuf, text: &str| {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        let corpus = base.join("repo").join("dag");
+        write(corpus.join("std/text.dag"), "corpus");
+        let kit = base.join("kit").join("dag");
+        write(kit.join("std/kit_fixture.dag"), "fixture");
+        let roots = vec![corpus.display().to_string(), "src/v2".to_string()];
+        let overlaid = super::kit_overlay_roots(&roots, &kit).unwrap();
+        let overlay = base.join("kit_overlay").join("dag");
+        assert_eq!(
+            overlaid,
+            vec![overlay.display().to_string(), "src/v2".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(overlay.join("std/text.dag")).unwrap(),
+            "corpus"
+        );
+        assert_eq!(
+            std::fs::read_to_string(overlay.join("std/kit_fixture.dag")).unwrap(),
+            "fixture"
+        );
+        // RED: a fixture at a corpus path refuses typed; it never shadows the corpus file.
+        write(kit.join("std/text.dag"), "shadow");
+        let refused = super::kit_overlay_roots(&roots, &kit).unwrap_err();
+        assert!(
+            refused.contains("cause=KitFixtureShadowsCorpus"),
+            "{refused}"
+        );
+        assert!(refused.contains("dag/std/text.dag"), "{refused}");
+        assert_eq!(
+            std::fs::read_to_string(corpus.join("std/text.dag")).unwrap(),
+            "corpus"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     use super::*;
 
     /// THE ESCAPE-HATCH RED (review on #13857 at c0a1cd3f): the receipt variable beside an ordinary
