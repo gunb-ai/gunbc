@@ -1,5 +1,8 @@
 module gunbc.dashboard_node_uri
 
+// receipt probe control (scratch, PR #15285): comment-only change to a module with NO ambient
+// host-text name calls, isolating whether the census scan activates on any diff or on those names.
+
 import std.types { String, Bool }
 
 // HOME OF THE SCHEME AND ITS RECOGNISER, split out of gunbc.lifecycle_bounded_referent so a consumer that
