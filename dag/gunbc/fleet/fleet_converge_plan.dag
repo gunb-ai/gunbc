@@ -1736,7 +1736,18 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
-    WorkspaceSlotCommissioningConverge { basis } => [workspace_commissioning_basis_rows(basis: basis)]
+    // THE COMMISSIONING SCOPE CARRIES NO AXIS ROWS, and that is not an omission: its whole premise
+    // is the commissioning basis, and that basis has ONE authority in the body -- the observed
+    // baseline section, which is the text the receipt binds (observed_baseline_hex is the hash of
+    // observed_identity_text) and the text apply re-admits against a fresh re-observation
+    // (fleet_converge_observed_baseline_matches). The axis lines are the second copy of the same
+    // fact, and a second copy of a credential row is not inert downstream: the executor admits a
+    // plan body by taking the ONE row prefixed workspace-commissioning-credential
+    // (workspace_executor_plan_credential refuses unless the count is exactly one), so emitting the
+    // rows here made every srv1 workspace apply refuse. Nothing reads the axis copy -- the executed
+    // twin for this scope (fleet_converge_apply_shell_axis_lines) actuates the apply script, not
+    // these rows -- so removing it retires a duplicate, not a capability.
+    WorkspaceSlotCommissioningConverge { basis: _ } => []
     WorkspaceCommissioningDependencyConverge { plan } => [host_kernel_dependency_row(plan: plan)] + host_kernel_dependency_action_lines(plan: plan)
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => [
       "# workspace allocation: dispatch existing slot controller; readiness is observed separately",
