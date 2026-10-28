@@ -162,6 +162,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/compute
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/credential-acquisition-slots
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/cursor-attempt-runtime
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/attempt-state/worktree-claims
+ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/attempt-state/session-attempts
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/objects
 ghrunner ALL=(root) NOPASSWD: /usr/bin/stat -c %F|%U|%G|%a -- /opt/gunbc/fabric-storage/heads
