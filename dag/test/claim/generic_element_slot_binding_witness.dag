@@ -1,0 +1,255 @@
+module test.claim.generic_element_slot_binding_witness
+
+// THE CLASS THIS FILE HOLDS OPEN. v1.compiler.infer unify_generic_child_pairs bound a callee's type variable to
+// the actual application's ELEMENT SLOT rather than to the type the slot holds. The slot is named by the
+// container declaration's own parameter (FreeMonoid's `T`) and carries the argument's type in its inferred, so
+// every reader of the substitution that keys on the bound node's name or spelling saw an unbound `T`. Two
+// shapes, one link (generic_actual_position_type, moved from v1.compiler.infer to v1.compiler.infer_env
+// when the settle family below needed the same read -- v1.compiler.types imports infer_env, so the read
+// could not live above either consumer):
+//
+//   bold-koi-381 (work item adhoc-b5f23a5d-052): `fn(h) { h.digest }` keyed through a generic over
+//   `xs: List<Hash>`, `type Hash = Payload`, refused "no field 'digest' on type 'T'" -- the field-access alias
+//   chain looks its next declaration up by the bound node's NAME. The sort_by wave hit it over v2.std.node's
+//   `type Hash = Fnv1a64Structural` and worked around it with an annotated let.
+//
+//   smart-tern-402 (#15115): `skip(split(..), n: 1) |> first` left its Present arm undecided -- a kernel-built
+//   List's slot is also SPELLED `T`.
+//
+// A record element escaped by accident (its slot's inferred is the record, found structurally before the
+// name), which is why List<Payload> is a control and not a climb.
+//
+// MEASURED on main 88e8991e557 with the seed built from that tree, and again with this change: both climbs
+// refuse on main and compile clean with it; every control compiles clean on both, and the undeclared-field
+// arm refuses on both. The v2 control for the same shape is v2.test.claim.compiler.lambda_alias_field_key
+// lafk_a_lambda_key_through_an_imported_alias_types_its_field (v2 types it; DESIGN section 7: a seed defect v2
+// does not carry forward).
+//
+// HARNESS PAIRING, as in test.claim.transparent_alias_identity_witness: compile_dag_rust_emit_check returns
+// false for more than one reason, so the refusal arm is paired with the same module minus the offending read.
+
+fn slot_prelude() -> String {
+  "type Payload {\n  digest: String\n}\n\ntype Hash = Payload\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn take(p: Payload) -> String {\n  p.digest\n}\n\n"
+}
+
+fn slot_source(module_leaf: String, body: String) -> String {
+  concat(concat(concat(concat("module slotbind.", module_leaf), "\n\nimport std.types { List, String }\n\n"), slot_prelude()), body)
+}
+
+fn slot_alias_key_source() -> String {
+  slot_source(module_leaf: "aliaskey", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn slot_record_key_source() -> String {
+  slot_source(module_leaf: "recordkey", body: "fn keyed(xs: List<Payload>) -> List<Payload> {\n  sk(xs: xs, key: fn(h) { h.digest })\n}\n")
+}
+
+fn slot_alias_at_formal_source() -> String {
+  slot_source(module_leaf: "aliasformal", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { take(p: h) })\n}\n")
+}
+
+fn slot_alias_undeclared_source() -> String {
+  slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { h.nope })\n}\n")
+}
+
+fn slot_alias_undeclared_control_source() -> String {
+  slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { 1 })\n}\n")
+}
+
+// THE UNBOUND-PARAMETER READ: the slot's element is a type variable NOTHING grounds -- a parameter with no
+// declaration behind it. Kept identity must not turn this into an acceptance: the field read on a parameter
+// that declares no record can never be established, so this refuses with the guard for the same reason it
+// refused without one. The arm is the guard's fail-closed side (the descent keeps the slot's identity for an
+// unsolved variable; the reader must still refuse the undeclared name), paired with the module-minus-read
+// control below so it measures the read and not the harness.
+fn slot_unbound_param_field_source() -> String {
+  "module slotbind.unboundparam\n\nimport std.types { List, String }\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn field_on_unbound<T>(xs: List<T>) -> List<T> {\n  sk(xs: xs, key: fn(e) { e.digest })\n}\n"
+}
+
+fn slot_unbound_param_control_source() -> String {
+  "module slotbind.unboundparam\n\nimport std.types { List, String }\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn field_on_unbound<T>(xs: List<T>) -> List<T> {\n  sk(xs: xs, key: fn(e) { 1 })\n}\n"
+}
+
+fn slot_kernel_split_source() -> String {
+  "module slotbind.kernelsplit\n\nimport std.algebra { skip }\nimport std.optional { Present, Absent }\nimport std.types { String, Bool }\n\nfn second_nonempty(s: String) -> Bool {\n  let parts = split(s: s, delimiter: \"/\")\n  match skip(parts, n: 1) |> first {\n    Present { value: v } => v != \"\"\n    Absent => false\n  }\n}\n"
+}
+
+fn slot_kernel_split_annotated_source() -> String {
+  "module slotbind.kernelsplitann\n\nimport std.algebra { skip }\nimport std.optional { Present, Absent }\nimport std.types { List, String, Bool }\n\nfn second_nonempty(s: String) -> Bool {\n  let parts: List<String> = split(s: s, delimiter: \"/\")\n  match skip(parts, n: 1) |> first {\n    Present { value: v } => v != \"\"\n    Absent => false\n  }\n}\n"
+}
+
+// THE CLIMB (bold-koi-381's RED). Refused on main: "no field 'digest' on type 'T'".
+test fn a_lambda_key_reads_a_field_through_an_alias_element_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_key_source(), "src/slotbind_aliaskey.rs", ["keyed"], ["compile_error"])
+}
+
+// THE CLIMB (smart-tern-402's RED). Refused on main: the Present arm is undecided.
+test fn a_kernel_built_list_binds_a_declared_generic_test() -> Bool {
+  compile_dag_rust_emit_check(slot_kernel_split_source(), "src/slotbind_kernelsplit.rs", ["second_nonempty"], ["compile_error"])
+}
+
+// CONTROL: the same shape with the slot's type annotated by the author compiles on main too.
+test fn a_kernel_built_list_with_an_annotated_let_binds_test() -> Bool {
+  compile_dag_rust_emit_check(slot_kernel_split_annotated_source(), "src/slotbind_kernelsplitann.rs", ["second_nonempty"], ["compile_error"])
+}
+
+// FAIL-CLOSED SIDE OF THE GENERALIZED GUARD (non-empty-list unsolved slot): an ungrounded parameter's
+// element keeps its identity at generic_actual_position_type instead of descending, and the field read on it
+// STILL refuses -- nothing grounds it, so no reader can key on it. Guards that keep unsolved identity must
+// not become acceptances. A CLIMB for this shape (refused on main, types with the change) is not authorable
+// at a field read: an unsolved variable with nothing grounding it has no establishedness to recover, so this
+// pair, not a RED, is what the non-empty-list half can assert.
+test fn an_unbound_parameter_element_still_refuses_a_field_read_test() -> Bool {
+  !compile_dag_rust_emit_check(slot_unbound_param_field_source(), "src/slotbind_unboundparam.rs", [], [])
+}
+
+// ITS HARNESS CONTROL: the module without the read compiles with the guard, so the arm above measures the
+// read and not the harness.
+test fn an_unbound_parameter_module_without_the_read_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_unbound_param_control_source(), "src/slotbind_unboundparam.rs", ["field_on_unbound"], ["compile_error"])
+}
+
+// CONTROL: a record element, which escaped by accident before this change and must stay clean.
+test fn a_lambda_key_reads_a_field_through_a_record_element_test() -> Bool {
+  compile_dag_rust_emit_check(slot_record_key_source(), "src/slotbind_recordkey.rs", ["keyed"], ["compile_error"])
+}
+
+// CONTROL: the alias element at a declared record formal, judged by the alias identity relation.
+test fn an_alias_element_inhabits_its_records_formal_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_at_formal_source(), "src/slotbind_aliasformal.rs", ["keyed"], ["compile_error"])
+}
+
+// POSITIVE CONTROL: the slot is read as its type, not as anything -- a field the record does not declare still
+// refuses through the alias element.
+test fn an_alias_element_still_refuses_an_undeclared_field_test() -> Bool {
+  !compile_dag_rust_emit_check(slot_alias_undeclared_source(), "src/slotbind_aliasnope.rs", [], [])
+}
+
+// ITS HARNESS CONTROL: the same module without the undeclared read compiles, so the arm above measures the
+// field read and not the harness.
+test fn an_alias_element_module_without_the_undeclared_read_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_alias_undeclared_control_source(), "src/slotbind_aliasnope.rs", ["keyed"], ["compile_error"])
+}
+
+// THE BRANCH-JOIN SHAPE (the last corpus diagnostic). v2.compiler.dependency_demand_census.dag's
+// demand_census_add_example joins a branch that returns the list itself against a branch that rebuilds it
+// with list_snoc_item, with an equality fold over the same element type in the middle condition; with the
+// unguarded arm the else branch's element type arrives at the if-join mangled
+// (FreeMonoid<Coproduct(FreeMonoid)>), and the join refuses 'if branches resolve to incompatible types'
+// even though both branches are List<QualifiedName> to the author. The fix is the establishedness
+// discipline at the join, the sibling site of generic_actual_position_type (same one rule). The RED below
+// is the corpus shape; the two sibling REDs that follow vary the rebuild path (a user-declared generic
+// wrapper) and the join arity (a bare two-branch if), each with its own no-rebuild control.
+fn slot_branch_join_source() -> String {
+  "module slotbind.branchjoin\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }\n}\n"
+}
+
+// ITS HARNESS CONTROL: the same module with the snoc branch replaced by the list itself -- without the
+// rebuild the join sees two same-spelled branches, so a refusal of the arm above and a pass here measures
+// the rebuild branch, not the harness.
+fn slot_branch_join_control_source() -> String {
+  "module slotbind.branchjoin\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    examples\n  }\n}\n"
+}
+
+// THE CLIMB: both branches are List<Qn> to the author, so the join must accept.
+test fn a_branch_join_over_a_rebuilt_alias_list_types_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_source(), "src/slotbind_branchjoin.rs", ["add_example"], ["compile_error"])
+}
+
+// ITS CONTROL compiles on both sides of the join fix.
+test fn a_branch_join_without_the_rebuild_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_control_source(), "src/slotbind_branchjoin.rs", ["add_example"], ["compile_error"])
+}
+
+// SIBLING RED 1 (the wrapper-rebuild shape): the rebuild goes through a USER-DECLARED generic wrapper
+// qn_snoc<T> rather than the builtin list_snoc_item, so the else branch's element reaches the join as a
+// generic actual position rather than a builtin return. This is the path generic_actual_position_type owns
+// at its source; the corpus RED above only exercises the builtin-shaped rebuild, so this shape is not
+// guarded there. (Both branches are List<Qn> to the author, so the join must accept.)
+fn slot_branch_join_wrapper_rebuild_source() -> String {
+  "module slotbind.branchjoinwrapper\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn qn_snoc<T>(xs: List<T>, item: T) -> List<T> {\n  list_snoc_item(xs: xs, item: item)\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    qn_snoc(xs: examples, item: module)\n  }\n}\n"
+}
+
+// ITS CONTROL: the same module (qn_snoc defined) with the rebuild branch replaced by the list itself, so a
+// pass here proves the wrapper's mere definition is not the refusal -- only the rebuild branch is.
+fn slot_branch_join_wrapper_rebuild_control_source() -> String {
+  "module slotbind.branchjoinwrapper\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn qn_snoc<T>(xs: List<T>, item: T) -> List<T> {\n  list_snoc_item(xs: xs, item: item)\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    examples\n  }\n}\n"
+}
+
+test fn a_branch_join_over_a_wrapper_rebuilt_alias_list_types_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_wrapper_rebuild_source(), "src/slotbind_branchjoinwrapper.rs", ["add_example"], ["compile_error"])
+}
+
+test fn a_branch_join_over_a_wrapper_rebuilt_alias_list_without_the_rebuild_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_wrapper_rebuild_control_source(), "src/slotbind_branchjoinwrapper.rs", ["add_example"], ["compile_error"])
+}
+
+// SIBLING RED 2 (the two-branch join shape): the join is a BARE two-branch if (no length guard, no else-if
+// chain), unlike the corpus RED's three-branch chain. It proves the arm trips on a minimal two-way join, not
+// on the chain's length. Both branches are List<Qn> to the author, so the join must accept.
+fn slot_branch_join_two_branch_source() -> String {
+  "module slotbind.branchjointwo\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }\n}\n"
+}
+
+// ITS CONTROL: the same two-branch module with the rebuild branch replaced by the list itself.
+fn slot_branch_join_two_branch_control_source() -> String {
+  "module slotbind.branchjointwo\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n  if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    examples\n  }\n}\n"
+}
+
+test fn a_two_branch_join_over_a_rebuilt_alias_list_types_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_two_branch_source(), "src/slotbind_branchjointwo.rs", ["add_example"], ["compile_error"])
+}
+
+test fn a_two_branch_join_over_a_rebuilt_alias_list_without_the_rebuild_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_branch_join_two_branch_control_source(), "src/slotbind_branchjointwo.rs", ["add_example"], ["compile_error"])
+}
+
+// POSITIVE CONTROL FOR THE EMPTY-ELEMENT JOIN (regression guard for the join_element_type narrowing).
+// This mirrors std.materialization_ladder's ladder_distinct_identities and
+// v2.workflow.native_route_progress_guard's native_progress_report:
+// a two-branch if whose rebuild arm is a concrete List<String> and whose other arm is the [] literal -- an
+// EMPTY list whose element slot is still an unsolved type variable. The join must accept: the empty side's
+// element stays unsolved (a type variable) and defers at node_type_compatible's own type-variable rule, so
+// it is compatible with the concrete String element. This is the shape that REGRESSED when the element read
+// was routed through generic_actual_position_type blanket: that predicate returns the bare unsolved slot (no
+// children, NoConnective) instead of its resolved type-variable inferred, so node_type_compatible compared a
+// non-TypeVariable slot against the concrete element and refused. join_element_type keeps a 0-children slot
+// on child_type_node, restoring the deferral. So the module must compile.
+fn empty_element_join_source() -> String {
+  "module slotbind.emptyjoin\n\nimport std.algebra { list_snoc_item }\nimport std.types { List, String, Bool }\n\nfn ladder_or_empty(flag: Bool, strings: List<String>) -> List<String> {\n  if flag {\n    list_snoc_item(xs: strings, item: \"x\")\n  } else {\n    []\n  }\n}\n"
+}
+
+test fn a_branch_join_of_an_empty_list_against_a_concrete_list_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(empty_element_join_source(), "src/slotbind_emptyjoin.rs", ["ladder_or_empty"], ["compile_error"])
+}
+
+// ITS REFUSING PAIR (over-admission guard for review finding #1): the two branches carry DIFFERENT
+// established elements, and the join must still refuse. The rebuild arm is List<Qn> (element FreeMonoid<
+// String>, a NON-LEAF application) against a List<String> arm (element Primitive String, a leaf). Under the
+// nominal comparison, node_type_compatible descends to the two elements -- FreeMonoid<String> vs String --
+// whose heads differ, so it refuses. This proves narrowing the element read to nominal did NOT make every
+// element pair vacuously compatible; a genuinely incompatible NON-LEAF element still refuses.
+fn incompatible_element_join_source() -> String {
+  "module slotbind.incompatjoin\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn rebuild_or_strings(flag: Bool, examples: List<Qn>, strs: List<String>, module: Qn) -> List<Qn> {\n  if flag {\n    list_snoc_item(xs: examples, item: module)\n  } else {\n    strs\n  }\n}\n"
+}
+
+test fn a_branch_join_over_incompatible_elements_still_refuses_test() -> Bool {
+  !compile_dag_rust_emit_check(incompatible_element_join_source(), "src/slotbind_incompatjoin.rs", [], [])
+}
+
+// WITNESS FOR THE LAMBDA-PARAM TYPE-VARIABLE BINDING (review finding #2, 04_infer.dag infer_expr_body
+// case 2, the is_unsolved_type_variable(n: cpt) arm). The cons callback of fold_list is inferred against the
+// builtin's declared callback signature; when a callback parameter's expected param type (cpt) is an UNSOLVED
+// type variable whose authored id is NOT "empty_list_element" -- here the enclosing generic's own base T, not
+// the empty-list element -- the binding keeps cpt's identity rather than collapsing it to type_variable_node(id:
+// "callable_param"). A field read of that parameter is then deferred against the real generic base (it must not
+// be refused, because T is unsolved and no argument establishes a field on it). This EXECUTES the widened
+// branch with a non-empty-list type variable: if the predicate had stayed the id-keyed is_unsolved_empty_list_element,
+// this parameter would have taken the collapse arm. The module must compile.
+fn generic_fold_field_defer_source() -> String {
+  "module slotbind.genericfold\n\nimport std.algebra { fold_list }\nimport std.types { List, String, Bool }\n\nfn any_matching<T>(xs: List<T>, flag: Bool) -> Bool {\n  fold_list(xs: xs, empty: false, cons: fn(any, e) { any || flag })\n}\n"
+}
+
+test fn a_generic_fold_lambda_param_keeps_type_variable_identity_test() -> Bool {
+  compile_dag_rust_emit_check(generic_fold_field_defer_source(), "src/slotbind_genericfold.rs", ["any_matching"], ["compile_error"])
+}

@@ -207,16 +207,17 @@ pub use crate::v1_compiler_infer_env::{
     declaration_named_by_type_name, declaration_node_of_ref, declaration_provenance_of_ref,
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
     declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
-    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, kernel_settled_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_is_kernel_mint_named, node_with_children, node_with_inferred, overlay_skips_kernel_name,
-    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    empty_type_env_cache, env_with_type_variable_bindings, generic_actual_position_type,
+    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
+    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
+    is_recursive_type, is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
+    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
+    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -17669,70 +17670,28 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 {
                     let exp = expected.clone().unwrap();
                     if ((exp.params.clone().len() as i64) > 0) {
-                        Rc::new(
-                            lam_params
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .enumerate()
-                                .map(|(i, v)| (i as i64, v))
-                                .collect::<Vec<_>>(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            scope.clone(),
-                            |acc: Rc<InferScope>, pair: (i64, String)| {
-                                let param_prov = if (pair.0.clone()
-                                    == v1_rt::int_sub((lam_params.clone().len() as i64), 1))
-                                {
-                                    elem_prov.clone()
+                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
+                        let param_prov = if (pair.0.clone() == v1_rt::int_sub((lam_params.clone().len() as i64), 1)) {
+                            elem_prov.clone()
+                        } else {
+                            Rc::new(SubValueRelation::SubValueUnknown)
+                        };
+match exp.params.clone().get((pair.0.clone()) as usize).cloned() {
+    Some(cp) => {
+                            let cpt = crate::v1_std_core::param_node_type_expr(cp.clone());
+if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) {
+                                extend_scope(acc.clone(), pair.1.clone(), cpt.clone(), param_prov.clone())
+                            } else {
+                                if crate::v1_compiler_infer_env::is_unsolved_type_variable(cpt.clone()) {
+                                    extend_scope(acc.clone(), pair.1.clone(), cpt.clone(), param_prov.clone())
                                 } else {
-                                    Rc::new(SubValueRelation::SubValueUnknown)
-                                };
-                                match exp.params.clone().get((pair.0.clone()) as usize).cloned() {
-                                    Some(cp) => {
-                                        let cpt =
-                                            crate::v1_std_core::param_node_type_expr(cp.clone());
-                                        if type_node_is_established(
-                                            cpt.clone(),
-                                            scope.type_env.source_indices.clone(),
-                                        ) {
-                                            extend_scope(
-                                                acc.clone(),
-                                                pair.1.clone(),
-                                                cpt.clone(),
-                                                param_prov.clone(),
-                                            )
-                                        } else {
-                                            if is_unsolved_empty_list_element(cpt.clone()) {
-                                                extend_scope(
-                                                    acc.clone(),
-                                                    pair.1.clone(),
-                                                    cpt.clone(),
-                                                    param_prov.clone(),
-                                                )
-                                            } else {
-                                                extend_scope(
-                                                    acc.clone(),
-                                                    pair.1.clone(),
-                                                    type_variable_node(
-                                                        "callable_param".to_string(),
-                                                    ),
-                                                    param_prov.clone(),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    std::option::Option::None => extend_scope(
-                                        acc.clone(),
-                                        pair.1.clone(),
-                                        type_variable_node("callable_param".to_string()),
-                                        param_prov.clone(),
-                                    ),
+                                    extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), param_prov.clone())
                                 }
-                            },
-                        )
+                            }
+},
+    std::option::Option::None => extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), param_prov.clone()),
+}
+})
                     } else {
                         if ((lam_params.clone().len() as i64) == 1) {
                             match lam_params.clone().first().cloned() {
@@ -18591,15 +18550,6 @@ pub fn unsolved_type_variable_ids(n: Rc<Node>, depth: i64) -> Rc<Vec<String>> {
             }
         }
     })
-}
-
-pub fn is_unsolved_empty_list_element(n: Rc<Node>) -> bool {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: id, .. }) => {
-            (id.clone() == "empty_list_element".to_string())
-        }
-        _ => false,
-    }
 }
 
 pub fn is_never_constrained_enclosing_generic_base(
@@ -26935,7 +26885,7 @@ pub fn unify_generic_child_pairs(
                         let __tco_3 = source_indices.clone();
                         let __tco_4 = unify_generics(
                             f.clone(),
-                            a.clone(),
+                            crate::v1_compiler_infer_env::generic_actual_position_type(a.clone()),
                             generic_names.clone(),
                             source_indices.clone(),
                             acc,

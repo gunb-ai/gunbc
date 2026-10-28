@@ -127,6 +127,14 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
+pub fn join_element_type(slot: Rc<Node>) -> Rc<Node> {
+    if (slot.children.clone().len() as i64) == 0 {
+        child_type_node(slot.clone())
+    } else {
+        slot
+    }
+}
+
 pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::NoExprData => true,
@@ -2767,9 +2775,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                child_type_node(left_ch.clone());
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                child_type_node(right_ch.clone());
+                                                                join_element_type(right_ch.clone());
                                                             let left_el_is_unit =
                                                                 is_unit_like(left_el.clone());
                                                             let right_el_is_unit =
@@ -2825,9 +2833,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                child_type_node(left_ch.clone());
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                child_type_node(right_ch.clone());
+                                                                join_element_type(right_ch.clone());
                                                             if (is_unit_like(left_el.clone())
                                                                 || is_unit_like(right_el.clone()))
                                                             {

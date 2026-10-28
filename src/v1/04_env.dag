@@ -2131,7 +2131,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
       match alias_rhs_of_declaration(item_ref: d, env: env) {
         Absent =>
           match parameterized_alias_of_declaration(item_ref: d, source_indices: source_indices, env: env) {
-            Absent => Present { value: SettledType { head: d, args: n.children } }
+            Absent => Present { value: SettledType { head: d, args: n.children |> map(ch => generic_actual_position_type(slot: ch)) } }
             // A use site the alias cannot be substituted at (arity unequal, a bare reference included) settles to the alias's own
             // declaration, exactly as before parameterized aliases settled at all. Answering none here turned every bare `List` into
             // an unrecovered reading (v1.compiler.infer optional_declaration_reading -> OptionalUnrecovered, five new refusals on the
@@ -2139,7 +2139,7 @@ fn settled_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv
             Present { value: pa } =>
               match settled_parameterized_alias(alias: pa, use_args: n.children, source_indices: source_indices, env: env, fuel: fuel) {
                 Present { value: through } => Present { value: through }
-                Absent => Present { value: SettledType { head: d, args: n.children } }
+                Absent => Present { value: SettledType { head: d, args: n.children |> map(ch => generic_actual_position_type(slot: ch)) } }
               }
           }
         Present { value: rhs } => settled_alias_rhs(rhs: rhs, source_indices: source_indices, env: env, fuel: fuel)
@@ -2195,13 +2195,86 @@ fn parameterized_alias_of_declaration(item_ref: DeclarationRef, source_indices: 
   }
 }
 
+// AN UNSOLVED TYPE VARIABLE: the node's type is a variable nothing has grounded -- the empty list's
+// element, an unbound generic parameter, any deferred identity. A type read that DESCENDS into one
+// trades a named slot for an ungroundable node whose spelling the field lookup refuses; keeping the
+// node's own identity is what lets deferral proceed. All three unsolved reads -- the lambda-parameter
+// binding in v1.compiler.infer, and generic_actual_position_type below (read by unify_generics and by
+// the settle family) -- share THIS one
+// predicate; it was formerly keyed on the empty_list_element id alone (the only instance the corpus
+// surfaced), which made the same defect invisible at the arm (work item adhoc-b5f23a5d-052 re-measure
+// on 14750 head 9706e5b48ea: descending into an empty-list element slot refused m.declarations,
+// m.path, d.label, d.target at ten corpus sites).
+fn is_unsolved_type_variable(n: Node) -> Bool {
+  match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+}
+
+// (MOVED WITH THE PREDICATE FROM v1.compiler.infer, where only unify_generics could reach it: the
+// settle reads use-site arguments with it too, and v1.compiler.infer imports this module, not the
+// reverse -- import v1.compiler.types already reaches into infer_env, so keeping it below would cycle.)
+// THE ACTUAL IS NOT THE FORMAL, AND ONLY THE FORMAL IS READ RAW. An actual child in this position is the
+// application's ELEMENT SLOT: resolve_node_bounded and the kernel container builders name it by the
+// CONTAINER DECLARATION'S OWN PARAMETER (FreeMonoid's `T`) and carry the argument's type in its inferred.
+// Bound raw, the substitution handed every reader a node NAMED `T`, so a reader keyed on the bound node's
+// name or spelling saw an unbound `T` although the slot's resolution was established: `fn(h) { h.digest }`
+// over `xs: List<Hash>` (`type Hash = Payload`) refused "no field 'digest' on type 'T'", because the
+// field-access alias chain looks its next declaration up by that name, and `skip(split(..), n: 1) |> first`
+// left its Present arm undecided, because a kernel-built slot is also SPELLED `T`. A record element only
+// escaped by accident: its slot's inferred is the record itself, which the field read finds structurally
+// before it reaches the name. So the actual position is read through child_type_node, the total read of a
+// type position that unify_callable_generics already applies to both sides, and only where it IS a leaf
+// position (no children, its type in inferred): an application such as `List<X>` keeps its own node, since
+// its inferred is its EXPANSION and binding that would trade the nominal type for its structure.
+// (gunbc.recurring_failure_mode type_alias_identity_decided_by_spelling_at_each_check; work item
+// adhoc-b5f23a5d-052, with smart-tern-402's kernel-container RED.)
+// THE DESCENT IS INTO AN ESTABLISHED READ ONLY. Descending trades the slot for its resolution, so the
+// resolution must be something a reader can act on. When the resolved node is an UNSOLVED TYPE VARIABLE
+// -- the empty list's element (the corpus instance), an ungrounded parameter, any deferred identity --
+// the trade loses: the slot carried the container-declared name a reader can key on, the resolution is
+// an ungroundable node the field lookup refuses (measured on 14750 head 9706e5b48ea before this guard:
+// fold_list element readers m.declarations, m.path at source_root_eval.dag and d.label, d.target at
+// type_declaration_use_census.dag over an empty [] refused 'no field on type empty_list_element', ten
+// sites). Keep the slot then, as the pre-arm code did for every shape, and let deferral proceed; the
+// is_unsolved_type_variable guard is the SAME predicate v1.compiler.infer uses at its lambda-parameter
+// binding for the same purpose, so one rule governs both unsolved reads (DESIGN 6b, no second leaf).
+// THE MOVE CHANGED NO BEHAVIOUR: the infer-side body called child_type_node(ch: slot) (v1.compiler.
+// infer_types); this one reads r directly, and they are the same value. child_type_node answers
+// resolved_type(ch) when ch.inferred != none && ch.connective != Arrow, and resolved_type answers the
+// node carried by Present { value: Resolved { node: rt } } => rt. This arm's own guards establish all
+// three conditions -- no children, NoConnective, inferred = Present { value: Resolved { node: r } } --
+// so the direct read returns what the infer-side call returned. The one import that would have kept
+// the call (v1.compiler.types) cannot be taken: it imports this module (import line 8), so the call
+// would close a module cycle the move exists to avoid.
+fn generic_actual_position_type(slot: Node) -> Node {
+  if (slot.children |> count == 0 && slot.connective == NoConnective) {
+    match slot.inferred {
+      Present { value: Resolved { node: r } } =>
+        if is_unsolved_type_variable(n: r) { slot } else { r }
+      _ => slot
+    }
+  } else { slot }
+}
+
 fn settled_parameterized_alias(alias: ParameterizedAlias, use_args: List<Node>, source_indices: Map<String, NewlineIndex>, env: TypeEnv, fuel: Int) -> SettledType? {
   if (alias.params |> count) != (use_args |> count) || fuel <= 0 { none }
   else {
     let slot_seed: Map<String, Node> = empty_map()
+    // THE ARGUMENT READ IS ROUTED, NOT RAW, AND IT IS THE ONLY SUCH READ IN THIS SETTLE. A use-site
+    // argument here is the application's ELEMENT SLOT when the use site was built by resolve_node_bounded
+    // or a kernel container builder: named by the container declaration's own parameter, carrying the
+    // argument's type in its inferred. Bound raw, the substitution handed every downstream reader -- the
+    // SettledType arguments the join comparator compares -- a node NAMED `T`, and a reader keyed on that
+    // name settled an established argument to an unbound parameter (measured: a branch over a rebuilt
+    // alias list joined List<FreeMonoid<String>> against FreeMonoid<FreeMonoid<String>> and refused,
+    // recurring failure mode type_alias_identity_decided_by_spelling_at_each_check, because the THEN element settled args=[T]). The same one
+    // function unify_generics applies at its actual position; see that function's comment above for when
+    // a position is a slot and when it must stay the node itself.
     let slot_bindings = alias.params |> enumerate |> fold(init: slot_seed, f: (acc, pair) =>
       match use_args |> skip(pair.first) |> first {
-        Present { value: arg } => map_insert(acc, pair.second, arg)
+        Present { value: arg } => map_insert(acc, pair.second, generic_actual_position_type(slot: arg))
         Absent => acc
       })
     let substituted = substitute_type_slots_mode(n: alias.rhs, slot_bindings: slot_bindings, decl_name: "", source_indices: source_indices, bind_type_variables: false, resolved_slots: true)
@@ -2309,13 +2382,13 @@ fn settled_rhs(rhs: Node, head: DeclarationRef, source_indices: Map<String, Newl
   match alias_rhs_of_declaration(item_ref: head, env: env) {
     Absent =>
       match parameterized_alias_of_declaration(item_ref: head, source_indices: source_indices, env: env) {
-        Absent => Present { value: SettledType { head: head, args: rhs.children } }
+        Absent => Present { value: SettledType { head: head, args: rhs.children |> map(ch => generic_actual_position_type(slot: ch)) } }
         Present { value: pa } =>
           if fuel <= 0 { none }
           else {
             match settled_parameterized_alias(alias: pa, use_args: rhs.children, source_indices: source_indices, env: env, fuel: fuel - 1) {
               Present { value: through } => Present { value: through }
-              Absent => Present { value: SettledType { head: head, args: rhs.children } }
+              Absent => Present { value: SettledType { head: head, args: rhs.children |> map(ch => generic_actual_position_type(slot: ch)) } }
             }
           }
       }
