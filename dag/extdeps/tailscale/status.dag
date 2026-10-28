@@ -1,0 +1,236 @@
+module extdeps.tailscale.status
+
+import std.types { List, NonEmptyStr, Optional, String }
+import std.optional { Absent, Present }
+import std.algebra { string_concat_join, trim }
+import extdeps.languages.json.emit { JsonValue }
+import extdeps.languages.json.parse {
+  JsonFieldRead, JsonMemberPresence, JsonDocumentParse,
+  json_field_string, json_field_string_list, json_member_presence, parse_json_document,
+}
+import extdeps.tailscale.devices {
+  DeviceKey, NodeId, StableNodeId, IdentityParsed, IdentityRefused,
+  parse_device_key, parse_node_id, parse_stable_node_id,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// WHAT A MEMBER SAYS ABOUT ITSELF: the model of `tailscale status --json`, the on-node counterpart of
+// extdeps.tailscale.devices. The two are read from opposite ends of the same control plane, and the
+// census joins them on the one identity these two agree about.
+//
+// SOURCES, AND WHY TYPING THIS IS LEGITIMATE AT ALL. The shape is ipnstate
+// (https://github.com/tailscale/tailscale/blob/main/ipn/ipnstate/ipnstate.go), whose own header says of
+// these types: "The JSON field names and values should be considered stable public API." That sentence is
+// the licence for a typed model rather than a string blob: the on-node JSON is upstream-declared stable,
+// so a member named `NodeID` today is a member named `NodeID` tomorrow. Every name and every quoted
+// comment below is from that file; the observed values quoted here come from srv2's own
+// `tailscale status --json` output, taken while this module was written.
+//
+// WHICH FIELDS, AND WHY NOT MORE. The census reads four facts: the node key (Self's key -- the join), the
+// stable node id (Self.ID), the numeric node id (Self.NodeID), and the host-reported name (Self.HostName),
+// the last carried ONLY so a census row can state that a NAME agreed while an IDENTITY did not. ipnstate's
+// Status also carries Version, BackendState, TUN, AuthURL, CertDomains, MagicDNSSuffix and more; none is a
+// join input, so none is typed. An untyped field is not a missing fact -- it is a field this module
+// declines to claim, and a model that types everything drifts into a second source of truth about a tool
+// that reports its own state.
+//
+// WHY ONLY THE SELF RECORD, AND NOT THE Peer MAP. Every observation the census takes is a member reporting
+// on ITSELF: `tailscale status --json` run on that member. The document's Peer map is other machines'
+// records as THIS one sees them -- a different claim from the machine's own, and a census that paired a
+// member on what its neighbours said about it would be joining on an uncontrolled voice. So the peer map is
+// deliberately not modelled here. Its shape, for whoever needs it next: the map is keyed by
+// `nodekey:<hex>` and the peer objects carry no Key member at all (verified on srv2), so a peer's identity
+// arrives as the MAP KEY -- which no wire-name reading can reach, since a `from` reading reads a member of
+// the object it decodes. That is the second reason the peer side stays unmodelled rather than
+// modelled-and-guessed: a shape this phase does not exercise, read through an idiom that cannot reach it,
+// is exactly the kind of claim DESIGN asks us not to ship.
+
+data status_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale/blob/main/ipn/ipnstate/ipnstate.go" }
+}
+
+// ── What the member reports about ITSELF ──────────────────────────────────────────────────────
+
+// The identity-bearing facts a member reports about itself. Every one went through its parser in
+// extdeps.tailscale.devices before this record could exist, so a StatusIdentity can never carry a value
+// that refused its own upstream form.
+type StatusIdentity {
+// Self's key -- ipnstate PeerStatus.Key: "Key is the node key of the peer. For Self it is the LOCAL
+// node's own key". Observed on srv2:
+// nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927. THE CENSUS JOIN KEY: the
+// same string the provider's device list carries as `nodeKey`.
+  node_key: DeviceKey
+// Self.ID -- ipnstate: "ID is an opaque public identifier that apps such as Minecraft rely on", stable
+// across key rotation. Observed on srv2: nm17WF5Rvg11CNTRL.
+  stable_node_id: StableNodeId
+// Self.NodeID -- ipnstate: "a unique (within a Tailnet) persistent identifier, assigned by the control
+// server. Currently this is a sequential integer beginning at 1". Observed on srv2: 5112399786040428.
+// The provider device list does not carry it, so it pairs nothing on its own; its work is to let two
+// observations of one member disagree with each other.
+  node_id: NodeId
+// Self.HostName -- ipnstate: "HostName is the host name of the peer (not including any domain name --
+// see DNSName)". Observed on srv2: srv2. Carried ONLY so the census can report that a name agreed while
+// an identity did not; never used to pair, and deliberately NOT branded -- see host_name_field.
+  host_name: NonEmptyStr
+// Self.TailscaleIPs -- ipnstate: "TailscaleIPs are the IP addresses assigned to this machine" (observed:
+// 100.73.169.40). An overlay address, and NOT identity: addresses get reassigned, which is exactly what
+// makes "same address, different machine" reachable -- so it is recorded and never joined on.
+  tailscale_ips: List<NonEmptyStr>
+}
+
+// ── Typed refusals of the observation itself ──────────────────────────────────────────────────
+
+// WHY THE OBSERVATION REFUSES INSTEAD OF RETURNING AN EMPTY IDENTITY. `tailscale status --json` prints
+// "You are not logged in." and no document when there is no node, and exits non-zero with no document when
+// the daemon is down or its socket is unreachable. A caller that turns "no document" into "an identity with
+// empty fields" gets a member that matches nothing and refuses nothing, and the census prints a
+// healthy-looking row for a machine whose daemon is dead. Each arm below is a different question, and they
+// stay separate so the census can say which one it could not answer -- plan fleet_naming_reach_access,
+// section 5: the failure arm refuses, it does not widen.
+type StatusObservationFailure =
+// NO LOCAL NODE IDENTITY TO JOIN WITH. ipnstate's own wording: "Self is the IP address of the local
+// machine's Tailscale interface (if one exists)" -- a machine with no node has nothing to join on.
+  MemberReportsNoNode { cause: NonEmptyStr }
+// THE DOCUMENT IS NOT THE DOCUMENT: no JSON object at all. Distinct from the arm above, which is a
+// document that parses and says there is no self.
+  | MemberDocumentUnreadable { cause: NonEmptyStr }
+// A field that should hold part of the identity does not. The cause says whether the document omitted it
+// or the field holds something that is not in the field's own form, because those are different faults a
+// reader diagnoses differently even though this module's action -- refuse this member -- is the same.
+  | MemberIdentityFieldMalformed { field: NonEmptyStr, cause: NonEmptyStr }
+
+type StatusObservation =
+  Observed { identity: StatusIdentity }
+  | Refused { failure: StatusObservationFailure }
+
+// ── Decoding ──────────────────────────────────────────────────────────────────────────────────
+
+// ONE FIELD of a node record, in the two states this module acts on: it holds a value, or it does not and
+// here is why. "Omitted by the document" and "present but not in the field's own form" collapse to the same
+// arm because the action is identical, and stay tellable apart through the cause text.
+type FieldRead =
+  Here { text: NonEmptyStr }
+  | Gone { field: NonEmptyStr, cause: NonEmptyStr }
+
+// A string member through the corpus's JSON toolbox. Null, absent, and present-but-not-a-string all arrive
+// as `Absent` here, which is json_field_string's documented collapse and is right for this reader: an
+// identity the document declined to carry is an identity this read does not have, whichever way the document
+// declined -- and either way the caller refuses naming the field, which is the answer that matters.
+fn member_string(document: JsonValue, key: String) -> String? {
+  match json_field_string(obj: document, key: key) {
+    FieldAbsent => Absent
+    FieldMalformed { cause: c } => Absent
+    FieldRead { value: v } => Present { value: v }
+  }
+}
+
+fn string_members_or_empty(document: JsonValue, key: String) -> List<NonEmptyStr> {
+  match json_field_string_list(obj: document, key: key) {
+    FieldAbsent => []
+    FieldMalformed { cause: c } => []
+    FieldRead { value: values } => map(values, v => v as NonEmptyStr)
+  }
+}
+
+// An identity field, read and then put through its parser. The PARSE'S OWN REASON is carried into the
+// refusal rather than being dropped: silently turning a malformed field into a missing one is how a machine
+// with a corrupt identity starts being reported as a machine with no identity, and those two findings mean
+// very different things about a fleet.
+fn parsed_field(
+  document: JsonValue,
+  key: String,
+  field: NonEmptyStr,
+  parse: fn(String) -> IdentityParseResult,
+  upstream_form: NonEmptyStr,
+) -> FieldRead {
+  match member_string(document: document, key: key) {
+    Absent => Gone {
+      field: field,
+      cause: string_concat_join(fields: ["the status document carries no readable \"", key, "\" member, whose upstream form is \"", upstream_form, "\""], separator: "") as NonEmptyStr,
+    }
+    Present { value: text } => match parse(text) {
+      IdentityParsed { value: ok } => Here { text: ok as NonEmptyStr }
+      IdentityRefused { failure: f } => Gone {
+        field: field,
+        cause: string_concat_join(fields: ["the status document's \"", key, "\" member is not a ", field, " (upstream form \"", upstream_form, "\"): ", f.reason], separator: "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// The name: trimmed, non-empty, and typed as a STRING rather than an identity -- which is the entire reason
+// the census carries it. Branding it would make the name joinable by construction, and the finding this
+// census exists to make is that a name is not an identity.
+fn host_name_field(document: JsonValue) -> FieldRead {
+  match member_string(document: document, key: "HostName") {
+    Absent => Gone {
+      field: "HostName" as NonEmptyStr,
+      cause: "the status document's Self record carries no readable \"HostName\" member (ipnstate's \"HostName is the host name of the peer\"); with no name the census cannot report the one finding it carries a name for, that a name agreed while an identity did not" as NonEmptyStr,
+    }
+    Present { value: text } => {
+      let trimmed = trim(s: text)
+      if string_length(s: trimmed) == 0 {
+        Gone { field: "HostName" as NonEmptyStr, cause: "the status document's \"HostName\" member is blank" as NonEmptyStr }
+      } else {
+        Here { text: trimmed as NonEmptyStr }
+      }
+    }
+  }
+}
+
+// THE OBSERVATION OF A LOCAL NODE, from the document `tailscale status --json` printed. Order is the order a
+// reader diagnoses them: no document at all, then a document with no self, then a self whose field is not an
+// identity. Each refusal says which.
+fn observe_local_node_identity(document_text: String) -> StatusObservation {
+  match parse_json_document(s: document_text) {
+    JsonDocumentUnreadable { gap: g } => Refused {
+      failure: MemberDocumentUnreadable {
+        cause: "the status output is not a readable JSON document, so no member's identity can be read from it" as NonEmptyStr,
+      },
+    }
+    JsonDocumentParsed { value: document } => match json_member_presence(obj: document, key: "Self") {
+      JsonMemberMissing => Refused {
+        failure: MemberReportsNoNode {
+          cause: "the status document carries no Self member: ipnstate's Status.Self is the local machine's record \"(if one exists)\", and a machine with no node has nothing to join on" as NonEmptyStr,
+        },
+      }
+      JsonMemberNull => Refused {
+        failure: MemberReportsNoNode {
+          cause: "the status document's Self member is null: the node is not logged in, so there is no local identity to join with" as NonEmptyStr,
+        },
+      }
+      JsonMemberUnreadable { cause: c } => Refused {
+        failure: MemberDocumentUnreadable { cause: c as NonEmptyStr },
+      }
+      JsonMemberValue { value: self_record } => read_identity_record(record: self_record)
+    },
+  }
+}
+
+// The four fields of a node record, read in the order a reader diagnoses them. Any one refusing stops the
+// read: a record whose identity is incomplete is not a record with a blank identity, and the census has to
+// say WHICH fact is missing rather than quietly pairing on what remained.
+fn read_identity_record(record: JsonValue) -> StatusObservation {
+  match parsed_field(document: record, key: "Key", field: "DeviceKey" as NonEmptyStr, parse: parse_device_key, upstream_form: "nodekey:<64 hex>") {
+    Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+    Here { text: node_key_text } => match parsed_field(document: record, key: "ID", field: "StableNodeId" as NonEmptyStr, parse: parse_stable_node_id, upstream_form: "an opaque non-empty id") {
+      Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+      Here { text: stable_text } => match parsed_field(document: record, key: "NodeID", field: "NodeId" as NonEmptyStr, parse: parse_node_id, upstream_form: "<decimal integer>") {
+        Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+        Here { text: node_text } => match host_name_field(document: record) {
+          Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+          Here { text: name_text } => Observed {
+            identity: StatusIdentity {
+              node_key: node_key_text as DeviceKey,
+              stable_node_id: stable_text as StableNodeId,
+              node_id: node_text as NodeId,
+              host_name: name_text,
+              tailscale_ips: string_members_or_empty(document: record, key: "TailscaleIPs"),
+            },
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,378 @@
+module gunbc.fleet.fleet_overlay_census
+
+import std.types { Bool, Int, List, NonEmptyStr, Optional, Secret, String }
+import std.algebra { string_concat_join }
+import std.optional { Absent, Present }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.fleet.fleet_enrollment { FleetParticipation, enrollment_for_host }
+import extdeps.tailscale.devices {
+  Device, DeviceId, DeviceIdentity, DeviceKey, DevicesListResult, DevicesListed, DevicesListRefused,
+  NodeId, StableNodeId, list_devices,
+}
+import extdeps.tailscale.status {
+  StatusIdentity, StatusObservation, StatusObservationFailure, Observed, Refused,
+  MemberReportsNoNode, MemberDocumentUnreadable, MemberIdentityFieldMalformed,
+  observe_local_node_identity,
+}
+
+// THE LIVE CENSUS OF THE FLEET OVERLAY (plan gunbc.plans.fleet_naming_reach_access, P1: "A live
+// census. The provider device list and every member's status --json, joined on device and node
+// identity with the allocation and the enrollment roster.").
+//
+// WHAT THIS IS NOT. Not an enroll tool, not an ACL tool, not a writer: nothing reachable from here can
+// add a device, expire a key, set tags, or push a policy -- extdeps.tailscale.devices declares exactly
+// one `readonly` GET and extdeps.tailscale.status models only what a node says about itself. READ-ONLY
+// is a property of the declared surface, not a promise the reader has to trust.
+//
+// WHY THE JOIN IS ON IDENTITY AND CANNOT BE ON NAME. The plan's model section: "Device/node identity is
+// not a name in the fabric." A census pairing provider device to member by hostname would agree with
+// itself on every machine that had just been renamed, re-imaged, or cloned -- which are exactly the
+// machines worth finding. Every pairing below goes through DeviceKey, the one string the management API
+// and the node itself both print about the same machine (extdeps.tailscale.devices carries the upstream
+// evidence). Names are carried in rows and exist here for one purpose: to state when a name agreed and
+// an identity did not. That is a refusal, not a match.
+//
+// WHY THE ALLOCATION AND THE ENROLLMENT ARRIVE THROUGH A DECLARED BINDING. gunbc.hostname_allocation
+// and gunbc.fleet.fleet_enrollment are keyed by HostIdentity (a stable name for one machine, with the
+// hardware serial behind it in the fleet's own records); neither carries a node key, and the management
+// API does not carry a host identity. There is therefore NO key inside this module that joins an
+// overlay identity to a fleet slot, and inventing one by comparing a hostname to an allocated hostname
+// would be the forbidden join. The join is instead an explicit declared OverlayHostBinding -- a fact
+// someone established by means this module can name -- and where no binding exists the census reports
+// the allocation and enrollment as UNBOUND, with a cause. Absence here is a statement with a reason,
+// not a blank.
+
+// ── The declared bridge between overlay identity and fleet slot ───────────────────────────────
+
+// ONE ESTABLISHED PAIRING: an overlay identity and the fleet slot it belongs to, with the means by
+// which it was established recorded. Provenance is a required field and not an annotation: a binding
+// with no stated means of establishment is a guess with a type on it, and the census is the instrument
+// that would propagate that guess into every later phase.
+type OverlayHostBinding {
+  identity: DeviceIdentity
+  host: HostIdentity
+  established_by: NonEmptyStr
+}
+
+// P1 declares no bindings, because P1 is a census and not an enrollment: establishing a binding is an
+// action on the fleet, and this phase's scope forbids actions. It is `data` rather than a function so an
+// empty census is visibly empty rather than computed to emptiness by a filter that could be wrong.
+data overlay_host_bindings: List<OverlayHostBinding> = []
+
+// ── Identity comparisons, in exactly one place ────────────────────────────────────────────────
+
+// THE JOIN KEY COMPARISON. Spelling is not folded: the node key is a hex string both sides print from
+// the same bytes, so a case difference between provider and node IS a difference.
+fn device_key_eq(a: DeviceKey, b: DeviceKey) -> Bool {
+  (a as String) == (b as String)
+}
+
+fn device_id_eq(a: DeviceId, b: DeviceId) -> Bool {
+  (a as String) == (b as String)
+}
+
+// Both halves must agree for two identities to be the same device: agreeing only on the node key is the
+// same device; agreeing only on the device id is a device whose key rotated. Those states must not
+// answer the same way, so they are not collapsed into one comparison here.
+fn device_identity_eq(a: DeviceIdentity, b: DeviceIdentity) -> Bool {
+  device_key_eq(a: a.node_key, b: b.node_key) && device_id_eq(a: a.device_id, b: b.device_id)
+}
+
+fn devices_matching_node_key(devices: List<Device>, key: DeviceKey) -> List<Device> {
+  filter(devices, d => device_key_eq(a: d.node_key, b: key))
+}
+
+// The provider device whose NAME the member's observation matches while its identity does not. This is
+// the lookup that produces the name-match refusal, and it must never produce a row -- which is why it
+// hands back the lookalike for the caller to refuse with, and has no path to a CensusRow.
+fn name_matching_device(devices: List<Device>, observed: StatusIdentity) -> Device? {
+  filter(
+    devices,
+    d => (observed.host_name as String) == (d.name as String)
+      || (observed.host_name as String) == (d.hostname as String),
+  ).first()
+}
+
+// ── The row, and the ways a row refuses ───────────────────────────────────────────────────────
+
+// WHERE A ROW'S NON-OVERLAY FACTS CAME FROM. Absence of a fleet fact is a finding the operator needs to
+// see, worded differently from "this machine is not in the overlay".
+type HostFacts =
+  HostFactsBound {
+    host: HostIdentity
+    established_by: NonEmptyStr
+    canonical_hostname: DnsLabel?
+    enrolled_for: List<FleetParticipation>
+  }
+  | HostFactsUnbound { cause: NonEmptyStr }
+
+// ONE MEMBER OF THE OVERLAY, as the census reports it. The identity is first because it is what the row
+// is about; the names come after, typed as names, because they are what a human reads and never what a
+// pairing is made of.
+type OverlayCensusRow {
+// The pair both sides agreed on: producing this is the census's whole job, so it is a field of the row
+// rather than something a caller re-derives.
+  identity: DeviceIdentity
+// What the management API calls the device (`name`, `hostname`) -- so a reader can find it in the
+// provider console. Not a key.
+  provider_device_name: NonEmptyStr
+  provider_hostname: NonEmptyStr
+// What the node called itself (Self.HostName). Carried only so the name-vs-identity disagreement is
+// reportable.
+  observed_host_name: NonEmptyStr
+// What the node reported as its own overlay addresses. Recorded, never joined on: addresses are
+// reassigned, which is exactly why "same address, different machine" is reachable.
+  observed_tailscale_ips: List<NonEmptyStr>
+// Whether the provider lists the device as authorized. Present-and-unauthorized is a fleet fact P3's
+// reachability verdict needs; conflating it with "absent" would hide it.
+  provider_authorized: Bool
+// The provider's tags, carried toward P4's ACL target. Reading them is a read; this module has no way
+// to write them.
+  provider_tags: List<NonEmptyStr>
+// The fleet-slot-side facts, and how they were obtained.
+  host_facts: HostFacts
+}
+
+// THE WAYS A ROW REFUSES: the census's failure vocabulary. Each arm is a different question with a
+// different next action, and collapsing any two is how a credential outage becomes "no devices", or a
+// cloned machine becomes a duplicate name.
+type OverlayCensusRefusal =
+// NO LOCAL NODE IDENTITY (the plan's first named refusal). The member gave no usable self, so there is
+// nothing to pair. Carries the observer's own reason.
+  NoLocalNodeIdentity { member: NonEmptyStr, cause: NonEmptyStr }
+// NO MATCHING DEVICE. The member reported a well-formed identity and the provider list holds no device
+// with that node key: the node believes it is in the tailnet and the tailnet does not list it. A
+// name-joining census can never produce this arm, which is the reason the join is not on a name.
+  | NoMatchingDevice {
+    member: NonEmptyStr
+    observed_node_key: DeviceKey
+    observed_stable_node_id: StableNodeId
+    observed_node_id: NodeId
+  }
+// SEVERAL MATCHING DEVICES. Two provider devices carry the same node key: the identity that was
+// supposed to be unique is not, and choosing one -- newest, best-named, first in the list -- would be
+// the census inventing a fact. So it refuses and lists every device id involved.
+  | SeveralMatchingDevices { member: NonEmptyStr, node_key: DeviceKey, device_ids: List<DeviceId> }
+// NAME MATCH WITH A DIFFERENT IDENTITY. The member's name agrees with a provider device's name and the
+// identities do not. This is the fingerprint of a re-imaged or rebuilt machine still answering to the
+// old name, or of two machines given one name -- and it is precisely the case a name-joining census
+// reports as a clean match. Both identities are named so the reader sees what disagrees.
+  | NameMatchWithDifferentIdentity {
+    member: NonEmptyStr
+    agreed_name: NonEmptyStr
+    observed_node_key: DeviceKey
+    candidate: DeviceIdentity
+  }
+// OBSERVATIONS NAMING DIFFERENT NODES. More than one status observation was taken for what is presented
+// as one member, and they report different nodes. The census holds two accounts of one machine with no
+// basis to pick, so it refuses rather than averaging.
+  | ObservationsNameDifferentNodes { member: NonEmptyStr, observed_node_keys: List<DeviceKey> }
+// THE PROVIDER LIST ITSELF IS UNAVAILABLE -- kept distinct from an EMPTY list, because an empty list is
+// a fact about the fleet and a refusal is a fact about the credential. This census is exactly the
+// instrument that must not report the second as the first.
+  | ProviderListUnavailable { cause: NonEmptyStr }
+// THE OBSERVATION FAILED for a reason that is not "no identity": no document, or a field present and
+// not an identity. The observer's reason is carried verbatim.
+  | StatusObservationUnavailable { member: NonEmptyStr, cause: NonEmptyStr }
+
+type OverlayCensusEntry =
+  CensusRow { row: OverlayCensusRow }
+  | CensusRefused { refusal: OverlayCensusRefusal }
+
+// The census as reported: what paired, what refused, no silent third bucket. A census whose refusals are
+// dropped is a census that reports success on a fleet it did not see.
+type OverlayCensus {
+  rows: List<OverlayCensusRow>
+  refusals: List<OverlayCensusRefusal>
+}
+
+// The observations taken of one member. A record, not a pair: the member label travels with its
+// observations so a refusal can name whose observations it is refusing.
+type MemberObservations {
+  member: NonEmptyStr
+  observations: List<StatusObservation>
+}
+
+// ── The join ──────────────────────────────────────────────────────────────────────────────────
+
+// The fleet-slot-side facts for one identity, through the declared bindings. A missing binding is not a
+// blank: it says WHICH identity had no declared binding, in a sentence.
+fn host_facts_for(identity: DeviceIdentity, bindings: List<OverlayHostBinding>) -> HostFacts {
+  let matches = filter(bindings, b => device_identity_eq(a: b.identity, b: identity))
+  match matches.first() {
+    Absent => HostFactsUnbound {
+      cause: string_concat_join(fields: ["no declared overlay-to-host binding names device ", identity.device_id as String, " / node key ", identity.node_key as String, "; P1 establishes no bindings, and the census will not pair an overlay identity to a fleet slot by name"], separator: "") as NonEmptyStr,
+    }
+    Present { value: binding } => HostFactsBound {
+      host: binding.host,
+      established_by: binding.established_by,
+      canonical_hostname: canonical_hostname_for_fleet_slot(fleet_slot: binding.host),
+      enrolled_for: (match enrollment_for_host(host: binding.host) {
+        Absent => []
+        Present { value: intent } => intent.participation
+      }),
+    }
+  }
+}
+
+// The distinct node keys the observations named. A refused observation contributes nothing: it is not a
+// second account of the node, it is a missing account, and its own arm reports it.
+fn observed_node_keys(observations: List<StatusObservation>) -> List<DeviceKey> {
+  fold(
+    observations,
+    init: [],
+    f: (acc, observation) => match observation {
+      Observed { identity: i } => {
+        if any(acc, existing => device_key_eq(a: existing, b: i.node_key)) {
+          acc
+        } else {
+          append(acc, [i.node_key])
+        }
+      }
+      Refused { failure: _ } => acc
+    },
+  )
+}
+
+// An observation failure becomes the census's failure, keeping the observer's reason and separating the
+// one arm the census reports under its own plan-named heading.
+fn refusal_of(member: NonEmptyStr, failure: StatusObservationFailure) -> OverlayCensusRefusal {
+  match failure {
+    MemberReportsNoNode { cause: c } => NoLocalNodeIdentity { member: member, cause: c }
+    MemberDocumentUnreadable { cause: c } => StatusObservationUnavailable { member: member, cause: c }
+    MemberIdentityFieldMalformed { field: field, cause: c } => StatusObservationUnavailable {
+      member: member,
+      cause: string_concat_join(fields: [field as String, ": ", c], separator: "") as NonEmptyStr,
+    }
+  }
+}
+
+// ONE MEMBER, from the observations taken of it and the provider list. The order of the checks IS the
+// diagnosis order: with no observation there is nothing to compare; with observations that disagree
+// there is no single identity to compare; then the provider lookup; then the two ways the lookup can
+// come back wrong (nothing, or too much); the name check last, because it means something only once the
+// identity comparison has already been made.
+fn census_member(
+  member: NonEmptyStr,
+  observations: List<StatusObservation>,
+  devices: List<Device>,
+  bindings: List<OverlayHostBinding>,
+) -> OverlayCensusEntry {
+  let keys = observed_node_keys(observations: observations)
+  if keys.count() > 1 {
+    CensusRefused {
+      refusal: ObservationsNameDifferentNodes { member: member, observed_node_keys: keys },
+    }
+  } else {
+    match observations.first() {
+      Absent => CensusRefused {
+        refusal: NoLocalNodeIdentity {
+          member: member,
+          cause: "no status observation was taken of this member at all: an unobserved member is not an absent member" as NonEmptyStr,
+        },
+      }
+      Present { value: observation } => match observation {
+        Refused { failure: f } => CensusRefused { refusal: refusal_of(member: member, failure: f) }
+        Observed { identity: observed } => {
+          let candidates = devices_matching_node_key(devices: devices, key: observed.node_key)
+          if candidates.count() > 1 {
+            CensusRefused {
+              refusal: SeveralMatchingDevices {
+                member: member,
+                node_key: observed.node_key,
+                device_ids: map(candidates, c => c.id),
+              },
+            }
+          } else {
+            match candidates.first() {
+              Absent => match name_matching_device(devices: devices, observed: observed) {
+                Present { value: lookalike } => CensusRefused {
+                  refusal: NameMatchWithDifferentIdentity {
+                    member: member,
+                    agreed_name: observed.host_name,
+                    observed_node_key: observed.node_key,
+                    candidate: DeviceIdentity { device_id: lookalike.id, node_key: lookalike.node_key },
+                  },
+                }
+                Absent => CensusRefused {
+                  refusal: NoMatchingDevice {
+                    member: member,
+                    observed_node_key: observed.node_key,
+                    observed_stable_node_id: observed.stable_node_id,
+                    observed_node_id: observed.node_id,
+                  },
+                }
+              }
+              Present { value: device } => CensusRow {
+                row: OverlayCensusRow {
+                  identity: DeviceIdentity { device_id: device.id, node_key: device.node_key },
+                  provider_device_name: device.name,
+                  provider_hostname: device.hostname,
+                  observed_host_name: observed.host_name,
+                  observed_tailscale_ips: observed.tailscale_ips,
+                  provider_authorized: device.authorized,
+                  provider_tags: device.tags,
+                  host_facts: host_facts_for(
+                    identity: DeviceIdentity { device_id: device.id, node_key: device.node_key },
+                    bindings: bindings,
+                  ),
+                },
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// THE CENSUS OVER A READ OF THE PROVIDER AND ONE OBSERVATION SET PER MEMBER. The provider arm is
+// checked first, because with no list every member would otherwise refuse as "no matching device" -- an
+// outage reported as a fleet of unenrolled machines, the single most damaging thing this instrument
+// could get wrong.
+fn census_fleet_overlay(
+  provider: DevicesListResult,
+  members: List<MemberObservations>,
+  bindings: List<OverlayHostBinding>,
+) -> OverlayCensus {
+  match provider {
+    DevicesListRefused { cause: c } => OverlayCensus {
+      rows: [],
+      refusals: [ProviderListUnavailable { cause: c }],
+    }
+    DevicesListed { devices: devices } => {
+      let entries = map(
+        members,
+        m => census_member(member: m.member, observations: m.observations, devices: devices, bindings: bindings),
+      )
+      OverlayCensus {
+        rows: flat_map(entries, e => match e {
+          CensusRow { row: r } => [r]
+          CensusRefused { refusal: _ } => []
+        }),
+        refusals: flat_map(entries, e => match e {
+          CensusRow { row: _ } => []
+          CensusRefused { refusal: r } => [r]
+        }),
+      }
+    }
+  }
+}
+
+// THE LIVE READ OF THE PROVIDER LIST. The credential is whatever gunbc.auth's selection produced
+// (gunbc.auth.authorization_pattern_selection.select_authorization_pattern) -- this module never reads a
+// token from a variable it can see and never asks a human to paste one: an operator-supplied token is a
+// pattern the existing selector knows about, chosen by the census that already exists, not by a prompt
+// here. With no admissible pattern the caller passes Absent and the census takes its
+// ProviderListUnavailable arm, which is the arm the live run on a host with no provisioned devices:read
+// credential takes today.
+fn provider_device_list(api_token: Secret?) -> DevicesListResult {
+  match api_token {
+    Absent => DevicesListRefused {
+      cause: "no admissible credential pattern for the devices:read surface: gunbc.auth selected no pattern, so no provider read was attempted and no device list is claimed" as NonEmptyStr,
+    }
+    Present { value: token } => list_devices(api_token: token, tailnet: "-" as NonEmptyStr)
+  }
+}

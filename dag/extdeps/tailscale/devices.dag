@@ -1,0 +1,383 @@
+module extdeps.tailscale.devices
+
+import std.types { Bool, Int, List, NonEmptyStr, Optional, Secret }
+import std.integer { int_to_decimal_string }
+import std.algebra { trim }
+import std.optional { Absent, Present }
+import std.resources { Network }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import extdeps.external_authority {
+  ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
+}
+import extdeps.uri { Uri, Https }
+import extdeps.ietf.http_semantics { GET }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
+
+// THE PROVIDER DEVICE LIST, MODELLED FROM THE UPSTREAM RESPONSE SHAPE.
+//
+// WHY A HAND-WRITTEN MODEL IS THE HONEST FORM HERE. DESIGN 13 allows a model where no canonical type
+// exists, and this is that case: the Tailscale management API publishes no machine-readable schema a
+// generator could consume -- https://tailscale.com/api serves a documentation page (HTML, verified by
+// fetching it and finding no spec endpoint), and the API is documented at
+// https://tailscale.com/kb/1035/api. So every field name below is taken from upstream source and
+// cited at the field, and the whole shape is cross-checked against the captured wire body the vendor's
+// own client library decodes in its tests: tailscale-client-go's tailscale/testdata/devices.json, a
+// real `GET /api/v2/tailnet/{tailnet}/devices` response
+// (https://github.com/tailscale/tailscale-client-go/blob/main/tailscale/testdata/devices.json).
+// Where this model and that fixture agree, the field is real. Where a field is Optional, that is the
+// model naming a fact it is not certain of rather than a fact it believes untrue (DESIGN 11.5).
+//
+// READ-ONLY, BY CONSTRUCTION. This module declares the response types, the identity types, and ONE
+// operation. It declares no POST, no PATCH, no DELETE, no key expiry, no tag mutation, no ACL write,
+// and no device creation -- the plan's out-of-scope list (fleet_naming_reach_access section 8) is
+// enforced by there being nothing that could do those, not by a runtime check that could be
+// forgotten. The one operation is `readonly`, so the effect a reviewer sees in the review sheet is an
+// observation.
+//
+// WHY IDENTITY IS DECLARED HERE AND NOT IN gunbc.fleet. The plan's model section: "Device/node
+// identity is not a name in the fabric." A name -- hostname, Tailscale machine name, DNS name -- is
+// operator-editable on the provider UI and can be held by two devices briefly while one is rebuilt.
+// The device id and the node key are what the provider and the node itself agree on. Identity
+// therefore lives with the provider it comes from, in the external-dependency module, and gunbc.fleet
+// imports it: a fabric-side copy would be a second source of truth for the one thing the census joins
+// on.
+
+// ── The identities, each its own brand ────────────────────────────────────────────────────────
+
+// THE DEVICE ID: the management API's handle for a device. It appears in the list response as `id`
+// and as the {id} segment of the device sub-resource paths the vendor client builds
+// (/api/v2/device/{id}, .../routes, .../tags, .../key). Upstream form is the literal "dev" plus 16
+// hex characters, e.g. "dev5B71A6FC02420C15". `tailscale status --json` does NOT report it, which is
+// exactly why it is not the member-side join key; it keys the provider side.
+type DeviceId = NonEmptyStr where brand("DeviceId")
+
+// THE NODE KEY: the device's WireGuard public key in node-key form. The device list carries it as
+// `nodeKey`; a node reports the SAME string about itself -- `tailscale status --json` keys each Peer
+// by it and prints it as Self's key (gunbc.fleet.fleet_probe_identity_observe reads exactly that
+// value on srv2, where it observes
+// "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927"). THIS is the pairable
+// identity between provider and member, and it is the census's join key. Form: "nodekey:" then 64
+// hex characters.
+type DeviceKey = NonEmptyStr where brand("DeviceKey")
+
+// THE LEGACY MACHINE KEY, upstream `machineKey` ("machinekey:" + 64 hex). The vendor's own struct
+// documents it: "LegacyMachineKey contains the device machine key. Deprecated, use NodeKey instead."
+// Optional, so a response carrying it is not silently dropped -- and never joined on: a field upstream
+// calls deprecated is precisely where two sources can disagree.
+type LegacyMachineKey = NonEmptyStr where brand("LegacyMachineKey")
+
+// THE NODE ID: the numeric node identifier the control plane assigns, printed by `tailscale status
+// --json` as Self.NodeID (ipnstate.PeerStatus.NodeID, upstream comment: "NodeID is a unique (within a
+// Tailnet) persistent identifier, assigned by the control server. Currently this is a sequential
+// integer beginning at 1"; observed on srv2: 5112399786040428). The provider device list does NOT
+// carry it, so it pairs nothing by itself; it is recorded so a row can name the node the member
+// reported, and so "my observations name different nodes" is a refusal the census can state.
+type NodeId = NonEmptyStr where brand("NodeId")
+
+// THE STABLE NODE ID: `Self.ID` in `tailscale status --json` (ipnstate: "ID is an opaque public
+// identifier that apps such as Minecraft rely on", observed on srv2: "nm17WF5Rvg11CNTRL"). It
+// survives key rotation, which is exactly when the node key changes -- so a row carries it WITH the
+// key, not instead of it.
+type StableNodeId = NonEmptyStr where brand("StableNodeId")
+
+// WHAT A CENSUS ROW CARRIES AS "WHICH DEVICE IS THIS": the pair both sides can be checked against.
+// Both halves, not one, is what makes the name-matches-but-identity-does-not refusal statable: a row
+// that agrees on name and disagrees on either half of this pair is not a row, it is a refusal.
+type DeviceIdentity {
+  device_id: DeviceId
+  node_key: DeviceKey
+}
+
+fn device_identity_of(device: Device) -> DeviceIdentity {
+  DeviceIdentity { device_id: device.id, node_key: device.node_key }
+}
+
+// ── Identity parsing: typed refusal, never a widened value ────────────────────────────────────
+
+// WHY A REFUSAL AND NOT AN EMPTY STRING. Every parse answers this sum rather than trimming,
+// lowercasing or truncating: a value without the upstream form is not a slightly-off identity, it is a
+// different question. The reason is a sentence a reader can act on, so "field absent" stays
+// distinguishable from "field present and malformed" after the fact (the plan's own words for its
+// failure arms: the failure arm refuses, it does not widen).
+type IdentityParseFailure {
+  field: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+type IdentityParseResult =
+  IdentityParsed { value: String }
+  | IdentityRefused { failure: IdentityParseFailure }
+
+fn identity_refused(field: NonEmptyStr, reason: NonEmptyStr) -> IdentityParseResult {
+  IdentityRefused { failure: IdentityParseFailure { field: field, reason: reason } }
+}
+
+fn identity_parsed(value: String) -> IdentityParseResult {
+  IdentityParsed { value: value }
+}
+
+fn parse_refused(result: IdentityParseResult) -> Bool {
+  match result {
+    IdentityParsed { value: _ } => false
+    IdentityRefused { failure: _ } => true
+  }
+}
+
+// Every character of the value is in the alphabet, refused rather than skipped: "nodekey:abc def" is not
+// an almost-key, so one character outside the alphabet fails the whole value. Two details that are not
+// decoration:
+//   - the empty value is FALSE here rather than vacuously true -- a scan over no characters would succeed
+//     on a truth that only holds because nothing was checked, and a zero-length key must not pass;
+//   - the walk indexes CODE POINTS (char_at/substring/string_length are code-point operations in this
+//     language), which is what a hex/prefix check wants: a multibyte character is one position here and is
+//     simply not in the alphabet, so it refuses rather than being split into bytes that happen to be.
+fn all_in_alphabet(text: String, alphabet: String) -> Bool {
+  if string_length(s: text) == 0 {
+    false
+  } else {
+    all_in_alphabet_from(text: text, alphabet: alphabet, pos: 0)
+  }
+}
+
+fn all_in_alphabet_from(text: String, alphabet: String, pos: Int) -> Bool {
+  if pos >= string_length(s: text) {
+    true
+  } else if string_contains(s: alphabet, pattern: char_at(s: text, pos: pos)) {
+    all_in_alphabet_from(text: text, alphabet: alphabet, pos: pos + 1)
+  } else {
+    false
+  }
+}
+
+// Whitespace inside an opaque id, walked by code point. Recursive rather than a split-and-count: the
+// language's collection helpers are declared in std.algebra and this module deliberately does not pull
+// them in for one question, and because the walk indexes CODE POINTS a multibyte character is one
+// position here -- it is then simply not a space, which is the right answer for an id check.
+fn carries_whitespace(text: String, pos: Int) -> Bool {
+  if pos >= string_length(s: text) {
+    false
+  } else {
+    let c = char_at(s: text, pos: pos)
+    if c == " " || c == "\n" || c == "\t" || c == "\r" {
+      true
+    } else {
+      carries_whitespace(text: text, pos: pos + 1)
+    }
+  }
+}
+
+fn prefixed_hex(text: String, prefix: String, body_len: Int, field: NonEmptyStr) -> IdentityParseResult {
+  if !starts_with(s: text, prefix: prefix) {
+    identity_refused(
+      field: field,
+      reason: string_concat_join(fields: ["upstream form is \"", prefix, "<", int_to_decimal_string(value: body_len), " hex>\" and the value does not begin with \"", prefix, "\""], separator: "") as NonEmptyStr,
+    )
+  } else {
+    let body = substring(s: text, start: string_length(s: prefix), end: string_length(s: text))
+    if string_length(s: body) != body_len {
+      identity_refused(
+        field: field,
+        reason: string_concat_join(fields: ["\"", prefix, "\" must be followed by exactly ", int_to_decimal_string(value: body_len), " characters; found ", int_to_decimal_string(value: string_length(s: body))], separator: "") as NonEmptyStr,
+      )
+    } else if !all_in_alphabet(text: body, alphabet: "0123456789abcdefABCDEF") {
+      identity_refused(
+        field: field,
+        reason: string_concat_join(fields: ["the body after \"", prefix, "\" must be hex digits only"], separator: "") as NonEmptyStr,
+      )
+    } else {
+      identity_parsed(value: text)
+    }
+  }
+}
+
+// The device id: "dev" + 16 hex. Case is NOT folded -- upstream carries "dev5B71A6FC02420C15" and the
+// vendor client round-trips it verbatim, so spelling is part of the identity.
+fn parse_device_id(text: String) -> IdentityParseResult {
+  prefixed_hex(text: text, prefix: "dev", body_len: 16, field: "DeviceId" as NonEmptyStr)
+}
+
+fn parse_device_key(text: String) -> IdentityParseResult {
+  prefixed_hex(text: text, prefix: "nodekey:", body_len: 64, field: "DeviceKey" as NonEmptyStr)
+}
+
+fn parse_legacy_machine_key(text: String) -> IdentityParseResult {
+  prefixed_hex(text: text, prefix: "machinekey:", body_len: 64, field: "LegacyMachineKey" as NonEmptyStr)
+}
+
+// The node id is digits only -- ipnstate says it is a decimal integer, so a value with a sign, a
+// space, or any non-digit is not one (an integer-coercion parse would swallow the first two).
+fn parse_node_id(text: String) -> IdentityParseResult {
+  if string_is_empty(s: text) {
+    identity_refused(
+      field: "NodeId" as NonEmptyStr,
+      reason: "an empty node id is a missing node id, not a node id" as NonEmptyStr,
+    )
+  } else if !all_in_alphabet(text: text, alphabet: "0123456789") {
+    identity_refused(
+      field: "NodeId" as NonEmptyStr,
+      reason: "ipnstate reports NodeID as a decimal integer (\"a sequential integer beginning at 1\"); any non-digit makes it something else" as NonEmptyStr,
+    )
+  } else {
+    identity_parsed(value: text)
+  }
+}
+
+// The stable node id is opaque upstream, so the only rules are non-empty and whitespace-free --
+// inventing a shape upstream does not promise would refuse real devices. ipnstate prints "<none>" for
+// an unassigned id; that is a rendering of an absence, not an identity.
+fn parse_stable_node_id(text: String) -> IdentityParseResult {
+  let trimmed = trim(s: text)
+  if string_length(s: trimmed) == 0 || trimmed == "<none>" {
+    identity_refused(
+      field: "StableNodeId" as NonEmptyStr,
+      reason: "ipnstate prints \"<none>\" for an unassigned id; an unassigned stable node id identifies nothing" as NonEmptyStr,
+    )
+  } else if carries_whitespace(text: trimmed, pos: 0) {
+
+    identity_refused(
+      field: "StableNodeId" as NonEmptyStr,
+      reason: "an opaque id carrying whitespace is a rendering, not an id" as NonEmptyStr,
+    )
+  } else {
+    identity_parsed(value: trimmed)
+  }
+}
+
+// ── One device from the list, and the envelope ────────────────────────────────────────────────
+
+// ONE DEVICE FROM `GET /api/v2/tailnet/{tailnet}/devices`. Names follow the vendor client's Device
+// struct and the decoded wire fixture cited at the module head, through the language's own wire-name
+// reading (extdeps.languages.json). The identity pair is REQUIRED -- a device the census cannot
+// identify is not a row, it is a refusal the census states. Everything the census does not read today
+// is Optional rather than absent, because P3/P4 want some of it (a reachability verdict needs
+// `blocksIncomingConnections`, an ACL target needs `tags`), and Optional says "exists upstream, not
+// certain here" where absence says "not true".
+type Device {
+  id: DeviceId from "id"
+  node_key: DeviceKey from "nodeKey"
+  name: NonEmptyStr from "name"
+  hostname: NonEmptyStr from "hostname"
+  addresses: List<NonEmptyStr> from "addresses"
+  user: NonEmptyStr from "user"
+  authorized: Bool from "authorized"
+  tags: List<NonEmptyStr> from "tags"
+  is_external: Bool from "isExternal"
+  blocks_incoming_connections: Bool from "blocksIncomingConnections"
+  os: NonEmptyStr from "os"
+  last_seen: String from "lastSeen"
+  created: String from "created"
+  expires: String from "expires"
+  key_expiry_disabled: Bool from "keyExpiryDisabled"
+  client_version: String from "clientVersion"
+  legacy_machine_key: LegacyMachineKey? from "machineKey"
+  update_available: String from "updateAvailable"
+}
+
+// The envelope: {"devices": [ ... ]}. The fixture's top-level member is `devices`, and the vendor
+// client decodes it into DeviceListDevicesResponse{ Devices []Device `json:"devices"` }.
+type DeviceListResponse {
+  devices: List<Device> from "devices"
+}
+
+// THE RESPONSE ERROR SHAPE. Tailscale's error body carries a `message` beside the HTTP status; the
+// status is what distinguishes "no credential for this surface" from "a credential that is not valid
+// for this tailnet", so it is carried by the status map rather than flattened into prose.
+type TailscaleDevicesApiError {
+  message: String from "message"
+}
+
+// ── THE SERVICE: one readonly operation, and nothing else ─────────────────────────────────────
+
+// THE API BASE, in one place so no caller spells the host.
+data tailscale_api_base: NonEmptyStr = "https://api.tailscale.com"
+
+// THE API AUTHORITY the auth gate is asked about, and the documentation anchor the model cites.
+data tailscale_devices_api_authority: NonEmptyStr = "api.tailscale.com"
+
+data devices_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/kb/1035/api"
+  }
+}
+
+// The subject is the SERVICE, not a payload type: tailscale.Devices is this module's bound
+// realization of the management API's device-collection resource (GET
+// /api/v2/tailnet/{tailnet}/devices, documented at the anchor above). TailscaleDevicesApiError is this
+// module's own error shape carried in the response map, not the upstream's.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.tailscale.devices",
+      decl_name: "tailscale.Devices",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: devices_external_authority_anchor,
+  further_citations: [
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale-client-go/blob/main/tailscale/client.go" }
+    },
+    ExternalAuthority {
+      uri: Uri { scheme: Https, locator: "github.com/tailscale/tailscale-client-go/blob/main/tailscale/testdata/devices.json" }
+    },
+  ]
+}
+
+// The tailnet whose devices are read. This path segment names WHICH PROVIDER ACCOUNT is read, not
+// which device -- it is not a device identity and is never a join key. It is typed and named here
+// rather than left as a bare literal at each call site so a census cannot quietly read an unscoped
+// tailnet.
+data tailscale_devices_path_tailnet: NonEmptyStr = "-"
+
+service tailscale.Devices {
+  config {
+    endpoint: "https://api.tailscale.com"
+    auth: Bearer
+    auth_input: api_token
+  }
+
+// THE ONE READ. `readonly`: it observes and never mutates the tailnet -- no key expiry, no tag
+// mutation, no ACL write, no device creation exists in this module for a caller to reach by
+// accident. The credential arrives as a Secret so the runtime redacts it in emitted bodies and
+// refusals; it never reaches argv, where the process table would show it.
+  operation ListDevices {
+    requires Network
+    input {
+      api_token: Secret
+      tailnet: NonEmptyStr
+    }
+    output {
+      devices: List<Device>
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/api/v2/tailnet/\{tailnet\}/devices",
+    }
+    response {
+      200 => DeviceListResponse
+      401 => TailscaleDevicesApiError
+      403 => TailscaleDevicesApiError
+      404 => TailscaleDevicesApiError
+      5xx => TailscaleDevicesApiError
+    }
+  }
+}
+
+// THE READ, with the credential carried as a Secret and the arms named for what the census can do
+// about each. A 401 is not the same question as an empty list: an empty list is a fleet fact, a 401 is
+// a credential fact, and collapsing them is how a credential outage comes to be reported as "no
+// devices".
+type DevicesListResult =
+  DevicesListed { devices: List<Device> }
+  | DevicesListRefused { cause: NonEmptyStr }
+
+fn list_devices(api_token: Secret, tailnet: NonEmptyStr) -> DevicesListResult {
+  match tailscale.Devices.ListDevices(api_token: api_token, tailnet: tailnet) {
+    RestAnswered { answer } => DevicesListed { devices: answer.devices }
+    RestRefused { refusal } => DevicesListRefused {
+      cause: string_concat_join(fields: ["the management API refused the device-list read for tailnet ", tailnet as String], separator: "") as NonEmptyStr,
+    }
+  }
+}
