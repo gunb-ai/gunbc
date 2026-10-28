@@ -147,7 +147,7 @@ import v1.compiler.infer_env { generic_actual_position_type, is_unsolved_type_va
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, node_is_kernel_mint, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -8153,6 +8153,56 @@ fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclaratio
   }
 }
 
+// THROWAWAY CENSUS INSTRUMENT, NEVER MERGE (warm-crane-219, the to_string typed census ruled by
+// stern-bat-401): every to_string call the seed types, located at its argument, with the argument's
+// type read by declaration identity (type_reference_declaration_reading; a kernel type also by mint
+// provenance), its optional layer, and its binder (lambda parameter, match binder, variable, expression).
+fn tostr_census_diags(route: String, target: String, value: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  let si = scope.type_env.source_indices
+  let binder = match value.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let nm = expr_var_name_at(texpr: value, source_indices: si)
+      if scope.in_flight_lambda_param_names |> any(n => n == nm) { "lambda-param" }
+      else if map_has(scope.match_bound_names, nm) { "match-binder" }
+      else { "var" }
+    _ => "expr"
+  }
+  let reading = match value.inferred {
+    Present { value: Resolved { node: _ } } =>
+      let t = expression_value_type(e: value)
+      let card = if t.return_cardinality == CardOptional { "opt" } else { "req" }
+      let r = match type_reference_declaration_reading(n: t, source_indices: si, env: scope.type_env) {
+        TypeReferenceNamesDeclaration { declaration: d } => concat("decl:", d.module_path as String, ".", d.decl_name as String)
+        TypeReferenceIsKernelType { name: k } => concat("kernel:", k, if node_is_kernel_mint(n: t) { ":mint" } else { ":named" })
+        TypeReferenceIsTypeVariable { id: v } => concat("tyvar:", v)
+        TypeReferenceUnidentified { authored: _, resolved: _ } =>
+          match type_reference_declaration_ref(n: t, source_indices: si, env: scope.type_env) {
+            Present { value: d } => concat("decl-env:", d.module_path as String, ".", d.decl_name as String)
+            Absent => "unidentified"
+          }
+      }
+      concat(r, " card=", card)
+    Present { value: TypeVariable { id: v } } => concat("value-tyvar:", v, " card=?")
+    _ => "unknown card=?"
+  }
+  [inference_error(message: concat("TOSTRCENSUS ", route, " ", target, " ", reading, " binder=", binder), span: span, module_name: scope.module_name)]
+}
+
+fn tostr_census_registry(call_target: CallTargetOutcome, typed_args: List<Node>, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  let target = match call_target {
+    BuiltinCallableResolved { primitive_name: _ } => "builtin"
+    DeclaredCallableResolved { sig: _, declared: _ } => "declared"
+    DeclaredCallableIdentityResolved { declared: _, borrowed_declaration: _ } => "declared-identity"
+    LocallyBoundCallee { name: _, binding: _ } => "local"
+    _ => "unresolved-target"
+  }
+  match typed_args |> first {
+    Present { value: a } => tostr_census_diags(route: "registry", target: target, value: arg_value(n: a), span: span, scope: scope)
+    Absent => [inference_error(message: concat("TOSTRCENSUS registry ", target, " no-argument"), span: span, module_name: scope.module_name)]
+  }
+}
+
+
 fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
@@ -10280,7 +10330,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope, if func_name == "to_string" { tostr_census_diags(route: "algebra", target: "-", value: method_receiver, span: span, scope: scope) } else { [] }))))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10456,7 +10506,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope)))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(result_declaration_diags, concat(tier2b.kernel_diags, builtin_text_argument_crossing_diags(func_name: func_name, typed_args: typed_args, scope: scope, if func_name == "to_string" { tostr_census_registry(call_target: call_target, typed_args: typed_args, span: span, scope: scope) } else { [] })))))
           }
         } else {
           let callable_local = match call_target_local_binding(outcome: call_target) {
@@ -10671,7 +10721,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope)))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope, if method_name == "to_string" { tostr_census_diags(route: "method", target: "-", value: recv_typed, span: span, scope: scope) } else { [] })))])
       }
       }
 
