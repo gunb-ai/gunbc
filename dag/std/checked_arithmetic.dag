@@ -3,6 +3,7 @@ import std.optional { Present, Absent }
 
 import std.nat { Nat }
 import std.types { String }
+import std.integer { parse_int }
 
 // THE FINITE-MACHINE INTEGER BOUNDARY, in one place.
 //
