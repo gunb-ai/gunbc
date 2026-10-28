@@ -1,99 +1,34 @@
-# Desired-set printing and automatic plate packing
+# Desired-set printing
 
-Requested after printer-01 completed E1/E2 on 4 October 2026: request parts and quantities
-once, then clear beds when notified. The [modeled entrypoint](print-workflow-integration.md)
-covers explicit-plate preparation/controller work; the desired-set scheduler and release
-contract below remain incomplete. This document grants no print start.
+**Goal:** request parts once, then clear beds when notified. **Method:** deterministic plate packing and durable slot reconciliation through the existing guarded start route. **Validation:** BATCH-1–6 below, ending in one authorized packed live plate and recovery without duplicate commands. Requested after E1/E2 completed on 2026-10-04; the [explicit-plate foundation](print-workflow-integration.md) exists, but this full scheduler/release contract remains incomplete and grants no start.
 
-## Assembly convergence source
+Cassette demand derives from [selected assembly requirements](cassette-assembly-requirements.md), never a second authored list; standalone goals stay explicit. `std.goal_assessment` turns unknown inventory/pending inspection into evidence work, not replacement. Accepted compatible inventory satisfies slots; rejected objects create explicit replacement demand. FINISH never proves physical acceptance.
 
-BATCH-1 derives cassette demand from the selected assembly's manufacturable requirements
-in the [assembly convergence plan](cassette-assembly-requirements.md), never a second list.
-Standalone requests remain explicit selected goals. Assess with `std.goal_assessment`;
-route unknown inventory or pending inspection to evidence/reconciliation work, not replacement prints.
-Actuation still requires durable reservations and guarded starts. BATCH-5 inspection
-receipts feed assembly assessment; FINISH never supplies physical acceptance.
+## Packing contract
 
-## Contract
+Input: versioned part multiset, compatible available printers, admitted process/material policy. Output: explainable plates, schedules, remaining quantities and durable execution/handling receipts. Reuse CAD/export identities/digests, `manufacturing_manifest`, fleet printer identities and #13149’s approval/start/claim/reconciliation route. `bed_partition` splits oversized parts; packing arranges those pieces under the same allowances.
 
-Input is a desired multiset of versioned part instances, compatible available printers,
-and an admitted process/material policy. Output is an explainable packed plate plan,
-per-printer schedule, remaining quantities and durable execution/handling receipts.
-Rerunning the same desired set reconciles existing work instead of printing duplicates.
+- Expand stable instance slots bound to geometry, material/process and orientation; reserve active/claimed/uncertain/completed-uninspected work. Partition only genuine printer/nozzle/material/process incompatibility; combine compatible projects/parts.
+- Deterministically pack conservative oriented envelopes using several orderings; report algorithm/quality and unused area, never global optimality. Allowed in-plane rotations do not admit changed structural print orientation. Include support/brim/gaps/margins/exclusions; use whole-plate layer printing unless toolhead sweeps are separately modeled.
+- Optimize bed-clear cycles first, then sliced duration across printers and assembly priority. Compare support mass, total material, duration, trapped-support access and handling risk; never sacrifice loaded-joint orientation/infill to area utilization. Prefer compatible useful multi-object plates; no speculative duplicate fillers.
+- Independently read complete sliced toolpath bounds/separation, machine/nozzle, temperatures/material mapping, scale/supports/time/material. Repack/split overflow; preserve instance attribution, not anonymous merged STL. Earlier envelope arrangements were unsliced opportunities, not admissions or reprint requests.
+- Prepare both queues; reschedule only unclaimed work. Approved/claimed/running plate membership and digest are immutable. Damaged P1/P2 are explicit replacements; other completed/active reservations remain.
 
-Reuse CAD/export part identities and digests, `manufacturing_manifest` physical attribution,
-fleet printer identities, and PR #13149's shared start/approval/claim/reconciliation route.
-No second publisher or printer inventory. `bed_partition` divides oversized designs into
-manufacturable pieces; packing places them on plates using the same bed/process allowances.
+## Execution and handling
 
-## Packing and scheduling
+A plate atomically reserves all its slots across both printers in shared persistent state before approval/start. Persist membership, geometry/process/3MF digests, placement, printer, approval, claim and observations. Caller output directories and new plan/attempt IDs cannot reset demand-slot identity, accepted inventory or unresolved reservations. Demand, plan revision, attempt and physical item are distinct.
 
-1. Expand quantities into stable required-instance slots, each bound to geometry revision,
-   material/process and intended orientation. Reserve slots already assigned to an active,
-   claimed, uncertain or completed-but-not-yet-inspected print. Accepted usable inventory
-   satisfies matching slots. Rejecting a failed part creates an explicit replacement need.
-2. Partition only by genuinely incompatible printer, nozzle, material and process constraints.
-   Combine different parts and requested projects when those constraints and handling allow it.
-3. Pack the remaining instance footprints deterministically. Evaluate allowed in-plane rotations;
-   changing the load-bearing print orientation requires separate admission. Include supports,
-   brim, object gaps, bed margins and printer exclusion zones. A whole-plate, layer-by-layer print
-   avoids introducing sequential-print toolhead swept-volume assumptions.
-4. Minimize bed-clear cycles first, then balance the two printers by sliced duration and assembly
-   priority. Nominal area utilization cannot justify fragile plates or incompatible processes.
-5. Start with a deterministic rectangle packer over conservative oriented envelopes, using several
-   orderings and scoring the resulting plans. Later contour nesting can improve density. Label
-   the algorithm and packing quality; do not claim a globally optimal solution from a heuristic.
-6. Slice candidates and independently read back complete deposited-toolpath bounds and separation,
-   machine/nozzle, temperatures, material mapping, scale, supports, duration and material usage.
-   If generated supports/brims exceed the reserved footprint, repack or split before admission.
-   Preserve object/instance attribution rather than flattening unrelated parts into an anonymous STL.
-7. Keep both queues prepared ahead. Reschedule only unclaimed work when a printer becomes free;
-   never mutate the membership or digest of an approved/claimed/running plate.
+Lifecycle: planned→prepared→awaiting bed-clear/approval→claimed→running-confirmed→completed-awaiting-removal/inspection→accepted. Upload/start uncertainty retains claims/reservations and requires reconciliation. Pause/failure/partial failure/rejection have named outcomes; no timeout republishes. Partial acceptance records intact/rejected objects explicitly, replacing only rejects.
 
-Example: a 141.72 × 90 mm beam group and rotated 112 × 50 mm arm group, separated by 10 mm,
-fit approximately 141.72 × 150 mm before outer brim. This unsliced candidate establishes
-neither support/adhesion admission nor a reprint request.
+Use fresh bed-clear ntfy approval as clear-and-continue for the next immutable plate. Completion notification presents that plate. A1 mini removal stays physical; FINISH, IDLE, timers, old confirmation or batch approval never establish future bed clearance.
 
-## Durable execution and physical handling
+| Task | Required evidence |
+| --- | --- |
+| BATCH-1: demand/inventory | Restart/replan cannot duplicate accepted/active/claimed/uncertain slots; incompatible revisions cannot satisfy demand. |
+| BATCH-2: packer/review | Every unreserved slot exactly once or refused; rotation, overlap, exclusions, process and support/brim controls. |
+| BATCH-3: realization/readback | Instance IDs/unit scale survive; toolpath envelope excess refuses/re-packs; sliced time/mass drive schedule. |
+| BATCH-4: controller | Concurrent reservation once; crashes before/after upload, claim, publish and completion; lost ACK reconciles exact filenames without replay. |
+| BATCH-5: handling | One fresh clear-and-continue per plate; finished differs from usable/removed; partial rejection replaces only rejected slots. |
+| BATCH-6: release | Shadow full remaining cassette plan versus manual baseline (plates/visits/duration), then authorized packed live plate and no-duplicate recovery. |
 
-The batch reconciler owns stable required-instance slots. Before approval/start, each plate
-attempt atomically reserves its slots across both printers under a shared persistent
-lock/transaction. Durably store membership, geometry/process/3MF digests, placement, printer,
-approval identity, start claim and observations. An output-directory change cannot reset identity.
-
-Separate batch demand, plan revision, plate attempt and physical print instance. Plan IDs may
-change when packing improves; demand-slot reservations and completed inventory must not reset.
-A new plate attempt cannot reclaim an unresolved old attempt's slots merely by using a new ID.
-
-Lifecycle: planned -> prepared -> awaiting bed-clear/approval -> claimed -> running-confirmed
--> completed-awaiting-removal/inspection -> accepted inventory. Upload/start uncertainty enters
-reconciliation-required, retaining the claim and slot reservations. Explicit pause, failure,
-partial failure and rejection have named outcomes; no automatic republish follows a timeout.
-Completion alone neither proves bed clearance nor proves all objects are usable. Partial failure
-can accept intact objects and replace only rejected instances, with an explicit operator record.
-
-Notify completion and present the next immutable plate through the existing fresh bed-clear
-ntfy approval: one clear-and-continue interaction. A1 minis require physical part removal;
-FINISH, IDLE, timers, old confirmations and batch approval cannot establish a clear bed.
-
-## Implementation tasks
-
-| Task | Deliverable | Acceptance |
-| --- | --- | --- |
-| BATCH-1 | Versioned desired-set and inventory reconciliation in DAG | Same request/restart/plan revision cannot duplicate accepted, active, claimed or uncertain slots; changed geometry/material cannot consume incompatible inventory. |
-| BATCH-2 | Deterministic multi-object plate packer and review projection | Every required unreserved instance placed exactly once or explicitly refused; rotations, overlap, exclusions, incompatible processes and brim/support boundaries tested; report unused area and algorithm limits. |
-| BATCH-3 | Multi-object CAD/slicer realization and readback | Preserve per-instance IDs and unit scale; fail/repack when actual toolpaths exceed a plate's admitted envelopes; sliced time/mass feed scheduling. |
-| BATCH-4 | Durable two-printer batch controller over the existing guarded start route | Concurrent schedulers reserve once; crash recovery tested before/after upload, claim, publish and completion; lost ACKs reconcile exact filenames without replay. |
-| BATCH-5 | Completion, partial acceptance and bed-clear continuation | One clear-and-continue interaction per plate; distinguish finished from usable/removed; replace only rejected items; no start from stale bed-clear evidence. |
-| BATCH-6 | Shadow plan and one authorized packed live plate | Compare full remaining cassette plan with manual baseline, record plate count/handling visits/estimated duration, then exercise recovery without issuing duplicate physical commands. |
-
-Deliver BATCH-1/2 as pure planning first; BATCH-3 produces reviewable slices; BATCH-4/5 are the
-execution integration; BATCH-6 is the release gate. Do not label the feature implemented until
-all six are complete. No extra gauges or speculative duplicate parts should fill a plate.
-
-The subsequent socket-cleanup incident adds a process objective: compare structural
-orientation candidates using sliced support mass, total material, duration, trapped
-support accessibility and handling risk. Do not reduce infill or rotate loaded joints
-solely to maximize nominal bed occupancy. Prefer longer useful multi-object plates
-when compatible, as explicitly requested by the operator. Damaged P1/P2 become explicit
-replacement demands; retain all other completed/active instance reservations.
+Land pure BATCH-1/2, reviewable BATCH-3, execution BATCH-4/5, then BATCH-6. Completion requires all six.

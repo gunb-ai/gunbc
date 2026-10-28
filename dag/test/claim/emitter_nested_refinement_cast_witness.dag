@@ -1,5 +1,7 @@
 module test.claim.emitter_nested_refinement_cast_witness
 
+import gunbc.compile_diagnostic_census { CensusObserved, CensusNotRunnable, census_blocking_rows_of_class }
+
 
 // PERMANENT REGRESSION EVIDENCE FOR REPRESENTATION-IDENTICAL REFINEMENT AND BRAND CASTS
 // (gunbc#10266). `type NonEmptyStr = String where string_non_empty` and `type PathSegment = NonEmptyStr
@@ -30,13 +32,14 @@ module test.claim.emitter_nested_refinement_cast_witness
 // leaves every projection still fabricating a panic, which is exactly the state gunbc#10266
 // measured. single_refinement is the pre-existing positive control and is unchanged.
 //
-// NOT CLAIMED: that every unsupported cast is now a located compile-time refusal. The third arm of
-// emit_typed_cast_shared still fabricates a panic for a cast that no carrier, grounded crossing or
-// target cast rule answers. That is the fail-open recorded by gunbc.recurring_failure_mode
-// accepted_source_emits_uncompilable_target, and its compile-time refusal lands in the change stacked
-// on this one. What this file adds is the casts moved OUT of that arm: the alias of a refinement read
-// through its declared right-hand side (alias_of_refinement_cast_emits_the_operand), and the empty
-// list literal and the generic call typed by their cast (empty_list_cast_emits_the_operand,
+// THE THIRD ARM IS NO LONGER A FABRICATION. A cast that no carrier, grounded crossing or target cast
+// rule answers used to emit panic!("unsupported cast from ..") -- the fail-open recorded by
+// gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target. It is now refused at
+// compile time, located at the cast, by v1.compiler.emit cast_realization_diagnostics, which
+// v1.compiler.compile emit_artifact runs before any artifact is written;
+// unrelated_carriers_refuse_the_cast_at_compile_time is its red. The casts moved OUT of that arm are
+// the alias of a refinement (alias_of_refinement_cast_emits_the_operand), and the empty list literal
+// and the generic call typed by their cast (empty_list_cast_emits_the_operand,
 // generic_call_cast_emits_the_operand). std.nat Nat as Int is test.claim.emitter_nat_int_cast_witness's.
 
 fn w_single_refinement_emits_no_unsupported_cast() -> Bool {
@@ -89,13 +92,17 @@ fn w_brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
   )
 }
 
-fn w_unrelated_carriers_still_refuse_the_cast() -> Bool {
-  compile_dag_rust_emit_check(
-    "module emitnested_unrelated\n\nimport std.types \{ Int, String }\n\nfn coerce(raw: String) -> Int \{\n  raw as Int\n}\n",
-    "src/emitnested_unrelated.rs",
-    ["unsupported cast"],
-    []
-  )
+// THE RED IS READ AS A TYPED REFUSAL WITH ITS CAUSE, never as text in an artifact: the compile must
+// stop with a blocking CastRealizationRefused whose fact names the uncastable pair. A census that
+// could not run is a failure with its own cause, not the expected red.
+data unrelated_carriers_cast_source: String = "module emitnested_unrelated\n\nimport std.types \{ Int, String }\n\nfn coerce(raw: String) -> Int \{\n  raw as Int\n}\n"
+
+fn w_unrelated_carriers_refuse_the_cast_at_compile_time() -> Bool {
+  match compile_dag_diagnostic_census(unrelated_carriers_cast_source) {
+    CensusObserved { rows: rows } =>
+      census_blocking_rows_of_class(rows: rows, wanted: "CastRealizationRefused") |> any(r => contains(r.subject_name, "no declared conversion route from String to i64"))
+    CensusNotRunnable { cause: _ } => false
+  }
 }
 
 // A GENERIC CALL WHOSE RETURN IS UNSOLVED IS INSTANTIATED BY ITS CAST, the call-shaped sibling of
@@ -162,8 +169,8 @@ test fn brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
   w_brand_refinement_casts_emit_no_unsupported_cast()
 }
 
-test fn unrelated_carriers_still_refuse_the_cast() -> Bool {
-  w_unrelated_carriers_still_refuse_the_cast()
+test fn unrelated_carriers_refuse_the_cast_at_compile_time() -> Bool {
+  w_unrelated_carriers_refuse_the_cast_at_compile_time()
 }
 
 test fn alias_of_refinement_cast_emits_the_operand() -> Bool {
