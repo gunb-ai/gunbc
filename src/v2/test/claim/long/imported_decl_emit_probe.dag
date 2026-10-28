@@ -4,7 +4,7 @@
 module v2.test.claim.long.imported_decl_emit_probe
 
 import extdeps.communication.medium { Lossless, Medium }
-import std.algebra { Empty, FreeMonoid, fold_list, length, list_find_first, list_map, string_contains }
+import std.algebra { Empty, FreeMonoid, fold_list, length, list_find_first, list_map, map_lookup, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.compiler.name_resolve {
@@ -37,7 +37,6 @@ import v2.compiler.source_authority {
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.collection { map_lookup }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic {
   Accepted,
@@ -86,6 +85,10 @@ import v2.std.node {
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.symbol_index {
   DeclaredPayloadKind,
+  MentionDeclaringContested,
+  MentionDeclaringIdentity,
+  MentionDeclaringUnavailable,
+  MentionDeclaringUnique,
   RecordTypePayload,
   SymbolIndex,
   VariantArmPayload,
@@ -275,14 +278,26 @@ fn probe_painted_facts(tree: InferredTree) -> String {
   }
 }
 
+fn probe_declaring_text(d: MentionDeclaringIdentity) -> String {
+  match d {
+    MentionDeclaringUnique { declaring: qn } => probe_qn_text(qn: qn)
+    MentionDeclaringUnavailable => "unavailable"
+    MentionDeclaringContested { claimants: _ } => "contested"
+  }
+}
+
 fn probe_red_declaring(index: SymbolIndex) -> String {
-  let declaring = symbol_index_declaring_path_of(index: index, target: probe_qn(dotted: "v2.test.probe_a.Red"))
-  if length(xs: declaring) == 0 {
-    "empty-declaring"
-  } else if symbol_index_is_module_root_at(index: index, qualified_path: declaring) {
-    "declaring-is-module-root"
-  } else {
-    concat("declaring:", qualified_name_to_dotted_string(qn: declaring))
+  match symbol_index_declaring_path_of(index: index, target: probe_qn(dotted: "v2.test.probe_a.Red")) {
+    MentionDeclaringUnavailable => "unavailable-declaring"
+    MentionDeclaringContested { claimants: _ } => "contested-declaring"
+    MentionDeclaringUnique { declaring: declaring } =>
+      if length(xs: declaring) == 0 {
+        "empty-declaring"
+      } else if symbol_index_is_module_root_at(index: index, qualified_path: declaring) {
+        "declaring-is-module-root"
+      } else {
+        concat("declaring:", qualified_name_to_dotted_string(qn: declaring))
+      }
   }
 }
 
@@ -473,16 +488,8 @@ fn probe_bundle() -> Optional<ProbeBundle> {
                 correction: Unavailable { reason: ExternalContractUnknown }
               })
             }
-            Present { value: tree } =>
-              closure_resolve_member(
-                lm: lm,
-                tree: tree,
-                member_module: probe_qn(dotted: "v2.test.probe_b"),
-                symbol_index: emit_idx,
-                index: idx,
-                active_roots: source_root_set_from_ingest(ingest: ingest),
-                type_declaration_modifiers: shared.type_declaration_modifiers
-              )
+            Present { value: _ } =>
+              closure_resolve_member(context: closure.context, member_module: probe_qn(dotted: "v2.test.probe_b"))
           }
           let emit_located = emit_closure_from_ingest_located(
             ingest: ingest,
@@ -542,8 +549,8 @@ fn probe_bundle() -> Optional<ProbeBundle> {
               native_red: probe_lookup_tag(index: native_idx, dotted: "v2.test.probe_a.Red"),
               emit_red_declaring: probe_red_declaring(index: emit_idx),
               native_red_declaring: probe_red_declaring(index: native_idx),
-              emit_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: emit_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
-              native_red_declaring_raw: probe_qn_text(qn: symbol_index_declaring_path_of(index: native_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
+              emit_red_declaring_raw: probe_declaring_text(d: symbol_index_declaring_path_of(index: emit_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
+              native_red_declaring_raw: probe_declaring_text(d: symbol_index_declaring_path_of(index: native_idx, target: probe_qn(dotted: "v2.test.probe_a.Red"))),
               emit_b_reason: probe_reason_text(o: emit_door_reason),
               emit_b_text: emit_b_text,
               native_b_reason: probe_reason_text(o: native_reason),
@@ -641,14 +648,14 @@ test fn imported_record_or_alias_reference_rhs_still_refuses_holds() -> Bool {
 test fn native_red_declaring_is_color_holds() -> Bool {
   match probe_bundle() {
     Absent => false
-    Present { value: b } => b.native_red_declaring == "declaring:v2.test.probe_a.Color"
+    Present { value: b } => b.native_red_declaring == "declaring:v2.test.probe_a.Color.Red"
   }
 }
 
 test fn emit_red_declaring_is_color_holds() -> Bool {
   match probe_bundle() {
     Absent => false
-    Present { value: b } => b.emit_red_declaring == "declaring:v2.test.probe_a.Color"
+    Present { value: b } => b.emit_red_declaring == "declaring:v2.test.probe_a.Color.Red"
   }
 }
 

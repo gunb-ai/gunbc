@@ -1,0 +1,61 @@
+module v2.test.claim.translate.resolved_callee_reader
+
+import v2.compiler.self_host.closure_emission {
+  closure_emission_json,
+  emit_closure_from_ingest_located
+}
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.test.claim.infer_not_derived_site { nds_read }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Atom, Node, TypeNode, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, List, String }
+import v2.std.node { Symbol }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE REAL-RESOLVED-MODULE CLAIM v2.std.compilers.target_model target_transform_resolved_callee OWES.
+// Each module is source text taken through the door's own route (v2.compiler.self_host.closure_emission
+// emit_closure_from_ingest_located, what `emit --entry` runs), so the callee is the node resolution
+// marked, not a hand-built spine, and the target is the rust row. A call to a corpus declaration must
+// read its identity from the marked declaration reference and take the target's declaration-reference
+// spelling (crate-rooted module path), never the bare leaf: the expected text names the module, so an
+// emitter that kept the leaf would not match. Inhabitance of this shape by the resolver is
+// v2.test.claim.namespace_xl0.cross_module_reference_resolution.
+
+fn rcr_locus() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^rcr_entry_locus } }, children: [])
+}
+
+fn rcr_json(source: String, id: Symbol, file: String, entry: String) -> String {
+  rcr_json_with(ingest: [nds_read(source: source, id: id, file: file)], entry: entry)
+}
+
+fn rcr_json_with(ingest: List<DagSourceReadWitness>, entry: String) -> String {
+  match emit_closure_from_ingest_located(
+    ingest: ingest,
+    entry: qualified_name_from_dotted_string(dotted: entry),
+    entry_locus: rcr_locus(),
+    target: rust_target_model()
+  ).outcome {
+    Rejected { diagnostics: _ } => "emit_refused"
+    Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
+  }
+}
+
+data rcr_q1_source: String = "module v2.test.rcr_q1\n\nfn f0() -> Int { 7 }\n\nfn g0() -> Int { f0() }\n"
+
+test fn rcr_a_call_without_arguments_spells_the_crate_rooted_path() -> Bool {
+  rcr_json(source: rcr_q1_source, id: ^rcr_q1_read, file: "src/v2/test/fixture/rcr/q1.dag", entry: "v2.test.rcr_q1")
+    == "{\"entry\": \"v2.test.rcr_q1\", \"members\": [\"v2.test.rcr_q1\"], \"modules\": [{\"module\": \"v2.test.rcr_q1\", \"emitted\": \"fn f0() -> i32 { 7 }\\n\\nfn g0() -> i32 { crate::v2_test_rcr_q1::f0() }\\n\\n\"}]}"
+}
+
+data rcr_p1_source: String = "module v2.test.rcr_p1\n\nfn f(x: Int) -> Int { x }\n\nfn g(y: Int) -> Int { f(y) }\n"
+
+test fn rcr_a_call_with_a_parameter_argument_spells_the_crate_rooted_path() -> Bool {
+  rcr_json(source: rcr_p1_source, id: ^rcr_p1_read, file: "src/v2/test/fixture/rcr/p1.dag", entry: "v2.test.rcr_p1")
+    == "{\"entry\": \"v2.test.rcr_p1\", \"members\": [\"v2.test.rcr_p1\"], \"modules\": [{\"module\": \"v2.test.rcr_p1\", \"emitted\": \"fn f(x: i32) -> i32 { x }\\n\\nfn g(y: i32) -> i32 { crate::v2_test_rcr_p1::f(y) }\\n\\n\"}]}"
+}

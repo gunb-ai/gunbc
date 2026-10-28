@@ -1,6 +1,5 @@
 module v2.compiler.self_host.closure_emission
 
-import v2.std.member_declaration_kind { no_member_declaration_kinds }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, list_map, list_reverse, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceIdAllocator, occurrence_id_allocator_initial, scoped_occurrence_allocator }
@@ -15,8 +14,10 @@ import extdeps.languages.json.emit {
 }
 
 import v2.compiler.name_resolve {
+  closure_declarations_demand,
+  ResolutionContext,
   resolution_context_of_validated,
-  resolve_walk_in_context,
+  resolve_in_context,
   validate_module_roots
 }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -26,8 +27,7 @@ import v2.compiler.parse { PreparedGrammar, parse_module_prepared_seeded, prepar
 import v2.compiler.program_assembly { program_assembly_phase_tokenize }
 import v2.compiler.program_partition { emit_for_target_with_declarations }
 import v2.compiler.reference_closure { ReferenceOwnerless, ReferencesOwned, reference_closure_ownership }
-import v2.compiler.resolve { empty_module_outcome_index, ResolvedTree, resolved_tree_outcome, type_declaration_modifier_channel_of_trees }
-import v2.compiler.body_lowering_fold { TypeDeclarationModifierChannel }
+import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest,
@@ -252,62 +252,31 @@ fn closure_normalize_loop(
 // other member's full tree is needed to resolve this one. The modifier channel is the CLOSURE's
 // (every member NormalizedTree), not this tree alone: an imported unsealed type is covered as
 // not-sealed, and an imported sealed type still refuses.
-// THE INDEX INFER READS IS THE SAME VALUE RESOLVE ALREADY TOOK. closure_emission_of_members
-// fills symbol_index once (symbol_index_fill_module_roots over the members) and hands that
-// binding to resolve_walk_in_context and to resolved_tree_outcome as closure_declarations —
-// no second fill, no cache. empty_symbol_index() here left unique-variant aliases
-// (aca.ExitFailure → aca.ProcessExit.ExitFailure) without claimants, so infer fell back to
-// qualified_name_init of the alias spelling. Uncovered then refused as unread. Covering is
-// carrying this produced index, not widening Uncovered into not-sealed.
-fn closure_resolve_member(
-  lm: LanguageModel,
-  tree: NormalizedTree,
-  member_module: QualifiedName,
-  symbol_index: SymbolIndex,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  type_declaration_modifiers: TypeDeclarationModifierChannel
-) -> Outcome<ResolvedTree> {
-  bind_outcome(
-    o: validate_module_roots(roots: Cons { head: tree, tail: Empty }),
-    f: fn(validated) {
-      resolved_tree_outcome(w: resolve_walk_in_context(
-        context: outcome_accepted(value: resolution_context_of_validated(
-          lm: lm,
-          roots: validated,
-          symbol_index: symbol_index,
-          index: index,
-          active_roots: active_roots,
-          policy: default_name_resolution_policy()
-        )),
-        admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
-      ).walk, symbol_index: symbol_index, closure_declarations: symbol_index, module_outcomes: [], outcome_index: empty_module_outcome_index(), member_kinds: no_member_declaration_kinds(), type_declaration_modifiers: type_declaration_modifiers)
-    }
-  )
+// THE DECLARATIONS INFER READS ARE THE CLOSURE'S RESOLVED ONES, produced once. closure_emission_of_members
+// builds one ResolutionContext and demands name_resolve closure_declarations_demand on it a single time, so
+// the context every member resolves against already carries the closure-wide resolved declaration index, the
+// module outcomes and their index; a member's resolve_in_context reads that memoized index and never rebuilds
+// it. The authored symbol_index (filled from NORMALIZED roots) is the resolution index only and is never
+// handed to the ResolvedTree as its closure declarations: that substitution left an imported callee
+// declared in authored form, so infer typed no candidate for `bx()` and refused
+// arrow_body_does_not_inhabit_declared_return (resolve.dag resolved_tree_of: the authored/resolved fork).
+fn closure_resolve_member(context: ResolutionContext, member_module: QualifiedName) -> Outcome<ResolvedTree> {
+  resolve_in_context(
+    context: outcome_accepted(value: context),
+    admission: Admission { subject: ResolutionSubject { name: member_module }, imports: Empty }
+  ).resolved
 }
 
 // PHASE FOUR FOR ONE MEMBER. The member is resolved, every module its resolved references and import
 // rows point into is checked to be one the closure holds, and only then is it inferred and emitted.
 fn closure_member_emission(
-  lm: LanguageModel,
   member: ClosureMember,
+  context: ResolutionContext,
   roster: Map<String, Bool>,
-  symbol_index: SymbolIndex,
-  index: SourceRootIndex,
-  active_roots: FreeMonoid<SourceRootRef>,
-  target: TargetModel,
-  type_declaration_modifiers: TypeDeclarationModifierChannel
+  target: TargetModel
 ) -> ClosureMemberEmission {
   let emitted = bind_outcome(
-    o: closure_resolve_member(
-      lm: lm,
-      tree: member.tree,
-      member_module: member.module,
-      symbol_index: symbol_index,
-      index: index,
-      active_roots: active_roots,
-      type_declaration_modifiers: type_declaration_modifiers
-    ),
+    o: closure_resolve_member(context: context, member_module: member.module),
     f: fn(resolved) {
       match reference_closure_ownership(
         resolved: resolved.root,
@@ -360,23 +329,26 @@ fn closure_emission_of_members(
       source_root_index_insert(index: acc, module: m.module, root: m.source_root)
     })
     let owned = text_set_of(names: list_map(xs: roster, f: fn(m) { qualified_name_to_dotted_string(qn: m) }))
-    let type_declaration_modifiers = type_declaration_modifier_channel_of_trees(trees: list_map(xs: members, f: fn(m) { m.tree }))
-    outcome_accepted(value: ClosureEmission {
-      entry: entry,
-      members: roster,
-      modules: list_map(xs: members, f: fn(m) {
-        closure_member_emission(
+    bind_outcome(
+      o: validate_module_roots(roots: list_map(xs: members, f: fn(m) { m.tree })),
+      f: fn(validated) {
+        let context = closure_declarations_demand(shared: resolution_context_of_validated(
           lm: lm,
-          member: m,
-          roster: owned,
+          roots: validated,
           symbol_index: symbol_index,
           index: index,
           active_roots: active_roots,
-          target: target,
-          type_declaration_modifiers: type_declaration_modifiers
-        )
-      })
-    })
+          policy: default_name_resolution_policy()
+        )).context
+        outcome_accepted(value: ClosureEmission {
+          entry: entry,
+          members: roster,
+          modules: list_map(xs: members, f: fn(m) {
+            closure_member_emission(member: m, context: context, roster: owned, target: target)
+          })
+        })
+      }
+    )
   } else {
     outcome_rejected(d: closure_emission_diagnostic(reason: ^closure_emission_entry_not_acquired, at: entry_locus))
   }

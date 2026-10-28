@@ -5,7 +5,8 @@ import v2.test.claim.complexity_gate.table_fixture_add_subject_producer { table_
 import v2.extdeps.languages.rust { rust_target_model, rust_value_expression_projection }
 import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   target_value_expression_binding_ref,
-  target_value_expression_resolved_primitive_call,
+  target_value_expression_callable_apply,
+  PrimitiveRowCallee,
   target_value_expression_tokens_from_target,
   FixedToken,
   OwnershipAtFunctionReturn,
@@ -174,8 +175,9 @@ fn produced_decl_support_type_as_itself(type_node: Node) -> Outcome<Symbol> {
 // target_value_expression_tokens_from_target -- the fold the production route reads the rows through. A
 // reset to Unwired refuses target_primitive_realizations_unwired and this goes red.
 fn pdp_string_length_call() -> TargetValueExpression {
-  target_value_expression_resolved_primitive_call(
-    callee: ^string_length,
+  target_value_expression_callable_apply(
+    callee: ^string_length_contract,
+    kind: PrimitiveRowCallee,
     args: [target_value_expression_binding_ref(binding: ^rust_binding_param_x)]
   )
 }

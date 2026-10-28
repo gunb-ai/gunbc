@@ -1,0 +1,29 @@
+module gunbc.guarantee_stall.swift_declaration_reference_call_namespace_unrealized_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+// A STANDING DEFICIT, NOT A DROP: no Swift call through a declaration reference ever emitted, so no rung
+// was held and none fell. The Swift declaration-reference form spells `Gunbc.<module>.<name>` but the
+// closure emitter prints bare top-level `func` and no `enum Gunbc { enum v2 { ... } }` wrappers, so the
+// qualified spelling resolves to nothing. The form declares CalleeScopeUnrealized
+// (v2.std.compilers.target_model DeclarationCalleeScope) and the callee arm refuses typed with
+// target_declaration_reference_namespace_unrealized rather than print a call swiftc rejects. Executed:
+// test.claim.emit.swift_declaration_call_emit swift_declaration_call_refuses_typed_namespace_unrealized.
+// THE GROUNDING IS UNDECLARED, AND THAT IS THE TRUTHFUL ARM: the awaited authority -- a closure-emit
+// namespace layout emitting the enclosing enum wrappers (or the current module threaded to the callee
+// chain so a same-module call prints bare) -- is not declared anywhere: the Swift form still declares
+// CalleeScopeUnrealized and the callee arm still refuses typed, so the lane gunb-ai/gunbc#12239 did
+// not deliver this authority, and a lane is not a declaration. With no declaration there is no
+// DeclarationRef to carry, and none is invented.
+data swift_declaration_reference_call_namespace_unrealized_stall: GuaranteeStall = GuaranteeStall {
+  subject: "Swift declaration-reference calls: the namespace the qualified spelling names is not emitted by the closure-emit layout, so every such call refuses typed",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+  population: BoundedPopulation { members: [
+      "v2.extdeps.languages.swift::swift_declaration_reference_form"
+    ] },
+  next_rung_trigger: climbs_when(capability: "the Swift closure emitter emits the namespace the declaration-reference spelling names (or the callee chain knows the current module), so swift_declaration_reference_form can declare CalleeScopeRealized and a Swift declaration call prints and typechecks under the pinned toolchain. NOT satisfied by printing the qualified call without the wrappers.")
+}

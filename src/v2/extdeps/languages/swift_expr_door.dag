@@ -10,6 +10,9 @@ import v2.extdeps.languages.swift { swift_operator_realizations_catalog_node, sw
 import v2.extdeps.languages.swift.syntax { SwiftArgument, SwiftAwaitExpr, SwiftArrayLiteral, SwiftBooleanLiteral, SwiftClosure, SwiftDictionaryLiteral, SwiftExplicitMemberExpr, SwiftExpr, SwiftFunctionCallExpr, SwiftIdentifierExpr, SwiftImplicitMemberExpr, SwiftInfixExpr, SwiftIntegerLiteral, SwiftKeyPathExpr, SwiftNilLiteral, SwiftOptionalChainingExpr, SwiftParenthesizedExpr, SwiftPrefixExpr, SwiftStringLiteral, SwiftSubscriptExpr, SwiftTernaryConditionalExpr, SwiftTryExpr, SwiftTupleExpr, SwiftTypeCastingExpr, SwiftWildcardExpr, sw_add, sw_arg, sw_arr, sw_asq, sw_await, sw_calln, sw_callt, sw_chain, sw_cloe, sw_dict, sw_id, sw_keypath, sw_kv, sw_not, sw_pos, sw_raw, sw_str, sw_sub, sw_t, sw_ternary, sw_try }
 import v2.std.compilers.target_model {
   TargetModel,
+  LocalCallee,
+  TargetRealizationCatalog,
+  PrimitiveRealizationsUnwired,
   TargetValueExprFieldInitSlot,
   TargetValueExpression,
   render_target_text,
@@ -164,7 +167,7 @@ fn swift_expr_door_lower(e: SwiftExpr) -> Outcome<TargetValueExpression> {
             SwiftIdentifierExpr { name: n } =>
               if swift_expr_door_args_positional(args: a) {
                 bind_outcome(o: swift_expr_door_lower_args(args: a), f: fn(xs) {
-                  outcome_accepted(target_value_expression_callable_apply(callee: symbol_intern_lexeme(lexeme: n), args: xs))
+                  outcome_accepted(target_value_expression_callable_apply(callee: symbol_intern_lexeme(lexeme: n), kind: LocalCallee, args: xs))
                 })
               } else if swift_expr_door_args_labelled(args: a) {
                 bind_outcome(o: swift_expr_door_lower_slots(args: a), f: fn(slots) {
@@ -217,7 +220,8 @@ fn swift_expr_door_target(e: SwiftExpr) -> TargetModel {
     binding_spellings: swift_expr_door_spell(names: swift_expr_door_names(e: e), spellings: swift_target_model().binding_spellings),
     token_class_emit_transforms: swift_target_model().token_class_emit_transforms,
     authority_source_text: swift_target_model().authority_source_text,
-    runtime_row: swift_target_model().runtime_row
+    runtime_row: swift_target_model().runtime_row,
+    primitive_realizations: swift_target_model().primitive_realizations
   }
 }
 
@@ -227,7 +231,7 @@ fn swift_expr_door_print(e: SwiftExpr) -> Outcome<String> {
       o: target_value_expression_to_concrete_tokens(
         expr: x,
         projection: swift_value_expression_projection(),
-        catalog: swift_operator_realizations_catalog_node()
+        catalog: TargetRealizationCatalog { operators: swift_operator_realizations_catalog_node(), primitives: PrimitiveRealizationsUnwired }
       ),
       f: fn(tokens) {
         bind_outcome(o: serialize_concrete_syntax_tokens_to_source_string(target: swift_expr_door_target(e: e), tokens: tokens), f: fn(text) {

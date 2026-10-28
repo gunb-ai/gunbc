@@ -1,0 +1,56 @@
+module v2.test.claim.self_host.closure_imported_callee
+
+import v2.compiler.self_host.closure_emission {
+  closure_emission_json,
+  emit_closure_from_ingest_located
+}
+import v2.extdeps.languages.rust { rust_closure_crate_target_model }
+import v2.test.claim.infer_not_derived_site { nds_read }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Atom, Node, TypeNode, node_synthetic }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLOSURE ROUTE RESOLVES EVERY MEMBER AGAINST THE CLOSURE'S RESOLVED DECLARATIONS. Two modules are
+// taken through the door's own route (emit_closure_from_ingest_located): the entry imports a callee the
+// other module declares. Infer reads the imported callee's declaration from the ResolvedTree's
+// resolved_declarations; handed the authored index it typed no candidate and the entry refused
+// arrow_body_does_not_inhabit_declared_return. The emitted entry must name the callee's module-rooted path.
+
+fn cic_locus() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^cic_entry_locus } }, children: [])
+}
+
+data cic_a_source: String = "module v2.test.cic_a\n\nimport v2.test.cic_b { bx }\n\nfn ax() -> Int { bx() }\n"
+
+data cic_b_source: String = "module v2.test.cic_b\n\nfn bx() -> Int { 1 }\n"
+
+fn cic_json() -> String {
+  match emit_closure_from_ingest_located(
+    ingest: [
+      nds_read(source: cic_a_source, id: ^cic_a_read, file: "src/v2/test/fixture/cic/a.dag"),
+      nds_read(source: cic_b_source, id: ^cic_b_read, file: "src/v2/test/fixture/cic/b.dag")
+    ],
+    entry: qualified_name_from_dotted_string(dotted: "v2.test.cic_a"),
+    entry_locus: cic_locus(),
+    target: rust_closure_crate_target_model()
+  ).outcome {
+    Rejected { diagnostics: _ } => "emit_refused"
+    Accepted { value: emission, diagnostics: _ } => closure_emission_json(emission: emission)
+  }
+}
+
+test fn cic_the_imported_call_is_emitted_not_refused() -> Bool {
+  string_contains(s: cic_json(), pattern: "pub fn ax() -> i32 { crate::v2_test_cic_b::bx() }")
+}
+
+// THE REFERENCED DECLARATION IS PUBLIC, or the emitted crate does not compile (rustc E0603, function is
+// private): the closure-crate profile spells the visibility row on every member declaration. Removing the
+// row turns this red and leaves the call above standing, which is the silent-uncompilable-output shape.
+test fn cic_the_imported_callee_is_emitted_public() -> Bool {
+  string_contains(s: cic_json(), pattern: "pub fn bx() -> i32 { 1 }")
+}

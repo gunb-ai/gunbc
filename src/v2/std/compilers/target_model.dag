@@ -29,7 +29,7 @@ import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import v2.std.primitive_contract_ref { primitive_contract_declaration_ref, primitive_contract_qualified_name }
+import v2.std.primitive_contract_ref { primitive_contract_declaration_ref_of_leaf, primitive_contract_leaf_of_path }
 
 
 // Produced-declaration support is a TARGET-owned rendering, opaque to the compiler.
@@ -6182,69 +6182,136 @@ fn target_value_expr_callable_arg_edges(
   )
 }
 
-// A CALL WHOSE CALLEE RESOLVED TO A std.primitives CONTRACT DECLARATION. The identity is the resolved declaration
-// (v2.compiler.resolve binds a primitive head to std.primitives.<name>_contract), carried as the presence of this edge;
-// a callee that resolved anywhere else, a user fn spelled string_length included, never has it and emits as an ordinary
-// call. The spelling alone is never the join (DESIGN 3: a name is not the declaration it was bound to).
-fn target_value_expression_resolved_primitive_call(
-  callee: Symbol,
-  args: List<TargetValueExpression>
-) -> TargetValueExpression {
-  let base = target_value_expression_callable_apply(callee: callee, args: args)
-  TargetValueExpression {
-    kind: base.kind,
-    node: Node {
-      kind: base.node.kind,
-      children: list_append(
-        left: base.node.children,
-        right: [
-          target_model_named_edge(
-            name: ^target_value_expr_field_resolved_primitive,
-            target: target_model_type_atom_node(identity: callee)
-          )
-        ]
-      ),
-      occurrence_id: base.node.occurrence_id
-    }
+// THE KIND OF A CALL'S CALLEE, A CLOSED COPRODUCT CARRIED ON THE APPLY WIRE (review 82684: the kind was an untyped
+// marker edge read by a Bool predicate). The resolved declaration decides it once, in target_transform_resolved_callee:
+// a std.primitives contract declaration takes the target's primitive row; any other declaration takes the target's
+// declaration-reference spelling; a callee that is no declaration reference (a surface atom, a local) is spelled bare.
+// A spelling alone is never the join (DESIGN 3: a name is not the declaration it was bound to). The consumer matches
+// all three, so a fourth kind cannot be added without every projection answering it.
+type TargetCalleeKind = PrimitiveRowCallee | DeclarationReferenceCallee | LocalCallee
+
+fn target_callee_kind_symbol(kind: TargetCalleeKind) -> Symbol {
+  match kind {
+    PrimitiveRowCallee => ^target_callee_kind_primitive_row
+    DeclarationReferenceCallee => ^target_callee_kind_declaration_reference
+    LocalCallee => ^target_callee_kind_local
   }
 }
 
-// WHETHER THE CALLABLE-APPLY WIRE CARRIES THE RESOLVED-PRIMITIVE MARKER: one found / missing / ambiguous decision from
-// v2.std.node_query child_lookup_step (named_child_lookup itself reads only Conj/Computation roots; this wire is an Atom). A duplicated marker edge is ambiguous and refuses typed (review 82774).
-fn target_value_expr_callable_apply_is_resolved_primitive(wire: Node) -> Outcome<Bool> {
+fn target_value_expr_callable_apply_kind_from_wire(wire: Node) -> Outcome<TargetCalleeKind> {
   match fold(wire.children, init: NamedChildMissing, f: fn(acc, e) {
     match e.label {
       Positional => acc
       StructuralLabel { label: _ } => acc
-      Authored { name: edge_name } => child_lookup_step(acc: acc, hit: edge_name == ^target_value_expr_field_resolved_primitive, target: e.target)
+      Authored { name: n } => child_lookup_step(acc: acc, hit: n == ^target_value_expr_field_callee_kind, target: e.target)
     }
   }) {
-    NamedChildFound { target: _ } => outcome_accepted(value: true)
-    NamedChildMissing => outcome_accepted(value: false)
-    NamedChildAmbiguous => outcome_rejected(Diagnostic {
-      reason: ^target_value_expr_resolved_primitive_marker_ambiguous,
-      at: node_locus(node: wire),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    })
+    NamedChildFound { target: marker } =>
+      match marker.kind {
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == ^target_callee_kind_primitive_row {
+            outcome_accepted(PrimitiveRowCallee)
+          } else if id == ^target_callee_kind_declaration_reference {
+            outcome_accepted(DeclarationReferenceCallee)
+          } else if id == ^target_callee_kind_local {
+            outcome_accepted(LocalCallee)
+          } else {
+            outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+          }
+        TypeNode { connective: Conj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Disj } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Arrow } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        TypeNode { connective: Instantiation } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+        ComputationNode { behavior: _ } => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+      }
+    NamedChildMissing => outcome_rejected(target_value_expr_operand_wire_malformed_diagnostic(wire: wire))
+    NamedChildAmbiguous =>
+      outcome_rejected(Diagnostic {
+        reason: ^target_value_expr_callee_kind_marker_ambiguous,
+        at: node_locus(node: wire),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      })
   }
 }
 
-// WHETHER A RESOLVED CALLEE NODE IS THE std.primitives CONTRACT DECLARATION OF ITS OWN LEAF: its resolved qualified path
-// equals the contract path derived from the leaf. A same-leaf declaration elsewhere resolves to another path.
-fn target_transform_callee_is_resolved_primitive(body: Node, callee: Symbol) -> Bool {
+// THE ONE READER OF A CALLEE'S RESOLVED DECLARATION IDENTITY. A resolved call's operator is a marked
+// declaration-reference node (v2.std.qualified_name declaration_reference_path_optional), and its qualified
+// path is the callee's identity. That identity decides BOTH facts a call needs, so neither is read twice:
+// a path equal to the std.primitives contract path of its own leaf takes the primitive row (leaf spelling);
+// any other declaration takes the target's declaration-reference spelling
+// (v2.std.compilers.target_model DeclarationReferenceForm, the row a type-position reference already uses),
+// which refuses typed when the target models no module-scoped form, never the bare leaf, because two
+// imports can share a leaf. A callee that is not a declaration reference (a surface atom, a local) keeps the
+// atom reading.
+type TargetResolvedCallee {
+  callee: Symbol
+  kind: TargetCalleeKind
+}
+
+fn target_transform_resolved_callee(body: Node, target: TargetModel) -> Outcome<TargetResolvedCallee> {
   match list_at_optional(xs: positional_child_target_nodes(node: body), index: 0) {
-    Absent => false
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: body)
+      )
     Present { value: child } =>
       match declaration_reference_path_optional(node: child) {
-        Absent => false
+        Absent =>
+          bind_outcome(
+            o: target_transform_surface_op_atom(node: body),
+            f: fn(leaf) { outcome_accepted(TargetResolvedCallee { callee: leaf, kind: LocalCallee }) }
+          )
         Present { value: path } =>
-          path == primitive_contract_qualified_name(head: callee)
+          match primitive_contract_leaf_of_path(path: path) {
+            Present { value: leaf } => outcome_accepted(TargetResolvedCallee { callee: leaf, kind: PrimitiveRowCallee })
+            Absent =>
+              match qualified_name_last_segment(qn: path) {
+                Absent =>
+                  outcome_rejected(
+                    target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child)
+                  )
+                Present { value: _ } =>
+                  bind_outcome(
+                    o: match type_expression_projection_from_target(target: target) {
+                      Accepted { value: projection, diagnostics: d } => Accepted { value: projection, diagnostics: d }
+                      Rejected { diagnostics: _ } =>
+                        outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: child))
+                    },
+                    f: fn(projection) {
+                      bind_outcome(
+                        o: match projection.declaration_reference_form {
+                          ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: CalleeScopeUnrealized } =>
+                            outcome_rejected(target_declaration_reference_namespace_unrealized_diagnostic(node: child))
+                          ModuleScopedPath { root_text: _, scope_separator_text: _, module_segment_joiner: _, callee_scope: CalleeScopeRealized } =>
+                            target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: child)
+                          NoDeclarationReferenceForm =>
+                            target_type_expr_declaration_reference_emitted(projection: projection, path: path, reference: child)
+                        },
+                        f: fn(emitted) {
+                          match list_at_optional(xs: positional_child_target_nodes(node: emitted), index: 0) {
+                            Present { value: spelled } =>
+                              bind_outcome(
+                                o: target_node_atom_identity(node: spelled),
+                                f: fn(spelling) {
+                                  outcome_accepted(TargetResolvedCallee { callee: spelling, kind: DeclarationReferenceCallee })
+                                }
+                              )
+                            Absent =>
+                              outcome_rejected(target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: child))
+                          }
+                        }
+                      )
+                    }
+                  )
+              }
+          }
       }
   }
 }
 
 fn target_value_expression_callable_apply(
   callee: Symbol,
+  kind: TargetCalleeKind,
   args: List<TargetValueExpression>
 ) -> TargetValueExpression {
   TargetValueExpression {
@@ -6258,6 +6325,10 @@ fn target_value_expression_callable_apply(
           target_model_named_edge(
             name: ^target_value_expr_field_callee,
             target: target_model_type_atom_node(identity: callee)
+          ),
+          target_model_named_edge(
+            name: ^target_value_expr_field_callee_kind,
+            target: target_model_type_atom_node(identity: target_callee_kind_symbol(kind: kind))
           )
         ],
         right: target_value_expr_callable_arg_edges(args: args)
@@ -8943,7 +9014,7 @@ fn target_value_expr_callable_apply_args_from_wire(
                 )
               } else if n == ^target_value_expr_field_callee {
                 acc
-              } else if n == ^target_value_expr_field_resolved_primitive {
+              } else if n == ^target_value_expr_field_callee_kind {
                 acc
               } else {
                 outcome_rejected(
@@ -9168,7 +9239,7 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
   bind_outcome(
     o: target_primitive_realization_lookup(
       primitives: catalog.primitives,
-      primitive: primitive_contract_declaration_ref(head: callee),
+      primitive: primitive_contract_declaration_ref_of_leaf(leaf: callee),
       at: at
     ),
     f: fn(row) {
@@ -9197,6 +9268,49 @@ fn target_value_expression_primitive_row_call_to_concrete_tokens(
   )
 }
 
+fn target_value_expression_ordinary_apply_to_concrete_tokens(
+  callee: Symbol,
+  args: List<TargetValueExpression>,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expr_tokenize_intersperse(
+      exprs: args,
+      projection: projection,
+      catalog: catalog,
+      separator: projection.callable_apply_form.separator
+    ),
+    f: fn(arg_tokens) {
+      outcome_accepted(
+        list_append(
+          left: list_append(
+            left: Cons {
+              head: BoundToken {
+                token_class: projection.callable_apply_form.callee_ident_token,
+                binding: callee
+              },
+              tail: Cons {
+                head: FixedToken {
+                  token_class: projection.callable_apply_form.open
+                },
+                tail: Empty
+              }
+            },
+            right: arg_tokens
+          ),
+          right: Cons {
+            head: FixedToken {
+              token_class: projection.callable_apply_form.close
+            },
+            tail: Empty
+          }
+        )
+      )
+    }
+  )
+}
+
 fn target_value_expression_callable_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -9206,52 +9320,25 @@ fn target_value_expression_callable_apply_to_concrete_tokens(
     o: target_value_expr_callable_apply_callee_from_wire(wire: expr.node),
     f: fn(callee) {
       bind_outcome(
-        o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
-        f: fn(args) {
+        o: target_value_expr_callable_apply_kind_from_wire(wire: expr.node),
+        f: fn(kind) {
           bind_outcome(
-            o: target_value_expr_callable_apply_is_resolved_primitive(wire: expr.node),
-            f: fn(is_primitive) {
-          if is_primitive {
-            target_value_expression_primitive_row_call_to_concrete_tokens(
-              callee: callee, args: args, projection: projection, catalog: catalog, at: expr.node
-            )
-          } else {
-          bind_outcome(
-            o: target_value_expr_tokenize_intersperse(
-              exprs: args,
-              projection: projection,
-              catalog: catalog,
-              separator: projection.callable_apply_form.separator
-            ),
-            f: fn(arg_tokens) {
-              outcome_accepted(
-                list_append(
-                  left: list_append(
-                    left: Cons {
-                      head: BoundToken {
-                        token_class: projection.callable_apply_form.callee_ident_token,
-                        binding: callee
-                      },
-                      tail: Cons {
-                        head: FixedToken {
-                          token_class: projection.callable_apply_form.open
-                        },
-                        tail: Empty
-                      }
-                    },
-                    right: arg_tokens
-                  ),
-                  right: Cons {
-                    head: FixedToken {
-                      token_class: projection.callable_apply_form.close
-                    },
-                    tail: Empty
-                  }
-                )
-              )
-            }
-          )
-          }
+            o: target_value_expr_callable_apply_args_from_wire(wire: expr.node),
+            f: fn(args) {
+              match kind {
+                PrimitiveRowCallee =>
+                  target_value_expression_primitive_row_call_to_concrete_tokens(
+                    callee: callee, args: args, projection: projection, catalog: catalog, at: expr.node
+                  )
+                DeclarationReferenceCallee =>
+                  target_value_expression_ordinary_apply_to_concrete_tokens(
+                    callee: callee, args: args, projection: projection, catalog: catalog
+                  )
+                LocalCallee =>
+                  target_value_expression_ordinary_apply_to_concrete_tokens(
+                    callee: callee, args: args, projection: projection, catalog: catalog
+                  )
+              }
             }
           )
         }
@@ -11071,11 +11158,21 @@ type TargetTypeExpressionProjection {
 // multi-token declaration-reference emission in the type-expression layer -- an atom row takes one
 // identity, so this needs a path form that emits a token sequence; when that exists these three
 // become token classes and the concat here is deleted with it.
+// WHETHER A CALL THROUGH THE FORM IS SPELLABLE. A type-position reference only needs the spelling; a
+// CALL additionally needs the scope the spelling names to EXIST in the emitted text. A target whose
+// emitted modules do not yet declare that scope (Swift: the nested `enum Gunbc { enum v2 { ... } }`
+// wrappers of the closure-emit layout, gunbc#12239, are not emitted) declares
+// CalleeScopeUnrealized and the callee arm refuses typed rather than print a qualified call that
+// resolves to nothing. The call-position half of the form, kept apart from the spelling because a
+// spelling can be valid at a type position while its scope is unrealized for calls.
+type DeclarationCalleeScope = CalleeScopeRealized | CalleeScopeUnrealized
+
 type DeclarationReferenceForm
   = ModuleScopedPath {
       root_text: String
       scope_separator_text: String
       module_segment_joiner: String
+      callee_scope: DeclarationCalleeScope
     }
   | NoDeclarationReferenceForm
 
@@ -11113,6 +11210,14 @@ fn declaration_reference_spelling(
   }
 }
 
+fn target_declaration_reference_namespace_unrealized_diagnostic(node: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_declaration_reference_namespace_unrealized,
+    at: node_locus(node: node),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
 fn target_declaration_reference_form_absent_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_declaration_reference_form_absent,
@@ -11143,7 +11248,7 @@ fn target_type_expr_declaration_reference_emitted(
   match projection.declaration_reference_form {
     NoDeclarationReferenceForm =>
       outcome_rejected(target_declaration_reference_form_absent_diagnostic(node: reference))
-    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner, callee_scope: _ } =>
       match declaration_reference_spelling(
         root_text: root,
         scope_separator_text: sep,
@@ -11165,7 +11270,7 @@ fn target_type_expr_declaration_reference_emitted(
 fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceForm) -> List<Edge> {
   match form {
     NoDeclarationReferenceForm => Empty
-    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner } =>
+    ModuleScopedPath { root_text: root, scope_separator_text: sep, module_segment_joiner: joiner, callee_scope: callee_scope } =>
       Cons {
         head: target_model_named_edge(
           name: ^target_type_expr_field_declaration_reference,
@@ -11183,6 +11288,10 @@ fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceFo
               target_model_named_edge(
                 name: ^target_type_expr_field_reference_module_joiner,
                 target: target_type_expr_symbol_atom(id: symbol_intern_lexeme(lexeme: joiner))
+              ),
+              target_model_named_edge(
+                name: ^target_type_expr_field_reference_callee_scope,
+                target: target_type_expr_symbol_atom(id: declaration_callee_scope_symbol(scope: callee_scope))
               )
             ],
             occurrence_id: OccurrenceSynthetic
@@ -11190,6 +11299,33 @@ fn target_type_expr_declaration_reference_form_node(form: DeclarationReferenceFo
         ),
         tail: Empty
       }
+  }
+}
+
+fn declaration_callee_scope_symbol(scope: DeclarationCalleeScope) -> Symbol {
+  match scope {
+    CalleeScopeRealized => ^target_callee_scope_realized
+    CalleeScopeUnrealized => ^target_callee_scope_unrealized
+  }
+}
+
+// The inverse of declaration_callee_scope_symbol over a CLOSED two-row wire: each scope is recognized
+// by name and every other value refuses typed at the reference row. Defaulting the unrecognized
+// value to CalleeScopeRealized would let a corrupted bundle print qualified calls the target said
+// it cannot resolve.
+fn declaration_callee_scope_from_symbol(scope: Symbol, row: Node) -> Outcome<DeclarationCalleeScope> {
+  if scope == ^target_callee_scope_realized {
+    outcome_accepted(CalleeScopeRealized)
+  } else if scope == ^target_callee_scope_unrealized {
+    outcome_accepted(CalleeScopeUnrealized)
+  } else {
+    outcome_rejected(
+      Diagnostic {
+        reason: ^target_callee_scope_unrecognized,
+        at: node_locus(node: row),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    )
   }
 }
 
@@ -11220,11 +11356,22 @@ fn decode_declaration_reference_form_bundle(bundle: Node) -> Outcome<Declaration
                 bind_outcome(
                   o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_module_joiner),
                   f: fn(joiner) {
-                    outcome_accepted(
-                      ModuleScopedPath {
-                        root_text: symbol_lexeme(sym: root),
-                        scope_separator_text: symbol_lexeme(sym: sep),
-                        module_segment_joiner: symbol_lexeme(sym: joiner)
+                    bind_outcome(
+                      o: projection_bundle_symbol_field(bundle: row, field: ^target_type_expr_field_reference_callee_scope),
+                      f: fn(scope) {
+                        bind_outcome(
+                          o: declaration_callee_scope_from_symbol(scope: scope, row: row),
+                          f: fn(callee_scope) {
+                            outcome_accepted(
+                              ModuleScopedPath {
+                                root_text: symbol_lexeme(sym: root),
+                                scope_separator_text: symbol_lexeme(sym: sep),
+                                module_segment_joiner: symbol_lexeme(sym: joiner),
+                                callee_scope: callee_scope
+                              }
+                            )
+                          }
+                        )
                       }
                     )
                   }
@@ -15482,17 +15629,12 @@ fn target_project_callable_arg_in_arrow_scope(
     Present { value: leaf } => outcome_accepted(target_value_expression_binding_ref(binding: leaf))
     Absent =>
   match arg.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      bind_outcome(
-        o: target_value_expr_arrow_body_scope_binding(
-          arrow: arrow,
-          body: body,
-          binding: id,
-          target: target
-        ),
-        f: fn(scoped) {
-          outcome_accepted(target_value_expression_binding_ref(binding: scoped))
-        }
+    TypeNode { connective: Atom { identity: _ } } =>
+      target_value_expr_project_atom_in_arrow_scope(
+        arrow: arrow,
+        node: arg,
+        target: target,
+        source_bool_form: source_bool_form
       )
     TypeNode { connective: Conj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
     TypeNode { connective: Disj } => target_project_callable_arg_in_arrow_scope_otherwise(arrow: arrow, arg: arg, target: target, source_bool_form: source_bool_form, handle_transform: handle_transform)
@@ -15535,8 +15677,8 @@ fn target_project_transform_callable_apply_in_arrow_scope(
     )
   } else {
   bind_outcome(
-    o: target_transform_surface_op_atom(node: body),
-    f: fn(callee) {
+    o: target_transform_resolved_callee(body: body, target: target),
+    f: fn(resolved) {
       match list_tail(xs: positional_child_target_nodes(node: body)) {
         Absent =>
           outcome_rejected(
@@ -15572,11 +15714,7 @@ fn target_project_transform_callable_apply_in_arrow_scope(
             ),
             f: fn(args) {
               outcome_accepted(
-                if target_transform_callee_is_resolved_primitive(body: body, callee: callee) {
-                  target_value_expression_resolved_primitive_call(callee: callee, args: args)
-                } else {
-                  target_value_expression_callable_apply(callee: callee, args: args)
-                }
+                target_value_expression_callable_apply(callee: resolved.callee, kind: resolved.kind, args: args)
               )
             }
           )

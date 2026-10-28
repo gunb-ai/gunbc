@@ -47,7 +47,7 @@ import v2.cli.if_arm_reader_differential {
   if_arm_reader_differential_text
 }
 import v2.extdeps.languages.c { c_target_model }
-import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.rust { rust_closure_crate_target_model }
 import v2.extdeps.languages.swift { swift_target_model }
 import v2.std.compilers.target_model { TargetModel }
 
@@ -149,7 +149,7 @@ fn cli_emit_target_spelling(t: CliEmitTarget) -> String {
 
 fn cli_emit_target_model(t: CliEmitTarget) -> TargetModel {
   match t {
-    CliTargetRust => rust_target_model()
+    CliTargetRust => rust_closure_crate_target_model()
     CliTargetC => c_target_model()
     CliTargetSwift => swift_target_model()
   }
