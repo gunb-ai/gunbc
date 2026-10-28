@@ -16,7 +16,8 @@ import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
 import std.algebra { fold_list, length }
-import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger, heal_repair_declaration_artifact_path }
+import gunbc.ledger_row_coherence { render_ledger_repair_trailers, ledger_row_coherence, artifact_is_ledger }
+import gunbc.heal_publication_boundary { heal_repair_declaration_artifact_path }
 import gunbc.generated_artifact_assessment {
   GeneratedArtifactObservation,
   GeneratedArtifactObserved,
