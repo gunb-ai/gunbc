@@ -26238,33 +26238,41 @@ pub fn unify_generics(
 }
 
 pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static BK381_CALLS: AtomicUsize = AtomicUsize::new(0);
+        let n = BK381_CALLS.fetch_add(1, Ordering::SeqCst);
+        if n < 1500 {
+            let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                use std::io::Write;
+                let (rname, rconn, rchildren) = match slot.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: r, .. }) => (r.name.clone(), format!("{:?}", r.connective.clone()), r.children.clone().len()),
+                    _ => ("-".to_string(), "-".to_string(), 0usize),
+                };
+                let _ = writeln!(
+                    f,
+                    "BK381-ARM#{} slot.name={} slot.conn={:?} slot.children={} slot.params={} r.name={} r.conn={} r.children={}",
+                    n,
+                    slot.name.clone(),
+                    slot.connective.clone(),
+                    slot.children.clone().len(),
+                    slot.params.clone().len(),
+                    rname,
+                    rconn,
+                    rchildren,
+                );
+            }
+        }
+    }
     if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
         match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
-                let result = if is_unsolved_type_variable(r.clone()) {
+                if is_unsolved_type_variable(r.clone()) {
                     slot.clone()
                 } else {
                     crate::v1_compiler_infer_types::child_type_node(slot.clone())
-                };
-                if slot.name.clone() == "Qn".to_string() || result.name.clone() == "tail".to_string() {
-                    eprintln!(
-                        "BK381-ARM slot.name={} slot.conn={:?} slot.children={} slot.params={} r.name={} r.conn={:?} r.children={} r.params={} out.name={} out.conn={:?} out.children={} out.params={} unsolved={}",
-                        slot.name.clone(),
-                        slot.connective.clone(),
-                        slot.children.clone().len(),
-                        slot.params.clone().len(),
-                        r.name.clone(),
-                        r.connective.clone(),
-                        r.children.clone().len(),
-                        r.params.clone().len(),
-                        result.name.clone(),
-                        result.connective.clone(),
-                        result.children.clone().len(),
-                        result.params.clone().len(),
-                        is_unsolved_type_variable(r.clone()),
-                    );
                 }
-                result
             }
             _ => slot.clone(),
         }
