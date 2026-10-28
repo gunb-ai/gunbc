@@ -59,8 +59,16 @@ data systemd_run_authority: ExternalAuthority = extdeps_external_authority_ancho
 
 fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
+// `systemd-run --version`: its first line is the version the summary format is grounded against
+// (summary_format_standing), read from the same manager that will print the summary.
+fn systemd_run_version_command() -> SystemdRunCommandReading {
+  systemd_run_command_of(options: [Version], command_argv: [])
+}
+
 // THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: SystemdSummaryPrintingWait is minted in
-// exactly one place, the SystemdSummaryPrintingWaitReady arm of systemd_run_user_wait_command, so
+// exactly one place, summary_printing_wait_of, which the two waiting non-quiet builders (the user
+// manager's systemd_run_user_wait_command and the system manager's
+// systemd_run_transient_wait_pipe_summary_command) return through, so
 // what a caller holds is the builder's own fact that this projection is the waiting, non-quiet
 // one. No other site can construct it, and a launcher that cannot print a memory peak therefore
 // cannot be handed to the thing whose contract is to observe one.
@@ -101,6 +109,7 @@ type SystemdSetenvBinding {
 //   Quiet          --quiet
 //   Pipe           --pipe
 //   Collect        --collect
+//   Version        --version (prints the manager's version and exits; no unit is started)
 //   EndOfOptions   -- (systemd-run's own options end; the rest is the command)
 type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
@@ -113,6 +122,7 @@ type SystemdRunOption
   | Quiet
   | Pipe
   | Collect
+  | Version
   | EndOfOptions
 
 // WHAT THE WIRE CANNOT CARRY IS REFUSED AT THE PROJECTION — a refusal at the wall between the
@@ -281,6 +291,7 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
         Quiet => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--quiet"]) }
         Pipe => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--pipe"]) }
         Collect => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--collect"]) }
+        Version => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--version"]) }
         EndOfOptions => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--"]) }
       }
   }
@@ -374,13 +385,26 @@ fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<System
 // exists to be read for. The wait flags lead because that is the word order the string-built form
 // this replaces emitted; the projection keeps it byte-identical for existing callers.
 fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
-  match systemd_run_command_of(
+  summary_printing_wait_of(reading: systemd_run_command_of(
     options: list_append(left: [Wait, Pipe, Collect], right: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions])))),
     command_argv: command_argv,
-  ) {
+  ))
+}
+
+fn summary_printing_wait_of(reading: SystemdRunCommandReading) -> SystemdSummaryPrintingWaitReading {
+  match reading {
     SystemdRunCommandRefused { cause: cause } => SystemdSummaryPrintingWaitRefused { cause: cause }
     SystemdRunCommandReady { command: command } => SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait { command: command } }
   }
+}
+
+// THE SYSTEM-MANAGER WAITING PIPE THAT PRINTS ITS SUMMARY: systemd_run_transient_wait_pipe_unit_command
+// without --quiet. A caller that must learn the unit's own Result over a transport whose exit status
+// cannot be attributed to the remote command (a remote FleetSsh leg, where 255 is the transport's as
+// often as the command's) reads it from this summary, which only the remote manager writes
+// (systemd_run_wait_summary); the quiet form's stderr never carries it.
+fn systemd_run_transient_wait_pipe_summary_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  summary_printing_wait_of(reading: systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Wait, Pipe, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv))
 }
 
 // The pre-cutover system-scope builder systemd_run_system_scope_argv led with --scope only
