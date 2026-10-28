@@ -43,7 +43,8 @@ import std.cache_identity {
   native_compiler_artifact_kind,
   native_test_universe_artifact_kind,
   native_module_verdict_bundle_artifact_kind,
-  compute_work_artifact_kind
+  compute_work_artifact_kind,
+  fabric_blob_artifact_kind
 }
 import std.computation_identity {
   ComputationIdentity, StructurallyIdentical, IdentityUnknown,
@@ -79,6 +80,8 @@ import std.judgment_contract {
   LengthPrefixedScan,
   OccurrencePersistenceContract,
   PersistedOutputObligation,
+  ExactByteContent,
+  output_fabric_blob,
   ResultContract,
   Scoped,
   SemanticOnly,
@@ -127,6 +130,7 @@ import gunbc.compute.work_request {
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash }
 import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.fabric_blob { FabricBlobAddress }
 
 // The typed materialization-provider CONTRACT (parent mandate 6B, model-only, 2026-07-28): the one
 // interface cli_run's ad-hoc caches consume when they flip — consumers ask for an ARTIFACT by typed
@@ -177,6 +181,7 @@ type ArtifactRequest
   | UniverseArtifactRequest { tested_tree_identity: ContentHash, route_binary: DeclaredInput }
   | NativeModuleVerdictBundleRequest(NativeModuleVerdictBundleSubject)
   | ComputeWorkRequest { subject: WorkSubject, operation: WorkOperation, toolchain: WorkToolchainIdentity }
+  | FabricBlobRequest { address: FabricBlobAddress }
 
 // THE NATIVE ROUTE'S THREE REQUEST FAMILIES (operator rulings 2026-09-11: the replacement native CI
 // job is a materialization). Each is a VARIANT for the reason the header gives: kind, declared
@@ -424,7 +429,8 @@ fn request_evaluation_bucket(identity: EvaluationIdentity, req: ArtifactRequest)
     native_compiler: g => evaluation_identity_index_bucket(evaluation: identity),
     universe: (tt, rb) => evaluation_identity_index_bucket(evaluation: identity),
     module_verdict_bundle: s => evaluation_identity_index_bucket(evaluation: identity),
-    compute_work: (sj, op, tc) => evaluation_identity_index_bucket(evaluation: identity)
+    compute_work: (sj, op, tc) => evaluation_identity_index_bucket(evaluation: identity),
+    fabric_blob: a => evaluation_identity_index_bucket(evaluation: identity)
   )
 }
 
@@ -517,7 +523,8 @@ fn request_git_object_rows(req: ArtifactRequest) -> List<EvaluationIdentityCompo
     compute_work: (sj, op, tc) => [
       EvaluationIdentityComponentRow { ref: evaluation_identity_subject_ref, component: compute_work_subject_component(subject: sj) },
       EvaluationIdentityComponentRow { ref: compute_work_provider_revision_ref, component: git_object_identity_component(oid: tc.provider_revision) }
-    ]
+    ],
+    fabric_blob: a => []
   )
 }
 
@@ -1067,6 +1074,33 @@ fn compute_work_judgment_contract(
   }
 }
 
+// A captured file is requested by its own SHA-256. This materializes a copy, not
+// the computation that captured it: equal prompts do not imply equal engine state.
+// The local store consumes the fixed byte obligation on both commit and lookup.
+// Exercised by test.claim.fabric_blob_materialization_witness. Serving consumer:
+// gunbc.serving.checkpoint_store checkpoint_publish, when snapshot/head commit lands.
+fn fabric_blob_judgment_contract(address: FabricBlobAddress) -> JudgmentContract {
+  JudgmentContract {
+    demand_identity: DemandIdentity {
+      kind: fabric_blob_artifact_kind,
+      subject: identity_digest_component(hash: as_content_hash_cryptographic(digest: address.key)),
+      declared_inputs: []
+    },
+    result: ResultContract {
+      carries_semantic_value: true,
+      ordered_diagnostics: false,
+      carries_effect_requests_receipts: false,
+      carries_refusal_arm: true,
+      required_persisted_outputs: [PersistedOutputObligation {
+        id: output_fabric_blob,
+        occurrence_contract: SemanticOnly,
+        content: ExactByteContent { digest: address.key }
+      }]
+    },
+    demand_nature: IdempotentEffect
+  }
+}
+
 fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
   request_fold(
     req: req,
@@ -1077,7 +1111,8 @@ fn request_judgment_contract(req: ArtifactRequest) -> JudgmentContract {
     native_compiler: native_compiler_judgment_contract,
     universe: universe_judgment_contract,
     module_verdict_bundle: module_verdict_bundle_judgment_contract,
-    compute_work: compute_work_judgment_contract
+    compute_work: compute_work_judgment_contract,
+    fabric_blob: fabric_blob_judgment_contract
   )
 }
 
@@ -1090,7 +1125,8 @@ fn request_fold<T>(
   native_compiler: fn(PreMaterializationIdentity) -> T,
   universe: fn(ContentHash, DeclaredInput) -> T,
   module_verdict_bundle: fn(NativeModuleVerdictBundleSubject) -> T,
-  compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T
+  compute_work: fn(WorkSubject, WorkOperation, WorkToolchainIdentity) -> T,
+  fabric_blob: fn(FabricBlobAddress) -> T
 ) -> T {
   match req {
     ParseModuleRequest { source_digest: sd, compiler: c } => parse_module(sd, c)
@@ -1102,6 +1138,7 @@ fn request_fold<T>(
     UniverseArtifactRequest { tested_tree_identity: tt, route_binary: rb } => universe(tt, rb)
     NativeModuleVerdictBundleRequest(subject) => module_verdict_bundle(subject)
     ComputeWorkRequest { subject: sj, operation: op, toolchain: tc } => compute_work(sj, op, tc)
+    FabricBlobRequest { address: a } => fabric_blob(a)
   }
 }
 
@@ -1284,6 +1321,7 @@ type MaterializedArtifact
       gunbc_binary: ArtifactPart?,
       claim_batch_binary: ArtifactPart?
     }
+  | FabricBlobArtifact { request_key: ContentHash, blob: ArtifactPart }
   | LegacyIncompleteArtifact {
       kind: ArtifactKindId,
       request_key: ContentHash,
@@ -1300,6 +1338,7 @@ fn artifact_fold<T>(
   universe: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   module_verdict_bundle: fn(ContentHash, ArtifactPart, ArtifactPart) -> T,
   compute_work: fn(ContentHash, ArtifactPart, ArtifactPart, ArtifactPart, ArtifactPart?, ArtifactPart?) -> T,
+  fabric_blob: fn(ContentHash, ArtifactPart) -> T,
   legacy_incomplete: fn(ArtifactKindId, ContentHash, List<CarriedOutput>) -> T
 ) -> T {
   match artifact {
@@ -1320,6 +1359,7 @@ fn artifact_fold<T>(
     ModuleVerdictBundleArtifact { request_key: k, test_verdicts: v, preparation_diagnostics: d } =>
       module_verdict_bundle(k, v, d)
     ComputeWorkArtifact { request_key: k, outcome: o, log: l, outputs: x, gunbc_binary: g, claim_batch_binary: c } => compute_work(k, o, l, x, g, c)
+    FabricBlobArtifact { request_key: k, blob: b } => fabric_blob(k, b)
     LegacyIncompleteArtifact { kind: kd, request_key: k, carried_outputs: cs } =>
       legacy_incomplete(kd, k, cs)
   }
@@ -1336,6 +1376,7 @@ fn artifact_kind(artifact: MaterializedArtifact) -> ArtifactKindId {
     universe: (k, p, c) => native_test_universe_artifact_kind,
     module_verdict_bundle: (k, v, d) => native_module_verdict_bundle_artifact_kind,
     compute_work: (k, o, l, x, g, c) => compute_work_artifact_kind,
+    fabric_blob: (k, b) => fabric_blob_artifact_kind,
     legacy_incomplete: (kd, k, cs) => kd
   )
 }
@@ -1351,6 +1392,7 @@ fn artifact_request_key(artifact: MaterializedArtifact) -> ContentHash {
     universe: (k, p, c) => k,
     module_verdict_bundle: (k, v, d) => k,
     compute_work: (k, o, l, x, g, c) => k,
+    fabric_blob: (k, b) => k,
     legacy_incomplete: (kd, k, cs) => k
   )
 }
@@ -1393,6 +1435,7 @@ fn artifact_carried_outputs(artifact: MaterializedArtifact) -> List<CarriedOutpu
       positioned_part(id: output_compute_work_outputs, part: x)
     ], match g { Present { value: p } => [positioned_part(id: output_compute_work_gunbc_binary, part: p)]  Absent => [] }),
       match c { Present { value: p } => [positioned_part(id: output_compute_work_claim_batch_binary, part: p)]  Absent => [] }),
+    fabric_blob: (k, b) => [positioned_part(id: output_fabric_blob, part: b)],
     legacy_incomplete: (kd, k, cs) => cs
   )
 }
@@ -1464,6 +1507,19 @@ fn manifest_first_repeated(parts: List<CarriedOutput>) -> ArtifactOutputId? {
   match parts |> filter(o => manifest_part_occurrences(parts: parts, id: o.id) > 1) |> first() {
     Present { value: o } => Present { value: o.id }
     Absent => none
+  }
+}
+
+fn manifest_one_part(m: ArtifactManifest, id: ArtifactOutputId, build: fn(ArtifactPart) -> MaterializedArtifact) -> ManifestDecode {
+  match manifest_first_undeclared(parts: m.parts, roster: [id]) {
+    Present { value: p } => ManifestPartUndeclared { kind: m.kind, part: p }
+    Absent => match manifest_first_repeated(parts: m.parts) {
+      Present { value: p } => ManifestPartRepeated { kind: m.kind, part: p }
+      Absent => match manifest_part(parts: m.parts, id: id) {
+        Present { value: p } => ManifestDecoded { artifact: build(p) }
+        Absent => ManifestDecoded { artifact: LegacyIncompleteArtifact { kind: m.kind, request_key: m.request_key, carried_outputs: m.parts } }
+      }
+    }
   }
 }
 
@@ -1579,6 +1635,8 @@ fn artifact_from_manifest(m: ArtifactManifest) -> ManifestDecode {
       build: (a, b) => ModuleVerdictBundleArtifact { request_key: k, test_verdicts: a, preparation_diagnostics: b })
   } else if m.kind == compute_work_artifact_kind {
     manifest_compute_work(m: m)
+  } else if m.kind == fabric_blob_artifact_kind {
+    manifest_one_part(m: m, id: output_fabric_blob, build: b => FabricBlobArtifact { request_key: k, blob: b })
   } else {
     ManifestKindUndeclared { kind: m.kind }
   }

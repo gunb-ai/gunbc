@@ -16,6 +16,8 @@ import std.content_hash {
   Sha256Digest, sha256_hex_digest,
 }
 import std.cache_identity { ArtifactKindId, CacheInterfaceId }
+import std.judgment_contract { ComputedContent, ExactByteContent }
+import std.algebra { empty_map, map_insert, map_lookup }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.materialization_provider {
@@ -35,7 +37,7 @@ import std.materialization_provider {
   EvaluationStoreAddress,
   evaluation_store_address, evaluation_store_address_digest, AddressedRequest, addressed_request, RequestAddressed, RequestAddressRefused,
   evaluation_store_address_preimage,
-  request_key, request_kind,
+  request_key, request_kind, request_judgment_contract,
   length_prefixed_encode, result_content_identity,
   provider_serve_persisted,
   observed_evaluation_preimage_from_object, ObservedEvaluationPreimage,
@@ -518,8 +520,33 @@ type OpenedMaterializationStore {
 // ---------------------------------------------------------------------------------------------
 // Lookup.
 
+type StoreOutputContentRefusal
+  = StoreRequiredBytePartMissing { part: ArtifactOutputId }
+  | StoreRequiredBytePartDifferent { part: ArtifactOutputId, expected: Sha256Digest, found: Sha256Digest }
+
+fn store_output_content_refusal(req: ArtifactRequest, blobs: List<ArtifactBlobPart>) -> StoreOutputContentRefusal? {
+  let by_id: Map<String, ArtifactBlobPart> = fold(blobs, init: empty_map(), f: (m, b) => map_insert(m, b.id as String, b))
+  let initial: StoreOutputContentRefusal? = none
+  request_judgment_contract(req: req).result.required_persisted_outputs |> fold(
+    init: initial,
+    f: (prior, obligation) => match prior {
+      Present { value: _ } => prior
+      Absent => match obligation.content {
+        ComputedContent => none
+        ExactByteContent { digest: expected } => match map_lookup(by_id, obligation.id as String) {
+          Absent => Present { value: StoreRequiredBytePartMissing { part: obligation.id } }
+          Present { value: b } => if b.digest == expected { none } else {
+            Present { value: StoreRequiredBytePartDifferent { part: obligation.id, expected: expected, found: b.digest } }
+          }
+        }
+      }
+    }
+  )
+}
+
 type StoreLookupRefusal
-  = StoreLookupObjectUnavailable { fault: StoreFault }
+  = StoreLookupOutputContentRefused { cause: StoreOutputContentRefusal }
+  | StoreLookupObjectUnavailable { fault: StoreFault }
   | StoreLookupObjectMalformed { cause: String }
   | StoreLookupManifestUninterpretable { decode: ManifestDecode }
   | StoreLookupPayloadMissing { part: ArtifactOutputId }
@@ -628,7 +655,9 @@ fn store_lookup_from_address(
         StoreObjectMalformed { cause: cause } =>
           StoreLookupRefused { key: key, refusal: StoreLookupObjectMalformed { cause: cause } }
         StoreObjectDecoded { manifest: m, payloads: ps, blobs: bs, evaluation_preimage: stored_preimage, result_preimage: stored_result } =>
-          if ((stored_result as String) == (result_content_canonical(parts: m.parts, payloads: ps) as String)) == false {
+          match store_output_content_refusal(req: addressed.request, blobs: bs) {
+            Present { value: cause } => StoreLookupRefused { key: key, refusal: StoreLookupOutputContentRefused { cause: cause } }
+            Absent => if ((stored_result as String) == (result_content_canonical(parts: m.parts, payloads: ps) as String)) == false {
             StoreLookupRefused {
               key: key,
               refusal: StoreLookupObjectMalformed { cause: "stored result_preimage disagrees with payload encoding" }
@@ -689,6 +718,7 @@ fn store_lookup_from_address(
                   }
           }
           }
+          }
       }
   }
 }
@@ -705,7 +735,8 @@ fn store_lookup_from_address(
 // fits the budget but not the budget less those bytes refuses as cleanup outstanding, so a host that
 // keeps refusing deletes stops the store's writes instead of letting disk grow past the ceiling.
 type StoreCommitRefusal
-  = StoreCommitManifestUninterpretable { decode: ManifestDecode }
+  = StoreCommitOutputContentRefused { cause: StoreOutputContentRefusal }
+  | StoreCommitManifestUninterpretable { decode: ManifestDecode }
   | StoreCommitContractRefused { binding: RequestArtifactBinding }
   | StoreCommitPublishRefused { fault: StoreFault }
   | StoreCommitReadBackRefused { read_back: StoreLookup }
@@ -746,7 +777,13 @@ fn store_commit_prepare(req: ArtifactRequest, payloads: List<ArtifactPayload>, b
 }
 
 fn store_commit_prepare_addressed(addressed: AddressedRequest, payloads: List<ArtifactPayload>, blobs: List<ArtifactBlobPart>) -> StoreCommitPreparation {
-  store_commit_prepare_admitted(addressed: addressed, payloads: concat(payloads, blobs |> map(b => blob_part_payload(b: b))), blobs: blobs)
+  match store_output_content_refusal(req: addressed.request, blobs: blobs) {
+    Present { value: cause } => StoreCommitNotPrepared { commit: StoreCommitRefused {
+      key: evaluation_store_address_digest(address: addressed.address),
+      refusal: StoreCommitOutputContentRefused { cause: cause }
+    } }
+    Absent => store_commit_prepare_admitted(addressed: addressed, payloads: concat(payloads, blobs |> map(b => blob_part_payload(b: b))), blobs: blobs)
+  }
 }
 
 fn store_commit_prepare_admitted(
@@ -920,6 +957,7 @@ fn store_lookup_refusal_tag(l: StoreLookup) -> String {
     hit: (a, p, bs, r) => "hit",
     miss: k => "miss",
     refused: (k, r) => match r {
+      StoreLookupOutputContentRefused { cause: _ } => "output_content_refused"
       StoreLookupObjectUnavailable { fault: _ } => "unavailable"
       StoreLookupObjectMalformed { cause: _ } => "malformed"
       StoreLookupManifestUninterpretable { decode: _ } => "manifest_uninterpretable"
@@ -953,6 +991,7 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       RealizationConvergedOnPriorCommit => "converged_on_prior_commit"
     },
     refused: (k, r) => match r {
+      StoreCommitOutputContentRefused { cause: _ } => "output_content_refused"
       StoreCommitManifestUninterpretable { decode: _ } => "manifest_uninterpretable"
       StoreCommitContractRefused { binding: _ } => "contract_refused"
       StoreCommitPublishRefused { fault: _ } => "publish_refused"
