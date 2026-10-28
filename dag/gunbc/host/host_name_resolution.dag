@@ -120,8 +120,9 @@ fn zone_admit(raw: String) -> ZoneAdmission {
 
 // LABEL EQUALITY, written once and named. `DnsLabel` is `NonEmptyStr` branded, and the corpus's idiom for
 // comparing a branded string is the widening cast — the cast is what says "this is being read as text,
-// here, on purpose" (precedent: dag/gunbc/serving/caller_backlog.dag:127, dag/gunbc/design/reference_
-// instrument.dag:198).
+// here, on purpose" (precedent: gunbc.serving.caller_backlog logical_work_eq, which compares branded
+// LogicalWorkIds the same way, and gunbc.design.reference_instrument citation_is_contained, which widens
+// branded module paths to compare them).
 fn dns_label_eq(a: DnsLabel, b: DnsLabel) -> Bool {
   (a as String) == (b as String)
 }
@@ -172,9 +173,11 @@ fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
 
 // THE ZONES, EACH FROM THE ONE PLACE THE FLEET RECORDS IT. What a space carries is a parsed `Zone`, never
 // a spelling, and the spelling is not re-minted here either: the tailnet's domain is
-// `gunbc.fleet.fleet_tailnet.fleet_tailnet_domain`, whose own comment at fleet_tailnet.dag:13 records
-// re-minting that very string as this module's kind of defect. Only the LAN zone is declared here, because
-// nothing else in the corpus carries it — and it is declared from observation, cited below, not invented.
+// `gunbc.fleet.fleet_tailnet.fleet_tailnet_domain`, and the commentary above
+// `gunbc.fleet.fleet_tailnet.tailnet_host_from` records re-minting that very string as this module's kind
+// of defect (the ntfy binding once spelled `https://srv1.tailecbe08.ts.net:8443` whole). Only the LAN zone
+// is declared here, because nothing else in the corpus carries it — and it is declared from observation,
+// cited below, not invented.
 data lan_zone_wire: String = "mynetworksettings.com"
 
 fn lan_zone() -> Zone? {
@@ -457,16 +460,11 @@ fn zone_eq(a: Zone, b: Zone) -> Bool {
 }
 
 // WHAT THAT CONSUMER'S RESOLVER WAS OBSERVED TO ANSWER FOR THIS NAME, or Absent when nothing was observed.
+// ONE WALK, NOT TWO (DESIGN §2: the minimal process; §6: a proven cost-shape defect is always fixed). The
+// body used to be written here arm-for-arm as well as in `first_matching_observation`, so the two could
+// drift — a fix to the search would land in one and silently not the other.
 fn observed_for(reach: ConsumerReach, name: ResolvableName) -> ResolutionObservation? {
-  match reach.observed {
-    Empty => Absent
-    Cons { head: o, tail: rest } =>
-      if observed_names_this(outcome: o.outcome, name: name) {
-        Present { value: o }
-      } else {
-        first_matching_observation(xs: rest, name: name)
-      }
-  }
+  first_matching_observation(xs: reach.observed, name: name)
 }
 
 fn first_matching_observation(xs: List<ResolutionObservation>, name: ResolvableName) -> ResolutionObservation? {
