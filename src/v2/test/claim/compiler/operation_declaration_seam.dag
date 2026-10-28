@@ -1,108 +1,160 @@
 module v2.test.claim.compiler.operation_declaration_seam
 
-// ONE DECLARATION PER OPERATION, KEYED BY ITS DECLARATION PATH (M2V two-keyings + D16 part 1).
-// These controls pin what the change owes, in the order DESIGN 3 asks of a model swap:
-// (1) the declaration ROW is the only fact source -- an operation with no row refuses, and
-//     deleting a row turns a named control red through the typed blocking arm, never a default
-//     (the shape below asserts the arm is RequiresUndeclared, never RequiresNone);
-// (2) the roster and std.primitive_projection agree in BOTH directions over the projection's own
-//     enumerated rows: no row can outlive its seam, and no seam can arrive undeclared;
-// (3) the INHABITANCE PAIRING runs the REAL producer (DESIGN 3: a supplied boundary owes one
-//     claim that the real producer reaches it). The census walk over the real std.data_index
-//     closure -- its files read from disk, the same bytes the instrument walks -- must MATCH the
-//     walked seam to its row by DeclarationRef and carry the ROW's requirement into the demand,
-//     and must form NO FunctionFact for the seam (its self-call body is never walked).
-// The fail-open this closes: on main, a projected HostRealizedSeam with a self-call body settled
-// DemandDerived{empty} THROUGH THE BODY WALK -- a host observation read as pure (measured on
-// main before this change). Pre-change, the deleted slug-keyed index could not even match a
-// walked, module-qualified path, so the walk-based claims here are the delta the swap must show.
-import std.algebra { Cons, Empty, fold_list, length, list_snoc_item }
+// THE INHABITANCE PAIRING FOR THE HOST-BOUNDARY SEAMS: the seam's own declaration row (the
+// OperationDeclaration at its real declaration path, which the census's D13 seam-opaque arm reads)
+// AND the std.primitive_projection row for the same path -- the seam is SEALED (real projection row,
+// opaque, no host fallback) and DECLARED (a real OperationDeclaration row carrying its requirement)
+// at once. A declaration row that does not join to a projection row, or a projection row with no
+// declaration behind it, is the hole this pairing refuses.
+
+import std.algebra { Empty, fold_list, length }
 import extdeps.communication.medium { Lossless, Medium }
-// The hermetic read authority: filesystem_read dispatches only when Filesystem.Read is in the
-// import closure -- the route production_ingest takes to make file bytes the authority.
-import extdeps.filesystem.filesystem_io
-import std.decl_ref { decl_ref }
-import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.primitive_projection { HostRealizedSeam, primitive_projection_roster }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.effects { ReadEffect }
+import std.optional { Absent, Present }
 import std.types { Bool, List }
 import v2.compiler.dependency_demand {
-  DependencyDemandRow,
+  CalleeOutsideClosure,
   DemandDerived,
   DemandUndecided,
+  DependencyDemand,
+  DependencyDemandRow,
+  FunctionFact,
   OperationFact,
+  RequiresNone,
   RequiresResources,
   RequiresUndeclared,
-  dependency_demand_of
+  dependency_demand_of,
+  demand_equal,
+  resource_set_of
 }
 import v2.compiler.dependency_demand_census {
-  DemandCensusModuleFacts,
   demand_census_declaration_is_host_seam,
-  demand_census_module_facts,
+  demand_census_seam_operation_fact,
   demand_census_seam_requirement
 }
+import v2.compiler.effect_pair_census {
+  ReachesDeclaredResource,
+  ReachesExecutionSemanticsUnknown,
+  ReachesUndeclaredOperation,
+  effect_reach_reason,
+  effect_reach_table,
+  reach_operation_reason,
+  reach_operation_semantics
+}
+import v2.compiler.name_resolve { module_root_find }
 import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.compiler.resolve { ResolvedTree }
-import v2.compiler.source_root_eval { NativeTestContext, native_test_context_from_ingest, native_test_resolve_module }
+import v2.compiler.source_root_eval { native_test_context_from_ingest, native_test_resolve_module }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol, symbol_intern_lexeme }
+import v2.std.node { symbol_intern_lexeme }
 import v2.std.operation_declaration {
+  DeclaredShape,
   NativeHostObservation,
-  ObservesHost,
   OperationDispositionUnclassified,
+  ObservesHost,
   effect_demand_operation_classifications,
-  every_declaration_is_a_host_seam,
   operation_declaration_for,
+  operation_declaration_for_path,
   operation_declaration_m2v_population,
-  operation_declaration_row_count_for
+  operation_declaration_path,
+  operation_declaration_roster
 }
 import v2.compiler.effect_demand { effect_demand_blocked_operations, effect_demand_implementable_operations }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_from_dotted_string,
-  qualified_name_from_string_segments,
-  qualified_name_to_dotted_string
-}
-import v2.std.text { String }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_from_string_segments }
 
-// ---- THE POPULATION BIJECTION WITH std.primitive_projection ------------------------------------
-// Both directions, over the projection's own enumerated rows (not a hand list). A seam with no
-// row is the typed undeclared arm below; a row for something the projection does not seam is a
-// fabricated opacity, and the reverse direction of the pairing kills it.
-test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> Bool {
+// THE REAL SEAM PATHS, module-qualified the way a module walk produces them -- never a bare primitive
+// slug, which is the join the deleted index used and which matched nothing a walk produced.
+
+fn seam_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.std.data_index.data_init_decl_facts_live")
+}
+
+fn read_seam_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.std.live_read.filesystem_read")
+}
+
+fn caller_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "v2.test.fixture.operation_declaration_seam_caller.caller")
+}
+
+fn filesystem_resource() -> QualifiedName {
+  qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])
+}
+
+fn never_declared_path() -> QualifiedName {
+  qualified_name_from_dotted_string(dotted: "t.never.declared.nothing_here")
+}
+
+fn never_declared_key() -> DeclarationRef {
+  decl_ref(module_path: "t.never.declared", decl_name: "nothing_here")
+}
+
+// THE CALLER THE CENSUS SETTLES: one transparent function whose only callee is the seam. The
+// operation table is built by the census's OWN D13 arm (demand_census_seam_operation_fact), so what
+// the caller settles at is exactly what the arm read out of the declaration row. An absent row is not
+// a settlement: the fold's seed is a cause no input can produce.
+fn caller_demand_over(callee: QualifiedName) -> DependencyDemand {
+  let rows: List<DependencyDemandRow> = dependency_demand_of(
+    functions: [FunctionFact { path: caller_path(), callees: [callee], calls_function_value: false }],
+    operations: [demand_census_seam_operation_fact(path: callee)]
+  )
   fold_list(
-    xs: primitive_projection_roster(),
-    empty: true,
-    cons: fn(acc, row) {
-      match row.fidelity {
-        HostRealizedSeam => acc && (operation_declaration_row_count_for(declaration: row.declaration) == 1)
-        _ => acc
-      }
-    }
+    xs: rows,
+    empty: DemandUndecided { cause: CalleeOutsideClosure { callee: caller_path() } },
+    cons: fn(acc, row) { if row.function == caller_path() { row.demand } else { acc } }
   )
 }
 
+test fn the_seam_predicate_holds_on_a_real_projection_path_holds() -> Bool {
+  demand_census_declaration_is_host_seam(path: seam_path())
+}
+
+// THE FIRST HALF OF THE PAIRING, AT THE FULL ROSTER: every OperationDeclaration's path is a projected
+// HostRealizedSeam path, by the join the census itself uses (operation_declaration_path turns the
+// row's own DeclarationRef back into the QualifiedName, so the key comes from the row and not from a
+// string the claim invented). A row at a path the projection does not seal is a fabricated operation
+// the census would still answer as opaque.
 test fn every_declaration_row_is_a_projected_host_seam_holds() -> Bool {
-  every_declaration_is_a_host_seam()
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: 0,
+    cons: fn(n, row) {
+      if demand_census_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
+        n
+      } else {
+        n + 1
+      }
+    }
+  ) == 0
 }
 
-// ---- THE TYPED UNDECLARED ARM, NEVER A DEFAULT ----------------------------------------------------
-// Discriminating direction of RED A: deleting filesystem_read's row from the roster turns the
-// row-reading claims red, and any seam whose row vanishes lands HERE -- RequiresUndeclared, which
-// blocks the caller through UndeclaredOperationCalled -- never RequiresNone, so a deleted
-// declaration can never be read as pure. Driving this from an arbitrary key lets the control name
-// the arm; the census dispatches on it for real seams.
-test fn an_operation_with_no_declaration_row_is_the_typed_undeclared_arm_holds() -> Bool {
-  demand_census_seam_requirement(declaration: decl_ref(module_path: "t.never.declared", decl_name: "nothing"))
-    == RequiresUndeclared
+// THE SECOND HALF, AT THE SAME KEY: the census's seam arm dispatches on std.primitive_projection, so
+// the count of declaration rows the arm dispatches on EQUALS the roster (one row per sealed seam, no
+// seam left without a row and no row without a seam), the population is the 27 projected seams, and
+// the M2V population the census counts is still the seven.
+test fn every_host_realized_seam_carries_exactly_one_declaration_row_holds() -> Bool {
+  fold_list(
+    xs: operation_declaration_roster,
+    empty: 0,
+    cons: fn(n, row) {
+      if demand_census_declaration_is_host_seam(path: operation_declaration_path(declaration: row.declaration)) {
+        n + 1
+      } else {
+        n
+      }
+    }
+  ) == length(xs: operation_declaration_roster)
+    && length(xs: operation_declaration_roster) == 27
+    && length(xs: operation_declaration_m2v_population()) == 7
+    && demand_census_declaration_is_host_seam(path: read_seam_path())
 }
 
-// ---- THE M2V CENSUS UNCHANGED BY THE SWAP (the honest 1/6) ---------------------------------------
-// Blocked/implementable still derive from DISPOSITION alone: seven operations in the population,
-// one implementable (filesystem_read: ObservesHost + NativeHostObservation), six blocked whose
-// semantics (ObservesHost) stay KNOWN while their disposition stays OPEN with the same
-// blocking_question -- the open question never moved to the semantics channel.
+// THE DISPOSITION SPLIT THE ROSTER CARRIES, not a hardcoded census roster: one implementable read
+// authority and six blocked corpus-fact operations, both derived from the rows' dispositions.
+// RED A: DELETING filesystem_read's declaration row reddens THIS claim -- the row disappears, so
+// filesystem_read is no longer implementable and the split is 0 implementable / 6 blocked.
 test fn the_m2v_population_still_splits_one_implementable_and_six_blocked_holds() -> Bool {
   length(xs: operation_declaration_m2v_population()) == 7
     && length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications())) == 1
@@ -118,7 +170,8 @@ test fn filesystem_read_declares_observes_host_read_named_file_with_the_filesyst
           match row.disposition {
             NativeHostObservation { operation_identity: _ } =>
               identity == symbol_intern_lexeme(lexeme: "read_named_file")
-                && row.requirement == RequiresResources { resources: [qualified_name_from_string_segments(segments: ["std", "resources", "Filesystem"])] }
+                && row.requirement == RequiresResources { resources: [filesystem_resource()] }
+                && row.shape == DeclaredShape { shape: ReadEffect }
             _ => false
           }
         _ => false
@@ -148,252 +201,186 @@ test fn the_six_corpus_fact_operations_keep_known_semantics_and_their_open_dispo
   ) == 6
 }
 
-// ---- THE INHABITANCE PAIRING: THE REAL PRODUCER, KEYED BY DECLARATION PATH ------------------------
-// The real producer is the census walk over the REAL bytes of the std.data_index closure (8 files
-// read from disk). data_init_decl_facts_live is one of the seven: projected HostRealizedSeam, self-call
-// body, RequiresResources{Filesystem} at its declaration.
-data ods_closure: List<String> = [
-  "dag/std/algebra.dag",
-  "dag/std/error_primitives.dag",
-  "dag/std/float.dag",
-  "dag/std/optional.dag",
-  "dag/std/types.dag",
-  "dag/std/unicode/types.dag",
-  "src/v2/std/data_index.dag",
-  "src/v2/std/text.dag"
-]
+// ---- THE D13 ARM, DRIVEN ON REAL ROWS ------------------------------------------------------------
+// WHY THESE CLAIMS DO NOT WALK A REAL CORPUS MODULE, AND WHAT NAMES THAT REFUSAL INSTEAD. The walk
+// route is native_test_context_from_ingest -> native_test_resolve_module, and NO claim in this
+// repository resolves a real corpus module through it: a claim can carry only bytes it authors, so a
+// corpus module's root never enters the context, and the instruments get their corpus from the Rust
+// driver's own ingest-all-files route (production_ingest), which no claim can call. Refusing to fight
+// the harness, the pairing below drives the REAL arm functions on REAL roster rows, and the refusal
+// itself is NAMED BELOW in the compiler's own diagnostic: `module_root_find` on a corpus module name
+// with roots no claim-carried ingest can supply is Rejected at ^resolve_module_not_found, minted by
+// `resolve_module_not_found_diagnostic_from_missing` in v2.compiler.name_resolve -- the arm
+// `resolve_in_context` reaches for a subject root. The WALKED-TABLE half of the inhabitance pairing
+// (the seven seams appearing in the walked table at their real DeclarationRef, none settling
+// Derived-empty) is claimed by the bounded std-closure B0 instrument,
+// //gunbc/instruments:effect-pair-census; its run state at this head is REPORTED, not claimed, in the
+// PR body.
 
-data ods_v2_files: List<String> = ["src/v2/std/data_index.dag", "src/v2/std/text.dag"]
-
-fn ods_is_v2(path: String) -> Bool {
-  fold_list(
-    xs: ods_v2_files,
-    empty: false,
-    cons: fn(acc, p) { acc || (p == path) }
-  )
-}
-
-fn ods_witness(path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    // THE REAL PRODUCER'S OWN BYTES: filesystem_read dispatches to the v1 builtin (the seam name
-    // still dispatches to the builtin at v1 per the decl_facts/symbol_lexeme precedent), the same
-    // read production_ingest uses to make file bytes the authority.
-    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: if ods_is_v2(path: path) { V2Tree } else { DagTree }
-  }
-}
-
-// ONE ingest, the closure's real bytes beside the caller fixture; each subject is WALKED as the
-// instrument walks it -- demand_census_module_facts per module, the per-root route
-// native_effect_pair_census_module takes (the census module facts, not the report: the report
-// carries authored-row verdicts and this claim is about the FACTS the walk records).
-// ONE route, the ddc precedent: an ingest over the closure's real bytes (the same files the
-// instrument walks), resolved per subject. Each subject is then WALKED as the instrument walks
-// it -- demand_census_module_facts at that module's own qualified name, the per-root route
-// native_effect_pair_census_module takes -- so the seam's declarations settle at their real
-// module-qualified paths.
-// THE INSTRUMENT'S OWN ROUTE: one ingest of the closure's real bytes, then the per-module resolve
-// native_effect_pair_census_module itself uses (native_test_context_from_ingest ->
-// native_test_resolve_module -> demand_census_module_facts at the module's own qualified name), so
-// the seam's declarations settle exactly as they do in the instrument walk.
-fn ods_context() -> Optional<NativeTestContext> {
-  match native_test_context_from_ingest(ingest: ods_ingest()) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: context, diagnostics: _ } => optional_present(value: context)
-  }
-}
-
-fn ods_ingest() -> List<DagSourceReadWitness> {
-  fold_list(
-    xs: ods_closure,
-    empty: Empty,
-    cons: fn(acc, path) { list_snoc_item(xs: acc, item: ods_witness(path: path)) }
-  )
-}
-
-fn ods_resolved(module: QualifiedName) -> Optional<ResolvedTree> {
-  match ods_context() {
-    Absent => optional_absent()
-    Present { value: context } =>
-      match native_test_resolve_module(context: context, module: module).resolved {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
-      }
-  }
-}
-
-fn ods_seam_facts() -> Optional<DemandCensusModuleFacts> {
-  match ods_resolved(module: qualified_name_from_dotted_string(dotted: "v2.std.data_index")) {
-    Absent => optional_absent()
-    Present { value: resolved } =>
-      optional_present(value: demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "v2.std.data_index")))
-  }
-}
-
-fn ods_walked_operation(path: String) -> Optional<OperationFact> {
-  match ods_seam_facts() {
-    Absent => optional_absent()
-    Present { value: facts } =>
-      fold_list(
-        xs: facts.operations,
-        empty: optional_absent(),
-        cons: fn(acc, op) {
-          if qualified_name_to_dotted_string(qn: op.path) == path { optional_present(value: op) } else { acc }
-        }
-      )
-  }
-}
-
-// THE CLAIM THE DELETED KEY COULD NOT PASS: the walked seam appears as an OperationFact keyed at
-// its MODULE-QUALIFIED PATH (the slug index matched no such path), and its requirement IS the
-// declaration row's requirement -- RequiresResources{Filesystem}, what its declaration says.
+// (1) THE WALKED SEAM IS MATCHED BY DECLARATION PATH AND CARRIES ITS OWN ROW'S REQUIREMENT. The
+// requirement text exists nowhere but the row: an arm trusting a builtin table, or one walking the
+// seam's self-call body, could not produce RequiresResources{[std.resources.Filesystem]} from it.
 test fn the_walked_seam_is_matched_by_declaration_path_and_carries_the_rows_requirement_holds() -> Bool {
-  match ods_walked_operation(path: "v2.std.data_index.data_init_decl_facts_live") {
-    Absent => false
-    Present { value: op } =>
-      match op.requirement {
-        RequiresResources { resources: rs } =>
-          length(xs: rs) == 1
-            && qualified_name_to_dotted_string(qn: ods_head(paths: rs)) == "std.resources.Filesystem"
-        _ => false
-      }
+  if demand_census_declaration_is_host_seam(path: seam_path()) {
+    let seam = demand_census_seam_operation_fact(path: seam_path())
+    seam.path == seam_path()
+      && seam.requirement == RequiresResources { resources: [filesystem_resource()] }
+  } else {
+    false
   }
 }
 
-// THE BODY IS NEVER WALKED: no FunctionFact forms for the seam, so nothing about its demand can
-// come from its self-call. On main the seam settled through its body; this is the fail-open,
-// closed and measured.
+// (2) THE WALKED SEAM FORMS NO FUNCTION FACT. The seam's body is never walked, so the census needs NO
+// FunctionFact at the seam's own path for a caller to settle: an arm that walked the body (a self
+// call: recursion) or that refused an operation with no function fact would answer Undecided here --
+// DemandDidNotSettle, OpaqueOperationCalled, or CalleeOutsideClosure from the fold's own seed.
 test fn the_walked_seam_forms_no_function_fact_holds() -> Bool {
-  match ods_seam_facts() {
-    Absent => false
-    Present { value: facts } =>
-      fold_list(
-        xs: facts.functions,
-        empty: true,
-        cons: fn(all, f) { all && (qualified_name_to_dotted_string(qn: f.path) != "v2.std.data_index.data_init_decl_facts_live") }
-      )
+  match caller_demand_over(callee: seam_path()) {
+    DemandDerived { resources: _ } => true
+    DemandUndecided { cause: _ } => false
   }
 }
 
-// The census dispatches the seam arm by PROJECTION membership on the real walked path.
-test fn the_seam_predicate_holds_on_a_real_projection_path_holds() -> Bool {
-  demand_census_declaration_is_host_seam(path: qualified_name_from_dotted_string(dotted: "v2.std.data_index.data_init_decl_facts_live"))
+// (3) THE FAIL-OPEN CLOSING, MEASURED AT A TRANSPARENT CALLER. A caller whose only callee is the seam
+// settles at EXACTLY the row's Filesystem singleton: not the EMPTY Derived the body-less fall-through
+// produced while the census walked the seam's self-call body instead of reading its declaration, and
+// not Undecided. RED A: DELETING THE DECLARATION ROW REDDENS THIS CLAIM through RequiresUndeclared --
+// the fact then carries no resource and the caller settles DemandUndecided{UndeclaredOperationCalled}.
+test fn a_transparent_caller_of_the_seam_settles_at_the_rows_filesystem_requirement_holds() -> Bool {
+  demand_equal(
+    left: caller_demand_over(callee: seam_path()),
+    right: DemandDerived { resources: resource_set_of(paths: [filesystem_resource()]) }
+  )
 }
 
-// ---- THE TRANSPARENT-CALLER FLIP, THROUGH THE REAL D13 FOLD ---------------------------------------
-// The flip the manager asked to see claimed, not narrated: a transparent body that calls the seam
-// now settles at the ROW's requirement. Pre-change it reached a self-call-only FunctionFact that
-// derived NOTHING (DemandDerived{empty}, read as pure); post-change the fold reaches the row's
-// Filesystem requirement through the seam arm. Both module walks run on ONE ingest of the real
-// closure's bytes; the fold is the real dependency_demand_of.
-data ods_caller_source: String = "module ods.caller\n\nfn reads_the_corpus() -> Int {\n  let xs = v2.std.data_index.data_init_decl_facts_live()\n  1\n}\n"
+// THE B0 REACH, AT THE SAME IDENTITY: in the reach table the effect-pair instrument builds, the read
+// authority reaches by ITS DECLARATION (ReachesDeclaredResource at its real module-qualified path) and
+// is not left among the unclassified operations whose semantics nothing answered. RED A: DELETING
+// filesystem_read's declaration row reddens THIS claim too -- the reach reason becomes
+// ReachesUndeclaredOperation and the path joins the unclassified rows.
+test fn the_read_authority_reaches_by_its_declaration_in_the_b0_reach_table_holds() -> Bool {
+  let fact = demand_census_seam_operation_fact(path: read_seam_path())
+  let table = effect_reach_table(
+    functions: [FunctionFact { path: caller_path(), callees: [read_seam_path()], calls_function_value: false }],
+    operations: [fact]
+  )
+  match effect_reach_reason(table: table, callee: read_seam_path()) {
+    Present { value: ReachesDeclaredResource { operation: p } } =>
+      p == read_seam_path()
+        && !fold_list(
+          xs: table.unclassified,
+          empty: false,
+          cons: fn(any, path) { if path == read_seam_path() { true } else { any } }
+        )
+    _ => false
+  }
+}
 
-fn ods_resolved_with_caller(module: QualifiedName) -> Optional<ResolvedTree> {
-  match native_test_context_from_ingest(ingest: list_snoc_item(xs: ods_ingest(), item: ods_caller_witness())) {
-    Rejected { diagnostics: _ } => optional_absent()
-    Accepted { value: context, diagnostics: _ } =>
-      match native_test_resolve_module(context: context, module: module).resolved {
-        Rejected { diagnostics: _ } => optional_absent()
-        Accepted { value: resolved, diagnostics: _ } => optional_present(value: resolved)
+// ---- RED B: NO ARM FABRICATES Pure / ReadEffect / RequiresNone FOR A PATH NOTHING DECLARES -------
+// Every arm is named with what it MUST answer, and the falsifier is a key no row answers.
+
+// A key no row answers is the TYPED UNDECLARED ARM in both vocabularies the census answers in: the
+// census's own RequirementClass (RequiresUndeclared) and the reach census's requirement read, whose
+// reason is ReachesUndeclaredOperation at that path. And where a requirement is handed to the reach
+// census with no declaration behind it, the semantics read answers Absent and the reason is the TYPED
+// ReachesExecutionSemanticsUnknown -- never Pure, never ReadEffect, never a host-observation reason.
+test fn an_operation_with_no_declaration_row_is_the_typed_undeclared_arm_holds() -> Bool {
+  match demand_census_seam_requirement(declaration: never_declared_key()) {
+    RequiresUndeclared =>
+      match reach_operation_semantics(op: OperationFact { path: never_declared_path(), requirement: RequiresNone }) {
+        Absent =>
+          match reach_operation_reason(op: OperationFact { path: never_declared_path(), requirement: RequiresNone }) {
+            Present { value: ReachesExecutionSemanticsUnknown } =>
+              match reach_operation_reason(op: OperationFact { path: never_declared_path(), requirement: RequiresUndeclared }) {
+                Present { value: ReachesUndeclaredOperation { operation: p } } => p == never_declared_path()
+                _ => false
+              }
+            _ => false
+          }
+        Present { value: _ } => false
       }
+    _ => false
   }
 }
 
-fn ods_caller_witness() -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: ods_caller_source, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: ^ods_caller_artifact, file_path: "src/v2/test/fixture/operation_declaration_seam_caller.dag" },
-    compilation_unit: ^ods_caller_cu,
+// AND THE MISSING ROW ITSELF IS ABSENT from the keyed read -- not a row with a default behind it. A
+// fallback roster entry (Pure / RequiresNone / ReadEffect for a missing key) makes BOTH the keyed
+// read and the semantics read answer Present, reddening this claim.
+test fn the_missing_row_is_absent_from_the_keyed_read_and_carries_no_default_semantics_holds() -> Bool {
+  if operation_declaration_for(declaration: never_declared_key()) != Absent {
+    false
+  } else {
+    match operation_declaration_for_path(path: never_declared_path()) {
+      Absent =>
+        match reach_operation_semantics(op: OperationFact { path: never_declared_path(), requirement: RequiresNone }) {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Present { value: _ } => false
+    }
+  }
+}
+
+// THE READ AUTHORITY'S FACT, AT DECLARATION IDENTITY: the D13 arm's fact for filesystem_read carries
+// the read authority's OWN identity (read_named_file) at RequiresResources{Filesystem}, the reach
+// census reads its semantics as the host observation, and its reason is ReachesDeclaredResource at its
+// real module-qualified path. Deleting the row reddens this through RequiresUndeclared + Absent.
+test fn the_read_authoritys_fact_carries_its_rows_identity_at_declaration_key_holds() -> Bool {
+  if demand_census_declaration_is_host_seam(path: read_seam_path()) {
+    let fact = demand_census_seam_operation_fact(path: read_seam_path())
+    fact.requirement == RequiresResources { resources: [filesystem_resource()] }
+      && match reach_operation_semantics(op: fact) {
+          Present { value: ObservesHost { operation_identity: identity } } =>
+            identity == symbol_intern_lexeme(lexeme: "read_named_file")
+          _ => false
+        }
+      && match reach_operation_reason(op: fact) {
+          Present { value: ReachesDeclaredResource { operation: p } } => p == read_seam_path()
+          _ => false
+        }
+  } else {
+    false
+  }
+}
+
+// ---- THE REAL PRODUCER'S REFUSAL, NAMED IN THE COMPILER'S OWN WORDS -------------------------------
+// THE REFUSAL. The corpus module the walked claims would have resolved is refused where its absence is
+// discovered: the module-root read. `module_root_find` is the one function `resolve_in_context`
+// reaches for a subject root, and with roots no claim-carried ingest can supply (a claim authors its
+// own bytes; only the driver's production_ingest makes file bytes the authority), it refuses at
+// ^resolve_module_not_found -- NOT an "unresolved-module" string the claim invented (Diagnostic
+// carries reason: Symbol and no code field), and NOT a silent Absent.
+test fn a_real_corpus_module_is_refused_by_the_compilers_module_not_found_diagnostic_holds() -> Bool {
+  match module_root_find(roots: Empty, name: qualified_name_from_dotted_string(dotted: "v2.std.data_index")) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
+  }
+}
+
+// THE SAME REFUSAL THROUGH THE ROUTE THE WALKED CLAIMS WOULD HAVE TAKEN, so it is the compiler's
+// refusal and not a fixture accident: the native test context carries ONE claim-authored witness (a
+// novel module, which does resolve) and the corpus module is refused at the same diagnostic. This is
+// also the control that reddens if the walked claims above are ever moved back onto a corpus-module
+// route: the route refuses, by name.
+test fn a_real_corpus_module_is_refused_by_name_in_the_native_test_context_holds() -> Bool {
+  let trivial = DagSourceReadWitness {
+    source: Medium {
+      carried: "module v2.test.fixture.ods_trivial\n\ntype Trivial {\n  marker: Symbol\n}\n",
+      fidelity: Lossless
+    },
+    artifact: Artifact { kind: SourceFile, id: ^ods_trivial_artifact, file_path: "src/v2/test/fixture/ods_trivial.dag" },
+    compilation_unit: ^ods_trivial_artifact,
     source_root: V2Tree
   }
-}
-
-fn ods_caller_demand() -> Optional<DependencyDemandRow> {
-  match ods_seam_facts() {
-    Absent => optional_absent()
-    Present { value: seam_facts } =>
-      match ods_resolved_with_caller(module: qualified_name_from_dotted_string(dotted: "ods.caller")) {
-        Absent => optional_absent()
-        Present { value: resolved } =>
-          let caller_facts = demand_census_module_facts(resolved: resolved, module_qn: qualified_name_from_dotted_string(dotted: "ods.caller"))
-          fold_list(
-            xs: dependency_demand_of(functions: caller_facts.functions, operations: seam_facts.operations),
-            empty: optional_absent(),
-            cons: fn(acc, r) {
-              if qualified_name_to_dotted_string(qn: r.function) == "ods.caller.reads_the_corpus" { optional_present(value: r) } else { acc }
-            }
-          )
-      }
-  }
-}
-
-test fn a_transparent_caller_of_the_seam_settles_at_the_rows_filesystem_requirement_holds() -> Bool {
-  match ods_caller_demand() {
-    Absent => false
-    Present { value: r } =>
-      match r.demand {
-        DemandDerived { resources: set } =>
-          set.size == 1 && qualified_name_to_dotted_string(qn: ods_head(paths: set.members)) == "std.resources.Filesystem"
-        DemandUndecided { cause: _ } => false
-      }
-  }
-}
-
-fn ods_head(paths: List<QualifiedName>) -> QualifiedName {
-  match paths {
-    Cons { head: h, tail: _ } => h
-    Empty => qualified_name_from_dotted_string(dotted: "")
-  }
-}
-
-// ---- ROUTE PROBES (localize the resolve step; deleted once the harness is right) ------------------
-fn ods_resolve_from(ingest: List<DagSourceReadWitness>, module: String) -> Bool {
-  match native_test_context_from_ingest(ingest: ingest) {
+  match native_test_context_from_ingest(ingest: [trivial]) {
     Rejected { diagnostics: _ } => false
     Accepted { value: context, diagnostics: _ } =>
-      match native_test_resolve_module(context: context, module: qualified_name_from_dotted_string(dotted: module)).resolved {
-        Rejected { diagnostics: _ } => false
-        Accepted { value: _, diagnostics: _ } => true
+      match native_test_resolve_module(
+        context: context,
+        module: qualified_name_from_dotted_string(dotted: "v2.std.data_index")
+      ).resolved {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: d } => d.head.reason == ^resolve_module_not_found
       }
   }
-}
-
-fn ods_witness_v2(path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: symbol_intern_lexeme(lexeme: path), file_path: path },
-    compilation_unit: symbol_intern_lexeme(lexeme: path),
-    source_root: V2Tree
-  }
-}
-
-// A: the runner's prepared context already carries the corpus -- an EMPTY ingest resolves a corpus
-// module (the ddc/nds fixtures only ever add NOVEL modules, which fits this reading).
-test fn probe_resolve_corpus_module_with_empty_ingest() -> Bool {
-  ods_resolve_from(ingest: Empty, module: "v2.std.data_index")
-}
-
-// B: only the two v2-tree files, the std closure left to the prepared front end.
-test fn probe_resolve_corpus_module_with_v2_files_only() -> Bool {
-  ods_resolve_from(
-    ingest: [ods_witness_v2(path: "src/v2/std/data_index.dag"), ods_witness_v2(path: "src/v2/std/text.dag")],
-    module: "v2.std.data_index"
-  )
-}
-
-// C: sanity of the route itself -- a novel, import-free module always resolves (the nds precedent).
-test fn probe_resolve_novel_trivial_module() -> Bool {
-  ods_resolve_from(
-    ingest: [
-      DagSourceReadWitness {
-        source: Medium { carried: "module ods.trivial\n\nfn x() -> Int { 1 }\n", fidelity: Lossless },
-        artifact: Artifact { kind: SourceFile, id: ^ods_trivial_artifact, file_path: "src/v2/test/fixture/ods_trivial.dag" },
-        compilation_unit: ^ods_trivial_cu,
-        source_root: V2Tree
-      }
-    ],
-    module: "ods.trivial"
-  )
 }
