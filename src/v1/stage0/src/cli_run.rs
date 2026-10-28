@@ -30888,7 +30888,7 @@ pub fn shell_transport_operation_declaration(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
@@ -31329,7 +31329,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
         let fallback_transport = if let Some(t) = item.transport.as_ref() {
             t.clone()
         } else {
-            crate::v1_std_core::local_transport_node(
+            crate::v1_std_core::undeclared_transport_node(
                 Rc::new(
                     crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
                 ),
