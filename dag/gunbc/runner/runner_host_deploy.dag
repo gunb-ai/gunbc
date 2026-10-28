@@ -378,16 +378,17 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // manager answers over /run/user/<uid>/bus. srv4 only (operator decision relayed on gunbc#14972, 2026-10-25); a
 // host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
 // on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels)
-// -- DONE: gunbc_user_session_label, added to the job composition by runner_user_session_labels_for and stripped
-// from any caller-spelled or offer-spelled half, so this row is its only authority; the converge's three readings
-// for each rostered host are carried per-host, typed, in gunbc.runner.runner_user_session_receipt
-// runner_user_session_converge_receipt_rows, and the composition grants the label only to a host that is BOTH on
-// this roster and has a holding receipt row -- rostering a host without running its converge grants nothing
-// (DESIGN 4c: the machine claim's receipt is a typed carrier, not prose); then gunbc#14972's systemd credential
+// -- DONE: gunbc_user_session_label, added to the job composition only by the EVIDENCE ENTRY
+// (runner_registration_labels_with_user_session_receipt, which takes a converge receipt parsed by
+// gunbc.runner.runner_user_session_receipt from the bytes a converge run wrote -- the roster here is the
+// converge's INPUT population, and the receipt is the EVIDENCE; hand-copied receipt rows were rejected as
+// DESIGN 6's transcribed output), and stripped from any caller-spelled or offer-spelled half; until the
+// fleet-converge receipt read (the follow-up in the PR body of gunbc#15253) supplies a receipt, the label is
+// granted to nobody in production; then gunbc#14972's systemd credential
 // rows select on that label -- the CONSUMER of the label, the jobs that run a command under the job account's
-// user manager, realized today by gunbc.runner.runner_user_session runner_user_session_unit_run_command_spec (the
-// runs-on selector step, to land once every host in that pool reads ready -- until then a row for a host without
-// the label would strand its runs-on).
+// user manager. gunbc.runner.runner_user_session runner_user_session_converge_ci_wet is the leg that
+// establishes the capability; the credential rows' runs-on switch is the next step, to land once every host in
+// that pool reads ready -- until then a row for a host without the label would strand its runs-on).
 data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
 
 fn runner_job_user_session_on(host: HostIdentity) -> Bool {
