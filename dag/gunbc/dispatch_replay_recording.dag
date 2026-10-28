@@ -51,8 +51,10 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 // which is what keeps requirement 2 standing when a recording was not captured from an attempt.
 //
 // WHERE THEY LIVE: refs/gunbc/recordings/<RecordingId> for captured and refs/gunbc/recordings-prepared/<RecordingId>
-// for prepared, in the controller's repository, a commit whose tree is the result tree and whose single parent is
-// the base. The namespace is DERIVED from the id's provenance (recording_ref_of), so no id can name a ref in the
+// for prepared, in the controller's repository, each ONE REF WHOSE OBJECT IS THE RECORDED TREE (recording_capture_write
+// says why there is no minted commit behind it) and whose NAME is the whole recording: base, tree, status, result and
+// provenance are all in the ref name, so the id a reader holds and the ref it reads cannot disagree.
+// The namespace is DERIVED from the id's provenance (recording_ref_of), so no id can name a ref in the
 // other arm's namespace, and listing the captured prefix lists exactly the recordings that are receipts of real
 // attempts -- a query a downstream reader or an operator runs never has to know to filter on a word. The existing
 // refs/gunbc/ consumers are named single refs (the admitted-revision pointers of
