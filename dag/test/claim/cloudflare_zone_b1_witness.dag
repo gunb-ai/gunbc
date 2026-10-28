@@ -1,0 +1,214 @@
+module test.claim.cloudflare_zone_b1_witness
+
+// THE B1 DISCRIMINATOR. gunbc.cloudflare.zone claims three observed things — the Namecheap-side copy, the
+// Cloudflare-side served set, and the zone's live-but-unaddressable standing — and refuses the bind on
+// typed gaps. Each claim below fails on a specific edit: drop the MX from the copy and the carried/unverified
+// split moves; let a DNS answer stand in for the record list and the outstanding count silently empties;
+// collapse the custom domain's two status dimensions and a not-yet-serving domain reads as allocated;
+// delete one gap remedy and the concealment guard fires.
+//
+// WITNESS DISCIPLINE (README, cardinality/absence): every fact is a carrier member or a pure function of
+// carriers. No credential is touched, no transport runs, and nothing is re-implemented from the module
+// under test.
+
+import std.types { Bool }
+import extdeps.dns.domain_name { host_name_eq }
+import extdeps.cloudflare.zone {
+  CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord, ProxyNotApplicable,
+  RecordTypeA, RecordTypeTXT, RecordTypeMX, ZoneStatusActive, ZoneStatusPending,
+  r2_custom_domain_zone_admissible, ZoneAdmissible,
+  ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused,
+  r2_custom_domain_requires_zone_reading, cloudflare_r2_custom_domain_is_serving,
+  cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy,
+}
+import gunbc.cloudflare.zone {
+  namecheap_copied_records, cloudflare_served_records, unverified_copied_records,
+  unproxied_contents_agree, copied_record_is_carried, zone_record_copy_standing,
+  CopyPendingRecordList, namecheap_observed_record_count, namecheap_uncopied_record_count,
+  namecheap_ttl_short, namecheap_apex_txt, namecheap_apex_mx,
+  cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
+  ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
+  boot_origin_bind_effect_gap, CloudflareRecordListUnread,
+  boot_origin_bind_gap_is_reported, boot_origin_bind_gap_names,
+  gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
+  gunb_ai_delegated_nameservers, boot_origin_binding_readback_pending, boot_origin_nxdomain_answers,
+}
+
+data same_account: CloudflareAccountId = gunb_ai_bucket_account
+data other_account: CloudflareAccountId = "00000000000000000000000000000000" as CloudflareAccountId
+
+fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> CloudflareZone {
+  CloudflareZone {
+    apex: gunb_ai_apex,
+    account: account,
+    zone_id: "0123456789abcdef0123456789abcdef" as CloudflareZoneId,
+    status: if active { ZoneStatusActive } else { ZoneStatusPending },
+    paused: paused,
+  }
+}
+
+// THE CITED RULE, checked where it bites: same account + active + not paused admits, and each violated
+// condition refuses for its OWN reason. A fold that ignored the account, or treated the pause switch as
+// cosmetic, would fail exactly one of these four.
+test fn admissible_zone_admits() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: true, paused: false), bucket_account: same_account) {
+    ZoneAdmissible { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn wrong_account_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: other_account, active: true, paused: false), bucket_account: same_account) {
+    ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn inactive_zone_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: false, paused: false), bucket_account: same_account) {
+    ZoneRefusedNotActive { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn paused_zone_refuses() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: true, paused: true), bucket_account: same_account) {
+    ZoneRefusedPaused { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// The reading must carry the rule that closes the plan's open item, in the vendor's own words, and the
+// zone-hold warning with it — otherwise a fold could satisfy "has a zone" and still never activate.
+test fn cited_reading_names_same_account_and_zone_hold() -> Bool {
+  string_contains(s: r2_custom_domain_requires_zone_reading, pattern: "zone in the same account as the R2 bucket")
+    && string_contains(s: r2_custom_domain_requires_zone_reading, pattern: "zone hold")
+}
+
+// THE COPY, exactly as observed: 4 A + 4 AAAA + TXT + MX at the apex and 1 CNAME at www = 11 copied, with
+// the registrar's SOA and two NS (3 records) observed and deliberately not copied. The two numbers must
+// keep that relation, or the copy has silently lost or invented a record.
+test fn copy_cardinality_is_the_observed_set_minus_the_uncopied() -> Bool {
+  list_length(items: namecheap_copied_records()) == 11
+    && list_length(items: namecheap_copied_records()) == namecheap_observed_record_count - namecheap_uncopied_record_count
+}
+
+// The unproxied contents are the part a credential-free read settles, and both copies DO agree on them.
+// The exact strings are asserted so an edit to either transcription fails here rather than quietly
+// shifting the standing.
+test fn unproxied_contents_agree_on_both_sides() -> Bool {
+  unproxied_contents_agree()
+    && namecheap_apex_txt == cloudflare_apex_txt
+    && namecheap_apex_mx == cloudflare_apex_mx
+}
+
+test fn unproxied_copied_records_are_carried() -> Bool {
+  copied_record_is_carried(record: CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeTXT,
+    content: namecheap_apex_txt,
+    ttl: namecheap_ttl_short,
+    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
+  }) && copied_record_is_carried(record: CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeMX,
+    content: namecheap_apex_mx,
+    ttl: namecheap_ttl_short,
+    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
+  })
+}
+
+// The outstanding set is the nine records whose CONTENT a DNS answer cannot settle — the four apex A, the
+// four apex AAAA, and the www record whose shape the two copies disagree about — and every one of them is
+// a type that admits a proxy. If a proxied answer were ever allowed to stand in for the record list, this
+// is the count that would silently empty, which is exactly the failure this witness exists to make loud.
+test fn outstanding_set_is_the_proxied_nine() -> Bool {
+  list_length(items: unverified_copied_records()) == 9
+    && fold(
+         unverified_copied_records(),
+         init: true,
+         f: (acc, record) => acc && cloudflare_record_type_admits_proxy(record_type: record.record_type)
+       )
+}
+
+// THE COPY STANDING IS PENDING with a named reason, never falsely Complete. Completing on a DNS answer is
+// the failure mode guarded: a Complete standing from a reader that cannot see proxied content would be a
+// false green on the plan's own precondition.
+test fn copy_stands_pending_with_its_nine_outstanding() -> Bool {
+  match zone_record_copy_standing() {
+    CopyPendingRecordList { outstanding, unproxied_contents_agree: agree } =>
+      list_length(items: outstanding) == 9 && agree
+    _ => false
+  }
+}
+
+// THE ZONE STANDING: live (parent delegation + Cloudflare-minted SOA) but not addressable. The arms must
+// not be interchangeable — an agent able to write the observed-active arm without a zone id would make the
+// bind reachable on an invented identity.
+test fn zone_is_live_but_identity_unobserved() -> Bool {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneLiveButIdentityUnobserved { nameservers, soa } =>
+      list_length(items: nameservers) == 2 && string_contains(s: soa, pattern: "alexandra.ns.cloudflare.com")
+    _ => false
+  }
+}
+
+test fn delegated_nameservers_match_the_parent_reading() -> Bool {
+  list_length(items: gunb_ai_delegated_nameservers) == 2
+    && fold(
+         gunb_ai_delegated_nameservers,
+         init: 0,
+         f: (acc, ns) => if ns == "alexandra.ns.cloudflare.com" || ns == "austin.ns.cloudflare.com" { acc + 1 } else { acc }
+       ) == 2
+}
+
+// THE HOSTNAME IS FREE, as a fact about the served set: nothing Cloudflare serves is named at
+// boot.gunb.ai. With the recorded NXDOMAIN answer count (6: A, AAAA and CNAME at each of the two
+// authoritative servers), an allocation appearing at that name breaks this instead of passing unnoticed.
+test fn boot_hostname_is_absent_from_the_served_set() -> Bool {
+  boot_origin_nxdomain_answers == 6
+    && fold(
+         cloudflare_served_records(),
+         init: true,
+         f: (acc, record) => acc && !host_name_eq(a: record.name, b: boot_origin_hostname)
+       )
+}
+
+// THE READBACK HAS NOT HAPPENED, and an unperformed read never reads as serving: the enable flag AND both
+// status dimensions are required, so any one left at not-read keeps the verdict off Allocated. The binding
+// must also name the zone and bucket the fold is converging, or a readback of some other bucket's domain
+// would satisfy the arm.
+test fn pending_readback_neither_serves_nor_matches_the_zone() -> Bool {
+  !cloudflare_r2_custom_domain_is_serving(binding: boot_origin_binding_readback_pending)
+    && !cloudflare_r2_custom_domain_matches(binding: boot_origin_binding_readback_pending, zone: zone_in(account: same_account, active: true, paused: false), bucket: boot_origin_bucket)
+}
+
+// THE VERDICT SITS ON THE GAP IT REPORTS, and the current truth is awaiting-zone-identity. A gap that
+// names no remedy is a concealment rather than a deficit, so every arm — including the catch-all — must
+// carry at least one remedy, and the record-list reason must select its OWN arm rather than fall through
+// to the generic credential one.
+test fn verdict_awaits_zone_identity_on_a_reported_gap() -> Bool {
+  match boot_origin_hostname_binding_verdict() {
+    BindingAwaitingZoneIdentity { gap } => boot_origin_bind_gap_is_reported(gap: gap)
+    _ => false
+  }
+}
+
+test fn every_gap_arm_reports_a_remedy() -> Bool {
+  list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "no Cloudflare credential route reaches this session"))) > 0
+    && list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "the record list is unread"))) > 0
+    && list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "nothing matched at all"))) > 0
+}
+
+test fn record_list_reason_selects_its_own_arm() -> Bool {
+  match boot_origin_bind_effect_gap(reason: "the record list is unread") {
+    CloudflareRecordListUnread { missing } => list_length(items: missing) == 1
+    _ => false
+  }
+}
+
+// The RecordTypeA import is exercised by nothing above; pin it so the import list stays honest about
+// what the witness actually uses (an unused import is a roster that lies about its dependencies).
+test fn address_record_identity_is_its_wire_spelling() -> Bool {
+  cloudflare_record_type_admits_proxy(record_type: RecordTypeA)
+}
