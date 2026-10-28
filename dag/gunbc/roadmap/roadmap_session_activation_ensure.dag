@@ -294,11 +294,11 @@ fn session_activation_ensure_pass_at(
   reset_failed: fn(NonEmptyStr) -> Bool,
   now: EpochSecs,
 ) -> ActivationPass {
-  match attempt_slot_keys(store: stores.slots) {
+  match attempt_slot_keys(store: stores.slots.slots) {
     AttemptSlotKeysListed { keys } =>
       ActivationPassRan {
         outcomes: map(keys, k =>
-          match attempt_slot_read(store: stores.slots, reference: k) {
+          match attempt_slot_read(store: stores.slots.slots, reference: k) {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match session_attempt_name_of(identity: rec.identity) {
                 Present { value: n } => session_activation_ensure_one(stores: stores, host: host, node_id: n.node_id, attempt_key: n.attempt_key, loaded_of: loaded_of, lifecycle_of: lifecycle_of, reset_failed: reset_failed, now: now)

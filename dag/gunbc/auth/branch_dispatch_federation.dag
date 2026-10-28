@@ -1,5 +1,6 @@
 module gunbc.auth.branch_dispatch_federation
 
+import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, Map, NonEmptyStr, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text, github_workflow_run_id_from_wire_text, github_workflow_run_id_of_wire, WorkflowRun, Completed }
@@ -256,7 +257,7 @@ type BranchRunReading
 fn judge_branch_run(run_id: GitHubWorkflowRunId, run_attempt: Int, run: WorkflowRun) -> BranchRunReading {
   let path = match run.path { Present { value: p } => p  Absent => "" }
   if github_workflow_run_id_of_wire(n: run.id) != run_id {
-    BranchRunRefused { reason: concat("GitHub answered about another run: ", run.id as String) as NonEmptyStr }
+    BranchRunRefused { reason: concat("GitHub answered about another run: ", int_to_decimal_string(value: run.id)) as NonEmptyStr }
   } else if run.run_attempt != run_attempt {
     BranchRunRefused { reason: join(["the run is at attempt ", to_string(run.run_attempt), ", not the attempt asked about (", to_string(run_attempt), ")"], "") as NonEmptyStr }
   } else if path != artifact_path(a: FleetConvergeYamlArtifact) {
@@ -463,6 +464,7 @@ fn boot_credential_source_from_pattern(on_reviewed_main: Bool, p: AuthorizationP
     HumanOnlyStep { step: _ } => BootCredentialSourceRefused { cause: "the selection named a human-only step, which no workflow credential can perform" as NonEmptyStr }
     OperatorOwnSession => BootCredentialSourceRefused { cause: "the selection named the operator's own session, which a workflow run does not hold" as NonEmptyStr }
     AdministratorEdge => BootCredentialSourceRefused { cause: "the selection named the administrator edge, which a boot credential does not use" as NonEmptyStr }
+    ApprovedConvergenceGrant => BootCredentialSourceRefused { cause: "the selection named a convergence-inherited approval, which no boot credential source realizes" as NonEmptyStr }
   }
 }
 

@@ -34,9 +34,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // class: they extend an existing map, they are not new declarations.
 //
 // HAND-ITEM DELTA is derived by gunbc.rust_item_host_observation and is not restated as a
-// transcribed count. Two sibling census builtins
-// (compile_dag_reference_occurrence_binding_census, observe_declared_import_closure_symbol_binding)
-// also lack rows; they are accumulated debt, not this change's licence, and are not enrolled here.
+// transcribed count. A sibling census builtin
+// (compile_dag_reference_occurrence_binding_census) also lacks a row; it is accumulated debt, not this change's licence, and is not enrolled here.
 data evaluation_store_address_census_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "ResolvedCallEdgeRow", field: WholeDeclaration },
