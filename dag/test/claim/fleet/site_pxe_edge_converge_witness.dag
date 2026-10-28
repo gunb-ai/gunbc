@@ -1131,7 +1131,7 @@ test fn the_install_chain_resolves_per_architecture() -> Bool {
         let chains = arm_chain(pin: pinned(digest: digest_a)) + [x, a]
         (match site_pxe_edge_install_chain(architecture: X86_64, chains: chains) { Present { value: ic } => (ic.image.served_path as String) == "iso/ubuntu-24.04.3-live-server-amd64.iso" Absent => false })
           && (match site_pxe_edge_install_chain(architecture: Aarch64, chains: chains) { Present { value: ic } => (ic.image.served_path as String) == "iso/ubuntu-24.04.3-live-server-arm64.iso" Absent => false })
-          && site_pxe_edge_install_chain(architecture: Aarch64, chains: arm_chain(pin: pinned(digest: digest_a))) == Absent
+          && (match site_pxe_edge_install_chain(architecture: Aarch64, chains: arm_chain(pin: pinned(digest: digest_a))) { Present { value: _ } => false Absent => true })
       }
     }
   }
