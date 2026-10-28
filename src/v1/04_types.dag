@@ -1446,6 +1446,39 @@ fn callable_signatures_agree(left: Node, right: Node, agree: fn(Node, Node) -> B
 // Two APPLIED spellings still descend element-wise above, so FreeMonoid<Int> against FreeMonoid<Bool> keeps refusing. Admitting the
 // mixed case would be an instantiation relation, not equality; the rung that would (a retained-instantiation carrier on the expansion,
 // trigger: a consumer needs application-vs-expansion equality) is named on that row.
+// APPLIED-vs-APPLIED IDENTITY (lands as #14056; measured on the PR-2 vehicle): two applied nodes are the
+// same applied type when their HEADS are one declaration. With both sides stamped the stamps decide; when a
+// side carries no stamp it is resolved through the judging env to its alias-resolved head declaration and the
+// heads compare. A side that resolves to no declaration keeps the existing refusal - there is deliberately no
+// spelling fallback: identity comes from the declaration, never from printed text
+// (gunbc.rung_drop.text_boundary_identity_wall; DESIGN section 5 forbids the silent widen).
+fn applied_head_identity_agrees(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
+  let both_stamped = match left.declaration {
+    Present { value: ld } =>
+      match right.declaration {
+        Present { value: rd } => Present { value: ld.module_path == rd.module_path && ld.decl_name == rd.decl_name }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+  match both_stamped {
+    Present { value: stamped_agree } => stamped_agree
+    Absent =>
+      match text {
+        TextJudgedIn { env: e } =>
+          match settled_type(n: left, source_indices: source_indices, env: e, fuel: 16) {
+            Absent => false
+            Present { value: ls } =>
+              match settled_type(n: right, source_indices: source_indices, env: e, fuel: 16) {
+                Absent => false
+                Present { value: rs } => ls.head.module_path == rs.head.module_path && ls.head.decl_name == rs.head.decl_name
+              }
+          }
+        TextNotAsked { reason: _ } => false
+      }
+  }
+}
+
 fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, NewlineIndex>, text: TextJudgment) -> Bool {
   if text_crossing_in_judgment(left: left, right: right, text: text) {
     false
@@ -1529,6 +1562,15 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
       }
       else if left.params |> count > 0 && right.params |> count > 0 {
         callable_signatures_agree(left: left, right: right, agree: (a, b) => node_type_equals(left: a, right: b, source_indices: source_indices, text: text))
+      }
+      else if applied_head_identity_agrees(left: left, right: right, source_indices: source_indices, text: text) {
+        left.children |> count == right.children |> count
+          && left.children |> enumerate |> all(pair =>
+            match right.children |> skip(pair.first) |> first {
+              Present { value: right_child } => node_type_equals(left: child_type_node(ch: pair.second), right: child_type_node(ch: right_child), source_indices: source_indices, text: text)
+              Absent => false
+            }
+          )
       }
       else {
         false
