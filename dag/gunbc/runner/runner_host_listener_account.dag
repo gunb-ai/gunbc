@@ -1,0 +1,28 @@
+module gunbc.runner.runner_host_listener_account
+
+import std.types { NonEmptyStr }
+import product.host_identity { HostIdentity }
+import gunbc.ci.ci_fleet { fleet_host_is_image_baked }
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner.runner_host_medium { runner_host_medium_runner_account }
+
+// THE ACCOUNT A HOST-UNIT SLOT'S LISTENER RUNS AS, ONE SELECTION BY HOW THE HOST'S RUNNER PROGRAM IS REALIZED (operator
+// decision B, merry-fox-82, 2026-10-27). An SSH-applied host's account is its runner_host_spec row's runner_user, as it
+// always was; an image-baked host's is the account its boot image declares and creates
+// (gunbc.runner.runner_host_medium runner_host_medium_runner_account), because such a host has no spec row and must
+// never be given one that would enrol it in SSH converges. The partition is gunbc.ci.ci_fleet's, read once here, so no
+// slot reader branches on realization itself. A host that is neither is a typed absence, never a default user.
+type HostUnitSlotRunnerUser
+  = RunnerUserSelected { user: NonEmptyStr }
+  | RunnerUserUndeclared { host: HostIdentity }
+
+fn host_unit_slot_runner_user(host: HostIdentity) -> HostUnitSlotRunnerUser {
+  if fleet_host_is_image_baked(host: host) {
+    RunnerUserSelected { user: runner_host_medium_runner_account }
+  } else {
+    match runner_host_spec_for(host: host) {
+      RunnerHostSpecFound { spec: s } => RunnerUserSelected { user: s.runner_user }
+      RunnerHostSpecAbsent { host: h } => RunnerUserUndeclared { host: h }
+    }
+  }
+}

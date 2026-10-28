@@ -15,7 +15,7 @@ import gunbc.runner.runner_unit_file { RunnerJobUserUidReading, JobUserUidObserv
 import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.auth.jws { JwsSigningKeyRef }
-import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner.runner_host_listener_account { host_unit_slot_runner_user, RunnerUserSelected, RunnerUserUndeclared }
 import gunbc.fleet.host_credential_custody_converge {
   host_credential_custody_row, HostCredentialCustodyRow, ServiceSlotAppKey, custody_row_readable_by, custody_row_placement, CustodyPlaced, CustodyPlacementRefused,
   custody_file_legs, custody_dir_legs, CustodyPathLegs, CustodyPathMetadata, CustodyPathAsDeclared, CustodyPathUnobservable, custody_path_metadata_wire,
@@ -410,13 +410,13 @@ fn service_slot_isolate_listener_as(
 fn service_slot_isolate_listener(identity: HostIdentity, row: HostCredentialCustodyRow) -> ServiceSlotIsolation
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_service_slot_controller", decl_name: "service_slot_controller_main")]
 {
-  match runner_host_spec_for(host: identity) {
-    RunnerHostSpecAbsent { host: h } => ServiceSlotListenerUserUnspecified { host: h }
-    RunnerHostSpecFound { spec: spec } =>
+  match host_unit_slot_runner_user(host: identity) {
+    RunnerUserUndeclared { host: h } => ServiceSlotListenerUserUnspecified { host: h }
+    RunnerUserSelected { user: user } =>
       service_slot_isolate_listener_as(
         row: row,
-        user: spec.runner_user,
-        listener: service_slot_uid_of(name: spec.runner_user),
+        user: user,
+        listener: service_slot_uid_of(name: user),
         file_owner: service_slot_uid_of(name: row.file_ownership.user),
         dir_owner: service_slot_uid_of(name: row.dir_ownership.user),
       )

@@ -1,5 +1,6 @@
 module gunbc.runner.runner_host_deploy
 
+import gunbc.ci.ci_fleet { fleet_host_is_image_baked }
 import std.types { NonEmptyStr, String, Int, List, Bool }
 import extdeps.exec.command { ArgvCommand, shell_command_render, env_prefixed_command }
 import extdeps.sudo.elevation { sudo_preserve_environment_command }
@@ -324,10 +325,22 @@ type RunnerHostDeployResolution
 // target (DESIGN 4c: an annotation is never evidence that a machine claim holds, and a drifted one
 // is a second account of a fact the declaration already carries).
 
+// AN IMAGE-BAKED HOST IS NEVER AN SSH-APPLIED DEPLOY, WHATEVER ROWS EXIST (operator decision B, 2026-10-27). Its runner
+// program is realized by its boot image (gunbc.ci.ci_fleet fleet_host_is_image_baked, the one partition by
+// realization), so every reader of this resolution -- the SSH converges and the deploy roster
+// fleet_runner_host_deploys -- must not enrol it. The check comes BEFORE the spec lookup, so it is structure and not
+// the absence of a row: a spec row added for such a host still resolves Refused, never Found. It is a member of the
+// dispositions with its reason, not an absence.
+data runner_host_realized_by_image_cause: String = "this host's runner program is realized by its boot image (gunbc.ci.ci_fleet fleet_host_is_image_baked), so no SSH-applied runner deploy exists for it; its slots read their runner user from the image (gunbc.runner.runner_host_listener_account)"
+
 fn runner_host_deploy_for(host: HostIdentity) -> RunnerHostDeployResolution {
-  match runner_host_spec_for(host: host) {
-    RunnerHostSpecFound { spec: s } => admitted_deploy_or_refusal(host: host, spec: s)
-    RunnerHostSpecAbsent { host: h } => RunnerHostDeployUnmodeled { host: h }
+  if fleet_host_is_image_baked(host: host) {
+    RunnerHostDeployRefused { host: host, cause: runner_host_realized_by_image_cause }
+  } else {
+    match runner_host_spec_for(host: host) {
+      RunnerHostSpecFound { spec: s } => admitted_deploy_or_refusal(host: host, spec: s)
+      RunnerHostSpecAbsent { host: h } => RunnerHostDeployUnmodeled { host: h }
+    }
   }
 }
 
