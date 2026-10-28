@@ -95,6 +95,8 @@ fn sections_full(install_exit: String, machine: String, tarball_digest: String, 
     section(name: "runner-extract", argv: "(the rendered extract)", body: "", exit_code: install_exit),
     section(name: "runner-listener", argv: "test -x /opt/actions-runner/bin/Runner.Listener", body: "", exit_code: "0"),
     section(name: "runner-account", argv: "useradd --system --no-create-home --shell /usr/sbin/nologin gunbc-runner", body: "", exit_code: account_exit),
+    section(name: "release-dir", argv: "mkdir -p (the release locus)", body: "", exit_code: "0"),
+    section(name: "release-extract", argv: "(the rendered release extract)", body: "", exit_code: "0"),
     section(name: "systemd-manager", argv: "test -d /run/systemd/system", body: "", exit_code: "0"),
     section(name: "meminfo", argv: "cat /proc/meminfo", body: meminfo_body, exit_code: "0"),
     section(name: "nproc", argv: "nproc", body: "80\n", exit_code: "0"),
@@ -115,7 +117,7 @@ fn readback(capture: String) -> RunnerHostUpReadback? {
 
 // THE DERIVATION INHABITS THE SEEDED-MEDIA BUILD INPUT WITH THE RUNNER PAYLOAD: the arm64 artifact of
 // the host-unit slot's release as a seed ARTIFACT under its cited arm64 digest (the boot fetches
-// nothing), a seed program that verifies it off the medium and RETURNS
+// nothing), the baked gunbc release as the second, under its supplied digest and extracted to its release locus, a seed program that verifies it off the medium and RETURNS
 // (no power-off, nothing written to a disk), and the medium's own volume id.
 test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
@@ -126,8 +128,11 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
         && string_contains(s: program, pattern: "sha256sum")
         && !string_contains(s: program, pattern: "set -e")
         && !string_contains(s: program, pattern: "curl")
-        && count(input.seed_artifacts) == 1
-        && all(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && count(input.seed_artifacts) == 2
+        && any(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && any(input.seed_artifacts, a => (a.name as String) == "gunbc-release-1111111111111111111111111111111111111111.tar"
+          && (a.digest.hex as String) == "2222222222222222222222222222222222222222222222222222222222222222")
+        && string_contains(s: program, pattern: "/releases/1111111111111111111111111111111111111111")
         && string_contains(s: program, pattern: "Runner.Listener")
         && !string_contains(s: program, pattern: "poweroff")
         && string_contains(s: input.grub_kernel_cmdline as String, pattern: mtcollins1_census_console_arg as String)
