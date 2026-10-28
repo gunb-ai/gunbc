@@ -243,11 +243,27 @@ fn carries_privilege_confinement(props: List<SystemdRunProperty>) -> Bool {
   })
 }
 
-// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three).
+// CLAIM 4 (RED on main: the review, audit and supervisor property set, one function, lacked all three). Those units
+// are started by the per-user manager, which cannot apply the empty bounding set (every review unit of the srv1
+// lab's 2026-10-28 attempt exited 218/CAPABILITIES); operator decision (escalation msg_31a4182d) keeps the other two
+// there and the bounding set on the system-manager worker only. RED: losing either kept member, or re-adding the
+// bounding set to the review units, fails this claim.
 test fn the_review_audit_and_supervisor_units_carry_the_worker_confinement() -> Bool {
   let lab = srv1_lab_dashboard_instance()
-  carries_privilege_confinement(props: dispatch_review_unit_properties(
-    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr))
+  let props = dispatch_review_unit_properties(
+    instance: lab, working_directory: "/w", log_path: "/l", review_dir: "/r", exit_hook: "true" as NonEmptyStr)
+  any(props, p => match p {
+    NamedUnitSetting { property: NoNewPrivilegesProperty, value: _ } => true
+    _ => false
+  })
+    && any(props, p => match p {
+    NamedUnitSetting { property: RestrictSUIDSGIDProperty, value: _ } => true
+    _ => false
+  })
+    && !any(props, p => match p {
+    EmptyCapabilityBoundingSet => true
+    _ => false
+  })
 }
 
 // CLAIM 3: the lab worker's User= is derived as gunbc-worker and applied on the system-manager path;
