@@ -32,7 +32,6 @@ import gunbc.runner.runner_service_slot_controller {
   ServiceSlotKeyStanding, ServiceSlotKeyHeldStanding, ServiceSlotKeyNotHeld, service_slot_key_standing_of,
   ServiceSlotIsolation, ServiceSlotIsolated, ServiceSlotListenerCouldReadKey, ServiceSlotListenerUserUnspecified, ServiceSlotIdentityUngrounded, service_slot_isolate_listener_as,
   ServiceSlotListenerCommand, ServiceSlotListenerReady, ServiceSlotListenerUnbuilt, service_slot_listener_command, ServiceSlotPassIdReading, ServiceSlotPassIdRead, ServiceSlotPassIdRefused, service_slot_pass_id_of,
-  service_slot_listener_properties,
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
 

@@ -2,16 +2,26 @@ module gunbc.os_install_emit
 
 import std.logic { Bool }
 import std.optional { Absent, Present }
-import std.types { List, String }
+import std.types { List, NonEmptyStr, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
+  WithIdentity,
+  UserDataOnly,
+  CloudInitUserEntry,
+  // NAMED, NOT ASSUMED. cloudinit_user_shell_text matches on these two arms and its return is
+  // NonEmptyStr; the closed schema in gunbc.provisioning.public_nocloud_seed admits exactly these two
+  // spellings at that leaf, so the renderer names the type it branches on rather than letting a bare
+  // identifier resolve to whatever a transitive import happened to publish.
+  CloudInitUserShell,
+  BashLoginShell,
+  PosixShell,
   AutoinstallStoragePolicy,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
   UbuntuAutoinstallLiveCommands,
 }
-import extdeps.ssh.keys { SshPublicKey, ssh_public_key_line }
+import extdeps.ssh.keys { SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
@@ -28,24 +38,120 @@ fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   ]
 }
 
+// THE CLOUD-INIT USER ENTRY, EMITTED WITH CLOUD-INIT'S OWN KEY SPELLINGS (schema-cloud-config-v1.json:
+// name, ssh_authorized_keys, lock_passwd, shell, sudo). There is deliberately NO branch that could emit
+// `passwd` or `hashed_passwd`: the type CloudInitUserEntry has no such field, so a key-only user cannot
+// state a password even by mistake, which is the operator's condition enforced by shape rather than by
+// policy. `shell` renders from a CLOSED TYPE (CloudInitUserShell), and the two spellings emitted here are
+// exactly the two values gunbc.provisioning.public_nocloud_seed admits at that leaf — so the document this
+// emits is the document that audit admits, with no free text in between. `sudo` is a CONSTANT, not a field:
+// a locked, passwordless account can only be granted the NOPASSWD rule, and the closed schema admits exactly
+// that one string, so there is no choice for a caller to make and none for this renderer to branch on.
+// `gecos` is not emitted: the closed schema does not admit it and the type no longer carries it.
+fn cloudinit_user_shell_text(shell: CloudInitUserShell) -> NonEmptyStr {
+  match shell {
+    BashLoginShell => "/bin/bash"
+    PosixShell => "/bin/sh"
+  }
+}
+
+// THE ONE SUDO RULE A LOCKED, PASSWORDLESS ACCOUNT CAN HOLD. It is data rather than a parameter because
+// there is nothing else to say: gunbc.provisioning.public_nocloud_seed's user schema admits only this string
+// (cloud-init cc_users_groups, sudo), and a rule that asked for a password would lock the account out of its
+// own privilege escalation.
+data cloudinit_nopasswd_sudo_rule: NonEmptyStr = "ALL=(ALL) NOPASSWD:ALL"
+
+fn cloudinit_user_entries(user: CloudInitUserEntry) -> List<YamlKeyValue> {
+  [
+    kv(key: "name", value: yaml_string(s: user.name)),
+    kv(key: "lock_passwd", value: yaml_bool(b: user.lock_passwd)),
+    kv(
+      key: "ssh_authorized_keys",
+      // The user table only exists on the key-only route (AutoinstallIdentityPosture.UserDataOnly), which is
+      // the route the public seed contract governs, so canonical is the only spelling that can be admitted.
+      value: yaml_sequence(elements: map(user.ssh_authorized_keys, k => yaml_string(s: ssh_public_key_canonical_line(k: k)))),
+    ),
+    kv(key: "shell", value: yaml_string(s: cloudinit_user_shell_text(shell: user.shell))),
+    kv(key: "sudo", value: yaml_string(s: cloudinit_nopasswd_sudo_rule)),
+  ]
+}
+
+// AN AUTHORIZED KEY IS WRITTEN TWO WAYS, AND THE ENTRY ROUTE DECIDES WHICH — because the two routes ship
+// this document somewhere with different rules.
+//
+// * UserDataOnly is the key-only posture, and its document is what
+//   gunbc.provisioning.public_nocloud_seed.admit_public_nocloud_seed seals for the PXE edge to serve. That
+//   contract admits only the CANONICAL public key line: keytype plus blob, no comment, because sshd(8)'s
+//   comment field is free text and a public volume must not carry it (merry-fox-82's hold at 0dd912cd, cited
+//   on public_nocloud_seed.seed_public_key_line). Emit the comment there and the mint refuses the seed.
+// * WithIdentity is the seeded-handle route, and its document goes to a BMC-staged NoCloud volume and to
+//   srv3's seeded ISO. Those volumes are not published, and the fleet's own live installs (srv3_ubuntu_autoinstall,
+//   srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso — all WithIdentity, all with an ssh section)
+//   have ALWAYS carried the commented line. Canonicalizing there would have been a quiet edit to documents
+//   live installs consume, stripping their key comments with nothing recording it — DESIGN.md §4b, no silent
+//   regression. The witness test the_identity_route_still_writes_commented_authorized_keys pins those bytes.
+//
+// So this is not "two renderers for the same thing": the posture is the fact that determines the rules, and
+// it is read off the declared coproduct rather than inferred from a flag.
+fn autoinstall_authorized_key_line(posture: AutoinstallIdentityPosture, k: SshPublicKey) -> String {
+  match posture {
+    UserDataOnly { users: _ } => ssh_public_key_canonical_line(k: k)
+    WithIdentity { identity: _, user_data: _ } => ssh_public_key_line(k: k)
+  }
+}
+
 fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
-  let base = [
+  // THE ENTRY ROUTE IS READ OFF A DECLARED CHOICE, so this function has no invalid combination to notice.
+  // AutoinstallIdentityPosture (extdeps.os.ubuntu_autoinstall) has exactly two arms because upstream has
+  // exactly two legal documents: identity present, or user-data present and identity omitted (Canonical:
+  // identity "is the only configuration key that must be present (unless the user-data section is present,
+  // in which case it is optional)"). The head of the document is the same in both arms — version, locale,
+  // keyboard — and then the arms differ in which section follows, at the position identity has always sat.
+  // WithIdentity renders exactly the old four identity entries, in the old order, at the old position:
+  // byte-for-byte the rendering that predates the key-only posture.
+  let head = [
     kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
     kv(key: "locale", value: yaml_string(s: payload.locale)),
     kv(key: "keyboard", value: yaml_mapping(entries: [
       kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
     ])),
-    kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
   ]
+  let with_user_data = match payload.identity_posture {
+    // The user-data section sits beside identity, not inside it: upstream reads it as its own section.
+    // An empty user list still emits the section, as before — the section's PRESENCE is what makes the
+    // identity waiver legal, and refusing on an empty list would silently change which documents upstream
+    // accepts. (The seed audit is what refuses a key-only entry with no keys; see the witness's RED.)
+    WithIdentity { identity: id, user_data: optional_users } => append(
+      append(head, items: [
+        kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: id))),
+      ]),
+      items: match optional_users {
+        Present { value: users } => [
+          kv(key: "user-data", value: yaml_mapping(entries: [
+            kv(key: "users", value: yaml_sequence(elements: map(users, u =>
+              yaml_mapping(entries: cloudinit_user_entries(user: u))))),
+          ])),
+        ]
+        Absent => []
+      },
+    )
+    UserDataOnly { users: users } => append(head, items: [
+      kv(key: "user-data", value: yaml_mapping(entries: [
+        kv(key: "users", value: yaml_sequence(elements: map(users, u =>
+          yaml_mapping(entries: cloudinit_user_entries(user: u))))),
+      ])),
+    ])
+  }
   let with_ssh = match payload.ssh {
-    Present { value: ssh } => append(base, items: [
+    Present { value: ssh } => append(with_user_data, items: [
       kv(key: "ssh", value: yaml_mapping(entries: [
         kv(key: "install-server", value: yaml_bool(b: true)),
-        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k => yaml_string(s: ssh_public_key_line(k: k))))),
+        kv(key: "authorized-keys", value: yaml_sequence(elements: map(ssh.authorized_keys, k =>
+          yaml_string(s: autoinstall_authorized_key_line(posture: payload.identity_posture, k: k))))),
         kv(key: "allow-pw", value: yaml_bool(b: ssh.password_auth)),
       ])),
     ])
-    Absent => base
+    Absent => with_user_data
   }
   if payload.fully_automated {
     let automated = append(with_ssh, items: [

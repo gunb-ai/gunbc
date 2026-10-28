@@ -288,6 +288,10 @@ pub fn int_to_decimal_string(value: i64) -> String {
     }
 }
 
+pub fn parse_int(s: String) -> Option<i64> {
+    v1_rt::parse_int(s.clone())
+}
+
 pub fn int_digits_to_decimal_string(value: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let rest = v1_rt::int_div(value.clone(), 10);
