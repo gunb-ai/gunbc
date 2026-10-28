@@ -1,6 +1,6 @@
-module test.claim.altra_autoinstall_seed_witness
+module test.claim.ubuntu_autoinstall_seed_witness
 
-// WITNESSES FOR THE Altra autoinstall SEED and its BINDING (gunbc.provisioning.altra_autoinstall_seed).
+// WITNESSES FOR THE Altra autoinstall SEED and its BINDING (gunbc.provisioning.ubuntu_autoinstall_seed).
 // Each test names the failure it exists to catch, and every one of them goes RED when the invariant it
 // guards is inverted — the required CI jobs do not evaluate witnesses, so this file is the only gate those
 // invariants have. The two that matter most are named in their own comments: the disk rule's two halves
@@ -9,7 +9,7 @@ module test.claim.altra_autoinstall_seed_witness
 // (a headless box nobody can log into must be unrepresentable as valid).
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
-import std.algebra { Cons, Empty, list_append }
+import std.algebra { Cons, Empty, list_append, trim }
 import std.measure { byte_size }
 import std.optional { Optional, Absent, Present }
 import extdeps.debian.debconf {
@@ -70,6 +70,7 @@ import gunbc.os_install_emit {
   AutoinstallUserDataRefused,
   AutoinstallUserDataRendered,
   autoinstall_user_data,
+  autoinstall_user_data_document,
 }
 import extdeps.external_authority {
   CitedToAuthority,
@@ -102,9 +103,19 @@ import extdeps.storage.types {
   StorageDevice,
 }
 import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
-import extdeps.ssh.keys { Ed25519, SshPublicKey }
-import extdeps.toolchain.types { Aarch64, X86_64 }
-import extdeps.bmc.endpoint { AmiMegaRac }
+import extdeps.ssh.keys { Ed25519, SshPublicKey, ssh_public_key_canonical_line, ssh_public_key_line }
+import extdeps.toolchain.types { Aarch64, Architecture, Riscv64, X86_64 }
+import extdeps.network.mac { Eui48Address, MacParseFailed, MacParsed, mac_addresses_are_equal, parse_mac_address }
+import extdeps.languages.yaml.types { YamlValue }
+import gunbc.provisioning.public_nocloud_seed {
+  PublicSeedAdmitted,
+  PublicSeedRefused,
+  admit_public_nocloud_seed,
+  public_nocloud_seed_client_mac,
+  public_nocloud_seed_user_data,
+  seed_credential_keys,
+}
+import extdeps.bmc.endpoint { AmiMegaRac, SupermicroAten }
 import extdeps.provisioning.network_boot { LegacyBiosPxe, UefiHttpBoot, UefiPxe }
 import extdeps.uri { Https, Uri }
 import extdeps.os.ubuntu_kernel_nic_coverage { Noble2404GaLinux68 }
@@ -121,9 +132,38 @@ import gunbc.machine_intake.subject {
   UnitKeyRefused,
   UnitKeyStanding,
 }
-import gunbc.provisioning.altra_autoinstall_seed {
-  AddressingIsInstallerManaged,
+import gunbc.provisioning.ubuntu_autoinstall_seed {
+  // The per-board profile rows and the architecture row table, imported by the amd64 render witness and the
+  // no-rows RED: a board's driver set is a ROW the witness can read, not a literal the witness would have to
+  // re-declare (which would make the test the authority on what the board carries).
   AdminAccessAuthorisation,
+  AhciModule,
+  Amd64Architecture,
+  Amd64MicrocodeDriver,
+  AltraBoard,
+  Ast2500DrmDriver,
+  BoardSeedProfile,
+  IgbNicModule,
+  KeyOnlyPostureAdmitsNoKeys,
+  KipmiSiDriver,
+  IpmiWatchdogDriver,
+  PackageSilenceUnestablishedForArchitecture,
+  PlatformUnsupported,
+  ProvisioningBoard,
+  ProvisioningTargetStanding,
+  SdModuleModule,
+  SeedIsNonInteractive,
+  SeedRefused,
+  SupermicroH11SslBoard,
+  UasModule,
+  UsbStorageModule,
+  board_required_amd64_late_package_rows,
+  board_seed_profile,
+  build_ubuntu_autoinstall_seed,
+  nvme_cli_silence_receipt,
+  package_rows_for_architecture,
+  render_ubuntu_autoinstall_seed,
+  seed_document,
   AdminCredentialPosture,
   CandidateIsNotPersistent,
   CredentialHandleUnset,
@@ -138,11 +178,11 @@ import gunbc.provisioning.altra_autoinstall_seed {
   audit_seed_interactivity,
   package_intent_diagnostic,
   project_storage_policy,
-  AltraAutoinstallSeed,
-  AltraAutoinstallSeedBinding,
-  AltraAutoinstallTarget,
-  AltraAutoinstallTargetRole,
-  AltraProvisioningTarget,
+  UbuntuAutoinstallSeed,
+  UbuntuAutoinstallSeedBinding,
+  ProvisioningTargetAdmission,
+  ProvisioningTargetRole,
+  ProvisioningTarget,
   ArchiveMirror,
   BmcSolConsoleUnlocked,
   BoundConfigurationMatchesSeed,
@@ -164,7 +204,6 @@ import gunbc.provisioning.altra_autoinstall_seed {
   silenced_package,
   selectors_are_the_same,
   rendered_document_digest,
-  seed_document,
   AdminPasswordHashReceipt,
   BoundDisk,
   BoundDiskUnread,
@@ -199,10 +238,8 @@ import gunbc.provisioning.altra_autoinstall_seed {
   SeedAddressing,
   SeedAudit,
   SeedDeliveryStrategy,
-  SeedIsNonInteractive,
   SeedLocale,
   SeedNetworkPosture,
-  SeedRefused,
   SelectionRefused,
   ByObservedSerial,
   ByCatalogIdentity,
@@ -210,16 +247,13 @@ import gunbc.provisioning.altra_autoinstall_seed {
   LinuxFirmwareDriver,
   AhciPlatformModule,
   NvmeBlockModule,
-  KipmiSiDriver,
-  IpmiWatchdogDriver,
   QuestionAnswered,
   PackageVerifiedSilent,
   SilentReceipt,
   ipmitool_silence_receipt,
-  nvme_cli_silence_receipt,
   dmidecode_silence_receipt,
   rasdaemon_silence_receipt,
-  altra_required_late_package_rows,
+  board_required_late_package_rows,
   QuestionUnanswered,
   UnclassifiedPackage,
   OpenSshServerPackage,
@@ -245,8 +279,8 @@ import gunbc.provisioning.altra_autoinstall_seed {
   BindingResult,
   TargetNotAdmitted,
   DiskSelectionRefused,
-  AltraLoadableModule,
-  audit_altra_autoinstall_seed,
+  LoadableModuleClass,
+  audit_ubuntu_autoinstall_seed,
   binding_digest,
   SerialConsoleGettyUnlocked,
   TargetAdmitted,
@@ -260,12 +294,11 @@ import gunbc.provisioning.altra_autoinstall_seed {
   UsLayout,
   VirtualMediaStrategy,
   admit_admin_access_authorisation,
-  admit_altra_autoinstall_target,
+  admit_provisioning_target,
   admin_password_handle,
   credential_diagnostic,
-  altra_autoinstall_seed_digest,
-  bind_altra_autoinstall_seed,
-  build_altra_autoinstall_seed,
+  ubuntu_autoinstall_seed_digest,
+  bind_ubuntu_autoinstall_seed,
   check_binding_against_seed,
 
   AdminPasswordRefusalCause,
@@ -288,7 +321,6 @@ import gunbc.provisioning.altra_autoinstall_seed {
   admin_password_hash_receipt,
   console_stanza_for,
   project_autoinstall_identity,
-  render_altra_autoinstall_seed,
   mirror_diagnostic,
   disk_erase_authorisation,
   disk_may_be_erased_onto,
@@ -312,24 +344,32 @@ data attempt_two: IntakeAttemptId = "intake-20261017-0002" as IntakeAttemptId
 data unit_key_bound_a: UnitKeyStanding = UnitKeyBound { key: unit_a_key }
 data unit_key_bound_b: UnitKeyStanding = UnitKeyBound { key: unit_b_key }
 data unit_key_unbound: UnitKeyStanding = UnitKeyRefused { cause: BoardSerialAbsent }
+// TWO FAMILIES, BECAUSE THE BOARDS HAVE TWO. The Altra's BMC is ASPEED AST2500 under Ampere's MegaRAC
+// build (extdeps.ampere.mt_collins_product_brief.bmc). The H11SSL's is not: Supermicro states its
+// X11/H11/H12 BMC is built on the AST2500 and that the stack's files carry ATEN International's
+// copyright (extdeps.bmc.supermicro), which is why extdeps.bmc.endpoint adds SupermicroAten as its own
+// family rather than letting MegaRAC — a different vendor's build — stand in for it. Asserting MegaRAC
+// on the x86 board would have been a claim about hardware the tree already says otherwise about, and
+// the family is not decorative here: it enters the admitted standing AND the rendered token.
 data bmc_family_observed: BmcFirmwareFamilyStanding = FamilyObserved { family: AmiMegaRac }
+data h11ssl_bmc_family: BmcFirmwareFamilyStanding = FamilyObserved { family: SupermicroAten }
 data bmc_family_unobserved: BmcFirmwareFamilyStanding = FamilyUnobserved {
   discriminator: "AST2500 firmware string never read" as NonEmptyStr,
 }
 
-data target_altra: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+data target_altra: ProvisioningTargetAdmission = admit_provisioning_target(
   unit_key: unit_key_bound_a,
   architecture: Aarch64,
   bmc_firmware: bmc_family_observed,
-  role: AltraProvisioningTarget,
+  role: ProvisioningTarget,
   kernel_flavour: Noble2404GaLinux68,
 )
 
-data target_altra_b: AltraAutoinstallTarget = admit_altra_autoinstall_target(
+data target_altra_b: ProvisioningTargetAdmission = admit_provisioning_target(
   unit_key: unit_key_bound_b,
   architecture: Aarch64,
   bmc_firmware: bmc_family_observed,
-  role: AltraProvisioningTarget,
+  role: ProvisioningTarget,
   kernel_flavour: Noble2404GaLinux68,
 )
 
@@ -655,7 +695,7 @@ fn audit_refuses_naming_one_of_its_own_packages(
   packages: List<PackageIntent>,
   entry: AdminAccessAuthorisation,
 ) -> Bool {
-  match audit_altra_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+  match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
     SeedIsNonInteractive => false
     SeedRefused { cause: cause } =>
       match cause {
@@ -665,6 +705,12 @@ fn audit_refuses_naming_one_of_its_own_packages(
         AddressingIsInstallerManaged => false
         ArchiveMirrorAbsent => false
         NoEntrypointAtAll => false
+        // NOT THE CAUSE THIS HELPER ACCEPTS. The fixtures it is called with carry QuestionAnswered intents, so
+        // no row is consulted and the per-architecture gate cannot fire; the key-only gate cannot fire either,
+        // because every caller passes an entry minted with a key. Naming both false keeps "an unrelated refusal
+        // leaked in" from reading as success.
+        PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
+        KeyOnlyPostureAdmitsNoKeys => false
       }
   }
 }
@@ -891,7 +937,7 @@ test fn no_keys_is_admitted_only_when_the_console_is_deliberately_unlocked() -> 
 test fn an_unlocked_console_is_not_refused_as_having_no_entrypoint() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: NoEntrypointAtAll } => false
         _ => true
       }
@@ -908,8 +954,8 @@ test fn dropping_the_password_handle_changes_the_seed() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: PasswordUnset, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: without_handle } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: with_handle),
-            right: altra_autoinstall_seed_digest(seed: without_handle),
+            left: ubuntu_autoinstall_seed_digest(seed: with_handle),
+            right: ubuntu_autoinstall_seed_digest(seed: without_handle),
           )
         Absent => false
       }
@@ -919,8 +965,8 @@ test fn dropping_the_password_handle_changes_the_seed() -> Bool {
 
 // A MALFORMED KEY BUILDS NO SEED — THE VALIDATION IS ON THE PRODUCTION ADMISSION ROUTE, NOT AN AUXILIARY MINT
 // (review: merry-fox-82, HOLD section 3, item A). AdminAccessAuthorisation is sole_constructor and its ONLY mint
-// is admit_admin_access_authorisation, which build_seed_fixture calls before build_altra_autoinstall_seed; so a
-// key the ssh parser rejects cannot reach the seed at all — there is no path that hands build_altra_autoinstall_seed
+// is admit_admin_access_authorisation, which build_seed_fixture calls before build_ubuntu_autoinstall_seed; so a
+// key the ssh parser rejects cannot reach the seed at all — there is no path that hands build_ubuntu_autoinstall_seed
 // an entry it did not vet. The positive arm (one_key builds) lives INSIDE this test so that a mutation which made
 // the builder always refuse could not turn these five refusals into a green. Each malformed fixture isolates a
 // different clause of ssh_ed25519_key_identity (canonical-base64 length / exact-51-octet length / the nineteen
@@ -985,15 +1031,15 @@ test fn absent_mirror_refuses_the_seed() -> Bool {
 test fn each_refusal_names_its_own_mechanism() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: posture_no_mirror, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: ArchiveMirrorAbsent } =>
-          match audit_altra_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: posture_installer_managed, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: AddressingIsInstallerManaged } =>
-              match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+              match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
                 SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
                   match named {
                     "tzdata" =>
-                      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+                      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
                         SeedRefused { cause: PackagePromptingUnclassified { name: un } } =>
                           un == "some-fleet-exporter" as NonEmptyStr
                         _ => false
@@ -1052,7 +1098,7 @@ test fn a_fully_answerless_seed_is_accepted_with_its_proof() -> Bool {
 // CATCHES: an unbound unit key being admitted (a seed bound to nothing is a seed replayable onto any
 // unit).
 test fn unbound_unit_key_cannot_reach_a_target_standing() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } => true
     TargetAdmitted { standing: _ } => false
   }
@@ -1061,7 +1107,7 @@ test fn unbound_unit_key_cannot_reach_a_target_standing() -> Bool {
 // CATCHES: defaulting an unobserved BMC firmware family, which would silently choose a console stanza
 // nobody observed the hardware to support.
 test fn unobserved_bmc_family_cannot_reach_a_target_standing() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_unobserved, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_unobserved, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } => true
     TargetAdmitted { standing: _ } => false
   }
@@ -1069,25 +1115,324 @@ test fn unobserved_bmc_family_cannot_reach_a_target_standing() -> Bool {
 
 // CATCHES: a seed being rendered for a role whose disks are not its own to erase.
 test fn a_runner_role_is_refused_a_seed() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: RunnerBacked, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } => true
     TargetAdmitted { standing: _ } => false
   }
 }
 
-// CATCHES: the architecture gate, i.e. the arm64 package and driver set reaching an x86 unit.
-test fn a_non_aarch64_unit_is_refused() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
-    TargetRefused { reason: _ } => true
+// CATCHES: the architecture gate being row-driven and total. X86_64 is provisionable BECAUSE IT CARRIES ROWS
+// (the amd64 silence receipts the seed audit checks against), so it admits — an earlier version of this row
+// asserted the opposite, which was the arm64-only assumption written as a test. The refusal half moved to
+// a_architecture_with_no_rows_is_refused: what the gate refuses is an architecture nobody has admitted a
+// package row for, not an architecture that merely differs from the first board this module served.
+test fn an_x86_64_unit_is_admitted_by_its_rows() -> Bool {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: h11ssl_bmc_family, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetAdmitted { standing: standing } =>
+      match standing {
+        ProvisioningTargetStanding { architecture: X86_64, bmc_firmware: SupermicroAten, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68 } => true
+        _ => false
+      }
+    TargetRefused { reason: _ } => false
+  }
+}
+
+// CATCHES: the door defaulting an architecture in without rows. Riscv64 is the honest third case: a real
+// architecture, no admitted package row, so NOTHING about it has been verified silent and a seed built for it
+// would be a document of unverifiable claims. The refusal must name the missing row (PlatformUnsupported),
+// not the platform's name — and it must arrive through the same match arm X86_64 passes through, which is why
+// both cases sit in this pair of rows rather than in two branches.
+test fn an_architecture_with_no_rows_is_refused() -> Bool {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Riscv64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetRefused { reason: PlatformUnsupported { architecture: Riscv64 } } => true
+    TargetRefused { reason: _ } => false
     TargetAdmitted { standing: _ } => false
   }
 }
+// ---------------------------------------------------------------------------
+// 2b-seed: the amd64 seed rendered, the ARM rendering pinned, and the two REDs
+// the row model owes. Everything here reads the ROW TABLE and the PROFILE ROWS;
+// nothing re-declares what a board carries.
+// ---------------------------------------------------------------------------
+
+// THE x86 TARGET, ADMITTED THE WAY ANY TARGET IS ADMITTED. One call to the one door, so this fixture cannot
+// drift from the door's own verdict: if the amd64 rows are ever deleted, this becomes a refusal and every test
+// below fails loudly rather than installing an unverified seed.
+fn target_x86() -> ProvisioningTargetAdmission {
+  admit_provisioning_target( unit_key: unit_key_bound_a, architecture: X86_64, bmc_firmware: h11ssl_bmc_family, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, )
+}
+
+// THE amd64 INSTALL SET IS THE ADMITTED amd64 ROWS *PLUS* THE ONE PACKAGE THAT PROMPTS.
+// openssh-server can never BE a silence row: this module's own prompting vocabulary gives it a debconf question
+// (openssh-server/password-authentication), so the honest intent is QuestionAnswered with that key false — exactly
+// how the arm64 fixture carries it. And it is not decoration: the ssh: section renders ONLY when openssh-server is
+// in the install set, so a key-only seed without it would install a host carrying the operator's key and NO SSH
+// SERVER, and `allow-pw: false` would never be written, let alone audited. Silence rows and answered prompts are
+// two different kinds of row, and a seed needs both to boot into a reachable key-only account.
+fn amd64_install_set() -> List<PackageIntent> {
+  list_append(
+    left: package_rows_for_architecture(architecture: X86_64),
+    right: [QuestionAnswered {
+      package: OpenSshServerPackage,
+      answers: debconf_answer_for(
+        package: OpenSshServerPackage,
+        kind: AnswerBoolean,
+        label: "openssh-server/password-authentication" as NonEmptyStr,
+        value: "false" as NonEmptyStr,
+      ),
+    }],
+  )
+}
+
+// CATCHES: the amd64 seed drifting from the H11SSL profile rows — a module dropped from the row, a citation retyped
+// into the test, a package list assembled by hand at the call site. The seed is built from
+// board_seed_profile(SupermicroH11SslBoard, …) and the amd64 row table and NOTHING else, so what the render says is
+// what the rows say, and every assertion below is really an assertion about the rows. The credential is
+// PasswordUnset with a key: the operator's posture (no password at all), which is also the only posture whose
+// document passes the public NoCloud admission checked in the last clause.
+test fn the_h11ssl_amd64_seed_renders_from_its_rows() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      match board_seed_profile(board: SupermicroH11SslBoard, delivery: virtual_media_strategy) {
+        BoardSeedProfile { install_drivers: drivers, loadable_modules: modules, late_drivers: late_drivers, late_packages: late_packages } =>
+          match build_ubuntu_autoinstall_seed(
+            target: target_x86(),
+            network: network_posture,
+            install_drivers: drivers,
+            loadable_modules: modules,
+            late_drivers: late_drivers,
+            install_packages: amd64_install_set(),
+            late_packages: late_packages,
+            disk: serial_selector,
+            entry: entry,
+            credential: PasswordUnset,
+            password_read: password_read_for(credential: PasswordUnset),
+            locale: EnUsUtf8,
+            delivery: virtual_media_strategy,
+            keyboard: UsLayout,
+          ) {
+            Absent => false
+            Present { value: seed } =>
+              let rendered = render_ubuntu_autoinstall_seed(seed: seed)
+              // THE ARCHITECTURE IS THE amd64 SPELLING, NOT A BORROWED aarch64 ONE.
+              rendered.contains(needle: "arch=x86_64")
+                // THE BOARD'S OWN KERNEL MODULES, EACH WITH ITS v6.8 CITATION INLINED BY THE RENDER — a token
+                // that lost its @path would still contain the name, so both halves are asserted together.
+                && rendered.contains(needle: "mod:igb=IGB@drivers/net/ethernet/intel/Kconfig")
+                && rendered.contains(needle: "mod:ahci=SATA_AHCI@drivers/ata/Kconfig")
+                && rendered.contains(needle: "mod:nvme=BLK_DEV_NVME@drivers/nvme/host/Kconfig")
+                // THE AST2500 BMC SET, AS LATE DRIVERS.
+                && rendered.contains(needle: "mod:ast=DRM_AST")
+                && rendered.contains(needle: "mod:ipmi_si=IPMI_SI")
+                && rendered.contains(needle: "mod:ipmi_watchdog=IPMI_WATCHDOG")
+                // THE VIRTUAL-MEDIA USB SET, WHICH THE DELIVERY AXIS ADDS TO THE BOARD ROW.
+                && rendered.contains(needle: "mod:usb-storage=USB_STORAGE")
+                && rendered.contains(needle: "mod:uas=USB_UAS")
+                && rendered.contains(needle: "mod:sd_mod=BLK_DEV_SD@drivers/scsi/Kconfig")
+                // THE PACKAGES ARE THE amd64 ROWS: each one's own token, spelling the version the silence was
+                // established at on THIS architecture's artifact, and answered=0. Asserted per row rather than as
+                // one prefix, because the list is a sorted join — "packages=" may sit before any other row's name.
+                && rendered.contains(needle: "amd64-microcode+silent,silent@3.20231019.1ubuntu2,cited,answered=0")
+                && rendered.contains(needle: "nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
+                // THE LATE SET IS THE HEADLESS-DIAGNOSTIC FOUR, AT THEIR amd64 BUILDS.
+                && rendered.contains(needle: "ipmitool+silent,silent@1.8.19-7build2,cited,answered=0")
+                && rendered.contains(needle: "dmidecode+silent,silent@3.5-3build1,cited,answered=0")
+                && rendered.contains(needle: "rasdaemon+silent,silent@0.8.0-2,cited,answered=0")
+                // amd64-microcode ARRIVES AS AN INSTALL DRIVER TOO. pkg: and the apt row above are two different
+                // acts — install this, versus what the seed writes — and both must be present for this board.
+                && rendered.contains(needle: "pkg:amd64-microcode")
+                // THE BMC FAMILY IS RENDERED TOO, AND IT IS THE H11SSL'S OWN: Supermicro's X11/H11 stack is
+                // ATEN-lineage on the AST2500 (extdeps.bmc.supermicro), not Ampere's MegaRAC build. Pinning the
+                // token is what makes that a checked claim rather than a fixture that happens to say so.
+                && rendered.contains(needle: "bmc=supermicro-aten")
+                // NO PASSWORD FIELD EXISTS ANYWHERE IN THE DOCUMENT THIS SEED WRITES.
+                && (match seed_document(seed: seed) {
+                     DocumentRefused { reason: _ } => false
+                     DocumentBuilt { payload: payload, content: content } =>
+                       document_names_no_password_field(content: content)
+                         && !content.contains(needle: "identity")
+                         && content.contains(needle: "lock_passwd: true")
+                         && content.contains(needle: "allow-pw: false")
+                         // THE KEY LINE IS CANONICAL ON THIS ROUTE: algorithm and blob, and NOT the commented
+                         // spelling the fixture would produce. The two spellings differ only by the trailing
+                         // comment, so asserting both directions is what stops the srv3/srv4 byte-identity
+                         // guarantee from being bought by weakening the public seed contract.
+                         && content.contains(needle: ssh_public_key_canonical_line(k: provisioning_key))
+                         && !content.contains(needle: ssh_public_key_line(k: provisioning_key))
+                         // THE DOCUMENT FITS THE CLOSED PUBLIC NoCloud SCHEMA. Not an approximation checked
+                         // key by key here: the real mint runs on the real rendered tree and its own audit
+                         // says admitted. This is the row that fails first if the emitter and the schema ever
+                         // drift apart.
+                         && (match admit_public_nocloud_seed( client_mac: x86_client_mac(), user_data: autoinstall_user_data_document(payload: payload), ) {
+                              PublicSeedAdmitted { seed: minted } =>
+                                // THE MINTED ARTIFACT IS THE DOCUMENT WE HANDED IT, FOR THE MAC WE NAMED.
+                                public_nocloud_seed_user_data(seed: minted).contains(needle: "lock_passwd: true")
+                                  && public_nocloud_seed_user_data(seed: minted).contains(needle: "allow-pw: false")
+                                  && mac_addresses_are_equal(
+                                    left: public_nocloud_seed_client_mac(seed: minted),
+                                    right: x86_client_mac(),
+                                  )
+                              PublicSeedRefused { findings: _ } => false
+                            })
+                   })
+          }
+      }
+    }
+  }
+
+// THE CLIENT MAC THE MINT DERIVES meta-data FROM. The public NoCloud seed builds its meta-data instance-id
+// from the MAC, so the witness must hand it a real parsed address rather than a string; this is the same
+// parse-the-text path a live PXE request arrives by.
+fn x86_client_mac() -> Eui48Address {
+  match parse_mac_address(text: "ac:1f:6b:e3:f7:fe") {
+    MacParsed { address: m } => m
+    // UNPARSEABLE TEXT NAMES NO HOST. Reachable only if the fixture text above stopped being a MAC, which would
+    // silently vacuate every mac-bound assertion in this file — so it is named, not papered over.
+    MacParseFailed { error: _ } => the_mac_fixture_is_not_a_mac()
+  }
+}
+
+fn the_mac_fixture_is_not_a_mac() -> Bool {
+  false
+}
+
+// CATCHES: the ARM rendering moving under the rename. THE CONTROL, NOT A REGRESSION TEST: the digest below was
+// captured from the pre-rename module (gunbc.provisioning.altra_autoinstall_seed at its own head) rendering
+// this same fixture, and is asserted as an absolute. Every byte of the aarch64 document — the identity section,
+// its hash, the ssh section, the storage section, the ordering, the quoting — must be what it was while this
+// module still carried the board's name in its own. A refactor that reworded, reordered, or "tidied" anything
+// on the PasswordHandle path moves this digest and fails here, which is the only reason the rename is allowed
+// to be invisible to the fleet.
+test fn the_arm_rendering_is_byte_identical_to_the_pre_rename_capture() -> Bool {
+  match built_seed_and_binding() {
+    Absent => false
+    Present { value: pair } =>
+      match seed_document(seed: pair.seed) {
+        DocumentRefused { reason: _ } => false
+        DocumentBuilt { payload: _, content: content } =>
+          // RAW BYTES, NO ALLOWANCE, NO RESTORATION. #15136 closed the public seed schema and required the
+          // CANONICAL key line (algorithm + blob, no comment — a published seed must not carry sshd(8) free
+          // text, merry-fox-82's hold at 0dd912cde58). That rule binds the KEY-ONLY route, whose document is
+          // the one published; this ARM document travels on a BMC-staged volume and a seeded ISO, and its
+          // route keeps the commented line it has always written (see os_install_emit's
+          // autoinstall_authorized_key_line). So the captured digest is demanded EXACTLY, with nothing
+          // substituted first: a rename that reworded, reordered, retyped or "tidied" a single byte of the
+          // aarch64 document fails here, and so would any future attempt to canonicalize this route.
+          sha256_hex_of_text(text: content)
+            == "7044037d409ab316009b79f41f996bcf0b8c261ae2bf65f6a5e7b1e985f945c9"
+      }
+  }
+}
+
+// CATCHES: an x86 seed certified from arm64's homework. One package row is swapped for the SAME package's
+// arm64 receipt — same name, same version string, evidence read from the wrong .deb. Silence receipts are
+// per-architecture exactly because the two builds are separately compiled and free to differ in their
+// maintainers' scripts, so this must refuse, naming both the package and the architecture the claim was
+// checked against.
+test fn an_x86_seed_carrying_an_arm64_only_package_row_refuses() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      match audit_ubuntu_autoinstall_seed(
+        network: network_posture,
+        install_packages: [PackageVerifiedSilent { silence: nvme_cli_silence_receipt }],
+        late_packages: [],
+        locale: EnUsUtf8,
+        entry: entry,
+        strategy: virtual_media_strategy,
+        architecture: X86_64,
+        credential: PasswordUnset,
+      ) {
+        SeedIsNonInteractive { evidence: _ } => false
+        SeedRefused { cause: cause } =>
+          match cause {
+            PackageSilenceUnestablishedForArchitecture { name: named, architecture: asked } =>
+              named == "nvme-cli" as NonEmptyStr && asked == "x86_64" as NonEmptyStr
+            _ => false
+          }
+      }
+  }
+}
+
+// CATCHES: the amd64 rows being deleted or unshipped while the architecture stays admitted. An architecture
+// with no package rows refuses the TARGET (an architecture with nothing verified about it is not a supported
+// platform), and a seed whose rows are nonetheless forced through the audit refuses at the package gate.
+// Riscv64 is the honest witness here: a real architecture with no row table behind it. The refusal arrives
+// through the same match arm X86_64 passes when it ADMITS, which is the whole point of the row model — the
+// difference between these two boards is data, not control flow.
+test fn an_architecture_with_no_package_rows_refuses_at_the_door_and_the_gate() -> Bool {
+  match admit_provisioning_target( unit_key: unit_key_bound_a, architecture: Riscv64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+    TargetAdmitted { standing: _ } => false
+    TargetRefused { reason: reason } =>
+      match reason {
+        PlatformUnsupported { architecture: _ } =>
+          // WITH NO ROWS, NO SEED BUILDS: the same emptiness the door reads, read again where a seed would.
+          list_length(items: package_rows_for_architecture(architecture: Riscv64)) == 0
+        _ => false
+      }
+  }
+}
+
+// CATCHES: a key-only seed that locks every door — the posture that admits no password AND no key would be a
+// board nobody can reach, installed unattended and then refused forever. The refusal is the AUDIT's, not the
+// entry mint's (a minted entry can be locked-console-with-keys; this is the posture asking "is there any way
+// in at all?"), so the cause is KeyOnlyPostureAdmitsNoKeys and no other cause is allowed to satisfy the row.
+test fn a_key_only_posture_with_no_keys_refuses() -> Bool {
+  match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
+    Absent => false
+    Present { value: entry } =>
+      // FIRST: the green case, so the row cannot be satisfied by an unrelated refusal.
+      (match audit_ubuntu_autoinstall_seed(
+             network: network_posture,
+             install_packages: package_rows_for_architecture(architecture: Aarch64),
+             late_packages: [],
+             locale: EnUsUtf8,
+             entry: entry,
+             strategy: virtual_media_strategy,
+             architecture: Aarch64,
+             credential: PasswordUnset,
+           ) {
+             SeedIsNonInteractive { evidence: _ } => true
+             SeedRefused { cause: _ } => false
+           })
+        // THEN: the same audit with an entry that carries no authorised key. Under PasswordUnset the entry
+        // mint refuses a locked console with no keys, so the entry that reaches the audit here is the one an
+        // unlock would mint — the posture with zero keys, which is exactly the locked-out host.
+        && (match admit_admin_access_authorisation(authorised_keys: no_keys, console_entry: unlocked_console) {
+             Absent => false
+             Present { value: bare_entry } =>
+               match audit_ubuntu_autoinstall_seed(
+                 network: network_posture,
+                 install_packages: package_rows_for_architecture(architecture: Aarch64),
+                 late_packages: [],
+                 locale: EnUsUtf8,
+                 entry: bare_entry,
+                 strategy: virtual_media_strategy,
+                 architecture: Aarch64,
+                 credential: PasswordUnset,
+               ) {
+                 SeedIsNonInteractive { evidence: _ } => false
+                 SeedRefused { cause: cause } =>
+                   match cause {
+                     KeyOnlyPostureAdmitsNoKeys => true
+                     PackageSilenceUnestablishedForArchitecture { name: _, architecture: _ } => false
+                     PackagePrompts { name: _, question: _ } => false
+                     PackagePromptingUnclassified { name: _ } => false
+                     AddressingIsInstallerManaged => false
+                     ArchiveMirrorAbsent => false
+                     NoEntrypointAtAll => false
+                   }
+               }
+           })
+    }
+  }
 
 // CATCHES: a seed being buildable for a refused target.
 test fn a_refused_target_yields_no_seed() -> Bool {
-  match admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
+  match admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ) {
     TargetRefused { reason: _ } =>
-      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: admit_altra_autoinstall_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: AltraProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
+      match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: admit_provisioning_target( unit_key: unit_key_unbound, architecture: Aarch64, bmc_firmware: bmc_family_observed, role: ProvisioningTarget, kernel_flavour: Noble2404GaLinux68, ),
       ) {
         Absent => true
         Present { value: _ } => false
@@ -1108,8 +1453,8 @@ test fn package_order_does_not_move_the_digest() -> Bool {
       match build_seed_fixture( network: network_posture, packages: reversed_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: second } =>
           content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: first),
-            right: altra_autoinstall_seed_digest(seed: second),
+            left: ubuntu_autoinstall_seed_digest(seed: first),
+            right: ubuntu_autoinstall_seed_digest(seed: second),
           )
         Absent => false
       }
@@ -1125,8 +1470,8 @@ test fn the_transport_moves_the_digest() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: pxe_strategy, target: target_altra, ) {
         Present { value: via_pxe } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: via_media),
-            right: altra_autoinstall_seed_digest(seed: via_pxe),
+            left: ubuntu_autoinstall_seed_digest(seed: via_media),
+            right: ubuntu_autoinstall_seed_digest(seed: via_pxe),
           )
         Absent => false
       }
@@ -1190,8 +1535,8 @@ test fn a_host_named_after_the_absence_token_is_never_spelled_as_no_host_at_all(
       // the reason given above, and inventing one would have meant weakening the refusal that keeps the refused
       // posture unproducible.
       Present { value: misconfigured } => content_hash_eq_structural(
-        left: altra_autoinstall_seed_digest(seed: misconfigured),
-        right: altra_autoinstall_seed_digest(seed: misconfigured),
+        left: ubuntu_autoinstall_seed_digest(seed: misconfigured),
+        right: ubuntu_autoinstall_seed_digest(seed: misconfigured),
       )
     }
 }
@@ -1249,8 +1594,8 @@ test fn a_rotated_credential_moves_the_digest() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: rotated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: after } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: before),
-            right: altra_autoinstall_seed_digest(seed: after),
+            left: ubuntu_autoinstall_seed_digest(seed: before),
+            right: ubuntu_autoinstall_seed_digest(seed: after),
           )
         Absent => false
       }
@@ -1285,8 +1630,8 @@ test fn two_transports_sharing_a_console_stanza_do_not_share_a_digest() -> Bool 
               match console_stanza_for(strategy: same_stem_virtual_media) {
                 ConsoleSuppressed =>
                   !content_hash_eq_structural(
-                    left: altra_autoinstall_seed_digest(seed: via_bios),
-                    right: altra_autoinstall_seed_digest(seed: via_media),
+                    left: ubuntu_autoinstall_seed_digest(seed: via_bios),
+                    right: ubuntu_autoinstall_seed_digest(seed: via_media),
                   )
                 ConsoleAnsweredByUnattended => false
               }
@@ -1308,8 +1653,8 @@ test fn the_boot_mode_moves_the_digest_within_one_transport() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
         Present { value: via_http } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: via_tftp),
-            right: altra_autoinstall_seed_digest(seed: via_http),
+            left: ubuntu_autoinstall_seed_digest(seed: via_tftp),
+            right: ubuntu_autoinstall_seed_digest(seed: via_http),
           )
         Absent => false
       }
@@ -1618,7 +1963,7 @@ test fn the_projection_needs_a_receipt() -> Bool {
 // THE HEADER'S CLAIM ABOUT THE CALLER-SUPPLIED LABEL, CHECKED. The hostname reaches the upstream identity
 // VERBATIM — not dropped, not defaulted to a constant — and two different labels produce two different
 // identities. Why this is the right test rather than a digest comparison: the label cannot move the seed
-// digest because `altra_autoinstall_seed_digest` takes ONLY a seed, so there is no signature in which to
+// digest because `ubuntu_autoinstall_seed_digest` takes ONLY a seed, so there is no signature in which to
 // write "mix the hostname into the digest" — the guarantee is the parameter list, and the digest's actual
 // content is pinned axis-by-axis by the digest witnesses below. What IS falsifiable here, and what this
 // catches, is the projection substituting a baked hostname (a per-unit special case wearing a config
@@ -1721,8 +2066,8 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
                   // SAME SEED on both sides: the configuration digest must be identical, and the binding
                   // addresses must not be.
                   content_hash_eq_structural(
-                    left: altra_autoinstall_seed_digest(seed: seed),
-                    right: altra_autoinstall_seed_digest(seed: sibling),
+                    left: ubuntu_autoinstall_seed_digest(seed: seed),
+                    right: ubuntu_autoinstall_seed_digest(seed: sibling),
                   )
                     && !content_hash_eq_structural(left: first_digest, right: second_digest)
               }
@@ -1741,7 +2086,7 @@ test fn two_units_sharing_a_seed_do_not_share_a_binding_identity() -> Bool {
 test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Bool {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed( seed: seed, target: target_refused_by_unbound_key(), unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_refused_by_unbound_key(), unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
         BindRefused { blocker: TargetNotAdmitted { cause: UnitKeyUnbound { cause: BoardSerialAbsent } } } => true
         _ => false
@@ -1752,12 +2097,12 @@ test fn a_refused_target_binds_with_a_target_blocker_not_a_disk_blocker() -> Boo
 
 // A target turned away for the same reason the witness above pins, built once so the refusal under test is
 // the door's own output rather than a hand-written record that could drift from it.
-fn target_refused_by_unbound_key() -> AltraAutoinstallTarget {
-  admit_altra_autoinstall_target(
+fn target_refused_by_unbound_key() -> ProvisioningTargetAdmission {
+  admit_provisioning_target(
     unit_key: unit_key_unbound,
     architecture: Aarch64,
     bmc_firmware: bmc_family_observed,
-    role: AltraProvisioningTarget,
+    role: ProvisioningTarget,
     kernel_flavour: Noble2404GaLinux68,
   )
 }
@@ -1765,7 +2110,7 @@ fn target_refused_by_unbound_key() -> AltraAutoinstallTarget {
 test fn a_binding_cannot_exist_over_a_refused_disk_selection() -> Bool {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
+      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: twin_selector, observed: bay_population),
         ) {
         BindRefused { blocker: _ } => true
         Bound { binding: _ } => false
@@ -1792,14 +2137,14 @@ test fn a_binding_records_the_serial_it_wrote_to() -> Bool {
 // ---------------------------------------------------------------------------
 
 type SeedAndBinding {
-  seed: AltraAutoinstallSeed
-  binding: AltraAutoinstallSeedBinding
+  seed: UbuntuAutoinstallSeed
+  binding: UbuntuAutoinstallSeedBinding
 }
 
 fn built_seed_and_binding() -> Optional<SeedAndBinding> {
   match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
         Bound { binding: binding } => Present { value: SeedAndBinding { seed: seed, binding: binding } }
         BindRefused { blocker: _ } => Absent
@@ -1809,11 +2154,11 @@ fn built_seed_and_binding() -> Optional<SeedAndBinding> {
 }
 
 fn binding_digest_of(
-  seed: AltraAutoinstallSeed,
+  seed: UbuntuAutoinstallSeed,
   unit: UnitKey,
   attempt: IntakeAttemptId,
 ) -> Optional<Fnv1a64Structural> {
-  match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+  match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit, attempt: attempt, selection: select_target_disk(selector: serial_selector, observed: bay_population),
     ) {
     // NO PLACEHOLDER ON EITHER ARM (review: merry-fox-82). The refused arm used to return a stand-in digest of
     // a fixed string, which let the comparison below pass on two stand-ins while claiming to compare two
@@ -1985,12 +2330,12 @@ fn build_seed_fixture_with_modules(
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
   delivery: SeedDeliveryStrategy,
-  target: AltraAutoinstallTarget,
-  modules: List<AltraLoadableModule>,
-) -> Optional<AltraAutoinstallSeed> {
+  target: ProvisioningTargetAdmission,
+  modules: List<LoadableModuleClass>,
+) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_altra_autoinstall_seed(
+      build_ubuntu_autoinstall_seed(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -2029,18 +2374,18 @@ fn build_seed_fixture_under_rule(
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
   delivery: SeedDeliveryStrategy,
-  target: AltraAutoinstallTarget,
-) -> Optional<AltraAutoinstallSeed> {
+  target: ProvisioningTargetAdmission,
+) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: entry_keys, console_entry: console) {
     Present { value: entry } =>
-      build_altra_autoinstall_seed(
+      build_ubuntu_autoinstall_seed(
         target: target,
         network: network,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
         loadable_modules: [AhciPlatformModule, NvmeBlockModule],
         late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
         install_packages: packages,
-        late_packages: altra_required_late_package_rows(),
+        late_packages: board_required_late_package_rows(),
         disk: rule,
         entry: entry,
         credential: credential,
@@ -2062,8 +2407,8 @@ fn build_seed_fixture(
   console: ConsoleEntryAuthorisation,
   credential: AdminCredentialPosture,
   delivery: SeedDeliveryStrategy,
-  target: AltraAutoinstallTarget,
-) -> Optional<AltraAutoinstallSeed> {
+  target: ProvisioningTargetAdmission,
+) -> Optional<UbuntuAutoinstallSeed> {
   build_seed_fixture_under_rule(
     rule: serial_selector,
     network: network,
@@ -2082,17 +2427,17 @@ fn build_seed_fixture(
 fn build_seed_fixture_with_read(
   read: Optional<AdminPasswordHashReceipt>,
   credential: AdminCredentialPosture,
-) -> Optional<AltraAutoinstallSeed> {
+) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      build_altra_autoinstall_seed(
+      build_ubuntu_autoinstall_seed(
         target: target_altra,
         network: network_posture,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
         loadable_modules: [AhciPlatformModule, NvmeBlockModule],
         late_drivers: [KipmiSiDriver, IpmiWatchdogDriver],
         install_packages: clean_packages,
-        late_packages: altra_required_late_package_rows(),
+        late_packages: board_required_late_package_rows(),
         disk: serial_selector,
         entry: entry,
         credential: credential,
@@ -2131,7 +2476,7 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
     Absent =>
       match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
         Present { value: entry } =>
-          match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
             _ => false
           }
@@ -2146,7 +2491,7 @@ test fn an_unclassified_package_refuses_the_seed_without_inventing_a_question() 
 test fn a_debconf_seed_cannot_classify_an_unchecked_package() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unclassified_but_seeded_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePromptingUnclassified { name: _ } } => true
         _ => false
       }
@@ -2183,10 +2528,10 @@ fn suppressed_transports_render_suppressed() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Absent => false
         Present { value: media } =>
-          render_altra_autoinstall_seed(seed: bios).contains("console=suppressed")
-            && render_altra_autoinstall_seed(seed: media).contains("console=suppressed")
-            && !render_altra_autoinstall_seed(seed: bios).contains("console=unattended-answer")
-            && !render_altra_autoinstall_seed(seed: media).contains("console=unattended-answer")
+          render_ubuntu_autoinstall_seed(seed: bios).contains("console=suppressed")
+            && render_ubuntu_autoinstall_seed(seed: media).contains("console=suppressed")
+            && !render_ubuntu_autoinstall_seed(seed: bios).contains("console=unattended-answer")
+            && !render_ubuntu_autoinstall_seed(seed: media).contains("console=unattended-answer")
       }
   }
 }
@@ -2198,10 +2543,10 @@ fn answered_transports_render_unattended_answer() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: http_boot_strategy, target: target_altra, ) {
         Absent => false
         Present { value: http } =>
-          render_altra_autoinstall_seed(seed: pxe).contains("console=unattended-answer")
-            && render_altra_autoinstall_seed(seed: http).contains("console=unattended-answer")
-            && !render_altra_autoinstall_seed(seed: pxe).contains("console=suppressed")
-            && !render_altra_autoinstall_seed(seed: http).contains("console=suppressed")
+          render_ubuntu_autoinstall_seed(seed: pxe).contains("console=unattended-answer")
+            && render_ubuntu_autoinstall_seed(seed: http).contains("console=unattended-answer")
+            && !render_ubuntu_autoinstall_seed(seed: pxe).contains("console=suppressed")
+            && !render_ubuntu_autoinstall_seed(seed: http).contains("console=suppressed")
       }
   }
 }
@@ -2228,9 +2573,9 @@ fn console_stanza_is_answered(stanza: NonInteractiveConsoleStanza) -> Bool {
 test fn the_closed_question_count_moves_only_with_answers() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedIsNonInteractive { evidence: one_answer } =>
-          match audit_altra_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+          match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: two_answered_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
             SeedIsNonInteractive { evidence: two_answers } =>
               two_answers.questions_closed > one_answer.questions_closed
             _ => false
@@ -2249,7 +2594,7 @@ test fn the_closed_question_count_moves_only_with_answers() -> Bool {
 test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: unseeded_tzdata_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         SeedRefused { cause: PackagePrompts { name: named, question: asked } } =>
           named == "tzdata" as NonEmptyStr
             // BOTH keys, not one. The shipped package asks tzdata/Areas and then tzdata/Zones/<area>, and the
@@ -2274,7 +2619,7 @@ test fn the_refusal_names_the_package_in_its_archive_spelling() -> Bool {
 test fn the_closed_question_count_is_the_exact_arithmetic() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, ) {
+      match audit_ubuntu_autoinstall_seed( network: network_posture, install_packages: clean_packages, late_packages: [], locale: EnUsUtf8, entry: entry, strategy: virtual_media_strategy, architecture: Aarch64, credential: seeded_handle, ) {
         // TWO answered debconf questions + seeded addressing + present mirror + the entrypoint the caller had
         // to earn. Not a magic number: two packages each in the QuestionAnswered arm, then one each of the
         // three structural terms questions_closed_count adds.
@@ -2326,7 +2671,7 @@ test fn the_seed_names_its_packages_and_modules_by_axis() -> Bool {
     modules: [AhciPlatformModule, NvmeBlockModule],
   ) {
     Present { value: seed } =>
-      let rendered = render_altra_autoinstall_seed(seed: seed)
+      let rendered = render_ubuntu_autoinstall_seed(seed: seed)
       rendered.contains("pkg:nvme-cli")
         && rendered.contains("pkg:linux-firmware")
         && rendered.contains("mod:ahci_platform")
@@ -2349,10 +2694,10 @@ test fn a_relocated_credential_moves_the_digest() -> Bool {
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: relocated_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: relocated } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: in_store),
-            right: altra_autoinstall_seed_digest(seed: relocated),
+            left: ubuntu_autoinstall_seed_digest(seed: in_store),
+            right: ubuntu_autoinstall_seed_digest(seed: relocated),
           )
-            && render_altra_autoinstall_seed(seed: relocated).contains("gunbc-alternate-store")
+            && render_ubuntu_autoinstall_seed(seed: relocated).contains("gunbc-alternate-store")
         Absent => false
       }
     Absent => false
@@ -2370,14 +2715,14 @@ test fn the_password_stanza_states_which_posture_was_chosen() -> Bool {
     Present { value: unset_seed } =>
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: handle_seed } =>
-          render_altra_autoinstall_seed(seed: unset_seed).contains("password=unset")
-            && !render_altra_autoinstall_seed(seed: unset_seed).contains("password=handle")
-            && !render_altra_autoinstall_seed(seed: handle_seed).contains("password=unset")
+          render_ubuntu_autoinstall_seed(seed: unset_seed).contains("password=unset")
+            && !render_ubuntu_autoinstall_seed(seed: unset_seed).contains("password=handle")
+            && !render_ubuntu_autoinstall_seed(seed: handle_seed).contains("password=unset")
             // THE HANDLE IS SPOKEN OF, NOT HELD — and each part of it is FRAMED with its own label and character
             // count rather than glued with separators a value could contain. "password=locator=" was the old
             // unframed spelling; this is the framed one, and the row is the reason the framing is visible.
-            && render_altra_autoinstall_seed(seed: handle_seed).contains("password=locator[")
-            && !render_altra_autoinstall_seed(seed: handle_seed).contains(crypt_digest_as_text)
+            && render_ubuntu_autoinstall_seed(seed: handle_seed).contains("password=locator[")
+            && !render_ubuntu_autoinstall_seed(seed: handle_seed).contains(crypt_digest_as_text)
         Absent => false
       }
     Absent => false
@@ -2412,8 +2757,8 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
       ) {
         Present { value: without_modules } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: with_modules),
-            right: altra_autoinstall_seed_digest(seed: without_modules),
+            left: ubuntu_autoinstall_seed_digest(seed: with_modules),
+            right: ubuntu_autoinstall_seed_digest(seed: without_modules),
           )
         Absent => false
       }
@@ -2425,11 +2770,11 @@ test fn the_loadable_module_axis_moves_the_digest() -> Bool {
 // top of a body (the form this dialect allows) and the assertions read as one claim: the tokens differ, each
 // says what it means, and the digests follow.
 fn entrypoint_tokens_are_distinguishable(
-  console_seed: AltraAutoinstallSeed,
-  keys_seed: AltraAutoinstallSeed,
+  console_seed: UbuntuAutoinstallSeed,
+  keys_seed: UbuntuAutoinstallSeed,
 ) -> Bool {
-  let console_render = render_altra_autoinstall_seed(seed: console_seed)
-  let keys_render = render_altra_autoinstall_seed(seed: keys_seed)
+  let console_render = render_ubuntu_autoinstall_seed(seed: console_seed)
+  let keys_render = render_ubuntu_autoinstall_seed(seed: keys_seed)
   // The console token is pinned, and the key COUNT is pinned SEPARATELY from the key coverage. The count is no
   // longer the whole claim (see authorised_key_coverage): the coverage hash beside it is what makes a swap of key
   // material move the digest. Pinning "keys=1" alone was the weak assertion that let a count-only render pass,
@@ -2439,8 +2784,8 @@ fn entrypoint_tokens_are_distinguishable(
     && keys_render.contains("console=locked,keys=")
     && keys_render.contains(",count=1")
     && !content_hash_eq_structural(
-      left: altra_autoinstall_seed_digest(seed: console_seed),
-      right: altra_autoinstall_seed_digest(seed: keys_seed),
+      left: ubuntu_autoinstall_seed_digest(seed: console_seed),
+      right: ubuntu_autoinstall_seed_digest(seed: keys_seed),
     )
 }
 
@@ -2453,12 +2798,12 @@ test fn the_two_unlock_kinds_are_distinguishable_in_the_render() -> Bool {
     Present { value: sol } =>
       match build_seed_fixture( network: network_posture, packages: clean_packages, entry_keys: no_keys, console: unlocked_serial_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra, ) {
         Present { value: getty } =>
-          render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-bmc-sol")
-            && render_altra_autoinstall_seed(seed: getty).contains("console=unlocked-serial-getty")
-            && !render_altra_autoinstall_seed(seed: sol).contains("console=unlocked-serial-getty")
+          render_ubuntu_autoinstall_seed(seed: sol).contains("console=unlocked-bmc-sol")
+            && render_ubuntu_autoinstall_seed(seed: getty).contains("console=unlocked-serial-getty")
+            && !render_ubuntu_autoinstall_seed(seed: sol).contains("console=unlocked-serial-getty")
             && !content_hash_eq_structural(
-              left: altra_autoinstall_seed_digest(seed: sol),
-              right: altra_autoinstall_seed_digest(seed: getty),
+              left: ubuntu_autoinstall_seed_digest(seed: sol),
+              right: ubuntu_autoinstall_seed_digest(seed: getty),
             )
         Absent => false
       }
@@ -2520,25 +2865,25 @@ test fn a_volatile_disk_is_never_selected_even_though_it_matches() -> Bool {
 // census that could not run reads as 0 - 1 and the row goes RED, so an unresolvable probe source cannot masquerade
 // as a refusal. (Idiom and class name copied from test.claim.fabric.flex_seal_witness; live_tree_disposition is
 // already ReadsLiveTree for this reason.)
-data forged_disk_provenance_source: String = "module probe_altra_disk_provenance\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { disk_selection_provenance, DiskSelectionProvenance, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> DiskSelectionProvenance {\n  disk_selection_provenance(selector: selector, admitted: admitted, observed: observed)\n}\n"
+data forged_disk_provenance_source: String = "module probe_disk_provenance\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.ubuntu_autoinstall_seed { disk_selection_provenance, DiskSelectionProvenance, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> DiskSelectionProvenance {\n  disk_selection_provenance(selector: selector, admitted: admitted, observed: observed)\n}\n"
 
 // THE INDIRECT WRAPPER: a foreign module that buries the sealed mint one hop down and hands the caller a fully
 // built DiskSelected. The admission check runs at the call site wherever it is nested, so wrapping does not launder
 // it — the census still reports the refusal. Without this row, a reader could believe the seal only covered the
 // direct call and that a helper module could re-export a ready-made DiskSelected.
-data forged_disk_selection_wrapper_source: String = "module probe_altra_disk_selection_wrapper\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { disk_selection_provenance, DiskSelected, TargetDiskSelection, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> TargetDiskSelection {\n  DiskSelected { provenance: disk_selection_provenance(selector: selector, admitted: admitted, observed: observed) }\n}\n"
+data forged_disk_selection_wrapper_source: String = "module probe_disk_selection_wrapper\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.ubuntu_autoinstall_seed { disk_selection_provenance, DiskSelected, TargetDiskSelection, TargetDiskSelector }\nfn forged(selector: TargetDiskSelector, admitted: StorageDevice, observed: List<StorageDevice>) -> TargetDiskSelection {\n  DiskSelected { provenance: disk_selection_provenance(selector: selector, admitted: admitted, observed: observed) }\n}\n"
 
 // THE CONTROL, NOT A TRUISM: the very same census machinery over a source that reaches for the disk only through
 // select_target_disk. If the harness flagged every source, the two refusal rows above would prove nothing; this row
 // pins that a lawful selection produces zero admission refusals.
-data lawful_disk_selection_source: String = "module probe_altra_disk_selection_lawful\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.altra_autoinstall_seed { select_target_disk, TargetDiskSelection, TargetDiskSelector }\nfn lawful(selector: TargetDiskSelector, observed: List<StorageDevice>) -> TargetDiskSelection {\n  select_target_disk(selector: selector, observed: observed)\n}\n"
+data lawful_disk_selection_source: String = "module probe_disk_selection_lawful\nimport std.types { List }\nimport extdeps.storage.types { StorageDevice }\nimport gunbc.provisioning.ubuntu_autoinstall_seed { select_target_disk, TargetDiskSelection, TargetDiskSelector }\nfn lawful(selector: TargetDiskSelector, observed: List<StorageDevice>) -> TargetDiskSelection {\n  select_target_disk(selector: selector, observed: observed)\n}\n"
 
 // THE SECOND SEAL, PROBED THE SAME WAY: serve_seed_bundle is the only fn that renders the served bundle (user-data
 // plus the debconf answer file plus their combined digest) and is admit_callers-restricted to
-// bind_altra_autoinstall_seed, so the digest that goes into the binding address cannot be authored by hand. A
+// bind_ubuntu_autoinstall_seed, so the digest that goes into the binding address cannot be authored by hand. A
 // foreign caller that tried to build its own served bundle — the carrier merry's item 1 and item 5 depend on — is
 // refused, which is what makes "the machine booted seed X" answerable from evidence rather than a caller's memory.
-data forged_served_bundle_source: String = "module probe_altra_served_bundle\nimport std.optional { Optional }\nimport gunbc.provisioning.altra_autoinstall_seed { serve_seed_bundle, AltraAutoinstallSeed, ServedSeedBundle }\nfn forged(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> {\n  serve_seed_bundle(seed: seed)\n}\n"
+data forged_served_bundle_source: String = "module probe_served_bundle\nimport std.optional { Optional }\nimport gunbc.provisioning.ubuntu_autoinstall_seed { serve_seed_bundle, UbuntuAutoinstallSeed, ServedSeedBundle }\nfn forged(seed: UbuntuAutoinstallSeed) -> Optional<ServedSeedBundle> {\n  serve_seed_bundle(seed: seed)\n}\n"
 
 fn blocking_of_class(source: String, class: String) -> Int {
   match compile_dag_diagnostic_census(source) {
@@ -2615,7 +2960,7 @@ test fn a_disk_selected_under_a_different_rule_cannot_be_bound() -> Bool {
       // twin_disk_one + twin_disk_two both match twin_selector, so the honest selection under that rule is a
       // refusal; the legal one under it needs a single twin. Selecting the twin population and binding it to
       // a seed whose disk field is serial_selector is the mismatch under test.
-      match bind_altra_autoinstall_seed(
+      match bind_ubuntu_autoinstall_seed(
         seed: seed,
         target: target_altra,
         unit_key: unit_a_key,
@@ -2673,7 +3018,7 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
   ) {
     Absent => false
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed(
+      match bind_ubuntu_autoinstall_seed(
         seed: seed,
         target: target_altra,
         unit_key: unit_a_key,
@@ -2682,7 +3027,7 @@ test fn two_different_disks_under_one_seed_are_two_binding_addresses() -> Bool {
       ) {
         BindRefused { blocker: _ } => false
         Bound { binding: first } =>
-          match bind_altra_autoinstall_seed(
+          match bind_ubuntu_autoinstall_seed(
             seed: seed,
             target: target_altra,
             unit_key: unit_a_key,
@@ -2821,14 +3166,25 @@ test fn a_receipt_from_another_secret_version_is_refused_by_name() -> Bool {
   }
 }
 
-// A SEED WITH NO PASSWORD LOCKS THE ACCOUNT; IT DOES NOT SET A DEFAULT (mutation M23-LockMarker-Placeholder:
-// the PasswordUnset arm made the field "changeme"). This is the login gate on a board nobody is standing at, so
-// the two ways to fail it are "nobody can log in" (acceptable, and the honest answer when a credential was never
-// provisioned) and "the first password anyone guesses works" (unacceptable). The assertion is on the EXACT field
-// the renderer will write, not on a substring: '!' is in libxcrypt's reserved set, which is what makes the marker
-// un-collidable with any admitted digest — no password hash can equal it or even begin with it. A row that only
-// checked the document "does not contain changeme" would pass over a default of "password", "password123", or the
-// empty string, so the marker is compared to, not searched for.
+// A SEED WITH NO PASSWORD LOCKS THE ACCOUNT WITHOUT NAMING A PASSWORD AT ALL. This row is the operator's
+// condition, stated as a machine check: the key-only posture must produce a document in which no password field
+// exists — not a placeholder, not a default, and not even the "!"-prefixed lock marker this module used while
+// identity was the only place a credential could be stated. The lock moved to where cloud-init keeps it
+// (lock_passwd: true on the user-data user, asserted in the render rows below), and the marker had to go,
+// because "!" is a password VALUE: a document carrying it does state a password field, and the condition is
+// that no such field be written. So this row now checks FOUR things, each killing a different way back:
+//   - password_field_from is Absent under PasswordUnset (the module states no field),
+//   - no line of the rendered document IS a credential field: the check runs on each line's KEY position
+//     against the closed vocabulary (password, passwd, hashed_passwd, plain_text_passwd, chpasswd, ssh_keys),
+//     which covers every current and future spelling of a credential field WITHOUT rejecting lock_passwd:
+//     true — the cloud-init lock the key-only posture is required to carry (a substring veto over "passwd"
+//     would condemn the very document this posture must emit),
+//   - no crypt-shaped digest appears: no "$6$", "$5$", "$2b$", "$y$" — the prefixes libxcrypt's admitted
+//     schemes emit, so a hash could not enter through a renamed key without tripping this,
+//   - the OLD marker "!"-star is absent too: it is the pre-rename spelling, and its absence is what makes this
+//     row a replacement rather than an accumulation,
+//   - and the document still BUILDS. Refusing it would be the other wrong answer: the board is legitimately
+//     key-only, and a seed that cannot render cannot be installed at all.
 test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default() -> Bool {
   match build_seed_fixture(
     network: network_posture,
@@ -2842,24 +3198,73 @@ test fn a_seed_with_no_password_locks_the_account_instead_of_setting_a_default()
     Absent => false
     Present { value: seed } =>
       match password_field_from(seed: seed) {
-        Absent => false
-        Present { value: field } =>
-          match (field as String) == (password_lock_marker as String) {
-            False => false
-            // AND THE DOCUMENT STILL BUILDS. Refusing the document here would be the other wrong answer: the
-            // board is legitimately key-only, and a seed that cannot render cannot be installed at all.
-            True =>
-              match seed_document(seed: seed) {
-                DocumentBuilt { payload: _, content: _ } => true
-                DocumentRefused { reason: _ } => false
-              }
+        Present { value: _ } => false
+        Absent =>
+          match seed_document(seed: seed) {
+            DocumentRefused { reason: _ } => false
+            DocumentBuilt { payload: _, content: content } =>
+              document_names_no_password_field(content: content)
+                && !content.contains(password_lock_marker)
+                && content.contains(needle: "lock_passwd: true")
+                && content.contains(needle: "allow-pw: false")
           }
       }
   }
 }
 
+// THE NO-PASSWORD CHECK, AS A REUSABLE PREDICATE OVER RENDERED TEXT. Two halves, each covering what the other
+// cannot: key-position veto over the closed credential vocabulary (catches a field by NAME, in any spelling
+// the vocabulary lists, without condemning lock_passwd — the lock the key-only posture must carry), and a
+// whole-document veto over the crypt prefixes libxcrypt's admitted schemes emit, taken from
+// extdeps.libxcrypt.crypt_scheme's own accepted set rather than invented here (catches a HASH wherever it
+// hides, because a hash that carries none of those prefixes is not a hash this system would accept anyway).
+// Checking both means a regression cannot hide by renaming the field or by burying the value in content.
+fn document_names_no_password_field(content: String) -> Bool {
+  no_credential_key_line(document: content)
+    && document_carries_no_crypt_digest(document: content)
+}
+
+// THE CREDENTIAL KEY VOCABULARY IS IMPORTED, NOT RESTATED. seed_credential_keys is the same list
+// gunbc.provisioning.public_nocloud_seed closes its admission against — identity's password, the user-entry
+// forms (passwd, hashed_passwd, plain_text_passwd), the chpasswd section, and the ssh_keys section that would
+// install keys outside the admitted set — so the witness's veto and the mint's admission cannot drift: what the
+// mint rejects by name is what this predicate rejects by name, from one spelling of the list. A local copy here
+// would be exactly the second-authority DESIGN §3 forbids.
+
+// A DOCUMENT CARRIES NO CREDENTIAL FIELD WHEN NO LINE *IS* ONE, not merely when no line mentions one. The
+// difference is what makes this check compatible with the key-only posture: the posture REQUIRES the line
+// `lock_passwd: true` (cloud-init's own lock, per the operator's condition), and a substring check over
+// "passwd" would reject the very document this posture is required to emit. So the check is on the KEY
+// POSITION of each line: strip the indentation and a list dash, cut at the first colon — what remains must
+// not be one of the credential names. A credential smuggled in under some other spelling is still caught by
+// the digest check below, because a hash is only a hash if it carries one of the admitted crypt prefixes.
+fn no_credential_key_line(document: String) -> Bool {
+  let lines = split(s: document, delimiter: "\n")
+  let keys = lines.map(line =>
+    match split(s: trim(replace(s: trim(line), from: "- ", to: "")), delimiter: ":") {
+      Cons { head: name, tail: _ } => trim(name)
+      Empty => trim(line)
+    }
+  )
+  !any(keys, key => any(seed_credential_keys, named => named == key))
+}
+
+// NO ADMITTED CRYPT DIGEST APPEARS ANYWHERE IN THE BYTES. The prefixes are libxcrypt's admitted schemes — the
+// ones extdeps.libxcrypt.crypt_scheme would accept as a credential — so a hash could not enter under a renamed
+// key without tripping this. Unlike the key check, this one IS a substring check over the whole document: a
+// digest is content, and content has no position where it is allowed.
+fn document_carries_no_crypt_digest(document: String) -> Bool {
+  !document.contains(needle: "$6$")
+    && !document.contains(needle: "$5$")
+    && !document.contains(needle: "$2b$")
+    && !document.contains(needle: "$2y$")
+    && !document.contains(needle: "$y$")
+    && !document.contains(needle: "$7$")
+}
+
 // THE LOCK MARKER, STATED BY THE WITNESS AND NOT IMPORTED FROM THE MODULE: if the two agreed by sharing one
-// constant, the row would compare the renderer with itself.
+// constant, the row would compare the renderer with itself. It is now asserted ABSENT — this is the spelling the
+// key-only posture used before identity became Optional, and the module must never write it again.
 data password_lock_marker: NonEmptyStr = "!*"
 
 // THE SAME HANDLE JOINS, WHICH IS THE CONTROL THAT MAKES THE REFUSAL ABOVE A TEST AND NOT A WALL.
@@ -3266,12 +3671,12 @@ test fn equal_count_substitutions_of_material_content_move_the_digest() -> Bool 
             Absent => false
             Present { value: other_answers } =>
               !content_hash_eq_structural(
-                left: altra_autoinstall_seed_digest(seed: baseline),
-                right: altra_autoinstall_seed_digest(seed: other_netplan),
+                left: ubuntu_autoinstall_seed_digest(seed: baseline),
+                right: ubuntu_autoinstall_seed_digest(seed: other_netplan),
               )
                 && !content_hash_eq_structural(
-                  left: altra_autoinstall_seed_digest(seed: baseline),
-                  right: altra_autoinstall_seed_digest(seed: other_answers),
+                  left: ubuntu_autoinstall_seed_digest(seed: baseline),
+                  right: ubuntu_autoinstall_seed_digest(seed: other_answers),
                 )
           }
       }
@@ -3287,7 +3692,7 @@ test fn the_digest_is_taken_from_the_rendering_it_ships() -> Bool {
     Present { value: pair } =>
       content_hash_eq_structural(
         left: content_hash_atom(value: pair.binding.seed_rendering),
-        right: content_hash_atom(value: render_altra_autoinstall_seed(seed: pair.seed)),
+        right: content_hash_atom(value: render_ubuntu_autoinstall_seed(seed: pair.seed)),
       )
   }
 }
@@ -3306,6 +3711,7 @@ test fn the_produced_seed_carries_a_proof_that_agrees_with_a_fresh_audit() -> Bo
         late_packages: pair.seed.late_packages,
         locale: pair.seed.locale,
         strategy: pair.seed.delivery,
+        architecture: pair.seed.target.architecture,
       ) {
         SeedIsNonInteractive { evidence: fresh } =>
           // THE PROOF THE SEED CARRIES, NOT A SECOND CALL. The record's own proof must be what a fresh audit
@@ -3374,7 +3780,7 @@ fn built_second_unit_binding() -> Optional<SeedAndBinding> {
   ) {
     Absent => Absent
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed(
+      match bind_ubuntu_autoinstall_seed(
         seed: seed,
         target: target_altra,
         unit_key: unit_b_key,
@@ -3560,8 +3966,8 @@ test fn different_key_material_at_equal_count_moves_the_digest() -> Bool {
           list_length(items: with_first.entry.authorised_keys)
             == list_length(items: with_other.entry.authorised_keys)
             && !content_hash_eq_structural(
-              left: altra_autoinstall_seed_digest(seed: with_first),
-              right: altra_autoinstall_seed_digest(seed: with_other),
+              left: ubuntu_autoinstall_seed_digest(seed: with_first),
+              right: ubuntu_autoinstall_seed_digest(seed: with_other),
             )
       }
   }
@@ -3678,11 +4084,11 @@ test fn the_authorised_key_line_counts_the_keys_it_was_given() -> Bool {
         Present { value: two } =>
           list_length(items: one.entry.authorised_keys) == 1
             && list_length(items: two.entry.authorised_keys) == 2
-            && render_altra_autoinstall_seed(seed: one).contains("keys=")
-            && render_altra_autoinstall_seed(seed: one).contains("count=1")
-            && render_altra_autoinstall_seed(seed: two).contains("count=2")
+            && render_ubuntu_autoinstall_seed(seed: one).contains("keys=")
+            && render_ubuntu_autoinstall_seed(seed: one).contains("count=1")
+            && render_ubuntu_autoinstall_seed(seed: two).contains("count=2")
             // THE COUNT IS NOT A CONSTANT: one key and two keys cannot both read "count=1".
-            && !render_altra_autoinstall_seed(seed: two).contains("count=1")
+            && !render_ubuntu_autoinstall_seed(seed: two).contains("count=1")
       }
   }
 }
@@ -3706,29 +4112,31 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Absent => false
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed(
+      match audit_ubuntu_autoinstall_seed(
         network: network_posture,
         install_packages: clean_packages,
         late_packages: [],
         locale: EnUsUtf8,
         entry: entry,
         strategy: virtual_media_strategy,
+        architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedRefused { cause: _ } => false
         SeedIsNonInteractive { evidence: bare } =>
-          match audit_altra_autoinstall_seed(
+          match audit_ubuntu_autoinstall_seed(
             network: network_posture,
             install_packages: clean_packages,
-            late_packages: altra_required_late_package_rows(),
+            late_packages: board_required_late_package_rows(),
             locale: EnUsUtf8,
             entry: entry,
             strategy: virtual_media_strategy,
+            architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedRefused { cause: _ } => false
             SeedIsNonInteractive { evidence: silent } =>
               // THE CONTROL, in the SAME LIST the four silent rows occupy: one genuinely answered row there
               // raises the tally by one. Without it, "silent == bare" could be read as "this tally never moves".
-              match audit_altra_autoinstall_seed(
+              match audit_ubuntu_autoinstall_seed(
                 network: network_posture,
                 install_packages: clean_packages,
                 late_packages: [QuestionAnswered {
@@ -3743,6 +4151,7 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                 locale: EnUsUtf8,
                 entry: entry,
                 strategy: virtual_media_strategy,
+                architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedRefused { cause: _ } => false
                 SeedIsNonInteractive { evidence: answered } =>
@@ -3768,9 +4177,9 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
                     ) {
                       Absent => false
                       Present { value: built } =>
-                        render_altra_autoinstall_seed(seed: built)
+                        render_ubuntu_autoinstall_seed(seed: built)
                           .contains("nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
-                          && render_altra_autoinstall_seed(seed: built)
+                          && render_ubuntu_autoinstall_seed(seed: built)
                             .contains("ipmitool+silent,silent@1.8.19-7build2,cited,answered=0")
                     }
               }
@@ -3783,10 +4192,10 @@ test fn a_verified_silence_closes_no_question_but_is_still_shipped() -> Bool {
 // is right for every witness that cares about the seed's other axes and wrong for the two that care about the late
 // set's spelling: those must be able to restate one row (at another build, or under another standing) without
 // touching a shared fixture.
-fn build_seed_with_late(late: List<PackageIntent>) -> Optional<AltraAutoinstallSeed> {
+fn build_seed_with_late(late: List<PackageIntent>) -> Optional<UbuntuAutoinstallSeed> {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      build_altra_autoinstall_seed(
+      build_ubuntu_autoinstall_seed(
         target: target_altra,
         network: network_posture,
         install_drivers: [NvmeCliDriver, LinuxFirmwareDriver],
@@ -3827,7 +4236,7 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
     Absent => false
     Present { value: built } =>
       // The shipped rows are cited, so the render carries ",cited" and no owed text...
-      render_altra_autoinstall_seed(seed: built).contains("nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
+      render_ubuntu_autoinstall_seed(seed: built).contains("nvme-cli+silent,silent@2.8-1build2,cited,answered=0")
         // ...and a row whose standing owes a reading carries the obligation itself, verbatim from the standing.
         && match build_seed_with_late(
           late: [
@@ -3836,6 +4245,10 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
             PackageVerifiedSilent {
               silence: SilentReceipt {
                 package: "nvme-cli" as NonEmptyStr,
+                // THE ARCHITECTURE THE READING WAS TAKEN FROM, stated like every other receipt row. This fixture's
+                // target is the arm64 one, so an arm64 reading is the one that admits it; the read_obligation
+                // below is the point of the row and the architecture field must not become the thing it tests.
+                architecture: Arm64Architecture,
                 observed_version: "2.8-1build2" as NonEmptyStr,
                 standing: TranscribedUncited {
                   read_obligation: "read the Noble arm64 archive index before believing this row" as NonEmptyStr,
@@ -3849,9 +4262,9 @@ test fn a_silence_whose_reading_is_owed_says_what_must_be_read() -> Bool {
         ) {
           Absent => false
           Present { value: owed } =>
-            render_altra_autoinstall_seed(seed: owed)
+            render_ubuntu_autoinstall_seed(seed: owed)
               .contains(",owed=read the Noble arm64 archive index before believing this row")
-              && !render_altra_autoinstall_seed(seed: owed).contains("nvme-cli+silent,silent@2.8-1build2,cited")
+              && !render_ubuntu_autoinstall_seed(seed: owed).contains("nvme-cli+silent,silent@2.8-1build2,cited")
         }
   }
 }
@@ -4128,8 +4541,8 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
         Absent => false
         Present { value: la } =>
           !content_hash_eq_structural(
-            left: altra_autoinstall_seed_digest(seed: york),
-            right: altra_autoinstall_seed_digest(seed: la),
+            left: ubuntu_autoinstall_seed_digest(seed: york),
+            right: ubuntu_autoinstall_seed_digest(seed: la),
           )
       }
   }
@@ -4139,7 +4552,7 @@ test fn an_admitted_answer_value_moves_the_seed_digest_without_moving_admission(
 // built_seed_and_binding, only the packages vary — so two seeds bound through here differ in exactly what their
 // package intents make differ, and nothing else. A Refused bind is Absent (never a stand-in digest), so a caller
 // that compares two bindings can never be comparing one real one against an invented one.
-fn binding_with_packages(packages: List<PackageIntent>) -> Optional<AltraAutoinstallSeedBinding> {
+fn binding_with_packages(packages: List<PackageIntent>) -> Optional<UbuntuAutoinstallSeedBinding> {
   match build_seed_fixture(
     network: network_posture,
     packages: packages,
@@ -4151,7 +4564,7 @@ fn binding_with_packages(packages: List<PackageIntent>) -> Optional<AltraAutoins
   ) {
     Absent => Absent
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed(
+      match bind_ubuntu_autoinstall_seed(
         seed: seed,
         target: target_altra,
         unit_key: unit_a_key,
@@ -4213,7 +4626,7 @@ test fn a_changed_answer_value_moves_the_served_bundle_and_address_without_movin
 // installer would stop on tzdata's first question with nobody at the panel. The second selects Etc while the only
 // zone record is under America: the key the area record BUILDS is tzdata/Zones/Etc, no record carries it, and a
 // substring check on "tzdata/Zones/" passed it. Both are decided by established_answer_from and
-// first_unestablished in gunbc.provisioning.altra_autoinstall_seed, and both are asserted here through the public
+// first_unestablished in gunbc.provisioning.ubuntu_autoinstall_seed, and both are asserted here through the public
 // producer rather than against those helpers directly, so a change that removes the helpers from the producer's
 // path reddens these rows instead of leaving them green over dead code.
 data comment_only_tzdata_packages: List<PackageIntent> = [
@@ -4282,13 +4695,14 @@ fn mismatched_area_records() -> List<DebconfSelectionRecord> {
 test fn an_answer_record_written_by_another_package_closes_nothing_and_the_seed_is_refused() -> Bool {
   match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
     Present { value: entry } =>
-      match audit_altra_autoinstall_seed(
+      match audit_ubuntu_autoinstall_seed(
         network: network_posture,
         install_packages: impersonated_tzdata_packages,
         late_packages: [],
         locale: EnUsUtf8,
         entry: entry,
         strategy: virtual_media_strategy,
+        architecture: Aarch64, credential: seeded_handle,
       ) {
         SeedIsNonInteractive { evidence: _ } => false
         SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
@@ -4408,11 +4822,11 @@ test fn the_measurement_states_the_cause_it_could_not_observe() -> Bool {
 // below is a real comparison, not one that fails at its own control.
 data alternate_rig_credential_digest: String = "$6$saltsalt$8iYtNHxjWRl.NF6oNZ5tF.iKFlQREaXBLlSmZKP6Zy9l5z3vsooWNW0/GZ6Nej73/TFug6pIPSqbJoCT6dfnj."
 
-fn binding_of_a_read(read: Optional<AdminPasswordHashReceipt>) -> Optional<AltraAutoinstallSeedBinding> {
+fn binding_of_a_read(read: Optional<AdminPasswordHashReceipt>) -> Optional<UbuntuAutoinstallSeedBinding> {
   match build_seed_fixture_with_read(read: read, credential: seeded_handle) {
     Absent => Absent
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
+      match bind_ubuntu_autoinstall_seed( seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population),
         ) {
         Bound { binding: binding } => Present { value: binding }
         BindRefused { blocker: _ } => Absent
@@ -4526,7 +4940,7 @@ test fn a_handle_with_no_read_builds_but_never_renders_and_never_binds() -> Bool
       match seed_document(seed: seed) {
         DocumentBuilt { payload: _, content: _ } => false
         DocumentRefused { reason: _ } =>
-          match bind_altra_autoinstall_seed(
+          match bind_ubuntu_autoinstall_seed(
             seed: seed,
             target: target_altra,
             unit_key: unit_a_key,
@@ -4898,13 +5312,14 @@ test fn a_seen_flag_closes_nothing_and_the_seed_is_refused_as_prompting() -> Boo
         2 =>
           match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
             Present { value: entry } =>
-              match audit_altra_autoinstall_seed(
+              match audit_ubuntu_autoinstall_seed(
                 network: network_posture,
                 install_packages: [QuestionAnswered { package: TzdataPackage, answers: records }],
                 late_packages: [],
                 locale: EnUsUtf8,
                 entry: entry,
                 strategy: virtual_media_strategy,
+                architecture: Aarch64, credential: seeded_handle,
               ) {
                 SeedIsNonInteractive { evidence: _ } => false
                 // THE QUESTION REPORTED IS tzdata/Areas — the flag's own label — and not the zone, so a future
@@ -4989,7 +5404,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
     0 =>
       match admit_admin_access_authorisation(authorised_keys: one_key, console_entry: locked_console) {
         Present { value: entry } =>
-          match audit_altra_autoinstall_seed(
+          match audit_ubuntu_autoinstall_seed(
             network: network_posture,
             install_packages: [QuestionAnswered {
               package: TzdataPackage,
@@ -5004,6 +5419,7 @@ test fn an_answer_whose_owner_carries_a_space_closes_nothing_and_the_seed_is_ref
             locale: EnUsUtf8,
             entry: entry,
             strategy: virtual_media_strategy,
+            architecture: Aarch64, credential: seeded_handle,
           ) {
             SeedIsNonInteractive { evidence: _ } => false
             SeedRefused { cause: PackagePrompts { name: named, question: _ } } =>
