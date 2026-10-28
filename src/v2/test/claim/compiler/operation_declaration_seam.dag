@@ -277,6 +277,28 @@ test fn the_read_authority_reaches_by_its_declaration_in_the_b0_reach_table_hold
   }
 }
 
+// THE HOLE, MEASURED AT THIS HEAD. The reducer answers DemandDerived{EMPTY} for ANY operation it is
+// handed with RequiresNone -- which is exactly what the census produced for a host-realized seam while
+// the arm fell through to a walk of its self-call body (a host observation read as pure: fail-open).
+// The declaration row is the ONLY thing standing between a projected seam and that answer, because the
+// arm now builds its fact from the row's RequiresResources{Filesystem}. And deleting the row does NOT
+// reopen the hole: the arm then answers the typed RequiresUndeclared and the caller settles Undecided,
+// never the empty Derived -- which is what claim (3) reddens through.
+test fn the_declaration_row_is_the_only_thing_between_the_seam_and_derived_empty_holds() -> Bool {
+  let rows: List<DependencyDemandRow> = dependency_demand_of(
+    functions: [FunctionFact { path: caller_path(), callees: [seam_path()], calls_function_value: false }],
+    operations: [OperationFact { path: seam_path(), requirement: RequiresNone }]
+  )
+  match rows {
+    Cons { head: row, tail: _ } =>
+      match row.demand {
+        DemandDerived { resources: set } => set.size == 0
+        DemandUndecided { cause: _ } => false
+      }
+    Empty => false
+  }
+}
+
 // ---- RED B: NO ARM FABRICATES Pure / ReadEffect / RequiresNone FOR A PATH NOTHING DECLARES -------
 // Every arm is named with what it MUST answer, and the falsifier is a key no row answers.
 
