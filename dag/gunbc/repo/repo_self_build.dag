@@ -226,14 +226,14 @@ fn repo_self_build_partition_crate_packages() -> List<String> {
 // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative is the authority on that, not this
 // comment. What IS enforced on every pull is the cheap half: the falsifier's structural arms
 // (pairs read from repo_self_seed_build_remaps, present in the committed step, variable assigned and
-// exported) run in the same test function, so they cost nothing when the label is run, and the
+// exported) run in the same test function, so they cost nothing when the test is run, and the
 // release-bins key carries the preamble digest as an axis so a preamble change cannot restore stale
 // cached binaries. THE CAPABILITY THAT WOULD RAISE THE RUNG: the native compiler/gate executing this
 // label as a gunbc test row, or a cheaper witness -- e.g. each seed-build step reading
 // GUNBC_MATERIALIZED_TREE_IDENTITY plus its preamble digest back into its own floor receipt, which
 // would make a fallback visible in CI without three cold builds.
 //
-// What the label does, when run: green arm builds one commit twice from two independent clones
+// What the test does, when run: green arm builds one commit twice from two independent clones
 // through the preamble and requires equal sha256; red arm builds the same commit WITHOUT the
 // preamble and requires a different hash. This is NOT a second cargo authority: it is the
 // environment half of the same build operation repo_self_build_command owns the argv for, and a
