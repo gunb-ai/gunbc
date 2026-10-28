@@ -240,6 +240,15 @@ fn iam_bootstrap_delta_bindings() -> List<IamBootstrapBinding> {
   iam_bootstrap_delta_bindings_over(targets: gcp_iam_converge_targets, grant_set_secrets: gcp_iam_converge_grant_set_secrets())
 }
 
+// ONE CELL, SPOKEN THE SAME WAY ON BOTH SIDES OF THE CEREMONY/DELTA SPLIT (DESIGN section 2: one
+// concept has one name, so one fact has one wording). The ceremony's post-run proof and the delta's
+// ROOT CEREMONY CELLS MISSING refusal both name a cell with this phrase, so an operator who meets the
+// refusal and an engineer who reads the ceremony's refusal are looking at the same string and cannot
+// reconcile two dialects by hand.
+fn ceremony_cell_phrase(b: IamBootstrapBinding) -> String {
+  join([iam_bootstrap_resource_key(resource: b.resource), " ", b.cell.role, " to ", b.cell.member], "")
+}
+
 // THE ROOT CELLS THE BOOTSTRAP CEREMONY OWES ON SECRETS (iam-observe's read of the submission MAC key),
 // beside the other ceremonies' (gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_cells): together the
 // cell-grain relation the binder join reads.

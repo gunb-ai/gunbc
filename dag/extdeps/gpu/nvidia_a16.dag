@@ -6,8 +6,8 @@ import std.optional { Present }
 import std.types { NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.gpu.types {
-  GpuModelCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, GpuBoardPower, GpuNamedPowerPoint,
-  GpuOnMultiGpuBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda,
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, ConfigurableBoardPower, GpuNamedPowerPoint,
+  PcieAddInBoard, ZeroPowerNotSupported, PassiveThermalSolution, Cuda,
 }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.storage.types { PcieLink, Gen4 }
@@ -22,8 +22,8 @@ import extdeps.uri { Uri, Https }
 // factor "Full-height, full-length (FHFL) 10.5", dual-slot". It publishes no dimension drawing, no
 // thickness and no airflow requirement; "Airflow Direction Support" states only that the heat sink
 // is bidirectional. The A16 is ONE board carrying FOUR GA107 GPUs, so it is a GpuBoardCatalogRow
-// whose `gpu` is one GA107: board power, thermal and host link are the card's, and no GPU of it has
-// them alone.
+// whose `gpu` is one GA107 device row: board power, thermal and the PCIe attachment are the card's,
+// and no GPU of it has them alone.
 //
 // Table 1 (Product Specifications) and Table 2 (Memory Specifications), pages 3 and 4, read
 // 2026-10-26 from the PDF text layer of a held copy, sha256
@@ -61,11 +61,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data nvidia_a16_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+data nvidia_a16_gpu_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   vendor: nvidia,
   model: "GA107-890",
   microarchitecture: "Ampere",
-  package: GpuOnMultiGpuBoard,
   execution_lane_count: none,
   memory: MemoryFacts {
     capacity: gibibyte_to_byte_size(g: gibibyte(count: 16)),
@@ -73,10 +72,8 @@ data nvidia_a16_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   },
   memory_bandwidth: none,
   boost_clock: Present { value: hertz(count: 1755000000) },
-  tdp_watts: none,
   compute_capability: none,
   supported_runtimes: [Cuda],
-  interconnect: none,
   sm_cache: none,
   sm_cache_citations: [],
   figure_citations: [
@@ -91,22 +88,22 @@ data nvidia_a16_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   model: "A16",
   gpu: nvidia_a16_gpu_catalog,
   gpu_count: 4,
-  board_power: GpuBoardPower {
+  attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+  board_power: Present { value: ConfigurableBoardPower {
     default: watt(count: 250),
     minimum: watt(count: 195),
     maximum: watt(count: 250),
     named_points: [GpuNamedPowerPoint { name: "MaxQ (maximum performance per watt)", power: watt(count: 235) }],
-  },
-  zero_power: ZeroPowerNotSupported,
-  thermal: PassiveThermalSolution,
-  host_link: PcieLink { generation: Gen4, lane_count: 16 },
-  pci_device_id: "25b6" as PciDeviceId,
+  } },
+  zero_power: Present { value: ZeroPowerNotSupported },
+  thermal: Present { value: PassiveThermalSolution },
+  pci_device_id: Present { value: "25b6" as PciDeviceId },
   figure_citations: [
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "gpu_count"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "board_power"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "zero_power"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "thermal"), authority: extdeps_external_authority_anchor },
-    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "host_link"), authority: extdeps_external_authority_anchor },
+    FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "attachment"), authority: extdeps_external_authority_anchor },
     FactCitation { fact: decl_field_ref(module_path: "extdeps.gpu.nvidia_a16", decl_name: "nvidia_a16_board_facts", field_name: "pci_device_id"), authority: extdeps_external_authority_anchor },
   ],
 }

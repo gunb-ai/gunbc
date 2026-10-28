@@ -12,7 +12,7 @@ import gunbc.auth.approval_request_client { PollApproved, PollDenied, PollExpire
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused, ApprovalDenied }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_request, srv1_root_mutation_escalation_id, srv1_root_mutation_after_gate,
-  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect,
+  srv1_root_mutation_approved_scopes, Srv1RootMutationApproval, Srv1RootMutationSelect, srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_receipt_path,
 }
 import gunbc.auth.privileged_effect_census { srv1_root_mutation_approval_root, srv1_root_mutation_approval_row }
 import gunbc.ci.ci_spec { gunbc_ci_srv1_root_mutation_approval_invoke }
@@ -82,7 +82,7 @@ test fn a_refused_gate_fails_the_step_before_any_root_step() -> Bool {
     request: deploy, observed_at: "2026-10-26T12:01:00Z",
   )
   let expired = approval_gate_from_poll(poll: PollExpired, request: deploy, observed_at: "2026-10-26T12:01:00Z")
-  all([denied, expired], g => match srv1_root_mutation_after_gate(gate: g, request: deploy) {
+  all([denied, expired], g => match srv1_root_mutation_after_gate(gate: g, request: deploy, receipt_path: "fixture-unwritten-receipt.txt") {
     ExitSuccess => false
     ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "no root step runs")
   })
@@ -126,6 +126,15 @@ test fn the_gate_step_renders_from_nodes_and_exports_only_the_submission_key() -
     && !string_contains(s: text, pattern: "GUNBC_ORG_ADMIN_TOKEN")
     && !string_contains(s: text, pattern: "dissolve-on")
     && !string_contains(s: text, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
+    && !string_contains(s: text, pattern: "/artifacts")
+}
+
+// THE UPLOADED PATH AND THE WRITTEN PATH ARE ONE TEMPLATE, checked against spellings stated here
+// independently: GitHub's expression syntax for the upload, and a supplied RUNNER_TEMP for the write.
+// Both sit outside the checkout, which is what the deploy's clean-tree check needs.
+test fn the_receipt_is_uploaded_from_where_it_is_written_outside_the_checkout() -> Bool {
+  srv1_root_mutation_approval_artifact_glob == "${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt"
+    && srv1_root_mutation_approval_receipt_path(runner_temp_dir: "/fixture/runner-temp") == Present { value: "/fixture/runner-temp/srv1-root-mutation-approval-receipt.txt" }
 }
 
 // THE APPROVAL BINDS THE SELECTION (review 5649820707): one job, one attempt, one commit, two plans.

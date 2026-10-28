@@ -1,0 +1,168 @@
+module extdeps.wikipedia.list_of_intel_graphics_processing_units
+
+import std.types { List }
+import std.measure { bandwidth, milliwatt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.wikipedia.gpu_spec_table { WikipediaGpuSpecPage, WikipediaGpuSpecTable, WikipediaSpecTable, WikipediaNonSpecTable, WikipediaGpuSpecRow, WikipediaMemoryCell, WikipediaBandwidthCell, NoModelColumn, NoMemorySizeColumn }
+import extdeps.storage.types { PcieLink, Gen4, Gen5 }
+
+// EVERY WIKITABLE OF "List of Intel graphics processing units" AT REVISION 1368155295, in document order, as extdeps.wikipedia.gpu_spec_table
+// shapes it. The revision is pinned by oldid; html_sha256 is the digest of its rendered HTML as fetched on
+// 2026-10-27. Wikipedia text is CC BY-SA 4.0: the figures below are the page's, attributed to it here.
+
+data revision_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/w/index.php?title=List_of_Intel_graphics_processing_units&oldid=1368155295"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = revision_authority
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef { declaration: DeclarationRef {
+    module_path: "extdeps.wikipedia.list_of_intel_graphics_processing_units", decl_name: "list_of_intel_graphics_processing_units_page", field: WholeDeclaration
+  } },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data list_of_intel_graphics_processing_units_page: WikipediaGpuSpecPage = WikipediaGpuSpecPage {
+  revision: revision_authority,
+  html_sha256: "03e1e967e138fb391ab8f23bbd49c2d3e5b6e1fbc0aad0689d7481c9fccba1a0",
+  table_count: 22,
+  tables: [
+    list_of_intel_graphics_processing_units_table_000,
+    list_of_intel_graphics_processing_units_table_001,
+    list_of_intel_graphics_processing_units_table_002,
+    list_of_intel_graphics_processing_units_table_003,
+    list_of_intel_graphics_processing_units_table_004,
+    list_of_intel_graphics_processing_units_table_005,
+    list_of_intel_graphics_processing_units_table_006,
+    list_of_intel_graphics_processing_units_table_007,
+    list_of_intel_graphics_processing_units_table_008,
+    list_of_intel_graphics_processing_units_table_009,
+    list_of_intel_graphics_processing_units_table_010,
+    list_of_intel_graphics_processing_units_table_011,
+    list_of_intel_graphics_processing_units_table_012,
+    list_of_intel_graphics_processing_units_table_013,
+    list_of_intel_graphics_processing_units_table_014,
+    list_of_intel_graphics_processing_units_table_015,
+    list_of_intel_graphics_processing_units_table_016,
+    list_of_intel_graphics_processing_units_table_017,
+    list_of_intel_graphics_processing_units_table_018,
+    list_of_intel_graphics_processing_units_table_019,
+    list_of_intel_graphics_processing_units_table_020,
+    list_of_intel_graphics_processing_units_table_021,
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_000: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 0, heading: "Gen1", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_001: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 1, heading: "Gen2", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_002: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 2, heading: "Gen3", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_003: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 3, heading: "Gen4", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_004: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 4, heading: "Gen5", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_005: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 5, heading: "Gen6", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_006: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 6, heading: "Gen7", reason: NoModelColumn }
+
+data list_of_intel_graphics_processing_units_table_007: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 7, heading: "Gen7.5", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_008: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 8, heading: "Gen8", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_009: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 9, heading: "Gen9", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_010: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 10, heading: "Gen11", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_011: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 11, heading: "Gen12", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_012: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 12, heading: "Gen12.2", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_013: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 13,
+  heading: "Gen 12.5",
+  row_count: 3,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Data Center GPU Max 1100" }, launch_cell: Present { value: "Jan 10, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "48 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [49152] } }, memory_type_cell: Present { value: "HBM2E" }, bandwidth_cell: Present { value: "1228.8" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 1228800000000)] } }, power_cell: Present { value: "300 W" }, power: [milliwatt(count: 300000)], bus_cell: Present { value: "PCIe 5.0 x16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Data Center GPU Max 1350" }, launch_cell: Present { value: "abandoned" }, launch_year: none, memory_cell: Present { value: "96 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [98304] } }, memory_type_cell: Present { value: "HBM2E" }, bandwidth_cell: Present { value: "2457.6" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 2457600000000)] } }, power_cell: Present { value: "450 W" }, power: [milliwatt(count: 450000)], bus_cell: Present { value: "PCIe 5.0 x16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Data Center GPU Max 1550" }, launch_cell: Present { value: "Jan 10, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "128 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [131072] } }, memory_type_cell: Present { value: "HBM2E" }, bandwidth_cell: Present { value: "3276.8" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 3276800000000)] } }, power_cell: Present { value: "600 W" }, power: [milliwatt(count: 600000)], bus_cell: Present { value: "PCIe 5.0 x16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_014: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 14,
+  heading: "Gen 12.7 > Desktop",
+  row_count: 7,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Arc 3 A310" }, launch_cell: Present { value: "Sep 28, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "4 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "124.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 124000000000)] } }, power_cell: Present { value: "75 W" }, power: [milliwatt(count: 75000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Arc 3 A380" }, launch_cell: Present { value: "Jun 14, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "6 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [6144] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "186.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 186000000000)] } }, power_cell: Present { value: "75 W" }, power: [milliwatt(count: 75000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Arc 5 A580" }, launch_cell: Present { value: "Oct 10, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "512.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 512000000000)] } }, power_cell: Present { value: "175 W" }, power: [milliwatt(count: 175000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "Arc 7 A750" }, launch_cell: Present { value: "Oct 14, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "512.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 512000000000)] } }, power_cell: Present { value: "225 W" }, power: [milliwatt(count: 225000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 4, model: Present { value: "Arc 7 A770 8GB" }, launch_cell: Present { value: "Oct 14, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "512.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 512000000000)] } }, power_cell: Present { value: "225 W" }, power: [milliwatt(count: 225000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 5, model: Present { value: "Arc 7 A770 16GB" }, launch_cell: Present { value: "Oct 14, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "16 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "560.0" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 560000000000)] } }, power_cell: Present { value: "225 W" }, power: [milliwatt(count: 225000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 6, model: none, launch_cell: none, launch_year: none, memory_cell: none, memory: none, memory_type_cell: none, bandwidth_cell: none, bandwidth: none, power_cell: none, power: [], bus_cell: none, bus: none },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_015: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 15,
+  heading: "Gen 12.7 > Mobile",
+  row_count: 7,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Arc 3 A350M" }, launch_cell: Present { value: "Mar 30, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "4 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "112" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 112000000000)] } }, power_cell: Present { value: "25–35 W" }, power: [milliwatt(count: 25000), milliwatt(count: 35000)], bus_cell: Present { value: "PCIe 4.0 ×8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Arc 3 A370M" }, launch_cell: Present { value: "Mar 30, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "4 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "112" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 112000000000)] } }, power_cell: Present { value: "35–50 W" }, power: [milliwatt(count: 35000), milliwatt(count: 50000)], bus_cell: Present { value: "PCIe 4.0 ×8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Arc 5 A530M" }, launch_cell: Present { value: "Q3 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "4 GB 8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096, 8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "224" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 224000000000)] } }, power_cell: Present { value: "65–95 W" }, power: [milliwatt(count: 65000), milliwatt(count: 95000)], bus_cell: Present { value: "PCIe 4.0 ×8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "Arc 5 A550M" }, launch_cell: Present { value: "Q2 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "224" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 224000000000)] } }, power_cell: Present { value: "60–80 W" }, power: [milliwatt(count: 60000), milliwatt(count: 80000)], bus_cell: Present { value: "PCIe 4.0 ×8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 4, model: Present { value: "Arc 5 A570M" }, launch_cell: Present { value: "Q3 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "224" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 224000000000)] } }, power_cell: Present { value: "75–95 W" }, power: [milliwatt(count: 75000), milliwatt(count: 95000)], bus_cell: Present { value: "PCIe 4.0 ×8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 5, model: Present { value: "Arc 7 A730M" }, launch_cell: Present { value: "Q2 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "12 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [12288] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "336" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 336000000000)] } }, power_cell: Present { value: "80–120 W" }, power: [milliwatt(count: 80000), milliwatt(count: 120000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 6, model: Present { value: "Arc 7 A770M" }, launch_cell: Present { value: "Q2 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "16 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "512" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 512000000000)] } }, power_cell: Present { value: "120–150 W" }, power: [milliwatt(count: 120000), milliwatt(count: 150000)], bus_cell: Present { value: "PCIe 4.0 ×16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_016: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 16,
+  heading: "Gen 12.7 > Workstation",
+  row_count: 5,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Arc Pro A30M" }, launch_cell: Present { value: "Aug 8, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "4 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [4096] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "112" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 112000000000)] } }, power_cell: Present { value: "50 W" }, power: [milliwatt(count: 50000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Arc Pro A40" }, launch_cell: Present { value: "Aug 8, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "6 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [6144] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "192" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 192000000000)] } }, power_cell: Present { value: "50 W" }, power: [milliwatt(count: 50000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Arc Pro A50" }, launch_cell: Present { value: "Aug 8, 2022" }, launch_year: Present { value: 2022 }, memory_cell: Present { value: "6 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [6144] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "192" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 192000000000)] } }, power_cell: Present { value: "75 W" }, power: [milliwatt(count: 75000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "Arc Pro A60M" }, launch_cell: Present { value: "June 6, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "8 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [8192] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "256" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 256000000000)] } }, power_cell: Present { value: "95 W" }, power: [milliwatt(count: 95000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 4, model: Present { value: "Arc Pro A60" }, launch_cell: Present { value: "June 6, 2023" }, launch_year: Present { value: 2023 }, memory_cell: Present { value: "12 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [12288] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "384" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 384000000000)] } }, power_cell: Present { value: "130 W" }, power: [milliwatt(count: 130000)], bus_cell: Present { value: "PCIe 4.0 x16" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 16 } } },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_017: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 17,
+  heading: "Battlemage based > Desktop",
+  row_count: 2,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Arc 5 B570" }, launch_cell: Present { value: "Jan 16, 2025" }, launch_year: Present { value: 2025 }, memory_cell: Present { value: "10 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [10240] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "380" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 380000000000)] } }, power_cell: Present { value: "150 W" }, power: [milliwatt(count: 150000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Arc 5 B580" }, launch_cell: Present { value: "Dec 13, 2024" }, launch_year: Present { value: 2024 }, memory_cell: Present { value: "12 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [12288] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "456" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 456000000000)] } }, power_cell: Present { value: "190 W" }, power: [milliwatt(count: 190000)], bus_cell: Present { value: "PCIe 4.0 x8" }, bus: Present { value: PcieLink { generation: Gen4, lane_count: 8 } } },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_018: WikipediaGpuSpecTable = WikipediaSpecTable {
+  ordinal: 18,
+  heading: "Battlemage based > Workstation",
+  row_count: 4,
+  rows: [
+    WikipediaGpuSpecRow { ordinal: 0, model: Present { value: "Arc Pro B50" }, launch_cell: Present { value: "Sept 3, 2025" }, launch_year: Present { value: 2025 }, memory_cell: Present { value: "16 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [16384] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "224" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 224000000000)] } }, power_cell: Present { value: "70 W" }, power: [milliwatt(count: 70000)], bus_cell: Present { value: "PCIe 5.0 x8" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 1, model: Present { value: "Arc Pro B60" }, launch_cell: Present { value: "Q3 2025" }, launch_year: Present { value: 2025 }, memory_cell: Present { value: "24 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [24576] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "456" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 456000000000)] } }, power_cell: Present { value: "120-200 W" }, power: [milliwatt(count: 120000), milliwatt(count: 200000)], bus_cell: Present { value: "PCIe 5.0 x8" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 8 } } },
+    WikipediaGpuSpecRow { ordinal: 2, model: Present { value: "Arc Pro B65" }, launch_cell: Present { value: "Q1 2026" }, launch_year: Present { value: 2026 }, memory_cell: Present { value: "32 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [32768] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "608" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 608000000000)] } }, power_cell: Present { value: "200 W" }, power: [milliwatt(count: 200000)], bus_cell: Present { value: "PCIe 5.0 x16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    WikipediaGpuSpecRow { ordinal: 3, model: Present { value: "Arc Pro B70" }, launch_cell: Present { value: "Q1 2026" }, launch_year: Present { value: 2026 }, memory_cell: Present { value: "32 GB" }, memory: Present { value: WikipediaMemoryCell { gpu_count: 1, sizes_mib: [32768] } }, memory_type_cell: Present { value: "GDDR6" }, bandwidth_cell: Present { value: "608" }, bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: 1, rates: [bandwidth(count: 608000000000)] } }, power_cell: Present { value: "230 W" }, power: [milliwatt(count: 230000)], bus_cell: Present { value: "PCIe 5.0 x16" }, bus: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+  ],
+}
+
+data list_of_intel_graphics_processing_units_table_019: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 19, heading: "PowerVR based", reason: NoMemorySizeColumn }
+
+data list_of_intel_graphics_processing_units_table_020: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 20, heading: "Notes", reason: NoModelColumn }
+
+data list_of_intel_graphics_processing_units_table_021: WikipediaGpuSpecTable = WikipediaNonSpecTable { ordinal: 21, heading: "Notes", reason: NoModelColumn }
