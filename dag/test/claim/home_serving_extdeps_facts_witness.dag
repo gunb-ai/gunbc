@@ -8,12 +8,18 @@ import std.measure {
   basis_point_count, token_count_value,
 }
 import extdeps.storage.types { PcieLink, Gen3, Gen4, Gen5 }
-import extdeps.gpu.types { GpuModelCatalogRow, GpuPackageForm, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, gpu_catalog_row_eq, gpu_catalog_bandwidth_count }
+import extdeps.gpu.types {
+  GpuDeviceCatalogRow, GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused, PcieAddInBoard, SxmModule,
+  gpu_board_admission_facts, gpu_board_power_ceiling, gpu_catalog_row_eq, gpu_catalog_bandwidth_count,
+}
 import extdeps.gpu.nvidia {
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
   nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog,
   nvidia_rtx_pro_6000_server_catalog,
   nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog,
+  nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_rtx_pro_6000_workstation_board_catalog, nvidia_rtx_pro_6000_max_q_board_catalog,
+  nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog,
   rtx_pro_pcie5_x16_endpoint,
 }
 import gunbc.serving.home_serving_accelerator_field {
@@ -33,21 +39,40 @@ import extdeps.external_authority { TranscribedUncited, CitedToAuthority, Observ
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn package_is_add_in_card(p: GpuPackageForm) -> Bool {
-  match p {
-    PcieAddInCard => true
-    SxmModule => false
-    IntegratedComputePackage => false
-    GpuOnMultiGpuBoard => false
+// Admitted is part of every board claim: a refused board has no row, so a figure read off its authored
+// facts would be a figure of nothing a consumer can be handed.
+fn board_admitted(b: GpuBoardAdmission) -> Bool {
+  match b {
+    GpuBoardAdmitted { row: _ } => true
+    GpuBoardRefused { facts: _, refusal: _ } => false
   }
 }
 
-fn package_is_sxm(p: GpuPackageForm) -> Bool {
-  match p {
+fn board_is_add_in_card(b: GpuBoardAdmission) -> Bool {
+  board_admitted(b: b) && (match gpu_board_admission_facts(admission: b).attachment {
+    PcieAddInBoard { link: _ } => true
+    SxmModule => false
+  })
+}
+
+fn board_is_sxm(b: GpuBoardAdmission) -> Bool {
+  board_admitted(b: b) && (match gpu_board_admission_facts(admission: b).attachment {
     SxmModule => true
-    PcieAddInCard => false
-    IntegratedComputePackage => false
-    GpuOnMultiGpuBoard => false
+    PcieAddInBoard { link: _ } => false
+  })
+}
+
+fn board_link(b: GpuBoardAdmission) -> PcieLink? {
+  match gpu_board_admission_facts(admission: b).attachment {
+    PcieAddInBoard { link: l } => l
+    SxmModule => none
+  }
+}
+
+fn board_power_ceiling_watts(b: GpuBoardAdmission) -> Nat? {
+  match gpu_board_admission_facts(admission: b).board_power {
+    Present { value: spec } => Present { value: watt_count(w: gpu_board_power_ceiling(spec: spec)) }
+    Absent => none
   }
 }
 
@@ -56,6 +81,8 @@ fn pcie5_x16(link: PcieLink?) -> Bool {
     Absent => false
     Present { value: l } => match l.generation {
       Gen5 => l.lane_count == 16
+      Gen1 => false
+      Gen2 => false
       Gen3 => false
       Gen4 => false
     }
@@ -63,8 +90,8 @@ fn pcie5_x16(link: PcieLink?) -> Bool {
 }
 
 test fn w_pro_5000_48_and_72_are_cited_add_in_cards() -> Bool {
-  package_is_add_in_card(p: nvidia_rtx_pro_5000_48gb_catalog.package)
-    && package_is_add_in_card(p: nvidia_rtx_pro_5000_72gb_catalog.package)
+  board_is_add_in_card(b: nvidia_rtx_pro_5000_48gb_board_catalog)
+    && board_is_add_in_card(b: nvidia_rtx_pro_5000_72gb_board_catalog)
     && byte_size_count(b: nvidia_rtx_pro_5000_48gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 48)))
     && byte_size_count(b: nvidia_rtx_pro_5000_72gb_catalog.memory.capacity) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 72)))
     && (match gpu_catalog_bandwidth_count(row: nvidia_rtx_pro_5000_48gb_catalog) {
@@ -75,14 +102,14 @@ test fn w_pro_5000_48_and_72_are_cited_add_in_cards() -> Bool {
       Present { value: n } => n == 1344000000000
       Absent => false
     })
-    && (match nvidia_rtx_pro_5000_48gb_catalog.tdp_watts {
-      Present { value: w } => watt_count(w: w) == 300
+    && (match board_power_ceiling_watts(b: nvidia_rtx_pro_5000_48gb_board_catalog) {
+      Present { value: w } => w == 300
       Absent => false
     })
-    && pcie5_x16(link: nvidia_rtx_pro_5000_48gb_catalog.interconnect)
-    && pcie5_x16(link: nvidia_rtx_pro_5000_72gb_catalog.interconnect)
-    && pcie5_x16(link: nvidia_rtx_pro_6000_workstation_catalog.interconnect)
-    && pcie5_x16(link: nvidia_rtx_pro_6000_max_q_catalog.interconnect)
+    && pcie5_x16(link: board_link(b: nvidia_rtx_pro_5000_48gb_board_catalog))
+    && pcie5_x16(link: board_link(b: nvidia_rtx_pro_5000_72gb_board_catalog))
+    && pcie5_x16(link: board_link(b: nvidia_rtx_pro_6000_workstation_board_catalog))
+    && pcie5_x16(link: board_link(b: nvidia_rtx_pro_6000_max_q_board_catalog))
     && (match nvidia_rtx_pro_5000_48gb_catalog.execution_lane_count {
       Present { value: t } => hardware_thread_count_value(t: t) == 14080
       Absent => false
@@ -90,13 +117,13 @@ test fn w_pro_5000_48_and_72_are_cited_add_in_cards() -> Bool {
 }
 
 test fn w_b200_b300_are_sxm_without_a_pcie_add_in_endpoint() -> Bool {
-  package_is_sxm(p: nvidia_b200_sxm_catalog.package)
-    && package_is_sxm(p: nvidia_b300_sxm_catalog.package)
-    && (match nvidia_b200_sxm_catalog.interconnect {
+  board_is_sxm(b: nvidia_b200_sxm_board_catalog)
+    && board_is_sxm(b: nvidia_b300_sxm_board_catalog)
+    && (match board_link(b: nvidia_b200_sxm_board_catalog) {
       Absent => true
       Present { value: _ } => false
     })
-    && (match nvidia_b300_sxm_catalog.interconnect {
+    && (match board_link(b: nvidia_b300_sxm_board_catalog) {
       Absent => true
       Present { value: _ } => false
     })
@@ -114,18 +141,18 @@ test fn w_b200_b300_are_sxm_without_a_pcie_add_in_endpoint() -> Bool {
       Absent => true
       Present { value: _ } => false
     })
-    && (match nvidia_b200_sxm_catalog.tdp_watts {
+    && (match board_power_ceiling_watts(b: nvidia_b200_sxm_board_catalog) {
       Absent => true
       Present { value: _ } => false
     })
-    && (match nvidia_b300_sxm_catalog.tdp_watts {
+    && (match board_power_ceiling_watts(b: nvidia_b300_sxm_board_catalog) {
       Absent => true
       Present { value: _ } => false
     })
 }
 
-fn catalog_sku_in(rows: List<GpuModelCatalogRow>, row: GpuModelCatalogRow) -> Bool {
-  fold(rows, init: false, f: (acc, r) => acc || gpu_catalog_row_eq(a: r, b: row))
+fn catalog_sku_in(rows: List<GpuBoardAdmission>, row: GpuDeviceCatalogRow) -> Bool {
+  fold(rows, init: false, f: (acc, r) => acc || gpu_catalog_row_eq(a: gpu_board_admission_facts(admission: r).gpu, b: row))
 }
 
 test fn w_purchase_candidates_are_add_in_cards_and_sxm_are_references() -> Bool {
@@ -221,7 +248,7 @@ test fn w_flashinfer_moe_scratch_is_pinned_launch_not_a_general_law() -> Bool {
 
 test fn w_endpoint_capability_is_not_the_host_link() -> Bool {
   rtx_pro_pcie5_x16_endpoint.lane_count == 16
-    && (match nvidia_b200_sxm_catalog.interconnect {
+    && (match board_link(b: nvidia_b200_sxm_board_catalog) {
       Absent => true
       Present { value: _ } => false
     })

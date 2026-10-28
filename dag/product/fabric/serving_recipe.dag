@@ -15,7 +15,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import extdeps.currency.currency { CurrencyCode, currency_code_eq, Usd }
 import gunbc.serving.rented_ninfer_source { RentedWeightsPlacement, RentedArtifactSource, NinferEngineRelease, ninfer_serve_81c8ce09_sm120_release, rented_qwen3_8_27b_nvfp4_weights_placement, rented_weights_source }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_row_eq }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
@@ -77,7 +77,7 @@ type ServingModelArtifact {
 // A provider's spelling of a card (a Vast gpu_name) is an INGEST concern that maps to a catalog row; it is
 // not part of the recipe.
 type ServingCardRequirement
-  = CardIsAnyCatalogProduct { identity: NonEmptyStr, products: List<GpuModelCatalogRow> }
+  = CardIsAnyCatalogProduct { identity: NonEmptyStr, products: List<GpuDeviceCatalogRow> }
 
 type ServingDriverFloor {
   major: Nat
@@ -127,6 +127,15 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
       match recipe.model.source {
         WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
         WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+        // A recipe that STARTS from placed weights but carries a HUB PIN has no placement to resolve:
+        // the pin is the bytes, and there is no object-store placement to fetch them from. Same answer
+        // as the named-and-unpinned arm for the same reason — nothing is placed — but spelled separately
+        // so the mismatch stays visible: an arm here is a per-variant STANDING, not a catch-all (a
+        // wildcard would silently absorb any future ServingWeightsSource variant). This arm is what
+        // #15222 owed when it added WeightsPinnedAtHub (§6b: enumerate the siblings of the match you
+        // extend); without it the whole closure through product.fabric.serving_recipe refuses to
+        // resolve as non-exhaustive.
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
       }
     StartFromHubPinned { hub_fallback: fb, standing: sd } =>
       match recipe.model.source {
@@ -305,7 +314,7 @@ fn serving_recipes_interchangeable(left: ServingRecipe, right: ServingRecipe) ->
 
 // ── does a card satisfy a recipe ─────────────────────────────────────────────────────────────
 type ServingCardFacts {
-  product: GpuModelCatalogRow?
+  product: GpuDeviceCatalogRow?
   vram: ByteSize
   driver_major: Nat?
 }

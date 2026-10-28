@@ -10,17 +10,22 @@ import extdeps.toolchain.types { Aarch64 }
 import extdeps.github.actions_runner {
   ActionsRunnerRelease, ActionsRunnerBinaryArtifact, actions_runner_binary_artifact_for_arch,
   actions_runner_release_2_337_0, actions_runner_base_dir, actions_runner_listener_relative_path,
-  actions_runner_listener_run_verb,
+  actions_runner_listener_run_verb, actions_runner_jitconfig_env_name,
 }
 import gunbc.host.host_control_route { ControlledHost, HostControlStanding, HostControlled, HostControlRefused, HostControlRefusal }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.systemd.systemd_run {
   SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause,
-  systemd_run_transient_wait_unit_command,
+  systemd_run_transient_wait_unit_command, NamedUnitSetting, SystemdRunProperty,
+  SystemdSummaryPrintingWait, SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused,
+  systemd_run_transient_wait_pipe_summary_command,
 }
-import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
+import extdeps.systemd { User, DelegateProperty, PartOf, AfterProperty }
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
+import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_properties }
 import extdeps.github.actions { self_hosted_provenance_label }
 import gunbc.runner.provider_guest_incarnation { ProviderGuestIncarnation }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureRunIdentity, KernelBootId, HistoricalAttemptOrdinal }
@@ -115,6 +120,63 @@ fn host_unit_slot_pass_root(unit: NonEmptyStr, pass: NonEmptyStr) -> NonEmptyStr
 
 fn host_unit_slot_listener_argv(root: NonEmptyStr) -> List<String> {
   [concat(root as String, actions_runner_listener_relative_path), actions_runner_listener_run_verb]
+}
+
+// THE LISTENER LAUNCH, ONE BUILDER FOR EVERY HOST-UNIT SLOT (DESIGN section 6b): the service slot and the
+// qualification attempt slot each start the listener the same way and differ in exactly three facts -- the
+// transient unit's name, the account it runs as and the root it runs from -- so those are the parameters. The unit
+// carries the fleet slot shape (ephemeral_slot_properties over gunbc_runner_slot_desired) as that user, under a
+// delegated cgroup, never as root. The JIT configuration arrives on stdin and is exported into the listener's
+// environment by the wrapper, so it is in no argument. The launcher is the WAITING, NON-QUIET one, so the unit's own
+// Result is printed by the manager that ran it (extdeps.systemd.systemd_run systemd_run_wait_summary): a remote
+// caller reads the exit there rather than off a transport status it cannot attribute.
+type HostUnitListenerWait
+  = HostUnitListenerReady { wait: SystemdSummaryPrintingWait }
+  | HostUnitListenerUnbuilt { cause: NonEmptyStr }
+
+// WHO ENDS THE LISTENER'S LIFE (gunbc.plans.mtcollins1_ci_service_legs F3). A service slot's listener is a separate
+// transient unit its controller unit waits on, so a stop of the controller -- a unit stop or the host's shutdown --
+// must reach the listener FIRST: PartOf= propagates the controller's stop to the listener, and After= orders the
+// listener's stop before the controller's, so the controller's ExecStop runs only once the listener has ended. The
+// attempt slot's listener has no owning unit on the host; its driver ends it and tears it down.
+type HostUnitListenerLifetime
+  = ListenerOwnLifetime
+  | ListenerPartOf { unit: NonEmptyStr }
+
+fn host_unit_listener_lifetime_properties(lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
+  match lifetime {
+    ListenerOwnLifetime => []
+    ListenerPartOf { unit: u } => [NamedUnitSetting { property: PartOf, value: u }, NamedUnitSetting { property: AfterProperty, value: u }]
+  }
+}
+
+fn host_unit_listener_properties(user: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
+  concat(
+    ephemeral_slot_properties(desired: gunbc_runner_slot_desired()),
+    concat(
+      [
+        NamedUnitSetting { property: User, value: user },
+        NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
+      ],
+      host_unit_listener_lifetime_properties(lifetime: lifetime),
+    ),
+  )
+}
+
+fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> HostUnitListenerWait {
+  match admit_posix_shell_name(spelling: actions_runner_jitconfig_env_name()) {
+    PosixShellNameRefused { spelling: sp } =>
+      HostUnitListenerUnbuilt { cause: join(["the listener's JIT environment name is not a shell name: ", sp], "") as NonEmptyStr }
+    PosixShellNameAdmitted { name: n } =>
+      match posix_sh_export_from_stdin_then_exec_command(name: n, command: host_unit_slot_listener_argv(root: root)) {
+        PosixShExportExecEmitRefused { name: _ } => HostUnitListenerUnbuilt { cause: "the stdin export wrapper did not emit" as NonEmptyStr }
+        PosixShExportExecReady { command: wrapper } =>
+          match systemd_run_transient_wait_pipe_summary_command(unit: listener_unit, properties: host_unit_listener_properties(user: user, lifetime: lifetime), command_argv: argv_words(command: wrapper)) {
+            SystemdSummaryPrintingWaitRefused { cause: _ } => HostUnitListenerUnbuilt { cause: "systemd-run refused the listener unit" as NonEmptyStr }
+            SystemdSummaryPrintingWaitReady { wait: w } => HostUnitListenerReady { wait: w }
+          }
+      }
+  }
 }
 
 // THE WORKFLOW IS THE CALLER'S: the slot exists to run one workflow, and the mint refuses a runner

@@ -23,6 +23,7 @@ import std.goal_assessment { ObservationAttempt, ObservationEstablished, Observa
 import gunbc.host.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import std.optional { Present }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGateReading, PostPowerFanGateNotReached, post_power_fan_gate_text }
@@ -426,6 +427,9 @@ type MegaRacBootRow {
   // machine the row did not name is naming a machine it did not read.
   label: NonEmptyStr,
   ipmi: MegaRacIpmiReadPolicy,
+  // The lanplus cipher suite this controller's IPMI reads use (extdeps.bmc.ipmi ipmi_cipher_suite_argv): the
+  // unit's observed IPMI route's own, never a default here.
+  ipmi_cipher_suite: IpmiCipherSuite?,
   redfish: MegaRacRedfishReadPolicy,
   // How long the bundle write may take before the attempt stops waiting on it.
   publish_allowance: Second,
@@ -2208,6 +2212,7 @@ fn megarac_boot_sdr_cache(row: MegaRacBootRow, username: NonEmptyStr, password_f
     sdr_cache_file: path,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     SdrCacheDumped { path: path, at: at }
@@ -2241,6 +2246,7 @@ fn megarac_boot_sensors(row: MegaRacBootRow, password_file: NonEmptyStr, sdr: Sd
                 sdr_cache_file: p,
                 deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
                 kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+                cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
               )
               if r.success {
                 SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at, naming: naming }
@@ -2269,6 +2275,7 @@ fn megarac_boot_param5(row: MegaRacBootRow, username: NonEmptyStr, password_file
     parameter: "5",
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     BootParam5Read { readback: r.stdout, at: at }
@@ -2290,6 +2297,7 @@ fn megarac_boot_chassis_power(row: MegaRacBootRow, username: NonEmptyStr, passwo
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   chassis_observation(success: r.success, stdout: r.stdout)
 }
@@ -2331,6 +2339,7 @@ fn megarac_boot_bmc_reachability(row: MegaRacBootRow, username: NonEmptyStr, pas
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   bmc_reachability_of_read(row: row, at: at, success: r.success, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
@@ -2344,7 +2353,7 @@ fn sel_snapshot_of_read(row: MegaRacBootRow, at: NonEmptyStr, success: Bool, std
 }
 
 fn megarac_boot_sel_snapshot_uncached(row: MegaRacBootRow, at: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr) -> SelSnapshotReading {
-  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
+  let r = diagnostic.ipmi.Tool.SelListAuthenticated(bmc_host: row.controller.host, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
   sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
 }
 
@@ -2355,7 +2364,7 @@ fn megarac_boot_sel_snapshot(row: MegaRacBootRow, username: NonEmptyStr, passwor
   let kill_after = coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr
   match sdr {
     SdrCacheDumped { path: p, at: _ } => {
-      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after)
+      let r = diagnostic.ipmi.Tool.SelListAuthenticatedCached(bmc_host: row.controller.host, username: username, password_file: password_file, sdr_cache_file: p, deadline: deadline, kill_after: kill_after, cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite))
       sel_snapshot_of_read(row: row, at: at, success: r.success, stdout: r.stdout, exit_code: r.exit_code, stderr: r.transport_stderr)
     }
     SdrCacheUnread { cause: _ } => megarac_boot_sel_snapshot_uncached(row: row, at: at, username: username, password_file: password_file, deadline: deadline, kill_after: kill_after)
@@ -2798,6 +2807,7 @@ fn megarac_boot_hpm_check(row: MegaRacBootRow, username: NonEmptyStr, password_f
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let retained = Filesystem.Write(path: retained_path, content: r.stdout)
@@ -2933,6 +2943,7 @@ fn mtcollins1_boot_mc_info_retain(row: MegaRacBootRow, username: NonEmptyStr, pa
     password_file: password_file,
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let path = mtcollins1_boot_mc_info_path(row: row, run_attempt: run_attempt)
@@ -2956,6 +2967,7 @@ fn mtcollins1_boot_fru_print_retain(row: MegaRacBootRow, username: NonEmptyStr, 
     fru_id: "0",
     deadline: coreutils_duration_operand(d: row.ipmi.deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: row.ipmi.kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: row.ipmi_cipher_suite),
   )
   if r.success {
     let path = mtcollins1_boot_fru_print_path(row: row, run_attempt: run_attempt)

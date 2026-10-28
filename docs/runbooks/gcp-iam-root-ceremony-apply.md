@@ -62,8 +62,15 @@ ad-hoc binding has no journal entry, so the next converge reads it as drift and 
    `gunbc.auth.gcp_iam_bootstrap`, or `pool_init_admission` refuses with *"empty pool initialization
    requires the operator-confirmed exclusive maintenance window"*. On an estate whose pools already exist
    — srv1's case — do not set it; nothing in this run initializes a pool policy.
-   `GUNBC_IAM_BOOTSTRAP_PROBE_ID` / `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` are likewise *not* required:
-   both cleanup arms no-op when the pair is absent.
+   `GUNBC_IAM_BOOTSTRAP_PROBE_ID` / `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` **are required** — the pair,
+   together, not optionally: `iam_bootstrap_probe_authority_converge` (granting arm) refuses without a
+   pinned probe identity and expiry ("probe token authority requires a pinned operation identity and
+   absolute expiry"), and the probe-authority stage is in the folded stage list, so the whole ceremony
+   refuses. Set both: `GUNBC_IAM_BOOTSTRAP_PROBE_ID` is an operation tag safe as a path segment (≤ 48
+   characters) and `GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT` is a canonical UTC instant
+   (`YYYY-MM-DDTHH:MM:SSZ`, exactly that shape — `bootstrap_authority_intent_valid` refuses anything
+   else) strictly in the future and at most one hour ahead. An absent *or half-supplied* pair refuses on
+   the granting arm; only the two withdrawal arms (`BootstrapProbeCleanup`, end-of-run) no-op without it.
 
 ## Step 1 — plan first (refuses, effects nothing)
 

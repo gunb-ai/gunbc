@@ -13,7 +13,7 @@ import gunbc.auth.github_deployment_environment {
   EnvironmentProtectionDiverges,
 }
 
-test fn srv1_production_required_protection_names_main_and_reviewers() -> Bool {
+test fn srv1_production_required_protection_names_main_and_no_reviewer() -> Bool {
   srv1_production_required_protection_is_the_boundary()
 }
 

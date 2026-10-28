@@ -222,7 +222,28 @@ test fn each_retained_wrapper_effect_has_its_own_trigger_row() -> Bool {
   has_row_naming(needle: "TLS self-mint", capability: "openssl")
     && has_row_naming(needle: "events.log", capability: "host-event")
     && has_row_naming(needle: "pool-key generation", capability: "secret-reference")
-    && has_row_naming(needle: "command substitution", capability: "SHELL GRAMMAR EMIT")
+    // THE KEY-READ TRIGGER, ASSERTED BY VALUE (review 86879: prose-matching dissolved the assertion —
+    // ANY ref passed the bound check). The row whose reason carries the key-read loss must be bound to
+    // EXACTLY the forward ref on the unbuilt render fn (srv1_serving_api_key_substitution_node): not to
+    // the grammar rows, which landed in #15230 and would report the row retired while the wrapper still
+    // spells shell, and not to srv1_serving_wrapper itself, which restates the wrapper's own dissolves_to
+    // instead of naming a capability. dissolution_description renders a bound trigger as its ref's
+    // display key, so this equality pins the trigger's identity, and the row-selection needle stays on
+    // the reason text so selection cannot be satisfied by the trigger string itself.
+    && (match first_where(xs: srv1_serving_unmodeled_frontier_rows, keep: fn(r) {
+        string_contains(s: r.reason as String, pattern: "key READ at exec time")
+      }) {
+        Present { value: r } =>
+          dissolution_is_bound(condition: r.dissolution)
+            && dissolution_description(condition: r.dissolution) == "gunbc.serving.srv1_serving_launch::srv1_serving_api_key_substitution_node"
+        Absent => false
+      })
+    // And the trigger must NOT point at the wrapper or the landed grammar rows — those readings were
+    // each rejected in review 86879; this is the negative control for the assertion above.
+    && !any(srv1_serving_unmodeled_frontier_rows, x =>
+      string_contains(s: x.reason as String, pattern: "key READ at exec time")
+        && (dissolution_description(condition: x.dissolution) == "gunbc.serving.srv1_serving_launch::srv1_serving_wrapper"
+          || dissolution_description(condition: x.dissolution) == "v2.workflow.bash_emit::bash_emit_stmts"))
 }
 
 fn has_row_naming(needle: String, capability: String) -> Bool {

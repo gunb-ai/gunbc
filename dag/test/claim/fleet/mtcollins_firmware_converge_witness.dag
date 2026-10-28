@@ -3,6 +3,7 @@ module test.claim.fleet.mtcollins_firmware_converge_witness
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import std.measure { second, second_count }
 import std.optional { Present, Absent }
+import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
 import std.upsert_decision { Apply }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import extdeps.standards.picmg_hpm1 { HpmUpgradeCompleted, HpmUpgradeFailed, HpmActivateFirmware }
@@ -53,7 +54,7 @@ import gunbc.machine_intake.mtcollins1_socket1_investigation_observation {
   MtCollins1SocketCpu, ProductionPart, mtcollins1_socket_cpus, mtcollins1_cpu_report_2026_09_23,
 }
 import gunbc.machine_intake.ampere_smpro_observation { SmproWordRead, SmproNotSent, SmproProbeRaw }
-import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_control_route }
 import gunbc.machine_intake.mtcollins1_bmc_secure_observation {
   mtcollins1_intake_subject, mtcollins1_bmc_secure_standing, mtcollins1_managed_credential,
   mtcollins1_prerotation_evidence, mtcollins1_user3_route_evidence, mtcollins1_user2_retire_evidence,
@@ -888,6 +889,7 @@ fn dry(w: WorldShape, records: List<FlashStepRecord>, image: NonEmptyStr) -> Lis
       render(cmds: dry_realize(
         baseline: baseline_ampere_ticket_7426_delivery, world: world_of(subject: s, w: w), records: records,
         image_path: image, bmc_host: "mtcollins1-bmc", username: "admin", password_file: "/run/bmc.pw",
+        cipher_suite: bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route),
       ))
   }
 }
