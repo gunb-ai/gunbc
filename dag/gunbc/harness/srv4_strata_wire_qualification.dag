@@ -10,6 +10,8 @@ import extdeps.external_authority { CitedFigure, CitedFigureStanding, ObservedBy
 // 2026-10-28 at 02:30 UTC against the deployed engine; the raw credential-free requests and responses are kept on
 // srv4 under record_directory. Re-qualified on the swapped engine (checkpoint build: native 406c9de18cef, upstream
 // layer-split persistence; Python frontend unchanged), whose one-slot admission receipt is under checkpoint-qualification/wire.
+// The binary digest is the post-swap executable recorded in that swap's receipt (private#249,
+// docs/strategy/2026-10-28-srv4-checkpoint/receipt.json); ca210071 was the pre-swap build.
 type Srv4StrataWireQualification {
   engine_source_commit: NonEmptyStr
   engine_native_commit: NonEmptyStr
@@ -32,7 +34,7 @@ type Srv4StrataWireQualification {
 data srv4_strata_wire_qualification_receipt: Srv4StrataWireQualification = Srv4StrataWireQualification {
   engine_source_commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" as NonEmptyStr,
   engine_native_commit: "406c9de18cef885946be0e42a3b01c46531272ac" as NonEmptyStr,
-  engine_binary_sha256: "ca21007168a32e04075f5df222a841391a14491ae3e54ac6ff921c3769df2dff" as NonEmptyStr,
+  engine_binary_sha256: "1af9a21ce77d9d2377843b6a1eacf19bef5f645dc685d40cbc38364b18828af2" as NonEmptyStr,
   record_directory: "/opt/gunbc-serving/srv4-daily/state/checkpoint-qualification" as NonEmptyStr,
   accepted_reasoning_efforts: [
     "none" as NonEmptyStr, "off" as NonEmptyStr, "minimal" as NonEmptyStr, "disabled" as NonEmptyStr, "false" as NonEmptyStr,
