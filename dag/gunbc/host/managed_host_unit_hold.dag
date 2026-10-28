@@ -515,6 +515,17 @@ fn recovery_refusal_text(key: NonEmptyStr, r: DurableHoldRecoveryRefusal) -> Non
   join(["unit ", key as String, " ", why, "; controller untouched"], "") as NonEmptyStr
 }
 
+// HOW THIS ROOT OBSERVES ITS HOLDER'S LIVENESS: which holder texts name a process this host can
+// look at at all. Passed by name to the store's one generalized recovery, exactly as
+// gunbc.extdeps.realization.materialization_store_local passes its own liveness probe -- the
+// sequence is shared, the observation stays with the root that owns the holder's meaning.
+fn unit_hold_live_owner(holder: DurableHoldOwnerRef) -> DurableHoldHolderLiveness {
+  match holder_liveness_route(holder: holder) {
+    HolderObserveProcess { process: p, pid_namespace: n } => holder_process_liveness(p: p, pid_namespace: n)
+    HolderNotObservable { cause: c } => HolderLivenessUnobservable { cause: c }
+  }
+}
+
 fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration) -> DeadHolderRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
@@ -525,7 +536,7 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
   // root is also admitted to. What stays here is the unit root's own half -- WHICH holders this root
   // can observe at all, and what a refusal means to a managed host -- passed in as the liveness
   // function and the refusal sentence.
-  match file_hold_recover_dead_holder(root: root, slot_key: key, holder: holder, generation: generation, released_by: join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef, live_owner: fn(h: DurableHoldOwnerRef) -> DurableHoldHolderLiveness { match holder_liveness_route(holder: h) { HolderObserveProcess { process: p, pid_namespace: n } => holder_process_liveness(p: p, pid_namespace: n) HolderNotObservable { cause: c } => HolderLivenessUnobservable { cause: c } } }) {
+  match file_hold_recover_dead_holder(root: root, slot_key: key, holder: holder, generation: generation, released_by: join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef, live_owner: unit_hold_live_owner) {
     FileHoldDeadHolderRecovered { dead_holder: h, evidence: e } => DeadHolderRecovered { dead_holder: h, evidence: e }
     FileHoldDeadHolderHolderLive { holder: h, evidence: e } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderLive { generation: generation, holder: h, evidence: e }) }
     FileHoldDeadHolderHolderUnobservable { holder: h, cause: c } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderUnobservable { generation: generation, holder: h, cause: c }) }
