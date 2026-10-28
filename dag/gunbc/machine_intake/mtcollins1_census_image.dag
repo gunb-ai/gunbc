@@ -25,6 +25,7 @@ import gunbc.machine_intake.host_capture_envelope {
 }
 import gunbc.machine_intake.mtcollins1_boot_milestone { mtcollins1_census_stages }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
+import std.nat { nat_to_decimal_string }
 import gunbc.host.boot_medium_served_readback { BootMediumServedCheck, BootMediumServedMeasureOnly, BootMediumServedRecordFirst, BootMediumServedCheckRefused }
 
 // THE CENSUS IMAGE FOR MT. COLLINS UNIT 1: the 24.04.3 arm64 live-server medium with a NoCloud seed
@@ -59,7 +60,7 @@ data mtcollins1_census_console_device: NonEmptyStr = concat("/dev/", mtcollins1_
 
 data mtcollins1_census_console_arg: NonEmptyStr = concat(
   "console=", mtcollins1_census_console_tty as String, ",",
-  bandwidth_count(b: mtcollins1_census_console_baud) as String,
+  nat_to_decimal_string(value: bandwidth_count(b: mtcollins1_census_console_baud)),
 ) as NonEmptyStr
 
 // THE MODULE-IDENTITY INSTRUMENT (gunbc.machine_intake.kernel_module_decompression_observation).

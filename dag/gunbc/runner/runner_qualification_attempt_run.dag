@@ -1,0 +1,336 @@
+module gunbc.runner.runner_qualification_attempt_run
+
+import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Secret }
+import std.optional { Absent, Present }
+import std.decl_ref { decl_ref }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.auth.jws { JwsSigningKeyRef }
+import extdeps.github.actions_jit_runner { EncodedJitConfig }
+import extdeps.systemd.systemd_run {
+  SystemdSummaryPrintingWait, systemd_run_wait_summary, summary_format_standing, systemd_run_version_command,
+  SystemdRunCommandReady, SystemdRunCommandRefused,
+  ServiceResultRead, ServiceResultSuccess, ServiceResultUnrecognized, ServiceResultNotReported, ServiceResultFormatNotGrounded,
+  systemd_service_result_wire,
+}
+import product.host_identity { HostIdentity }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_effect_realize {
+  run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport, RunArgvTransportObserved, RunArgvTransportRefused,
+}
+import gunbc.host.host_control_route { HostControlStanding, bmc_controlled_host }
+import gunbc.host.managed_host { managed_host_binding_for, ManagedHostFound, ManagedHostFoundUnderDeclaredDrop, ManagedHostNotManaged }
+import gunbc.host.managed_host_unit_hold { UnitHoldProof, UnitHeld, UnitHoldRefused, qualification_acquire_unit_hold, unit_hold_release }
+import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingBound, anchored_host_binding_refusal_reason }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState, gunbai_ci_declared_installation_id }
+import gunbc.fleet.fleet_runner_connectivity { github_organization_ref }
+import gunbc.github_effect_perform {
+  ControllerInstallationToken, stage_controller_app_key, ControllerKeyStaged, ControllerKeyNotStaged, remove_staged_controller_key,
+  mint_controller_installation_token, ControllerTokenMinted, ControllerTokenNotMinted,
+}
+import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
+import gunbc.runner.runner_host_unit_slot {
+  HostUnitSlot, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
+  host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt,
+}
+import gunbc.runner.runner_jit_mint_binding {
+  observe_jit_mint_control_plane, mint_for_binding, deregister_binding_registration, jit_mint_credential_authority,
+}
+import gunbc.runner.runner_qualification_ref_pin {
+  ensure_qualification_ref_pin, remove_qualification_ref_pin, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
+  qualification_selected_workflow,
+}
+import gunbc.runner.runner_qualification_dispatch { qualification_dispatch_subject, dispatch_qualification_floor, collect_qualification_run, QualificationRunCollected, QualificationRunRefused }
+import extdeps.github.workflow_runs { Success }
+import gunbc.runner.runner_qualification_floor_job { qualification_floor_job_id, qualification_attempt_subject_env_name }
+import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerNotLaunched, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved }
+import gunbc.runner.runner_qualification_attempt_pass {
+  QualificationAttemptPass, QualificationAttemptRun, qualification_attempt_pass_over, qualification_attempt_registration_and_branch_removed,
+  AttemptPinRefused, AttemptPassed, AttemptNotMinted, AttemptSubjectRefused, AttemptDispatchRefused, AttemptDispatchAmbiguous, AttemptRan,
+  AttemptNothingRegistered, AttemptDeregistered, AttemptRegistrationRemains,
+}
+
+// THE PRODUCTION BINDING OF THE QUALIFICATION PASS (gunbc.plans.mtcollins1_ci_service_legs G1b): the qualification_attempt
+// fleet-converge mode runs qualification_attempt_wet, which binds every real effect to
+// gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over and nothing else decides an order.
+//
+// WHAT IT TAKES BEFORE ANY EFFECT, EACH A TYPED REFUSAL: the subject host as a managed host under control; the run's
+// attempt label (one per run and attempt, so a re-run is another attempt and never reuses a registration); the
+// revision the run executes; the host's declared runner user (the attempt unit never runs as root); the unit hold for
+// the subject host, without which dispatch_qualification_floor refuses; a live anchored transport to it, GATED on the
+// operator's go (gunbc.host.anchored_host_transport anchored_host_transport_live); the gunbai-ci App key staged over
+// WIF; one installation token. The hold is released and the key removed on every arm after they were taken.
+
+data qualification_attempt_wif_env_name: NonEmptyStr = "WIF_ACCESS_TOKEN"
+data qualification_attempt_runner_temp_env_name: NonEmptyStr = "RUNNER_TEMP"
+data qualification_attempt_key_file_name: String = "qualification-attempt-app-key"
+data qualification_attempt_receipt_path: String = "artifacts/qualification-attempt-receipt.txt"
+
+// ONE ATTEMPT LABEL PER RUN AND RUN ATTEMPT, a single ref segment (gunbc.runner.runner_qualification_ref_pin
+// qualification_branch_name refuses anything else).
+fn qualification_attempt_label(run_id: String, run_attempt: String) -> NonEmptyStr? {
+  if trim(s: run_id) == "" || trim(s: run_attempt) == "" { none } else { Present { value: join(["q-", trim(s: run_id), "-", trim(s: run_attempt)], "") as NonEmptyStr } }
+}
+
+// ── THE LAUNCH, AND THE EXIT IT MAY CLAIM ───────────────────────────────────────────────────────
+
+// THE EXIT IS THE UNIT'S OWN RESULT, READ FROM THE SUMMARY THE REMOTE MANAGER PRINTS, never the transport's status:
+// over FleetSsh a nonzero status may be ssh's own (gunbc.systemd_run_transient systemd_run_transient_wait_read). Success
+// is a clean end; any other result is an unclean end naming that result; a summary that is absent, unrecognized or
+// not grounded against the manager's version is an unobserved end. A pure fold over supplied readings.
+fn attempt_listener_run_of(launcher: SystemdSummaryPrintingWait, version_line: String, stderr: String) -> ListenerRun {
+  match systemd_run_wait_summary(launcher: launcher, standing: summary_format_standing(version_line: version_line), stderr: stderr).result {
+    ServiceResultRead { result: r } =>
+      match r {
+        ServiceResultSuccess => ListenerExited { exit_code: 0 }
+        other => ListenerEndedUnclean { result: systemd_service_result_wire(r: other) as NonEmptyStr }
+      }
+    ServiceResultUnrecognized { wire: w } => ListenerOutcomeUnobserved { cause: join(["the launcher's summary named a result this model does not know: ", w], "") as NonEmptyStr }
+    ServiceResultNotReported { absence: _ } => ListenerOutcomeUnobserved { cause: "the launcher printed no result summary, so the unit's end was not observed (a transport failure and a remote exit are indistinguishable without it)" as NonEmptyStr }
+    ServiceResultFormatNotGrounded { standing: _ } => ListenerOutcomeUnobserved { cause: "the remote manager's version is not one the summary format is grounded against" as NonEmptyStr }
+  }
+}
+
+fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: HostUnitSlot, credential: EncodedJitConfig) -> ListenerRun
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_bound")]
+{
+  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit)) {
+    HostUnitListenerUnbuilt { cause: c } => ListenerNotLaunched { cause: c }
+    HostUnitListenerReady { wait: w } => {
+      let version_line = match systemd_run_version_command() {
+        SystemdRunCommandRefused { cause: _ } => ""
+        SystemdRunCommandReady { command: v } =>
+          match run_argv_over_host_effect_transport(command: v, transport: transport) {
+            RunArgvTransportObserved { observed: o } => o.stdout
+            RunArgvTransportRefused { reason: _ } => ""
+          }
+      }
+      match run_argv_stdin_over_host_effect_transport(command: w.command, stdin_payload: credential.encoded as String, transport: transport) {
+        RunArgvTransportRefused { reason: r } => ListenerNotLaunched { cause: join(["the attempt unit's launch was refused before any leg ran: ", r], "") as NonEmptyStr }
+        RunArgvTransportObserved { observed: o } => attempt_listener_run_of(launcher: w, version_line: version_line, stderr: o.stderr)
+      }
+    }
+  }
+}
+
+// ── THE RECEIPT ─────────────────────────────────────────────────────────────────────────────────
+
+// Every line is built from typed, non-Secret fields: no token, key or JIT configuration reaches the receipt.
+fn qualification_attempt_receipt_lines(attempt: NonEmptyStr, host: HostIdentity, pass: QualificationAttemptPass) -> List<String> {
+  let head = join(["qualification attempt=", attempt as String, " host=", host as String], "")
+  match pass {
+    AttemptPinRefused { attempt: _, refusal: _, unpin: u } =>
+      [head, "outcome=pin-refused", match u { Absent => "branch=never-named" Present { value: _ } => "branch=removal-attempted" }]
+    AttemptPassed { run: r, retirement: t, unpin: _ } => [
+      head,
+      join(["run=", match r {
+        AttemptNotMinted => "not-minted"
+        AttemptSubjectRefused { refusal: _ } => "subject-refused"
+        AttemptDispatchRefused { refusal: _ } => "dispatch-refused"
+        AttemptDispatchAmbiguous { detail: _ } => "dispatch-ambiguous"
+        AttemptRan { listener: _, collection: _ } => "ran"
+      }], ""),
+      join(["registration=", match t {
+        AttemptNothingRegistered => "none"
+        AttemptDeregistered { exit: _ } => "deregistered"
+        AttemptRegistrationRemains { exit: _, detail: d, acknowledged: _ } => concat("remains: ", d)
+      }], ""),
+      join(["github-side-removed=", if qualification_attempt_registration_and_branch_removed(pass: pass) { "yes" } else { "no" }], ""),
+    ]
+  }
+}
+
+// THE STEP'S VERDICT IS THE ATTEMPT'S, NOT ITS CLEANUP'S (review 86968; DESIGN section 5). It succeeds only when the
+// floor ran on the attempt's runner, the listener ended clean, the run was collected with a successful conclusion,
+// AND the registration and the branch were both observed removed. Every other arm fails the step with its own cause,
+// so a refused, never-launched, unclean or unobserved attempt can never read green with the outcome left to a receipt.
+type QualificationAttemptVerdict
+  = AttemptQualified
+  | AttemptNotQualified { cause: NonEmptyStr }
+
+fn not_qualified(cause: String) -> QualificationAttemptVerdict {
+  AttemptNotQualified { cause: cause as NonEmptyStr }
+}
+
+fn qualification_attempt_run_verdict(run: QualificationAttemptRun) -> QualificationAttemptVerdict {
+  match run {
+    AttemptNotMinted => not_qualified(cause: "the JIT registration was not minted")
+    AttemptSubjectRefused { refusal: _ } => not_qualified(cause: "the qualification subject was refused, so nothing was dispatched")
+    AttemptDispatchRefused { refusal: _ } => not_qualified(cause: "the floor dispatch was refused")
+    AttemptDispatchAmbiguous { detail: d } => not_qualified(cause: concat("the floor dispatch's commit is ambiguous: ", d as String))
+    AttemptRan { listener: l, collection: c } =>
+      match l {
+        ListenerNotLaunched { cause: why } => not_qualified(cause: concat("the attempt unit did not launch: ", why as String))
+        ListenerEndedUnclean { result: r } => not_qualified(cause: concat("the attempt unit ended with result ", r as String))
+        ListenerOutcomeUnobserved { cause: why } => not_qualified(cause: concat("the attempt unit's end was not observed: ", why as String))
+        ListenerExited { exit_code: code } =>
+          if code != 0 {
+            not_qualified(cause: concat("the attempt unit exited with status ", to_string(code)))
+          } else {
+            match c {
+              QualificationRunRefused { run_id: _, refusal: _ } => not_qualified(cause: "the dispatched run could not be collected as this attempt's floor")
+              QualificationRunCollected { collected: run } =>
+                match run.conclusion {
+                  Success => AttemptQualified
+                  _ => not_qualified(cause: "the collected floor run did not conclude in success")
+                }
+            }
+          }
+      }
+  }
+}
+
+fn qualification_attempt_verdict(pass: QualificationAttemptPass) -> QualificationAttemptVerdict {
+  match pass {
+    AttemptPinRefused { attempt: _, refusal: _, unpin: _ } => not_qualified(cause: "the qualification ref pin was refused")
+    AttemptPassed { run: r, retirement: _, unpin: _ } =>
+      if !qualification_attempt_registration_and_branch_removed(pass: pass) {
+        not_qualified(cause: "the registration or the branch was not observed removed; see the receipt")
+      } else {
+        qualification_attempt_run_verdict(run: r)
+      }
+  }
+}
+
+fn write_qualification_attempt_receipt(lines: List<String>) -> ProcessExit {
+  let kept = Filesystem.Write(path: qualification_attempt_receipt_path, content: concat(join(lines, "\n"), "\n"))
+  if kept.success { ExitSuccess } else { exit_failure(reason: concat("qualification attempt: receipt write refused: ", kept.error)) }
+}
+
+// ── THE BINDING ─────────────────────────────────────────────────────────────────────────────────
+
+fn qualification_attempt_bound(
+  host: HostIdentity,
+  slot: HostUnitSlot,
+  attempt: NonEmptyStr,
+  revision: CommitSha,
+  user: NonEmptyStr,
+  hold: UnitHoldProof,
+  transport: HostEffectTransport,
+  key: JwsSigningKeyRef,
+  token: ControllerInstallationToken,
+) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key")]
+{
+  let organization = github_organization_ref().login
+  let state = observe_jit_mint_control_plane(signer: key, reason: "the qualification run observes the gunbai-ci App control plane before its dispatch" as NonEmptyStr)
+  let pass = qualification_attempt_pass_over(
+    slot: slot,
+    attempt: attempt,
+    revision: revision,
+    signer: key,
+    pin: (a, r) => ensure_qualification_ref_pin(token: token, organization: organization, attempt: a, revision: r),
+    observe: observe_jit_mint_control_plane,
+    mint: mint_for_binding,
+    admit: (d, s, dl, p) => qualification_dispatch_subject(dispatch: d, slot: s, delivery: dl, floor_job_id: qualification_floor_job_id, pin: p),
+    dispatch: s => dispatch_qualification_floor(subject: s, hold: hold, token: token, authority: jit_mint_credential_authority(), control_plane: state),
+    launch: (sl, c) => attempt_launch_over(transport: transport, user: user, slot: sl, credential: c),
+    collect: run => collect_qualification_run(dispatched: run, token: token),
+    deregister: deregister_binding_registration,
+    unpin: n => remove_qualification_ref_pin(token: token, name: n),
+  )
+  let wrote = write_qualification_attempt_receipt(lines: qualification_attempt_receipt_lines(attempt: attempt, host: host, pass: pass))
+  match qualification_attempt_verdict(pass: pass) {
+    AttemptQualified => wrote
+    AttemptNotQualified { cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
+  }
+}
+
+fn qualification_attempt_with_key(
+  host: HostIdentity, slot: HostUnitSlot, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr,
+  hold: UnitHoldProof, transport: HostEffectTransport, wif: Secret, key_path: NonEmptyStr,
+) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_held")]
+{
+  match stage_controller_app_key(wif_access_token: wif, key_path: key_path) {
+    ControllerKeyNotStaged { cause } => exit_failure(reason: cause)
+    ControllerKeyStaged { key } => {
+      let exit = match mint_controller_installation_token(installation: gunbai_ci_declared_installation_id, key: key) {
+        ControllerTokenNotMinted { performance: _ } => exit_failure(reason: "qualification attempt: the gunbai-ci installation token was not minted")
+        ControllerTokenMinted { token } => qualification_attempt_bound(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: transport, key: key, token: token)
+      }
+      match remove_staged_controller_key(key_path: key_path) {
+        Present { value: cause } => exit_failure(reason: cause)
+        Absent => exit
+      }
+    }
+  }
+}
+
+// THE HOLD IS TAKEN FIRST AND RELEASED ON EVERY ARM; the slot and the transport are bound under it.
+fn qualification_attempt_under_hold(
+  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr, wif: Secret, key_path: NonEmptyStr,
+) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_wet")]
+{
+  match qualification_acquire_unit_hold(host: host, run_id: attempt) {
+    UnitHoldRefused { reason: r } => exit_failure(reason: concat("qualification attempt: ", r as String))
+    UnitHeld { proof: p } => unit_hold_release(proof: p, outcome: qualification_attempt_held(host: host, control: control, attempt: attempt, revision: revision, user: user, hold: p, wif: wif, key_path: key_path))
+  }
+}
+
+fn qualification_attempt_held(
+  host: HostIdentity, control: HostControlStanding, attempt: NonEmptyStr, revision: CommitSha, user: NonEmptyStr, hold: UnitHoldProof, wif: Secret, key_path: NonEmptyStr,
+) -> ProcessExit
+  uses net: Network
+  admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_under_hold")]
+{
+  match qualification_branch_name(attempt: attempt) {
+    QualificationBranchNameRefused { attempt: _, cause: c } => exit_failure(reason: concat("qualification attempt: ", c as String))
+    QualificationBranchNamed { name: n } =>
+      match host_unit_slot_for(host: control, purpose: AttemptSlot { attempt: attempt }, workflow: qualification_selected_workflow(branch: n.branch)) {
+        HostUnitSlotRefused { refusal: _ } => exit_failure(reason: concat("qualification attempt: no attempt slot binds on ", host as String))
+        HostUnitSlotBound { slot: slot } =>
+          match anchored_host_transport_live(host: host, attempt_raw: attempt as String) {
+            AnchoredBindingBound { bound: b } => qualification_attempt_with_key(host: host, slot: slot, attempt: attempt, revision: revision, user: user, hold: hold, transport: b.transport, wif: wif, key_path: key_path)
+            other => exit_failure(reason: concat("qualification attempt: no host-authenticated transport: ", anchored_host_binding_refusal_reason(b: other)))
+          }
+      }
+  }
+}
+
+fn qualification_attempt_control(host: HostIdentity) -> HostControlStanding? {
+  match managed_host_binding_for(host: host as NonEmptyStr) {
+    ManagedHostFound { host: _, control: c } => Present { value: bmc_controlled_host(host: host, standing: c) }
+    ManagedHostFoundUnderDeclaredDrop { host: _, control: c, drop: _, standing_subject: _, current_subject: _ } => Present { value: bmc_controlled_host(host: host, standing: c) }
+    ManagedHostNotManaged { host: _ } => none
+  }
+}
+
+fn qualification_attempt_wet() -> ProcessExit
+  uses net: Network
+{
+  let host_name = actions_variable_trimmed(name: qualification_attempt_subject_env_name)
+  let wif = actions_variable_trimmed(name: qualification_attempt_wif_env_name)
+  let temp = actions_variable_trimmed(name: qualification_attempt_runner_temp_env_name)
+  let revision = actions_variable_trimmed(name: "GITHUB_SHA")
+  if host_name == "" || wif == "" || temp == "" || revision == "" {
+    exit_failure(reason: "qualification attempt: the subject host, the run's federation token, RUNNER_TEMP or GITHUB_SHA is unset")
+  } else {
+    let host = host_name as HostIdentity
+    match qualification_attempt_label(run_id: actions_variable_trimmed(name: "GITHUB_RUN_ID"), run_attempt: actions_variable_trimmed(name: "GITHUB_RUN_ATTEMPT")) {
+      Absent => exit_failure(reason: "qualification attempt: GITHUB_RUN_ID or GITHUB_RUN_ATTEMPT is unset, so the attempt has no label")
+      Present { value: attempt } =>
+        match qualification_attempt_control(host: host) {
+          Absent => exit_failure(reason: concat("qualification attempt: not a managed host: ", host_name))
+          Present { value: control } =>
+            match runner_host_spec_for(host: host) {
+              RunnerHostSpecAbsent { host: _ } => exit_failure(reason: concat("qualification attempt: no runner user is declared for ", host_name))
+              RunnerHostSpecFound { spec } =>
+                qualification_attempt_under_hold(host: host, control: control, attempt: attempt, revision: revision as CommitSha, user: spec.runner_user, wif: wif as Secret, key_path: join([temp, "/", qualification_attempt_key_file_name], "") as NonEmptyStr)
+            }
+        }
+    }
+  }
+}
+
+// WHAT REMAINS BEFORE THE ROUTE IS EXECUTABLE, carried as this module's frontier (DESIGN section 3c).
+data qualification_attempt_run_frontier: DissolutionCondition = unbound_dissolution(
+  description: "NAMED CONSUMER: the qualification_attempt fleet-converge mode, whose step runs qualification_attempt_wet. NOT ESTABLISHED, deferred: (1) the revision is the run's own GITHUB_SHA; gunbc.fleet.fleet_revision_acceptance is not yet consulted, so the run may qualify a revision whose required CI did not succeed; (2) mtcollins1 has no gunbc.runner.runner_host_deploy runner_host_spec_for row, so the run refuses with no runner user declared, the same refusal the service slot gives; (3) the anchored transport refuses until the host-key anchor is read back on a live boot under the operator's go; (4) the collect leg's instruments are G3's; (5) the host-side teardown observation. TRIGGER: the first wet run, on merry-fox-82's go after mtcollins1 boots the runner image with network and sshd, with (1) and (2) landed."
+)

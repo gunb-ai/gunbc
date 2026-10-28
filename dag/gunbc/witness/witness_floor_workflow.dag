@@ -1141,6 +1141,13 @@ fn witness_toolchain_filesystem_end_probe_step() -> Step {
 // recorder prevents either fact from weakening the other: a missing stat cannot trip this wall,
 // and a missing home cannot be rendered as a merely observational `unset` and allowed onward.
 fn witness_toolchain_homes_isolated_guard_step() -> Step {
+  witness_toolchain_homes_isolated_guard_step_under(condition: Present { value: "!cancelled()" })
+}
+
+// THE SAME WALL UNDER THE CALLER'S CONDITION. The fleet lanes run it under !cancelled() so it still refuses after an
+// earlier step failed; a qualification floor admits no conditioned step (gunbc.runner.runner_qualification_dispatch
+// qualification_floor_admission) and there a failed earlier step already fails the job, so it takes none.
+fn witness_toolchain_homes_isolated_guard_step_under(condition: String?) -> Step {
   RunStep {
     name: Present { value: "Require isolated toolchain homes" },
     id: none,
@@ -1148,7 +1155,7 @@ fn witness_toolchain_homes_isolated_guard_step() -> Step {
     shell: none,
     env: none,
     working_directory: none,
-    if_condition: Present { value: "!cancelled()" },
+    if_condition: condition,
     continue_on_error: none,
     timeout_minutes: none
   }
