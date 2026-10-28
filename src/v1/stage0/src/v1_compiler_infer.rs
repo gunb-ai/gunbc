@@ -16619,6 +16619,45 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         )) {
                         Rc::new(vec![])
                     } else {
+                        {
+                            fn bk381_shape(n: &Rc<Node>, d: usize) -> String {
+                                if d > 3 {
+                                    return "...".to_string();
+                                }
+                                let kids = n
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .map(|c| bk381_shape(c, d + 1))
+                                    .collect::<Vec<String>>()
+                                    .join(",");
+                                let inf = match n.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: r, .. }) => format!("R({})", r.name.clone()),
+                                    Some(InferredNode::TypeVariable { id: id, .. }) => format!("TV({})", id),
+                                    _ => "-".to_string(),
+                                };
+                                format!(
+                                    "{}[c={:?} sp={}:{}..{} inf={} kids={}]",
+                                    n.name.clone(),
+                                    n.connective.clone(),
+                                    n.span.file.clone(),
+                                    n.span.start,
+                                    n.span.end,
+                                    inf,
+                                    kids
+                                )
+                            }
+                            let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+                            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    "BK381-JOIN then={} | ELSE={}",
+                                    bk381_shape(&then_rt.clone(), 0),
+                                    bk381_shape(&else_rt.clone(), 0),
+                                );
+                            }
+                        }
                         Rc::new(vec![inference_error(
                             v1_rt::concat(
                                 v1_rt::concat(
