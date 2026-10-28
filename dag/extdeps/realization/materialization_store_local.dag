@@ -34,6 +34,8 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, parse_content_hash }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
+  AtCapacityDisposition, AtCapacityUnobserved,
+  RefuseNewStore,
   ReleasedNever,
   CapacityBounded,
   ByteCapacity,
@@ -61,7 +63,7 @@ import std.filesystem_path_grant { absolute_path_position }
 import std.materialization_ladder { Frame, CacheProvider, provider_row, persistent_retention, CoversIdentities, ArtifactTier, ContentKeyed }
 import std.artifact_store {
   ArtifactStore, ArtifactRow, StoreConstruction, StoreReady, StoreRefusedRetention,
-  store_over_provider, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit,
+  store_over_provider, store_refused, store_replacement_supported, store_put, StorePutOutcome, StorePutAdmitted, StorePutDidNotFit, StorePutAtCapacity, StorePutPolicyRefused,
   store_get, StoreHit, StoreMiss, store_bytes_used,
 }
 import std.cache_identity { ArtifactKindId }
@@ -124,7 +126,7 @@ import std.materialization_object {
   StoreLookup, StoreLookupRefused, StoreLookupObjectUnavailable,
   StoreLookupAddressRefused,
   StoreCommit, StoreCommitRefused, StoreCommitPublishRefused,
-  StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitOccupancyUnavailable,
+  StoreCommitRefusal, StoreCommitBudgetUndeclared, StoreCommitDidNotFit, StoreCommitAtCapacity, StoreCommitOccupancyUnavailable,
   StoreCommitResultIdentityUnverifiable, StoreLookupObjectMalformed, StoreLookupHit, StoreLookupMiss,
   ArtifactBlobPart, store_lookup_blob_parts,
   StoreCommitCleanupOutstanding,
@@ -181,16 +183,27 @@ fn store_path(root_path: String, name: String) -> String {
 // the families it forgot treated as orphans, and a larger offered budget cannot be enforced.
 //
 // ONE CANONICAL ENCODING, AND ITS DECODER ACCEPTS EXACTLY THE ENCODER'S IMAGE. A family is written
-// length-prefixed in Unicode scalars, "<n>:<family>=<bytes>;", so no character of a family name is ever
+// length-prefixed in Unicode scalars, "<n>:<family>=<bytes><policy>", so no character of a family name is ever
 // read as a delimiter; rows are sorted by family and a family appears once. The decoder is a total
 // scan over the whole marker: exactly one catalog field, no leading zeros, no duplicate family, no
 // unsorted or extra row, and exactly one instance line after it -- anything else is malformed and
 // refuses, so one marker never authorizes two catalogs.
-data materialization_store_marker_magic: String = "gunbc-materialization-store v3"
+data materialization_store_marker_magic: String = "gunbc-materialization-store v4"
+
+// v3 rows end in ';' and mean LRU. v4 also admits '!' for refuse-at-capacity.
+// Reading v3 preserves its original policy; a retained catalog cannot open it.
+fn store_marker_capacity_suffix(action: AtCapacityDisposition) -> String {
+  match action {
+    RefuseNewStore => "!"
+    ReplaceExisting { strategy: LeastRecentlyUsed } => ";"
+    ReplaceExisting { strategy: _ } => "?"
+    AtCapacityUnobserved => "?"
+  }
+}
 
 fn store_marker_family_row(b: LocalStoreFamilyBudget) -> String {
   let family = b.family as String
-  join([int_to_decimal_string(value: count(unicode_scalar_unfold(s: family))), ":", family, "=", nat_to_decimal_string(value: measure_count(m: b.budget)), ";"], "")
+  join([int_to_decimal_string(value: count(unicode_scalar_unfold(s: family))), ":", family, "=", nat_to_decimal_string(value: measure_count(m: b.budget)), store_marker_capacity_suffix(action: b.at_capacity)], "")
 }
 
 fn store_marker_catalog_field(budgets: List<LocalStoreFamilyBudget>) -> String {
@@ -198,8 +211,12 @@ fn store_marker_catalog_field(budgets: List<LocalStoreFamilyBudget>) -> String {
 }
 
 fn store_marker_head(root: MaterializationStoreRoot) -> String {
+  store_marker_header(root: root, magic: materialization_store_marker_magic)
+}
+
+fn store_marker_header(root: MaterializationStoreRoot, magic: String) -> String {
   join([
-    materialization_store_marker_magic,
+    magic,
     concat("durability ", materialization_store_durability_name(d: materialization_store_durability(root: root))),
     "families ",
   ], "\n")
@@ -213,13 +230,14 @@ fn store_marker_content(root: MaterializationStoreRoot, instance_label: NonEmpty
 // line; initialization refuses anything else before a marker is written.
 fn store_marker_catalog_admissible(budgets: List<LocalStoreFamilyBudget>) -> Bool {
   count(budgets) > 0 && count(local_store_name_set(names: budgets |> map(b => b.family as String))) == count(budgets)
+    && all(budgets, b => match store_replacement_supported(action: b.at_capacity) { Absent => true, Present { value: _ } => false })
 }
 
 fn store_marker_label_admissible(instance_label: NonEmptyStr) -> Bool {
   !string_contains(s: instance_label as String, pattern: "\n")
 }
 
-type StoreMarkerSpan { start: Int, length: Int, bytes: ByteSize }
+type StoreMarkerSpan { start: Int, length: Int, bytes: ByteSize, at_capacity: AtCapacityDisposition }
 
 // The scan over the catalog field, one arm per phase, each carrying only what that phase needs. A
 // refusal is its own arm, so no state can be both refused and holding rows, and no phase can be
@@ -247,7 +265,7 @@ fn store_marker_digit(d: StoreMarkerDigits, c: Int) -> StoreMarkerDigits? {
   }
 }
 
-fn store_marker_scan_step(scan: StoreMarkerScan, position: Int, c: Int) -> StoreMarkerScan {
+fn store_marker_scan_step(scan: StoreMarkerScan, position: Int, c: Int, allow_retained: Bool) -> StoreMarkerScan {
   let is_digit = c >= 48 && c <= 57
   match scan {
     StoreMarkerScanRefused => StoreMarkerScanRefused
@@ -279,10 +297,10 @@ fn store_marker_scan_step(scan: StoreMarkerScan, position: Int, c: Int) -> Store
           Absent => StoreMarkerScanRefused
           Present { value: d2 } => StoreMarkerReadingBytes { start: st, length: l, digits: d2, spans: sp }
         }
-      } else if c == 59 {
+      } else if c == 59 || (c == 33 && allow_retained) {
         match d {
           StoreMarkerDigitsRead { value: n } =>
-            StoreMarkerReadingCount { digits: StoreMarkerNoDigits, spans: sp |> list_push(StoreMarkerSpan { start: st, length: l, bytes: byte_size(count: n) }) }
+            StoreMarkerReadingCount { digits: StoreMarkerNoDigits, spans: sp |> list_push(StoreMarkerSpan { start: st, length: l, bytes: byte_size(count: n), at_capacity: if c == 33 { RefuseNewStore } else { ReplaceExisting { strategy: LeastRecentlyUsed } } }) }
           StoreMarkerNoDigits => StoreMarkerScanRefused
         }
       } else { StoreMarkerScanRefused }
@@ -295,18 +313,20 @@ type StoreMarkerDecode
   | StoreMarkerMalformed { detail: String }
 
 fn store_marker_decode(root: MaterializationStoreRoot, content: String) -> StoreMarkerDecode {
-  let head = store_marker_head(root: root)
+  let allow_retained = starts_with(s: content, prefix: store_marker_head(root: root))
+  let head = if allow_retained { store_marker_head(root: root) } else { store_marker_header(root: root, magic: "gunbc-materialization-store v3") }
   if !starts_with(s: content, prefix: head) { StoreMarkerForeign } else {
     let scalars = unicode_scalar_unfold(s: substring(s: content, start: string_length(s: head), end: string_length(s: content)))
     let scan = fold(scalars, init: StoreMarkerScanAt { position: 0, scan: StoreMarkerReadingCount { digits: StoreMarkerNoDigits, spans: [] } }, f: (acc, c) =>
-      StoreMarkerScanAt { position: acc.position + 1, scan: store_marker_scan_step(scan: acc.scan, position: acc.position, c: c) })
+      StoreMarkerScanAt { position: acc.position + 1, scan: store_marker_scan_step(scan: acc.scan, position: acc.position, c: c, allow_retained: allow_retained) })
     match scan.scan {
       StoreMarkerPastField { tail: tail_at, spans: spans } => {
         let field = unicode_scalar_fold(xs: take(scalars, tail_at - 1))
         let tail = unicode_scalar_fold(xs: skip(scalars, tail_at))
         let catalog = spans |> map(sp => LocalStoreFamilyBudget {
           family: unicode_scalar_fold(xs: take(skip(scalars, sp.start), sp.length)) as ArtifactKindId,
-          budget: sp.bytes
+          budget: sp.bytes,
+          at_capacity: sp.at_capacity,
         })
         if !starts_with(s: tail, prefix: "instance ") || string_length(s: tail) <= 10 || !ends_with(s: tail, suffix: "\n") || count(tail.split(delimiter: "\n")) != 2 {
           StoreMarkerMalformed { detail: "the catalog field is not followed by exactly one instance line" }
@@ -448,7 +468,7 @@ fn local_store_open_decide(root: MaterializationStoreRoot, marker_read: Filesyst
       LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerUnavailable { fault: StoreFault { class: StoreFaultTransportVocabulary, detail: concat(o, ": ", e) } } }
     FilesystemExactPathRead { path: _, content: c } =>
       if !store_marker_catalog_admissible(budgets: budgets) {
-        LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the offered family catalog is empty or names a family more than once" } }
+        LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the offered catalog is empty, repeats a family, or requests an unsupported capacity policy" } }
       } else {
         match store_marker_decode(root: root, content: c) {
           StoreMarkerForeign => LocalStorePreOpenRefused { root_path: root_path, cause: LocalStoreMarkerUnrecognized { marker_path: marker_path } }
@@ -555,7 +575,7 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
       }
     Permit =>
       if !store_marker_catalog_admissible(budgets: budgets) || !store_marker_label_admissible(instance_label: instance_label) {
-        LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the family catalog must name each family once and the instance label must be one line" } }
+        LocalStoreInitializationRefused { root_path: root_path, cause: LocalStoreCatalogInadmissible { detail: "the catalog must name each family once with a supported capacity policy; the instance label must be one line" } }
       } else {
       match store_publish_observation(create: local_store_create_new(
         path: store_path(root_path: root_path, name: materialization_store_marker_name),
@@ -591,13 +611,14 @@ fn local_store_initialize(root: MaterializationStoreRoot, instance_label: NonEmp
 type LocalStoreFamilyBudget {
   family: ArtifactKindId
   budget: ByteSize
+  at_capacity: AtCapacityDisposition
 }
 
 fn local_store_budget_sum(budgets: List<LocalStoreFamilyBudget>) -> ByteSize {
   byte_size(count: fold(budgets, init: 0, f: (acc, b) => acc + measure_count(m: b.budget)))
 }
 
-fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize) -> CacheProvider {
+fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize, at_capacity: AtCapacityDisposition) -> CacheProvider {
   provider_row(
     id: concat("materialization_store_local:", family as String),
     scope: [materialization_store_frame],
@@ -605,7 +626,7 @@ fn local_store_family_provider(family: ArtifactKindId, budget: ByteSize) -> Cach
     tier: ArtifactTier { keying: ContentKeyed },
     retention: persistent_retention(capacity: CapacityBounded {
       limit: ByteCapacity { limit: ExactLimit { value: budget } },
-      at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+      at_capacity: at_capacity
     })
   )
 }
@@ -827,8 +848,9 @@ fn local_store_row_key(name: String) -> ContentHash {
 }
 
 // The index as the std.artifact_store fold sees it, with the budget from the family's provider row.
-fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex) -> ArtifactStore {
+fn local_store_artifact_store(budget: ByteSize, index: LocalStoreIndex, at_capacity: AtCapacityDisposition) -> ArtifactStore {
   ArtifactStore {
+    at_capacity: at_capacity,
     budget: budget,
     next_ordinal: index.next_ordinal,
     rows: index.rows |> map(r => ArtifactRow { key: local_store_row_key(name: r.name), artifact_bytes: r.bytes, last_use_ordinal: r.ordinal })
@@ -1484,7 +1506,7 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
     match local_store_family_budget(budgets: budgets, family: family) {
       Absent => LocalStoreReservationRefused { refusal: StoreCommitBudgetUndeclared { family: family } }
       Present { value: b } =>
-        match store_over_provider(provider: local_store_family_provider(family: family, budget: b.budget)) {
+        match store_over_provider(provider: local_store_family_provider(family: family, budget: b.budget, at_capacity: b.at_capacity)) {
           StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } =>
             LocalStoreReservationProviderRefused { construction: StoreRefusedRetention { provider_id: pid, declared: dcl, cause: why } }
           StoreReady { store: ready } =>
@@ -1510,7 +1532,11 @@ fn local_store_reserve(held: LocalStoreFamilyHeld, name: String, bytes: ByteSize
                   LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: bytes, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                 } else {
                   let cleaned = LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: still_doomed }
-                  match store_put(store: local_store_artifact_store(budget: byte_size(count: budget_total - undeleted), index: cleaned), key: local_store_row_key(name: name), artifact_bytes: bytes) {
+                  match store_put(store: local_store_artifact_store(budget: byte_size(count: budget_total - undeleted), index: cleaned, at_capacity: ready.at_capacity), key: local_store_row_key(name: name), artifact_bytes: bytes) {
+                    StorePutAtCapacity { artifact_bytes: a, available: available } =>
+                      LocalStoreReservationRefused { refusal: StoreCommitAtCapacity { artifact_bytes: a, available: available } }
+                    StorePutPolicyRefused { cause: cause } =>
+                      LocalStoreReservationProviderRefused { construction: store_refused(provider: local_store_family_provider(family: family, budget: b.budget, at_capacity: b.at_capacity), cause: cause) }
                     StorePutDidNotFit { artifact_bytes: a, budget: _ } =>
                       LocalStoreReservationRefused { refusal: StoreCommitCleanupOutstanding { artifact_bytes: a, budget: ready.budget, undeleted: byte_size(count: undeleted) } }
                     StorePutAdmitted { store: packed, evicted: _ } => {
@@ -1835,7 +1861,7 @@ fn local_store_record_recency_current(held: LocalStoreFamilyHeld, served: List<S
       let live_names = local_store_name_set(names: names)
       let hits = served |> filter(n => set_contains(live_names, n))
       if count(hits) == 0 { LocalStoreRecencyNothingToRecord { family: family } } else {
-        let bumped = fold(hits, init: local_store_artifact_store(budget: byte_size(count: 0), index: index), f: (st, n) => match store_get(store: st, key: local_store_row_key(name: n)) {
+        let bumped = fold(hits, init: local_store_artifact_store(budget: byte_size(count: 0), index: index, at_capacity: RefuseNewStore), f: (st, n) => match store_get(store: st, key: local_store_row_key(name: n)) {
           StoreHit { store: s2, row: _ } => s2
           StoreMiss { store: s2 } => s2
         })

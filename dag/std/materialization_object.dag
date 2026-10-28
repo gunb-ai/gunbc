@@ -715,6 +715,7 @@ type StoreCommitRefusal
   | StoreCommitResultIdentityUnverifiable { cause: String }
   | StoreCommitBudgetUndeclared { family: ArtifactKindId }
   | StoreCommitDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+  | StoreCommitAtCapacity { artifact_bytes: ByteSize, available: ByteSize }
   | StoreCommitCleanupOutstanding { artifact_bytes: ByteSize, budget: ByteSize, undeleted: ByteSize }
   | StoreCommitOccupancyUnavailable { cause: String }
 
@@ -962,6 +963,7 @@ fn store_commit_refusal_tag(c: StoreCommit) -> String {
       StoreCommitResultIdentityUnverifiable { cause: _ } => "result_identity_unverifiable"
       StoreCommitBudgetUndeclared { family: _ } => "budget_undeclared"
       StoreCommitDidNotFit { artifact_bytes: _, budget: _ } => "did_not_fit"
+      StoreCommitAtCapacity { artifact_bytes: _, available: _ } => "at_capacity"
       StoreCommitCleanupOutstanding { artifact_bytes: _, budget: _, undeleted: _ } => "cleanup_outstanding"
       StoreCommitOccupancyUnavailable { cause: _ } => "occupancy_unavailable"
     }

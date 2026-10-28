@@ -1974,7 +1974,7 @@ type ComputeMaterialization {
 // root declares no budget for has no provider and the ladder refuses.
 fn compute_store_providers(family: ArtifactKindId) -> List<std.materialization_ladder.CacheProvider> {
   match local_store_family_budget(budgets: materialization_store_durable_family_budgets, family: family) {
-    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget)]
+    Present { value: b } => [local_store_family_provider(family: family, budget: b.budget, at_capacity: b.at_capacity)]
     Absent => []
   }
 }
