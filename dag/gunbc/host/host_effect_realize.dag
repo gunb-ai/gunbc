@@ -120,7 +120,7 @@ import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_dev
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_name }
-import std.algebra { list_sort_by_key, string_total_order }
+import std.algebra { list_sort_by_key, TotalOrder, Ordering, Less, Greater, Equal }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
 import v2.extdeps.toolchain_interference {
@@ -6445,9 +6445,14 @@ type TreeInstallStepState
 
 fn tree_file_hash_path(e: TreeFileHash) -> String { e.path }
 
+data tree_path_total_order: TotalOrder<String> = { compare: tree_path_compare }
+
+fn tree_path_compare(a: String, b: String) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
 
 fn sort_tree_file_hashes(entries: List<TreeFileHash>) -> List<TreeFileHash> {
-  list_sort_by_key(xs: entries, key: tree_file_hash_path, order: string_total_order())
+  list_sort_by_key(xs: entries, key: tree_file_hash_path, order: tree_path_total_order)
 }
 
 // `<hex>  <path>` lines of sha256sum, the path rebased from the absolute `root` onto `sub`/<relative>.
@@ -6478,7 +6483,7 @@ fn tree_entries_agree(source: List<TreeFileHash>, installed: List<TreeFileHash>)
 fn tree_ancestor_directories(files: List<TreeFileHash>) -> List<String> {
   let all = flat_map(files, f => tree_path_prefixes(path: f.path))
   // sorted, so duplicates are adjacent: compare with the last kept entry only
-  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: string_total_order()), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
+  let walked = fold(list_sort_by_key(xs: all, key: fn(p) { p }, order: tree_path_total_order), init: TreeDedupWalk { last: "", out: [] }, f: (w, p) =>
     if w.last == p { w } else { TreeDedupWalk { last: p, out: list_snoc_item(xs: w.out, item: p) } }
   )
   walked.out
