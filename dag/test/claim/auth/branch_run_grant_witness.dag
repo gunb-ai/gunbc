@@ -34,6 +34,8 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
   mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource, first_trusted_branch,
+  mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_attribute_condition,
+  mtcollins1_boot_branch_provider, mtcollins1_boot_branch_federation, mtcollins1_boot_trusted_environment_pin,
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_grant_required_at_ref, fleet_converge_grant_wait_admits_at_ref, GrantWaitSkipped, GrantWaitSucceeded, GrantWaitFailed, GrantWaitCancelled,
@@ -44,7 +46,8 @@ import gunbc.auth.branch_run_grant {
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
 }
 import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted, BranchRunRefused, judge_branch_run }
-import gunbc.auth.oidc_claim_pins { with_presented_value }
+import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim }
+import std.algebra { string_contains }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
@@ -547,4 +550,86 @@ test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
     && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(trusted_boot_branch(), "-not-rostered"), result: GrantWaitSkipped)
     // and a different mode at the rostered ref does too
     && !fleet_converge_grant_wait_admits_at_ref(mode: HostResetReturn, branch: trusted_boot_branch(), result: GrantWaitSkipped)
+}
+
+// ══ THE ENVIRONMENT STANDING CANNOT BE REMOVED WITHOUT SHUTTING THE ROUTE DOWN (side-chat
+// REQUEST_CHANGES on 18c3e1d0, merry-fox-82, §5 fail-open) ═════════════════════════════════════
+// The defect: mtcollins1_boot_branch_claim_pins matched over the boot identity's environment and its
+// Absent arm returned the pin list WITHOUT the environment conjunct. So losing the environment standing
+// made the converged provider LESS restrictive -- a job in no environment at all would have reached the
+// approval-free boot identity. It mattered that the guard lived in the pins and not in the federation:
+// the provider is built from claim_pins() directly, NOT through the guarded federation, so a federation
+// guard alone would have left the provisioned provider admitting more than the federation describes.
+
+// THE ENVIRONMENT CONJUNCT IS PRESENT, in both projections, unconditionally. Counted rather than
+// illustrated: the pins are the membership rule and the CEL is a fold over them.
+test fn the_environment_conjunct_is_never_droppable() -> Bool {
+  let pins = mtcollins1_boot_branch_claim_pins()
+  let named_environment = filter(pins, pin => (pin.claim as String) == "environment")
+  // exactly one, and it is the poisoned-by-default pin
+  && named_environment.length() == 1
+  && match named_environment.first() {
+    Present { value: p } => p.value == mtcollins1_boot_trusted_environment_pin().value
+    Absent => false
+  }
+  && mtcollins1_boot_branch_attribute_condition() |> string_contains(pattern: "assertion.environment")
+  // THE CONDITION GCP STORES, not just the list it is folded from: dropping the pin would remove this
+  // conjunct from the CEL itself, which is the fail-open the review named. Asserted on the stored
+  // provider, because that is the object converge creates -- and asserted as an EQUALITY ON THE
+  // ENVIRONMENT CONJUNCT (the whole 'assertion.environment == ...' term), not on the condition's
+  // equality to itself through the same function, which would be tautological.
+  && match mtcollins1_boot_branch_provider().attribute_condition {
+    Present { value: c } =>
+      c |> string_contains(pattern: mtcollins1_boot_environment_conjunct())
+      // every other conjunct survives too: the condition is a fold, so one term per pin
+      && pins.length() == split(s: c, delimiter: " && ").length()
+    Absent => false
+  }
+}
+
+// THE ENVIRONMENT CONJUNCT, spelled the way claim_pin_cel spells it (oidc_claim_pins:70-77):
+// `assertion.<claim> == '<value>'`. Derived from the pin rather than hardcoded, so it tracks a relation
+// change instead of going stale.
+fn mtcollins1_boot_environment_conjunct() -> String {
+  let p = mtcollins1_boot_trusted_environment_pin()
+  concat("assertion.", p.claim as String, " == '", p.value, "'")
+}
+
+// THE RED THE REVIEW REQUIRED: removing the environment standing CANNOT produce a provider that admits a
+// branch boot. Stated the way it has to be stated -- a boot that presents NO environment claim is refused
+// outright. That is precisely the claim set the old `Absent => base` arm admitted, because a pin list
+// without an environment conjunct is satisfied by a token that never mentions one.
+test fn a_boot_presenting_no_environment_is_refused() -> Bool {
+  let real = mtcollins1_boot_branch_presented_claims(branch: trusted_boot_branch(), environment: boot_environment())
+  mtcollins1_boot_branch_admits(claims: real)
+    // the exact fail-open: same claims, environment standing removed
+    && !mtcollins1_boot_branch_admits(claims: without_presented_claim(claims: real, claim: "environment"))
+    // and the same for every other environment-shaped value: nothing but the pinned name admits
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: ""))
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"))
+    // and the pinned name itself ADMITS, so the refusals above are about the pin and not about a
+    // broken comparison: the environment the boot federation declares (managed_host_boot_federation's
+    // own names.environment) is the one value that passes
+    && mtcollins1_boot_branch_admits(claims: with_presented_value(
+      claims: real, claim: "environment", value: boot_environment()))
+    // a near-miss on that name is refused, which is what an equality pin must do and a prefix pin would not
+    && !mtcollins1_boot_branch_admits(claims: with_presented_value(claims: real, claim: "environment", value: concat(boot_environment(), "-else")))
+}
+
+// THE ROUTE IS NOT DECLARED WHEN THE BOOT IDENTITY CANNOT NAME ITS ENVIRONMENT. The federation returns
+// none, so it is not a converge target and no provider is created -- the failure is the absence of the
+// route, never a wider route. Asserted alongside the pin poison so both halves are held: the pins refuse
+// AND the federation declines to exist.
+test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    // today it exists, because the boot identity IS provisioned...
+    Present { value: f } =>
+      f.attribute_condition == mtcollins1_boot_branch_attribute_condition()
+        // ...and its environment conjunct is the real name, not the poison
+        && f.attribute_condition |> string_contains(pattern: boot_environment())
+        && (mtcollins1_boot_trusted_environment_pin().value != "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
+    // if the boot identity were ever unprovisioned, this is the branch that must hold: no federation at
+    // all, and the pin the provider would have used is the value no dispatch can present
+    Absent => mtcollins1_boot_trusted_environment_pin().value == "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"
+  }
 }

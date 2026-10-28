@@ -113,6 +113,26 @@ fn mtcollins1_boot_trusted_environment() -> String? {
   }
 }
 
+// THE ENVIRONMENT PIN, POISONED BY DEFAULT. This is the fail-closed half of the route, and it belongs
+// HERE -- in the pin list -- rather than in the caller that assembles it, because the pins are the whole
+// membership rule and they have TWO PROJECTIONS (gunbc.auth.oidc_claim_pins): the CEL GCP stores and the
+// admission this corpus evaluates are both folds over this one list. A caller cannot be trusted to add
+// the pin, because the provider is not built through the guarded path: mtcollins1_boot_branch_provider()
+// reads mtcollins1_boot_branch_claim_pins() directly, and so does the workflow's credential renderer, so
+// anything that guarded this only in mtcollins1_boot_branch_federation() would leave the converged
+// PROVIDER admitting more than the federation describes.
+//
+// So an unknown environment is not "no environment pin" -- that would make the provider LESS restrictive
+// than the route it stands for, which is fail-open in the one place the brief said the wall must be. It
+// is a value no dispatch can present, exactly as an empty roster poisons the ref pin: the condition keeps
+// its environment conjunct and matches nothing.
+fn mtcollins1_boot_trusted_environment_pin() -> OidcClaimPin {
+  match mtcollins1_boot_trusted_environment() {
+    Present { value: e } => oidc_equals(claim: "environment", value: e)
+    Absent => oidc_equals(claim: "environment", value: "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__")
+  }
+}
+
 data mtcollins1_boot_branch_wif_pool_id: NonEmptyStr = "github-mtcollins1-boot-branch"
 
 data mtcollins1_boot_branch_wif_pool_display_name: NonEmptyStr = "MtCollins1 boot branch"
@@ -151,10 +171,10 @@ fn mtcollins1_boot_branch_claim_pins() -> List<OidcClaimPin> {
     oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
     mtcollins1_boot_trusted_ref_pin(),
   ]
-  match mtcollins1_boot_trusted_environment() {
-    Present { value: e } => concat(base, [oidc_equals(claim: "environment", value: e)])
-    Absent => base
-  }
+  // UNCONDITIONAL. There is deliberately no match over the option here: a match is what let the absent
+  // case return `base`, and a branch of a membership rule that returns the rule minus one conjunct is
+  // how a provider ends up admitting a job in no environment at all.
+  concat(base, [mtcollins1_boot_trusted_environment_pin()])
 }
 
 fn mtcollins1_boot_branch_attribute_condition() -> String {
@@ -226,6 +246,13 @@ fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
       // would read as a trust check while being an emptiness check. An empty roster means no branch may
       // federate this identity, so the route is not declared at all and its provider is never converged.
       if mtcollins1_boot_trusted_branches.length() == 0 {
+        none
+      } else if match mtcollins1_boot_trusted_environment() { Absent => true  Present { value: _ } => false } {
+        // NOT REDUNDANT WITH THE OUTER MATCH. The two states are the same TODAY -- an unprovisioned boot
+        // is exactly the one with no environment -- and a guard that is only accidentally equivalent to
+        // the thing it protects is the shape that lets the next refactor reopen the hole. Name the state,
+        // so the route is unprovisionable on the environment alone even if the provisioning model changes
+        // and the pins stay poisoned either way.
         none
       } else {
         Present { value: DedicatedFederation {
