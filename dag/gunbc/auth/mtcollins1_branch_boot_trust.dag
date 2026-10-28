@@ -235,9 +235,10 @@ fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
           provider_id: mtcollins1_boot_branch_wif_provider_id,
           attribute_mapping: mtcollins1_boot_branch_attribute_mapping,
           attribute_condition: mtcollins1_boot_branch_attribute_condition(),
+          // THE ARM'S ONLY FIELD, and that is the whole point of it: the binding's ROLE is fixed by
+          // standing_impersonation_cell, so a federation cannot widen what its pool may impersonate.
           impersonation: StandingPoolImpersonation {
             principal_set: mtcollins1_boot_branch_principal_set(),
-            expected_grant: "roles/iam.workloadIdentityUser" as NonEmptyStr,
           },
           service_account: mtcollins1_boot_branch_service_account,
           service_account_id: mtcollins1_boot_branch_service_account_id,
