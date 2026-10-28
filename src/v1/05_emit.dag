@@ -18,7 +18,7 @@ import v1.std.core {
   CallTargetIdentity, RuntimePrimitiveCall, SourceDeclarationCall, CallableTargetUndetermined, LocallyBoundCall,
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
-  Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
+  Node, ErrorNode, make_error_node, TransportEmissionNotModeled, CastRealizationRefused, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
   field_from_key_property_name,
@@ -3424,8 +3424,9 @@ fn cast_representation_identical(source_type: Node, target_type_node: Node, env:
   }
 }
 
-// WHAT A TARGET DOES FOR ONE ACCEPTED CAST, decided once, so the compile-time refusal stacked on this
-// change reads the same decision the emission does and the two cannot disagree.
+// WHAT A TARGET DOES FOR ONE ACCEPTED CAST, decided once and read twice: by the emission and by
+// cast_realization_diagnostics, the wall v1.compiler.compile emit_artifact runs before any artifact
+// is written. One decision is what keeps the wall and the emitted bytes from disagreeing.
 type CastRealization
   = CastOperandUnchanged
   | CastThroughTargetSyntax { target_spelling: String }
@@ -3436,8 +3437,7 @@ type CastRealizationRefusal
 
 // FOUR MEANINGS, IN ORDER: equal renderings, one carrier (above), a grounded crossing the rows admit
 // (below), and only then a host conversion selected from the target's CastSyntax over the rendered
-// pair. A cast none of these answers has no
-// realization.
+// pair. A cast none of these answers has no realization, and the wall refuses it.
 fn cast_realization(expr: Node, cast_target_node: Node, target: RenderTarget, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> CastRealization {
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
   match expr.inferred {
@@ -3492,23 +3492,66 @@ fn cast_source_grounded_onto_target_carrier(expr: Node, cast_target_node: Node, 
   }
 }
 
-// THE REFUSED ARM STILL EMITS THE PRE-EXISTING RUNTIME ABORT, and that is a declared state, not this
-// decision's answer: the compile-time refusal for it (a wall run before any artifact is written)
-// lands in the change stacked on this one, which the closures it surfaces are dispositioned
-// against. This change only moves the one-carrier casts and the typed empty list OUT of this arm.
+fn cast_realization_refusal_fact(refusal: CastRealizationRefusal) -> String {
+  match refusal {
+    CastRouteUndeclared { source_type: s, target_type: t } =>
+      concat("no declared conversion route from ", s, " to ", t, ": the two do not reach one carrier, no grounded crossing joins them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`")
+  }
+}
+
+// THE REFUSED ARM IS NOT REACHED BY ANY ARTIFACT emit_artifact RETURNS: cast_realization_diagnostics
+// refuses the compile on the same decision first. It renders the target's compile-time refusal form
+// rather than its runtime error form, so an emission entered some other way still cannot build an
+// artifact that aborts at run time on a cast the compiler already knew it could not spell.
 fn emit_typed_cast_shared(expr: Node, cast_target_node: Node, target: RenderTarget, recurse: fn(Node) -> String, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   match cast_realization(expr: expr, cast_target_node: cast_target_node, target: target, env: env, source_indices: source_indices) {
     CastOperandUnchanged => expr_str
     CastThroughTargetSyntax { target_spelling: ty } => render_cast(expr_str: expr_str, type_str: ty, target: target)
-    CastNotRealized { refusal: r } => emit_error_expr(message: cast_realization_unsupported_message(refusal: r), target: target)
+    CastNotRealized { refusal: r } =>
+      let spec = language_spec(target: target)
+      apply_type_template1(template: spec.error_type_template, arg0: cast_realization_refusal_fact(refusal: r))
   }
 }
 
-fn cast_realization_unsupported_message(refusal: CastRealizationRefusal) -> String {
-  match refusal {
-    CastRouteUndeclared { source_type: s, target_type: t } => concat("unsupported cast from ", s, " to ", t)
+// THE CAST WALL (DESIGN section 5): every cast in the closure is realized or the compile refuses,
+// located at the cast, before any artifact is written -- the same shape as the transport walls above,
+// read from the same decision the emission reads. The walk reads each item's typed body and every
+// child expression under it.
+fn cast_realization_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      typed.modules |> flat_map(tm => {
+        let module_name = authored_name(env: tm.type_env, node: tm.module)
+        tm.items |> flat_map(item => match item.body {
+          Present { value: b } => cast_realization_diagnostics_in(texpr: b, target: target, env: tm.type_env, module_name: module_name)
+          Absent => []
+        })
+      })
   }
+}
+
+fn cast_realization_diagnostics_in(texpr: Node, target: RenderTarget, env: TypeEnv, module_name: String) -> List<ErrorNode> {
+  let here = match texpr.expr_data {
+    ExprCast =>
+      match cast_realization(expr: cast_expr(texpr: texpr), cast_target_node: cast_target(texpr: texpr), target: target, env: env, source_indices: env.source_indices) {
+        CastNotRealized { refusal: r } => [make_error_node(
+          diagnostic: CastRealizationRefused {
+            target: render_target_name(target: target),
+            missing_realization_fact: cast_realization_refusal_fact(refusal: r),
+            span: texpr.span
+          },
+          module_name: module_name)]
+        _ => []
+      }
+    _ => []
+  }
+  let nested_body = match texpr.body {
+    Present { value: b } => cast_realization_diagnostics_in(texpr: b, target: target, env: env, module_name: module_name)
+    Absent => []
+  }
+  concat(here, texpr.children |> flat_map(c => cast_realization_diagnostics_in(texpr: c, target: target, env: env, module_name: module_name)), nested_body)
 }
 
 fn emit_typed_for_each_shared(variable: String, collection: Node, body: Node, target: RenderTarget, depth: Int, source_indices: Map<String, NewlineIndex>, recurse: fn(Node, InferScope, Int) -> String, scope: InferScope) -> String {

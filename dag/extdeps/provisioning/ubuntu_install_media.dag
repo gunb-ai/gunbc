@@ -299,6 +299,63 @@ data noble_numbat_2404_3_amd64_uefi_network_boot_chain: UbuntuNetworkBootChain =
   },
 }
 
+// ── The arm64 UEFI network-boot chain ────────────────────────────────────────────────────────────
+// Canonical's arm64 UEFI PXE how-to serves the signed network GRUB (grubnetaa64.efi.signed) with grub/grub.cfg
+// under GRUB's network prefix and the live-server ISO's casper kernel and initrd. This chain puts the signed shim
+// in front of it, as the amd64 chain does: shim's aarch64 build loads \grubaa64.efi from beside itself (shim
+// README, DEFAULT_LOADER), so the chain boots whether or not the firmware enforces Secure Boot. The loaders
+// carry the aa64 names, which keep them apart from the amd64 chain's in one TFTP root; the kernel and initrd
+// sit under arm64/ for the same reason. grubnetaa64.efi.signed embeds the prefix /grub, as the amd64 build
+// does, so both architectures read one grub/grub.cfg-01-<mac> per host and one fallback grub/grub.cfg.
+data ubuntu_arm64_netboot_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "documentation.ubuntu.com/server/how-to/installation/netboot-the-server-installer-via-uefi-pxe-on-arm-aarch64-arm64-and-x86-64-amd64/"
+  }
+}
+
+// Package versions and .deb digests as the 24.04.3 arm64 ISO's pool and its signed Release ->
+// main/binary-arm64/Packages.gz (sha256 8aa714cd402e420d2132c86211a4133cd3211be275811d1da79adec633ccaba3) list them.
+data noble_numbat_2404_3_arm64_uefi_network_boot_chain: UbuntuNetworkBootChain = UbuntuNetworkBootChain {
+  media: noble_numbat_2404_3_live_server_arm64,
+  members: FreeSemigroup {
+    head: UbuntuNetworkBootMember {
+      member: NetworkBootLoaderMember { role: FirstStageLoader, served_path: "bootaa64.efi", verifier: FirmwareSignatureDatabase },
+      source: PoolPackageMember {
+        package: "shim-signed",
+        version: "1.58+15.8-0ubuntu1",
+        pool_path: "pool/main/s/shim-signed/shim-signed_1.58+15.8-0ubuntu1_arm64.deb",
+        deb_sha256: "58b0f8a0f43bdff2122af8f52b05a5eb73b1964079e36e3eed8d06b4d5164917",
+        member_path: "usr/lib/shim/shimaa64.efi.signed.latest",
+      },
+    },
+    tail: [
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: SecondStageLoader, served_path: "grubaa64.efi", verifier: ShimVendorCertificate },
+        source: PoolPackageMember {
+          package: "grub-efi-arm64-signed",
+          version: "1.202.5+2.12-1ubuntu7.3",
+          pool_path: "pool/main/g/grub2-signed/grub-efi-arm64-signed_1.202.5+2.12-1ubuntu7.3_arm64.deb",
+          deb_sha256: "728d506c28c56d3e4372f5f5b143d837d96b202c82ed05cbbd3ec27a5d4de955",
+          member_path: "usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed",
+        },
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: LoaderConfiguration, served_path: "grub/grub.cfg", verifier: NotAuthenticated },
+        source: RenderedByConsumer,
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: KernelImage, served_path: "arm64/vmlinuz", verifier: ShimLockProtocol },
+        source: IsoMember { iso_path: "casper/vmlinuz" },
+      },
+      UbuntuNetworkBootMember {
+        member: NetworkBootLoaderMember { role: InitrdImage, served_path: "arm64/initrd", verifier: NotAuthenticated },
+        source: IsoMember { iso_path: "casper/initrd" },
+      },
+    ],
+  },
+}
+
 // The live-server ISO's casper directory is a layout Canonical authors: the kernel and initrd a
 // network boot serves are these members. Their digests are not Canonical's (no upstream file lists
 // them), so the pins live with the observer, gunbc.provisioning.ubuntu_network_origin_observation.

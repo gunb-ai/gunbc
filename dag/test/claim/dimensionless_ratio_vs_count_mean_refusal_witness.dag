@@ -1,0 +1,200 @@
+module test.claim.dimensionless_ratio_vs_count_mean_refusal_witness
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_histograms_equal }
+
+// A DIMENSIONLESS RATIO AND A MEAN CONCURRENCY ARE NOT ONE TYPE (dashboard review 86657 on #15225,
+// an auto-opened duplicate of the merged #14718; DESIGN 3 nicknaming, ceiling 4b).
+//
+// std.measure aliased both on the SAME structural shape: Permille was Measure<Dimensionless, Milli,
+// Nat> and ConcurrentRequestThousandths was Measure<Dimensionless, Milli, Nat>. One structural type
+// naming two concepts, so each was silently accepted where the other was meant — 1000 Permille means
+// PARITY, 15860 ConcurrentRequestThousandths means 15.86 REQUESTS RESIDENT, and the checker had no
+// way to tell those numbers apart at a formal. ConcurrentRequestHundredths shared the shape with
+// Percent and BasisPoint the same way.
+//
+// THE ROOT (DESIGN 6b): the Quantity axis already carries the distinction std.measure was skipping.
+// A mean number of resident requests is a COUNT at a scale — the same quantity TokenCount and
+// CpuCoreCount carry — and "mean" says how the reading was AGGREGATED (Little's law over an uptime
+// window), which is a property of the observation carrying it, not of the unit. So the aliases moved
+// onto Count at their scale: ConcurrentRequestHundredths is Measure<Count, Centi, Nat>,
+// ConcurrentRequestThousandths is Measure<Count, Milli, Nat>. Percent, BasisPoint, Permille and
+// PartsPerMillion STAY on Dimensionless — one ratio concept at four scales, aliases by the declared
+// route, exactly as the brief permits. No new Quantity arm: a second name for Count would be the
+// same §3 mistake in a new coat.
+//
+// WHY THIS WALL AND NOT A BRAND: a brand is cosmetic until construction enforces it (DESIGN 4b), and
+// std.measure constructs these through the shared Measure record, so a tag on the alias would be
+// decoration. What the checker DOES refuse is a Quantity-argument mismatch on an alias — measured
+// here, byte_size at a Percent formal blocks and the reverse blocks — which is the judgment this
+// change moves the aliases onto. That makes the refusal structural and reachable rather than hoped
+// for. The generic algebra (measure_add, measure_le) still launders a Count and a Dimensionless into
+// one call site by unifying its own Q at the application; that hole is not this change and is
+// already enrolled as gunbc.recurring_failure_mode.an_aliased_generic_application_is_admitted_at_a_distinct_record_formal.
+// The rows below measure it rather than assert it away, so the day that lands these flip with it.
+//
+// EVERY ROW IS AN OBSERVATION, NOT AN OPINION. Each compiles its subject through the real compile
+// path (gunbc.compile_diagnostic_census, the same harness display_pixel_count_refusal_witness uses)
+// and counts BLOCKING rows; the positive controls prove the harness reaches judgment instead of
+// printing a green zero it never earned.
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => rows |> filter(r => r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn census_ran(c: CompileDiagnosticCensus) -> Bool {
+  match c { CensusNotRunnable { cause: _ } => false CensusObserved { rows: _ } => true }
+}
+
+fn rows_of(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
+  match c { CensusNotRunnable { cause: _ } => [] CensusObserved { rows: rows } => rows }
+}
+
+// ── THE REFUSALS THIS CHANGE BUYS ──────────────────────────────────────────────────────────────
+// A Little's-law mean concurrency where a ratio is expected: the fixture the review asked for.
+data mean_at_permille_source: String = "module probe_ratio_vs_countmean_mean_at_permille\nimport std.measure { Permille, ConcurrentRequestThousandths, concurrent_request_thousandths }\nfn parity_share(p: Permille) -> Int { 0 }\nfn call() -> Int { parity_share(p: concurrent_request_thousandths(count: 15860)) }\n"
+
+// The mirror: a ratio where a mean concurrency is expected.
+data ratio_at_thousandths_source: String = "module probe_ratio_vs_countmean_ratio_at_thousandths\nimport std.measure { Permille, ConcurrentRequestThousandths, permille }\nfn resident_requests(c: ConcurrentRequestThousandths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: permille(count: 1000)) }\n"
+
+// The older sibling against the ratio family the review named.
+data hundredths_at_percent_source: String = "module probe_ratio_vs_countmean_hundredths_at_percent\nimport std.measure { Percent, ConcurrentRequestHundredths, concurrent_request_hundredths }\nfn utilization(p: Percent) -> Int { 0 }\nfn call() -> Int { utilization(p: concurrent_request_hundredths(count: 1122)) }\n"
+
+// THE DISCRIMINATING CONTROL THE BRIEF NAMES: a Percent value at a ConcurrentRequestThousandths
+// formal. Structurally Percent was Measure<Dimensionless, One, Nat> and the mean concurrency is
+// Measure<Count, Milli, Nat> — the Quantity argument differs, which the checker refuses on an
+// alias (measured: byte_size at a Percent formal blocks the same way). Before the move both were
+// Measure<Dimensionless, ?, Nat> differing only in Scale, and a percent figure could be handed to
+// a resident-requests formal as a bare number.
+data percent_at_thousandths_source: String = "module probe_ratio_vs_countmean_percent_at_thousandths\nimport std.measure { Percent, ConcurrentRequestThousandths, percent }\nfn resident_requests(c: ConcurrentRequestThousandths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: percent(count: 15)) }\n"
+
+test fn a_mean_concurrency_refuses_at_a_ratio_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(mean_at_permille_source)) > 0
+}
+
+test fn a_ratio_refuses_at_a_mean_concurrency_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(ratio_at_thousandths_source)) > 0
+}
+
+test fn a_hundredth_of_concurrency_refuses_at_a_percent_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(hundredths_at_percent_source)) > 0
+}
+
+test fn a_percent_refuses_at_a_mean_concurrency_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(percent_at_thousandths_source)) > 0
+}
+
+// ── POSITIVE CONTROLS: the wall is reachable, and each concept still admits its own ────────────
+data ratio_at_permille_source: String = "module probe_ratio_vs_countmean_ratio_at_permille\nimport std.measure { Permille, permille }\nfn parity_share(p: Permille) -> Int { 0 }\nfn call() -> Int { parity_share(p: permille(count: 1000)) }\n"
+
+data mean_at_thousandths_source: String = "module probe_ratio_vs_countmean_mean_at_thousandths\nimport std.measure { ConcurrentRequestThousandths, concurrent_request_thousandths }\nfn resident_requests(c: ConcurrentRequestThousandths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: concurrent_request_thousandths(count: 15860)) }\n"
+
+data mean_at_hundredths_source: String = "module probe_ratio_vs_countmean_mean_at_hundredths\nimport std.measure { ConcurrentRequestHundredths, concurrent_request_hundredths }\nfn resident_requests(c: ConcurrentRequestHundredths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: concurrent_request_hundredths(count: 1122)) }\n"
+
+data count_at_hundredths_source: String = "module probe_ratio_vs_countmean_count_at_hundredths\nimport std.measure { ConcurrentRequestHundredths, TokenCount, token_count }\nfn resident_requests(c: ConcurrentRequestHundredths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: token_count(count: 4096)) }\n"
+
+// A count and a ratio still refuse each other where a COUNT was already the axis, which is the
+// wall the moved aliases now share rather than a new one this change invents.
+data byte_size_at_percent_source: String = "module probe_ratio_vs_countmean_byte_size_at_percent\nimport std.measure { Percent, ByteSize, byte_size }\nfn utilization(p: Percent) -> Int { 0 }\nfn call() -> Int { utilization(p: byte_size(count: 4096)) }\n"
+
+test fn a_ratio_is_admitted_at_a_ratio_parameter() -> Bool {
+  let c = compile_dag_diagnostic_census(ratio_at_permille_source)
+  census_ran(c: c) && blocking_total(c: c) == 0
+}
+
+test fn a_mean_concurrency_is_admitted_at_its_own_parameter() -> Bool {
+  let c = compile_dag_diagnostic_census(mean_at_thousandths_source)
+  census_ran(c: c) && blocking_total(c: c) == 0
+}
+
+test fn a_hundredth_of_concurrency_is_admitted_at_its_own_parameter() -> Bool {
+  let c = compile_dag_diagnostic_census(mean_at_hundredths_source)
+  census_ran(c: c) && blocking_total(c: c) == 0
+}
+
+// TokenCount is Measure<Count, One, Nat> and ConcurrentRequestHundredths is Measure<Count, Centi,
+// Nat>: the same Quantity, a DIFFERENT Scale, and Scale is an alias type argument (measured above:
+// Percent at a Permille formal blocks on the scale argument alone). So a bare token count — where a
+// hundredth-of-a-request is not nameable and the count means WHOLE requests — must not pass for a
+// printed hundredths figure (review 87106 on #15301). Had the hundredths alias stayed at One, this
+// row would admit, which is exactly the magnitude collapse the Centi scale exists to refuse.
+test fn a_token_count_refuses_at_a_concurrency_hundredths_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(count_at_hundredths_source)) > 0
+}
+
+test fn a_byte_size_refuses_at_a_percent_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(byte_size_at_percent_source)) > 0
+}
+
+// ── WHERE ONE CONCEPT IS ONE TYPE AND WHERE IT ALREADY IS NOT, MEASURED ────────────────────────
+// The brief allows Percent, BasisPoint and Permille to stay aliases of one ratio concept at
+// different scales. Measured, the ratio family is not one type across its scales: Percent and
+// BasisPoint are BOTH Measure<Dimensionless, One, Nat> and so ARE one structural type (the
+// nicknaming the brief permits inside one concept, and std.measure already carries
+// basis_point_dissolve_on naming the Ratio<Scale> carrier that would ground them properly), while
+// Permille is Measure<Dimensionless, Milli, Nat> and PartsPerMillion is Measure<Dimensionless,
+// Micro, Nat> — a different Scale, which is an alias type argument, so those already refuse each
+// other and refused before this change. The same holds for the two concurrency siblings after the
+// move: Measure<Count, Centi, Nat> against Measure<Count, Milli, Nat>. Recorded as refusals so the
+// boundary this change draws is the CONCEPT boundary and nothing else is claimed about scale.
+data percent_at_permille_source: String = "module probe_ratio_vs_countmean_percent_at_permille\nimport std.measure { Permille, Percent, percent }\nfn parity_share(p: Permille) -> Int { 0 }\nfn call() -> Int { parity_share(p: percent(count: 100)) }\n"
+
+data hundredths_at_thousandths_source: String = "module probe_ratio_vs_countmean_hundredths_at_thousandths\nimport std.measure { ConcurrentRequestThousandths, ConcurrentRequestHundredths, concurrent_request_hundredths }\nfn resident_requests(c: ConcurrentRequestThousandths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: concurrent_request_hundredths(count: 1122)) }\n"
+
+// Percent and BasisPoint ARE one structural type today, and that is the aliasing the brief keeps.
+data basis_point_at_percent_source: String = "module probe_ratio_vs_countmean_basis_point_at_percent\nimport std.measure { Percent, BasisPoint, basis_point }\nfn utilization(p: Percent) -> Int { 0 }\nfn call() -> Int { utilization(p: basis_point(count: 10000)) }\n"
+
+test fn a_percent_refuses_at_a_permille_parameter_because_scale_is_an_alias_argument() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(percent_at_permille_source)) > 0
+}
+
+test fn concurrency_hundredths_refuse_at_the_thousandths_parameter_because_scale_is_an_alias_argument() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(hundredths_at_thousandths_source)) > 0
+}
+
+test fn a_basis_point_is_admitted_at_a_percent_parameter_as_one_ratio_concept_at_one_scale() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(basis_point_at_percent_source)) == 0
+}
+
+// ── THE ALGEBRA HOLE THIS CHANGE DOES NOT CLAIM TO CLOSE ───────────────────────────────────────
+// measure_add and measure_le are generic over Q, so at a call site Q unifies to whichever Quantity
+// the arguments agree on; an alias application is admitted at a distinct formal. That is the
+// enrolled aliased-generic defect, unchanged by this branch. The row asserts the census RAN so the
+// harness cannot be blamed for the figure, and states the blocking total the branch measures: zero.
+// It goes red when that judgment lands, and is rewritten then.
+data add_count_to_ratio_source: String = "module probe_ratio_vs_countmean_add_count_to_ratio\nimport std.measure { Permille, ConcurrentRequestThousandths, permille, concurrent_request_thousandths, measure_add }\nfn total() -> Permille { measure_add(a: permille(count: 1000), b: concurrent_request_thousandths(count: 15860)) }\n"
+
+// EXPECTING-RED: flips with the enrolled aliased-generic judgment, not with the aliases.
+test fn the_generic_algebra_still_admits_a_count_and_a_ratio_together() -> Bool {
+  let c = compile_dag_diagnostic_census(add_count_to_ratio_source)
+  census_ran(c: c) && blocking_total(c: c) == 0
+}
+
+// ── THE CONSUMERS STILL RESOLVE, THROUGH THE SAME COMPILE PATH ─────────────────────────────────
+// The aliases moved axes, so every module that names one had to keep resolving. A fixture that
+// imports the real consumer modules — the #14718 serving modules and the vLLM log/layout readers —
+// and compiles them through the census is what says the migration closed: the census resolves a
+// fixture's import closure against the source root, so a consumer that no longer type-checks shows
+// up as a blocking row here rather than only on the required floor.
+//
+// THE FORM IS DIFFERENTIAL, NOT ABSOLUTE, and it has to be: the census counts the import closure's
+// OWN blocking rows, so this subject carries a non-zero baseline no branch could clear (measured:
+// the same fixture with Int formals blocks just as much). The claim is therefore that the
+// alias-typed surface blocks EXACTLY as much as the same surface typed at the plain Ints it moved
+// off — key by key, through the census module's own comparator. A consumer that stopped resolving
+// on the moved axes adds a row no Int baseline carries, and this goes red on it.
+data consumers_source: String = "module probe_ratio_vs_countmean_consumers\nimport std.types { Bool }\nimport std.measure { ConcurrentRequestHundredths, ConcurrentRequestThousandths, concurrent_request_hundredths, concurrent_request_thousandths }\nimport extdeps.vllm.log_lines { VllmNumberReading }\nimport extdeps.vllm.kv_layout { hundredths_within_printed_precision }\nimport gunbc.serving.flash_next_recipe_throughput_evidence { mean_decode_concurrency, RecipeThroughputVerdict }\nimport gunbc.spark.serving_rank_observe { RankStartupObservation }\nfn uses(predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths, mean: ConcurrentRequestThousandths, reading: VllmNumberReading<ConcurrentRequestHundredths>, verdict: RecipeThroughputVerdict, observed: RankStartupObservation) -> Bool { hundredths_within_printed_precision(predicted: predicted, reported: reported) }\n"
+
+// The same fixture before the move: identical imports, the aliases replaced by the Ints they
+// structurally were. This is the baseline the alias surface has to match, row for row.
+data consumers_int_baseline_source: String = "module probe_ratio_vs_countmean_baseline\nimport std.types { Bool }\nimport std.measure { ConcurrentRequestHundredths, ConcurrentRequestThousandths, concurrent_request_hundredths, concurrent_request_thousandths }\nimport extdeps.vllm.log_lines { VllmNumberReading }\nimport extdeps.vllm.kv_layout { hundredths_within_printed_precision }\nimport gunbc.serving.flash_next_recipe_throughput_evidence { mean_decode_concurrency, RecipeThroughputVerdict }\nimport gunbc.spark.serving_rank_observe { RankStartupObservation }\nfn uses(predicted: Int, reported: Int, mean: Int, reading: Int, verdict: RecipeThroughputVerdict, observed: RankStartupObservation) -> Bool { true }\n"
+
+test fn the_consuming_modules_resolve_on_the_moved_axes() -> Bool {
+  let moved = compile_dag_diagnostic_census(consumers_source)
+  let baseline = compile_dag_diagnostic_census(consumers_int_baseline_source)
+  census_ran(c: moved) && census_ran(c: baseline)
+    && census_blocking_histograms_equal(a: rows_of(c: moved), b: rows_of(c: baseline))
+}

@@ -7,7 +7,7 @@ import gunbc.design_ruling {
   epistemic_humility_is_symmetric,
 }
 import std.markdown { MarkdownBlock }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul }
+import gunbc.plans.md_helpers { p }
 import std.types { List, String }
 
 // THE DESIGN FOR SITE-SEGMENT ANCHORS AND BMC REACH (session bright-swift-248, 2026-10-25): BMCs
@@ -21,102 +21,43 @@ fn ruling_names() -> List<String> {
 
 fn opening() -> List<MarkdownBlock> {
   [
-    h2(text: "1. Target"),
-    ul(items: [
-      li(text: "A BMC or pre-OS client on any segment, at any site, is found, bound and reached through an anchor on that segment, which is a fleet member attached to the overlay."),
-      li(text: "MACs are learned, never typed. Unknown machines are found by a segment census and then converged."),
-      li(text: "A router is expected for now. The routerless case is designed in full and stubbed in code as a typed refusal."),
-      li(text: "The first host at a new site is prepared offsite."),
-    ]),
+    p(text: "Find, bind and reach BMC/pre-OS clients through an overlay-attached member on their segment, at any site. Capture MACs rather than authoring them; census unknown devices before convergence. Endpoint lookup consumes these observations through fleet_naming_reach_access’s endpoint authority. Router reach is current scope; routerless realization is a typed refusal."),
     p(text: concat("Rulings (gunbc.design_ruling): ", join(ruling_names(), ", "))),
-    p(text: "Endpoint resolution for a SiteLanAttachment goes through the endpoint authority of gunbc.plans.fleet_naming_reach_access. This plan supplies the observations that authority reads for site-LAN targets."),
   ]
 }
 
 fn survey() -> List<MarkdownBlock> {
   [
-    h2(text: "2. Survey"),
-    ul(items: [
-      li(text: "**BMC, pre-OS, PXE and appliance addresses are authored as literals:** BMC endpoints in gunbc.fleet.fleet_intent and fleet_intent_network, gunbc.machine_intake.mtcollins1_boot_run mtcollins1_media_share, the NBD server in gunbc.bmc.bmc_virtual_media, the TFTP address in gunbc.fleet.site_pxe_edge_converge, gunbc.machine_intake.mtjade1_factory_network, and the printers. They become anchor observations."),
-      li(text: "**MAC authority:** extdeps.network.mac Eui48Address tells a burned-in address from a software-set one and projects the OUI. It has three stragglers on old types: extdeps.dhcp.v4 MacAddress (a branded string), extdeps.router.verizon_cr1000a Cr1000aDhcpLeaseRow, and gunbc.machine_intake.mtcollins1_netboot_client_observation mtcollins1_host_nic_mac (a bare string)."),
-      li(text: "**Existing building blocks:** extdeps.iputils.arping proves layer-2 presence on a named interface. extdeps.linux.neighbour models the ARP table's states. gunbc.fleet.runtime_identity_match binds the machine that answered to an identity. gunbc.machine_intake.ethernet models a port carrying several functions, such as a BMC on a shared port. product.network_topology NetworkSegment and NetworkAttachmentRole already exist."),
-      li(text: "**Sites:** product.placement_supply SiteIdentity exists. gunbc.fleet.fleet_site_locale fleet_host_site_assignments holds one row."),
-      li(text: "**MAC-keyed DHCP config:** gunbc.site_uefi_arm64_pxe_edge already renders dnsmasq dhcp-host rows keyed by MAC, in ProxyDHCP mode."),
-      li(text: "**Missing: a per-host interface inventory.** MACs are scattered across intake observations."),
-      li(text: "**Taming pipeline:** gunbc.machine_intake.arrival_converge runs access_discover, then identity_bind_provisional, prior_life_boundary and bmc_secure. It has no network-discovery step in front of it."),
-    ]),
+    p(text: "Existing owners: extdeps.network.mac.Eui48Address (permanent/software-set identity and OUI), iputils.arping (named-interface presence), linux.neighbour (ARP states), fleet.runtime_identity_match, machine_intake.ethernet (shared-port functions), product.network_topology.NetworkSegment/NetworkAttachmentRole and placement_supply.SiteIdentity. site_uefi_arm64_pxe_edge already renders MAC-keyed ProxyDHCP. Missing: per-host interface inventory and network discovery before arrival_converge’s access_discover→identity_bind_provisional→prior_life_boundary→bmc_secure."),
+    p(text: "Convert authored BMC/pre-OS/PXE/appliance literals in fleet_intent/fleet_intent_network, mtcollins1_media_share, bmc_virtual_media NBD, site_pxe_edge_converge TFTP, mtjade1_factory_network and printers into observations. Migrate dhcp.v4.MacAddress, Cr1000aDhcpLeaseRow and mtcollins1_host_nic_mac to Eui48Address."),
   ]
 }
 
 fn model() -> List<MarkdownBlock> {
   [
-    h2(text: "3. Model"),
-    ul(items: [
-      li(text: "**Interface inventory.** Per HostIdentity: each interface's function (host OS, dedicated BMC, shared BMC), its permanent Eui48Address and the provenance of the reading."),
-      li(text: "**Segment, not site.** A site may hold several VLANs or isolated segments, so the anchor relation binds one host interface to one segment identity. It extends product.network_topology NetworkSegment, and a site row lists its segments with each one's address-discovery route."),
-      li(text: "**Anchor eligibility.** A member is eligible to anchor a segment when it is tamed (attached to the overlay, its interfaces captured, its site assigned) and has an interface on that segment. The subject being acted on is excluded. With no eligible member, the answer is the typed refusal NoAnchorOnSegment."),
-      li(text: "**Passive and active are different contracts.** Any eligible member may observe passively: read leases, the ARP table, run arping. Active effects need one selected holder per segment, with a lease and an epoch, and fencing of stale writers. The active effects are routerless DHCP, an NFS export, credential delivery and BMC actuation. The lease is std.temporal_effect HeldLease, with fencing via std.durable_compare_and_set. Two eligible members must never both decide they own a segment's DHCP."),
-    ]),
+    p(text: "Per HostIdentity, capture each interface’s role (host OS/dedicated/shared BMC), permanent Eui48Address and provenance. Extend NetworkSegment: bind one host interface to a segment; sites list their segments and discovery routes. Eligibility requires tamed overlay membership, captured interfaces, site assignment and an interface on that segment. Exclude the subject being acted on; no eligible member gives NoAnchorOnSegment."),
+    p(text: "Any eligible member may observe leases/ARP/arping. Active DHCP, NFS export, credential delivery and BMC actuation require one selected holder per segment, std.temporal_effect.HeldLease with epoch and std.durable_compare_and_set fencing. Two members must never both own segment DHCP."),
   ]
 }
 
 fn site_reach() -> List<MarkdownBlock> {
   [
-    h2(text: "4. Reach at any site"),
-    h3(text: "4.1 The first host"),
-    ul(items: [
-      li(text: "**The first host at a new site is tamed offsite before it travels.** It reads its own BMC's MAC and LAN settings in-band over KCS with a local ipmitool, so it needs no network discovery to find its BMC."),
-      li(text: "**Declared residual:** if the first host at a site is down and no other member is there, the site is out of reach until a second member or a person arrives."),
-    ]),
-    h3(text: "4.2 Learning MACs"),
-    ul(items: [
-      li(text: "**BMC:** ipmitool lan print at first contact, out of band or in band."),
-      li(text: "**Host NIC:** ip link at first boot or intake, with the address's permanence checked."),
-      li(text: "**Either:** any DHCP lease or ARP entry the anchor sees."),
-      li(text: "**BMC, before first contact:** the factory sticker (gunbc.machine_intake.bmc_operator_credential_inventory, keyed by BMC MAC)."),
-    ]),
-    h3(text: "4.3 Segment census, then converge"),
-    ul(items: [
-      li(text: "**List the segment.** With a router: a ping sweep of the subnet, then the ARP table. Routerless (stubbed): passive ARP and DHCP listening, plus one IPv6 all-nodes ping."),
-      li(text: "**Classify each device by its learned MAC.** A known device converges. An unknown one gets only an unauthenticated fingerprint: the OUI vendor, IPMI channel-auth capabilities on UDP 623, and the Redfish service-root UUID where one exists. The result is CandidateBmc, CandidateHost or Foreign."),
-      li(text: "**Bind** by an expected-arrival row (board serial or vendor), a factory-sticker MAC match, or one operator confirmation. Then hand off to gunbc.machine_intake.arrival_converge, which records the MACs with their provenance."),
-      li(text: "**Hard rule:** no credential, factory or ours, goes to an unbound device. Before any credential is sent to an address, arping on the named interface must return the learned MAC, every time and not once per site."),
-    ]),
-    h3(text: "4.4 The threat boundary"),
-    ul(items: [
-      li(text: "**A MAC confirmed by arping is evidence of the address binding, not authentication of the device.** It guards against stale DHCP or ARP state and against delivery to the wrong current address. It does not guard against a hostile device on the same layer-2 segment spoofing the expected MAC."),
-      li(text: "On a segment the fleet does not control, a reusable credential is sent only after a stronger device binding: a pinned BMC TLS or SSH host key, a Redfish service-root UUID recorded at intake, or an equivalent. Otherwise only a credential scoped to the one session goes, and it is rotated afterwards. Which BMCs offer which binding is a per-firmware observation."),
-    ]),
-    h3(text: "4.5 Address lookup order"),
-    ul(items: [
-      li(text: "**1. Router lease table**, where the router is readable (the CR1000A lab)."),
-      li(text: "**2. ARP table plus arping with the MAC verified.** This works on any router."),
-      li(text: "**3. Routerless.** The typed refusal RouterlessDiscoveryNotRealized, whose trigger is per-firmware observations of how each BMC behaves without DHCP (link-local IPv4 and IPv6). The designed realization is a DHCP server run by the segment's selected holder (section 3), decided once per segment and enabled only after a bounded check that no other DHCP server answers. It is never an automatic switch, because a second DHCP server on someone else's network breaks it."),
-      li(text: "BMCs use DHCP everywhere, because a foreign site's subnet is unknown in advance."),
-    ]),
+    p(text: "Prepare the first site host offsite. It reads its BMC MAC/LAN in-band via KCS/local ipmitool. If it fails before a second member exists, the site remains unreachable until another member or person arrives. Learn BMC MACs via ipmitool lan print; host NICs via ip link with permanence check; either via leases/ARP; precontact BMC identity via the MAC-keyed bmc_operator_credential_inventory factory sticker."),
+    p(text: "Census: with a router, subnet ping sweep then ARP; designed routerless census uses passive ARP/DHCP and one IPv6 all-nodes ping. Known learned-MAC devices converge; unknown devices receive only unauthenticated OUI/IPMI UDP-623 channel-auth/Redfish service-root UUID fingerprinting into CandidateBmc/CandidateHost/Foreign. Bind via expected arrival (board serial/vendor), sticker MAC or operator confirmation, then arrival_converge records provenance."),
+    p(text: "Never send factory or fleet credentials to an unbound device. Before every delivery, arping on the named interface must match its learned MAC. This proves current address binding, not authentication against MAC spoofing. On uncontrolled segments, reusable credentials require stronger intake binding (pinned BMC TLS/SSH key, recorded Redfish UUID or equivalent); otherwise use one-session credentials and rotate afterwards. Firmware observations determine supported bindings."),
+    p(text: "Lookup order: readable router leases (CR1000A lab); then ARP plus MAC-verified arping; then RouterlessDiscoveryNotRealized. Its realization awaits per-firmware DHCP-absent/link-local IPv4/IPv6 observations: one holder’s DHCP, decided per segment only after a bounded check finds no server. Never switch automatically. BMCs use DHCP because foreign subnets are unknown."),
   ]
 }
 
 fn phases() -> List<MarkdownBlock> {
   [
-    h2(text: "5. Phases"),
-    ul(items: [
-      li(text: "**S1. Interface inventory filled by capture.** extdeps.dhcp.v4 MacAddress, Cr1000aDhcpLeaseRow and mtcollins1_host_nic_mac move onto Eui48Address."),
-      li(text: "**S2. Segment rows and the anchor relation**, binding a host interface to a segment, generalizing the host-to-site assignment, plus the per-segment holder lease."),
-      li(text: "**S3. Anchor address lookup with typed refusals.** The routerless arm is stubbed."),
-      li(text: "**S4. The segment census and its classification**, feeding arrival_converge, with the no-credential-to-unbound rule and its RED."),
-      li(text: "**S5. BMC actions routed through the selected holder.** gunbc.fleet.fleet_intent_network NetworkEndpoint.address moves onto extdeps.network.address IpAddress for the facts that remain, and BMC addresses become anchor observations."),
-    ]),
+    p(text: "S1 capture inventory/MAC migrations; S2 segments, generalized site attachment and holder lease; S3 lookup with routerless refusal; S4 census→intake with a red no-credential-to-unbound control; S5 route BMC actions through the holder, use IpAddress for remaining fleet_intent_network.NetworkEndpoint facts and observations for BMC addresses."),
   ]
 }
 
 fn risks() -> List<MarkdownBlock> {
   [
-    h2(text: "6. Risks and open items"),
-    ul(items: [
-      li(text: "**Rogue DHCP and credential spray on a foreign LAN** are covered by the segment-decided, holder-fenced DHCP fallback, the no-credential-to-unbound rule and the threat boundary in section 4.4."),
-      li(text: "**To observe:** how each BMC firmware behaves without DHCP, and which device bindings each firmware offers."),
-    ]),
+    p(text: "Rogue DHCP and credential spray remain bounded by holder fencing, binding and per-delivery checks. Open observations: each firmware’s no-DHCP behavior and available stronger identity bindings."),
   ]
 }
 
