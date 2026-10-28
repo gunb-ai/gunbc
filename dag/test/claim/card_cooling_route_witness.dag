@@ -24,7 +24,7 @@ import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, mill
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 import product.printed_chassis.chassis_clearances {GapRoom, Room}
-import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout}
+import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion}
 
 // A GapRoom read as a number, ONLY for a test that means to pin a measured gap's room. An unread or
 // over-subscribed gap fails this rather than comparing against somebody's stand-in value -- which is the
@@ -176,6 +176,34 @@ test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card()
     && um(m: plane_on_end_keepout_crossing(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design)) == 26280
     && !plane_on_end_housing_clears_keepout(b: a16_blower_duct_design, f: a16_end_face, d: a16_wall_design())
     && smaller_i(a: um(m: delta_bfb1012m_envelope.housing_length), b: um(m: delta_bfb1012m_envelope.housing_depth)) > um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design()))
+}
+
+// THE LATCH IS ACCOMMODATED, NOT CUT -- AND THE ARITHMETIC SAYS WHY A RELIEF AND NOT A STANDOFF. The
+// operator ruled on 2026-10-28 that the duct must accommodate the plugged 8-pin and its latch (gunbc.design_ruling
+// a16_latch_is_accommodated_not_cut), and required the choice between relief and standoff to be derived. It is
+// derived here, from the same rows the CAD uses: the stack spends two 2 mm wall plates before the housing
+// pocket, and the latch must be assumed 4 mm deep (3 mm read by eye plus this repository's 1 mm width on a
+// by-eye figure), so the floor meets the latch FLUSH -- zero clearance -- and a relief cut is needed even
+// though the latch is small. The standoff the ruling also offered computes to zero millimetres at these
+// readings, so building one would be printing a fiction; what the same arithmetic yields instead is a
+// BOUNDARY, and these witnesses pin both sides of it.
+test fn w_the_latch_is_accommodated_by_relief_and_the_home_refuses_only_past_36_5_mm() -> Bool {
+  let rear = micrometer(count: 70000)
+  let b = a16_blower_duct_design
+  let d = a16_wall_design()
+  // The latch as read (3 mm) and as it must be assumed (4 mm, with the width on an eye reading) both admit
+  // under relief alone, and so does a cable that stays compliant to 20 mm behind the face.
+  plane_on_end_connector_protrusion_admits(reach: micrometer(count: 3000), b: b, d: d, rear_bound: rear)
+    && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 4000), b: b, d: d, rear_bound: rear)
+    && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 20000), b: b, d: d, rear_bound: rear)
+  // The boundary itself, from the rows: floor 4 mm + (70 - 37.5) mm of headroom = 36.5 mm. At it, admissible;
+  // 3.5 mm past it, refused. This is the number the fit print checks against.
+    && um(m: plane_on_end_max_admissible_protrusion(b: b, d: d, rear_bound: rear)) == 36500
+    && plane_on_end_connector_protrusion_admits(reach: micrometer(count: 36500), b: b, d: d, rear_bound: rear)
+    && !plane_on_end_connector_protrusion_admits(reach: micrometer(count: 40000), b: b, d: d, rear_bound: rear)
+  // And the boundary is not a constant: tighten the rear bound to 40 mm and the same duct admits only 6.5 mm
+  // of protrusion, because the home's own stack has eaten nearly all the room.
+    && um(m: plane_on_end_max_admissible_protrusion(b: b, d: d, rear_bound: micrometer(count: 40000))) == 6500
 }
 
 // THE REFUSAL IS THE SAME CODE WITH A SMALLER NUMBER IN IT. Nothing below hand-writes a verdict: at 30 mm

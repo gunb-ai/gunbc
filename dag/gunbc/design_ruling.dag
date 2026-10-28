@@ -451,6 +451,20 @@ data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignR
   provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
 }
 
+// The follow-on ruling to a16_power_keepout_is_crossed_and_the_latch_may_be_cut. The first ruling admitted
+// the crossing on the operator's offer to cut the latch; this one withdraws the need to cut anything, and
+// says what the part must do instead. Recorded as RELAYED, because the wording below is wise-bat-528's relay
+// of the operator's answer and not a sentence the operator typed -- the operator's own words on this object
+// remain the two quoted in chassis_clearances power_connector_latch ("the plug latch is 3mm") and in the
+// crossing ruling above ("I can just cut it probably for now, but i can measure whatever you want").
+data a16_latch_is_accommodated_not_cut: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "a16_latch_is_accommodated_not_cut"),
+  decided: "2026-10-28",
+  section: "4d",
+  provenance: "Operator ruling relayed by wise-bat-528 on 2026-10-28, answering this repository's report that the shoulder's floor lies over the 8-pin band: 'Don't require cutting the latch -- make the flat-on-end duct ACCOMMODATE the plugged 8-pin + its 3 mm latch (e.g. a notch/relief in the shroud around the connector band, or a standoff that lifts the blower clear of the plugged plug within the 70 mm rear bound -- your call, derived not guessed)'. What was built, and how it was derived rather than chosen: the stack behind the end spends two wall plates (2 * 2 = 4 mm) before the housing pocket, and the latch must be assumed to reach 4 mm (3 mm read by eye on 2026-10-27 plus this repository's 1 mm width on a by-eye figure of a small feature), so the floor and the latch meet flush at zero clearance -- a relief cut is needed on these readings even though the latch is small. product.printed_chassis.gpu_duct plane_on_end_connector_relief therefore removes the floor across the connector's own keep-out footprint, so the plugged header and its latch sit in a cleared window and nothing has to be cut. The alternative the ruling offered -- a standoff -- was computed and NOT built, because at the readings on file the lift needed is zero millimetres; the same arithmetic gives the home its limit, which is plane_on_end_max_admissible_protrusion at 36.5 mm (floor 4 mm + the 32.5 mm the declared 70 mm bound leaves after the 37.5 mm stack), beyond which relief cannot help and the home refuses. What this ruling does NOT establish: how far the plugged cable body itself protrudes before it bends, which has never been read (the operator offered exactly that measurement: 'i can measure whatever you want'). It is the one reading that could still refuse this home, and the fit print plugged is the instrument that catches it.",
+}
+
+
 fn design_rulings() -> List<DesignRuling> {
   [
     macos_operator_terminal_runs_without_a_memory_bound,
@@ -506,6 +520,7 @@ fn design_rulings() -> List<DesignRuling> {
     drain_wait_bound_is_derived_from_declared_job_timeouts,
     a16_rear_clearance_and_sides_are_operator_declared_bounds,
     a16_power_keepout_is_crossed_and_the_latch_may_be_cut,
+    a16_latch_is_accommodated_not_cut,
     a16_beside_the_card_is_the_chosen_home,
     a16_chassis_readings_of_2026_10_27_are_operator_reported,
     a16_end_cap_scroll_is_the_operators_reference_design,
