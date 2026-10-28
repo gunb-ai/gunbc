@@ -54,6 +54,7 @@ type JitSlotExit
   | SlotNeverLaunched { cause: NonEmptyStr }
   | SlotListenerOutcomeUnobserved { cause: NonEmptyStr }
   | SlotLostBoot { superseded_by: ServiceBootId }
+  | SlotUnitStopping { unit: NonEmptyStr }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
 // only constructor, so the runner this fold may delete is one an authorized mint named -- a caller
@@ -91,14 +92,39 @@ type RecoveredReservedRegistration sole_constructor {
   installation: GitHubAppInstallationId
 }
 
+// THE STOPPING UNIT'S OWN REGISTRATION (gunbc.plans.mtcollins1_ci_service_legs F3). When a service-slot unit is
+// stopped -- the host shuts down, or the unit is stopped -- its ExecStop runs in a process that holds no dispatch
+// value, so its registration is not a JitRegistration; nor is it recovered from a lost boot, because the boot is the
+// current one and the unit is a member of its population. It is its own sealed record, minted only from the
+// registration subject the slot's own binding carries (gunbc.runner.runner_jit_mint_binding
+// binding_stopping_subject), so the name is the one the mint would register and nothing a caller states. The App and
+// installation are the authority's, as for the other arms.
+type StoppingServiceRegistration sole_constructor {
+  organization: GitHubOrganizationRef
+  name: JitRunnerName
+  app: DeclaredGitHubApp
+  installation: GitHubAppInstallationId
+}
+
+fn stopping_service_registration_of(organization: GitHubOrganizationRef, subject: JitRegistrationSubject, authority: GitHubCredentialAuthority) -> StoppingServiceRegistration? admit_callers: [
+  decl_ref(module_path: "gunbc.runner.runner_jit_mint_binding", decl_name: "binding_stopping_subject"),
+] {
+  match authority_installation(authority: authority) {
+    Absent => none
+    Present { value: held } => Present { value: StoppingServiceRegistration { organization: organization, name: subject.name, app: held.app, installation: held.installation } }
+  }
+}
+
 type JitDeregistrationSubject
   = AuthorizedDispatchRegistration { registration: JitRegistration }
   | RecoveredReservedServiceRegistration { recovered: RecoveredReservedRegistration }
+  | StoppingServiceUnitRegistration { stopping: StoppingServiceRegistration }
 
 fn deregistration_organization(subject: JitDeregistrationSubject) -> GitHubOrganizationRef {
   match subject {
     AuthorizedDispatchRegistration { registration: r } => r.organization
     RecoveredReservedServiceRegistration { recovered: r } => r.organization
+    StoppingServiceUnitRegistration { stopping: r } => r.organization
   }
 }
 
@@ -106,6 +132,7 @@ fn deregistration_name(subject: JitDeregistrationSubject) -> JitRunnerName {
   match subject {
     AuthorizedDispatchRegistration { registration: r } => r.name
     RecoveredReservedServiceRegistration { recovered: r } => r.name
+    StoppingServiceUnitRegistration { stopping: r } => r.name
   }
 }
 
@@ -113,6 +140,7 @@ fn deregistration_app(subject: JitDeregistrationSubject) -> DeclaredGitHubApp {
   match subject {
     AuthorizedDispatchRegistration { registration: r } => r.app
     RecoveredReservedServiceRegistration { recovered: r } => r.app
+    StoppingServiceUnitRegistration { stopping: r } => r.app
   }
 }
 
@@ -120,6 +148,7 @@ fn deregistration_installation(subject: JitDeregistrationSubject) -> GitHubAppIn
   match subject {
     AuthorizedDispatchRegistration { registration: r } => r.installation
     RecoveredReservedServiceRegistration { recovered: r } => r.installation
+    StoppingServiceUnitRegistration { stopping: r } => r.installation
   }
 }
 
