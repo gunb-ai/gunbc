@@ -26,7 +26,16 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
   bootstrap_delta_over, roster_subjects, subject_cells, observer_reach,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { root_cell_repair_ceremony }
-import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over, BootstrapJournalBucket, BootstrapTrustRootTags, iam_bootstrap_stage_order, iam_bootstrap_stage_owed, CeremonySubjectReading, ceremony_unestablished_cell_phrases, ceremony_owned_proof_refusal, iam_bootstrap_ceremony_owned_cells }
+import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags,
+  iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over,
+  IamBootstrapStage, iam_bootstrap_stages, iam_bootstrap_stage_order, iam_bootstrap_stage_owed, iam_bootstrap_stage_wire,
+  iam_bootstrap_stage_bindings, CeremonySubjectReading, ceremony_unestablished_cell_phrases,
+  ceremony_owned_proof_refusal, iam_bootstrap_ceremony_owned_cells
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── WHAT THESE CLAIMS ARE ABOUT ───────────────────────────
 // The side chat's three structural findings on gunbc#14360 (relayed by warm-crane-219, 2026-10-19), each
 // at the interface it names:
 //   1. the root ceremony binds only root cells: one derivation, split into a ceremony population and a
@@ -299,11 +308,22 @@ fn stage_wires(stages: List<IamBootstrapStage>) -> List<String> {
   map(stages, s => iam_bootstrap_stage_wire(stage: s))
 }
 
-// THE FOLDED ROW COVERS EVERY OWED STAGE, IN ORDER. The row is a single-line membership literal
-// (#14608: the host parser silently does not admit multi-line membership rows), so the row drifting
-// away from the owed set is exactly the 2026-10-27 channel: trust-root-tags and journal-bucket ran
-// nothing, wrote no receipt, and cost no refusal because every check folded over the row itself.
-test fn the_folded_stage_row_covers_every_owed_stage_in_order() -> Bool {
+// THE RUN FOLDS ALL TWELVE STAGES, IN ORDER, BY WIRE NAME. The expectation is spelled out HERE rather
+// re-derived from the module, so this claim is what goes red when a stage leaves the run by any route:
+// dropped from the order literal, or dropped because a population the stage owes went empty. On
+// 2026-10-27 the run folded 10 stages, wrote no receipt for trust-root-tags or journal-bucket, and
+// cost no refusal, because every in-run check folded over the run's own list.
+test fn the_ceremony_folds_all_twelve_stages_in_order() -> Bool {
+  stage_wires(stages: iam_bootstrap_stages) == [
+    "services", "identities", "journal-bucket", "trust-root-tags", "roles", "deny",
+    "authority-cleanup", "capabilities", "probe-authority", "privilege-readback",
+    "probe-cleanup", "workflow-trust"
+  ]
+}
+
+// THE ORDER LITERAL AND THE FOLDED ROW AGREE ON THE SET THE ESTATE OWES: every owed stage is in the
+// run and nothing unowed is, so the run cannot fold a stage nobody owes nor skip one everybody does.
+test fn the_folded_run_is_exactly_the_owed_stages_in_declared_order() -> Bool {
   let owed = filter(iam_bootstrap_stage_order, s => iam_bootstrap_stage_owed(stage: s))
   count(owed) == count(iam_bootstrap_stages)
     && stage_wires(stages: owed) == stage_wires(stages: iam_bootstrap_stages)

@@ -83,15 +83,13 @@ type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrus
 
 data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
-// A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. `data iam_bootstrap_stages` is the run's
-// folded row and stays a single-line literal (#14608: the host parser silently does not admit multi-line
-// membership rows -- that is exactly how trust-root-tags and journal-bucket vanished on 2026-10-27: the
-// run executed 10 stages, wrote no receipt for the other two, and cost no refusal, because every in-run
-// check folded over the row itself). THE CLAIMS ARE WHAT PIN THE ROW TO THIS PREDICATE: every owed
-// stage must appear, in order, or the witness refuses (test.claim.
-// gcp_iam_bootstrap_population_split_witness the_folded_stage_row_covers_every_owed_stage_in_order). The
-// populations here are the SAME ones the capability stage writes and the post-run proof folds, so a
-// stage whose work is declared cannot quietly drop out of a run.
+// A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. THE POPULATIONS THIS PREDICATE READS ARE
+// THE SAME ONES THE STAGES EXECUTE (iam_bootstrap_execute_stage, iam_bootstrap_stage_bindings) AND THE
+// POST-RUN PROOF READS BACK (iam_bootstrap_ceremony_owned_cells) -- one derivation for what a stage
+// owes, what it does, and what must be true afterwards. The claims pin the predicate to the estate:
+// all twelve stages are owed today, so a population going empty (which drops its stage from the run)
+// goes red in test.claim.gcp_iam_bootstrap_population_split_witness rather than silently shrinking a
+// ceremony (the 2026-10-27 shape: 10 of 12 stages, no receipts for the other two, no refusal).
 fn iam_bootstrap_stage_owed(stage: IamBootstrapStage) -> Bool {
   match stage {
     BootstrapServices => count(iam_bootstrap_required_services) > 0
@@ -109,7 +107,13 @@ fn iam_bootstrap_stage_owed(stage: IamBootstrapStage) -> Bool {
   }
 }
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+// THE FOLDED ROW, DERIVED: the order filtered to the stages with declared work. THE ONLY LITERAL IS
+// iam_bootstrap_stage_order ABOVE, so "the run folded 10 of 12 stages" is no longer expressible -- on
+// 2026-10-27 the run's row and the ceremony's obligations were two lists and only the delta noticed
+// they disagreed. A stage can now leave the run ONLY by its population being genuinely empty, which is
+// what iam_bootstrap_stage_owed computes from the same populations the stages execute and the
+// post-run proof reads back.
+data iam_bootstrap_stages: List<IamBootstrapStage> = filter(iam_bootstrap_stage_order, s => iam_bootstrap_stage_owed(stage: s))
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
