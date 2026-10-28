@@ -1643,7 +1643,11 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
 
 // ALL BUT THE LAST, IN ORDER. The recursion this replaced (Cons { head: h, tail: list_init(t) }) made the
 // CALL DEPTH the list's length: under the seed interpreter every caller inherited an overflow at ~10^5
-// members (measured: rc=134 through v2.extdeps.languages.dag's string-literal framing on main a430c878e5cf).
+// members. §6 names the producer, not the reading: the RED claim
+// v2.test.claim.execution.dag_emit_interface dag_string_scalar_body_read_by_slice_reaches_the_decode_lane,
+// run through `claim_batch --claim-run`, re-derives that overflow on the replaced shape (it dies by stack
+// overflow, not by a wrong answer), and v2.test.claim.derived_roster_seed_agreement
+// rung_drop_standing_acquires_with_its_derived_roster reached the same depth through this combinator.
 // DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
 // read one step ago is only committed to the kept list when its successor arrives — so the last element is
 // what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
