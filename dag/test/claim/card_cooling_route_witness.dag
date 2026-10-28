@@ -8,21 +8,34 @@ import product.printed_chassis.card_cooling_route {
   RouteDemand, ShapeExtent,
   admit_home, admit_plane_on_end, admit_home_over, ask,
   plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back, plane_on_end_overhang_per_side,
-  plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout_um, plane_on_end_keepout_crossing_um, plane_on_end_housing_clears_keepout,
-  beside_the_row_demand, over_the_row_height, a16_slot_pitch_um, smaller_i,
+  beside_the_row_demand, over_the_row_height, smaller_i, a16_slot_pitch,
   shape_um, shape_max_for_home, extent_display, flat_on_end_pair_need, flat_on_end_pair_span, flat_on_end_twin_verdict,
-  scroll_run_back, scroll_max_wheel_diameter, scroll_intake_facing, scroll_fit_report, scroll_fit_report_at,
+  scroll_intake_facing, scroll_poses, scroll_pose_verdict, scroll_pose_admits, scroll_pose_summaries, scroll_is_not_a_second_geometry,
   required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
-import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room_um, remeasure_before_print}
+import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
 import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
 import extdeps.fans.types {RadialBlowerEnvelope}
-import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, millilitre_per_second, millilitre_per_second_count, micrometer, micrometer_count, percent, percent_count, watt, watt_count, measure_count}
+import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, millilitre_per_second, millilitre_per_second_count, micrometer, micrometer_count, watt, watt_count}
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
+import product.printed_chassis.chassis_clearances {GapRoom, Room}
+import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout}
+
+// A GapRoom read as a number, ONLY for a test that means to pin a measured gap's room. An unread or
+// over-subscribed gap fails this rather than comparing against somebody's stand-in value -- which is the
+// whole point of the sum type (gunbc.design_ruling dag_absence_is_one_meaning).
+fn room_ok(r: GapRoom, at_most: Int) -> Bool {
+  match r { Room {room: v, from: _} => micrometer_count(m: v) == at_most _ => false }
+}
+
+// The same for a reported planform extent: a 'no cap' (unread) extent fails it, it never passes as a number.
+fn extent_count(e: ShapeExtent) -> Int {
+  match e { Fits {at_most: v, capped_by: _} => micrometer_count(m: v) FullySubscribed {short_by: _, capped_by: _} => 0 - 1 Unread {obligation: _} => 0 - 1 }
+}
 
 // ═══ THE 70 mm IS NOT THE ONLY CONSTRAINT, AND THE WITNESSES SAY SO ═══
 //
@@ -71,7 +84,7 @@ test fn w_plane_on_end_spills_into_the_neighbour_lane() -> Bool {
 test fn w_the_overhang_asks_per_side_what_the_sides_gave_per_side() -> Bool {
   plane_on_end_overhang_per_side(b: a16_blower()) == (97200 - 40640) / 2
     && plane_on_end_overhang_per_side(b: a16_blower()) == 28280
-    && a16_slot_pitch_um() == 40640
+    && um(m: a16_slot_pitch()) == 40640
 }
 
 // THE STRAIGHT BACK, MEASURED HONESTLY: what the duct built today asks for behind the end is the socket's
@@ -140,9 +153,9 @@ test fn w_the_margin_is_taken_against_the_allowed_bound_not_the_rough_reading() 
 // model put under the operator's bound. If someone thickens a wall, this fails before a plate is planned,
 // rather than the print discovering 4 mm that the chassis never agreed to.
 test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
-  plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())
+  um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()))
     == plane_on_end_run_back(b: a16_blower(), d: a16_wall_design())
-    && plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design()) == 37500
+    && um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_wall_design())) == 37500
 }
 
 // THE SHARP OPEN POINT, PINNED AS AN ARITHMETIC FACT AND NOT AS A PARAGRAPH. The A16 end face is 97.84 mm;
@@ -153,10 +166,10 @@ test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
 // placement mistake to be slid out of. Pinned so that a future change to either figure is noticed: if the
 // clearance ever becomes real, this witness fails and says so, rather than the part quietly becoming legal.
 test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card() -> Bool {
-  plane_on_end_face_clear_of_keepout_um(f: a16_end_face, d: a16_wall_design()) == 71840
-    && plane_on_end_keepout_crossing_um(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design) == 22400
+  um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design())) == 71840
+    && um(m: plane_on_end_keepout_crossing(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design)) == 22400
     && !plane_on_end_housing_clears_keepout(b: a16_blower_duct_design, f: a16_end_face, d: a16_wall_design())
-    && smaller_i(a: um(m: delta_bfb1012m_envelope.housing_length), b: um(m: delta_bfb1012m_envelope.housing_depth)) > plane_on_end_face_clear_of_keepout_um(f: a16_end_face, d: a16_wall_design())
+    && smaller_i(a: um(m: delta_bfb1012m_envelope.housing_length), b: um(m: delta_bfb1012m_envelope.housing_depth)) > um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design()))
 }
 
 // THE REFUSAL IS THE SAME CODE WITH A SMALLER NUMBER IN IT. Nothing below hand-writes a verdict: at 30 mm
@@ -259,7 +272,7 @@ test fn w_the_bench_list_carries_every_gap_the_model_refuses_on() -> Bool {
 // extdeps.fans.delta delta_bfb1012m_outlet_standing); what this module's tests must pin is that the route
 // model CARRIES the obligation rather than silently assuming the aim.
 test fn w_outlet_alignment_stays_an_obligation_not_a_check() -> Bool {
-  string_length(outlet_alignment_obligation()) > 0
+  string_length(s: outlet_alignment_obligation()) > 0
 }
 
 // ═══ THE CARD ROWS ═══
@@ -273,7 +286,7 @@ test fn w_the_a16_row_is_transcribed_not_sealed() -> Bool {
     && length(list: row_unread_fields(row: a16_row)) > 0
     && match row_field_obligation(field: a16_row.end_face_length) {
          Absent => false
-         Present { value: o } => string_length(o) > 0
+         Present { value: o } => string_length(s: o) > 0
        }
 }
 
@@ -313,10 +326,12 @@ test fn w_the_six_2026_10_27_readings_are_carried_and_none_of_them_admits_anythi
 test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothing() -> Bool {
   // '60mm until it touches the heatsink', with this repository's 10 mm width on a by-eye figure: the
   // beside-the-row home needs 98.4 mm across that lane, so it refuses, and the refusal names the lane.
-  let room = gap_room_um(g: side_lane_width)
+  // The room is carried as a GapRoom, never as a bare number: an unmeasured gap must not be able to reach
+  // an arithmetic path at all (gunbc.design_ruling dag_absence_is_one_meaning).
+  let room = gap_room(g: side_lane_width)
   let need = beside_the_row_demand(b: a16_blower(), d: a16_wall_design())
   let verdict = ask(gap: side_lane_width, need: need, home: BesideTheRow, unmet: RouteDemand { name: "housing width across the free lane", needed: shape_um(m: need), of_gap: "free lane beside the card row" })
-  room == 50000 && need == 98400 && match verdict {
+  room_ok(r: room, at_most: 50000) && need == 98400 && match verdict {
     Present { value: r } => match r {
       RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "free lane beside the card row"
       _ => false
@@ -326,11 +341,11 @@ test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothi
 }
 
 test fn w_the_lid_refuses_the_over_the_row_home_and_the_card_height_is_subtracted_first() -> Bool {
-  let riser = shape_um(m: 6000)
+  let riser = micrometer(count: 6000)
   let need = over_the_row_height(f: a16_end_face, d: a16_wall_design(), b: a16_blower(), riser: riser)
   let verdict = ask(gap: deck_to_lid_clearance, need: need, home: OverTheRow {riser: riser}, unmet: RouteDemand { name: "deck to lid above the row", needed: shape_um(m: need), of_gap: "deck to chassis lid, behind the plug end" })
   // 120 mm floor-to-lid, with its width taken off: 110000. The demand carries the card's own 97840.
-  gap_room_um(g: deck_to_lid_clearance) == 110000 && need == 143340 && match verdict {
+  room_ok(r: gap_room(g: deck_to_lid_clearance), at_most: 110000) && need == 143340 && match verdict {
     Present { value: r } => match r {
       RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "deck to chassis lid, behind the plug end"
       _ => false
@@ -343,51 +358,60 @@ test fn w_two_ducted_cards_clear_the_gap_between_them_and_the_arithmetic_is_the_
   // 56.56 mm of overhang against pitch + the estimated gap = 40.64 + 41 = 81.64 mm. Comparing the
   // overhang against the 46 mm gap alone would refuse this and would be wrong; the margin is pinned so a
   // future edit cannot swap the comparison without failing here.
-  flat_on_end_pair_need(b: a16_blower()) == 56560 && flat_on_end_pair_span() == 81640 && string_contains(s: flat_on_end_twin_verdict(), pattern: "clear, with 25080 um to spare")
+  micrometer_count(m: flat_on_end_pair_need(b: a16_blower())) == 56560
+    && room_ok(r: flat_on_end_pair_span(), at_most: 81640)
+    && string_contains(s: flat_on_end_twin_verdict(), pattern: "clear, with 25 mm to spare")
 }
 
+// THE LARGEST PLANFORM A HOME MAY DRAW, with the cap that binds it NAMED and an extent no reading reaches
+// reported as unread instead of as a number. The cap for a single ducted card across the slot is one pitch
+// plus the declared side lane on each side; the two-card case is its own verdict, because the pair of
+// overhangs faces each other across one gap rather than each spending a full lane.
 test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_extent() -> Bool {
   let d = a16_wall_design()
-  let beside = shape_max_for_home(home: BesideTheRow, d: d, riser: 6000)
-  let plane = shape_max_for_home(home: PlaneOnEnd, d: d, riser: 6000)
+  let beside = shape_max_for_home(home: BesideTheRow, d: d, riser: micrometer(count: 6000))
+  let plane = shape_max_for_home(home: PlaneOnEnd, d: d, riser: micrometer(count: 6000))
   // Beside the row: 50000 of lane, less two walls and two band clearances = 42000 across the lane; and the
   // extent no reading reaches (fan thickness toward a lid that was never read at deck height) says "no cap".
-  measure_count(m: beside.across_the_binding_gap.at_most) == 42000 && beside.across_the_binding_gap.measured
-    && beside.behind_the_end.measured == false && string_contains(s: extent_display(e: beside.behind_the_end), pattern: "no cap")
-    // Flat on the end, two ducted cards: capped by the pair span, not by the card's height.
-    && measure_count(m: plane.across_the_binding_gap.at_most) == 81640
-    && measure_count(m: plane.along_the_row.at_most) == 97840
+  extent_count(e: beside.across_the_binding_gap) == 42000
+    && string_contains(s: extent_display(e: beside.behind_the_end), pattern: "no cap")
+    // Flat on the end: one pitch + 2 * the declared lane = 150640 across the slot, and the card's own
+    // end-face height along the row. Not 81640: that is the PAIR cap, and charging it to a single card
+    // would forbid room the twin case shows the card never spends.
+    && extent_count(e: plane.across_the_binding_gap) == 150640
+    && extent_count(e: plane.along_the_row) == 97840
 }
 
-test fn w_the_end_cap_scroll_is_capped_by_the_space_between_two_ducted_cards() -> Bool {
-  let d = a16_wall_design()
-  let at_40 = scroll_max_wheel_diameter(wheel_width_over_diameter: percent(count: 40), d: d)
-  // At a wheel 40% as wide as it is tall, the wheel would need 70 mm of rear room only at a 165 mm
-  // diameter, and the card's own height caps it at 97.84 -- so neither of those binds; the 81.64 mm the two
-  // ducted cards leave across the slot does.
-  measure_count(m: at_40.at_most) == 81640 && string_contains(s: at_40.capped_by, pattern: "between the two cards")
-    && micrometer_count(m: scroll_run_back(wheel_diameter: micrometer(count: 81640), wheel_width_over_diameter: percent(count: 40), d: d)) == 36656
+// THE SCROLL IS ONE GEOMETRY WITH THE FLAT-ON-END DUCT, ONCE THE FAN IS FIXED. The reference image's
+// sideways-intake pose has to put a DISC dimension behind the plug end -- 94.4 mm, or 97.2 mm spun the other
+// way -- against the operator's declared 70 mm. Both refusals are on cited envelope dimensions, not on
+// anyone's estimate, and the pose that does clear is the one the printable duct already uses.
+test fn w_the_reference_images_sideways_intake_pose_is_refused_by_the_fans_own_dimensions() -> Bool {
+  let lines = scroll_pose_summaries()
+  length(list: lines) == 3
+    && string_contains(s: lines[0], pattern: "REFUSED") && string_contains(s: lines[0], pattern: "94 mm")
+    && string_contains(s: lines[1], pattern: "REFUSED") && string_contains(s: lines[1], pattern: "97 mm")
+    && string_contains(s: lines[2], pattern: "ADMITTED")
+    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "one geometry, not two")
 }
 
-test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_declared_rear_bound() -> Bool {
-  let d = a16_wall_design()
-  // The three caps: card height 97840, twin-card span 81640 (both fixed), and rear depth (66000 * 100 /
-  // ratio), which is the only one that moves with the wheel's proportions. At a sane 40% the span caps; a
-  // wheel so fat that its width needs all the declared room behind the end puts the rear bound in charge
-  // first: (70000 - 2*2000) * 100 / 90 = 73333, below the span's 81640. The card's own height never binds
-  // while the twin-card span caps below it -- the report must name the cap that actually binds, not the
-  // flattering one.
-  let at_90 = scroll_max_wheel_diameter(wheel_width_over_diameter: percent(count: 90), d: d)
-  measure_count(m: at_90.at_most) == 73333 && string_contains(s: at_90.capped_by, pattern: "behind the plug end")
-    && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: percent(count: 90)), "\n"), pattern: "ratio: 90 percent")
+test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
+  // The upright pose's rear spend is the duct's own run-back, from the same fn the CAD is built with -- so
+  // the report cannot drift from the geometry. 33 mm of housing with its tolerance plus two 2 mm walls.
+  let pose = (scroll_poses(fan: a16_blower(), d: a16_wall_design()))[2]
+  micrometer_count(m: pose.behind_end) == 37500 && micrometer_count(m: pose.across_row) == 97200
+    && micrometer_count(m: pose.height) == 94400
+    && scroll_pose_admits(fits: scroll_pose_verdict(pose: pose, d: a16_wall_design()))
 }
 
-test fn w_both_cards_intakes_face_each_other_across_the_inter_card_gap() -> Bool {
-  // The operator's own numbers put 'a few mm' on one outer side, so neither card can drink through the
-  // wall; card 0 faces the 60 mm heatsink lane and card 1 faces the gap between the cards. The consequence
-  // -- both intakes in the same air -- is what the fit print is for.
+test fn w_both_cards_intakes_face_their_own_vertical_axes_not_each_other() -> Bool {
+  // The fixed fan's inlets face along its axis, which stands vertical in the only pose that admits -- so
+  // the "two cards drinking the same air between them" consequence the sideways pose would have had never
+  // arises. What the readings DO bear on is where replacement air comes from, and the free lane is the
+  // '60mm until it touches the heatsink' side.
   string_contains(s: scroll_intake_facing(card_index: 0, card_count: 2), pattern: "60mm until it touches the heatsink")
-    && string_contains(s: scroll_intake_facing(card_index: 1, card_count: 2), pattern: "inter-card gap")
+    && string_contains(s: scroll_intake_facing(card_index: 1, card_count: 2), pattern: "60mm until it touches the heatsink")
+    && string_contains(s: scroll_intake_facing(card_index: 0, card_count: 1), pattern: "above and below")
     && scroll_intake_facing(card_index: 2, card_count: 2) == "no such card in the row"
 }
 
@@ -418,10 +442,12 @@ test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() 
     && string_contains(s: bfb1012m_flow_context(), pattern: "TranscribedUncited")
 }
 
-test fn w_the_scroll_report_says_it_is_a_shape_and_not_a_part() -> Bool {
-  let rows = scroll_fit_report()
-  length(list: rows) == 5
-    && string_contains(s: join(rows, "\n"), pattern: "percent")
-    && string_contains(s: join(rows, "\n"), pattern: "fits a wheel at most")
-    && string_contains(s: join(rows, "\n"), pattern: "no vendor, no model, no datasheet")
+// NOTHING IN THE SCROLL REPORT INVENTS A PART. The wheel question died with the operator's ruling that the
+// fan is fixed, so what is left must name the fan it is sizing around and must not read like a product
+// listing. The pose report is the only scroll output this module has now, and it cites the envelope row.
+test fn w_the_scroll_report_names_the_fan_it_is_sizing_around() -> Bool {
+  let lines = scroll_pose_summaries()
+  length(list: lines) == 3
+    && string_contains(s: join(list: lines, separator: "\n"), pattern: "the reference image's pose")
+    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "delta_bfb1012m_envelope")
 }

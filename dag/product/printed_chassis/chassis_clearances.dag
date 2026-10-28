@@ -356,8 +356,10 @@ fn chassis_gaps_display() -> String {
   join(map(chassis_gaps, g => gap_display(g: g)), "\n")
 }
 
-// The room a gap actually LEAVES a design, in micrometres -- the single place where the three standings are
-// turned into a number a need can be compared with, so no caller can quietly spend an estimate's face value.
+// The room a gap actually LEAVES a design, as a type rather than a number. This is the single place where
+// the standings become something a need can be compared with, so no caller can quietly spend an estimate's
+// face value -- and it is a sum type because "there is no reading" is a fact of a different kind from "the
+// reading is small".
 //
 //   declared bound   the number the operator authored as an allowance. It is what may be spent, and the
 //                    reading behind it (73 mm, in the rear gap's case) may not be.
@@ -365,17 +367,44 @@ fn chassis_gaps_display() -> String {
 //                    given by eye with a 10 mm width on it leaves 50 mm of room, and spending 60 would
 //                    launder a guess into a guarantee.
 //   a caliper reading  the distance itself; the instrument's grain is far below every need in this corpus.
-//   unread             nothing. Negative, so any non-negative need refuses and says which gap failed.
-fn gap_um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+//   unread           NO READING -- its own case, carrying the row's reading obligation. Not zero, not -1,
+//                    not a small number: absence means exactly one thing here
+//                    (gunbc.design_ruling dag_absence_is_one_meaning), and a minus-one that flows into
+//                    arithmetic comes back three subtractions later as a plausible-looking negative extent,
+//                    which is a fabricated output wearing a measured face.
+//
+// OverSubscribed is the case the old sign-based encoding merged into "unread": a gap that WAS read and
+// leaves less than nothing. It carries the shortfall as a positive Micrometer, because a Micrometer's count
+// is a Nat and the shortfall is what a reader needs -- and the fact that it was MEASURED stays visible.
+type GapRoom
+  = Room { room: Micrometer, from: NonEmptyStr }
+  | OverSubscribed { shortfall: Micrometer, from: NonEmptyStr }
+  | NoReading { obligation: NonEmptyStr }
 
-fn gap_room_um(g: ChassisGap) -> Int {
+// Who said the gap is what it is, in the row's own words, with an estimate's width named where it is
+// subtracted. This is what an extent's `capped_by` carries, so any number a report shows can be traced back
+// to the sentence that produced it.
+fn standing_origin(g: ChassisGap) -> NonEmptyStr {
   match g {
-    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: st} =>
-      if gap_is_estimate(g: g) {
-        match gap_declared_bound(g: g) { Present { value: b } => gap_um(m: dist) - gap_um(m: b) Absent => gap_um(m: dist) }
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: i, date: d, positions: _, repeat: _}} => join([n, ": caliper reading (", i, ", ", d, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, date: d, positions: p, basis: _, does_not_settle: _}} => join([n, ", declared by the operator on ", d, ": ", p], "")
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: b, date: d, positions: p, bound_is: _}} => join([n, ", reported by the operator on ", d, " ('", p, "'), less the ", to_string(value: micrometer_count(m: b) / 1000), " mm width this repository puts on a figure given by eye"], "")
+    NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => join([n, ": unread"], "")
+  }
+}
+
+fn gap_room(g: ChassisGap) -> GapRoom {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} =>
+      // The comparison value, by standing: an estimate's face value less its own width, a declared bound as
+      // the allowance the operator authored, a caliper reading as itself.
+      let limit = if gap_is_estimate(g: g) {
+        match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: dist) - micrometer_count(m: b) Absent => micrometer_count(m: dist) }
       } else {
-        match gap_declared_bound(g: g) { Present { value: b } => gap_um(m: b) Absent => gap_um(m: dist) }
+        match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: b) Absent => micrometer_count(m: dist) }
       }
-    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => 0 - 1
+      let origin = standing_origin(g: g)
+      if limit < 0 { OverSubscribed { shortfall: micrometer(count: 0 - limit), from: origin } } else { Room { room: micrometer(count: limit), from: origin } }
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: o} => NoReading { obligation: o }
   }
 }

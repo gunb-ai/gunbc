@@ -756,8 +756,8 @@ fn duct_readme(mount: DuctCardMount, extent: DuctExtent) -> String {
 // weight and the four M3 fixes, and the junction plate that ties that floor to the plug-end flange. Both are a wall
 // thick, so the shoulder's z stack is exactly the route model's run back -- plane_on_end_duct_run_back says so, and
 // test.claim.card_cooling_route_witness pins the equality, so the part cannot quietly outgrow the admitted demand.
-fn plane_on_end_duct_run_back(b: BlowerDuctDesign, d: GpuDuctDesign) -> Int {
-  um(m: b.blower.thickness) + um(m: b.blower.thickness_tolerance) + 2 * um(m: d.wall)
+fn plane_on_end_duct_run_back(b: BlowerDuctDesign, d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: um(m: b.blower.thickness) + um(m: b.blower.thickness_tolerance) + 2 * um(m: d.wall))
 }
 
 // How far the shoulder's top-end corner reaches past the 8-pin keep-out's inner edge, in micrometres: the
@@ -765,10 +765,10 @@ fn plane_on_end_duct_run_back(b: BlowerDuctDesign, d: GpuDuctDesign) -> Int {
 // means the part crosses into the keep-out, which it does -- this figure exists so the crossing is a number a
 // reader can see and a kernel can check, not a paragraph of reassurance. Zero or negative would mean this
 // home had never touched the connector, and it has not earned that.
-fn plane_on_end_keepout_crossing_um(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> Int {
+fn plane_on_end_keepout_crossing(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuctDesign) -> Micrometer {
   let shoulder_top_x = smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth)) / 2 + um(m: d.wall)
   let keepout_inner_x = um(m: f.face_length) / 2 - connector_keepout_length(f: f, d: d)
-  shoulder_top_x - keepout_inner_x
+  micrometer(count: shoulder_top_x - keepout_inner_x)
 }
 
 // The housing's centre across the slot: the card's own thickness centre, because the card (38.6 mm, cited) is the only
@@ -783,15 +783,15 @@ fn plane_on_end_housing_y(card_y: Int) -> Int { card_y }
 // is clear, in either orientation. So this is not a placement error to be fixed by shifting the housing: on
 // this card's end face, a flat-on-end BFB1012M covers the connector's band wherever it is put, and the
 // number the operator needs in order to rule on it is `94400 > 71840`.
-fn plane_on_end_face_clear_of_keepout_um(f: EndFaceMeasurement, d: GpuDuctDesign) -> Int {
-  um(m: f.face_length) - connector_keepout_length(f: f, d: d)
+fn plane_on_end_face_clear_of_keepout(f: EndFaceMeasurement, d: GpuDuctDesign) -> Micrometer {
+  micrometer(count: um(m: f.face_length) - connector_keepout_length(f: f, d: d))
 }
 
 // Whether the housing can be placed on this face at all without entering the band: false here, and computed
 // rather than asserted, from the shorter of the housing's two edges.
 fn plane_on_end_housing_clears_keepout(b: BlowerDuctDesign, f: EndFaceMeasurement, d: GpuDuctDesign) -> Bool {
   smaller_um(a: um(m: b.blower.housing_length), b: um(m: b.blower.housing_depth))
-    <= plane_on_end_face_clear_of_keepout_um(f: f, d: d)
+    <= um(m: plane_on_end_face_clear_of_keepout(f: f, d: d))
 }
 
 fn plane_on_end_slab(x_lo: Int, x_hi: Int, y_lo: Int, y_hi: Int, z_lo: Int, z_hi: Int) -> Primitive {
@@ -818,7 +818,7 @@ fn plane_on_end_duct_parts(f: EndFaceMeasurement, d: GpuDuctDesign, b: BlowerDuc
   // TOP of the z stack and everything the route model budgets -- two wall plates, then the housing at its
   // tolerance -- is spent BEHIND the end, at z below it. That stack is literally plane_on_end_duct_run_back,
   // which the witness pins to 37500; the flange and its plug lip continue above it, into the card.
-  let face_z = plane_on_end_duct_run_back(b: b, d: d)
+  let face_z = um(m: plane_on_end_duct_run_back(b: b, d: d))
   let top = um(m: f.face_length) / 2
   let band = um(m: f.window_from_back)
   let card_y = band - um(m: f.face_thickness) / 2
@@ -905,11 +905,11 @@ fn plane_on_end_presentation_members() -> List<JsonKeyValue> {
     json_kv(key: "axes", value: json_string(s: "z along the card's length, increasing from the plug end toward the rear chassis fan; x along the end face, the 8-pin end toward +x; y across the card's thickness, which is the slot direction, with the card centred about card_y")),
     json_kv(key: "home", value: json_string(s: "PlaneOnEnd: the blower lies flat behind the plug end with its intake facing the rear chassis fan, its 94.4 mm edge along the end face and its 97.2 mm edge across the slot")),
     json_kv(key: "route_admission", value: json_string(s: "product.printed_chassis.card_cooling_route admit_home(home: PlaneOnEnd) == RouteAdmittedOnOperatorBound, on the operator's declared conservative bounds; the print is admitted on that ruling as a fit print, and gap_is_measured remains false for both gaps")),
-    json_kv(key: "run_back_um", value: json_int(n: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_duct_design))),
+    json_kv(key: "run_back_um", value: json_int(n: um(m: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: a16_duct_design)))),
     json_kv(key: "overhang_per_side_um", value: json_int(n: (larger_um(a: um(m: a16_blower_duct_design.blower.housing_length), b: um(m: a16_blower_duct_design.blower.housing_depth)) - um(m: a16_blower_duct_design.slot_pitch)) / 2)),
     json_kv(key: "material_admission", value: json_string(s: "PLA admitted for an unpowered fit prototype only; PETG or ASA for service; no powered A16 operation admitted")),
-    json_kv(key: "power_keepout_crossing_um", value: json_int(n: plane_on_end_keepout_crossing_um(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design))),
-    json_kv(key: "face_clear_of_power_keepout_um", value: json_int(n: plane_on_end_face_clear_of_keepout_um(f: a16_end_face, d: a16_duct_design))),
+    json_kv(key: "power_keepout_crossing_um", value: json_int(n: um(m: plane_on_end_keepout_crossing(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)))),
+    json_kv(key: "face_clear_of_power_keepout_um", value: json_int(n: um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_duct_design)))),
     json_kv(key: "housing_shorter_edge_um", value: json_int(n: smaller_um(a: um(m: a16_blower_duct_design.blower.housing_length), b: um(m: a16_blower_duct_design.blower.housing_depth)))),
     json_kv(key: "housing_can_be_placed_clear_of_keepout", value: json_bool(b: plane_on_end_housing_clears_keepout(b: a16_blower_duct_design, f: a16_end_face, d: a16_duct_design))),
     json_kv(key: "known_open_point", value: json_string(s: "the housing cannot be placed clear of the 8-pin POWER keep-out in EITHER orientation: the face leaves 71.84 mm clear and the housing is 94.4 mm at its shorter edge. Decided by the kernel's POWER-KEEPOUT check, and by the operator if they overrule it -- not by this model.")),
