@@ -360,12 +360,17 @@ test fn w_the_end_cap_scroll_is_capped_by_the_space_between_two_ducted_cards() -
     && scroll_run_back_um(wheel_diameter_um: 81640, wheel_width_over_diameter: 40, d: d) == 36656
 }
 
-test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_lid_and_the_rear() -> Bool {
+test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_declared_rear_bound() -> Bool {
   let d = a16_wall_design()
-  // At 60% width the rear bound bites first: (70000 - 4000) * 100 / 60 = 110000 -- no; check the other way,
-  // a wheel so fat that the declared 70 mm behind the end caps it below the card's height: at 90%, 73333.
+  // The three caps: card height 97840, twin-card span 81640 (both fixed), and rear depth (66000 * 100 /
+  // ratio), which is the only one that moves with the wheel's proportions. At a sane 40% the span caps; a
+  // wheel so fat that its width needs all the declared room behind the end puts the rear bound in charge
+  // first: (70000 - 2*2000) * 100 / 90 = 73333, below the span's 81640. The card's own height never binds
+  // while the twin-card span caps below it -- the report must name the cap that actually binds, not the
+  // flattering one.
   let at_90 = scroll_max_wheel_diameter_um(wheel_width_over_diameter: 90, d: d)
-  measure_count(m: at_90.at_most) == 81640 && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: 90), "\n"), pattern: "ratio: 90 percent")
+  measure_count(m: at_90.at_most) == 73333 && string_contains(s: at_90.capped_by, pattern: "behind the plug end")
+    && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: 90), "\n"), pattern: "ratio: 90 percent")
 }
 
 test fn w_both_cards_intakes_face_each_other_across_the_inter_card_gap() -> Bool {

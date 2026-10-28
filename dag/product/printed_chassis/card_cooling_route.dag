@@ -579,7 +579,11 @@ fn scroll_run_back_um(wheel_diameter_um: Int, wheel_width_over_diameter: Int, d:
 //                           scroll_run_back_um caps the wheel's WIDTH, and so its diameter.
 //
 // Each is reported with its origin, and the wheel is capped by the LEAST of them. `wheel_width_over_diameter`
-// is the assumption that moves the third cap, so it is a parameter and the witness sweeps it.
+// is the assumption that moves the third cap, so it is a parameter and the witness sweeps it. Under the
+// readings as they stand the ORDER is fixed and worth stating rather than leaving to the reader: the twin-card
+// span (81.64 mm) caps below the card's height (97.84), so the span binds at any sane wheel proportions and
+// the card height binds only for a single card in the row; past roughly an 80% width ratio the declared rear
+// bound takes over from the span. The witness pins both regimes.
 fn scroll_max_wheel_diameter_um(wheel_width_over_diameter: Int, d: GpuDuctDesign) -> ShapeExtent {
   let by_height = um(m: a16_end_face.face_length)
   let by_span = flat_on_end_housing_length_cap()
