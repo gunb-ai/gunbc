@@ -1,0 +1,146 @@
+module test.claim.runner.runner_qualification_attempt_run_witness
+
+// THE QUALIFICATION DRIVER'S DECIDABLE PARTS, AT THEIR OWN INTERFACES (DESIGN section 3, a witness discriminates at
+// one interface): the exit the launch may claim, read from the remote manager's summary over supplied stderr; the
+// launch command the attempt unit runs; the attempt label; and, over the REAL anchored row, that the live transport
+// refuses before any contact while mtcollins1's host key has no anchor. The wet binding itself runs only on the live
+// route (gunbc.runner.runner_qualification_attempt_run qualification_attempt_run_frontier).
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.algebra { string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.exec.command { argv_words }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.host.anchored_host_transport { anchored_host_transport_live, AnchoredBindingAnchorAbsent }
+import gunbc.runner.runner_host_unit_slot { host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ListenerOwnLifetime }
+import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited, ListenerEndedUnclean, ListenerOutcomeUnobserved, ListenerNotLaunched }
+import gunbc.runner.runner_qualification_attempt_run {
+  attempt_listener_run_of, qualification_attempt_label, qualification_attempt_verdict, AttemptQualified, AttemptNotQualified,
+}
+import gunbc.runner.runner_qualification_attempt_pass {
+  AttemptPassed, AttemptPinRefused, AttemptDispatchRefused, AttemptRan, AttemptNothingRegistered,
+}
+import gunbc.runner.runner_qualification_ref_pin {
+  qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused, QualificationBranchRemoved, PinBranchCreateAmbiguous,
+}
+import gunbc.runner.runner_qualification_dispatch { DispatchTokenForAnotherInstallation, QualificationRunRefused, RunReadUnreadable }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.transports.rest { RestExchangeUnreached }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data grounded_version: String = "systemd 255 (255.4-1ubuntu8)"
+
+fn run_over(version_line: String, stderr: String) -> ListenerRun? {
+  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
+    HostUnitListenerUnbuilt { cause: _ } => none
+    HostUnitListenerReady { wait: w } => Present { value: attempt_listener_run_of(launcher: w, version_line: version_line, stderr: stderr) }
+  }
+}
+
+// THE UNIT'S OWN RESULT IS THE EXIT: a success summary is a clean end, and the job's own stderr before it cannot
+// forge one (the summary is the last occurrence, written after the unit ended).
+test fn a_success_summary_is_a_clean_end() -> Bool {
+  match run_over(version_line: grounded_version, stderr: "Finished with result: exit-code\nrunner output\nFinished with result: success\nMemory peak: 1.2G\n") {
+    Present { value: ListenerExited { exit_code: 0 } } => true
+    _ => false
+  }
+}
+
+// RED: any other result is an unclean end NAMING the result, never an invented status number.
+test fn an_exit_code_summary_is_an_unclean_end_naming_its_result() -> Bool {
+  match run_over(version_line: grounded_version, stderr: "Finished with result: exit-code\nMain processes terminated with: code=exited/status=3\n") {
+    Present { value: ListenerEndedUnclean { result: r } } => (r as String) == "exit-code"
+    _ => false
+  }
+}
+
+// RED: no summary (a transport failure looks like this) is unobserved, never clean and never nonzero; and a summary
+// from a manager whose version the format is not grounded against is unobserved too.
+test fn a_missing_or_ungrounded_summary_is_unobserved() -> Bool {
+  (match run_over(version_line: grounded_version, stderr: "ssh: connect to host mtcollins1 port 22: Connection refused\n") {
+    Present { value: ListenerOutcomeUnobserved { cause: _ } } => true
+    _ => false
+  }) && (match run_over(version_line: "", stderr: "Finished with result: success\n") {
+    Present { value: ListenerOutcomeUnobserved { cause: _ } } => true
+    _ => false
+  })
+}
+
+// THE ATTEMPT UNIT IS THE SLOT SHAPE AS THE RUNNER USER, WAITING AND NOT QUIET: --quiet would suppress the very summary
+// the exit is read from, and a unit without User= would run the job as root. The JIT configuration is in no argument.
+test fn the_attempt_unit_runs_as_the_runner_user_and_prints_its_summary() -> Bool {
+  match host_unit_listener_wait(listener_unit: "gunbc-qualification-fixture-q-1.service" as NonEmptyStr, user: "gunbc-runner" as NonEmptyStr, root: "/opt/actions-runner/slots/q-1" as NonEmptyStr, lifetime: ListenerOwnLifetime) {
+    HostUnitListenerUnbuilt { cause: _ } => false
+    HostUnitListenerReady { wait: w } => {
+      let text = join(argv_words(command: w.command), " ")
+      string_contains(s: text, pattern: "User=gunbc-runner")
+        && string_contains(s: text, pattern: "Delegate=yes")
+        && string_contains(s: text, pattern: "--wait")
+        && string_contains(s: text, pattern: "--pipe")
+        && !string_contains(s: text, pattern: "--quiet")
+        && string_contains(s: text, pattern: "MemorySwapMax=0")
+        && string_contains(s: text, pattern: "/opt/actions-runner/slots/q-1")
+    }
+  }
+}
+
+test fn the_attempt_label_is_one_per_run_and_attempt() -> Bool {
+  (match qualification_attempt_label(run_id: "40519299734", run_attempt: "2") {
+    Present { value: a } => (a as String) == "q-40519299734-2"
+    Absent => false
+  }) && (match qualification_attempt_label(run_id: "", run_attempt: "1") {
+    Absent => true
+    Present { value: _ } => false
+  })
+}
+
+// THE REAL ROUTE: mtcollins1's anchored row has no anchor until a live readback, so the live transport refuses with
+// the anchor absent -- before the operator's go is read and before any SSH context, scan or connection exists.
+test fn the_live_transport_to_mtcollins1_refuses_without_an_anchor_and_contacts_nothing() -> Bool {
+  match anchored_host_transport_live(host: operator_host_mtcollins1, attempt_raw: "q-1") {
+    AnchoredBindingAnchorAbsent { cause: c } => string_contains(s: c, pattern: "nothing contacted")
+    _ => false
+  }
+}
+
+// THE STEP'S VERDICT IS THE ATTEMPT'S (review 86968). Cleanup that held does not make a refused, unclean or never-run
+// attempt green: each of these is NotQualified with its cause. The Qualified arm needs the sealed collected run, which
+// only the real collection mints, so its positive control is the live run's.
+fn removed_branch_pass(run_is_refused_dispatch: Bool) -> String {
+  match qualification_branch_name(attempt: "q-1" as NonEmptyStr) {
+    QualificationBranchNameRefused { attempt: _, cause: _ } => "no branch"
+    QualificationBranchNamed { name: n } =>
+      match qualification_attempt_verdict(pass: AttemptPassed {
+        run: if run_is_refused_dispatch {
+          AttemptDispatchRefused { refusal: DispatchTokenForAnotherInstallation }
+        } else {
+          AttemptRan {
+            listener: ListenerEndedUnclean { result: "exit-code" as NonEmptyStr },
+            collection: QualificationRunRefused { run_id: GitHubWorkflowRunId { value: 1 }, refusal: RunReadUnreadable { refusal: RestExchangeUnreached { cause: "x" } } },
+          }
+        },
+        retirement: AttemptNothingRegistered,
+        unpin: QualificationBranchRemoved { name: n, deleted: true },
+      }) {
+        AttemptQualified => "qualified"
+        AttemptNotQualified { cause: c } => c as String
+      }
+  }
+}
+
+test fn a_refused_dispatch_with_clean_cleanup_is_not_qualified() -> Bool {
+  removed_branch_pass(run_is_refused_dispatch: true) == "the floor dispatch was refused"
+}
+
+test fn an_unclean_listener_end_is_not_qualified_and_names_its_result() -> Bool {
+  removed_branch_pass(run_is_refused_dispatch: false) == "the attempt unit ended with result exit-code"
+}
+
+test fn a_refused_pin_is_not_qualified_even_with_nothing_to_remove() -> Bool {
+  match qualification_attempt_verdict(pass: AttemptPinRefused { attempt: "q-1" as NonEmptyStr, refusal: PinBranchCreateAmbiguous { detail: "lost" as NonEmptyStr }, unpin: none }) {
+    AttemptNotQualified { cause: c } => (c as String) == "the qualification ref pin was refused"
+    AttemptQualified => false
+  }
+}

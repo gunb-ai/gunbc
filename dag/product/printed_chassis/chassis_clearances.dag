@@ -1,0 +1,148 @@
+module product.printed_chassis.chassis_clearances
+
+import std.types {Bool, Int, List, NonEmptyStr, String}
+import std.measure {Micrometer, micrometer, micrometer_count}
+import std.optional {Present, Absent}
+
+// ═══ CHASSIS FACTS, KEPT APART FROM THE CARD ROWS ═══
+//
+// A card row is a vendor figure about a card. The space the cards live in is a chassis fact, measured
+// in one chassis by whoever owns it. They are not interchangeable, and neither may stand in for the
+// other: the operator's 70 mm behind the plug end says nothing about the A16, and NVIDIA's drawing of
+// the A16 says nothing about the chassis (operator, 2026-10-26: "the chassis clearance is a chassis
+// fact, separate from the card rows").
+//
+// A gap enters this corpus ONE OF TWO WAYS: it was measured, with the two points named, or it needs
+// measuring and carries the obligation to do so. There is no third way -- a remembered number with no
+// instrument, no date and no named points is a guess wearing a unit, and the duct model refuses it.
+
+type ChassisGapStanding
+  = CaliperByOperator { instrument: NonEmptyStr, date: NonEmptyStr, positions: NonEmptyStr }
+  | EstimatedByOperator { bound: Micrometer, date: NonEmptyStr, positions: NonEmptyStr, bound_is: NonEmptyStr }
+
+type ChassisGap
+  = Measured { name: NonEmptyStr, from_point: NonEmptyStr, to_point: NonEmptyStr, distance: Micrometer, standing: ChassisGapStanding }
+  | NeedsMeasurement { name: NonEmptyStr, from_point: NonEmptyStr, to_point: NonEmptyStr, read_obligation: NonEmptyStr }
+
+fn um(m: Micrometer) -> Int { micrometer_count(m: m) as Int }
+
+fn gap_name(g: ChassisGap) -> NonEmptyStr {
+  match g { Measured {name: n, from_point: _, to_point: _, distance: _, standing: _} => n NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => n }
+}
+
+fn gap_is_measured(g: ChassisGap) -> Bool {
+  match g { Measured {name: _, from_point: _, to_point: _, distance: _, standing: _} => true NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false }
+}
+
+fn measured_distance(g: ChassisGap) -> Micrometer? {
+  match g { Measured {name: _, from_point: _, to_point: _, distance: d, standing: _} => Present { value: d } NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => Absent }
+}
+
+fn gap_obligation(g: ChassisGap) -> NonEmptyStr? {
+  match g { Measured {name: _, from_point: _, to_point: _, distance: _, standing: _} => Absent NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: o} => Present { value: o } }
+}
+
+fn gap_is_estimate(g: ChassisGap) -> Bool {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => false
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+// An estimate may carry a design through a PROPOSAL, but nothing may be printed on one without the
+// reading being taken again with an instrument. The bound is the width the reader put on the number.
+fn gap_may_be_printed_on(g: ChassisGap) -> Bool {
+  match g {
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: _, date: _, positions: _}} => true
+    Measured {name: _, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: _, date: _, positions: _, bound_is: _}} => false
+    NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: _} => false
+  }
+}
+
+fn gap_display(g: ChassisGap) -> String {
+  match g {
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: CaliperByOperator {instrument: i, date: dt, positions: p}} => join([n as String, ": ", to_string(value: um(m: d) / 1000), " mm by ", i as String, " on ", dt as String, " (", p as String, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: d, standing: EstimatedByOperator {bound: bnd, date: dt, positions: p, bound_is: bw}} => join([n as String, ": about ", to_string(value: um(m: d) / 1000), " mm, estimated by the operator on ", dt as String, " (", p as String, "); +/-", to_string(value: um(m: bnd) / 1000), " mm (", bw as String, ")"], "")
+    NeedsMeasurement {name: n, from_point: a, to_point: b, read_obligation: o} => join([n as String, ": UNMEASURED (from ", a as String, " to ", b as String, ") -- ", o as String], "")
+  }
+}
+
+// ═══ THIS CHASSIS ═══
+//
+// The one rear-fan distance the operator has given, read 2026-10-26 after the A16 plug fit ring printed
+// and fitted, which confirmed the measured end face and the plug/flange geometry. It is an estimate:
+// "about 70 mm", no instrument named, one card at one slot. The +/- is NOT the operator's; it is the
+// width this repository puts on the word "about" so that a route which fits by less than it is refused
+// rather than printed. The nearest surface of the fan is not distinguished between blade and shroud,
+// which matters: a shroud 6 mm ahead of the blades turns a 70 mm route into a 64 mm one.
+data card_end_rear_fan_clearance: ChassisGap = Measured {
+  name: "plug end to rear chassis fan",
+  from_point: "the card's plug end: the outer face of the end cap the duct's plug and screw flange seat against (product.printed_chassis.gpu_duct a16_end_face)",
+  to_point: "the nearest surface of the rear chassis fan assembly in the card's lane -- blade or shroud NOT distinguished by the reading",
+  distance: micrometer(count: 70000),
+  standing: EstimatedByOperator {
+    bound: micrometer(count: 5000),
+    date: "2026-10-26",
+    positions: "one A16, one slot, read at the deck; not repeated at other slots or heights",
+    bound_is: "this repository's width on the operator's word 'about'; the operator has not stated a tolerance",
+  },
+}
+
+// The rear fan's nearest surface sits where the operator read it, but which surface it is has not been
+// said. A duct that ends within this width of the fan is a duct whose clearance depends on the answer.
+data rear_fan_face_ambiguity: ChassisGap = NeedsMeasurement {
+  name: "rear fan blade-to-shroud offset",
+  from_point: "the rear chassis fan's leading blade tip plane",
+  to_point: "the nearest shroud, guard or frame surface of that fan",
+  read_obligation: "operator: measure how far the blade tips sit behind the fan's nearest face, at the card lane. The 70 mm was read to the nearest surface without distinguishing them; the difference subtracts directly from the route's run.",
+}
+
+// The route that fits the 70 mm runs UP and OVER the card row, so the height above the deck is now
+// load-bearing and has never been read. Until it is, the over-the-card route refuses.
+data deck_to_lid_clearance: ChassisGap = NeedsMeasurement {
+  name: "deck to chassis lid, behind the plug end",
+  from_point: "the chassis deck the cards' back faces rest on (product.printed_chassis.gpu_duct: the back face of a16_end_face)",
+  to_point: "the chassis lid or whatever crosses above the card row behind the plug ends",
+  read_obligation: "operator: measure deck to lid in the region behind the card plug ends, at the middle of the row and at one end. The blower standing on its side wall plus the riser and the leg that crosses above the cards must fit under it; the model derives the height it needs and refuses until this reading exists.",
+}
+
+// The lateral lane beside a card, along the card's width: the alternative home for a blower that will
+// not stand behind the plug end. Read along the card's width axis, not the row's slot pitch.
+data side_lane_width: ChassisGap = NeedsMeasurement {
+  name: "free lane beside the card row",
+  from_point: "the outer face of the outermost card's side (along the card's width axis, the 97.84 mm face)",
+  to_point: "the first thing that is not free air along that axis -- chassis wall, PSU, cable run",
+  read_obligation: "operator: measure the clear width beside the row, on both sides, along the card's width axis. A blower mounted beside the row needs its housing depth across that lane plus duct wall and clearance; the model derives it and refuses until the reading exists.",
+}
+
+// The lane a blower gets behind the plug end: measured across the slot direction, in the region BEHIND
+// the card ends, from this card's own plane to whatever the next card's duct becomes. The card's own
+// thickness is NOT this number -- behind the end there is no card, and the thing a standing blower
+// competes with is its neighbour's duct, which nobody has built yet. Until the pitch is read this lane
+// is unmeasured and any blower that needs it is refused with the number it needs.
+data neighbour_lane_width: ChassisGap = NeedsMeasurement {
+  name: "lane between adjacent cards, behind the plug ends",
+  from_point: "this card's own centre plane across the slot (the plane of the card's broad face)",
+  to_point: "the nearest surface of the adjacent card's own duct or blower in the region behind the plug ends",
+  read_obligation: "operator: measure the slot pitch (distance between adjacent card centre planes) and state what sits between two cards behind their ends -- nothing, a blanking plate, a cable. A blower standing behind a plug end spends its housing depth across this lane; two cards in adjacent slots each carrying a blower spend it twice.",
+}
+
+data chassis_gaps: List<ChassisGap> = [card_end_rear_fan_clearance, rear_fan_face_ambiguity, deck_to_lid_clearance, side_lane_width, neighbour_lane_width]
+
+fn chassis_gap(name: NonEmptyStr) -> ChassisGap? {
+  fold(chassis_gaps, init: Absent, f: (found, g) => match found { Present { value: v } => Present { value: v } Absent => if gap_name(g: g) == name { Present { value: g } } else { Absent } })
+}
+
+// What the operator must read before a curved route is printed, as a list a human can carry to the
+// machine. An estimate appears only as a re-read demand: a print does not stand on an estimate.
+fn remeasure_before_print(gaps: List<ChassisGap>) -> List<String> {
+  fold(gaps, init: [], f: (acc, g) => match gap_obligation(g: g) {
+    Present { value: o } => concat(acc, [gap_display(g: g)])
+    Absent => if gap_is_estimate(g: g) { concat(acc, [join(["re-read with an instrument before printing: ", gap_display(g: g)], "")]) } else { acc }
+  })
+}
+
+fn chassis_gaps_display() -> String {
+  join(map(chassis_gaps, g => gap_display(g: g)), "\n")
+}

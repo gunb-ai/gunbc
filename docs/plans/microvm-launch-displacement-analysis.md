@@ -1,24 +1,20 @@
 # Micro-VM launch: what displacing the live actuation would cost
 
-*Subject: the per-attempt path that starts a real GitHub Actions job in a Firecracker guest on Mt. Collins. This document exists to convert "should we build the FCI-3 executor" from a capacity question into a scoped one. It builds nothing and proposes no schedule; it censuses the live path, names which steps a modeled executor would have to own, and asks whether the cutover can be atomic in the §3 sense.*
+*Subject: price the displacement of the per-attempt Firecracker launch path on Mt. Collins before scheduling an FCI-3 executor. This analysis builds nothing: it censuses the live path, identifies executor responsibilities and assesses an atomic DESIGN §3 cutover.*
 
-*Filed against the class `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe`, which this analysis is the natural continuation of.*
+*Continues the proposed class `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe`.*
 
-> **Citation standing.** That class and the FCI-2 module cited below are **PROPOSED, NOT LANDED** — they are authored on #10674, which is open and unmerged, so neither name resolves in this revision of the tree. They are cited as proposed work rather than as corpus facts, and every such name is marked at its use site. Nothing in this document's own findings depends on either landing: the census, the reading half and the axis dispositions are all derived from probe captures, `fleet-converge.yml`, and modules that do resolve on `main`.
+> **Citation standing.** That class and the FCI-2 module below are **PROPOSED, NOT LANDED**, on open, unmerged #10674; neither resolves in this revision. Findings depend instead on probe captures, `fleet-converge.yml` and modules on `main`.
 
 ## The headline, before the verdict
 
-**Half the census is already done, and the displacement mechanism is proven in production.** Steps 1–2 of the live path — host convergence and guest image build — are already displaced: production actuates them by running `gunbc run --entry … --function …` with `LocalExec`, out of `fleet-converge.yml`, on the host itself. So the open question is **not** "can a modeled entry point actuate a host" — that is answered, wet, today. It is "can one actuate at a *different point in the attempt lifecycle*", which is a much smaller unknown.
-
-The verdict below is *medium and gap-intolerant*, and a reader who stops there will take that as the headline and miss this. Both are true at once.
+**Steps 1–2 are already displaced:** production runs `gunbc run --entry … --function …` with `LocalExec` from `fleet-converge.yml` on the host to converge it and build the guest image. The remaining question is whether a modeled entry can actuate at the *host-boot* point of the attempt lifecycle. The cut is medium and gap-intolerant; the existing converge-time mechanism is proven but cannot reach that point (reading below).
 
 ## Why this document and not the executor
 
 `gunbc.fabric.fabric_ci_program` FCI-3 asks *what causes the target process*, and its exit predicate is that a persistent executor **re-reads the committed Grant before starting**, so an absent, corrupt or expired Grant yields **zero** target processes.
 
-The tempting next move is to build that executor. It is the wrong move while the live hand-authored path keeps starting real jobs, because a modeled executor that cannot yet take over is X and Y coexisting — the state §3's replacement-migration doctrine forbids, and precisely the class already filed. It would give the modeled home a consumer (itself) and still leave the live path unmodeled: two homes, both now substantial, and the one that runs still outside the substrate.
-
-So FCI-3 is worth building exactly when it **displaces** the live actuation rather than sitting beside it. That is a question about the size of the cut, and nobody has measured it.
+Building an executor beside the live hand-authored launcher would leave two substantial homes and production outside the substrate. FCI-3 is worth building when it displaces that actuation; first measure the cut.
 
 ## The motive is receipted, not speculative
 
@@ -48,9 +44,7 @@ Read from the host serial capture `docs/probes/mtcollins_bound_attempt_host_capt
 | 9 | **the jailer exec that starts the VMM** | **no authority** | **no** |
 | 10 | live census, teardown, receipts | receipt modules (prose rows) | after the fact |
 
-The shape this shows is narrower than "the live path is unmodeled". **Steps 1 and 2 are already displaced** — production actuates them by running `gunbc run --entry … --function …` out of `fleet-converge.yml`, so the modeled/live fork does not exist there. Steps 4, 5 and 8 have their *facts* modeled with no production consumer: those are the unconsumed home the class names. Steps 6, 7 and 9 have no authority at all.
-
-**Step 9 is the whole subject.** Everything else is either already displaced or a fact waiting for a consumer; step 9 is the causation FCI-3 owns, and the string `guest-boot-begin … via=jailer` appears nowhere in this repository except inside receipts *quoting* it.
+Steps 1–2 already route through the model; 4, 5 and 8 have unconsumed modeled facts; 6, 7 and 9 lack authority. **Step 9 is FCI-3's subject:** `guest-boot-begin … via=jailer` occurs only in receipts quoting the actuation.
 
 ## What a modeled executor would have to own
 
@@ -68,31 +62,26 @@ The doctrine's test is not "does Y work" but "does X's authority end in one moti
 
 ## Is the cutover atomic? The three honest answers
 
-**What makes it plausibly small.** The unmodeled surface is one ordered driver plus three missing authorities (credential drive, workspace image, jailer exec). Most step-level facts — tap name, addresses, nft chains, attempt paths, unit name, slice properties, sizing, the config resolution — are already authored and merely unconsumed. And the displacement mechanism already exists and is proven in production for steps 1–2: `fleet-converge` invoking `gunbc run --entry … --function …` on the host. Displacing step 9 does not require inventing a new actuation channel.
+**What makes it plausibly small.** One ordered driver and three missing authorities: credential drive, workspace image and jailer exec. Tap names, addresses, nft chains, attempt paths, unit name, slice properties, sizing and config resolution already exist. Steps 1–2 prove modeled host actuation through `fleet-converge`; step 9 needs a different lifecycle, not proof that modeled actuation is possible.
 
 **What makes it not small.** Three things resist:
 
-- **The boundary is a boot, not a call — and it is the HOST's boot.** Steps 3–9 run inside the **host image's** own early boot (the banner is `GUNBC-RUNNER-HOST`, ~17s after the *host* kernel starts, on a tmpfs root from BMC virtual media), before anything this repository controls is running. The guest does not exist yet; step 9 is what creates it. So displacing these steps means the modeled executor must run **on the host, at host-boot time**, which is a different lifecycle from the converge-time `gunbc run` that displaced steps 1–2. That is the load-bearing unknown, and it is not settled by this analysis.
+- **The boundary is the HOST's boot.** Steps 3–9 run from BMC virtual media on a tmpfs root, around 17s after the host kernel starts (`GUNBC-RUNNER-HOST`). The guest does not exist until step 9. Y must therefore run at host boot, not converge time. An earlier revision incorrectly said “guest image's own early boot,” which would target the wrong image.
 
-  *Stated explicitly because an earlier revision of this document said "the guest image's own early boot" here. That was wrong and it matters: it would point a cut at the guest image, when the tooling to be displaced is in the host image.*
 - **The credential is one-shot.** A JIT registration is served exactly once. A staged cutover cannot A/B the two paths on the same attempt, and a failed cutover attempt burns the registration. This is a **gap-intolerant boundary** in the doctrine's sense, which argues for the staged carve-out — Y built in shadow, then one transition — rather than plain delete-first.
 - **Six admission axes are unchecked today.** The capture reads `jit-admission-unchecked=signature unit-binding boot-binding attempt-binding expiry replay`. A displacement that reproduces the live behaviour reproduces six absent checks; a displacement that adds them is a larger change than a like-for-like cutover. Which of these the minimum Y must carry is a decision, not a detail — §3 requires the minimum Y to preserve **every required refusal**, so any axis judged required today cannot be dropped to make the cut smaller.
 
-**The verdict this analysis supports.** The cut is **medium and gap-intolerant**, not small. It is one ordered driver over largely-existing facts, which is tractable; but its boundary is a host-side pre-boot lifecycle nobody has run a modeled executor in, and its credential cannot be replayed across a staged transition. The next question is therefore not "who builds FCI-3" but a single measurement: **can a modeled entry point run on the host at the point in the attempt lifecycle where step 9 happens?**
-
-That measurement has since been split and its reading half answered — **no**, for a causal reason rather than a contingent one. See *The reading half of the measurement, answered* below; the paragraphs above are left as the reasoning that produced the question.
+**Verdict: medium and gap-intolerant.** An ordered driver over largely existing facts is tractable, but the host-boot lifecycle is unproven and the credential cannot be replayed across the transition. The next measurement is whether an entry can execute where step 9 occurs. Its reading half is answered below; host-image placeability remains unmeasured.
 
 ## The reading half of the measurement, answered
 
-The measurement this document asked for splits: one half is a reading of what exists, needing no host, and one half needs Mt. Collins. The reading half is done, and it settles the branch this document left open.
+**The existing mechanism cannot reach step 9.** Steps 1–2 run `"$ROOT/target/release/gunbc" run … --function …_wet`; `runner_microvm_host_ready` uses `LocalExec` in a workflow on a host-labelled self-hosted runner. It requires a running runner, checkout and built binary.
 
-**What the proven mechanism actually requires.** The steps 1–2 displacement runs `"$ROOT/target/release/gunbc" run … --function …_wet`, and `runner_microvm_host_ready` performs its effects with transport **`LocalExec`** — the workflow job runs *on the target host*, dispatched to a self-hosted runner labelled with that host's name. So the mechanism presupposes three things on the host: **a running self-hosted runner** to receive the job, **a checkout** of this repository, and **a built binary**.
+At step 9 the attempt host has just booted from BMC virtual media (`root-fstype=tmpfs`, `/dev/sr0`; banner ~17 seconds after kernel start). Creating a runner *inside the guest* is the boot's purpose. The converge-time route therefore depends on what step 9 creates and cannot displace it.
 
-**None of the three exists at step 9's point in the lifecycle, and that is causal rather than incidental.** The attempt host boots from BMC-attached virtual media onto a **tmpfs root** (`root-fstype=tmpfs`, `/dev/sr0` virtual CDROM), and the banner appears ~17 seconds after kernel start. There is no runner yet — **bringing a runner into being is the entire purpose of the boot**, and it will live inside the guest, not on the host. So the mechanism that displaced steps 1–2 **cannot** displace step 9: it presupposes exactly the thing step 9 creates. The dependency is circular, and no amount of care in placing the entry point removes it.
+The host boot script's `=gunbc-runner-host-boot`, `attempt=` and ordered markers were found only in captures, receipts and BMC artifacts. `gunbc.runner.runner_artifact_lifecycle` requires `DurablyMirrored` for a repository-built host image, but no repository build produces this script. The later recovered source below is frozen evidence.
 
-**And the host boot script is not in this repository at all.** The banner `=gunbc-runner-host-boot`, the `attempt=` identity, and the ordered marker stream appear in **captures, receipts and BMC artifacts only** — never in producing code, in any language, anywhere in the tree. `gunbc.runner.runner_artifact_lifecycle` records the standing that a *repository-built host image* requires `DurablyMirrored`, so the image is understood to be ours; the boot script that image runs is not authored here.
-
-**So the answer to "can a modeled entry point run where the jailer exec happens" is no**, and this document's own suspicion is confirmed: **the missing host-side execution lifecycle is the real subject.** That is a more tractable statement than it sounds, because it names a specific shape rather than an open problem — the modeled executor would have to be *carried in the host image and invoked at boot*, taking over the boot script's role, which is a question about host-image **content** rather than about a new execution channel. What this analysis cannot say is whether that is cheap or expensive, because the host image build is not visible from here.
+**Y must be carried in the host image and invoked at boot.** This is a host-image content question. Its cost remains unknown because the build is not visible here.
 
 ### The execution half, named for routing
 
@@ -104,9 +93,9 @@ Not chased, since this session has no Mt. Collins access. What would have to be 
 
 ## Item 1, answered: the boot script is authored in no repository *(as a build input — see the 2026-09-10 recovery note below)*
 
-This was mis-filed as needing host access. It is a search, and it comes back **outcome three: the host boot script has no authoring home *in any repository's build*.** Corrected 2026-09-10 — the sentence originally ended "anywhere", which the recovery falsified: the authored source survived outside version control, on srv2, and is now committed as frozen provenance. What the search established is unchanged and is the narrower claim: no repository *produces* the running image.
+Search answered this without host access: no repository *build* authors the running image. The original broader claim, “no authoring home anywhere,” was falsified by the 2026-09-10 recovery from srv2. Source is now readable as frozen provenance, still not a build input.
 
-**The instrument, named so it re-derives rather than transcribed.** The census is four queries, and what makes the result trustworthy is which *controls* were run beside them, not the counts they happened to return. Every claim below is re-derivable by running the query named with it; the numbers are stated as what that query returned **at the time of writing**, and the query is the authority for the current answer.
+**Re-derivation:** run these subject queries with their positive and reachability controls; the controls distinguish an absent producer from an unsearched repository.
 
 ```
 # 1. the subject: does the banner or marker stream appear in any producing code, org-wide?
@@ -124,50 +113,41 @@ gh api -X GET search/code -f q='the repo:gunb-ai/gunbc-private'
 gh api "repos/gunb-ai/gunbc-private/git/trees/HEAD?recursive=1" -q '.tree[]|select(.type=="blob")|.path'
 ```
 
-**What those returned when this was written, and — the load-bearing part — what each control decided:**
+**Results at authoring:**
 
-- The subject queries returned hits **only in `gunb-ai/gunbc`, and every path was a capture, receipt or BMC artifact** — never producing code. Query 2 returning the same set is what says the instrument works rather than that the corpus is empty.
-- **`gunb-ai/ctrl` — searchable, so its clean result counts.** Control 3 returned a large hit count, so the index reaches it; `firecracker` then returned only planning `.md`, `jailer` returned nothing, and no path named Mt. Collins or `canary`.
-- **`gunb-ai/gunbc-private` — NOT searchable, so its clean result would have counted for nothing.** Control 3 returned **zero for a universal word**, which is the tell that the index does not reach the repo at all. Cleared by query 4 instead — a direct tree read, strategy documents only. *An org-wide sweep alone would have reported this repo as clean while never having looked at it.*
+- Subject queries found only `gunb-ai/gunbc` captures, receipts and BMC artifacts. Query 2 found the same set, establishing the positive control.
+- `gunb-ai/ctrl` was searchable: control 3 returned many hits. `firecracker` found planning `.md` only, `jailer` none, and no path named Mt. Collins or `canary`.
+- `gunb-ai/gunbc-private` was **not searchable**: control 3 found zero instances of a universal word. Query 4's direct tree read found strategy documents only. An org-wide sweep without that control would have falsely reported a clean repository.
 
 **What ctrl does carry is a sibling, and its history is the precedent.** `scripts/session-dashboard/host/jit-runner.sh` is the ephemeral-runner wrapper for the **non-micro-VM** hosts (srv1, srv2): it mints a JIT config from the App, runs one job, exits, looped by `systemd Restart=always`. It is not the Mt. Collins boot script and does not start a VM. Its header records why it is in the repository at all:
 
 > *"Load-bearing: this is the canonical, version-controlled copy … It was previously host-only and uncommitted — drift that contributed to the 2026-05-29 GHA stall (the App key rotated, every host's jit-runner.sh 401'd at the JWT exchange, and there was no in-repo source to redeploy from)."*
 
-So **this organisation has already taken an outage from exactly this class**, on the sibling of the very path under discussion, and the remedy applied then was to commit the script and reconcile the host copy from it. The micro-VM path is in the pre-remedy state today.
+The sibling already caused an outage from unversioned actuation; committing the script and reconciling its host copy repaired it. The micro-VM image still lacks that producer.
 
-**And the carrier is a single unreplicated artifact.** `gunbc.runner.runner_host_image_store` records the host image store as `known: true`, **`resilient: false`** — no replication, no backup — with the loss consequence stated as receipts outliving the bytes they cite, and that store's own `first_reap` row records how much of it a single reap has already removed. The boot script lives *inside* those images.
+**Store standing:** `gunbc.runner.runner_host_image_store` records `known: true`, `resilient: false` (no replication or backup), the risk of receipts outliving their bytes, and the loss already recorded by `first_reap`. The boot script lives inside those images.
 
-> **Corrected 2026-09-10, and the correction is this document's own subject.** This paragraph previously said the module *“records the host images at `/srv/bmc` on srv1”*. Two things about that sentence were wrong and one is still worth reading.
+> **2026-09-10 corrections.** The earlier `/srv/bmc` on srv1 location was false: the export was on **srv2**, read-only to the Mt. Collins controller, with seven digest-named ISOs intact. Repeating that literal as fact is why `StoreStanding` no longer carries `location`; location awaits a modeled read of BMC `remote/configurations`.
 >
-> **The location was false.** There is no `/srv/bmc` on srv1; the export is on **srv2**, read-only to the Mt. Collins controller, and the seven digest-named ISOs were intact there the whole time. This document repeated the module's literal as a corpus fact, which is exactly how a wrong literal becomes load-bearing — the reason `StoreStanding` no longer carries a `location` field at all. The module now answers *what* the store guarantees and refuses to answer *where*, pending a modeled read of the BMC's `remote/configurations`. So the citation above no longer names a location, because the declaration no longer records one.
->
-> **“No source to rebuild it from” was also false**, and it was the more expensive error: it turned a recoverable artifact into an assumed-lost one and shaped the cut plan around that assumption. The authored source — 1,272 lines across seven files, `initramfs/init.recovered` being the `@@BUILD_ID@@` template — survived in `/var/tmp/gunbc-hostimage` on srv2 and is preserved at `docs/recovered/mtcollins-host-image-source/`.
->
-> **What survives the correction is the finding this section exists for.** The step-9 producer is still authored in no repository *as a build input*; recovering bytes is not modeling behaviour. What changes is that the replacement migration now has a **readable X** to translate against, which is a different and better starting position than the one this document assumed.
+> “No source to rebuild it from” was also false. `/var/tmp/gunbc-hostimage` on srv2 held 1,272 authored lines across seven files, now at `docs/recovered/mtcollins-host-image-source/`; `initramfs/init.recovered` is the `@@BUILD_ID@@` template, not repeated instantiations. Recovery makes X readable and gives the migration a subject to translate. It neither models the behavior nor supplies a repository build.
 
-> **Stated precisely, because an earlier revision of this document overstated it.** It said "every production micro-VM", which reads as though the fleet's CI runs on this path. It does not. A census of `runner_name` across every job of the last completed runs returns `srv1`/`srv2`/`srv3`/`srv4` only — the bare-metal hosts running ctrl's `jit-runner.sh` — and **no Mt. Collins runner at all**. The instrument, named rather than transcribed, so it re-derives:
+> **Population correction.** “Every production micro-VM” overstated usage. Completed-run `runner_name` census found only `srv1`/`srv2`/`srv3`/`srv4`, running ctrl's `jit-runner.sh`; Mt. Collins served canary jobs only. Re-derive without filtering hosts, so a Mt. Collins runner would appear:
 > ```
 > for r in $(gh run list --limit 8 --status completed --json databaseId -q '.[].databaseId'); do
 >   gh api repos/gunb-ai/gunbc/actions/runs/$r/jobs --jq '.jobs[]|.runner_name'
 > done | grep -v null | sed 's/-[0-9]*-[0-9]*$//' | sort | uniq -c | sort -rn
 > ```
-> Its control is built in: the query does not filter by host, so a Mt. Collins runner would appear in the tally if one had served a job.
-> Mt. Collins has served micro-VM *canary* jobs and nothing more. The narrower claim is the load-bearing one and it is stronger, not weaker: this unauthored script is the **sole path any micro-VM migration must go through**, so the risk is not that production runs on unversionable code today, but that **the migration cannot proceed except through code nobody can rebuild.**
+> The risk is on the migration path: it must pass through the sole micro-VM launcher, which no repository currently rebuilds.
 
-**Why this belongs to the operator rather than a lane.** Unbuilt production actuation on the January critical path — the source is now readable, but nothing in any repository builds it — is a decision about accepted risk, not a modelling preference — and this is the strongest form of the two-homes class filed on #10674: not *one home modeled and one hand-authored*, but **one home modeled and the other built by nothing.** That single sentence is the fact a reader should leave this document with — and it survived the recovery, which changed only whether the other home is *readable*. Committing its source at `docs/recovered/` gives the migration a subject to translate against; it does not give the running image a producer, and the recovered tree is frozen evidence rather than a build input. "Outside the corpus entirely", which this sentence said before 2026-09-10, is the half that is now false.
+**Decision owed to the operator:** whether to accept this risk on the January critical path. #10674's two-homes class here means one home modeled and the other built by nothing. Recovery changes readability, not that finding. Displacement is neither a negotiation with ctrl nor a rename of an existing gunbc producer.
 
-**What it means for the cut.** Displacement is not a cross-repo negotiation (ctrl does not own this) and not a cheap rename (gunbc does not own it under another name). The first move is not building Y but **recovering or re-authoring X's content so that what production runs is knowable at all** — a different and smaller first step than the FCI-3 executor, and a precondition for pricing it rather than a part of it.
-
-> **Updated 2026-09-10 — the recovery half of that first move is done.** This paragraph previously read *"There is no X to delete in any repository — X is bytes inside an ISO. So the replacement migration has no root to uproot in source control."* The recovery found the authored source alive in `/var/tmp/gunbc-hostimage` on srv2 and preserved it at `docs/recovered/mtcollins-host-image-source/`, so the migration now has a **readable X** — a template with `@@BUILD_ID@@` placeholders, not a pile of near-identical instantiations, which is an unambiguous subject to translate against.
->
-> Two things that did **not** change, and conflating them with the above would be the error this section warns about. X is still **not a build input**: nothing in any repository produces the running image, so the census finding stands. And the recovered directory is **not** a root that can be deleted to complete the migration — it is frozen evidence carrying a dissolution condition, and per the doctrine that condition is explicitly not satisfied by a modeled executor standing *beside* the tooling. The root that must be uprooted is still the tooling **inside the host image**, and it is still reachable only through a host that is currently powered off.
+**Cut consequence:** recovering X was the prerequisite to pricing Y, and that recovery is done. The recovered directory remains frozen evidence with a dissolution condition; deleting it does not cut over production. The authority to uproot is the tooling *inside the host image*, reachable only through the then-powered-off host. A modeled executor beside it cannot satisfy the condition.
 
 ## The six admission axes: dispositions, and what reading them found
 
 `jit-admission-unchecked=signature unit-binding boot-binding attempt-binding expiry replay`.
 
-**The first finding is about the roster itself: none of these six terms is defined anywhere in this repository.** The marker string is their only occurrence. They are named by host tooling that is not authored here, so this repository has no authority saying what any of them checks. Assigning "required" to a term whose meaning I would have to invent is exactly the fabrication that would make this table worse than absent, so the dominant disposition is *deferred with a named trigger*, and the trigger is the same for most rows.
+The capture names six axes but this repository defines none of them. Assigning meanings would fabricate authority; unresolved axes therefore carry definition triggers.
 
 One structural fact constrains several axes at once: `extdeps.github.actions_jit_runner` records that the credential is minted for **one runner identity** and arrives as an **opaque blob**. A host therefore *cannot* check binding axes by parsing the credential; it can only check them against what the **minter** recorded. So unit/boot/attempt binding are mint-side obligations that a host-side check cannot discharge, whatever they turn out to mean.
 
@@ -180,10 +160,10 @@ One structural fact constrains several axes at once: `extdeps.github.actions_jit
 | boot-binding | **deferred — and settle the §3 question first** | Same trigger, plus one that must be answered *before either axis is priced*: **this may be a second name for `attempt-binding`.** A meaning fork inside a six-item roster makes the roster itself the defect, so the count of axes is not trustworthy until this is resolved. The suspicion is concrete: the attempt id already changes every boot, so this may be a second name for attempt-binding — a §3 question to resolve before either is priced. |
 | attempt-binding | **deferred** | Same trigger. The join that made the receipted mis-identification possible was a reused **build** label rather than an attempt id, so whatever discharges this axis is load-bearing for evidence identity as well as admission. |
 
-**What this means for sizing the cut.** Two axes are required and both are properties of the credential *as a whole* — is it authentic and present, is it live — rather than bindings needing a parse. Four are deferred behind one trigger, and at least one may dissolve into another. So on today's reading the cut is **not** a six-way credential-admission programme; it is two whole-credential checks plus a definition question. That is the "small" branch merry-bear-25 named — but it rests on the deferred four actually being deferrable, which the axis-definition authority decides, not this document.
+**Sizing:** authenticity/presence and expiry require two whole-credential checks. Four axes await definitions, and boot-binding may dissolve into attempt-binding. This is merry-bear-25's “small” branch only if the definition authority confirms those four are deferrable; this document cannot decide that.
 
 **Like-for-like remains the one answer that is definitely wrong.** A cutover reproducing all six absent checks reproduces the receipted fail-open, and §3 forbids dropping a required refusal to shrink the minimum Y.
 
 ## What this document deliberately does not do
 
-It does not schedule the work, choose an owner, or propose an executor design. It gives each of the six admission axes a stated disposition rather than a verdict on all six, and where the honest disposition is *deferred* it names the trigger instead of guessing the axis' meaning — four of the six are deferred precisely because this repository carries no definition of them. And it names its instruments rather than transcribing them: the markers and magnitudes are cited to the probe capture that produced them, and the search census is stated as the four queries that re-derive it — with its controls, which are the part that decides the result. *An earlier revision claimed outright that the document transcribed no measurement. That was false while the census carried bare hit counts with no named producer, and a false self-assessment is worse than the defect it covers, because the section then reads as already-checked.*
+No schedule, owner or executor design is chosen. The six axes retain their individual dispositions and triggers. Measurements remain tied to probe captures and controlled search queries. An earlier claim that this document transcribed no measurements was false: bare hit counts without a named producer were replaced by the queries and controls above.

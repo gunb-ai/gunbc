@@ -1,5 +1,6 @@
 module test.claim.fabric_m0_origin_readback_seal
 
+import std.optional { Absent }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CompileDiagnosticCensusRow,
@@ -66,6 +67,7 @@ fn unrunnable_sentinel_row() -> CompileDiagnosticCensusRow {
     subject_name: "census",
     blocking: true,
     count: 1,
+    rendered_pair: Absent {},
   }
 }
 

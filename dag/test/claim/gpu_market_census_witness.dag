@@ -1,0 +1,256 @@
+module test.claim.gpu_market_census_witness
+
+// THE CENSUS ANSWERS EVERY SOURCE ROW ONCE, AND EACH ANSWER IS THE RULE'S. Supplied rows exercise each
+// arm of gunbc.gpu_market.census census_decide; the real pinned pages are read for the inhabitance half:
+// that the fold runs over every row they carry, that every judgment still names the row it judges, and
+// that named cards come out with the figures their rows state.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.measure { bandwidth, bandwidth_count, byte_size_count, milliwatt, milliwatt_count }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.wikipedia.gpu_spec_table {
+  WikipediaGpuSpecPage,
+  WikipediaGpuSpecRow,
+  WikipediaMemoryCell,
+  WikipediaBandwidthCell,
+  WikipediaSpecTable,
+  WikipediaNonSpecTable,
+}
+import extdeps.wikipedia.list_of_nvidia_graphics_processing_units { list_of_nvidia_graphics_processing_units_page }
+import extdeps.wikipedia.list_of_amd_graphics_processing_units { list_of_amd_graphics_processing_units_page }
+import extdeps.wikipedia.amd_instinct { amd_instinct_page }
+import extdeps.wikipedia.list_of_intel_graphics_processing_units { list_of_intel_graphics_processing_units_page }
+import gunbc.gpu_market.census {
+  CensusSourcePage,
+  CensusRowRef,
+  CensusCard,
+  CensusDecision,
+  CensusIncluded,
+  CensusExcluded,
+  CoveredByAnotherSource,
+  Judged,
+  LaunchBeforeCutoff,
+  BelowMemoryFloor,
+  NotADiscreteCard,
+  GpuCountAmbiguous,
+  census_sources,
+  census_judged_rows,
+  census_coverage,
+  census_decide,
+  census_decisions,
+  census_row_ref_eq,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data no_rows: Nat = 0
+
+// ── THE REAL POPULATION ─────────────────────────────────────────────────────────────────────────
+
+fn spec_row_count(page: WikipediaGpuSpecPage) -> Nat {
+  fold(page.tables, init: no_rows, f: (acc, t) => acc + match t {
+    WikipediaSpecTable { ordinal: _, heading: _, row_count: n, rows: _ } => n
+    WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => 0
+  })
+}
+
+fn decision_row(d: CensusDecision) -> CensusRowRef {
+  match d {
+    CensusIncluded { row: r, cards: _ } => r
+    CensusExcluded { row: r, reason: _ } => r
+  }
+}
+
+// The fold yields one decision per row the pages declare. Together with the pages' own completeness
+// (test.claim.wikipedia_gpu_spec_pages_witness) a dropped source row is a dropped decision.
+test fn w_census_decides_every_declared_source_row() -> Bool {
+  count(census_decisions()) == fold(census_sources, init: no_rows, f: (acc, s) => acc + spec_row_count(page: s.page))
+}
+
+fn source_row_model(ref: CensusRowRef) -> String? {
+  match first(census_sources |> filter(s => s.page.revision == ref.revision)) {
+    Absent => none
+    Present { value: s } => match first(s.page.tables |> filter(t => match t {
+      WikipediaSpecTable { ordinal: o, heading: _, row_count: _, rows: _ } => o == ref.table
+      WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => false
+    })) {
+      Absent => none
+      Present { value: t } => match t {
+        WikipediaSpecTable { ordinal: _, heading: _, row_count: _, rows: rs } => match first(rs |> filter(r => r.ordinal == ref.row)) {
+          Present { value: r } => r.model
+          Absent => none
+        }
+        WikipediaNonSpecTable { ordinal: _, heading: _, reason: _ } => none
+      }
+    }
+  }
+}
+
+// A judgment left behind when a page is re-pinned and its rows move would judge some other card. Each
+// judged row must still state the model the judgment was written against.
+test fn w_every_judgment_names_the_row_it_judges() -> Bool {
+  census_judged_rows |> all(j => match source_row_model(ref: j.row) {
+    Present { value: m } => m == (j.model_as_stated as String)
+    Absent => false
+  })
+}
+
+test fn w_coverage_rules_join_two_census_sources() -> Bool {
+  census_coverage |> all(c =>
+    count(census_sources |> filter(s => s.page.revision == c.page)) == 1
+      && count(census_sources |> filter(s => s.page.revision == c.covered_by)) == 1)
+}
+
+fn decision_at(revision: ExternalAuthority, table: Nat, row: Nat) -> CensusDecision? {
+  first(census_decisions() |> filter(d => census_row_ref_eq(a: decision_row(d: d), b: CensusRowRef { revision: revision, table: table, row: row })))
+}
+
+fn only_card(d: CensusDecision?) -> CensusCard? {
+  match d {
+    Present { value: CensusIncluded { row: _, cards: cs } } => if count(cs) == 1 { first(cs) } else { none }
+    _ => none
+  }
+}
+
+fn gib(n: Nat) -> Nat { n * 1073741824 }
+
+test fn w_p40_is_one_card_at_its_stated_figures() -> Bool {
+  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 29)) {
+    Present { value: c } => c.model == "P40 GPU accelerator" && c.gpu_count == 1
+      && byte_size_count(b: c.memory_per_gpu) == gib(n: 24)
+      && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 345600000000, Absent => false }
+      && match c.board_power { Present { value: p } => milliwatt_count(w: p) == 250000, Absent => false }
+    Absent => false
+  }
+}
+
+// The K80 is ONE board of two GPUs: per-GPU memory and bandwidth, the board's 300 W once.
+test fn w_k80_is_one_board_of_two_gpus() -> Bool {
+  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 89, row: 21)) {
+    Present { value: c } => c.gpu_count == 2
+      && byte_size_count(b: c.memory_per_gpu) == gib(n: 12)
+      && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 240000000000, Absent => false }
+      && match c.board_power { Present { value: p } => milliwatt_count(w: p) == 300000, Absent => false }
+    Absent => false
+  }
+}
+
+// The column header states GB, so the cell "256" is 256 GiB, not 256 MiB.
+test fn w_mi325x_memory_is_read_in_the_column_unit() -> Bool {
+  match only_card(d: decision_at(revision: amd_instinct_page.revision, table: 1, row: 6)) {
+    Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 256)
+    Absent => false
+  }
+}
+
+test fn w_the_amd_list_copy_of_the_mi300x_is_covered_by_the_instinct_article() -> Bool {
+  match decision_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 96, row: 5) {
+    Present { value: CensusExcluded { row: _, reason: CoveredByAnotherSource { source: s } } } => s == amd_instinct_page.revision
+    _ => false
+  }
+}
+
+test fn w_the_desktop_max_q_workstation_card_is_a_card() -> Bool {
+  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 86, row: 5)) {
+    Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 96)
+    Absent => false
+  }
+}
+
+test fn w_a_mobile_quadro_named_by_its_m_suffix_is_not_a_card() -> Bool {
+  match decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 69, row: 6) {
+    Present { value: CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } } => (m as String) == "M"
+    _ => false
+  }
+}
+
+// The S7150 X2 row states 16 GB with no multiplier and "2x 160" GB/s: which grain is meant is not stated.
+test fn w_a_board_whose_cells_disagree_on_gpu_count_is_excluded() -> Bool {
+  match decision_at(revision: list_of_amd_graphics_processing_units_page.revision, table: 92, row: 4) {
+    Present { value: CensusExcluded { row: _, reason: GpuCountAmbiguous } } => true
+    _ => false
+  }
+}
+
+test fn w_arc_pro_b70_is_one_card_at_its_stated_figures() -> Bool {
+  match only_card(d: decision_at(revision: list_of_intel_graphics_processing_units_page.revision, table: 18, row: 3)) {
+    Present { value: c } => byte_size_count(b: c.memory_per_gpu) == gib(n: 32)
+      && match c.bandwidth_per_gpu { Present { value: b } => bandwidth_count(b: b) == 608000000000, Absent => false }
+    Absent => false
+  }
+}
+
+// ── SUPPLIED ROWS, ONE PER ARM ──────────────────────────────────────────────────────────────────
+
+data fixture_revision: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "en.wikipedia.org/w/index.php?title=Fixture&oldid=1" }
+}
+
+data fixture_source: CensusSourcePage = CensusSourcePage {
+  vendor: nvidia,
+  page: WikipediaGpuSpecPage { revision: fixture_revision, html_sha256: "fixture", table_count: 0, tables: [] },
+}
+
+fn fixture_row(model: String, year: Nat, gpus: Nat, sizes_mib: List<Nat>, bw_gpus: Nat, rates: List<Nat>, power_mw: List<Nat>) -> WikipediaGpuSpecRow {
+  WikipediaGpuSpecRow {
+    ordinal: 0, model: Present { value: model }, launch_cell: none, launch_year: Present { value: year },
+    memory_cell: none, memory: Present { value: WikipediaMemoryCell { gpu_count: gpus, sizes_mib: sizes_mib } },
+    memory_type_cell: none, bandwidth_cell: none,
+    bandwidth: Present { value: WikipediaBandwidthCell { gpu_count: bw_gpus, rates: rates |> map(r => bandwidth(count: r)) } },
+    power_cell: none, power: power_mw |> map(p => milliwatt(count: p)), bus_cell: none, bus: none,
+  }
+}
+
+fn decide(heading: NonEmptyStr, row: WikipediaGpuSpecRow) -> CensusDecision {
+  census_decide(src: fixture_source, table: 0, heading: heading, row: row)
+}
+
+test fn w_arm_a_row_launched_before_the_cutoff_is_excluded() -> Bool {
+  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2010, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
+    CensusExcluded { row: _, reason: LaunchBeforeCutoff { year: y } } => y == 2010
+    _ => false
+  }
+}
+
+test fn w_arm_a_row_below_the_memory_floor_is_excluded() -> Bool {
+  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [4096, 6144], bw_gpus: 1, rates: [1], power_mw: [1])) {
+    CensusExcluded { row: _, reason: BelowMemoryFloor { largest_mib: m } } => m == 6144
+    _ => false
+  }
+}
+
+test fn w_arm_a_row_in_a_mobile_section_is_excluded() -> Bool {
+  match decide(heading: "Mobile GPUs > GeForce 40 series", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [16384], bw_gpus: 1, rates: [1], power_mw: [1])) {
+    CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } => (m as String) == "Mobile GPUs"
+    _ => false
+  }
+}
+
+test fn w_arm_a_board_whose_cells_disagree_on_gpu_count_is_excluded() -> Bool {
+  match decide(heading: "Server GPUs", row: fixture_row(model: "Board", year: 2020, gpus: 1, sizes_mib: [16384], bw_gpus: 2, rates: [1], power_mw: [1])) {
+    CensusExcluded { row: _, reason: GpuCountAmbiguous } => true
+    _ => false
+  }
+}
+
+// A row stating two memory sizes is two cards; a row stating two rates or two powers gives each card
+// neither, rather than picking one.
+test fn w_arm_two_sizes_two_cards_and_two_rates_no_rate() -> Bool {
+  match decide(heading: "Desktop GPUs", row: fixture_row(model: "Card", year: 2020, gpus: 1, sizes_mib: [8192, 16384], bw_gpus: 1, rates: [1, 2], power_mw: [1, 2])) {
+    CensusIncluded { row: _, cards: cs } => count(cs) == 2
+      && cs |> all(c => match c.bandwidth_per_gpu { Present { value: _ } => false, Absent => true })
+      && cs |> all(c => match c.board_power { Present { value: _ } => false, Absent => true })
+    _ => false
+  }
+}
+
+test fn w_arm_a_board_of_four_carries_one_board_power() -> Bool {
+  match decide(heading: "Data center GPUs", row: fixture_row(model: "Board", year: 2021, gpus: 4, sizes_mib: [16384], bw_gpus: 4, rates: [200000000000], power_mw: [250000])) {
+    CensusIncluded { row: _, cards: cs } => count(cs) == 1 && cs |> all(c => c.gpu_count == 4
+      && match c.board_power { Present { value: p } => milliwatt_count(w: p) == 250000, Absent => false })
+    _ => false
+  }
+}

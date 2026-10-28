@@ -1,7 +1,7 @@
 module test.claim.spark.collective_transport_plan_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
-import extdeps.docker.cli { DockerDeviceMapping, DockerEnvAssignment }
+import extdeps.docker.create_spec { DockerDeviceMapping, DockerEnvAssignment }
 import extdeps.nvidia.nccl { NcclRoceGidSelection, NcclGidByAddressFamily, NcclAfInet, NcclRoceV2 }
 import gunbc.spark.collective_transport_plan {
   CollectiveTransportPlan, SocketOverInterface, RoceOverInterface,
