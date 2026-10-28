@@ -470,10 +470,9 @@ fn scopes_are_exactly(granted: List<AuthorizationScope>, derived: List<Authoriza
     && all(granted, g => any(derived, d => authorization_scope_eq(a: g, b: d)))
 }
 
-// THE REQUEST A RUN FILES. Its intent hash is the approval's identity, so the broker's revision join
-// (gunbc.auth.approval_decision_store request_revision_of) binds the decision to this exact subject.
-// The request the job files. Its scopes are the write's own (bmc_account_write_scopes), and its intent
-// hash is taken over them; nothing about either is supplied by the caller.
+// THE REQUEST A RUN FILES. Its scopes are the write's own (bmc_account_write_scopes) and its intent
+// hash is taken over them; nothing about either is supplied by the caller. The broker's revision join
+// (gunbc.auth.approval_decision_store request_revision_of) binds the decision to that hash.
 fn bmc_account_write_authorization_request(
   escalation_id: NonEmptyStr,
   approval: BmcAccountWriteApproval,
