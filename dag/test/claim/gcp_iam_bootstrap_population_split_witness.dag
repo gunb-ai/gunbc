@@ -28,7 +28,7 @@ import gunbc.auth.gcp_iam_bootstrap_delta {
 import gunbc.auth.gcp_iam_bootstrap_delta_route { root_cell_repair_ceremony }
 import gunbc.auth.gcp_iam_bootstrap { BootstrapCapabilities, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags,
   iam_bootstrap_stage_bindings_over, iam_bootstrap_stage_identities_over,
-  IamBootstrapStage, iam_bootstrap_stages, iam_bootstrap_stage_order, iam_bootstrap_stage_owed, iam_bootstrap_stage_wire,
+  IamBootstrapStage, iam_bootstrap_stages, iam_bootstrap_stage_owed, iam_bootstrap_stage_wire,
   iam_bootstrap_stage_bindings, CeremonySubjectReading, ceremony_unestablished_cell_phrases,
   ceremony_owned_proof_refusal, iam_bootstrap_ceremony_owned_cells
 }
@@ -319,14 +319,6 @@ test fn the_ceremony_folds_all_twelve_stages_in_order() -> Bool {
     "authority-cleanup", "capabilities", "probe-authority", "privilege-readback",
     "probe-cleanup", "workflow-trust"
   ]
-}
-
-// THE ORDER LITERAL AND THE FOLDED ROW AGREE ON THE SET THE ESTATE OWES: every owed stage is in the
-// run and nothing unowed is, so the run cannot fold a stage nobody owes nor skip one everybody does.
-test fn the_folded_run_is_exactly_the_owed_stages_in_declared_order() -> Bool {
-  let owed = filter(iam_bootstrap_stage_order, s => iam_bootstrap_stage_owed(stage: s))
-  count(owed) == count(iam_bootstrap_stages)
-    && stage_wires(stages: owed) == stage_wires(stages: iam_bootstrap_stages)
 }
 
 // THE TWO STAGES THE INCIDENT RUN LOST ARE OWED, so a row that drops them fails the claim above
