@@ -23,7 +23,7 @@ These are the PRs that were approved, or approved apart from a small fix. Each w
 | #14369 | 393a472c | C4-B: parse gate measured; scope the PASS=0 FAIL=0 reading | applied as a diff |
 | #14437 | e9b7a15f | C4: registry-vs-rows identity check (frozen seed residue, run by hand) | applied as a diff |
 
-**Provisional mirrors.** Several of these PRs regenerate the same `src/v1/stage0/src/*.rs` mirrors. Where the only conflicts were in those generated files, the integration kept the base side provisionally, as `docs/plans/generated-file-conflict-policy.md` allows for a deterministic projection. The branch does not land on that. The heal job (`gunbc.heal_workflow`) must converge the mirrors to the seed's own fixed point over the merged `.dag`, with a receipt, before the branch is reviewed. A v2-bootstrap green over stale mirrors judges main's behaviour, not this branch's.
+**Mirrors.** Several of these PRs regenerate the same `src/v1/stage0/src/*.rs` mirrors, and the merges first kept the base side of those generated files. Commit 20d024d replaced them with the seed's own fixed point: `claim_executor --regen-round-cost --base-mirror` against the merge base 94870562 converged in 2 stages, then `heal_stage0_overlap_refusal_wet` and `seed_build_artifacts_regen` `main_wet` ran clean. It ran on srv1 because the CI heal job reruns those rounds and exceeds its 90-minute limit on this branch (runs 40623770492 and 40723909435), so CI heal has not independently confirmed the bytes.
 
 **Taken back out: #15015 and #15277.** Both change a generated function's surface AND the hand-written seed code that calls it (`cli_run.rs`, `data_initializer_identity.rs`): #15015 adds `undeclared_transport_node`, and #15277 adds a parameter to `resolve_local_coproduct_wire_policy`. Heal builds its regenerator from the checkout before it regenerates. So a branch whose hand-written seed code needs regenerated mirrors, without those mirrors committed, can never pass heal: building from the old mirrors fails, and the rebuild after regenerating fails against the old hand-written code. That happened on this branch (heal run 40616715648, E0061 and E0425). Each PR's own branch carries mirrors consistent with its hand-written code, so each lands on its own after this branch, by merging main and letting heal re-converge. They are listed as follow-ons below.
 
@@ -31,20 +31,16 @@ These are the PRs that were approved, or approved apart from a small fix. Each w
 
 **Composition risk.** Keyed rosters can merge cleanly into duplicates (`docs/plans/generated-file-conflict-policy.md`, case 3). The composed run below is what rules that out. A clean merge does not.
 
-## What the branch owes before it lands
+## Evidence at 20d024d (base: merge base 94870562)
 
-1. **Heal convergence** of the stage0 mirrors on the branch head, with the HealPublished receipt.
-2. **Required check:** `witnesses` green at the converged head.
-3. **Composed whole-corpus run** at that head, in both orderings, with no newly refused rows. Also run:
-   - the gunbc-private roster check, because #14082, #15228 and #14056 change acceptance;
-   - the N7 census, for #14933 and #14575.
-   - Remote runs on BuildBuddy were refusing ("permission denied") at hand-off, so these may need the fleet runners.
-4. **Evidence still owed by individual PRs:**
-   - #14082's mirror fixed-point check never completed. Step 1 discharges it.
-   - #15228 was last tested before #15189 landed over two of its files. Step 3 discharges it.
-   - #15026 and #15008 were granted to land one per batch. In one branch they need the step 3 run, with no newly refused row attributable to either.
-   - #14056, #15020, #14793, #14369, #14437, #14411 and #15276 had a dashboard approval but no side-chat review at hand-off. Review them as part of this branch.
-5. **Side-chat approval** at the exact final head, then the merge queue.
+Run on srv1 with `~/n7c/run2.sh`, `~/n7c/privchk.sh` and `~/n7local.sh`, head and base built and run side by side.
+
+- **Required check:** `v2-bootstrap` passed at 20d024d, over the converged mirrors.
+- **Whole-corpus compile, both root orderings:** 340 distinct refusals at head, 341 at base. Compared by file and message, no refusal is new. Two head rows differ from base only by line (`dag/test/claim/diagnostic_span_location_rendering_witness.dag`, 88→89 and 139→140), because #15276 added one import line above them; both are inherited. One inherited refusal is gone: `dag/test/claim/parse_test_fn_decl_return_clause.dag` (`expected 'Product(DeclaredName)', got 'Primitive(String)'`).
+- **gunbc-private roster** (`private_roster_main`, private f8c9b2ac): exit 0 at head and at base.
+- **N7** (`//gunbc/instruments:v2-native-census-scoped`, covering #14933 and #14575): exit 0 at both, identical terminal rows (164 modules, 35 infer refusals, 2067 residual rows, diff none). The members claim `//v2/test/claim/parse/expression_bodied_fn_decl_parse:all` exits 2 at both head and base, so it is inherited, not caused here.
+
+Still owed: side-chat approval at the exact final head, then the merge. CI heal confirming the mirror bytes needs its time limit raised or its duplicated bootstrap round removed first.
 
 ## Follow-on PRs (not in this branch)
 
