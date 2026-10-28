@@ -1407,7 +1407,7 @@ fn harness_send_round(
           )
         },
         pool_fault: posted.fault,
-        pending_cause: harness_request_pending_cause(config: config, posted: posted),
+        pending_cause: harness_request_pending_cause(access: config.backend_access, posted: posted),
       }
     } else if !kept.success {
       HarnessPostedRound {
@@ -1498,8 +1498,8 @@ fn harness_post_drew_no_response(posted: HarnessPostOutcome) -> Bool {
 // window is only the client's observation, never the request's deadline -- stands for the same reason. A
 // refused certificate is terminal (the same certificate fails the same way; no byte was sent), any 4xx is
 // the front refusing THIS request, and a hosted route never holds: today's behaviour stands.
-fn harness_request_pending_cause(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> String? {
-  if !harness_route_is_fleet_engine(access: config.backend_access) {
+fn harness_request_pending_cause(access: HarnessBackendAccess, posted: HarnessPostOutcome) -> String? {
+  if !harness_route_is_fleet_engine(access: access) {
     none
   } else {
     match posted.fault {

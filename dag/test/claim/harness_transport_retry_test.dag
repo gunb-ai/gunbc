@@ -4,54 +4,66 @@ import std.types { Bool, String, List }
 import std.optional { Present, Absent }
 import extdeps.http.header_dump { HeaderDumpRead, HeaderDumpUnread }
 import gunbc.harness.harness_turn {
-  HarnessPostOutcome, harness_post_drew_no_response, harness_event_transport_retry,
+  HarnessPostOutcome, harness_post_drew_no_response,
 }
 import gunbc.harness.harness_transport_retry_policy {
-  TransportRetryPolicy, harness_transport_retry_policy_now, transport_retry_delay_seconds, transport_retry_fits, transport_retry_offset_seconds,
+  HarnessTransportRetryPolicy, harness_transport_retry_policy_now, transport_retry_delay_seconds, transport_retry_offset_seconds, transport_retry_next_delivery_at, transport_retry_redelivery_due,
 }
 import std.measure { second }
 
-// ONLY A REQUEST THAT DREW NO RESPONSE IS RETRIED (F85): the transport failed, nothing came back, and
-// no response header was received. The srv1 lab's empty reply -- curl 52, a zero-byte body, an empty
-// header dump -- qualifies; an engine that answered anything, an error status or an error body, does
-// not, because its answer is evidence about the request rather than the absence of one.
-test fn only_a_response_less_failure_is_retried() -> Bool {
-  let empty_reply = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, retries: [] as List<String> }
-  let seat_route_reset = HarnessPostOutcome { body: "", success: false, headers: Absent, retries: [] as List<String> }
-  let error_status = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "HTTP/1.1 500 Internal Server Error\r\n" } }, retries: [] as List<String> }
-  let error_body = HarnessPostOutcome { body: "\{\"error\": \"context length exceeded\"}", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, retries: [] as List<String> }
-  let answered = HarnessPostOutcome { body: "\{\"choices\": []}", success: true, headers: Absent, retries: [] as List<String> }
+// A REQUEST THAT DREW NO RESPONSE STANDS (F85): the transport failed, nothing came back, and no
+// response header was received. The lab's empty reply -- curl 52, a zero-byte body, an empty header
+// dump -- qualifies; an engine that answered anything, an error status or an error body, does not,
+// because its answer is evidence about the request rather than the absence of one. Under the PATIENT
+// REQUEST CONTRACT this reading is what opens a pending window: the worker that finds it writes one
+// durable event and exits; nothing here retries anything in-process.
+test fn only_a_response_less_failure_drew_no_response() -> Bool {
+  let empty_reply = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, fault: none }
+  let route_reset = HarnessPostOutcome { body: "", success: false, headers: Absent, fault: none }
+  let error_status = HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "HTTP/1.1 500 Internal Server Error\r\n" } }, fault: none }
+  let error_body = HarnessPostOutcome { body: "\{\"error\": \"context length exceeded\"}", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, fault: none }
+  let answered = HarnessPostOutcome { body: "\{\"choices\": []}", success: true, headers: Absent, fault: none }
   harness_post_drew_no_response(posted: empty_reply)
-    && harness_post_drew_no_response(posted: seat_route_reset)
+    && harness_post_drew_no_response(posted: route_reset)
     && !harness_post_drew_no_response(posted: error_status)
     && !harness_post_drew_no_response(posted: error_body)
     && !harness_post_drew_no_response(posted: answered)
 }
 
-// EVERY RETRY IS A RECORDED EVENT, naming the round it belongs to.
-test fn a_retry_is_recorded_with_its_round() -> Bool {
-  let e = harness_event_transport_retry(round: 16, detail: "no response to attempt 1")
-  e.contains("round.transport_retry") && e.contains("16") && e.contains("no response to attempt 1")
-}
-
-// THE WAIT BACKS OFF EXPONENTIALLY INSIDE A BUDGET (operator, 2026-10-12: the engine is expected to
-// restart): under the policy in force, 15 s doubling to a 5-minute cap, and no retry that would carry the
-// total wait past the 30-minute budget -- so a reload is ridden out, a long outage ends typed, and the
-// schedule never grows without bound. The per-session offset is small and stable for one session.
-test fn the_retry_backs_off_exponentially_within_its_budget() -> Bool {
+// THE SCHEDULE DOUBLES TO ITS CAP AND ENDS NOTHING (operator direction 2026-10-27: the request is
+// delivered and waited on indefinitely; operator 2026-10-12: the engine restarts, so the first gap is
+// 15 s and doubles). The gap spaces the belt's re-deliveries; there is NO BUDGET to run out -- the
+// discriminating part is the far future: a request pending since before the old 30-minute budget died
+// still becomes DUE, at a named instant, on the same functions. A re-introduced budget or expiry is
+// visible here because these calls would refuse, stop, or never arrive.
+test fn the_schedule_doubles_to_its_cap_and_never_ends_the_request() -> Bool {
   let p = harness_transport_retry_policy_now
-  map([0, 1, 2, 3, 4, 5, 6], n => transport_retry_delay_seconds(policy: p, retries_so_far: n)) == [15, 30, 60, 120, 240, 300, 300]
-    && transport_retry_fits(policy: p, waited_seconds: 0, retries_so_far: 0, offset_seconds: 6)
-    && transport_retry_fits(policy: p, waited_seconds: 1490, retries_so_far: 6, offset_seconds: 0)
-    && !transport_retry_fits(policy: p, waited_seconds: 1501, retries_so_far: 6, offset_seconds: 0)
+  map([0, 1, 2, 3, 4, 5, 6], n => transport_retry_delay_seconds(policy: p, re_deliveries: n)) == [15, 30, 60, 120, 240, 300, 300]
     && transport_retry_offset_seconds(policy: p, session_key: "/state/n-a1/harness-request.json") < 7
+    // Not yet due a second before the gap has passed; due at its instant. Same function, no other input.
+    && !transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 0, session_key: "s", at: 1000 + transport_retry_delay_seconds(policy: p, re_deliveries: 0) + transport_retry_offset_seconds(policy: p, session_key: "s") - 1)
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 0, session_key: "s", at: 1000 + transport_retry_delay_seconds(policy: p, re_deliveries: 0) + transport_retry_offset_seconds(policy: p, session_key: "s"))
+    // TEN DAYS OUT: still only ever a named instant, never a refusal to name one. The old budget died
+    // at 1800 s; a fit test reintroduced would answer false here forever and this claim would fail.
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 1000, re_deliveries: 4000, session_key: "s", at: 1000 + 864000)
+    && transport_retry_next_delivery_at(policy: p, last_delivery_at: 1000, re_deliveries: 4000, session_key: "s") == 1000 + 300 + transport_retry_offset_seconds(policy: p, session_key: "s")
 }
 
-// THE SCHEDULE IS THE POLICY'S, NOT THE MECHANISM'S: a different policy value gives a different schedule
-// through the same functions, which is what lets the policy change without touching the request path.
+// THE DUE READING AND THE NAMED INSTANT ARE THE SAME FACT: Hold names exactly the instant at which
+// due flips true, so the belt's Hold "next re-delivery at T" and its later Resume cannot disagree.
+test fn the_named_instant_is_the_instant_due_flips() -> Bool {
+  let p = harness_transport_retry_policy_now
+  let at = transport_retry_next_delivery_at(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7")
+  !transport_retry_redelivery_due(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7", at: at - 1)
+    && transport_retry_redelivery_due(policy: p, last_delivery_at: 500, re_deliveries: 3, session_key: "session-7", at: at)
+}
+
+// THE SPREAD IS THE POLICY'S, NOT THE MECHANISM'S: a different policy value gives a different schedule
+// through the same functions, and an offset spread of one puts every session on the same instant --
+// which is what the spread exists to prevent, and what makes it testable.
 test fn a_different_policy_changes_the_schedule() -> Bool {
-  let patient = TransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), budget: second(count: 7200), offset_spread: 1 }
-  map([0, 1, 2, 3, 4], n => transport_retry_delay_seconds(policy: patient, retries_so_far: n)) == [60, 120, 240, 480, 600]
+  let patient = HarnessTransportRetryPolicy { first_delay: second(count: 60), max_delay: second(count: 600), offset_spread: 1 }
+  map([0, 1, 2, 3, 4], n => transport_retry_delay_seconds(policy: patient, re_deliveries: n)) == [60, 120, 240, 480, 600]
     && transport_retry_offset_seconds(policy: patient, session_key: "anything") == 0
-    && transport_retry_fits(policy: patient, waited_seconds: 6000, retries_so_far: 4, offset_seconds: 0)
+    && transport_retry_next_delivery_at(policy: patient, last_delivery_at: 0, re_deliveries: 1, session_key: "anything") == 120
 }
