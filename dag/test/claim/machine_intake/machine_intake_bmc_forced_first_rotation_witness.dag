@@ -1,0 +1,154 @@
+module test.claim.machine_intake.machine_intake_bmc_forced_first_rotation_witness
+
+import std.types { Bool, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.scoped_authorization { ScopedAuthorization }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, OpenBmc, bmc_controller_of_endpoint }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceAccountManagement }
+import extdeps.bmc.redfish { redfish_password_change_verdict }
+import extdeps.bmc.ipmi_channel { IpmiPrivilegeNoAccess, ipmi_user_channel_access }
+import gunbc.fleet.fleet_intent { srv13_baseboard, srv4_baseboard }
+import gunbc.machine_intake.bmc_credential_policy {
+  PublishedCredentialChangeForced, ForcedChangeAdmitted, ForcedChangeRefused,
+  admit_published_credential_change_forced, asrock_altrad8ud_openbmc_3_22_00_key,
+}
+import gunbc.machine_intake.bmc_rotation_route {
+  BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWritePurpose, BmcAccountWriteApproval, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit,
+  ObservedSurfaceRead, QualifyByRotation, RotateCredential, QualifyRoute,
+  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject,
+  ForcedFirstRotationAdmitted, ForcedFirstRotationRefused,
+  ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
+  ForcedRouteDoesNotNameThisWrite, ForcedWriteApprovalRefused,
+  rotation_route_candidate, rotation_route_ungrounded, redfish_account_password_write, admit_forced_first_rotation,
+}
+import gunbc.machine_intake.receipt { EvidenceRef }
+import std.content_hash { content_hash_of_value }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, denied_bmc_write }
+import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIRST ROTATION OF A CONTROLLER WHOSE BUILD FORCES THE PUBLISHED CREDENTIAL'S CHANGE. The forced state
+// is entered through its real admission (gunbc.machine_intake.bmc_credential_policy
+// admit_published_credential_change_forced) from srv13's committed 403 body read by the real parser, at
+// srv13's controller on 3.22.00. Every claim here varies one input from that admitted case.
+//
+// NO WRITE IS MADE. srv13 carries a standing write restriction (merry-fox-82): this witness exercises the
+// admission over supplied values and writes nothing to any controller.
+
+data response_receipt: EvidenceRef = EvidenceRef {
+  label: "srv13 3.22.00 factory-login 403",
+  digest: content_hash_of_value(value: "srv13 3.22.00 factory-login 403" as NonEmptyStr),
+}
+
+fn srv13() -> BmcControllerEndpoint {
+  bmc_controller_of_endpoint(endpoint: srv13_baseboard.bmc)
+}
+
+fn another_controller() -> BmcControllerEndpoint {
+  bmc_controller_of_endpoint(endpoint: srv4_baseboard.bmc)
+}
+
+fn build_3_22() -> BmcFirmwareReleaseIdentity {
+  asrock_altrad8ud_openbmc_3_22_00_key().firmware
+}
+
+fn root_write() -> BmcAccountWriteRequest {
+  redfish_account_password_write(account: "root" as NonEmptyStr)
+}
+
+fn forced_at(endpoint: BmcControllerEndpoint) -> PublishedCredentialChangeForced? {
+  match admit_published_credential_change_forced(
+    endpoint: endpoint,
+    key: asrock_altrad8ud_openbmc_3_22_00_key(),
+    status: "403" as NonEmptyStr,
+    verdict: redfish_password_change_verdict(body: srv13_forced_change_body),
+    response_evidence: response_receipt,
+  ) {
+    ForcedChangeAdmitted { state: s } => Present { value: s }
+    ForcedChangeRefused { cause: _ } => none
+  }
+}
+
+// The route the 403 names: a candidate for the write, evidenced by the forced response itself.
+fn candidate(endpoint: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, request: BmcAccountWriteRequest) -> BmcRotationRouteStanding {
+  rotation_route_candidate(endpoint: endpoint, firmware: firmware, request: request, evidence: ObservedSurfaceRead { surface: SurfaceAccountManagement, receipt: response_receipt })
+}
+
+fn go(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, purpose: BmcAccountWritePurpose) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_write(standing: standing, request: request, purpose: purpose, attempt: "attempt-1" as NonEmptyStr)
+}
+
+fn verdict(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approval: ScopedAuthorization<BmcAccountWriteApproval>) -> String {
+  match forced_at(endpoint: srv13()) {
+    Absent => "forced-state-not-entered"
+    Present { value: f } =>
+      match admit_forced_first_rotation(forced: f, standing: standing, request: request, approval: approval) {
+        ForcedFirstRotationAdmitted { admitted: _ } => "admitted"
+        ForcedFirstRotationRefused { cause: c } =>
+          match c {
+            ForcedStateForAnotherController { forced: _, route: _ } => "another-controller"
+            ForcedStateForAnotherBuild { forced: _, route: _ } => "another-build"
+            ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: _, factory_account: _ } => "not-the-factory-password-write"
+            ForcedRouteDoesNotNameThisWrite { grounding: _ } => "route-does-not-name-it"
+            ForcedWriteApprovalRefused { cause: a } =>
+              match a {
+                BmcWriteApprovalNotGranted { escalation_id: _ } => "approval-not-granted"
+                BmcWriteApprovalDenied { reason: _ } => "approval-denied"
+                BmcWriteApprovalForAnotherPurpose { approved: _, required: _ } => "another-purpose"
+                BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
+                BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
+              }
+          }
+      }
+  }
+}
+
+// POSITIVE CONTROL. srv13's own forced state, the candidate root write it names, and one QualifyByRotation
+// go for exactly that write: admitted.
+test fn the_forced_root_write_with_its_qualify_by_rotation_go_is_admitted() -> Bool {
+  let route = candidate(endpoint: srv13(), firmware: build_3_22(), request: root_write())
+  verdict(standing: route, request: root_write(), approval: go(standing: route, request: root_write(), purpose: QualifyByRotation)) == "admitted"
+}
+
+// THE PURPOSE. A RotateCredential or QualifyRoute go for the same write is not the forced first rotation's go,
+// and a denied request is no go at all.
+test fn only_a_qualify_by_rotation_go_admits_the_forced_write() -> Bool {
+  let route = candidate(endpoint: srv13(), firmware: build_3_22(), request: root_write())
+  verdict(standing: route, request: root_write(), approval: go(standing: route, request: root_write(), purpose: RotateCredential)) == "another-purpose"
+    && verdict(standing: route, request: root_write(), approval: go(standing: route, request: root_write(), purpose: QualifyRoute)) == "another-purpose"
+    && verdict(standing: route, request: root_write(), approval: denied_bmc_write(attempt: "attempt-1" as NonEmptyStr)) == "approval-denied"
+}
+
+// THE CONTROLLER AND BUILD. srv13's forced state admits no write at another controller or another build, even
+// with that route's own exact go.
+test fn the_forced_state_admits_only_its_own_controller_and_build() -> Bool {
+  let elsewhere = candidate(endpoint: another_controller(), firmware: build_3_22(), request: root_write())
+  let older = candidate(endpoint: srv13(), firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: "2.07.00" as NonEmptyStr), request: root_write())
+  verdict(standing: elsewhere, request: root_write(), approval: go(standing: elsewhere, request: root_write(), purpose: QualifyByRotation)) == "another-controller"
+    && verdict(standing: older, request: root_write(), approval: go(standing: older, request: root_write(), purpose: QualifyByRotation)) == "another-build"
+}
+
+// THE WRITE. Only the factory account's password write: not another account's, not an IPMI password or
+// privilege write -- each refused with its own exact go.
+test fn the_forced_state_admits_only_the_factory_accounts_password_write() -> Bool {
+  let admin = redfish_account_password_write(account: "admin" as NonEmptyStr)
+  let ipmi = IpmiSetUserPassword { user: 1 }
+  let close = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 1, user: 1, privilege: IpmiPrivilegeNoAccess) }
+  let admin_route = candidate(endpoint: srv13(), firmware: build_3_22(), request: admin)
+  let ipmi_route = candidate(endpoint: srv13(), firmware: build_3_22(), request: ipmi)
+  let close_route = candidate(endpoint: srv13(), firmware: build_3_22(), request: close)
+  verdict(standing: admin_route, request: admin, approval: go(standing: admin_route, request: admin, purpose: QualifyByRotation)) == "not-the-factory-password-write"
+    && verdict(standing: ipmi_route, request: ipmi, approval: go(standing: ipmi_route, request: ipmi, purpose: QualifyByRotation)) == "not-the-factory-password-write"
+    && verdict(standing: close_route, request: close, approval: go(standing: close_route, request: close, purpose: QualifyByRotation)) == "not-the-factory-password-write"
+}
+
+// THE ROUTE. An ungrounded route names no write, and a candidate for another write does not name this one.
+test fn the_route_must_name_the_forced_write() -> Bool {
+  let ungrounded = rotation_route_ungrounded(endpoint: srv13(), firmware: build_3_22())
+  let other = candidate(endpoint: srv13(), firmware: build_3_22(), request: redfish_account_password_write(account: "admin" as NonEmptyStr))
+  verdict(standing: ungrounded, request: root_write(), approval: go(standing: ungrounded, request: root_write(), purpose: QualifyByRotation)) == "route-does-not-name-it"
+    && verdict(standing: other, request: root_write(), approval: go(standing: other, request: root_write(), purpose: QualifyByRotation)) == "route-does-not-name-it"
+}

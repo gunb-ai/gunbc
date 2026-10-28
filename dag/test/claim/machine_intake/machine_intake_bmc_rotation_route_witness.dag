@@ -724,10 +724,12 @@ test fn a_grant_whose_subject_was_edited_after_the_decision_is_refused() -> Bool
     && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: decided) == "admitted"
 }
 
-// THE PURPOSE IS PART OF WHAT WAS APPROVED. On one grounded route: a QualifyByRotation go admits the
-// rotation Apply; a RotateCredential go admits it; a QualifyRoute go is refused as another purpose.
-// On one candidate: QualifyByRotation and QualifyRoute both admit the qualification request, and a
-// RotateCredential go is refused as another purpose. A pending request is not a go.
+// THE PURPOSE IS PART OF WHAT WAS APPROVED, AND EACH PURPOSE COVERS ONLY ITSELF. On one grounded route: a
+// RotateCredential go admits the rotation Apply; QualifyRoute and QualifyByRotation gos are refused as
+// another purpose. On one candidate: a QualifyRoute go admits the qualification request; RotateCredential
+// and QualifyByRotation gos are refused. QualifyByRotation is read only by admit_forced_first_rotation,
+// which also needs the forced-change state (test.claim.machine_intake
+// machine_intake_bmc_forced_first_rotation_witness). A pending request is not a go.
 test fn each_purpose_covers_exactly_what_it_names() -> Bool {
   let request = IpmiSetUserPassword { user: 3 }
   let grounded = cited_password_route_at(endpoint: lab_endpoint)
@@ -736,11 +738,11 @@ test fn each_purpose_covers_exactly_what_it_names() -> Bool {
     Present { value: r } => AuthorizationPending { request: r }
     Absent => AuthorizationDenied { escalation_id: "attempt-1" as NonEmptyStr, denied_by: "witness" as NonEmptyStr, denied_at: "2026-10-03T00:00:00Z", reason: "unframed" as NonEmptyStr }
   }
-  apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: QualifyByRotation)) == "admitted"
+  apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: QualifyByRotation)) == "another-purpose"
     && apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: RotateCredential)) == "admitted"
     && apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: QualifyRoute)) == "another-purpose"
     && apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: pending) == "approval-not-granted"
-    && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: QualifyByRotation))) == "admitted"
+    && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: QualifyByRotation))) == "another-purpose"
     && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: QualifyRoute))) == "admitted"
     && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: RotateCredential))) == "another-purpose"
 }

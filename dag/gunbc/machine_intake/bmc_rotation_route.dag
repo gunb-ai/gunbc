@@ -22,6 +22,8 @@ import extdeps.bmc.ipmi_channel {
   IpmiPrivilegeCallback, IpmiPrivilegeUser, IpmiPrivilegeOperator, IpmiPrivilegeAdministrator, IpmiPrivilegeOem, IpmiPrivilegeNoAccess,
 }
 import gunbc.machine_intake.receipt { EvidenceRef }
+import gunbc.machine_intake.bmc_credential_policy { PublishedCredentialChangeForced }
+import gunbc.bmc.bmc_implementation_dispatch { bmc_firmware_factory_account }
 import gunbc.bmc_model { BmcWorld, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_ipmi_get_user_access }
 
 data bmc_rotation_route_disposition: Disposition = Terminal {
@@ -358,8 +360,8 @@ fn route_subject_of(standing: BmcRotationRouteStanding, request: BmcAccountWrite
 // THE PURPOSE IS PART OF WHAT WAS APPROVED. Grounding a route is its own effect, not the Apply: the
 // Apply consumes a grounded route, so it cannot produce the premise that admits it, and approving a
 // rotation does not qualify a route. QualifyByRotation is the one write that is both, admitted only
-// where the build forces the published credential's change on first login: there the password write
-// that grounds the route IS the first rotation, so it is approved once, as itself.
+// where the build forces the published credential's change on first login (admit_forced_first_rotation):
+// there the password write that grounds the route IS the first rotation, so it is approved once, as itself.
 type BmcAccountWritePurpose
   = QualifyRoute
   | RotateCredential
@@ -378,11 +380,17 @@ fn bmc_account_write_purpose_text(purpose: BmcAccountWritePurpose) -> NonEmptySt
   }
 }
 
-// What an approved purpose discharges: a QualifyByRotation approval discharges both of the effects it
-// names, and neither single-purpose approval discharges the other.
+// What an approved purpose discharges: each purpose exactly itself. QualifyByRotation is required only by
+// admit_forced_first_rotation, which also requires the forced-change state; a QualifyByRotation go is
+// therefore no qualification and no rotation on a build that does not force the change.
 fn bmc_account_write_purpose_covers(approved: BmcAccountWritePurpose, required: BmcAccountWritePurpose) -> Bool {
   match approved {
-    QualifyByRotation => true
+    QualifyByRotation =>
+      match required {
+        QualifyByRotation => true
+        QualifyRoute => false
+        RotateCredential => false
+      }
     QualifyRoute =>
       match required {
         QualifyRoute => true
@@ -1144,5 +1152,86 @@ fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteReques
     account: account,
     transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: "SetAccountPassword"),
     action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: "SetAccountPassword"),
+  }
+}
+
+// ── THE FORCED FIRST ROTATION ───────────────────────────────────────────────────────────────────────
+//
+// On a build whose published login answers 403 PasswordChangeRequired (gunbc.machine_intake
+// bmc_credential_policy PublishedCredentialChangeForced), nothing authenticated can be read before the
+// password write, and that write is the only request the state admits. So the first rotation of such a
+// controller is admitted here, from the forced state itself rather than from a reading of the account:
+//
+// - the forced state was read at this controller, at this build;
+// - the write is the password write of the account the factory login names (OpenBMC root), and nothing
+//   else -- not a privilege write, not another account;
+// - the route names exactly that write, as a candidate (the controller's own 403 names the target) or
+//   already grounded; an ungrounded route names no write;
+// - the operator approved exactly this write with purpose QualifyByRotation: one approval, one write
+//   that both grounds the route and rotates the credential.
+//
+// The admitted write is consumed by the forced plan's live apply (PR 2 of the bmc_onboard retirement,
+// gunbc.machine_intake.bmc_secure_live), whose readback is the ordinary BmcSecure read under the new
+// generation: the forced state proves nothing about the controller after the write.
+
+type ForcedFirstRotationRefusal
+  = ForcedStateForAnotherController { forced: BmcControllerEndpoint, route: BmcControllerEndpoint }
+  | ForcedStateForAnotherBuild { forced: BmcFirmwareReleaseIdentity, route: BmcFirmwareReleaseIdentity }
+  | ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: BmcAccountWriteRequest, factory_account: NonEmptyStr }
+  | ForcedRouteDoesNotNameThisWrite { grounding: BmcRotationRouteGrounding }
+  | ForcedWriteApprovalRefused { cause: BmcWriteApprovalRefusal }
+
+type AdmittedForcedFirstRotation sole_constructor {
+  forced: PublishedCredentialChangeForced
+  standing: BmcRotationRouteStanding
+  request: BmcAccountWriteRequest
+  attempt: AttemptIdentity
+  decided_by: NonEmptyStr
+}
+
+type ForcedFirstRotationAdmission
+  = ForcedFirstRotationAdmitted { admitted: AdmittedForcedFirstRotation }
+  | ForcedFirstRotationRefused { cause: ForcedFirstRotationRefusal }
+
+fn is_factory_account_password_write(request: BmcAccountWriteRequest, factory_account: NonEmptyStr) -> Bool {
+  match request {
+    RedfishAccountPasswordWrite { account: a, transport_operation: _, action_shape: _ } => (a as String) == (factory_account as String)
+    IpmiSetUserPassword { user: _ } => false
+    IpmiSetUserPrivilegeLimit { access: _ } => false
+  }
+}
+
+fn route_names_write(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest) -> Bool {
+  match standing.grounding {
+    RouteQualificationCandidate { request: r, evidence: _ } => account_write_request_eq(a: r, b: request)
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => account_write_request_eq(a: r, b: request)
+    RouteGroundedByCitedSource { request: r, citation: _ } => account_write_request_eq(a: r, b: request)
+    RouteUngrounded => false
+  }
+}
+
+fn admit_forced_first_rotation(
+  forced: PublishedCredentialChangeForced,
+  standing: BmcRotationRouteStanding,
+  request: BmcAccountWriteRequest,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
+) -> ForcedFirstRotationAdmission {
+  let factory_account = bmc_firmware_factory_account(family: forced.key.firmware.family)
+  if (forced.endpoint.host as String) != (standing.endpoint.host as String) {
+    ForcedFirstRotationRefused { cause: ForcedStateForAnotherController { forced: forced.endpoint, route: standing.endpoint } }
+  } else if !bmc_firmware_release_identity_eq(a: forced.key.firmware, b: standing.firmware) {
+    ForcedFirstRotationRefused { cause: ForcedStateForAnotherBuild { forced: forced.key.firmware, route: standing.firmware } }
+  } else if !is_factory_account_password_write(request: request, factory_account: factory_account) {
+    ForcedFirstRotationRefused { cause: ForcedWriteIsNotTheFactoryAccountsPasswordWrite { request: request, factory_account: factory_account } }
+  } else if !route_names_write(standing: standing, request: request) {
+    ForcedFirstRotationRefused { cause: ForcedRouteDoesNotNameThisWrite { grounding: standing.grounding } }
+  } else {
+    match read_bmc_write_approval(approval: approval, subject: route_subject_of(standing: standing, request: request), required: QualifyByRotation) {
+      BmcWriteApprovalRefused { cause: c } => ForcedFirstRotationRefused { cause: ForcedWriteApprovalRefused { cause: c } }
+      BmcWriteApproved { attempt: a, granted_by: by } =>
+        ForcedFirstRotationAdmitted {
+          admitted: AdmittedForcedFirstRotation { forced: forced, standing: standing, request: request, attempt: a, decided_by: by },
+        }
+    }
   }
 }
