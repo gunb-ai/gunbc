@@ -458,7 +458,7 @@ fn session_epoch_member(v: JsonValue, key: String) -> SessionEpoch {
       match found {
         JsonNumber { lexeme: l } =>
           match parse_int(text: serialize_json(v: JsonNumber { lexeme: l })) {
-            Present { value: n } => if n >= 0 { SessionEpochRead { value: n as EpochSecs } } else { SessionEpochMalformed { mismatch: join([key, " is negative: ", to_string(value: n)], "") } }
+            Present { value: n } => if n >= 0 { SessionEpochRead { value: n } } else { SessionEpochMalformed { mismatch: join([key, " is negative: ", to_string(value: n)], "") } }
             Absent => SessionEpochMalformed { mismatch: join(["member ", key, " is not an integer"], "") }
           }
         JsonNull => SessionEpochMalformed { mismatch: join([key, " is null, not an epoch second"], "") }
@@ -713,12 +713,12 @@ fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> Sessio
 // sentinel: zero is a real instant (the epoch), so no Int value may stand in for "no window".
 fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: Int) -> EpochSecs? {
   let sinces = events |> flat_map(e => match e {
-    // The read-back `since` arrives as a plain integer reading; the fold carries instants, so it is
-    // admitted to the carrier here -- the same `as EpochSecs` admission the stream parse performs. A
-    // comparison-join downstream (an if picking between a read-back instant and the clock's reading)
-    // cannot unify the two shapes on its own; admitting at the source makes every fold EpochSecs.
-    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since as EpochSecs] } else { [] as List<EpochSecs> }
-    _ => [] as List<EpochSecs>
+    // The fold carries the round's plain integer readings; a comparison-join never sees them meet the
+    // carrier on its own -- the single join is epoch_not_above, typed on the carrier at both of its
+    // positions. The evaluator refuses an Int-to-carrier CAST (srv1 runtime, 2026-10-28), so nothing
+    // here casts: typed POSITIONS (fields, parameters, constructors) are where a reading is admitted.
+    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since] } else { [] }
+    _ => []
   })
   fold(sinces, init: none, f: fn(acc, x) {
     match acc {
@@ -733,8 +733,8 @@ fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: 
 // live nowhere else.
 fn session_request_redelivery_stamps_for(events: List<SessionRecoveryEvent>, round: Int) -> List<EpochSecs> {
   events |> flat_map(e => match e {
-    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at as EpochSecs] } else { [] as List<EpochSecs> }
-    _ => [] as List<EpochSecs>
+    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] }
+    _ => []
   })
 }
 
@@ -788,17 +788,21 @@ fn session_request_redeliveries_of(lines: List<String>, round: Int) -> Int {
   session_request_redeliveries_for(events: lines |> map(l => session_recovery_event_of_line(line: l)), round: round)
 }
 
+// THE JOIN OF TWO INSTANT READINGS, in one place, on one shape: a window may never stand in the future
+// against the clock's reading, so a pending record clamps to the reading at hand. Both readings arrive
+// through typed POSITIONS -- a typed position admits a plain reading, the way a record constructor does;
+// the evaluator REFUSES an Int-to-carrier cast (srv1 runtime, 2026-10-28), so no branch casts and no
+// fold carries a brand: this function boundary is where the two readings meet as one shape.
+fn epoch_not_above(instant: EpochSecs, ceiling: EpochSecs) -> EpochSecs {
+  if instant < ceiling { instant } else { ceiling }
+}
+
 // THE SINCE A NEW PENDING EVENT RECORDS: the window already open for this round, else now. This is what makes
 // re-pending cheap to read and honest to report -- the window names when the request first went unserved.
 fn session_request_pending_since_of(lines: List<String>, round: Int, now: EpochSecs) -> EpochSecs {
   let events = lines |> map(l => session_recovery_event_of_line(line: l))
   match session_request_pending_since_for(events: events, round: round) {
-    // A window from a stream we did not read is clamped to the reading at hand; the window may never be
-    // in the future, and it is never the sentinel of a default. The clamp joins the window against the
-    // clock's reading, so it ADMITS the window here: the Option fold's untyped init re-infers the element
-    // shape, so the read-back window arrives as a plain integer reading and the join, not the fold, is
-    // where the two shapes must meet as one (srv1 resolve diagnostic, 2026-10-28).
-    Present { value: window } => if window < now { window as EpochSecs } else { now }
+    Present { value: window } => epoch_not_above(instant: window, ceiling: now)
     Absent => now
   }
 }
