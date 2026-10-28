@@ -18,15 +18,30 @@ import extdeps.realization.materialization_store_local {
   LocalStoreFamilyBudget, LocalStoreInitialized, LocalStoreOpened, LocalStoreCapability,
   LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, LocalStoreHoldReleased, LocalStoreStagedPart,
   local_store_initialize, local_store_open, local_store_commit, local_store_lookup,
+  LocalStoreRetentionBindingReadUnavailable, LocalStoreRetentionBindingMismatch,
 }
 import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
 import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, fabric_storage_put, fabric_storage_advance }
 import gunbc.serving.checkpoint_store {
   CheckpointStore, CheckpointResult, CheckpointReady, CheckpointRefused, CheckpointWriteRefused,
+  CheckpointLocalRetentionRefused,
   checkpoint_begin, checkpoint_publish, checkpoint_read, checkpoint_close, checkpoint_collect, checkpoint_registry,
 }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathUnreadable }
+
+fn binding_read_failure_is_distinct(store: CheckpointStore, root: String) -> Bool {
+  let path = concat(concat(root, "/blobs/retention-"), fabric_blob_artifact_kind as String)
+  let blocked = shell.Mkdir.NewOwnerOnly(path: path)
+  let checked = match checkpoint_begin(store: store, owner: "read-fault") {
+    LocalStoreBracketRan { value: CheckpointRefused { cause: CheckpointLocalRetentionRefused {
+      refusal: LocalStoreRetentionBindingReadUnavailable { reading: FilesystemExactPathUnreadable { path: p, kind: _, error: _ } }
+    } }, hold_release: LocalStoreHoldReleased } => p == path
+    _ => false
+  }
+  let cleared = shell.Remove.RecursiveForce(path: path)
+  blocked.success && checked && cleared.success
+}
 
 fn read_head(result: LocalStoreBracket<CheckpointResult<FabricHeadReading>>) -> FabricHeadReading? {
   match result {
@@ -80,7 +95,12 @@ fn interrupted_publication(store: CheckpointStore, a: NonEmptyStr, b: NonEmptySt
       let reader_held = ready(result: checkpoint_read(store: store, owner: "interrupted", expected: retained_expectation(reading: head), consume: bytes =>
         match checkpoint_collect(store: store) { LocalStoreBracketRefused { refusal: _ } => true _ => false }))
       let changed_scope = CheckpointStore { blobs: store.blobs, metadata: store.metadata, registry: "unrelated-empty-registry" }
-      let scope_refused = refused(result: checkpoint_collect(store: changed_scope))
+      let scope_refused = match checkpoint_collect(store: changed_scope) {
+        LocalStoreBracketRan { value: CheckpointRefused { cause: CheckpointLocalRetentionRefused {
+          refusal: LocalStoreRetentionBindingMismatch { path: _, expected: _, observed: _ }
+        } }, hold_release: LocalStoreHoldReleased } => true
+        _ => false
+      }
       let closed = ready(result: checkpoint_close(store: store, owner: "interrupted", expected: retained_expectation(reading: head)))
       store_commit_refusal_tag(c: orphan.commit) == "committed" && was_present && collected && prior_survives && orphan_gone && reader_held && scope_refused && closed
       }
@@ -166,6 +186,7 @@ test fn shared_roots_replacement_and_terminal_release() -> Bool {
     budgets: [LocalStoreFamilyBudget { family: fabric_blob_artifact_kind, budget: byte_size(count: 4096), at_capacity: RefuseNewStore }]) {
     LocalStoreInitialized { opening: LocalStoreOpened { capability: blobs, durability: _ } } => {
       let store = CheckpointStore { blobs: blobs, metadata: FabricStorageLocalFiles { root: metadata }, registry: "checkpoint-roots" }
+      let read_fault = binding_read_failure_is_distinct(store: store, root: root)
       match read_staged_fabric_blob(path: source_a) {
         FabricBlobReadRefused { fault: _ } => false
         FabricBlobRead { reading: a } => match read_staged_fabric_blob(path: source_b) {
@@ -177,7 +198,7 @@ test fn shared_roots_replacement_and_terminal_release() -> Bool {
             let interrupted = interrupted_publication(store: store, a: source_a, b: source_b, address_a: address_a, address_b: address_b)
             let capacity = failed_replacement_keeps_head(store: store, source: source_a, address: address_a, oversized: oversized)
             let corrupt = malformed_registry_blocks_cleanup(store: store, source: source_a, address: address_a)
-            shared && interrupted && capacity && corrupt
+            read_fault && shared && interrupted && capacity && corrupt
           }
         }
       }

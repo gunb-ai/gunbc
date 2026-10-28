@@ -519,6 +519,7 @@ fn local_store_open_swept(pre: LocalStorePreOpen, durability: MaterializationSto
 
 fn local_store_read(path: String) -> FilesystemExactRead
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_bind_retention"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_open"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_lookup"),
   ]
@@ -881,31 +882,48 @@ fn local_store_name_set(names: List<String>) -> Set<String> {
   fold(names, init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
+type LocalStoreRetentionRefusal
+  = LocalStoreRetentionBudgetMissing { family: ArtifactKindId }
+  | LocalStoreRetentionPolicyIncompatible { observed: AtCapacityDisposition }
+  | LocalStoreRetentionHoldRefused { refusal: LocalStoreHoldRefusal }
+  | LocalStoreRetentionBindingMismatch { path: String, expected: NonEmptyStr, observed: String }
+  | LocalStoreRetentionBindingReadUnavailable { reading: FilesystemExactRead }
+  | LocalStoreRetentionBindingCreateUnavailable { creation: FilesystemCreateNew }
+  | LocalStoreRetentionRootsRefused { roots: List<ArtifactRequest> }
+  | LocalStoreRetentionIndexRefused { refusal: LocalStoreIndexRefusal }
+  | LocalStoreRetentionIndexMoved
+  | LocalStoreRetentionDeletionUnconfirmed {
+      remaining: List<LocalStoreDoomedRow>, copies: List<LocalStoreDeleteAttempt>, records: List<LocalStoreRecordDeleteAttempt>
+    }
+
 // Retention's root authority is pinned before its first write. Reopening the same
 // byte store against a different metadata registry must not authorize deletion.
-fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) -> String?
+fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) -> LocalStoreRetentionRefusal?
   admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store")]
 {
   match local_store_hold_check(held: held) {
     LocalStoreHoldCurrent => match local_store_family_budget(budgets: held.binding.budgets, family: held.family) {
-      Absent => Present { value: "retention family has no budget" }
+      Absent => Present { value: LocalStoreRetentionBudgetMissing { family: held.family } }
       Present { value: b } => match b.at_capacity {
         RefuseNewStore => {
           let path = store_path(root_path: local_store_binding_path(b: held.binding), name: concat("retention-", held.family as String))
           match local_store_create_new(path: path, content: scope as String) {
             FilesystemCreated { path: _ } => none
             FilesystemCreateTargetOccupied { path: _ } => {
-              let read = Filesystem.Read(path: path)
-              if read.success && read.content == (scope as String) { none }
-              else { Present { value: "retention registry differs from the store's bound authority" } }
+              match local_store_read(path: path) {
+                FilesystemExactPathRead { path: _, content: content } => if content == (scope as String) { none }
+                  else { Present { value: LocalStoreRetentionBindingMismatch { path: path, expected: scope, observed: content } } }
+                unavailable => Present { value: LocalStoreRetentionBindingReadUnavailable { reading: unavailable } }
+              }
             }
-            _ => Present { value: "retention authority binding could not be published" }
+            unavailable => Present { value: LocalStoreRetentionBindingCreateUnavailable { creation: unavailable } }
           }
         }
-        _ => Present { value: "retained blobs require RefuseNewStore" }
+        observed => Present { value: LocalStoreRetentionPolicyIncompatible { observed: observed } }
       }
     }
-    _ => Present { value: "retention family hold is no longer current" }
+    LocalStoreHoldNotCurrent { observed: o } => Present { value: LocalStoreRetentionHoldRefused { refusal: LocalStoreHoldStale { observed: o } } }
+    LocalStoreHoldNamedWindowMoved { named: n } => Present { value: LocalStoreRetentionHoldRefused { refusal: LocalStoreHoldNamedWindowHeadMoved { named: n } } }
   }
 }
 
@@ -913,16 +931,16 @@ fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) ->
 // hold through the complete metadata read and this operation; readers use that
 // same hold until their copy finishes. Mark doomed before unlinking, and keep
 // every unconfirmed deletion charged, exactly as capacity eviction does.
-fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<ArtifactRequest>) -> String?
+fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<ArtifactRequest>) -> LocalStoreRetentionRefusal?
   admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under")]
 {
   let names = roots |> flat_map(q => match evaluation_store_address(req: q) {
     Admitted { address: address } => if request_kind(req: q) == held.family { [store_object_name(address: address)] } else { [] }
     IdentityComponentsRefused { components: _, scope: _ } => []
   })
-  if count(names) != count(roots) { Present { value: "retention root cannot address this family" } } else {
+  if count(names) != count(roots) { Present { value: LocalStoreRetentionRootsRefused { roots: roots } } } else {
     match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
-      LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+      LocalStoreIndexUnavailable { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
       LocalStoreIndexAt { index: index, expected: expected } => {
         let keep = local_store_name_set(names: names)
         let retired = index.rows |> filter(r => !set_contains(keep, r.name))
@@ -932,8 +950,8 @@ fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<Arti
           doomed: concat(index.doomed, retired |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }))
         }
         match local_store_write_index(held: held, expected: expected, index: next) {
-          LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
-          LocalStoreIndexLostRace => Present { value: "retention index moved under its exclusive hold" }
+          LocalStoreIndexWriteRefused { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
+          LocalStoreIndexLostRace => Present { value: LocalStoreRetentionIndexMoved }
           LocalStoreIndexWritten { reclamation: _ } => local_store_reclaim_doomed(held: held)
         }
       }
@@ -941,11 +959,11 @@ fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<Arti
   }
 }
 
-fn local_store_reclaim_doomed(held: LocalStoreFamilyHeld) -> String?
+fn local_store_reclaim_doomed(held: LocalStoreFamilyHeld) -> LocalStoreRetentionRefusal?
   admit_callers: [decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced")]
 {
   match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
-    LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+    LocalStoreIndexUnavailable { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
     LocalStoreIndexAt { index: index, expected: expected } => {
       let authority = LocalStoreFamilyAuthority { held: held }
       let copies = local_store_delete_split(attempts: local_store_delete_attempts(authority: authority,
@@ -956,10 +974,10 @@ fn local_store_reclaim_doomed(held: LocalStoreFamilyHeld) -> String?
       let remaining = index.doomed |> filter(d => !set_contains(gone, d.name))
       match local_store_write_index(held: held, expected: expected,
         index: LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: remaining }) {
-        LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
-        LocalStoreIndexLostRace => Present { value: "retention cleanup index moved under its exclusive hold" }
+        LocalStoreIndexWriteRefused { refusal: r } => Present { value: LocalStoreRetentionIndexRefused { refusal: r } }
+        LocalStoreIndexLostRace => Present { value: LocalStoreRetentionIndexMoved }
         LocalStoreIndexWritten { reclamation: _ } => if count(remaining) == 0 { none }
-          else { Present { value: "retention deletion is unconfirmed; bytes remain charged" } }
+          else { Present { value: LocalStoreRetentionDeletionUnconfirmed { remaining: remaining, copies: copies.refused, records: records.refused } } }
       }
     }
   }

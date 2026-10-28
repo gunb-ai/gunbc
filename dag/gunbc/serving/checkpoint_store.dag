@@ -26,7 +26,7 @@ import std.materialization_object { StoreCommit, StoreCommitSettled, StoreCommit
 import std.judgment_contract { output_fabric_blob }
 import extdeps.realization.materialization_store_local {
   LocalStoreCapability, LocalStoreFamilyHeld, LocalStoreBracket, LocalStoreStagedPart,
-  local_store_held_session, local_store_bind_retention, local_store_reclaim_unreferenced,
+  LocalStoreRetentionRefusal, local_store_held_session, local_store_bind_retention, local_store_reclaim_unreferenced,
   local_store_commit_under_request, local_store_lookup_parts,
 }
 import gunbc.fabric.fabric_storage_client {
@@ -57,6 +57,7 @@ type CheckpointFault
   | CheckpointWriteRefused { commit: StoreCommit }
   | CheckpointReadRefused { lookup: StoreLookup }
   | CheckpointRetentionRefused { detail: String }
+  | CheckpointLocalRetentionRefused { refusal: LocalStoreRetentionRefusal }
   | CheckpointOwnerClosed
   | CheckpointOwnerUnregistered
   | CheckpointOwnerMissing
@@ -112,7 +113,7 @@ fn checkpoint_with_store<T>(store: CheckpointStore, run: fn(LocalStoreFamilyHeld
     match checkpoint_scope(store: store) {
       CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
       CheckpointReady { value: scope } => match local_store_bind_retention(held: held, scope: scope) {
-        Present { value: cause } => checkpoint_refused(detail: cause)
+        Present { value: cause } => CheckpointRefused { cause: CheckpointLocalRetentionRefused { refusal: cause } }
         Absent => run(held)
       }
     })
@@ -263,7 +264,7 @@ fn checkpoint_collect_under(store: CheckpointStore, held: LocalStoreFamilyHeld) 
           match pruned {
             CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
             CheckpointReady { value: _ } => match local_store_reclaim_unreferenced(held: held, roots: live.requests) {
-              Present { value: c } => checkpoint_refused(detail: c)
+              Present { value: c } => CheckpointRefused { cause: CheckpointLocalRetentionRefused { refusal: c } }
               Absent => CheckpointReady { value: true }
             }
           }
