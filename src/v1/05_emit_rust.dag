@@ -192,7 +192,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   is_static_width_index_arm, static_width_index_arm_name, static_width_index_declaring_module, lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref, symbol_index_lookup }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -658,6 +658,7 @@ fn unstamped_reference_is_host_option(n: Node, source_indices: Map<String, Newli
         KernelMintDeclarationAbsent => false
         KernelMintDeclarationAmbiguous { row_count: _ } => false
       }
+    BareOccurrenceUnbound => false
     BareOccurrenceUndecided => false
   }
 }
@@ -3371,39 +3372,130 @@ fn rust_phantom_zst_marker_def(vname: String, indexed: Bool) -> String {
   )
 }
 
-fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
-  items |> any(item =>
-    authored_name_at(source_indices: source_indices, node: item) == vname
-    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
-  )
+// WHETHER A COPRODUCT ARM OWES A PHANTOM ZST MARKER IS DECIDED BY WHAT ITS NAME BINDS IN ITS OWN
+// MODULE'S SCOPE, NEVER BY A SPELLING MATCH. The marker (`pub struct X;`) stands for a unit variant
+// at a type position, so it is owed exactly when the arm's name denotes no type there. Which type a
+// bare name denotes in a module is the scope's binding -- the module's own declaration, then a named
+// import, then the kernel (v1.compiler.infer_emit_info type_decl_occurrence_binding over
+// EmitGraphInfo.type_decl_items, the resolver's lookup order joined to declaration identity). An arm
+// whose name binds a declaration denotes it, and that declaration is emitted where it is declared and
+// brought in by its import, so a marker would be a second item of one name in the emitted module:
+// gunbc.roadmap.roadmap_model's arms AcceptanceNodeReopensActiveFrontier and
+// AcceptanceNodeRemainsSuperseded name its own records (rustc E0428 and E0119; class 1 of
+// stern-bat-401's emitter-debt list), and an arm naming a record the module imports is the same
+// collision through `use`.
+// THE CORPUS-WIDE SPELLING ROUTE IS NOT THIS QUESTION. resolve_type_decl_reference answers an
+// unstamped reference whose leaf ONE module declares with that declaration wherever it lives; read
+// for an arm, it suppressed the markers of unit variants whose names some unrelated module declares
+// (std.coercion HostText, std.constructors Optional, std.types Template, std.measure Volume) and
+// refused std.fidelity's Unit on the kernel spelling. A name the scope does not bind denotes nothing
+// there, which is what makes the arm a variant, and only the scope's positive `binds nothing`
+// (OccurrenceUnbound) says so: a binding the index cannot identify is a bound name, and refuses.
+// The marker is then owed only on positive evidence: the closure's unit-variant index names THIS
+// arm, by declaring span, as the one variant of that name. Unavailable evidence, or evidence naming
+// another node, refuses, located, rather than emitting or dropping the marker.
+type PhantomMarkerDecision
+  = PhantomMarkerOwed { indexed: Bool }
+  | PhantomMarkerArmDenotesDeclaration
+  | PhantomMarkerNotDemanded
+  | PhantomMarkerUndecided { cause: String }
+
+fn phantom_marker_decision(coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match type_decl_occurrence_binding(index: emit_info.type_decl_items, leaf: vname, reference: arm) {
+    OccurrenceDeclaredHere { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
+    OccurrenceImported { identity: identity } => phantom_marker_for_bound_arm(identity: identity, coproduct: coproduct, arm: arm, vname: vname, env: env, emit_info: emit_info)
+    OccurrenceIsKernelName => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+    OccurrenceUnbound => phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+    OccurrenceUndecided => PhantomMarkerUndecided { cause: "the arm's name binds ambiguously, or binds a declaration the type-declaration index does not identify" }
+  }
 }
 
-// One marker per distinct variant name; `indexed` is decided by the declaring coproduct's identity.
-type PhantomZstMarker {
-  name: String
-  indexed: Bool
+// A BINDING MAY DENOTE THE VARIANT ITSELF. The symbol index binds a corpus-unique variant name to
+// the coproduct that owns it (v1.compiler.infer_env merge_global_bare_variant_locals: the owner is
+// the coproduct node), so a scope binding that resolves to a coproduct declaring a unit variant of
+// this name says the name IS that variant, not that a type of that name exists. Read as a type, it
+// dropped the markers of std.measure's dimension and prefix variants (rustc E0573 in the seed).
+fn phantom_marker_for_bound_arm(identity: String, coproduct: Node, arm: Node, vname: String, env: TypeEnv, emit_info: EmitGraphInfo) -> PhantomMarkerDecision {
+  match type_decl_resolution_at_identity(index: emit_info.type_decl_items, identity: identity) {
+    TypeDeclResolved { identity: _, decl: decl } =>
+      if decl.connective == Disj && (decl.children |> any(c => (c.children |> count) == 0 && authored_name_at(source_indices: env.source_indices, node: c) == vname)) {
+        phantom_marker_for_unbound_arm(coproduct: coproduct, arm: arm, vname: vname, env: env)
+      } else { PhantomMarkerArmDenotesDeclaration }
+    TypeDeclLeafAmbiguous { leaf: leaf } => PhantomMarkerUndecided { cause: concat("more than one declaration of ", leaf) }
+    TypeDeclKernelSpellingUndecided { leaf: leaf } => PhantomMarkerUndecided { cause: concat("kernel spelling undecided for ", leaf) }
+    TypeDeclNotDeclared => PhantomMarkerUndecided { cause: "the scope binding names no indexed declaration" }
+  }
 }
 
-fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> List<PhantomZstMarker> {
+fn phantom_marker_for_unbound_arm(coproduct: Node, arm: Node, vname: String, env: TypeEnv) -> PhantomMarkerDecision {
+  match lookup_unit_variant_phantom_type(env: env, variant_name: vname) {
+    UnitVariantPhantomPresent { variant: variant } =>
+      if declaring_span_key(sp: variant.span) == declaring_span_key(sp: arm.span) {
+        PhantomMarkerOwed { indexed: is_static_width_index_arm(env: env, coproduct: coproduct, variant_name: vname) }
+      } else { PhantomMarkerUndecided { cause: "the unit-variant index names a different variant of this name" } }
+    UnitVariantPhantomAbsent => PhantomMarkerNotDemanded
+    UnitVariantPhantomEvidenceUnavailable => PhantomMarkerUndecided { cause: "unit-variant evidence unavailable" }
+  }
+}
+
+// One row per distinct variant name: the marker it owes, or the located refusal.
+type PhantomZstMarker
+  = PhantomZstMarkerOwed { name: String, indexed: Bool }
+  | PhantomZstMarkerRefused { name: String, cause: String }
+
+fn phantom_zst_marker_name(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => name
+    PhantomZstMarkerRefused { name: name, cause: _ } => name
+  }
+}
+
+// A MARKER STANDS FOR A UNIT VARIANT, AND ONLY A COPRODUCT HAS VARIANTS. A record's fields are childless
+// nodes too (their types are not children), so a filter on childless children alone walked records,
+// and a field such as std.algebra FreeMonoidUniqueState's `unique` reached the arm decision; only the
+// unit-variant index's silence kept it from owing a marker.
+fn collect_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> List<PhantomZstMarker> {
   items
-    |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
+    |> filter(item => is_type_def_item(item: item) && item.connective == Disj && item.children |> all(c => c.children |> count == 0))
     |> fold(init: [], f: (acc, item) =>
       fold(item.children, init: acc, f: (inner, child) =>
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
-          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
-            && !(inner |> any(m => m.name == vname))
-            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
-            concat(inner, [PhantomZstMarker { name: vname, indexed: is_static_width_index_arm(env: env, coproduct: item, variant_name: vname) }])
-          } else { inner }
+          if inner |> any(m => phantom_zst_marker_name(marker: m) == vname) { inner }
+          else {
+            match phantom_marker_decision(coproduct: item, arm: child, vname: vname, env: env, emit_info: emit_info) {
+              PhantomMarkerOwed { indexed: indexed } => concat(inner, [PhantomZstMarkerOwed { name: vname, indexed: indexed }])
+              PhantomMarkerUndecided { cause: cause } => concat(inner, [PhantomZstMarkerRefused { name: vname, cause: cause }])
+              PhantomMarkerArmDenotesDeclaration => inner
+              PhantomMarkerNotDemanded => inner
+            }
+          }
         } else { inner }
       )
     )
 }
 
-fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv) -> String {
-  collect_phantom_zst_markers(items: items, env: env)
-    |> map(m => rust_phantom_zst_marker_def(vname: m.name, indexed: m.indexed))
+fn phantom_zst_marker_owed_name(marker: PhantomZstMarker) -> List<String> {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: _ } => [name]
+    PhantomZstMarkerRefused { name: _, cause: _ } => []
+  }
+}
+
+fn phantom_zst_marker_owed_names(markers: List<PhantomZstMarker>) -> List<String> {
+  markers |> flat_map(m => phantom_zst_marker_owed_name(marker: m))
+}
+
+fn rust_phantom_zst_marker_item(marker: PhantomZstMarker) -> String {
+  match marker {
+    PhantomZstMarkerOwed { name: name, indexed: indexed } => rust_phantom_zst_marker_def(vname: name, indexed: indexed)
+    PhantomZstMarkerRefused { name: name, cause: cause } => emit_rust_compile_error_item(message: concat("whether unit variant ", name, " owes a phantom marker is undecided: ", cause))
+  }
+}
+
+fn emit_module_phantom_zst_markers(items: List<Node>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  collect_phantom_zst_markers(items: items, env: env, emit_info: emit_info)
+    |> map(m => rust_phantom_zst_marker_item(marker: m))
     |> join(separator: "\n")
 }
 
@@ -5803,7 +5895,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
         || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
       )
       |> map(item => authored_name(env: scope.type_env, node: item)),
-    collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env) |> map(m => m.name)
+    phantom_zst_marker_owed_names(markers: collect_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info))
   )
   let module_import_items = module_imports(n: m)
   let this_module_name = authored_name(env: scope.type_env, node: m)
@@ -5883,7 +5975,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
-  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
+  let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env, emit_info: emit_info)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
   let module_emit_path = rust_module_emit_path(module_name: authored_name(env: scope.type_env, node: m))
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {

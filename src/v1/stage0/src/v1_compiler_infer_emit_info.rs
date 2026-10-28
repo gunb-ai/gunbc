@@ -28,7 +28,7 @@ use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
 use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
     BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName,
-    BareOccurrenceUndecided,
+    BareOccurrenceUnbound, BareOccurrenceUndecided,
 };
 pub use crate::v1_compiler_infer_env::{
     bare_occurrence_binding, empty_symbol_index, empty_type_env, symbol_index_lookup,
@@ -429,6 +429,7 @@ pub enum TypeDeclOccurrenceBinding {
     OccurrenceDeclaredHere { identity: String },
     OccurrenceImported { identity: String },
     OccurrenceIsKernelName,
+    OccurrenceUnbound,
     OccurrenceUndecided,
 }
 impl TypeDeclOccurrenceBinding {
@@ -443,6 +444,7 @@ impl TypeDeclOccurrenceBinding {
             TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
                 panic!("no identity on unit variant")
             }
+            TypeDeclOccurrenceBinding::OccurrenceUnbound => panic!("no identity on unit variant"),
             TypeDeclOccurrenceBinding::OccurrenceUndecided => panic!("no identity on unit variant"),
         }
     }
@@ -792,6 +794,9 @@ pub fn type_decl_spelling_route(
             TypeDeclOccurrenceBinding::OccurrenceImported { identity: _, .. } => {
                 TypeDeclReferenceRoute::RouteReferencingModuleImport
             }
+            TypeDeclOccurrenceBinding::OccurrenceUnbound => {
+                TypeDeclReferenceRoute::RouteLeafSpelling
+            }
             TypeDeclOccurrenceBinding::OccurrenceUndecided => {
                 TypeDeclReferenceRoute::RouteLeafSpelling
             }
@@ -814,6 +819,7 @@ pub fn type_decl_occurrence_identity(
         TypeDeclOccurrenceBinding::OccurrenceImported {
             identity: identity, ..
         } => Some(identity.clone()),
+        TypeDeclOccurrenceBinding::OccurrenceUnbound => std::option::Option::None,
         TypeDeclOccurrenceBinding::OccurrenceUndecided => std::option::Option::None,
     }
 }
@@ -860,6 +866,9 @@ pub fn type_decl_occurrence_binding(
         },
         BareOccurrenceBinding::BareOccurrenceIsKernelName => {
             Rc::new(TypeDeclOccurrenceBinding::OccurrenceIsKernelName)
+        }
+        BareOccurrenceBinding::BareOccurrenceUnbound => {
+            Rc::new(TypeDeclOccurrenceBinding::OccurrenceUnbound)
         }
         BareOccurrenceBinding::BareOccurrenceUndecided => {
             Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)

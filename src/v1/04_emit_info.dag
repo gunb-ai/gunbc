@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUnbound, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary,
   normalize_access_type_node, resolved_type,
@@ -279,11 +279,14 @@ type TypeDeclIndex {
 
 // WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: v1.compiler.infer_env bare_occurrence_binding (own file,
 // then named import, then kernel -- the typechecker's lookup_binding order), joined here to the
-// declaration identity this index keys on.
+// declaration identity this index keys on. OccurrenceUnbound is bare_occurrence_binding's positive
+// `binds nothing`; OccurrenceUndecided is no answer, including a binding to a declaration this index
+// does not identify, which is a bound name and never reads as an unbound one.
 type TypeDeclOccurrenceBinding
   = OccurrenceDeclaredHere { identity: String }
   | OccurrenceImported { identity: String }
   | OccurrenceIsKernelName
+  | OccurrenceUnbound
   | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -500,6 +503,7 @@ fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String
       OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
       OccurrenceIsKernelName => RouteKernelMint
       OccurrenceImported { identity: _ } => RouteReferencingModuleImport
+      OccurrenceUnbound => RouteLeafSpelling
       OccurrenceUndecided => RouteLeafSpelling
     }
   }
@@ -512,6 +516,7 @@ fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: 
     OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
     OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
     OccurrenceImported { identity: identity } => Present { value: identity }
+    OccurrenceUnbound => none
     OccurrenceUndecided => none
   }
 }
@@ -534,6 +539,7 @@ fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: N
           }
       }
     BareOccurrenceIsKernelName => OccurrenceIsKernelName
+    BareOccurrenceUnbound => OccurrenceUnbound
     BareOccurrenceUndecided => OccurrenceUndecided
   }
 }

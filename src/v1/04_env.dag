@@ -292,10 +292,17 @@ fn overlay_skips_kernel_name(name: String) -> Bool {
 // resolve_type_decl_routed and v1.compiler.emit_rust is_host_optional_carrier_type read it, and it is
 // deleted when those bodies carry Node.declaration stamped in the DECLARING scope
 // (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on).
+// BareOccurrenceUnbound AND BareOccurrenceUndecided ARE DIFFERENT FACTS. Unbound is positive: the
+// file declares no such name, imports none by name, and the name is not a kernel name, so the scope
+// binds nothing there. Undecided is the absence of an answer: two declarations in the file, or a
+// named import chain that does not end at a declaration within the bound. A reader that may act only
+// when the name binds nothing (v1.compiler.emit_rust phantom_marker_decision) acts on Unbound and
+// refuses on Undecided.
 type BareOccurrenceBinding
   = BareOccurrenceDeclaredInItsFile { declaration: Node }
   | BareOccurrenceImportedByName { module_path: String, declaration: Node }
   | BareOccurrenceIsKernelName
+  | BareOccurrenceUnbound
   | BareOccurrenceUndecided
 
 fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node> {
@@ -367,7 +374,7 @@ fn bare_occurrence_binding(index: SymbolIndex, name: String, reference: Node) ->
   else {
     match bare_occurrence_import(index: index, name: name, reference: reference) {
       Present { value: imported } => imported
-      Absent => if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName } else { BareOccurrenceUndecided }
+      Absent => if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName } else { BareOccurrenceUnbound }
     }
   }
 }
