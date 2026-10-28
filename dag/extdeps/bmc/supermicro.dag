@@ -146,6 +146,14 @@ data supermicro_factory_username: NonEmptyStr = "ADMIN"
 
 data supermicro_factory_password_form: NonEmptyStr = "exactly 10 uppercase alphabetic letters, printed on the board's BMC password sticker"
 
+// The two factory-credential forms the unique-password guide states, as SHAPES: which form a unit
+// carries is not readable from the firmware, so an observing layer records the form it TRIED. No value
+// of either form is modeled here or anywhere in the corpus; a unit's sticker password is an
+// operator-held secret reference.
+type SupermicroFactoryCredentialForm
+  = SupermicroDefaultAdminCredential
+  | SupermicroUniqueStickerCredential
+
 // PROTOCOL FLOOR. IPMI 2.0 is served unlicensed; Redfish is licence-gated (SFT-DCMS-SINGLE per the
 // Redfish page, and on the H11SSL an unlicensed service root refuses with OemLicenseNotPassed), so it is
 // not a family-grain guarantee.
@@ -282,6 +290,15 @@ fn supermicro_redfish_licence_gate(body: String) -> SupermicroLicenceGate {
     }
   }
 }
+
+// ── LICENCE ACTIVATION THROUGH THE VENDOR CGI. POST /cgi/ipmi.cgi with this op (the firmware's own
+// spelling, LINCENSE included) activates a licence key; the page answers a CHECK attribute. The key
+// itself is an operator-held secret and is never a value in the corpus.
+// CONSUMPTION, declared frontier (DESIGN section 3c): nothing reads this op in this change. Its named
+// consumer is the H11SSL arrival-intake binding's licence step (a gunbc.board_authority_binding row for
+// the board), which issues it; trigger: that binding's FRU Board Area read (extdeps.board_authority
+// BoardFruIdentity).
+data supermicro_cgi_licence_activate_op: NonEmptyStr = "BIOS_LINCENSE_ACTIVATE.XML"
 
 // ── THE REDFISH Oem KEY. The Manager, ServiceRoot, ComputerSystem and EthernetInterface resources carry
 // their vendor extension under Oem.Supermicro (SmcManagerExtensions.v1_0_0 on the Manager).
