@@ -2552,6 +2552,9 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
         .iter()
         .cloned()
         .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
+            if (tp_name.clone() == "T".to_string() || tp_name.clone() == "K".to_string() || tp_name.clone() == "V".to_string()) {
+                crate::v1_compiler_infer_types::diag_mint_trace("MINT-ENV-TPBIND", tp_name.as_str());
+            }
             let tp_binding = Rc::new(TypeBinding {
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {

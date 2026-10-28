@@ -26166,6 +26166,57 @@ pub fn param_is_generic_decl(
     }
 }
 
+/// The vacuous binding: the "argument" offered for a callee's type parameter IS that
+/// callee's own unsubstituted formal. A callee's formal belongs to the callee's binder,
+/// not to the call, so it can never be evidence about what the call instantiates —
+/// binding T := T is manufactured evidence (DESIGN 6b: the earliest unjustified boundary
+/// is the moment a variable is credited with a type it was never given).
+///
+/// Discriminated by node identity, never by name: two declarations that both spell their
+/// parameter `T` are different binders, so a genuine argument from a *different* scope
+/// (a caller's own `U`, or any authored type) is structurally distinct from the callee's
+/// formal node and stays evidence.
+pub fn generic_argument_is_callee_own_formal(formal: Rc<Node>, actual: Rc<Node>) -> bool {
+    let actual_var = match actual.inferred.clone() {
+        Some(inf) => match (*inf.clone()).clone() {
+            InferredNode::TypeVariable { id: a, .. } => Some(a.clone()),
+            InferredNode::Resolved { node: n, .. } => match n.inferred.clone() {
+                Some(inner) => match (*inner.clone()).clone() {
+                    InferredNode::TypeVariable { id: a, .. } => Some(a.clone()),
+                    _ => std::option::Option::None,
+                },
+                std::option::Option::None => std::option::Option::None,
+            },
+            _ => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    };
+    let formal_var = match formal.inferred.clone() {
+        Some(inf) => match (*inf.clone()).clone() {
+            InferredNode::TypeVariable { id: a, .. } => Some(a.clone()),
+            InferredNode::Resolved { node: n, .. } => match n.inferred.clone() {
+                Some(inner) => match (*inner.clone()).clone() {
+                    InferredNode::TypeVariable { id: a, .. } => Some(a.clone()),
+                    _ => std::option::Option::None,
+                },
+                std::option::Option::None => std::option::Option::None,
+            },
+            _ => std::option::Option::None,
+        },
+        std::option::Option::None => std::option::Option::None,
+    };
+    match formal_var.clone() {
+        Some(fv) => match actual_var.clone() {
+            Some(av) => {
+                ((fv.clone() == av.clone()) && (formal.name.clone() == actual.name.clone()))
+                    && (formal.occurrence_identity.clone() == actual.occurrence_identity.clone())
+            }
+            std::option::Option::None => false,
+        },
+        std::option::Option::None => false,
+    }
+}
+
 fn diag_uni(tag: &str, payload: String) {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
@@ -26180,6 +26231,55 @@ fn diag_uni(tag: &str, payload: String) {
     }
     COUNT.fetch_add(1, Ordering::SeqCst);
     eprintln!("{} {}", tag, payload);
+}
+
+fn diag_mint_site(tag: &str, id_hint: &str) {
+    crate::v1_compiler_infer_types::diag_mint_trace(tag, id_hint);
+}
+
+/// Stamp the binder that owns a fabricated type-variable node: the declaration whose
+/// type-parameter scope the callee being unified belongs to. Absence of a stamp is not
+/// a validation failure (DESIGN §5 — the stamp is a fact about construction, recorded
+/// where the variable is minted, and read as binder identity by the unifier's evidence
+/// test); an un-stamped variable simply carries no binder evidence of its own.
+pub fn stamp_type_variable_binder(n: Rc<Node>, binder_owner: &str) -> Rc<Node> {
+    if binder_owner == "" {
+        return n.clone();
+    }
+    let tag = crate::v1_std_core::leaf_node_with_span(
+        n.occurrence_identity.clone(),
+        format!("type-param-binder:{}", binder_owner.clone()),
+        crate::v1_std_core::kernel_span(n.name.clone()),
+    );
+    Rc::new(Node {
+        properties: v1_rt::concat(n.properties.clone(), Rc::new(vec![tag])),
+        ..(*n.clone()).clone()
+    })
+}
+
+/// The declaration a node's type-parameter property claims to belong to, if any.
+pub fn type_variable_binder(n: Rc<Node>) -> Option<String> {
+    let n0: Option<String> = None;
+    n.properties.iter().cloned().fold(n0, |acc: Option<String>, p| {
+        match acc.clone() {
+            Some(_) => acc.clone(),
+            std::option::Option::None => {
+                let authored =
+                    crate::v1_std_core::authored_name_at(v1_rt::rc_empty_map(), p.clone());
+                let prefix = "type-param-binder:".to_string();
+                if (authored.clone()).starts_with(prefix.as_str()) {
+                    Some(
+                        authored
+                            .chars()
+                            .skip(prefix.clone().len() as i64)
+                            .collect::<String>(),
+                    )
+                } else {
+                    std::option::Option::None
+                }
+            }
+        }
+    })
 }
 
 fn diag_node_brief(n: Rc<Node>) -> String {
@@ -26229,6 +26329,17 @@ pub fn unify_generics(
                 __found
             })
         {
+            if generic_argument_is_callee_own_formal(formal.clone(), actual.clone()) {
+                diag_uni(
+                    "DIAGVAC",
+                    format!(
+                        "refused var={} formal=[{}]",
+                        bind_name.clone(),
+                        diag_node_brief(formal.clone())
+                    ),
+                );
+                return acc.clone();
+            }
             {
                 let names: Vec<String> = generic_names.iter().cloned().collect();
                 diag_uni(

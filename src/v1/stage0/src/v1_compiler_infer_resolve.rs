@@ -2375,7 +2375,11 @@ pub fn resolve_optional_node(
                 resolved: crate::v1_std_core::divergent_type(),
                 diagnostics: Rc::new(vec![]),
             }),
-            InferredNode::TypeVariable { id: tv, .. } => Rc::new(NodeResolveResult {
+            InferredNode::TypeVariable { id: tv, .. } => {
+                if (tv.clone() == "T".to_string() || tv.clone() == "K".to_string() || tv.clone() == "V".to_string()) {
+                    crate::v1_compiler_infer_types::diag_mint_trace("MINT-RESOLVE-OPT", tv.as_str());
+                }
+                Rc::new(NodeResolveResult {
                 resolved: Rc::new(Node {
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: tv.clone(),
@@ -2401,7 +2405,8 @@ pub fn resolve_optional_node(
                     ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
-            }),
+            })
+            }
         }
     }
 }
