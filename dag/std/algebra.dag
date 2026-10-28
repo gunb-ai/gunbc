@@ -1682,24 +1682,49 @@ fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool
   }
 }
 
+// ELEMENTWISE EQUALITY OF TWO SAME-LENGTH LISTS. The recursion this replaced put the call INSIDE the
+// `&&` (eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)), so the frame stayed live across the element
+// comparison AND the whole rest of the list: host depth equalled the list's length. The v1 interpreter
+// performs no tail-call optimization at all, so tail position would not have helped either — the only
+// fixed-depth route in the wet lane is the intercepted fold_list (v1_interpreter.rs
+// `native_intercept.fold_list`), which is also emitted as a __tco_loop, so it costs no host stack in
+// either lane. §6: a proven cost-shape defect is always fixed, regardless of realized n.
+// THE RED that re-derives the old shape's death: this claim run through the claim-batch binary
+// src/v1/stage0/src/bin/claim_batch.rs (--entry naming src/v2/test/claim/algebra/list_linear_combinators.dag,
+// --functions zip_eq_compares_a_list_too_long_to_recurse_over, --claim-run) — on the replaced shape that
+// run dies by stack overflow rather than answering. It was located by a call-depth trace over the
+// interpreter (the instrument, and how to run it, are recorded in gunbc#15258): depth climbed by a
+// fixed step per sibling through this function and v2.std.node node_edge_same_occurrence /
+// node_same_occurrence, so the depth was a property of the list's length, not of its contents.
+// The fold walks a's members once, carrying b's aligned tail in the accumulator. Once a mismatch is
+// held the pass keeps its shape but stops calling `eq`, so a pair count matches the old short-circuit;
+// the final is_empty over the leftover asks the question the old base case asked (a ran out before b).
+type ZipEqWalk<T> {
+  rest: FreeMonoid<T>
+  agreed: Bool
+}
+
 fn zip_eq<T>(
   a: FreeMonoid<T>,
   b: FreeMonoid<T>,
   eq: fn(T, T) -> Bool
 ) -> Bool {
-  match a {
-    Empty =>
-      match b {
-        Empty => true
-        Cons { head: _, tail: _ } => false
-      }
-    Cons { head: ha, tail: ta } =>
-      match b {
-        Empty => false
+  let walk = fold_list(
+    xs: a,
+    empty: ZipEqWalk { rest: b, agreed: true },
+    cons: fn(acc, item) {
+      match acc.rest {
+        Empty => ZipEqWalk { rest: Empty, agreed: false }
         Cons { head: hb, tail: tb } =>
-          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+          if acc.agreed {
+            ZipEqWalk { rest: tb, agreed: eq(item, hb) }
+          } else {
+            ZipEqWalk { rest: tb, agreed: false }
+          }
       }
-  }
+    }
+  )
+  walk.agreed && is_empty(xs: walk.rest)
 }
 
 fn zip_map<A, B, C>(
