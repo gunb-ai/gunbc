@@ -1,0 +1,581 @@
+module test.claim.host.host_name_resolution_witness
+
+// WITNESSES FOR HOST IDENTITY BY NAME: the authorable boundary that refuses an IP literal where a name
+// belongs, and the pre-attach gate that refuses a share whose name does not resolve.
+//
+// THE REDS, AND WHY EACH IS A RED AND NOT A DECORATION. Every refusal asserted here is paired with a
+// control that must be clean or must refuse for a DIFFERENT reason, in the corpus's hole/control idiom
+// (test.claim.guarantee_floor_class_probe_witness): a refusal that no input can produce is a green claim
+// about a red that never happens, and a refusal that every input produces is a gate nobody can pass. Both
+// are checked, in the same claim where the distinction is the point.
+//
+// THE TWO THE WORK ITEM ASKS FOR, BY NAME:
+//   - `a_host_row_authoring_an_ipv4_literal_is_refused` — the AUTHORABLE BOUNDARY. `ResolvableName` is a
+//     sole_constructor type whose only admission refuses an address spelling, so a fleet row cannot be
+//     written with `server_address` holding an IP: neither the literal (compile-time, census-probed) nor
+//     the admission (runtime) lets it through. This is the boundary that would have made the mtcollins1
+//     .188 row unwritable.
+//   - `a_share_whose_name_does_not_resolve_refuses_before_attach` — the gate refuses the share on the
+//     NAME'S behalf (NameUnknown) rather than discovering it at media attach, which is where boot run
+//     40140037654 found it.
+//
+// Hermetic: no DNS is dialed, no BMC is touched, no host is read. `resolve_name` and the gate take the
+// query as a PARAMETER, so each claim supplies its own reply and the observation is in the claim, not in
+// the network (§4d).
+
+import std.optional { Optional, Present, Absent }
+import std.types { String, Bool, List }
+import std.process { ProcessExit }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.dns.resolver {
+  Resolver,
+  ResolverAdmitted,
+  ResolverRefused,
+  resolver_admit,
+  ResolvableName,
+  ResolvableNameAdmitted,
+  ResolvableNameRefused,
+  resolvable_name_admit,
+  resolvable_name_is_fully_qualified,
+  resolvable_name_label_count,
+  NotANameIsIpv4Literal,
+  NotANameIsIpv6Literal,
+  ResolverAnswer,
+  ResolverAnswerAdmitted,
+  ResolverAnswerRefused,
+  resolver_answer_admit,
+  resolution_from_answer,
+  resolve_name,
+  NameResolution,
+  Resolved,
+  Unresolved,
+  ServerUnreachable,
+  NameUnknown,
+  AnswerEmpty,
+}
+import gunbc.host.host_name_resolution {
+  Lan,
+  Tailnet,
+  HostNameResolution,
+  HostNameResolutionAdmitted,
+  HostNameResolutionRefused,
+  ResolutionObservation,
+  host_name_resolution_admit,
+  consumer_resolves_in_space,
+  MediaShareAddressAdmitted,
+  MediaShareAddressIsNotAName,
+  MediaShareAddressNamesAnotherHost,
+  MediaShareAddressRefusedByConsumerFirmware,
+  MediaShareAddressNeedsLanNameSpace,
+  MediaShareAddressUnresolved,
+  media_share_address_gate,
+  srv2_lan_name,
+  srv2_tailnet_name_refused,
+}
+import product.host_identity { host_identity_eq }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE ADDRESSES THE CLAIMS PLAY WITH, named rather than repeated: the router, and the address that broke
+// the boot. Naming them here keeps a claim from being read as a claim about a number.
+data router: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)
+data dead_bmc_media_server: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188)
+data srv2_current_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 201)
+
+// THE LAN NAME THE PROBE OBSERVED, and its single-label short form, which the router answers but the
+// controller's own validator refuses — the pair that makes "the name resolves" and "the name is usable"
+// two different questions with two different owners.
+data srv2_lan_fqdn: String = "srv2.mynetworksettings.com"
+data srv2_lan_short: String = "srv2"
+data srv2_tailnet_fqdn: String = "srv2.tailecbe08.ts.net"
+
+// ── THE ANSWERS THE CLAIMS SUPPLY, so no claim needs a network ───────────────────────────────
+
+fn answered(addrs: List<Ipv4Address>) -> ResolverAnswer {
+  match resolver_answer_admit(server: router, asked: Present { value: addrs }, name_known: true) {
+    ResolverAnswerAdmitted { answer: a } => a
+    // Unreachable: an admitted reply with addresses and name_known is consistent. The arm has to answer
+    // with something, and it answers with the honest no-reply carrier rather than a fabricated success.
+    ResolverAnswerRefused { cause: _ } => unanswered()
+  }
+}
+
+fn name_unknown() -> ResolverAnswer {
+  match resolver_answer_admit(server: router, asked: Present { value: [] }, name_known: false) {
+    ResolverAnswerAdmitted { answer: a } => a
+    ResolverAnswerRefused { cause: _ } => unanswered()
+  }
+}
+
+fn nodata() -> ResolverAnswer {
+  match resolver_answer_admit(server: router, asked: Present { value: [] }, name_known: true) {
+    ResolverAnswerAdmitted { answer: a } => a
+    ResolverAnswerRefused { cause: _ } => unanswered()
+  }
+}
+
+fn unanswered() -> ResolverAnswer {
+  match resolver_answer_admit(server: router, asked: Absent, name_known: true) {
+    ResolverAnswerAdmitted { answer: a } => a
+    ResolverAnswerRefused { cause: _ } => unanswered()
+  }
+}
+
+// A NAME, obtained the only legal way. Absent on refusal — every claim below names what it expects, so an
+// unexpected refusal shows up as that claim going red rather than as a silent pass.
+fn name_of(spelling: String) -> ResolvableName? {
+  match resolvable_name_admit(spelling: spelling) {
+    ResolvableNameAdmitted { name: n } => Present { value: n }
+    ResolvableNameRefused { refusal: _ } => Absent
+  }
+}
+
+fn resolver_of(servers: List<Ipv4Address>) -> Resolver? {
+  match resolver_admit(servers: servers) {
+    ResolverAdmitted { resolver: r } => Present { value: r }
+    ResolverRefused { cause: _ } => Absent
+  }
+}
+
+// THE GROUNDED ROW, for the gate claims, built with a caller-chosen reply so the gate can be shown
+// refusing on the NAME rather than on the row's own paperwork.
+fn lan_row(name: ResolvableName, outcome: NameResolution) -> HostNameResolution? {
+  match host_name_resolution_admit(
+    host: "srv2",
+    space: Lan { why: "the BMC is handed the router as its DNS server" },
+    name: name,
+    grounded: ResolutionObservation { outcome: outcome, observed_on: "2026-10-27", reader: "witness: the reply this claim supplies itself" },
+  ) {
+    HostNameResolutionAdmitted { resolution: r } => Present { value: r }
+    HostNameResolutionRefused { host: _, cause: _ } => Absent
+  }
+}
+
+// ── RED 1 — THE AUTHORABLE BOUNDARY: A HOST ROW CANNOT CARRY AN IPv4 LITERAL ─────────────────
+
+// THE RUNTIME HALF: the one admission refuses an address spelling, three ways. This is what makes the
+// mtcollins1 row unwritable rather than merely discouraged — `server_address` becomes a `ResolvableName`,
+// and a `ResolvableName` cannot be authored from "192.168.1.201".
+test fn an_ipv4_literal_is_refused_as_a_name() -> Bool {
+  match resolvable_name_admit(spelling: "192.168.1.201") {
+    ResolvableNameRefused { refusal: NotANameIsIpv4Literal { raw: _, address: _ } } => true
+    ResolvableNameRefused { refusal: _ } => false
+    ResolvableNameAdmitted { name: _ } => false
+  }
+}
+
+test fn the_dead_media_address_is_refused_by_the_same_arm_as_any_other_ip() -> Bool {
+  match resolvable_name_admit(spelling: "192.168.1.188") {
+    ResolvableNameRefused { refusal: NotANameIsIpv4Literal { raw: _, address: _ } } => true
+    ResolvableNameRefused { refusal: _ } => false
+    ResolvableNameAdmitted { name: _ } => false
+  }
+}
+
+test fn an_ipv6_literal_is_refused_as_a_name() -> Bool {
+  match resolvable_name_admit(spelling: "fe80::1") {
+    ResolvableNameRefused { refusal: NotANameIsIpv6Literal { raw: _ } } => true
+    ResolvableNameRefused { refusal: _ } => false
+    ResolvableNameAdmitted { name: _ } => false
+  }
+}
+
+// THE CONTROL THAT KEEPS RED 1 FROM BEING "refuses everything". A name that should pass, passes — with the
+// label count checked, so a name that quietly became one label cannot pass by accident.
+test fn a_fully_qualified_lan_name_is_admitted_as_a_name() -> Bool {
+  match resolvable_name_admit(spelling: srv2_lan_fqdn) {
+    ResolvableNameAdmitted { name: n } => resolvable_name_is_fully_qualified(name: n) && resolvable_name_label_count(name: n) == 3
+    ResolvableNameRefused { refusal: _ } => false
+  }
+}
+
+// A SINGLE LABEL IS A NAME, as far as the resolver is concerned — refusing it is the CONSUMER's rule, not
+// this one's, and this claim is what stops the boundary from over-reaching into a rule it does not own
+// (§4d). The consumer's own refusal is asserted separately below.
+test fn a_single_label_is_admitted_by_the_resolver_and_left_for_the_consumer_to_refuse() -> Bool {
+  match resolvable_name_admit(spelling: srv2_lan_short) {
+    ResolvableNameAdmitted { name: n } => resolvable_name_label_count(name: n) == 1
+    ResolvableNameRefused { refusal: _ } => false
+  }
+}
+
+// THE COMPILE-TIME HALF, census-probed: a record literal forging a `ResolvableName` from the outside is a
+// blocking diagnostic, so no row can be authored around the admission. The hole/control pair is what makes
+// this a finding rather than a tautology — the hole must be refused, the identical row built through the
+// admission must be clean.
+// THE HOLE: a record literal forging a sealed `ResolvableName`, obtained the legal way and then
+// re-sealed by hand. The parse supplies a well-formed HostName so the ONLY defect in this source is the
+// cross-module construction of the sealed record — if the source also had a syntax or brand error, a
+// nonzero census count would prove nothing about the seal. The Err arm cannot forge, so it returns Absent,
+// which keeps every construction in the source under test.
+data forge_resolvable_name_hole_source: String = "module probe_forge_resolvable_name\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { HostName, parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\nfn forged() -> Optional<ResolvableName> {\n  match parse_host_name(raw: \"srv2.mynetworksettings.com\") {\n    Ok { value: h } => Present { value: ResolvableName { name: h } }\n    Err { value: e } => Absent\n  }\n}\n"
+
+// THE HOLE, SECOND LEG, which is the one that earns the name "authorable boundary": a fleet-shaped row
+// whose server field is a sealed name, forged with a single label — the exact shape the controller's
+// firmware refuses, written as if it were a row of record. Refused at compile time, so the row cannot be
+// authored at all, which is stronger than refusing it at boot.
+data forge_single_label_row_hole_source: String = "module probe_forge_single_label_row\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { HostName, parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\ntype ShareRow { server: ResolvableName }\nfn forged_row() -> Optional<ShareRow> {\n  match parse_host_name(raw: \"srv2\") {\n    Ok { value: h } => Present { value: ShareRow { server: ResolvableName { name: h } } }\n    Err { value: e } => Absent\n  }\n}\n"
+
+// THE HOLE, THIRD LEG: a zero-server Resolver, the shape that would make every name look unresolvable and
+// so is the fail-open trap `resolver_admit` closes. Same class, same seal, different field — which is what
+// shows the seal is on the type and not on one field of one type.
+data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolver\nimport extdeps.dns.resolver { Resolver }\ndata bad_resolver: Resolver = Resolver { servers: [] }\n"
+
+// THE CONTROL: the identical intent, built through the admissions. It must be CLEAN of the seal class, or
+// the three holes above are refusing something that has nothing to do with forging.
+data forge_resolvable_name_control_source: String = "module probe_forge_resolvable_name_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, ResolverAdmitted, ResolverRefused, resolvable_name_admit, resolver_admit }\nimport std.optional { Optional, Present, Absent }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Optional<Resolver> {\n  match resolver_admit(servers: []) {\n    ResolverAdmitted { resolver: r } => Present { value: r }\n    ResolverRefused { cause: _ } => Absent\n  }\n}\n"
+
+test fn a_host_row_forging_a_sealed_name_is_refused_at_compile_time() -> ProcessExit {
+  census_verdict_all(
+    verdicts: [
+      census_verdict(census: blocking_class_census(source: forge_resolvable_name_hole_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 }),
+      census_verdict(census: blocking_class_census(source: forge_single_label_row_hole_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 }),
+      census_verdict(census: blocking_class_census(source: forge_empty_resolver_hole_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n >= 1 }),
+      census_verdict(census: blocking_class_census(source: forge_resolvable_name_control_source, wanted_class: "SoleConstructorViolation"), holds: fn(n) { n == 0 }),
+    ],
+  )
+}
+
+// ── RED 2 — A SHARE WHOSE NAME DOES NOT RESOLVE REFUSES BEFORE ATTACH ────────────────────────
+
+// THE GATE ITSELF, ON THE NAME. The row is perfectly filed; the reply says the name does not exist; the
+// gate must refuse, and must refuse as NameUnknown — the one cause that licenses changing a name. The
+// distinction against ServerUnreachable is the point: an outage must not be read as a bad name.
+test fn a_share_whose_name_does_not_resolve_refuses_before_attach() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_row(name: n, outcome: resolution_from_answer(name: n, answer: name_unknown())) {
+        Absent => false
+        Present { value: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              match media_share_address_gate(server: srv2_lan_fqdn, resolution: row, resolver: r, ask: fn(s, nm) { name_unknown() }) {
+                MediaShareAddressUnresolved { server: _, cause: NameUnknown { server: _ } } => true
+                MediaShareAddressUnresolved { server: _, cause: _ } => false
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE CONTROL FOR RED 2: the same gate, the same row, a reply that carries addresses -> ADMITTED. Without
+// this leg the claim above could be satisfied by a gate that refuses everything.
+test fn a_share_whose_name_resolves_is_admitted() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_row(name: n, outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address]))) {
+        Absent => false
+        Present { value: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              match media_share_address_gate(server: srv2_lan_fqdn, resolution: row, resolver: r, ask: fn(s, nm) { answered([srv2_current_address]) }) {
+                MediaShareAddressAdmitted { server: _, resolution: _ } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE BOOT'S OWN FAILURE, replayed hermetically: a share still naming the address the host left behind.
+// Refused as NotAName by the FIRST arm, before any query is sent — which is the property that matters,
+// because the query is exactly what could not answer for an address.
+test fn a_share_naming_the_abandoned_address_refuses_before_any_query_is_sent() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_row(name: n, outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address]))) {
+        Absent => false
+        Present { value: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              // `ask` is deliberately a reply that would ADMIT: if the gate consulted the resolver before
+              // checking the spelling, this claim would go red, which is what makes the order load-bearing.
+              match media_share_address_gate(server: "192.168.1.188", resolution: row, resolver: r, ask: fn(s, nm) { answered([srv2_current_address]) }) {
+                MediaShareAddressIsNotAName { server: _, refusal: NotANameIsIpv4Literal { raw: _, address: _ } } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE CONSUMER'S OWN RULE, measured against the firmware's validator (extdeps.bmc.megarac cites the read):
+// the controller accepts an IP literal or a fully-qualified name and REFUSES a single label. The gate must
+// refuse the short form even though the router would happily answer it — the pair of claims that shows the
+// two resolvers disagree and that the gate follows the consumer, not the network.
+test fn a_single_label_share_refuses_because_the_controller_would_reject_it() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      // The ROW is properly grounded under the FQDN -- the share text alone is the single label. Filing the
+      // row under the short name instead would test the row admission, not this arm, and would have made
+      // this claim pass for the wrong reason.
+      match lan_row(name: n, outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address]))) {
+        Absent => false
+        Present { value: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              // `ask` admits on purpose: the router WOULD answer `srv2` (measured 2026-10-27), so a gate
+              // that looked the name up before consulting the firmware's rule would go red here.
+              match media_share_address_gate(server: srv2_lan_short, resolution: row, resolver: r, ask: fn(s, nm) { answered([srv2_current_address]) }) {
+                MediaShareAddressRefusedByConsumerFirmware { server: _, cause: _ } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE NAME-SPACE RULE, the one the constraint in the work item turns on: a BMC leg filed under Tailnet
+// refuses even when the name resolves, because the controller is not a tailnet member. `ask` admits, again
+// on purpose: resolvability for somebody else must not be enough.
+test fn a_bmc_share_filed_under_the_tailnet_space_refuses_even_when_the_name_resolves() -> Bool {
+  match name_of(spelling: srv2_tailnet_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match host_name_resolution_admit(
+        host: "srv2",
+        space: Tailnet { why: "fleet members resolve this; the BMC does not" },
+        name: n,
+        grounded: ResolutionObservation { outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address])), observed_on: "2026-10-27", reader: "witness: a tailnet member's reply" },
+      ) {
+        HostNameResolutionRefused { host: _, cause: _ } => false
+        HostNameResolutionAdmitted { resolution: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              match media_share_address_gate(server: srv2_tailnet_fqdn, resolution: row, resolver: r, ask: fn(s, nm) { answered([srv2_current_address]) }) {
+                MediaShareAddressNeedsLanNameSpace { server: _, cause: _ } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// A share naming a host other than the one its row grounds refuses, rather than inheriting that row's
+// citation. Without this arm a stale field in one row would ride the green light of another — the same
+// class of accident as the share row keeping an address the reach row had already moved.
+test fn a_share_naming_a_different_host_than_its_row_grounds_refuses() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_row(name: n, outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address]))) {
+        Absent => false
+        Present { value: row } =>
+          match resolver_of(servers: [router]) {
+            Absent => false
+            Present { value: r } =>
+              match media_share_address_gate(server: "srv3.mynetworksettings.com", resolution: row, resolver: r, ask: fn(s, nm) { answered([srv2_current_address]) }) {
+                MediaShareAddressNamesAnotherHost { server: _, cause: _ } => true
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// ── THE FOUR STATES ARE FOUR, AND NONE OF THEM IS "OK" ───────────────────────────────────────
+
+// WHY THIS SET EXISTS: the four causes were argued from the failure modes, and an argument is not a
+// check. Each arm is produced by a distinct reply and asserted to be itself. A refactor that collapses
+// NODATA into NameUnknown — the easy mistake, since both carry an empty address list — goes red HERE.
+test fn no_reply_is_server_unreachable_and_not_name_unknown() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolution_from_answer(name: n, answer: unanswered()) {
+        Unresolved { name: _, cause: ServerUnreachable { server: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn an_authoritative_negative_is_name_unknown() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolution_from_answer(name: n, answer: name_unknown()) {
+        Unresolved { name: _, cause: NameUnknown { server: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn nodata_is_answer_empty_and_not_name_unknown() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolution_from_answer(name: n, answer: nodata()) {
+        Unresolved { name: _, cause: AnswerEmpty { server: _ } } => true
+        _ => false
+      }
+  }
+}
+
+test fn an_answer_with_addresses_is_resolved() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolution_from_answer(name: n, answer: answered([srv2_current_address])) {
+        Resolved { name: _, addresses: addrs } => list_length(items: addrs) == 1
+        _ => false
+      }
+  }
+}
+
+// A CONSISTENT REPLY CANNOT CARRY A CONTRADICTION: the carrier refuses an answer that says the name is
+// unknown while handing out addresses. This is the check that keeps `name_known` from becoming decoration.
+test fn a_reply_cannot_say_the_name_is_unknown_and_carry_addresses() -> Bool {
+  match resolver_answer_admit(server: router, asked: Present { value: [srv2_current_address] }, name_known: false) {
+    ResolverAnswerRefused { cause: _ } => true
+    ResolverAnswerAdmitted { answer: _ } => false
+  }
+}
+
+// THE FAIL-CLOSED ORDERING: a first server that never replies must not be buried by a second that would
+// have answered "unknown" — the whole point of asking in order is that nobody answers, and a gate that
+// reported the LAST reply would report a name problem for a cable problem.
+test fn a_silent_first_server_yields_unresolved_and_is_not_buried_by_a_later_reply() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolver_of(servers: [router, srv2_current_address]) {
+        Absent => false
+        Present { value: r } =>
+          match resolve_name(name: n, resolver: r, ask: fn(s, nm) {
+            if s == router {
+              unanswered()
+            } else {
+              name_unknown()
+            }
+          }) {
+            // Whichever arm, it must be Unresolved: "every server answered something" is not the state here,
+            // and `Resolved` is the only state the claim refuses.
+            Resolved { name: _, addresses: _ } => false
+            Unresolved { name: _, cause: _ } => true
+          }
+      }
+  }
+}
+
+// THE FIRST SERVER IS THE ONE REPORTED, when all are silent: the reader is sent to the server the host
+// would have asked first, not to whichever row happened to end the loop.
+test fn when_every_server_is_silent_the_first_server_is_the_one_reported() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match resolver_of(servers: [router, srv2_current_address]) {
+        Absent => false
+        Present { value: r } =>
+          match resolve_name(name: n, resolver: r, ask: fn(s, nm) { unanswered() }) {
+            Unresolved { name: _, cause: ServerUnreachable { server: reported } } => reported == router
+            _ => false
+          }
+      }
+  }
+}
+
+// ── THE ROW ADMISSION REFUSES THE PAPERWORK THAT WOULD LET A LIE THROUGH ──────────────────────
+
+// A ROW CANNOT ASSERT RESOLVABILITY AGAINST ITS OWN EVIDENCE: the cited reply says NXDOMAIN, the row must
+// refuse. Paired with the admitted control above, so this is not "rows refuse".
+test fn a_row_may_not_assert_resolvability_against_its_own_cited_refusal() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match host_name_resolution_admit(
+        host: "srv2",
+        space: Lan { why: "witness" },
+        name: n,
+        grounded: ResolutionObservation { outcome: resolution_from_answer(name: n, answer: name_unknown()), observed_on: "2026-10-27", reader: "witness" },
+      ) {
+        HostNameResolutionAdmitted { resolution: _ } => false
+        HostNameResolutionRefused { host: _, cause: _ } => true
+      }
+  }
+}
+
+// A TAILNET NAME CANNOT BE FILED UNDER THE LAN SPACE, and vice versa: the name must sit under its space's
+// domain. This is the anti-nickname check — the one that stops "the same string" from meaning two things.
+test fn a_name_cannot_be_filed_under_a_space_it_does_not_belong_to() -> Bool {
+  match name_of(spelling: srv2_tailnet_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match host_name_resolution_admit(
+        host: "srv2",
+        space: Lan { why: "witness: filing a tailnet name under the LAN space" },
+        name: n,
+        grounded: ResolutionObservation { outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address])), observed_on: "2026-10-27", reader: "witness" },
+      ) {
+        HostNameResolutionAdmitted { resolution: _ } => false
+        HostNameResolutionRefused { host: _, cause: _ } => true
+      }
+  }
+}
+
+// THE ZONE ITSELF IS NOT A HOST: `mynetworksettings.com` has no label the domain lacks, so it cannot be
+// filed as a machine's name.
+test fn the_bare_zone_is_not_a_host_name() -> Bool {
+  match name_of(spelling: "mynetworksettings.com") {
+    Absent => true
+    Present { value: n } =>
+      match host_name_resolution_admit(
+        host: "srv2",
+        space: Lan { why: "witness" },
+        name: n,
+        grounded: ResolutionObservation { outcome: resolution_from_answer(name: n, answer: answered([srv2_current_address])), observed_on: "2026-10-27", reader: "witness" },
+      ) {
+        HostNameResolutionAdmitted { resolution: _ } => false
+        HostNameResolutionRefused { host: _, cause: _ } => true
+      }
+  }
+}
+
+// ── THE ROWS THE FLEET ACTUALLY CARRIES ──────────────────────────────────────────────────────
+
+// srv2's LAN ROW IS ADMITTED, grounded by the probe cited in the module. This is the claim that keeps every
+// refusal above from being satisfied by a module that admits nothing: the real row must pass.
+test fn srv2_has_an_admitted_grounded_lan_name() -> Bool {
+  match srv2_lan_name {
+    HostNameResolutionAdmitted { resolution: r } => host_identity_eq(a: r.host, b: "srv2") && consumer_resolves_in_space(space: r.space)
+    HostNameResolutionRefused { host: _, cause: _ } => false
+  }
+}
+
+// srv2 HAS NO TAILNET ROW, and the refusal names the missing reader rather than the name. If someone
+// later probes the tailnet and files the row, THIS claim goes red — which is the correct outcome, because
+// the claim's sentence ("nobody has looked") would then be the false one, and it must be edited by someone
+// who read the new observation.
+test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bool {
+  match srv2_tailnet_name_refused() {
+    HostNameResolutionRefused { host: _, cause: c } => string_contains(s: c, pattern: "no observation can be cited")
+    HostNameResolutionAdmitted { resolution: _ } => false
+  }
+}
+
+// A RESOLVER MUST HAVE A SERVER, and the refusal says what to do about it. Without this, a row with an
+// empty server list would look configured and make every name unresolvable — a red indistinguishable from
+// the real kind.
+test fn a_resolver_with_no_servers_is_refused() -> Bool {
+  match resolver_admit(servers: []) {
+    ResolverRefused { cause: _ } => true
+    ResolverAdmitted { resolver: _ } => false
+  }
+}
+
+test fn a_resolver_with_one_server_is_admitted() -> Bool {
+  match resolver_admit(servers: [router]) {
+    ResolverAdmitted { resolver: _ } => true
+    ResolverRefused { cause: _ } => false
+  }
+}
