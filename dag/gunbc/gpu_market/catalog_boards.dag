@@ -1,0 +1,54 @@
+module gunbc.gpu_market.catalog_boards
+
+import std.types { List }
+import extdeps.gpu.types { GpuBoardAdmission }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_5090_board_catalog,
+  nvidia_rtx_pro_6000_workstation_board_catalog,
+  nvidia_rtx_pro_6000_max_q_board_catalog,
+  nvidia_rtx_pro_6000_server_board_catalog,
+  nvidia_rtx_pro_5000_48gb_board_catalog,
+  nvidia_rtx_pro_5000_72gb_board_catalog,
+  nvidia_b200_sxm_board_catalog,
+  nvidia_b300_sxm_board_catalog,
+  nvidia_h200_nvl_board_catalog,
+  nvidia_rtx_2000_ada_board_catalog,
+}
+import extdeps.gpu.nvidia_a16 { nvidia_a16_board_catalog }
+import extdeps.gpu.nvidia_t10 { nvidia_t10_board_catalogs }
+import extdeps.gpu.nvidia_t4 { nvidia_t4_board_catalogs }
+import extdeps.gpu.nvidia_a2 { nvidia_a2_board_catalogs }
+import extdeps.gpu.nvidia_p100 { nvidia_p100_board_catalogs }
+import extdeps.gpu.nvidia_v100 { nvidia_v100_board_catalogs }
+
+// EVERY BOARD THE GPU CATALOGUE CARRIES, as one list a market consumer reads. Each extdeps.gpu module
+// owns its own boards (one upstream document per module); which of them this repository's market work
+// considers is a choice made here, in the policy layer, so no extdeps module enumerates another's
+// products. A module that declares a roster contributes it whole; extdeps.gpu.nvidia and
+// extdeps.gpu.nvidia_a16 predate that convention and are named board by board.
+//
+// CONSUMERS: test.claim.gpu_board_catalog_witness (every board is admitted, every driver-listed name is
+// one the pinned driver lists) and gunbc.gpu_market.realization_join (a run receipt's GPU is joined to the
+// board the driver names it as).
+data gpu_catalog_board_admissions: List<GpuBoardAdmission> = concat(
+  [
+    nvidia_rtx_5090_board_catalog,
+    nvidia_rtx_pro_6000_workstation_board_catalog,
+    nvidia_rtx_pro_6000_max_q_board_catalog,
+    nvidia_rtx_pro_6000_server_board_catalog,
+    nvidia_rtx_pro_5000_48gb_board_catalog,
+    nvidia_rtx_pro_5000_72gb_board_catalog,
+    nvidia_b200_sxm_board_catalog,
+    nvidia_b300_sxm_board_catalog,
+    nvidia_h200_nvl_board_catalog,
+    nvidia_rtx_2000_ada_board_catalog,
+    nvidia_a16_board_catalog,
+  ],
+  [
+    nvidia_t10_board_catalogs,
+    nvidia_t4_board_catalogs,
+    nvidia_a2_board_catalogs,
+    nvidia_p100_board_catalogs,
+    nvidia_v100_board_catalogs,
+  ] |> flat_map(xs => xs),
+)

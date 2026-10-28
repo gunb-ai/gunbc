@@ -26,6 +26,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data cuda_compute_capabilities_authority: ExternalAuthority = extdeps_external_authority_anchor
 
+// NVIDIA's CUDA GPUs page: the compute capability of each CURRENT product, listed by product name. It
+// lists no Pascal, Volta or older part, so a row for one of those carries no compute capability read
+// from it.
+data cuda_gpus_page_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.nvidia.com/cuda-gpus"
+  }
+}
+
 type GpuRuntime = Cuda | Rocm | Metal | OpenCl
 
 // THE ONE PLACE THE RUNTIME VARIANTS ARE ENUMERATED, so a consumer comparing two runtimes reads this
@@ -240,12 +250,13 @@ type GpuThermalSolution = PassiveThermalSolution | ActiveThermalSolution
 // WHAT THE VENDOR STATES ABOUT A BOARD'S POWER, in the shape it states it. RatedBoardPower is the one
 // figure a page gives (a TDP, a total board power, a "max power consumption", or a maximum that the page
 // calls configurable without stating the range); ConfigurableBoardPower is a stated range with its
-// published default and any named operating point (NVIDIA's MaxQ on the A16). A range is a configurable
-// span, distinct from a rating. A board whose page states no power figure, or only a ceiling ("up to
+// published default where the page states one (the A2's page states "40–60W (configurable)" and no
+// default) and any named operating point (NVIDIA's MaxQ on the A16). A range is a configurable span,
+// distinct from a rating. A board whose page states no power figure, or only a ceiling ("up to
 // 1 kW"), carries no specification at all (GpuBoardCatalogFacts.board_power is Absent).
 type GpuBoardPowerSpecification
   = RatedBoardPower { rated: Watt }
-  | ConfigurableBoardPower { default: Watt, minimum: Watt, maximum: Watt, named_points: List<GpuNamedPowerPoint> }
+  | ConfigurableBoardPower { default: Watt?, minimum: Watt, maximum: Watt, named_points: List<GpuNamedPowerPoint> }
 
 type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
 
@@ -264,6 +275,10 @@ type GpuZeroPowerSupport = ZeroPowerSupported | ZeroPowerNotSupported
 
 // WHAT A BRIEF STATES, AS AUTHORED. The citations point at these fields. A figure the vendor page does not
 // state is Absent, never a default: a board with no stated thermal solution is not thereby passive.
+// driver_listed_name is the product name NVIDIA's Linux driver lists the board under
+// (extdeps.nvidia.linux_driver_supported_chips), which is the name nvidia-smi reports for it, so it is
+// the identity an observed GPU in a run receipt joins through. Absent where the driver lists no such
+// name: the Turing Tesla T10 is listed under none.
 type GpuBoardCatalogFacts {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
@@ -274,6 +289,7 @@ type GpuBoardCatalogFacts {
   zero_power: GpuZeroPowerSupport?
   thermal: GpuThermalSolution?
   pci_device_id: PciDeviceId?
+  driver_listed_name: NonEmptyStr?
   figure_citations: List<FactCitation>
 }
 
@@ -304,7 +320,7 @@ fn gpu_board_power_refusal(spec: GpuBoardPowerSpecification) -> GpuBoardRefusal?
     RatedBoardPower { rated: _ } => none
     ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: points } =>
       if watt_count(lo) > watt_count(hi) { Present { value: BoardPowerRangeInverted } }
-      else if !gpu_board_power_within(minimum: lo, maximum: hi, w: d) { Present { value: BoardPowerDefaultOutsideRange } }
+      else if (match d { Present { value: dv } => !gpu_board_power_within(minimum: lo, maximum: hi, w: dv)  Absent => false }) { Present { value: BoardPowerDefaultOutsideRange } }
       else {
         match first(filter(points, n => !gpu_board_power_within(minimum: lo, maximum: hi, w: n.power))) {
           Present { value: n } => Present { value: BoardNamedPointOutsideRange { name: n.name } }

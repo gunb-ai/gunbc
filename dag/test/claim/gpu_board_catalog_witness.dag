@@ -11,11 +11,7 @@ import extdeps.gpu.types {
   ZeroPowerSupported, ZeroPowerNotSupported, PcieAddInBoard, SxmModule, admit_gpu_board, gpu_board_power_ceiling
 }
 import extdeps.gpu.nvidia_a16 { nvidia_a16_board_facts, nvidia_a16_board_catalog }
-import extdeps.gpu.nvidia {
-  nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog, nvidia_rtx_pro_6000_max_q_board_catalog,
-  nvidia_rtx_pro_6000_server_board_catalog, nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
-  nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog, nvidia_rtx_2000_ada_board_catalog,
-}
+import gunbc.gpu_market.catalog_boards { gpu_catalog_board_admissions }
 
 // The board row exists only through admit_gpu_board. The A16 as the brief states it is admitted with
 // its figures intact, and each invariant the row carries has a red: the A16's own facts with one
@@ -36,13 +32,13 @@ fn refused_as(a: GpuBoardAdmission, expect: GpuBoardRefusal) -> Bool {
 fn with_power(f: GpuBoardCatalogFacts, p: GpuBoardPowerSpecification) -> GpuBoardCatalogFacts {
   GpuBoardCatalogFacts {
     vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: f.gpu_count, attachment: f.attachment,
-    board_power: Present { value: p }, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+    board_power: Present { value: p }, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
     figure_citations: f.figure_citations,
   }
 }
 
 fn configurable(default: Nat, minimum: Nat, maximum: Nat, named_points: List<GpuNamedPowerPoint>) -> GpuBoardPowerSpecification {
-  ConfigurableBoardPower { default: watt(count: default), minimum: watt(count: minimum), maximum: watt(count: maximum), named_points: named_points }
+  ConfigurableBoardPower { default: Present { value: watt(count: default) }, minimum: watt(count: minimum), maximum: watt(count: maximum), named_points: named_points }
 }
 
 test fn the_a16_is_admitted_with_its_brief_figures() -> Bool {
@@ -53,7 +49,7 @@ test fn the_a16_is_admitted_with_its_brief_figures() -> Bool {
         && (row.facts.gpu.model as String) == "GA107-890"
         && (match row.facts.board_power {
           Present { value: ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: _ } } =>
-            watt_count(d) == 250 && watt_count(lo) == 195 && watt_count(hi) == 250
+            (match d { Present { value: dv } => watt_count(dv) == 250  Absent => false }) && watt_count(lo) == 195 && watt_count(hi) == 250
           _ => false
         })
         && (match row.facts.attachment {
@@ -68,7 +64,7 @@ test fn a_board_that_breaks_an_invariant_has_no_row() -> Bool {
   let f = nvidia_a16_board_facts
   refused_as(a: admit_gpu_board(facts: GpuBoardCatalogFacts {
       vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment, board_power: f.board_power,
-      zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+      zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id, driver_listed_name: f.driver_listed_name,
       figure_citations: f.figure_citations,
     }), expect: BoardCarriesNoGpu)
     && refused_as(a: admit_gpu_board(facts: with_power(f: f, p: configurable(default: 250, minimum: 260, maximum: 250, named_points: []))), expect: BoardPowerRangeInverted)
@@ -93,16 +89,9 @@ fn admitted(a: GpuBoardAdmission) -> Bool {
   }
 }
 
-// EVERY BOARD THE NVIDIA MODULES DECLARE IS ADMITTED. A board row a consumer is handed exists only through
-// admission, so a catalog board that its own facts refuse reaches its consumers only as a refusal. The list
-// is every GpuBoardAdmission extdeps.gpu.nvidia and extdeps.gpu.nvidia_a16 declare today, by name; a new
-// board joins it by hand until the catalog carries a roster of its own boards (step 2's disposition carrier).
+// EVERY BOARD THE CATALOGUE CARRIES IS ADMITTED. A board row a consumer is handed exists only through
+// admission, so a catalog board that its own facts refuse reaches its consumers only as a refusal. The
+// population is gunbc.gpu_market.catalog_boards, the one list of every board the catalogue carries.
 test fn every_catalog_board_is_admitted() -> Bool {
-  all([
-    nvidia_a16_board_catalog, nvidia_rtx_5090_board_catalog, nvidia_rtx_pro_6000_workstation_board_catalog,
-    nvidia_rtx_pro_6000_max_q_board_catalog, nvidia_rtx_pro_6000_server_board_catalog,
-    nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_rtx_pro_5000_72gb_board_catalog,
-    nvidia_b200_sxm_board_catalog, nvidia_b300_sxm_board_catalog, nvidia_h200_nvl_board_catalog,
-    nvidia_rtx_2000_ada_board_catalog,
-  ], a => admitted(a: a))
+  count(gpu_catalog_board_admissions) > 0 && gpu_catalog_board_admissions |> all(a => admitted(a: a))
 }
