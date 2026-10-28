@@ -2,7 +2,15 @@ module test.claim.machine_intake.machine_intake_bmc_rotation_route_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.decl_ref { decl_field_ref }
-import std.scoped_authorization { AttemptIdentity, ScopedAuthorization, AuthorizationGranted, AuthorizationPending, OperatorGrant }
+import std.scoped_authorization {
+  AttemptIdentity, ScopedAuthorization, AuthorizationGranted, AuthorizationPending, AuthorizationDenied, OperatorGrant,
+  AuthorizationRequest, AuthorizationScope, AuthorizedAction, intent_frame_head,
+}
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write, Execute }
+import std.optional { Absent, Present }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 import std.content_hash { content_hash_of_value }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { length }
@@ -29,7 +37,8 @@ import gunbc.machine_intake.bmc_rotation_route {
   ModeledQualificationWouldQualify, ModeledQualificationRefused, RouteQualificationRefusal,
   QualificationSubjectNotACandidate, QualificationApprovalRefused,
   BmcAccountWriteApproval, BmcAccountWritePurpose, BmcWriteApprovalRefusal, QualifyRoute, RotateCredential, QualifyByRotation, bmc_account_write_authorization_request,
-  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject,
+  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
+  bmc_account_write_identity, bmc_account_write_intent_schema, bmc_account_write_scopes,
   QualificationResponseForAnotherSubject, QualificationRequestUnrealized,
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
@@ -117,6 +126,7 @@ fn approval_refusal_name(c: BmcWriteApprovalRefusal) -> String {
     BmcWriteApprovalForAnotherPurpose { approved: _, required: _ } => "another-purpose"
     BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
     BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
+    BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
   }
 }
 
@@ -722,8 +732,9 @@ test fn each_purpose_covers_exactly_what_it_names() -> Bool {
   let request = IpmiSetUserPassword { user: 3 }
   let grounded = cited_password_route_at(endpoint: lab_endpoint)
   let candidate = lab_candidate(request: request)
-  let pending: ScopedAuthorization<BmcAccountWriteApproval> = AuthorizationPending {
-    request: bmc_account_write_authorization_request(escalation_id: "attempt-1" as NonEmptyStr, approval: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint, request: request), purpose: RotateCredential }, scopes: []),
+  let pending: ScopedAuthorization<BmcAccountWriteApproval> = match bmc_account_write_authorization_request(escalation_id: "attempt-1" as NonEmptyStr, approval: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint, request: request), purpose: RotateCredential }) {
+    Present { value: r } => AuthorizationPending { request: r }
+    Absent => AuthorizationDenied { escalation_id: "attempt-1" as NonEmptyStr, denied_by: "witness" as NonEmptyStr, denied_at: "2026-10-03T00:00:00Z", reason: "unframed" as NonEmptyStr }
   }
   apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: QualifyByRotation)) == "admitted"
     && apply_verdict(standing: grounded, target: lab_endpoint, firmware: lab_firmware(), approval_value: password_go(standing: grounded, purpose: RotateCredential)) == "admitted"
@@ -732,4 +743,88 @@ test fn each_purpose_covers_exactly_what_it_names() -> Bool {
     && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: QualifyByRotation))) == "admitted"
     && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: QualifyRoute))) == "admitted"
     && prewrite_verdict(a: admit_password_route_qualification(standing: candidate, approval: password_go(standing: candidate, purpose: RotateCredential))) == "another-purpose"
+}
+
+// ── the approved scope is the write's own (review of gunbc#15317, P1) ─────────────────────────────────
+//
+// THE REAL ROUTE, END TO END: the production request (bmc_account_write_authorization_request), the
+// approval gate (gunbc.auth.approval_gate approval_gate_from_poll) over the operator's approved decision for
+// that request's revision, and the BMC admission (admit_rotation_apply) over the grant the gate derives.
+
+fn lab_password_request() -> AuthorizationRequest<BmcAccountWriteApproval>? {
+  bmc_account_write_authorization_request(
+    escalation_id: "attempt-1" as NonEmptyStr,
+    approval: BmcAccountWriteApproval { subject: subject_at(endpoint: lab_endpoint, request: IpmiSetUserPassword { user: 3 }), purpose: RotateCredential },
+  )
+}
+
+fn decision_for(r: AuthorizationRequest<BmcAccountWriteApproval>) -> PollApproved {
+  PollApproved { revision: request_revision_of(request: r), decided_by: "operator" as NonEmptyStr, decided_at: "2026-10-03T00:00:00Z", execute_by: "2026-10-03T00:15:00Z" }
+}
+
+// The verdict of the real gate over `decision` and `presented`, then of the BMC admission over its grant.
+fn gate_then_apply(decision: PollApproved, presented: AuthorizationRequest<BmcAccountWriteApproval>) -> String {
+  match approval_gate_from_poll(poll: decision, request: presented, observed_at: "2026-10-03T00:01:00Z") {
+    GateRefused { cause: _ } => "gate-refused"
+    GateAdmitted { authorization: a } =>
+      apply_verdict(standing: cited_password_route_at(endpoint: lab_endpoint), target: lab_endpoint, firmware: lab_firmware(), approval_value: a)
+  }
+}
+
+// The same request with other scopes; the intent hash is left as decided, or re-taken over the framed text
+// with the new scopes.
+fn with_scopes(r: AuthorizationRequest<BmcAccountWriteApproval>, scopes: List<AuthorizationScope>, reframe: Bool) -> AuthorizationRequest<BmcAccountWriteApproval> {
+  let reframed = match intent_frame_head(schema: bmc_account_write_intent_schema, scopes: scopes) {
+    Absent => r.intent_hash
+    Present { value: head } => content_hash_of_value(value: join([head, "\n", bmc_account_write_identity(approval: r.subject) as String], "") as NonEmptyStr)
+  }
+  AuthorizationRequest {
+    escalation_id: r.escalation_id,
+    scopes: scopes,
+    subject: r.subject,
+    purpose: r.purpose,
+    attempt: r.attempt,
+    intent_hash: if reframe { reframed } else { r.intent_hash },
+    destructive: r.destructive,
+  }
+}
+
+fn lab_ipmi_scope(path: List<String>, verb_execute: Bool, action: String) -> AuthorizationScope {
+  AuthorizationScope {
+    verb: if verb_execute { Execute } else { Write },
+    resource: NamespacePosition { tree: ServiceOpTree { service: "ipmi" }, path: concat([lab_endpoint.host as String], path) },
+    action: action as AuthorizedAction,
+  }
+}
+
+// POSITIVE CONTROL: the production request's own scopes are nonempty and are the write's; the operator's
+// decision for it passes the real gate and the BMC admission admits the grant.
+test fn the_real_gate_grant_for_the_production_request_is_admitted() -> Bool {
+  match lab_password_request() {
+    Absent => false
+    Present { value: r } => length(r.scopes) == 1 && gate_then_apply(decision: decision_for(r: r), presented: r) == "admitted"
+  }
+}
+
+// THE RED (P1): a request reconstructed with a broader resource (the parent of the account row), another
+// action, or another verb, under the decided revision, passes the gate -- whose grant takes the presented
+// request's scopes -- and the BMC admission refuses it, because its scopes are not the write's own. With
+// the hash re-taken over the changed scopes, the old decision does not even reach the admission: the gate
+// refuses it as another intent. A fresh approval of the original request is admitted (above).
+test fn a_decision_admits_no_request_with_other_scopes() -> Bool {
+  let parent = lab_ipmi_scope(path: ["user"], verb_execute: false, action: "ipmi.user.password.set")
+  let other_action = lab_ipmi_scope(path: ["user", "3", "password"], verb_execute: false, action: "ipmi.user.delete")
+  let other_verb = lab_ipmi_scope(path: ["user", "3", "password"], verb_execute: true, action: "ipmi.user.password.set")
+  match lab_password_request() {
+    Absent => false
+    Present { value: r } => {
+      let decided = decision_for(r: r)
+      gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: [parent], reframe: false)) == "scopes-not-its-subject"
+        && gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: [other_action], reframe: false)) == "scopes-not-its-subject"
+        && gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: [other_verb], reframe: false)) == "scopes-not-its-subject"
+        && gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: concat(r.scopes, [parent]), reframe: false)) == "scopes-not-its-subject"
+        && gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: [parent], reframe: true)) == "gate-refused"
+        && gate_then_apply(decision: decided, presented: with_scopes(r: r, scopes: bmc_account_write_scopes(approval: r.subject), reframe: true)) == "admitted"
+    }
+  }
 }

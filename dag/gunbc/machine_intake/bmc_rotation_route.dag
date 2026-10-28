@@ -2,9 +2,12 @@ module gunbc.machine_intake.bmc_rotation_route
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.scoped_authorization {
-  AttemptIdentity, AuthorizationRequest, AuthorizationScope, ScopedAuthorization,
-  AuthorizationPending, AuthorizationGranted, AuthorizationDenied,
+  AttemptIdentity, AuthorizationRequest, AuthorizationScope, AuthorizedAction, ScopedAuthorization,
+  AuthorizationPending, AuthorizationGranted, AuthorizationDenied, authorization_scope_eq, intent_frame_head,
 }
+import std.effect_grant { NamespacePosition, ServiceOpTree, Write }
+import std.integer { int_to_decimal_string }
+import std.optional { Absent, Present }
 import std.algebra { length }
 import std.disposition { Disposition, Terminal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -408,25 +411,87 @@ fn bmc_account_write_identity(approval: BmcAccountWriteApproval) -> NonEmptyStr 
   ) as NonEmptyStr
 }
 
-fn bmc_account_write_intent_hash(approval: BmcAccountWriteApproval) -> ContentHash {
-  content_hash_of_value(value: bmc_account_write_identity(approval: approval))
+// THE SCOPE THE WRITE REACHES, derived from the approved write and never supplied beside it (review of
+// gunbc#15317, P1). Its resource is the one account or channel row the write changes, on the one
+// controller, as a position in the cited service-operation tree (the srv3 boot override's form, gunbc.srv3
+// srv3_os_install_actuate_workflow srv3_boot_override_resource), rooted at the controller because the
+// same account path exists on every controller of a family.
+fn bmc_account_write_scope(subject: RouteQualificationSubject) -> AuthorizationScope {
+  let controller = subject.endpoint.host as String
+  match subject.request {
+    RedfishAccountPasswordWrite { account: a, transport_operation: _, action_shape: _ } =>
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "redfish" }, path: [controller, "redfish", "v1", "AccountService", "Accounts", a as String] },
+        action: "redfish.account.password.set" as AuthorizedAction,
+      }
+    IpmiSetUserPassword { user: u } =>
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "ipmi" }, path: [controller, "user", int_to_decimal_string(value: u as Int), "password"] },
+        action: "ipmi.user.password.set" as AuthorizedAction,
+      }
+    IpmiSetUserPrivilegeLimit { access: x } =>
+      AuthorizationScope {
+        verb: Write,
+        resource: NamespacePosition { tree: ServiceOpTree { service: "ipmi" }, path: [controller, "channel", int_to_decimal_string(value: x.channel as Int), "user", int_to_decimal_string(value: x.user as Int), "access"] },
+        action: "ipmi.user.channel-access.set" as AuthorizedAction,
+      }
+  }
+}
+
+fn bmc_account_write_scopes(approval: BmcAccountWriteApproval) -> List<AuthorizationScope> {
+  [bmc_account_write_scope(subject: approval.subject)]
+}
+
+data bmc_account_write_intent_schema: NonEmptyStr = "gunbc.machine_intake.bmc-account-write/v1" as NonEmptyStr
+
+// THE INTENT IS FRAMED (std.scoped_authorization intent_frame_head): the schema line, then the derived
+// scopes, then the write's identity. The hash is taken over all of it, so a request carrying other
+// scopes is another intent. Absent when a scope has no wire (a path segment with a space or a slash):
+// such a write has no intent the gate can bind, and no request is built for it.
+fn bmc_account_write_intent_text(approval: BmcAccountWriteApproval) -> NonEmptyStr? {
+  match intent_frame_head(schema: bmc_account_write_intent_schema, scopes: bmc_account_write_scopes(approval: approval)) {
+    Absent => none
+    Present { value: head } => Present { value: join([head, "\n", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr }
+  }
+}
+
+fn bmc_account_write_intent_hash(approval: BmcAccountWriteApproval) -> ContentHash? {
+  match bmc_account_write_intent_text(approval: approval) {
+    Absent => none
+    Present { value: t } => Present { value: content_hash_of_value(value: t) }
+  }
+}
+
+fn scopes_are_exactly(granted: List<AuthorizationScope>, derived: List<AuthorizationScope>) -> Bool {
+  length(granted) == length(derived)
+    && all(derived, d => any(granted, g => authorization_scope_eq(a: g, b: d)))
+    && all(granted, g => any(derived, d => authorization_scope_eq(a: g, b: d)))
 }
 
 // THE REQUEST A RUN FILES. Its intent hash is the approval's identity, so the broker's revision join
 // (gunbc.auth.approval_decision_store request_revision_of) binds the decision to this exact subject.
+// The request the job files. Its scopes are the write's own (bmc_account_write_scopes), and its intent
+// hash is taken over them; nothing about either is supplied by the caller.
 fn bmc_account_write_authorization_request(
   escalation_id: NonEmptyStr,
   approval: BmcAccountWriteApproval,
-  scopes: List<AuthorizationScope>,
-) -> AuthorizationRequest<BmcAccountWriteApproval> {
-  AuthorizationRequest {
-    escalation_id: escalation_id,
-    scopes: scopes,
-    subject: approval,
-    purpose: join(["Approve one BMC account write: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
-    attempt: escalation_id as AttemptIdentity,
-    intent_hash: bmc_account_write_intent_hash(approval: approval),
-    destructive: false,
+) -> AuthorizationRequest<BmcAccountWriteApproval>? {
+  match bmc_account_write_intent_hash(approval: approval) {
+    Absent => none
+    Present { value: h } =>
+      Present {
+        value: AuthorizationRequest {
+          escalation_id: escalation_id,
+          scopes: bmc_account_write_scopes(approval: approval),
+          subject: approval,
+          purpose: join(["Approve one BMC account write: ", bmc_account_write_identity(approval: approval) as String], "") as NonEmptyStr,
+          attempt: escalation_id as AttemptIdentity,
+          intent_hash: h,
+          destructive: false,
+        },
+      }
   }
 }
 
@@ -437,6 +502,7 @@ type BmcWriteApprovalRefusal
   | BmcWriteApprovalForAnotherPurpose { approved: NonEmptyStr, required: NonEmptyStr }
   | BmcWriteApprovalForAnotherSubject { approved: NonEmptyStr, requested: NonEmptyStr }
   | BmcWriteApprovalIntentNotItsSubject { approved: NonEmptyStr }
+  | BmcWriteApprovalScopesNotItsSubject { approved: NonEmptyStr }
 
 type BmcWriteApprovalReading
   = BmcWriteApproved { attempt: AttemptIdentity, granted_by: NonEmptyStr }
@@ -459,8 +525,10 @@ fn read_bmc_write_approval(
         BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherPurpose { approved: bmc_account_write_purpose_text(purpose: g.subject.purpose), required: bmc_account_write_purpose_text(purpose: required) } }
       } else if route_subject_identity(subject: g.subject.subject) != route_subject_identity(subject: subject) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalForAnotherSubject { approved: route_subject_identity(subject: g.subject.subject), requested: route_subject_identity(subject: subject) } }
-      } else if !content_hash_equal(left: g.intent_hash, right: bmc_account_write_intent_hash(approval: g.subject)) {
+      } else if !(match bmc_account_write_intent_hash(approval: g.subject) { Absent => false  Present { value: h } => content_hash_equal(left: g.intent_hash, right: h) }) {
         BmcWriteApprovalRefused { cause: BmcWriteApprovalIntentNotItsSubject { approved: bmc_account_write_identity(approval: g.subject) } }
+      } else if !scopes_are_exactly(granted: g.scopes, derived: bmc_account_write_scopes(approval: g.subject)) {
+        BmcWriteApprovalRefused { cause: BmcWriteApprovalScopesNotItsSubject { approved: bmc_account_write_identity(approval: g.subject) } }
       } else {
         BmcWriteApproved { attempt: g.attempt, granted_by: g.granted_by }
       }

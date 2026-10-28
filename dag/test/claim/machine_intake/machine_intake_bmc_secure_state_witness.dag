@@ -71,7 +71,7 @@ import gunbc.machine_intake.bmc_rotation_route {
   BmcWriteApprovalDenied,
   BmcWriteApprovalForAnotherPurpose,
   BmcWriteApprovalForAnotherSubject,
-  BmcWriteApprovalIntentNotItsSubject,
+  BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
   rotation_route_ungrounded,
   rotation_route_from_citation,
 }
@@ -602,6 +602,7 @@ fn admission_label(a: RotationApplyAdmission) -> String {
         BmcWriteApprovalForAnotherPurpose { approved: _, required: _ } => "another-purpose"
         BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
         BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
+        BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
       }
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
     RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"

@@ -18,9 +18,9 @@ import std.goal_assessment {
   GoalObservationRefused,
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import gunbc.machine_intake.bmc_credential_policy {
-  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces,
+  BmcCredentialPolicyKey, CredentialSurface, SharedCredentialSurface, shared_store_surfaces, bmc_credential_policy_for,
 }
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
@@ -1254,6 +1254,8 @@ type SharedStoreRetirementRefusal
   = RetirementAccountIsNotTheManagedAccount { published: NonEmptyStr, managed: NonEmptyStr }
   | RetirementSurfaceNotGroundedAsShared { surface: CredentialSurface, policy: BmcCredentialPolicyKey }
   | RetirementGenerationIsThePublishedPassword
+  | RetirementBuildHasNoPolicy { policy: BmcCredentialPolicyKey }
+  | RetirementServedSurfacesUnknown
 
 type SharedStoreRetirementOutcome
   = SharedStoreRetirementDerived { derivation: SharedStoreRetirement }
@@ -1281,6 +1283,10 @@ fn derive_shared_store_retirement(
   let unshared: List<CredentialSurface> = filter(served, x => !shared_surface_listed(surfaces: shared, surface: x))
   if (published_account as String) != (managed_account as String) {
     SharedStoreRetirementRefused { cause: RetirementAccountIsNotTheManagedAccount { published: published_account, managed: managed_account } }
+  } else if (match bmc_credential_policy_for(key: policy) { Absent => true  Present { value: _ } => false }) {
+    SharedStoreRetirementRefused { cause: RetirementBuildHasNoPolicy { policy: policy } }
+  } else if list_length(items: served) == 0 {
+    SharedStoreRetirementRefused { cause: RetirementServedSurfacesUnknown }
   } else if generation_is_published_password {
     SharedStoreRetirementRefused { cause: RetirementGenerationIsThePublishedPassword }
   } else {
@@ -1616,6 +1622,8 @@ fn retired_on_the_managed_account(
 ) -> BmcSecureOutcome {
   if (observed.published_user as Int) != (observed.managed_user as Int) || (derivation.account as String) != (observed.managed.account as String) {
     BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement names an account the managed probe did not authenticate as" as NonEmptyStr } }
+  } else if !bmc_firmware_release_identity_eq(a: derivation.policy.firmware, b: observed.firmware) {
+    BmcSecureRefused { cause: PublishedCredentialRetirementUnestablished { detail: "the derived retirement was grounded by another build's policy than the build this reading observed" as NonEmptyStr } }
   } else {
     match observed.published_account.kind {
       PublishedAccountRetired =>
@@ -2571,6 +2579,7 @@ fn dry_read_bmc_account_state(
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root_on"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_arrival_converge_witness", decl_name: "mtjade1_dry_applied_bmc"),

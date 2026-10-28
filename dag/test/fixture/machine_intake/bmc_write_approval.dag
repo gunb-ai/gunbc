@@ -1,49 +1,42 @@
 module test.fixture.machine_intake.bmc_write_approval
 
 import std.types { NonEmptyStr }
-import std.scoped_authorization {
-  AttemptIdentity, AuthorizationRequest, ScopedAuthorization, OperatorGrant,
-  AuthorizationGranted, AuthorizationDenied, Unclaimed,
-}
+import std.optional { Absent, Present }
+import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization, AuthorizationDenied }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWriteApproval, BmcAccountWritePurpose,
   RouteQualificationSubject, bmc_account_write_authorization_request, route_subject_of,
 }
 
-// THE OPERATOR'S GO AT THE APPROVAL BOUNDARY, SUPPLIED. The machine-intake witnesses discriminate
-// what the BMC admissions read from a grant; the grant's own producer -- filing, the device-redeemed
-// decision and the revision join -- is gunbc.auth.approval_gate's and is witnessed there
-// (test.claim.approval_broker_witness, test.claim.fleet.srv1_root_mutation_approval_witness). Every
-// grant here is built from the production request (bmc_account_write_authorization_request), so its
-// intent hash is the one the gate would have joined; only the decision is supplied. The escalation id
-// is the attempt, as the request builder makes it.
+// THE OPERATOR'S GO, PRODUCED BY THE REAL GATE. Every grant here is the output of
+// gunbc.auth.approval_gate approval_gate_from_poll over the production request
+// (bmc_account_write_authorization_request, whose scopes and intent hash are derived from the write) and an
+// approved decision for that request's own revision. Only the decision is supplied: what the approval app
+// would have recorded after the operator's tap. A request the builder cannot frame, or a decision the
+// gate refuses, yields a denial, so a positive control that reaches either fails loudly.
 
-fn granted_bmc_write(request: AuthorizationRequest<BmcAccountWriteApproval>) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  AuthorizationGranted {
-    grant: OperatorGrant {
-      escalation_id: request.escalation_id,
-      scopes: request.scopes,
-      subject: request.subject,
-      purpose: request.purpose,
-      attempt: request.attempt,
-      intent_hash: request.intent_hash,
-      granted_by: "operator" as NonEmptyStr,
-      granted_at: "2026-10-03T00:00:00Z",
-      expires_at: "2026-10-03T00:15:00Z",
-    },
-    claim: Unclaimed,
+fn refused(attempt: NonEmptyStr, why: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  AuthorizationDenied { escalation_id: attempt, denied_by: "fixture" as NonEmptyStr, denied_at: "2026-10-03T00:00:00Z", reason: why }
+}
+
+// The gate's grant for `request`, decided by the operator.
+fn gate_grant(request: AuthorizationRequest<BmcAccountWriteApproval>) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  let approved = PollApproved { revision: request_revision_of(request: request), decided_by: "operator" as NonEmptyStr, decided_at: "2026-10-03T00:00:00Z", execute_by: "2026-10-03T00:15:00Z" }
+  match approval_gate_from_poll(poll: approved, request: request, observed_at: "2026-10-03T00:01:00Z") {
+    GateAdmitted { authorization: a } => a
+    GateRefused { cause: _ } => refused(attempt: request.escalation_id, why: "the gate refused the fixture's approved decision" as NonEmptyStr)
   }
 }
 
 // An approved go for one subject and purpose, filed by `attempt`.
 fn approved_bmc_write_for(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
-  granted_bmc_write(
-    request: bmc_account_write_authorization_request(
-      escalation_id: attempt,
-      approval: BmcAccountWriteApproval { subject: subject, purpose: purpose },
-      scopes: [],
-    ),
-  )
+  match bmc_account_write_authorization_request(escalation_id: attempt, approval: BmcAccountWriteApproval { subject: subject, purpose: purpose }) {
+    Absent => refused(attempt: attempt, why: "the write has no framed intent" as NonEmptyStr)
+    Present { value: request } => gate_grant(request: request)
+  }
 }
 
 // The common case: the go for `request` on the route's own controller and build.
