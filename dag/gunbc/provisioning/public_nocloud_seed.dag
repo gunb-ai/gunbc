@@ -319,14 +319,32 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
   }
 }
 
-// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. Today the admission's only callers are witnesses, and the
-// edge ships with no install binding (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_bindings is empty).
+// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. As of 2026-10-28 the BMC netboot edge DOES admit its
+// seed through this contract in production (gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission, keyed
+// on the measured srv4 NIC MAC — dashboard node adhoc-dfa3a487), but that route is not the dissolution below:
+// the frontier asks for the SITE PXE EDGE, whose install requests
+// (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_requests) are still empty.
+// THE DECLARED srv3 GAP (review of #15318, DESIGN.md §4b rung honesty). srv3's install documents are
+// key-only BY DATA today; they are not contract-gated, because srv3 has no measured boot-NIC row —
+// there is no client MAC on record to key an instance-id on (gunbc.host.host_network_diagnosis.boot_nic_inventory
+// carries only srv4). The seeded-ISO rendering goes from gunbc.srv3.srv3_seeded_install_media_artifact straight
+// through autoinstall_user_data with no admission step, and the NoCloudNet payload renders the same way. A
+// witness pins the bytes (no identity:, lock_passwd true, canonical keys), which EXPOSES a regression but does
+// not BLOCK one. Saying so here is the contract: this row is the debt, and a WithIdentity posture restored on
+// an srv3 payload is a red witness AND an unclosed frontier, not a silent pass.
 data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
-    reason: "no production seed is admitted yet: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, and the site PXE edge's install bindings are empty until it is",
+    reason: "the site PXE edge still has no install bindings: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, so no roster-MAC binding carries an admitted seed yet (the BMC netboot route admits srv4's seed since 2026-10-28 and does not dissolve this row)",
     dissolution: unbound_dissolution(
       description: "dissolves when a site_pxe_edge_converge install binding for a roster MAC carries a PublicNoCloudSeed admitted from the amd64 seed renderer's documents (autoinstall_user_data_document), and the edge's readback of the served user-data agrees with that seed's bytes; a witness over a hand-built tree does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.srv3.srv3_seeded_install_media_artifact", decl_name: "srv3_seeded_install_media_derivation"),
+    reason: "srv3's install documents are key-only by data and pinned by witness bytes, but NOT gated by this contract: srv3 has no measured boot-NIC row (gunbc.host.host_network_diagnosis.boot_nic_inventory has only srv4), so the seeded-ISO and NoCloudNet renderings cannot yet be keyed on a client MAC and run through admit_public_nocloud_seed",
+    dissolution: unbound_dissolution(
+      description: "dissolves when (a) gunbc.host.host_network_diagnosis.boot_nic_inventory carries a boot-NIC assignment for gunbc.fleet.fleet_host_identity.operator_host_srv3 with a mac that parses, AND (b) srv3's seeded-ISO user-data reaches the ISO only after admit_public_nocloud_seed accepts it keyed on that NIC (the instance-id derived, never hand-written). A witness over a hand-built tree does not fire this"
     )
   ),
 ]

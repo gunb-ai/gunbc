@@ -1332,7 +1332,7 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "mab_binder_does_not_leak_to_a_sibling_arm", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_non_payload_declared_in_two_modules_binds", standing: ActiveFillDebt },
-      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_record_data_row_binds", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_record_data_row_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_sibling_module_binds_the_arm", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_variant_declared_in_two_modules_refuses", standing: ActiveFillDebt },
       SingleClaimFillDebtClaim { claim: "mab_binder_spelling_a_where_alias_binds", standing: ActiveFillDebt },

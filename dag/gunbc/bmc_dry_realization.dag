@@ -30,6 +30,7 @@ import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, J
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
+  ipmitool_fru_print_0_mt_collins,
   ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
   ipmitool_sel_elist_line,
@@ -140,6 +141,19 @@ fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
 }
 
+// THE BOARD INVENTORY AS THE CONTROLLER PRINTED IT: the one retained capture, of boot run
+// 40264233543 (extdeps.bmc.ipmitool_observed_output ipmitool_fru_print_0_mt_collins), not a modeled
+// inventory. The FRU id is checked, not ignored: the capture is of FRU 0, the board FRU the boot's
+// identity rows are read from, and a print of any other id is a request the model does not carry --
+// answering it with FRU 0's bytes would be an invented reading.
+fn bmc_fru_print_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if input_is(call: call, name: "fru_id", expected: "0") {
+    BmcReplied { stdout: ipmitool_fru_print_0_mt_collins, world: world }
+  } else {
+    BmcReplyFault { reason: "the model carries the board FRU capture for fru print 0 only" as NonEmptyStr }
+  }
+}
+
 // One IPMI round trip takes one virtual second.
 fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcWorld, OperationCall) -> BmcReply) -> fn(S, OperationCall) -> OperationStep<S> {
   fn(state, call) {
@@ -163,6 +177,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "FruPrint"), handler: bmc_lift(get: get, put: put, reply: bmc_fru_print_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "HpmCheck"), handler: bmc_lift(get: get, put: put, reply: bmc_hpm_check_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SdrTypeList"), handler: bmc_lift(get: get, put: put, reply: bmc_sdr_type_reply) },
   ]

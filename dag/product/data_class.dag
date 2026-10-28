@@ -342,9 +342,9 @@ fn sink_kind_same_family(row: SinkKind, sink: SinkKind) -> Bool {
     DurableOrigin { route: _ } =>
       match sink {
         DurableOrigin { route: _ } => true
-        other => false
+        _ => false
       }
-    other => row == sink
+    _ => row == sink
   }
 }
 
@@ -378,7 +378,7 @@ fn map_refusals<C>(
   } else if count(matched) == 0 {
     match sink.kind {
       DurableOrigin { route: r } => [RouteNotPermittedForCategory { category: sink.category, route: r }]
-      other => [SinkNotPermittedForCategory { category: sink.category, sink: sink.kind }]
+      _ => [SinkNotPermittedForCategory { category: sink.category, sink: sink.kind }]
     }
   } else {
     []

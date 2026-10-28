@@ -57,7 +57,7 @@ fn causes_for(path: String) -> String {
     observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: digest_observation(path: path) }],
   ) {
     SitePxeEdgeChainServable { chain: _ } => ""
-    SitePxeEdgeChainWithheld { architecture: _, causes: cs } => join(map(non_empty_to_list(xs: cs), c => site_pxe_edge_chain_cause_text(cause: c)), "\n")
+    SitePxeEdgeChainWithheld { architecture: _, audience: _, causes: cs } => join(map(non_empty_to_list(xs: cs), c => site_pxe_edge_chain_cause_text(cause: c)), "\n")
   }
   let pinned = match site_pxe_edge_chainloader_target(pin: site_pxe_edge_chainloader_pin) {
     Present { value: b } => b.embedded_revision as String

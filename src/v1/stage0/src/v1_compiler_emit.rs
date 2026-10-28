@@ -140,7 +140,7 @@ use crate::v1_std_core::CallTargetIdentity::{
     CallableTargetUndetermined, LocallyBoundCall, RuntimePrimitiveCall, SourceDeclarationCall,
 };
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
+use crate::v1_std_core::CompilerDiagnostic::{CastRealizationRefused, TransportEmissionNotModeled};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
@@ -7020,6 +7020,12 @@ pub fn cast_source_grounded_onto_target_carrier(
     }
 }
 
+pub fn cast_realization_refusal_fact(refusal: Rc<CastRealizationRefusal>) -> String {
+    match (*refusal.clone()).clone() {
+    CastRealizationRefusal::CastRouteUndeclared { source_type: s, target_type: t, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("no declared conversion route from ".to_string(), s.clone()), " to ".to_string()), t.clone()), ": the two do not reach one carrier, no grounded crossing joins them, and the target's cast syntax has no rule for the pair; name a declared conversion (a checked constructor or a conversion function) instead of `as`".to_string()),
+}
+}
+
 pub fn emit_typed_cast_shared(
     expr: Rc<Node>,
     cast_target_node: Rc<Node>,
@@ -7048,28 +7054,124 @@ pub fn emit_typed_cast_shared(
                 ty.clone(),
                 target.clone(),
             ),
-            CastRealization::CastNotRealized { refusal: r, .. } => emit_error_expr(
-                cast_realization_unsupported_message(r.clone()),
-                target.clone(),
-            ),
+            CastRealization::CastNotRealized { refusal: r, .. } => {
+                let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
+                crate::v1_compiler_emit_core_support::apply_type_template1(
+                    spec.error_type_template.clone(),
+                    cast_realization_refusal_fact(r.clone()),
+                )
+            }
         }
     }
 }
 
-pub fn cast_realization_unsupported_message(refusal: Rc<CastRealizationRefusal>) -> String {
-    match (*refusal.clone()).clone() {
-        CastRealizationRefusal::CastRouteUndeclared {
-            source_type: s,
-            target_type: t,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat("unsupported cast from ".to_string(), s.clone()),
-                " to ".to_string(),
-            ),
-            t.clone(),
-        ),
+pub fn cast_realization_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let module_name = crate::v1_compiler_infer_env::authored_name(
+                            tm.type_env.clone(),
+                            tm.module.clone(),
+                        );
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                __result.extend(
+                                    (*match item.body.clone() {
+                                        Some(b) => cast_realization_diagnostics_in(
+                                            b.clone(),
+                                            target.clone(),
+                                            tm.type_env.clone(),
+                                            module_name.clone(),
+                                        ),
+                                        std::option::Option::None => Rc::new(vec![]),
+                                    })
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
     }
+}
+
+pub fn cast_realization_diagnostics_in(
+    texpr: Rc<Node>,
+    target: RenderTarget,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let here = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprCast => match (*cast_realization(
+                crate::v1_std_core::cast_expr(texpr.clone()),
+                crate::v1_std_core::cast_target(texpr.clone()),
+                target.clone(),
+                env.clone(),
+                env.source_indices.clone(),
+            ))
+            .clone()
+            {
+                CastRealization::CastNotRealized { refusal: r, .. } => {
+                    Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::CastRealizationRefused {
+                            target: render_target_name(target.clone()),
+                            missing_realization_fact: cast_realization_refusal_fact(r.clone()),
+                            span: texpr.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )])
+                }
+                _ => Rc::new(vec![]),
+            },
+            _ => Rc::new(vec![]),
+        };
+        let nested_body = match texpr.body.clone() {
+            Some(b) => cast_realization_diagnostics_in(
+                b.clone(),
+                target.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
+            std::option::Option::None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                here.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in texpr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*cast_realization_diagnostics_in(
+                                c.clone(),
+                                target.clone(),
+                                env.clone(),
+                                module_name.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            nested_body.clone(),
+        )
+    })
 }
 
 pub fn emit_typed_for_each_shared(
