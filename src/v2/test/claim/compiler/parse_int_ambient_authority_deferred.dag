@@ -13,16 +13,18 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // THE parse_int AMBIENT AUTHORITY IS DEFERRED, NOT YET RETIRED (NAMESPACE-XL, chars and list_push precedent; the
 // home is a root-coordinator decision approved by sleek-owl-397). std.integer now declares the one home
 // (`fn parse_int(s: String) -> Int?`), and the generated sweep imports it at the call sites this wave covered.
-// But ten files still reach the name AMBIENTLY: nine refuse the sweep at compiler normalize (their own current-tree
-// normalize already refuses, with or without this wave — they are compiler obligations, not wave defects) and one
-// (std.checked_arithmetic) closes an import cycle against std.integer's own dependencies. The std.primitives
-// `parse_int_contract` stopgap therefore STANDS in this head — deleting it would break those ten call sites
+// But twenty files still reach the name AMBIENTLY: sixteen refuse the sweep at compiler normalize (their own
+// current-tree normalize already refuses, with or without this wave — they are compiler obligations, not wave
+// defects; reasons verbatim in the wave PR body), three refuse at the sweep's edit placement (extent-mismatch,
+// cleared by the generator fix on stack/only-occurrences, not yet on main), and one (std.checked_arithmetic)
+// closes an import cycle against std.integer's own dependencies. The std.primitives
+// `parse_int_contract` stopgap therefore STANDS in this head — deleting it would break those twenty call sites
 // outside the gate (ruled by wise-moth-707 on the wave). THIS CLAIM READS THE REAL std.primitives CLOSURE FROM
 // DISK, so it holds against the actual tree: while the residual is non-zero, a module using `parse_int` WITHOUT
 // the declared import still admits at resolve (the stopgap), the control keeps the ambient tier honest (a name
 // whose contract row stands, `to_string`, still binds), and the positive restates the home minimally, beside the
 // real std.optional (the `Int?` sugar binds to that declaration), showing the declared import binds where the
-// name would otherwise come only from ambient. WHEN THE RESIDUAL REACHES ZERO (the nine normalize classes fixed,
+// name would otherwise come only from ambient. WHEN THE RESIDUAL REACHES ZERO (the normalize classes fixed,
 // the checked_arithmetic cycle broken by the option-A child adhoc-b2319e13-286), the contract row is deleted in a
 // later head and this claim flips: the first test below becomes the RED-until-deletion form (refuses with
 // resolve_reason_unbound_symbol), exactly as parse_int_ambient_authority_retired stood for the chars and list_push
