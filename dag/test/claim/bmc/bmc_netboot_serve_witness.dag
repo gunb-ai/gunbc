@@ -22,7 +22,7 @@ import extdeps.uri { Uri, Https }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
 import gunbc.bmc.bmc_netboot_serve {
-  srv4_bmc_netboot_serve_plan
+  srv4_bmc_netboot_serve_plan,
   BmcNetbootServePlan,
   bmc_transport,
   bmc_path_resolved_mkdir_applet,
