@@ -16746,14 +16746,14 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 );
                                     let then_elem = then_rt
                                         .children
-                                        .clone()
-                                        .into_iter()
+                                        .iter()
+                                        .cloned()
                                         .next()
                                         .unwrap_or_else(|| then_rt.clone());
                                     let else_elem = else_rt
                                         .children
-                                        .clone()
-                                        .into_iter()
+                                        .iter()
+                                        .cloned()
                                         .next()
                                         .unwrap_or_else(|| else_rt.clone());
                                     let routed_then_elem =
