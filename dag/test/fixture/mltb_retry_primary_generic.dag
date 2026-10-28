@@ -1,4 +1,4 @@
-module test.fixture.mltb_retry_primary.generic
+module test.fixture.mltb_retry_primary_generic
 
 // THE GENERIC SIBLING (the control arm of the retry-path pair): a real generic declaration, whose params
 // ARE its type parameters, so the retry selects it before and after the fix alike.

@@ -1,4 +1,4 @@
-module test.fixture.mltb_retry_primary.alias
+module test.fixture.mltb_retry_primary_fnalias
 
 // THE SAME-NAMED SIBLING of the retry-path pair in
 // dag/test/claim/module_local_type_binds_witness.dag: a NON-GENERIC alias of a FUNCTION type. Its

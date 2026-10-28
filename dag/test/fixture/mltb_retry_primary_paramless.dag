@@ -1,4 +1,4 @@
-module test.fixture.mltb_retry_primary.paramless
+module test.fixture.mltb_retry_primary_paramless
 
 // THE PARAMLESS PRIMARY of the retry-path pair: a real on-disk module (compile_dag_rust_emit_check
 // resolves a single virtual module against the real corpus, the same reason

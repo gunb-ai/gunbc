@@ -75,10 +75,10 @@ test fn a_bare_function_type_alias_binds_and_a_bare_generic_one_refuses_test() -
 // instead of keeping the paramless declaration it resolved to.
 //
 // THE PAIR differs only in the SHAPE of the same-named second import. Both arms import the paramless
-// primary FIRST (test.fixture.mltb_retry_primary.paramless: `type Handler = Int`), so the primary lookup
+// primary FIRST (test.fixture.mltb_retry_primary_paramless: `type Handler = Int`), so the primary lookup
 // lands paramless and the retry fires, then import the sibling: the alias arm imports the fn-type alias
-// (test.fixture.mltb_retry_primary.alias, whose resolved node is an Arrow -- the helper answers []), the
-// control imports a real GENERIC declaration (test.fixture.mltb_retry_primary.generic -- the helper
+// (test.fixture.mltb_retry_primary_fnalias, whose resolved node is an Arrow -- the helper answers []), the
+// control imports a real GENERIC declaration (test.fixture.mltb_retry_primary_generic -- the helper
 // answers [T]). THE PRIMARY IS AN IMPORT, NOT A LOCAL: a module-scope local definition beside a same-named
 // import is refused outright (ImportShadowedByLocalDefinition, v1.core) long before the retry is reached.
 //   ALIAS SIBLING -- the retry must NOT select the Arrow; the use keeps the paramless primary, and the
@@ -97,7 +97,7 @@ test fn a_bare_function_type_alias_binds_and_a_bare_generic_one_refuses_test() -
 fn retry_pair_source(module_leaf: String, sibling_module: String, body: String) -> String {
   concat(
     concat(
-      concat(concat("module mltb.", module_leaf), "\n\nimport std.types { Int }\n\nimport test.fixture.mltb_retry_primary.paramless { Handler }\n\nimport test.fixture.mltb_retry_primary."),
+      concat(concat("module mltb.", module_leaf), "\n\nimport std.types { Int }\n\nimport test.fixture.mltb_retry_primary_paramless { Handler }\n\nimport test.fixture.mltb_retry_primary_"),
       concat(sibling_module, concat(" { Handler }\n\n", body))
     ),
     ""
@@ -110,7 +110,7 @@ fn retry_pair_source(module_leaf: String, sibling_module: String, body: String) 
 // filter through the reader.
 test fn a_paramless_primary_in_front_of_a_fn_type_alias_sibling_keeps_the_paramless_declaration_test() -> Bool {
   compile_dag_rust_emit_check(
-    retry_pair_source("retryalias", "alias", "fn applied(x: Handler<Int>) -> Int { x + 1 }\n"),
+    retry_pair_source("retryalias", "fnalias", "fn applied(x: Handler<Int>) -> Int { x + 1 }\n"),
     "src/mltb_retryalias.rs", [], []
   )
 }
