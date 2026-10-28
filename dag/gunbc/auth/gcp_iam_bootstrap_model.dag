@@ -538,9 +538,6 @@ fn iam_bootstrap_trust_root_tagged_accounts() -> List<ServiceAccountEmail> {
   map(own_trust_federations(), f => f.service_account)
 }
 
-fn iam_bootstrap_trust_root_tag_parents() -> List<String> {
-  map(iam_bootstrap_trust_root_tagged_accounts(), a => gcp_service_account_full_resource_name(project_id: fleet_secrets_project_id, account: a))
-}
 
 data iam_bootstrap_trust_root_walled_permissions: List<String> = [
   "iam.googleapis.com/serviceAccounts.setIamPolicy",

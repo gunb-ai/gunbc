@@ -38,7 +38,7 @@ import extdeps.cloud.gcp.storage { GcsBucketWire }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
-  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
@@ -743,6 +743,20 @@ fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token:
   }
 }
 
+// A service account's tag-binding parent names the account by its numeric uniqueId, not its email:
+// on 2026-10-28 (receipt iam-ceremony-20261028T131118Z) ListTagBindings on the email form answered 403
+// "iam.serviceAccounts.listTagBindings required (or the resource may not exist in this location)" to a
+// project owner. The id is read from the account, never transcribed.
+type TrustRootTagParent = TrustRootTagParentRead { parent: String } | TrustRootTagParentRefused { reason: String }
+
+fn trust_root_tag_parent(account: ServiceAccountEmail, token: Secret) -> TrustRootTagParent {
+  match gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: account) {
+    RestRefused { refusal } => TrustRootTagParentRefused { reason: join([account as String, ": account unreadable for its tag-binding parent: ", rest_refusal_text(o: refusal)], "") }
+    RestAnswered { answer: a } => if a.email != account || a.unique_id == "" { TrustRootTagParentRefused { reason: concat(account as String, ": account read answered another account or no uniqueId") } }
+      else { TrustRootTagParentRead { parent: join(["//iam.googleapis.com/projects/", fleet_secrets_project_id as String, "/serviceAccounts/", a.unique_id], "") } }
+  }
+}
+
 fn iam_bootstrap_ensure_trust_root_tags(token: Secret) -> TrustRootTagsOutcome {
   match ensure_trust_root_tag_key(token: token) {
     TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
@@ -750,9 +764,12 @@ fn iam_bootstrap_ensure_trust_root_tags(token: Secret) -> TrustRootTagsOutcome {
     TagResourcePresent { name: key } => match ensure_trust_root_tag_value(key_name: key, token: token) {
       TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
       TagResourcePending { what } => trust_root_tags_refused(reason: concat(what, " creation is not yet done; rerun the ceremony once it is"))
-      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tag_parents(), init: TrustRootTagsBound, f: (acc, parent) => match acc {
+      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tagged_accounts(), init: TrustRootTagsBound, f: (acc, account) => match acc {
         TrustRootTagsRefused { reason: _ } => acc
-        TrustRootTagsBound => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        TrustRootTagsBound => match trust_root_tag_parent(account: account, token: token) {
+          TrustRootTagParentRefused { reason } => trust_root_tags_refused(reason: reason)
+          TrustRootTagParentRead { parent } => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        }
       })
     }
   }

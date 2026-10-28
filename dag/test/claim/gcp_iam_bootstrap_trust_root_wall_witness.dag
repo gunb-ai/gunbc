@@ -10,7 +10,7 @@ import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, iam_converge_serv
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_trust_root_tag_condition, iam_bootstrap_trust_root_tagged_accounts, iam_bootstrap_delta_principal,
-  iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_deny_policies, iam_bootstrap_trust_root_wall_policy_id,
   iam_bootstrap_deny_rules_match, iam_bootstrap_trust_root_wall_rule,
   TagBindingEstablished, TagBindingAbsent, TagBindingIncomplete, trust_root_tag_binding_reading,
   iam_bootstrap_probe_accounts, iam_bootstrap_tag_detach_permissions, iam_bootstrap_tag_value_detach_permissions,
@@ -88,7 +88,6 @@ test fn the_tagged_population_is_exactly_the_three_own_trust_accounts() -> Bool 
   let tagged_names = map(iam_bootstrap_trust_root_tagged_accounts(), a => a as String)
   count(tagged_names) == 3 && all(trust_roots, a => any(tagged_names, x => x == (a as String)))
     && !any(gcp_iam_converge_targets, t => any(tagged_names, x => x == (t.service_account as String)))
-    && count(iam_bootstrap_trust_root_tag_parents()) == 3
 }
 
 test fn the_wall_is_its_own_deny_policy_with_the_rendered_tag_condition() -> Bool {
