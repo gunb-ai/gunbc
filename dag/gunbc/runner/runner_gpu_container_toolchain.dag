@@ -301,12 +301,24 @@ fn cdi_spec_arm(transport: HostEffectTransport) -> GpuContainerArm {
 // THE DOCKER HOST IS THE POINT OF THE WHOLE MODULE, so it is spelled once, here. DOCKER_HOST is set to
 // the job user's own rootless socket and the command is run AS the job user: if the daemon answers and
 // the container sees the device, the capability is real for the identity that will actually run CI.
-// env_prefixed_command puts the assignment in front of the sudo, so the value survives into the
-// command the job user's shell execs.
+//
+// THE ASSIGNMENT GOES INSIDE THE ELEVATION, never in front of it. /etc/sudoers line 9 on both fleet
+// hosts is `Defaults env_reset`, so an assignment placed before sudo is RESET away before the target
+// command ever sees it — measured on srv3 2026-10-26: `env DOCKER_HOST=unix:///run/user/999/docker.sock
+// sudo -n -u ghrunner env | grep -c DOCKER_HOST` prints 0, while `sudo -n -u ghrunner env DOCKER_HOST=…
+// env` shows the value. The first converge run emitted the outer form and both job-user arms failed with
+// "permission denied … unix:///var/run/docker.sock": the assignment evaporated, so docker fell back to
+// the ROOTFUL socket it must never touch, and a missing capability was reported for a daemon that was
+// actually running. env_prefixed_command inside sudo_elevate_as_command is the shape this module already
+// uses for its elevated reads (host_capability_row_read_command: `sudo env LC_ALL=C cat …`), and that is
+// the only reason the store checks worked on the same run.
 fn job_user_command(user: NonEmptyStr, socket: String, inner: ArgvCommand) -> ArgvCommand {
-  env_prefixed_command(
-    bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
-    command: sudo_elevate_as_command(user: user, command: argv_words(command: inner)),
+  sudo_elevate_as_command(
+    user: user,
+    command: argv_words(command: env_prefixed_command(
+      bindings: [EnvSet { name: "DOCKER_HOST", value: socket }],
+      command: inner,
+    )),
   )
 }
 

@@ -121,6 +121,75 @@ fn subordinate_collisions(rs: List<SubordinateRange>) -> List<String> {
   )
 }
 
+// ── THE FILE AS TEXT, RENDERED FROM THE PLAN RATHER THAN EDITED BY usermod ──
+//
+// WHY usermod IS NOT THE ROUTE FOR THIS FILE. usermod refuses to touch ANY account that has a process
+// running — MEASURED on srv3 2026-10-26: `usermod -V 100000-165535 ubuntu` exits 8 with "user ubuntu is
+// currently used by process 4116", and 4116 is ubuntu's own `systemd --user`. The guard is legitimate for
+// what usermod also does, which is change the account's uid and home; it is simply not the operation
+// wanted here. A subordinate range is a mapping table read by newuidmap when a user namespace is CREATED:
+// no process consults /etc/subuid after it starts, so rewriting the file cannot disturb a running
+// anything, and it cannot strand a file either, because files carry numeric ids and a range that is
+// claimed by nobody afterwards keeps the same numeric ownership it had a second earlier. And on these two
+// hosts the guard is not a corner case to work around but a wall: the converge's own SSH transport runs as
+// the host's admin account and the runner's agent runs as the job user, so EVERY account the plan needs to
+// move is logged in. A converge that could only edit these files while their owners were logged out could
+// never converge either host.
+//
+// SO THE FILE IS RENDERED, WHOLE, FROM THE PARSED ROWS. That is also what makes the write checkable: the
+// content the converge intends is a value the model computed, so the same value can be compared against
+// what the host holds before the rename and read back after it. Editing through a program that recomputes
+// the file internally has no equivalent — nothing can be compared to it.
+//
+// UNTOUCHED ROWS ARE PRESERVED BYTE-IDENTICALLY, ORDER AND ALL. This is not tidiness. Accounts not named
+// by the host model have ranges in these files (srv3 has the operator account at 165536+65536), and the
+// rows describe them exactly as the host wrote them; a render that sorted, reformatted or rebuilt them
+// would be a rewrite of entries the converge has no claim to and no reading of. Rows are therefore
+// rendered from the PARSED VALUES — which is what makes the round-trip safe — and the render of every row
+// the plan does not change is required, by the checks below and by the witnesses, to reproduce the text
+// that was read. A file whose rows do not round-trip is refused rather than rewritten: `user:100000:65536`
+// and `user:100000:065536` parse alike but render differently, and the second is not what the host wrote.
+fn subordinate_range_text(r: SubordinateRange) -> String {
+  join([r.account as String, ":", to_string(r.first), ":", to_string(r.count)], "")
+}
+
+// The exact text that was read for one row, or Absent when no row round-trips to it. Absent from
+// subordinate_unread_rows means the file, as read, is byte-reproducible from its parsed rows: the property
+// that must hold BEFORE anything is rendered, because a whole-file write silently "fixes" formatting only
+// if formatting was ever allowed to differ.
+fn subordinate_unread_rows(lines: List<String>, rs: List<SubordinateRange>) -> List<String> {
+  filter(lines, l => !rs.any(r => subordinate_range_text(r: r) == l))
+}
+
+// THE DISJOINTNESS THAT CONDITIONS THE WHOLE WRITE: no two rows in the rendered file may overlap. The
+// plan already refuses to CREATE an overlap, so this is not the plan's check repeated — it is the check on
+// the artifact, run on the text that is about to be installed. It catches the failure the plan cannot see:
+// a host whose file changed between the read that was planned against and the render, so that two accounts
+// that were disjoint when they were read are not disjoint in the file being written.
+//
+// IT IS PAIRWISE OVER POSITIONS, NOT OVER ACCOUNTS, and that is the difference between a real check and a
+// decorative one. Pairing accounts (the shape subordinate_collisions uses, which is right for its receipt
+// because it needs one line per colliding PAIR of NAMES) compares each account against every other and so
+// never compares an account against ITSELF — a file with `ubuntu:100000:65536` twice would sail through it,
+// and that file is exactly as broken. Taking each row against the rows after it in the list compares every
+// pair of ROWS, including two rows of the same account, so a duplicated row is refused. Adjacency is still
+// not an overlap, so two accounts may sit end to end.
+fn subordinate_rows_pairwise_disjoint(rs: List<SubordinateRange>) -> Bool {
+  match rs.first() {
+    Absent => true
+    Present { value: a } =>
+      !rs.skip(n: 1).any(b => subordinate_ranges_overlap(a: a, b: b))
+        && subordinate_rows_pairwise_disjoint(rs: rs.skip(n: 1))
+  }
+}
+
+// The rendered file, from the rows the plan leaves in place plus the rows it adds. Rows are emitted in the
+// order the caller supplies them, and the caller orders them as read-from-host order with removals dropped
+// and grants appended, so an untouched file renders as itself.
+fn render_subordinate_file(rs: List<SubordinateRange>) -> String {
+  join(map(rs, r => subordinate_range_text(r: r)), "\n")
+}
+
 // WHAT CONVERGE OWES THE FILE. None is a real answer, not a placeholder: a host that already declares
 // exactly the wanted range needs no usermod, and a step that no-ops by running usermod anyway would be
 // a write to a file nobody needed changed. Blocked is NOT a refusal to do the work — it is this module
