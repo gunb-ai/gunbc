@@ -83,8 +83,8 @@ import extdeps.provisioning.network_boot { UefiHttpBoot }
 import extdeps.uri { uri_https }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, ExternalAuthority }
 import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
-import test.claim.altra_autoinstall_seed_witness { built_seed_and_binding }
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding }
+import test.claim.ubuntu_autoinstall_seed_witness { built_seed_and_binding }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -92,7 +92,7 @@ fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
 }
 
-fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+fn fixture_seed() -> UbuntuAutoinstallSeedBinding? {
   match built_seed_and_binding() {
     Present { value: built } => Present { value: built.binding }
     Absent => Absent

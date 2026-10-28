@@ -49,7 +49,10 @@ fn pcie_generation_of(n: Nat) -> PcieGeneration? {
 
 // A GPU as the driver reports it, from the identity query. The link the slot can train to is read as
 // pcie.link.gen.max / pcie.link.width.max ("possible with this GPU and system configuration"); a generation
-// outside Gen3-Gen5 has no PcieLink, so the GPU has no observation rather than a guessed one.
+// outside Gen3-Gen5 is not read as a link here, so the GPU has no observation rather than a guessed one.
+// That is this reader's policy, not the type's limit: PcieGeneration names Gen1 and Gen2 (cards fused to
+// them exist), but the driver reports gen-1 for an idle link that power management has downtrained, so a
+// sample below Gen3 is not a reading of the link the slot trains to.
 fn observed_gpu(row: NvidiaSmiGpuIdentity) -> ObservedGpu? {
   match pcie_generation_of(n: row.link_generation_max) {
     Absent => none
