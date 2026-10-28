@@ -51,8 +51,8 @@ test fn w_RED_a_runner_decided_at_dispatch_counts_as_hosted() -> Bool {
 test fn the_live_merge_path_runs_on_the_fleet_and_is_the_required_job() -> Bool {
   let path = compiler_gate_merge_path_job_ids()
   compiler_gate_merge_path_runs_on_the_fleet()
-    && any(path, id => id == compiler_gate_required_job_id)
-    && all(path, id => id == compiler_gate_required_job_id)
+    && any(path, id => id == compiler_gate_required_job_id())
+    && all(path, id => id == compiler_gate_required_job_id())
 }
 
 // THE REQUIRED JOB JUDGES THE COMPOSED TREE, NOT THE PULL REQUEST HEAD. main has no merge queue, so a

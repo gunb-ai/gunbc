@@ -1,0 +1,219 @@
+module gunbc.ci.repository_compose_overlay
+
+import std.types { NonEmptyStr, String, List }
+import gunbc.ci.repository_ci_profile { PublicSeed, OverlayIngest }
+import std.dissolution { DissolutionCondition, dissolution_description }
+
+// THE COMPOSED ROOT, ONCE, FOR EVERY REPOSITORY THAT NEEDS ONE.
+//
+// A mirror's rows are compiled by another repository's compiler over a tree that is neither repository:
+// a detached worktree of the seed checkout outside every registered repository root, with the mirror's
+// .dag copied in as an overlay and symlinks naming the mirror's trees where an entry expects to read
+// them. Four steps used to spell that sequence separately in the mirror's own emitter (the witness run,
+// the projection-drift run, the heal seal, and the heal publisher) and nothing kept them equal - which
+// is how one CI repository acquires four subtly different ideas of what "the code under test" means.
+// They now differ only in the fields of ComposeSpec, and the composition itself is emitted by this
+// module from the repository's profile row (gunbc.ci.repository_ci_profile OverlayIngest).
+//
+// WHY THE COPY IS A WALL AND NOT A CONVENIENCE, AND WHY THE TRIGGER RIDES ON THE ROW.
+// The overlay copy exists because gunbc refuses an extra --source-root whose directory lies outside
+// process_workspace_root: module-scope annotations for such a root arrive as unattached, so the mirror's
+// claims would be refused for where they live rather than what they assert. Copying the .dag inside a
+// composed workspace is the workaround, and it is deleted the day the flag exists - so the trigger is a
+// typed DissolutionCondition on the row and the step prints it, because "when the copy is no longer
+// needed" is satisfied by anything and would not retire a line of shell.
+//
+// WHY IT MUST STAY OUT OF EVERY SESSION WORKTREE. On 2026-09-11 archive auto-push included an untracked
+// in-repo overlay copy: tens of thousands of lines of the mirror's content, including subjects it exists
+// to keep private, reached the public repository through an automatically opened PR. Names cannot enforce
+// privacy; path containment can. That is why the composed tree is a detached worktree under RUNNER_TEMP,
+// why the warning is echoed by the step that composes rather than documented only in a comment, and why
+// a local run must compose in a temporary directory rather than in the checkout it was cloned into.
+//
+// HAND-SHELL, DECLARED, AT ONE SITE. These lines are shell composed as strings, which is the
+// unmodelled-realization tell in DESIGN 6. Consolidating them here shrinks the tell rather than adding a
+// copy of it; its dissolution is the typed-argv trigger carried on the route that takes this path
+// (gunbc.ci.repository_ci_profile ComposedOverlayInterpreterRoster hand_shell_dissolves_when), printed by
+// the step that runs it.
+
+// A SYMLINK THE COMPOSITION CREATES, naming one of the mirror's trees at the path an entry reads.
+type ComposeLink {
+  name: String
+  target: String
+}
+
+// ONE COMPOSITION: what to run before, where the composed tree goes, what is copied in as the overlay,
+// which trees get symlinks, and what the step must tell a reader about its own status as a workaround.
+type ComposeSpec {
+  shell_options: String
+  compose: String
+  before_compose: List<String>
+  overlay_source: String
+  overlay_dir_name: String
+  links: List<ComposeLink>
+  notes: List<String>
+}
+
+// THE COMPOSED PATH FOR A STEP THAT RE-ENTERS IT, derived from the row instead of re-typed by every
+// caller: a later step of the same job opens the directory an earlier step built.
+fn compose_root(overlay: OverlayIngest) -> String {
+  join(["$\{RUNNER_TEMP:-", overlay.compose_root_env_default, "}/", overlay.compose_dir_name as String], "")
+}
+
+// WHERE THE OVERLAY LANDS INSIDE THE COMPOSED TREE.
+fn compose_overlay_dir(overlay: OverlayIngest) -> String {
+  join(["$COMPOSE/", overlay.overlay_dir_name as String], "")
+}
+
+// THE INGEST COPY IS NOT A SOURCE. It is generated from the mirror checkout, so the step that makes it
+// says so, names the file an editor should open instead, and prints the capability that deletes the
+// copy - a reader of a green run can then tell a composed ingest directory from a checked-in one.
+fn overlay_note_line(overlay: OverlayIngest) -> String {
+  join([
+    "echo \"", overlay.overlay_dir_name as String,
+    " is a generated ingest copy of the repository checkout, composed into a detached worktree OUTSIDE the repository root so no auto-push can reach it; do not edit it. Edit the repository checkout. Dissolves when: ",
+    dissolution_description(condition: overlay.overlay_copy_dissolves_when), "\"\n"
+  ], "")
+}
+
+// THE LOCAL-RUN WARNING, ECHOED BY THE STEP THAT COMPOSES. A comment cannot stop someone from
+// composing inside their session worktree, and the consequence there is a privacy leak through
+// auto-push rather than a slow test; the row carries the wording the owning repository uses.
+fn local_runs_note_line(overlay: OverlayIngest) -> String {
+  join(["echo \"LOCAL RUNS: ", overlay.local_runs_warning as String, "\"\n"], "")
+}
+
+// A NOTE THE ROUTE ADDS, printed once per composition, stating the capability that retires the
+// hand-written form. Kept here so every composition carries the same disclosure.
+fn dissolution_note_line(prefix: NonEmptyStr, condition: DissolutionCondition) -> String {
+  join(["echo \"", prefix as String, " Dissolves when: ", dissolution_description(condition: condition), "\"\n"], "")
+}
+
+// THE COMPOSITION A WITNESS RUN NEEDS: the checkout's own .dag copied in as the overlay, and the
+// checkout itself reachable by name from inside the composed tree so committed files can still be read.
+fn merge_checkout_compose(seed: PublicSeed, overlay: OverlayIngest, notes: List<String>) -> ComposeSpec {
+  ComposeSpec {
+    shell_options: "set -u",
+    compose: compose_root(overlay: overlay),
+    before_compose: [],
+    overlay_source: "$PRIVATE_ROOT",
+    overlay_dir_name: overlay.overlay_dir_name as String,
+    links: [ComposeLink { name: overlay.repo_link_name as String, target: "$PRIVATE_ROOT" }],
+    notes: notes
+  }
+}
+
+// THE PREAMBLE, RENDERED FROM A ComposeSpec. cd to the seed checkout, name the compiler built there,
+// resolve the mirror checkout's absolute path, make a detached worktree of HEAD outside every repository
+// root, copy the .dag in as the overlay, symlink the trees, cd into the composed tree, then unset the
+// two cache variables: leaving them set resolves the composed run against a cache written for a
+// different corpus, which is a green run about code that is not on disk.
+fn compose_preamble(seed: PublicSeed, c: ComposeSpec) -> String {
+  join([
+    c.shell_options, "\n",
+    "cd ", seed.checkout_path as String, "\n",
+    "GUNBC=\"$PWD/", seed.seed_binary_relative_path as String, "\"\n",
+    "PRIVATE_ROOT=\"$(cd .. && pwd)\"\n",
+    join(c.before_compose, ""),
+    "COMPOSE=\"", c.compose, "\"\n",
+    "rm -rf \"$COMPOSE\"\n",
+    "git worktree prune\n",
+    "git worktree add --detach \"$COMPOSE\" HEAD\n",
+    "mkdir -p \"$COMPOSE/", c.overlay_dir_name, "\"\n",
+    "cp -a \"", c.overlay_source, "/dag\" \"$COMPOSE/", c.overlay_dir_name, "/dag\"\n",
+    join(map(c.links, l => join(["ln -sfn \"", l.target, "\" \"$COMPOSE/", l.name, "\"\n"], "")), ""),
+    "cd \"$COMPOSE\"\n",
+    join(c.notes, ""),
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true\n"
+  ], "")
+}
+
+// A STEP OF THE SAME JOB RE-ENTERS THE COMPOSITION AN EARLIER STEP BUILT, rather than building it again:
+// the steps are separate shells but the directory persists, and a step only runs after the one that made
+// it succeeded. Re-deriving the composition instead would re-run `git worktree add` against a directory
+// that already exists, and the second composition's failure would be reported as if the code under test
+// had failed to appear.
+fn compose_reentry(seed: PublicSeed, shell_options: String, compose: String) -> String {
+  join([
+    shell_options, "\n",
+    "GUNBC=\"$GITHUB_WORKSPACE/", seed.checkout_path as String, "/", seed.seed_binary_relative_path as String, "\"\n",
+    "COMPOSE=\"", compose, "\"\n",
+    "cd \"$COMPOSE\"\n",
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true\n",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true\n"
+  ], "")
+}
+
+// RUN ONE SUBJECT OVER THE COMPOSED ROOT. The entry is spelled through the overlay prefix because the
+// composed tree is what the compiler resolves against: the same claim run from the mirror checkout
+// directly resolves against a corpus the seed's compiler has never seen.
+fn compose_gunbc_run(overlay: OverlayIngest, source_roots_argv: String, entry: NonEmptyStr, function: NonEmptyStr) -> String {
+  join([
+    "\"$GUNBC\" run ", source_roots_argv,
+    " --entry \"", overlay.entry_prefix as String, entry as String,
+    "\" --function \"", function as String, "\"\n"
+  ], "")
+}
+
+// THE SOURCE ROOTS OF A COMPOSED RUN: the repository's own roots, plus the overlay copy the composition
+// made. Derived rather than written into a row, because a row that lists the overlay root can go stale
+// against the row that names the overlay directory - and a stale root list resolves claims against a
+// corpus that is not the one on disk.
+fn composed_source_roots(profile_roots: List<NonEmptyStr>, overlay: OverlayIngest) -> List<NonEmptyStr> {
+  concat(profile_roots, [join([overlay.overlay_dir_name as String, "/dag"], "") as NonEmptyStr])
+}
+
+fn source_roots_argv_of(roots: List<NonEmptyStr>) -> String {
+  join(map(roots, r => join(["--source-root ", r as String], "")), " ")
+}
+
+// THE HEAD-TREE COMPOSITION: same shape, different inputs. The drift check composes the tree that is
+// CHECKED OUT; the seal composes the tree at the pull request HEAD, because the candidate it publishes
+// must be the one the reviewer is looking at, not the one GitHub merged. Same worktree discipline
+// (outside the root, detached, pruned), and the link to the tree is named so the seal's own
+// witnesses can say which tree generated the bytes.
+fn head_tree_compose(seed: PublicSeed, overlay: OverlayIngest, head_tree_dir_name: NonEmptyStr, head_link_name: NonEmptyStr) -> List<String> {
+  [
+    "set -euo pipefail",
+    "cd " + seed.checkout_path as String,
+    "GUNBC=\"$PWD/" + seed.seed_binary_relative_path as String + "\"",
+    "PRIVATE_ROOT=\"$(cd .. && pwd)\"",
+    "HEAD_TREE=\"${RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + head_tree_dir_name as String + "\"",
+    "git -C \"$PRIVATE_ROOT\" fetch --no-tags --depth=1 origin \"$HEAD_SHA\"",
+    "rm -rf \"$HEAD_TREE\"",
+    "git -C \"$PRIVATE_ROOT\" worktree prune",
+    "git -C \"$PRIVATE_ROOT\" worktree add --detach \"$HEAD_TREE\" \"$HEAD_SHA\"",
+    "COMPOSE=\"${RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + overlay.compose_dir_name as String + "\"",
+    "rm -rf \"$COMPOSE\"",
+    "git worktree prune",
+    "git worktree add --detach \"$COMPOSE\" HEAD",
+    "mkdir -p \"$COMPOSE/" + overlay.overlay_dir_name as String + "\"",
+    "cp -a \"$HEAD_TREE/dag\" \"$COMPOSE/" + overlay.overlay_dir_name as String + "/dag\"",
+    "ln -sfn \"$HEAD_TREE\" \"$COMPOSE/" + head_link_name as String + "\"",
+    "cd \"$COMPOSE\"",
+    "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR || true",
+    "unset GUNBC_NATIVE_CACHE_ROOT || true"
+  ]
+}
+
+// THE SEAL'S ENVIRONMENT. Names the publisher's admit step reads, so they are shared vocabulary and not
+// per-repo configuration: the publisher refuses a candidate whose seal did not name the pull request.
+fn heal_seal_env() -> List<(String, String)> {
+  [
+    ("HEAD_SHA", "${{ github.event.pull_request.head.sha }}"),
+    ("HEAL_REPOSITORY", "${{ github.repository }}"),
+    ("HEAL_PULL_NUMBER", "${{ github.event.pull_request.number }}"),
+    ("HEAL_HEAD_REF", "${{ github.event.pull_request.head.ref }}"),
+    ("HEAL_BASE_REF", "${{ github.event.pull_request.base.ref }}"),
+    ("HEAL_RUN_ID", "${{ github.run_id }}")
+  ]
+}
+
+fn only_at_a_pull_request() -> String {
+  "!cancelled() && github.event_name == 'pull_request'"
+}
+
+fn seal_ran_and_repo_alive() -> String {
+  "!cancelled() && github.event_name == 'pull_request' && steps.heal_seal.outcome == 'success'"
+}

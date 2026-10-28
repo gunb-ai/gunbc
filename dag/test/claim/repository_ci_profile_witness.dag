@@ -1,0 +1,574 @@
+module test.claim.repository_ci_profile_witness
+
+import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.optional { Optional, Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
+import gunbc.ci.repository_ci_profile {
+  RepositoryCiProfile, RosterGate, RosterRoute, ComposedOverlayInterpreterRoster, InstrumentLabelRows,
+  PublicSeed, OverlayIngest, RosterAggregate, AnnotationStep, ProjectionDrift, HealSeal, HealPublisherPolicy,
+  DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal, profile_uses_public_seed,
+  profile_overlay, roster_route_is_instrument_dispatcher, fleet_runner_group_target,
+  github_hosted_publisher_runner_target, dag_invocation_argv,
+}
+import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
+import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
+import gunbc.required_ci_contract_epoch { required_ci_context_name }
+import gunbc.witness.witness_roster {
+  RosterEntry, RosterEntryKind, Enforced, KnownRed, MustNotCompile,
+  roster_entry_is_enforced, roster_entry_is_known_red, roster_entry_is_must_not_compile,
+  enforced_entries, known_red_entries, must_not_compile_entries, roster_needs_declared_cause_arms,
+  run_one_definition, enforced_run_line, known_red_block, must_not_compile_block,
+}
+import gunbc.ci.repository_compose_overlay {
+  ComposeSpec, ComposeLink, merge_checkout_compose, compose_preamble, compose_reentry, compose_gunbc_run,
+  composed_source_roots, source_roots_argv_of, overlay_note_line, local_runs_note_line,
+}
+import gunbc.witness.repository_witness_workflow {
+  RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
+  repository_witnesses_yml_emission, yaml_emission_admitted, repository_witness_triggers,
+}
+
+// WHAT THESE CLAIMS HOLD.
+//
+// The shared CI emitters (gunbc.ci.repository_ci_profile and the modules that read it) exist so that
+// gunbc's repository and its private mirror are rendered by ONE set of emitters from TWO rows. The risk
+// that substitution creates is the obvious one: the profile row becomes a second description of the
+// repository that its actual emitters never consult, so it drifts and starts certifying a CI that does
+// not exist. Each claim below names a fact the repository's own authority carries and asserts the row
+// agrees with it - the required context name is the one authority, the roster route is the one a
+// self-compiling repository can take, and the halves of the heal transaction either both exist or neither
+// does. A row that drifts from its authority is a red run here rather than a green check about nothing.
+
+fn public_profile() -> RepositoryCiProfile {
+  gunbc_repository_ci_profile()
+}
+
+// THE PUBLIC PROFILE ROW DESCRIBES THE CI THAT ACTUALLY RUNS, by the authority that names the required
+// check. If gunbc's required gate is renamed in its own authority and this row is not updated with it,
+// branch protection and the emitted YAML disagree and one of them is lying.
+// THE REQUIRED CONTEXT IS CARRIED AS THE REPOSITORY'S GATE IDENTITY, and the emitters read it from here
+// (gunbc.witness.compiler_gate_workflow, gunbc.heal_workflow, gunbc.heal_publisher_workflow and
+// gunbc.drift_watch_workflow all project from this row). What the byte claims
+// (dag/test/claim/repository_ci_profile_emission_bytes_witness.dag) prove is that the committed files are
+// the emission of the row; this claim proves the row itself names the obligation the CI contract epochs
+// declare, so the row cannot quietly become the authority for a check that no longer exists.
+test fn the_profile_carries_the_required_obligation_the_ci_contract_declares() -> Bool {
+  public_profile().roster.required_context == (required_ci_context_name as NonEmptyStr)
+    && public_profile().roster.job_id == (required_ci_context_name as NonEmptyStr)
+}
+
+// A SELF-COMPILING REPOSITORY DECLARES NEITHER A SEED NOR AN OVERLAY. The seed row means "build the
+// compiler out of another repository", and the overlay means "copy this repository's rows into a composed
+// tree"; gunbc needs neither, and a row that claimed otherwise would have the required gate build a
+// second copy of the compiler it is running under.
+// A SELF-COMPILING REPOSITORY DECLARES NEITHER A SEED NOR AN OVERLAY, and takes the instrument lane. The
+// seed row means "build the compiler out of another repository" and the overlay means "copy this
+// repository's rows into a composed tree"; gunbc needs neither, and a row claiming otherwise would have the
+// required gate build a second copy of the compiler it is already running under.
+test fn public_profile_declares_no_seed_no_overlay_and_takes_the_instrument_lane() -> Bool {
+  profile_uses_public_seed(profile: public_profile()) == false
+    && match profile_overlay(profile: public_profile()) {
+         Absent => true
+         Present { value: _ } => false
+       }
+    && roster_route_is_instrument_dispatcher(profile: public_profile())
+}
+
+// GUNBC DECLARES THE JOBS IT ACTUALLY RUNS. Each committed workflow is the emission of one of these rows,
+// so a row deleted here is a file that must be deleted too - which is the mechanism by which a repository
+// that stops committing generated mirrors loses its heal and publisher without anyone editing YAML.
+test fn public_profile_declares_the_heal_drift_and_publisher_it_runs() -> Bool {
+  repository_declares_heal_job(profile: public_profile())
+    && repository_declares_drift_job(profile: public_profile())
+    && repository_declares_publisher(profile: public_profile())
+    && repository_ci_profile_refusal(profile: public_profile()) == no_refusal()
+}
+
+fn no_refusal() -> Optional<NonEmptyStr> {
+  Absent
+}
+
+// THE GATE'S TIMEOUT IS A FACT ABOUT THE GATE, NOT A VIBRANCY. A required check killed before it can
+// report leaves the branch unpromotable with no reason attached, so a non-positive timeout is refused
+// before a byte is emitted rather than surfacing as a job that dies in the night.
+test fn a_zero_timeout_gate_is_refused() -> Bool {
+  match repository_ci_profile_refusal(profile: with_roster_timeout(minutes: 0)) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "timeout")
+    Absent => false
+  }
+}
+
+// BOTH HALVES OF THE HEAL TRANSACTION OR NEITHER. A seal with no publisher produces repair candidates
+// nobody can land; a publisher with no seal is a job whose every run must fail. Either shape looks like
+// a working workflow in the file list, which is why it is refused at emit time.
+test fn a_seal_without_a_publisher_is_refused_and_both_halves_are_accepted() -> Bool {
+  let only_seal = repository_ci_profile_refusal(profile: mirror_profile(seal: true, publish: false))
+  let whole = repository_ci_profile_refusal(profile: mirror_profile(seal: true, publish: true))
+  match only_seal {
+    Present { value: _ } => true
+    Absent => false
+  }
+    && match whole {
+         Absent => true
+         Present { value: reason } => false
+       }
+}
+
+// A JOB MAY ONLY PIN ITSELF TO A RUNNER GROUP SOMETHING ENSURES. An undeclared group name is a job that
+// never runs: the check stays pending forever, which reads as infrastructure flakiness rather than as a
+// reference to a resource that was never created.
+test fn an_undeclared_runner_group_is_refused_and_a_declared_one_is_accepted() -> Bool {
+  let undeclared = repository_ci_profile_refusal(profile: mirror_profile_on_group(group: "no-such-runner-group"))
+  let declared = repository_ci_profile_refusal(profile: mirror_profile_on_group(group: declared_group_name()))
+  match undeclared {
+    Present { value: _ } => true
+    Absent => false
+  }
+    && match declared {
+         Absent => true
+         Present { value: reason } => false
+       }
+}
+
+fn declared_group_name() -> NonEmptyStr {
+  match list_head(xs: restricted_runner_groups()) {
+    Present { value: g } => g.name
+    Absent => "no-groups-are-declared"
+  }
+}
+
+// THE THREE DISPOSITIONS PARTITION, AND NO FILTER IS THE COMPLEMENT OF ANOTHER. "Not enforced" was a
+// faithful reading while there were two kinds; when the third arrived it silently began counting a
+// must-not-compile probe as a declared red - reported in the quarantine census, read as debt, and its row
+// proposed for retirement. Each filter asks the arm it names.
+test fn the_dispositions_partition_and_no_filter_complements_another() -> Bool {
+  count(enforced_entries(entries: fixture_roster())) == 2
+    && count(known_red_entries(entries: fixture_roster())) == 1
+    && count(must_not_compile_entries(entries: fixture_roster())) == 1
+    && any(fixture_roster(), e =>
+         counted_twice(entry: e)
+       ) == false
+}
+
+fn counted_twice(entry: RosterEntry) -> Bool {
+  count(kinds_matching(entry: entry)) != 1
+}
+
+fn kinds_matching(entry: RosterEntry) -> List<String> {
+  filter(
+    ["enforced", "known-red", "must-not-compile"],
+    k => kind_label_matches(entry: entry, label: k)
+  )
+}
+
+fn kind_label_matches(entry: RosterEntry, label: String) -> Bool {
+  if label == "enforced" {
+    roster_entry_is_enforced(entry: entry)
+  } else if label == "known-red" {
+    roster_entry_is_known_red(entry: entry)
+  } else {
+    roster_entry_is_must_not_compile(entry: entry)
+  }
+}
+
+// A ROSTER WITH DECLARED-CAUSE ROWS CANNOT RUN THROUGH THE INSTRUMENT DISPATCHER. The dispatcher runs a
+// labelled subject and reports green or red; it has no arm that reads a cause set or a declared refusal,
+// so under that route a quarantined row would be a passing step and a probe would be a passing step - the
+// shape of a check that cannot fail. The emitter asks the ROWS this question rather than trusting the
+// route the profile declares.
+test fn rows_with_declared_causes_require_the_arm_capable_route() -> Bool {
+  roster_needs_declared_cause_arms(entries: fixture_roster())
+    && roster_needs_declared_cause_arms(entries: enforced_only_roster()) == false
+}
+
+// A QUARANTINE READS BOTH DIRECTIONS. Every declared cause must have occurred, AND every diagnostic that
+// came out must be one of the declared causes - presence-only checking let a quarantine pass while new
+// defects arrived beside the expected ones. And a red that has started passing fails the run, because the
+// row then describes a repository that no longer exists.
+test fn the_declared_red_arm_states_both_directions_and_carries_its_trigger() -> Bool {
+  let block = known_red_block(
+    entries: fixture_roster(),
+    entry_prefix: "overlay/dag/",
+    roster_authority: "example.repo.roster",
+    scaffold_banner: "these rows are quarantined, not deleted"
+  )
+  string_contains(s: block, pattern: "CAUSE DRIFT")
+    && string_contains(s: block, pattern: "UNDECLARED FAILURE")
+    && string_contains(s: block, pattern: "STALE QUARANTINE")
+    && string_contains(s: block, pattern: "grep -vF")
+    && string_contains(s: block, pattern: "overlay/dag/")
+    && string_contains(s: block, pattern: "the cause that has not yet arrived")
+}
+
+// A MUST-NOT-COMPILE PROBE IS ONLY EVIDENCE IF THE REFUSAL IS THE ONE IT NAMES. Any nonzero exit
+// satisfies a bare expecting-red check - a typo in an import refuses too - so a probe whose wall has been
+// removed elsewhere fails as PROBE DRIFT rather than passing quietly on an exit code.
+test fn the_must_not_compile_arm_compares_the_refusal_not_the_exit_code() -> Bool {
+  let block = must_not_compile_block(entries: fixture_roster(), entry_prefix: "overlay/dag/")
+  string_contains(s: block, pattern: "WALL GONE")
+    && string_contains(s: block, pattern: "PROBE DRIFT")
+    && string_contains(s: block, pattern: "the wall that keeps the credential out of the image")
+    && string_contains(s: block, pattern: "if ! printf") == false
+}
+
+// THE COMPOSITION IS A WORKTREE OUTSIDE EVERY REPOSITORY ROOT, WITH THE OVERLAY COPIED IN AND THE CACHE
+// RESET. Each clause is load-bearing: an in-repo copy was pushed to the public repository by archive
+// auto-push (2026-09-11), and the two cache variables resolve a composed run against a cache written for
+// a different corpus - a green run about code that is not on disk.
+test fn the_composition_makes_a_detached_worktree_copies_the_overlay_and_resets_the_caches() -> Bool {
+  let script = compose_preamble(seed: fixture_seed(), c: merge_checkout_compose(seed: fixture_seed(), overlay: fixture_overlay(), notes: []))
+  string_contains(s: script, pattern: "git worktree add --detach")
+    && string_contains(s: script, pattern: "cp -a")
+    && string_contains(s: script, pattern: "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR")
+    && string_contains(s: script, pattern: "unset GUNBC_NATIVE_CACHE_ROOT")
+    && string_contains(s: script, pattern: "RUNNER_TEMP")
+    && string_contains(s: compose_reentry(seed: fixture_seed(), shell_options: "set -euo pipefail", compose: "$COMPOSE"), pattern: "$GITHUB_WORKSPACE/seed_repo/target/release/gunbc")
+}
+
+// THE OVERLAY IS LABELLED AS A GENERATED INGEST COPY BY THE STEP THAT MAKES IT, with the capability that
+// deletes the copy printed beside it. A reader of a green run can then tell a composed ingest directory
+// from a checked-in source tree, and "when the copy is no longer needed" - satisfied by anything - is not
+// what retires the line of shell.
+test fn the_overlay_copy_and_the_local_run_warning_are_echoed_by_the_step_that_makes_them() -> Bool {
+  string_contains(s: overlay_note_line(overlay: fixture_overlay()), pattern: "generated ingest copy")
+    && string_contains(s: overlay_note_line(overlay: fixture_overlay()), pattern: "Dissolves when")
+    && string_contains(s: local_runs_note_line(overlay: fixture_overlay()), pattern: "LOCAL RUNS")
+    && string_contains(s: run_one_definition(source_roots_argv: source_roots_argv_of(roots: composed_source_roots(profile_roots: ["dag"], overlay: fixture_overlay()))), pattern: "--source-root overlay/dag")
+}
+
+// ONE SUBJECT, INVOKED THE SAME WAY IN EVERY REPOSITORY. The argv is built from the row rather than
+// assembled at each call site, because the difference between two repositories' CI must be the row and
+// never the command construction.
+test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool {
+  let argv = dag_invocation_argv(invocation: DagInvocation { entry: "dag/claim/wit.dag", function: "wit_main" }, source_roots: ["dag", "src/v2"])
+  string_contains(s: argv, pattern: "--source-root dag --source-root src/v2")
+    && string_contains(s: argv, pattern: "--entry dag/claim/wit.dag")
+    && string_contains(s: argv, pattern: "--function wit_main")
+}
+
+fn with_roster_timeout(minutes: Int) -> RepositoryCiProfile {
+  let base = public_profile()
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: RosterGate {
+      workflow_file: base.roster.workflow_file,
+      workflow_name: base.roster.workflow_name,
+      job_id: base.roster.job_id,
+      job_display_name: base.roster.job_display_name,
+      required_context: base.roster.required_context,
+      runner: base.roster.runner,
+      timeout_minutes: minutes,
+      source_roots: base.roster.source_roots,
+      schedule: base.roster.schedule,
+      memory_budget_bytes: base.roster.memory_budget_bytes,
+      route: base.roster.route,
+      aggregate: base.roster.aggregate,
+      annotation: base.roster.annotation
+    },
+    public_seed: base.public_seed,
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}
+
+// A NEUTRAL MIRROR-SHAPED PROFILE. These fixtures are deliberately not the mirror's real row: the public
+// corpus must not acquire another repository's module names, entry paths or row names, and the claims
+// below are about the SHAPE a profile must have. The mirror's own row lives with the mirror and is
+// asserted against these emitters there.
+fn mirror_profile(seal: Bool, publish: Bool) -> RepositoryCiProfile {
+  mirror_profile_on_group_named(group: FleetSelfHosted, seal: seal, publish: publish)
+}
+
+fn mirror_profile_on_group(group: NonEmptyStr) -> RepositoryCiProfile {
+  mirror_profile_on_group_named(group: fleet_runner_group_target(group: group), seal: true, publish: true)
+}
+
+fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Bool) -> RepositoryCiProfile {
+  RepositoryCiProfile {
+    repository: "example-org/example-mirror",
+    default_branch: "main",
+    heal: Absent,
+    roster: RosterGate {
+      workflow_file: "witnesses.yml",
+      workflow_name: "witnesses",
+      job_id: "witnesses",
+      job_display_name: "witnesses",
+      required_context: "witnesses",
+      runner: group,
+      timeout_minutes: 90,
+      source_roots: ["dag", "src/v2"],
+      schedule: Present {
+        value: CronSchedule {
+          minute: Exact { value: 0 },
+          hour: Listed { values: [0, 4] },
+          day_of_month: Wildcard,
+          month: Wildcard,
+          day_of_week: Wildcard
+        }
+      },
+      memory_budget_bytes: Present { value: 1073741824 },
+      route: ComposedOverlayInterpreterRoster {
+        overlay: fixture_overlay(),
+        roster_main: DagInvocation { entry: "dag/claim/roster.dag", function: "roster_main" },
+        run_roster_step_name: "Run the roster over the composed root",
+        hand_shell_dissolves_when: unbound_dissolution(description: "the roster runs as typed argv")
+      },
+      aggregate: Present {
+        value: RosterAggregate {
+          invocation: DagInvocation { entry: "dag/claim/roster.dag", function: "roster_main" },
+          pass_banner: "PASS every enforced witness in one process",
+          fail_banner: "the roster did not pass"
+        }
+      },
+      annotation: Absent
+    },
+    public_seed: Present {
+      value: fixture_seed()
+    },
+    drift: Present {
+      value: ProjectionDrift {
+        workflow_file: "projection-drift.yml",
+        workflow_name: "projection-drift",
+        job_id: "projection-drift",
+        job_display_name: "projection-drift",
+        runner: FleetSelfHosted,
+        timeout_minutes: 90,
+        // THE MIRROR POLL NOTHING. Its drift check runs on every checkout of a mirror commit, which is
+        // the moment a public seed could have moved; a cadence would only re-run the same comparison.
+        // (gunbc's own drift watch is the opposite shape: it exists to poll, and its emitter refuses a
+        // row with no cadence.)
+        cron: Absent,
+        check: DagInvocation { entry: "dag/claim/projections.dag", function: "projection_check" },
+        seal: if seal {
+          Present {
+            value: HealSeal {
+              invocation: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_seal" },
+              seal_step_id: "heal_seal",
+              seal_step_name: "Seal a repair candidate",
+              upload_step_name: "Upload the repair candidate",
+              head_link_name: "head_repo",
+              compose_dir_name: "example-mirror-heal-compose",
+              candidate_artifact: "repair-candidate",
+              banner: "the candidate is sealed here and published by another job"
+            }
+          }
+        } else {
+          Absent
+        }
+      }
+    },
+    publisher: if publish {
+      Present {
+        value: HealPublisherPolicy {
+          workflow_file: "heal-publish.yml",
+          workflow_name: "heal-publish",
+          job_id: "publish",
+          job_display_name: "publish",
+          runner: github_hosted_publisher_runner_target(),
+          timeout_minutes: 45,
+          trigger_workflow: "projection-drift.yml",
+          job_condition: "!cancelled() && github.event_name == 'pull_request'",
+          candidate_artifact: "repair-candidate",
+          admit: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" } },
+          publish: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" } },
+          compose: Absent
+        }
+      }
+    } else {
+      Absent
+    }
+  }
+}
+
+fn fixture_seed() -> PublicSeed {
+  PublicSeed {
+    repository: "example-org/example-public",
+    checkout_path: "seed_repo",
+    ref_name: "main",
+    build_command: "cargo build --release -p example --bin example",
+    seed_binary_relative_path: "target/release/example",
+    record_step_name: "Record the seed revision",
+    build_step_name: "Build the seed compiler"
+  }
+}
+
+fn fixture_overlay() -> OverlayIngest {
+  OverlayIngest {
+    overlay_dir_name: "overlay",
+    entry_prefix: "overlay/dag/",
+    repo_link_name: "head_repo",
+    compose_dir_name: "example-mirror-compose",
+    compose_root_env_default: "/tmp",
+    overlay_copy_dissolves_when: unbound_dissolution(description: "gunbc admits an extra --source-root outside the process workspace roots"),
+    local_runs_warning: "compose in a temporary directory, never in a session worktree",
+    shared_process_dissolves_when: unbound_dissolution(description: "the roster runs as typed step outcomes")
+  }
+}
+
+fn fixture_roster() -> List<RosterEntry> {
+  [
+    RosterEntry { entry: "dag/claim/a.dag", function: "a_main", kind: Enforced },
+    RosterEntry { entry: "dag/claim/b.dag", function: "b_main", kind: Enforced },
+    RosterEntry {
+      entry: "dag/claim/c.dag",
+      function: "c_main",
+      kind: KnownRed {
+        reason: "the emitter does not yet lower this construct" as NonEmptyStr,
+        expected_causes: ["the cause that has not yet arrived"] as List<NonEmptyStr>,
+        restoration_trigger: "the emitter lowers the construct" as NonEmptyStr
+      }
+    },
+    RosterEntry {
+      entry: "dag/claim/d.dag",
+      function: "d_main",
+      kind: MustNotCompile {
+        guards: "the wall that keeps the credential out of the image" as NonEmptyStr,
+        expected_refusals: ["no such module"] as List<NonEmptyStr>,
+        dissolution: "the credential is injected at run time" as NonEmptyStr
+      }
+    }
+  ]
+}
+
+fn enforced_only_roster() -> List<RosterEntry> {
+  [RosterEntry { entry: "dag/claim/a.dag", function: "a_main", kind: Enforced }]
+}
+
+// THE GATE EMITTER REFUSES TO EMIT A SECOND REQUIRED CHECK FOR A REPOSITORY THAT ALREADY HAS ONE. A
+// repository compiles itself either through the instrument dispatcher or through a composed overlay, not
+// both: two workflows claiming one required context means whichever runs last decides promotion, and the
+// disagreement is invisible until someone reads both files.
+test fn the_instrument_lane_repository_is_refused_by_the_composed_gate_emitter() -> Bool {
+  match repository_witness_lane_refusal(profile: public_profile(), program: fixture_program()) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "instrument dispatcher")
+    Absent => false
+  }
+}
+
+// A REQUIRED GATE THAT CAN FAIL IS THE MINIMUM. With no enforced row the script prints banners and exits
+// zero forever, so the emitter refuses rather than shipping a check whose green means nothing.
+test fn a_gate_with_no_enforced_row_is_refused() -> Bool {
+  match repository_witness_lane_refusal(profile: mirror_profile(seal: true, publish: true), program: gate_program(entries: [])) {
+    Present { value: reason } => string_contains(s: reason as String, pattern: "cannot fail")
+    Absent => false
+  }
+}
+
+// THE EMITTED GATE CONTAINS THE OBLIGATIONS THAT MAKE THE RUN ATTRIBUTABLE AND THE ARMS THAT MAKE THE
+// ROWS EVIDENCE. Each substring is a step a reader would otherwise have to trust the emitter about: the
+// seed revision being judged is printed, the compiler is built from source rather than fetched, one
+// process runs per row, the quarantined rows are compared against their declared causes in both
+// directions, and the two obligations of the composed root (do not edit the copy, do not compose inside a
+// session worktree) are echoed by the step that performs them.
+test fn the_emitted_gate_carries_the_seed_receipt_the_composition_and_the_declared_cause_arms() -> Bool {
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    program: gate_program(entries: fixture_roster())
+  )
+  yaml_emission_admitted(result: repository_witnesses_yml_emission(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    program: gate_program(entries: fixture_roster())
+  ))
+    && string_contains(s: yml, pattern: "git worktree add --detach")
+    && string_contains(s: yml, pattern: "rev-parse HEAD")
+    && string_contains(s: yml, pattern: "cargo build --release -p example --bin example")
+    && string_contains(s: yml, pattern: "run_one")
+    && string_contains(s: yml, pattern: "CAUSE DRIFT")
+    && string_contains(s: yml, pattern: "UNDECLARED FAILURE")
+    && string_contains(s: yml, pattern: "STALE QUARANTINE")
+    && string_contains(s: yml, pattern: "WALL GONE")
+    && string_contains(s: yml, pattern: "PROBE DRIFT")
+    && string_contains(s: yml, pattern: "LOCAL RUNS")
+    && string_contains(s: yml, pattern: "generated ingest copy")
+    && string_contains(s: yml, pattern: "contents: read")
+}
+
+// THE TRIGGER THAT RETIRES THE HAND-WRITTEN ROSTER IS PRINTED BY THE STEP THAT NEEDS IT. A declared
+// divergence nobody can see is how an interim measure becomes permanent: the row carries the successor
+// capability and the emitted step states it, so a reader of a green run learns what would replace this.
+test fn the_emitted_gate_prints_the_trigger_that_retires_the_hand_written_roster() -> Bool {
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    program: gate_program(entries: fixture_roster())
+  )
+  string_contains(s: yml, pattern: "Dissolves when")
+    && string_contains(s: yml, pattern: "the roster runs as typed argv")
+}
+
+// THE MACHINE CLASS IS PROJECTED FROM THE TARGET, NOT TYPED. The gate's runs-on comes from
+// ci_runner_target_spec over the profile's CiRunnerTarget, which is what keeps "move CI to another class
+// of machine" a one-row edit in the target authority rather than a hunt through shell strings.
+test fn the_gate_runs_on_the_selected_target_not_on_a_typed_label() -> Bool {
+  let yml = expected_repository_witnesses_yml(
+    profile: mirror_profile_on_group(group: declared_group_name()),
+    seed: fixture_seed(),
+    program: gate_program(entries: fixture_roster())
+  )
+  string_contains(s: yml, pattern: "self-hosted")
+    && string_contains(s: yml, pattern: declared_group_name() as String)
+}
+
+// THE CADENCE IS A ROW. A mirror that must notice the seed branch moved without a commit here needs a
+// poll; a repository that does not can leave the list empty and get no schedule at all.
+test fn a_declared_cadence_becomes_a_schedule_and_an_empty_one_becomes_no_trigger() -> Bool {
+  string_contains(s: emitted_gate_text(profile: mirror_profile(seal: true, publish: true)), pattern: "schedule")
+    && string_contains(s: emitted_gate_text(profile: gate_profile_without_schedule()), pattern: "schedule") == false
+}
+
+fn emitted_gate_text(profile: RepositoryCiProfile) -> String {
+  expected_repository_witnesses_yml(profile: profile, seed: fixture_seed(), program: gate_program(entries: fixture_roster()))
+}
+
+fn gate_program(entries: List<RosterEntry>) -> RosterProgram {
+  RosterProgram {
+    entries: entries,
+    aggregate: Present {
+      value: RosterAggregate {
+        invocation: DagInvocation { entry: "dag/claim/roster.dag", function: "roster_main" },
+        pass_banner: "PASS every enforced witness in one process",
+        fail_banner: "the roster did not pass"
+      }
+    },
+    roster_authority: "example.repo.roster",
+    scaffold_banner: "these rows are quarantined, not deleted",
+    checkout_step_name: "Checkout the repository",
+    toolchain_step_name: "Install Rust toolchain"
+  }
+}
+
+fn fixture_program() -> RosterProgram {
+  gate_program(entries: fixture_roster())
+}
+
+fn gate_profile_without_schedule() -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: RosterGate {
+      workflow_file: base.roster.workflow_file,
+      workflow_name: base.roster.workflow_name,
+      job_id: base.roster.job_id,
+      job_display_name: base.roster.job_display_name,
+      required_context: base.roster.required_context,
+      runner: base.roster.runner,
+      timeout_minutes: base.roster.timeout_minutes,
+      source_roots: base.roster.source_roots,
+      schedule: Absent,
+      memory_budget_bytes: base.roster.memory_budget_bytes,
+      route: base.roster.route,
+      aggregate: base.roster.aggregate,
+      annotation: base.roster.annotation
+    },
+    public_seed: base.public_seed,
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}

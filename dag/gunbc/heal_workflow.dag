@@ -28,7 +28,8 @@ import gunbc.toolchain_home_standing {
 }
 import gunbc.toolchain_workflow_steps { toolchain_home_isolation_step, toolchain_pin_rustup_default_step }
 import gunbc.witness.witness_floor_workflow { witness_floor_toolchain_step, witness_floor_build_step }
-import gunbc.ci.ci_runner_target { gunbc_ci_selected_runner_spec }
+import gunbc.ci.ci_runner_target { ci_runner_target_spec }
+import gunbc.ci.repository_ci_profile { gunbc_heal_job, repository_declares_heal_job, gunbc_repository_ci_profile }
 import gunbc.repo.repo_self_build { repo_self_build_command }
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.ci.ci_spec {
@@ -123,11 +124,15 @@ data heal_dispatch_base_sha_input: DispatchInput = DispatchInput {
 // a different purpose; the round's seed needs a COMMIT and must not read a name another step owns.
 data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 
-data heal_workflow_name: String = "heal"
+// THE HEAL JOB'S NAME, ID AND TIMEOUT COME FROM THE REPOSITORY'S CI PROFILE ROW: a repository that
+// commits no generated mirror deletes the heal row and this file with it, and a repository that does
+// keeps them - with one description of the job rather than this module and the profile each carrying one.
+// The committed bytes are the evidence (dag/test/claim/repository_ci_profile_emission_bytes_witness.dag).
+fn heal_workflow_name() -> String { gunbc_heal_job().workflow_name as String }
 
-data heal_workflow_job_id: String = "heal-generated-artifacts"
+fn heal_workflow_job_id() -> String { gunbc_heal_job().job_id as String }
 
-data heal_workflow_timeout_minutes: Int = 90
+fn heal_workflow_timeout_minutes() -> Int { gunbc_heal_job().timeout_minutes }
 
 data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 
@@ -377,16 +382,16 @@ data heal_workflow_job_permissions: WorkflowPermissions = WorkflowPermissions {
 
 fn heal_workflow_job() -> Job {
   Job {
-    id: heal_workflow_job_id,
+    id: heal_workflow_job_id(),
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: ci_runner_target_spec(target: gunbc_heal_job().runner),
     environment: none,
     steps: list_map(xs: heal_workflow_bound_steps(), f: fn(b) { b.step }),
     needs: [],
     env: none,
     outputs: none,
     if_condition: Present { value: heal_workflow_job_condition() },
-    timeout_minutes: Present { value: heal_workflow_timeout_minutes },
+    timeout_minutes: Present { value: heal_workflow_timeout_minutes() },
     continue_on_error: none,
     concurrency: none,
     permissions: Present { value: heal_workflow_job_permissions }
@@ -401,7 +406,9 @@ fn heal_fork_notice_job() -> Job {
   Job {
     id: heal_fork_notice_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    // The notice job shares the heal job's machine class: it is the same workflow's second job, and
+    // splitting a workflow across machine classes is a decision its profile row should say so in.
+    runner: ci_runner_target_spec(target: gunbc_heal_job().runner),
     environment: none,
     steps: [RunStep {
       name: Present { value: "Say that a fork pull request is not repaired" },
@@ -443,7 +450,7 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 // The workflow stays registered, committed and dispatchable so an operator can still run a repair
 // by hand; the emitted file is unchanged apart from its trigger.
 data heal_workflow: Workflow = Workflow {
-  name: heal_workflow_name,
+  name: heal_workflow_name(),
   run_name: none,
   on: [PullRequest { branches: [gunbc_default_branch_name], types: [Opened, Synchronize, Reopened], paths: heal_trigger_paths() }, WorkflowDispatch { inputs: [
     heal_dispatch_pull_number_input,

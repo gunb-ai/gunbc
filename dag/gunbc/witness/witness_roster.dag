@@ -1,0 +1,252 @@
+module gunbc.witness.witness_roster
+
+import std.types { NonEmptyStr, String, List, Bool }
+import std.algebra { list_flat_map }
+
+// THE ROSTER ROW TYPES, AND WHY THEY ARE GUNBC'S RATHER THAN ONE REPOSITORY'S.
+//
+// A roster is the set of claims a repository runs as its gate, and each row carries its DISPOSITION: run
+// and demand green, or be red for a NAMED set of causes, or fail to compile for a NAMED refusal. The
+// second and third kinds are not mirror inventions and not mirror vocabulary - a quarantine that does not
+// name the failure it quarantines is a way to make a check green, and an expected-red that accepts any
+// nonzero exit is measuring whatever happened to break, not the wall it claims - so the row types live
+// here, where gunbc can enroll rows of its own later, and any repository that needs a gate states its
+// claims in this vocabulary.
+//
+// WHAT MAKES THESE ROWS EVIDENCE RATHER THAN WISHFUL COMMENT:
+// - KnownRed reads BOTH DIRECTIONS. Every declared cause must appear, and every diagnostic the run
+//   emitted must match a declared cause. Presence-only checking was the earlier design and it passed
+//   while unrelated defects sat beside the expected ones; the undeclared-failure arm is what closes that.
+//   A red that has started passing is also a failure, not good news: the row then describes a repository
+//   that no longer exists, and it is retired deliberately rather than left to age.
+// - MustNotCompile compares the REFUSAL, not the exit code. A typo in an import refuses too, so a bare
+//   expecting-red would be satisfied by the probe having rotted; a probe that refuses for a reason other
+//   than the one it names is measuring a different wall and says so (PROBE DRIFT).
+// - Both kinds carry a trigger, and the step that enforces them prints it. They are temporary arrangements
+//   with a named successor capability, not permanent fixtures - see gunbc.ci.repository_ci_profile
+//   ComposedOverlayInterpreterRoster hand_shell_dissolves_when for the capability that turns these arms
+//   into typed step outcomes.
+//
+// WHERE THE ROWS LIVE: in the repository that owns the claims. The public profile row
+// (gunbc.ci.repository_ci_profile gunbc_repository_ci_profile) declares no entries precisely so the
+// public corpus does not acquire another repository's subjects; the gate emitter takes entries as an
+// argument.
+
+type RosterEntryKind
+  = Enforced
+  | KnownRed {
+      reason: NonEmptyStr
+      expected_causes: List<NonEmptyStr>
+      restoration_trigger: NonEmptyStr
+    }
+  | MustNotCompile {
+      guards: NonEmptyStr
+      expected_refusals: List<NonEmptyStr>
+      dissolution: NonEmptyStr
+    }
+
+// ONE CLAIM: which .dag file, which function in it, and what this roster expects to observe.
+type RosterEntry {
+  entry: NonEmptyStr
+  function: NonEmptyStr
+  kind: RosterEntryKind
+}
+
+// THE THREE DISPOSITIONS PARTITION, AND EVERY FILTER MATCHES THE ARM IT ASKS ABOUT INSTEAD OF
+// COMPLEMENTING ANOTHER ONE. "Not enforced" was a faithful complement while there were two arms and
+// became a silent misclassification the moment a third arrived: a must-not-compile probe is not enforced,
+// so it was counted as a declared red - reported in the quarantine census, read by an operator as debt,
+// and its row proposed for retirement. Complementing a partition is how a filter starts lying.
+fn roster_entry_is_enforced(entry: RosterEntry) -> Bool {
+  match entry.kind {
+    Enforced => true
+    KnownRed { reason, expected_causes, restoration_trigger } => false
+    MustNotCompile { guards, expected_refusals, dissolution } => false
+  }
+}
+
+fn roster_entry_is_known_red(entry: RosterEntry) -> Bool {
+  match entry.kind {
+    Enforced => false
+    KnownRed { reason, expected_causes, restoration_trigger } => true
+    MustNotCompile { guards, expected_refusals, dissolution } => false
+  }
+}
+
+fn roster_entry_is_must_not_compile(entry: RosterEntry) -> Bool {
+  match entry.kind {
+    Enforced => false
+    KnownRed { reason, expected_causes, restoration_trigger } => false
+    MustNotCompile { guards, expected_refusals, dissolution } => false
+  }
+}
+
+fn enforced_entries(entries: List<RosterEntry>) -> List<RosterEntry> {
+  filter(entries, e => roster_entry_is_enforced(entry: e))
+}
+
+fn known_red_entries(entries: List<RosterEntry>) -> List<RosterEntry> {
+  filter(entries, e => roster_entry_is_known_red(entry: e))
+}
+
+fn must_not_compile_entries(entries: List<RosterEntry>) -> List<RosterEntry> {
+  filter(entries, e => roster_entry_is_must_not_compile(entry: e))
+}
+
+// WHETHER THE ROSTER HOLDS ANY ROW THE INSTRUMENT DISPATCHER CANNOT EXPRESS. The dispatcher runs a
+// labelled subject and reports green or red; it has no arm that reads a declared cause set or a declared
+// refusal, so a repository whose rows include either kind must take the composed-overlay route. This is
+// asked of the ROWS rather than assumed from the route, because a profile is free to declare the
+// dispatcher route and the rows are supplied separately - and if the arms go unrendered, a declared red
+// becomes a passing step and a probe becomes a passing step, which is the exact shape of a check that
+// cannot fail.
+fn roster_needs_declared_cause_arms(entries: List<RosterEntry>) -> Bool {
+  any(entries, e => roster_entry_is_known_red(entry: e) || roster_entry_is_must_not_compile(entry: e))
+}
+
+// ONE SUBJECT, ONE PROCESS, THROUGH THE SEED'S COMPILER OVER THE COMPOSED ROOT.
+// Why the compiler is invoked from the composed checkout rather than the repository checkout it came
+// from: the runner follows the working directory for its workspace root, so a run started in a checkout
+// that lacks Cargo.toml and dag/ refuses before resolving anything. Composing first is what makes the
+// corpus the compiler sees the corpus the run claims to be testing.
+fn run_one_definition(source_roots_argv: String) -> String {
+  join([
+    "run_one() {\n",
+    "  \"$GUNBC\" run ", source_roots_argv, " --entry \"$1\" --function \"$2\"\n",
+    "}\n"
+  ], "")
+}
+
+// THE ENFORCED VERDICT, printed as one line. Its wording is the repository's own claim - "every enforced
+// witness, in one process" is a statement about how the gate is run, not a generic success string - so
+// both banners are rows on the profile (gunbc.ci.repository_ci_profile RosterAggregate).
+fn enforced_run_line(aggregate_entry: NonEmptyStr, aggregate_function: NonEmptyStr, entry_prefix: NonEmptyStr, pass_banner: String, fail_banner: NonEmptyStr) -> String {
+  join([
+    "if out=$(run_one \"", entry_prefix, aggregate_entry as String, "\" \"", aggregate_function as String, "\" 2>&1); then\n",
+    "  echo \"$out\"\n",
+    "  echo \"PASS  ", pass_banner, " — ", aggregate_entry as String, "\"\n",
+    "else\n",
+    "  echo \"$out\"\n",
+    "  echo \"::error::", fail_banner as String, "\"\n",
+    "  fail=1\n",
+    "fi\n"
+  ], "")
+}
+
+// A DECLARED CAUSE MUST HAVE OCCURRED. Checked per cause, with the cause quoted in the refusal, so a
+// reader learns which of the quarantine's claims stopped being true instead of learning that the
+// quarantine is somehow wrong.
+fn expected_cause_check(entry: NonEmptyStr, function: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join([
+    "  if printf '%s\\n' \"$out\" | grep -qF -- \"", cause as String, "\"; then :; else\n",
+    "    echo \"::error::CAUSE DRIFT ", entry as String, " ", function as String,
+    " — quarantined for a NAMED SET of causes and one of them did not occur. Expected to find: ", cause as String, "\"\n",
+    "    fail=1\n",
+    "    drift=1\n",
+    "  fi\n"
+  ], "")
+}
+
+// THE OTHER DIRECTION: every diagnostic that came out must match a declared cause. Absence-only checking
+// let a quarantine pass while new defects arrived beside the expected ones - deleted APIs, stale imports,
+// annotation violations - because nothing looked at what was NOT declared.
+fn undeclared_filter_step(cause: NonEmptyStr) -> String {
+  join([" | grep -vF -- \"", cause as String, "\""], "")
+}
+
+// THE DECLARED-RED ARM. `roster_authority` is named in the STALE QUARANTINE refusal because the row an
+// operator must retire lives in the repository's own file, and the refusal has to say where to find it.
+fn known_red_run_line(entry: RosterEntry, entry_prefix: NonEmptyStr, roster_authority: NonEmptyStr) -> String {
+  match entry.kind {
+    Enforced => ""
+    MustNotCompile { guards, expected_refusals, dissolution } => ""
+    KnownRed { reason, expected_causes, restoration_trigger } => join([
+      "if out=$(run_one \"", entry_prefix, entry.entry as String, "\" \"", entry.function as String, "\" 2>&1); then\n",
+      "  echo \"$out\"\n",
+      "  echo \"::error::STALE QUARANTINE ", entry.entry as String, " ", entry.function as String,
+      " — a declared known-red witness PASSED. Retire its KnownRed row in ", roster_authority as String,
+      " rather than leaving the roster describing a repository that no longer exists.\"\n",
+      "  fail=1\n",
+      "else\n",
+      "  echo \"$out\"\n",
+      "  drift=0\n",
+      fold(expected_causes, init: "", f: fn(acc, c) {
+        join([acc, expected_cause_check(entry: entry.entry, function: entry.function, cause: c)], "")
+      }),
+      "  undeclared=$(printf '%s\\n' \"$out\" | grep -F -- 'error:'",
+      fold(expected_causes, init: "", f: fn(acc, c) {
+        join([acc, undeclared_filter_step(cause: c)], "")
+      }),
+      " || true)\n",
+      "  if [ -n \"$undeclared\" ]; then\n",
+      "    echo \"::error::UNDECLARED FAILURE ", entry.entry as String, " ", entry.function as String,
+      " — this witness emitted a diagnostic its KnownRed row does not declare. A quarantine that only requires its OWN causes to be present still hides every new defect that arrives beside them. Declare it or fix it:\"\n",
+      "    printf '%s\\n' \"$undeclared\"\n",
+      "    fail=1\n",
+      "    drift=1\n",
+      "  fi\n",
+      "  if [ \"$drift\" = \"0\" ]; then\n",
+      "    echo \"known-red held  ", entry.entry as String, " ", entry.function as String,
+      " — failed for exactly its declared causes\"\n",
+      "  fi\n",
+      "fi\n"
+    ], "")
+  }
+}
+
+// THE MUST-NOT-COMPILE ARM: the program is expected to be refused, and the REFUSAL is what is compared.
+fn must_not_compile_run_line(entry: RosterEntry, entry_prefix: NonEmptyStr) -> String {
+  match entry.kind {
+    Enforced => ""
+    KnownRed { reason, expected_causes, restoration_trigger } => ""
+    MustNotCompile { guards, expected_refusals, dissolution } => join([
+      "if out=$(run_one \"", entry_prefix, entry.entry as String, "\" \"", entry.function as String, "\" 2>&1); then\n",
+      "  echo \"$out\"\n",
+      "  echo \"::error::WALL GONE ", entry.entry as String, " — this program MUST NOT COMPILE and it compiled. What it guards: ", guards as String, "\"\n",
+      "  fail=1\n",
+      "else\n",
+      "  probe_drift=0\n",
+      fold(expected_refusals, init: "", f: fn(acc, c) {
+        join([acc, must_not_compile_refusal_check(entry: entry.entry, cause: c)], "")
+      }),
+      "  if [ \"$probe_drift\" = \"0\" ]; then\n",
+      "    echo \"refusal probe held  ", entry.entry as String, " — refused for exactly the walls it names\"\n",
+      "  fi\n",
+      "fi\n"
+    ], "")
+  }
+}
+
+// A PROBE THAT REFUSES FOR THE WRONG REASON IS NOT EVIDENCE. Any nonzero exit satisfies a bare
+// expecting-red check - a typo in an import refuses too - so the diagnostic is compared and a missing
+// declared refusal fails the run instead of passing quietly on an exit code.
+fn must_not_compile_refusal_check(entry: NonEmptyStr, cause: NonEmptyStr) -> String {
+  join([
+    "  if ! printf '%s\\n' \"$out\" | grep -qF -- \"", cause as String, "\"; then\n",
+    "    echo \"::error::PROBE DRIFT ", entry as String,
+    " — refused, but NOT for its declared cause: ", cause as String,
+    ". A probe that refuses for a different reason is measuring a different wall.\"\n",
+    "    fail=1\n",
+    "    probe_drift=1\n",
+    "  fi\n"
+  ], "")
+}
+
+// THE BLOCKS, folded into the run script. Each non-enforced row stays an explicitly emitted line rather
+// than a data-driven loop over a heredoc: a piped while-read loop loses `fail=1` in its subshell, and an
+// indented heredoc terminator breaks the YAML scalar - both turn a failing witness green, which is the
+// failure mode this whole module exists to prevent.
+fn known_red_block(entries: List<RosterEntry>, entry_prefix: NonEmptyStr, roster_authority: NonEmptyStr, scaffold_banner: NonEmptyStr) -> String {
+  join([
+    "echo \"", roster_authority as String, ": ", scaffold_banner as String, "\"\n",
+    fold(known_red_entries(entries: entries), init: "", f: fn(acc, w) {
+      join([acc, known_red_run_line(entry: w, entry_prefix: entry_prefix, roster_authority: roster_authority)], "")
+    })
+  ], "")
+}
+
+fn must_not_compile_block(entries: List<RosterEntry>, entry_prefix: NonEmptyStr) -> String {
+  fold(must_not_compile_entries(entries: entries), init: "", f: fn(acc, w) {
+    join([acc, must_not_compile_run_line(entry: w, entry_prefix: entry_prefix)], "")
+  })
+}

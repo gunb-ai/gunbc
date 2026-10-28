@@ -1,0 +1,632 @@
+module gunbc.ci.repository_ci_profile
+
+import std.types { NonEmptyStr, String, List, Bool, Int, gt_zero }
+import std.optional { Optional, Present, Absent }
+import std.dissolution { DissolutionCondition }
+import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
+import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
+import gunbc.ci.ci_spec { gunbc_ci_tier_o_drift_check_target }
+import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted, FleetSelfHostedInDeclaredGroup, DeclaredRunnerGroup, GithubHostedRunner }
+import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
+import gunbc.required_ci_contract_epoch { required_ci_context_name }
+import gunbc.repo.repo_identity { gunbc_default_branch_name }
+import extdeps.github.hosted_runners { github_hosted_ubuntu_2404_arm_public_catalog }
+
+// ONE CI PROFILE ROW PER REPOSITORY, AND WHY THE ROW IS THE UNIT THAT SHARED CI MUST BE CUT FROM.
+//
+// gunbc and its private mirror were meant to differ in two ways only: the mirror is not public, and it
+// carries rows the public repository may not hold. What they actually differ in is about two thousand
+// lines of CI EMITTER forked into the mirror, because every fact below was written into a public emitter
+// as a constant - which repository is checked out, which branch, which machine class, which entry runs
+// the roster, whether a compiler is built from another repository beside the one under test, whether a
+// heal publisher exists at all. Forking an emitter to express a difference in data is the expensive
+// version of the mistake DESIGN 3 forbids (one authority per subject), and it is the dangerous version
+// too: the fork has already drifted from the authority it copies, so a fix to gunbc's required gate does
+// not reach the repository whose required check IS the fork.
+//
+// So the difference moves into a row. RepositoryCiProfile is the fact "what this repository's CI is", and
+// the workflow emitters are functions of it: gunbc.witness.repository_witness_workflow (the required
+// roster gate), gunbc.ci.repository_projection_drift_workflow (committed projections against their
+// authorities, and the repair seal), gunbc.heal.repository_heal_publisher_workflow (the publisher that
+// lands a sealed candidate). gunbc's own row lives in this module; the mirror's row lives IN THE MIRROR
+// and is passed to the same emitters as an argument, so no mirror path, module name or row name needs to
+// enter the public corpus - which is the constraint that decides several shapes below.
+//
+// WHAT THIS ROW DELIBERATELY DOES NOT CARRY:
+// - runs-on label strings. A job carries a CiRunnerTarget and its spec PROJECTS from that target
+//   (gunbc.ci.ci_runner_target ci_runner_target_spec), so switching a repository's CI to another machine
+//   class stays the one-row edit that authority exists to make, and every derivation - labels, memory
+//   regime, RAM budget - follows. Where a job must be confined to a restricted runner group, the target
+//   carries the GROUP NAME, which is a row in gunbc.runner.runner_group_restriction_ensure (that module
+//   documents the name as the label the group's runners register with), and an undeclared name is
+//   refused before a byte is emitted. Selecting a pool and inventing one are different acts.
+// - the roster's CONTENT. Entries are rows owned by the repository that has them
+//   (gunbc.witness.witness_roster RosterEntry); this row says how a roster is RUN and by whom, not what
+//   is in it. Keeping content out is also what lets the public profile row exist without the public
+//   repository acquiring mirror subjects.
+// - the SUBJECTS that regenerate or publish. Those are DagInvocation rows: an entry path and a function
+//   name, named by the repository that owns them.
+
+// AN INVOCATION OF A SUBJECT: which .dag file, which function in it. Carried rather than imported so a
+// profile can name a subject the public repository cannot resolve.
+type DagInvocation {
+  entry: NonEmptyStr
+  function: NonEmptyStr
+}
+
+// THE PUBLIC SEED: the repository whose compiler runs this repository's claims, when that is not the
+// repository under CI. Present only for a mirror that carries content and no compiler; Absent means the
+// repository builds itself, which is what a self-compiling repository does and how gunbc's own row reads.
+type PublicSeed {
+  repository: NonEmptyStr
+  checkout_path: NonEmptyStr
+  ref_name: NonEmptyStr
+  build_command: String
+  seed_binary_relative_path: NonEmptyStr
+  record_step_name: NonEmptyStr
+  build_step_name: NonEmptyStr
+}
+
+// THE COMPOSED ROOT, and the obligations that make the copy a WALL rather than a convenience.
+// A mirror's rows are compiled by the seed's compiler over a tree that is neither repository. Until gunbc
+// admits a --source-root outside the process workspace roots, that copy is the only way to compose the
+// two, and it is deleted by the day such a flag exists - so its dissolution is carried ON the row, and
+// the step that performs the copy prints it. The local-runs warning is not ceremony either: composing
+// inside a session worktree publishes the mirror's content through the public repository at archive
+// time, because auto-push pushes whatever the worktree holds.
+type OverlayIngest {
+  overlay_dir_name: NonEmptyStr
+  entry_prefix: NonEmptyStr
+  repo_link_name: NonEmptyStr
+  compose_dir_name: NonEmptyStr
+  compose_root_env_default: NonEmptyStr
+  overlay_copy_dissolves_when: DissolutionCondition
+  local_runs_warning: NonEmptyStr
+  shared_process_dissolves_when: DissolutionCondition
+}
+
+// HOW A ROSTER IS RUN. Two routes exist because there is a capability gap, not a style preference: the
+// instrument route asks the dispatcher to run one labelled subject per row, which a self-compiling
+// repository can afford; the composed-overlay route drives each row through the seed's interpreter over
+// the composed root. That route is hand-shell today, so it cannot be taken without carrying the trigger
+// that retires it - there is no silent way onto the interpreter.
+type RosterRoute
+  = InstrumentLabelRows
+  | ComposedOverlayInterpreterRoster {
+      overlay: OverlayIngest
+      roster_main: DagInvocation
+      run_roster_step_name: NonEmptyStr
+      hand_shell_dissolves_when: DissolutionCondition
+    }
+
+// THE AGGREGATE: present when the repository runs its whole enforced roster inside ONE process and prints
+// one verdict. The banners are rows because their wording is that repository's own claim about itself.
+type RosterAggregate {
+  invocation: DagInvocation
+  pass_banner: String
+  fail_banner: NonEmptyStr
+}
+
+// THE DESIGN 4c STEP: compile the roster's closure and fail when a source annotation has drifted outside
+// module-item grain. It gates on the roster's enforced closure rather than every module of the
+// repository until its narrowing trigger fires, and it reads exit status plus the reader's classification
+// rather than trusting a green compile, so a run that observed nothing is a refusal rather than a pass.
+type AnnotationStep {
+  step_name: NonEmptyStr
+  invocation: DagInvocation
+  refusal_prefix: NonEmptyStr
+  output_dir_suffix: NonEmptyStr
+  subject_banner: NonEmptyStr
+  shell_medium_dissolves_when: DissolutionCondition
+  closure_narrowing_dissolves_when: DissolutionCondition
+}
+
+// THE REQUIRED GATE: the job whose context must be green. `required_context` is the check name branch
+// protection names, and it is kept beside the job id rather than inferred from it, because a repository
+// is free to give them different names and branch protection only ever speaks the former.
+type RosterGate {
+  workflow_file: NonEmptyStr
+  workflow_name: NonEmptyStr
+  job_id: NonEmptyStr
+  job_display_name: NonEmptyStr
+  required_context: NonEmptyStr
+  runner: CiRunnerTarget
+  timeout_minutes: Int
+  source_roots: List<NonEmptyStr>
+  schedule: Optional<CronSchedule>
+  memory_budget_bytes: Optional<Int>
+  route: RosterRoute
+  aggregate: Optional<RosterAggregate>
+  annotation: Optional<AnnotationStep>
+}
+
+// THE PROJECTION-DRIFT JOB: check every committed generated file against the bytes its authority emits,
+// and (optionally) seal a repair candidate at the same head. Both repositories run one; what differs is
+// whether it also seals. A repository that stops committing generated mirrors deletes the job by deleting
+// this row - which is the point of making the job's existence data rather than a file in .github.
+type ProjectionDrift {
+  workflow_file: NonEmptyStr
+  workflow_name: NonEmptyStr
+  job_id: NonEmptyStr
+  job_display_name: NonEmptyStr
+  runner: CiRunnerTarget
+  timeout_minutes: Int
+  // THE CADENCE, and a drift watch that never runs is not a check. Present for a repository that polls
+  // (so an infrastructure change is caught by something other than the next commit); Absent for one whose
+  // drift is only ever checked at checkout, where the emitter adds no schedule trigger at all.
+  cron: Optional<CronSchedule>
+  check: DagInvocation
+  seal: Optional<HealSeal>
+}
+
+// THE HEAL JOB (gunbc's heal.yml): the phase that runs pull-request code, regenerates the committed
+// mirrors, and seals a candidate. A repository that commits no generated mirror declares Absent here and
+// gets no file emitted. It is distinct from a seal inside the drift job because the two repositories put
+// the seal in different places for different reasons, and that placement is exactly the kind of fact a
+// fork of an emitter would otherwise encode as a filename.
+type HealWorkflowPolicy {
+  workflow_file: NonEmptyStr
+  workflow_name: NonEmptyStr
+  job_id: NonEmptyStr
+  job_display_name: NonEmptyStr
+  runner: CiRunnerTarget
+  timeout_minutes: Int
+}
+
+// THE SEAL, living in the drift job rather than in a workflow of its own because the candidate must be
+// sealed at the head the check just ran against - and the publisher is a SEPARATE job so that no
+// credential is reachable from the run that produced the candidate.
+type HealSeal {
+  invocation: DagInvocation
+  seal_step_id: String
+  seal_step_name: NonEmptyStr
+  upload_step_name: NonEmptyStr
+  head_tree_dir_name: NonEmptyStr
+  head_link_name: NonEmptyStr
+  compose_dir_name: NonEmptyStr
+  candidate_artifact: NonEmptyStr
+  banner: NonEmptyStr
+}
+
+// THE PUBLISHER: admit a sealed candidate with no credential, federate, fast-forward the branch. Absent
+// means the repository commits no generated mirror, so there is nothing to publish and no file to emit -
+// a publisher that can only ever fail is not a job, it is a red check with a name.
+type HealPublisherPolicy {
+  workflow_file: NonEmptyStr
+  workflow_name: NonEmptyStr
+  job_id: NonEmptyStr
+  job_display_name: NonEmptyStr
+  runner: CiRunnerTarget
+  timeout_minutes: Int
+  trigger_workflow: NonEmptyStr
+  job_condition: String
+  candidate_artifact: NonEmptyStr
+  // Present when the repository's publisher runs a .dag subject to admit the candidate and publish it;
+  // Absent for a publisher whose phases are shell over a downloaded artifact, which is what gunbc's
+  // own publisher is. Declaring the invocation only where one exists keeps a row from naming a subject
+  // no module owns.
+  admit: Optional<DagInvocation>
+  publish: Optional<DagInvocation>
+  // Present when the publisher must compose a root to run its subject in (a mirror's rows are not in
+  // the publisher's own checkout). Absent means the publisher works in its own checkout.
+  compose: Optional<OverlayIngest>
+}
+
+type RepositoryCiProfile {
+  repository: String
+  default_branch: String
+  roster: RosterGate
+  public_seed: Optional<PublicSeed>
+  heal: Optional<HealWorkflowPolicy>
+  drift: Optional<ProjectionDrift>
+  publisher: Optional<HealPublisherPolicy>
+}
+
+// GUNBC'S OWN ROW. Every value is one the existing gunbc emitters already carry;
+// dag/test/claim/repository_ci_profile_witness.dag pins each against the emitter that owns it, so this
+// row cannot drift into describing a repository that does not exist while its emitters move on. The
+// route is InstrumentLabelRows and the seed is Absent because gunbc IS the compiler's home: it has no
+// repository to check out beside itself and no overlay to compose.
+fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
+  RepositoryCiProfile {
+    repository: gunbc_repository_name(),
+    default_branch: gunbc_default_branch_name,
+    roster: RosterGate {
+      workflow_file: "witnesses.yml",
+      workflow_name: "witnesses",
+      job_id: required_ci_context_name,
+      job_display_name: required_ci_context_name,
+      required_context: required_ci_context_name,
+      runner: FleetSelfHosted,
+      timeout_minutes: 90,
+      source_roots: ["dag", "src/v2"],
+      schedule: Absent,
+      memory_budget_bytes: Absent,
+      route: InstrumentLabelRows,
+      aggregate: Absent,
+      annotation: Absent
+    },
+    public_seed: Absent,
+    heal: Present {
+      value: HealWorkflowPolicy {
+        workflow_file: "heal.yml",
+        workflow_name: heal_workflow_authority_name,
+        job_id: "heal-generated-artifacts" as NonEmptyStr,
+        job_display_name: "heal-generated-artifacts" as NonEmptyStr,
+        runner: FleetSelfHosted,
+        timeout_minutes: 90
+      }
+    },
+    drift: Present {
+      value: ProjectionDrift {
+        workflow_file: "drift-watch.yml",
+        workflow_name: drift_watch_authority_name,
+        job_id: "tier-o-drift" as NonEmptyStr,
+        job_display_name: "tier-o-drift" as NonEmptyStr,
+        runner: FleetSelfHosted,
+        timeout_minutes: 60,
+        cron: Present {
+          value: CronSchedule {
+            minute: Exact { value: 17 },
+            hour: Exact { value: 5 },
+            day_of_month: Wildcard,
+            month: Wildcard,
+            day_of_week: Wildcard
+          }
+        },
+        // THE CHECK SUBJECT, read from its authority (gunbc.ci.ci_spec) rather than re-typed: the drift
+        // watch and the CI spec must not hold two copies of which claim polices the generated files.
+        check: DagInvocation {
+          entry: gunbc_ci_tier_o_drift_check_target.entry,
+          function: gunbc_ci_tier_o_drift_check_target.function
+        },
+        seal: Absent
+      }
+    },
+    publisher: Present {
+      value: HealPublisherPolicy {
+        workflow_file: "heal-publish.yml",
+        workflow_name: heal_publisher_authority_name,
+        job_id: "publish" as NonEmptyStr,
+        job_display_name: "publish" as NonEmptyStr,
+        runner: github_hosted_publisher_runner_target(),
+        timeout_minutes: 45,
+        trigger_workflow: heal_workflow_authority_name,
+        candidate_artifact: heal_repair_candidate_artifact_name,
+        admit: Absent,
+        publish: Absent,
+        compose: Absent
+      }
+    }
+  }
+}
+
+// THE NAMES THE TRIGGER AND THE FILE CARRY. Kept as rows rather than read from the emitter modules: the
+// emitters read THIS row (gunbc.heal_workflow, gunbc.heal_publisher_workflow and gunbc.drift_watch_workflow
+// take their job id, runner and timeout from here), so a rename is one edit here and the emitters follow,
+// instead of two authorities that a witness has to keep equal.
+data heal_workflow_authority_name: NonEmptyStr = "heal"
+
+data drift_watch_authority_name: NonEmptyStr = "drift-watch"
+
+data heal_publisher_authority_name: NonEmptyStr = "heal-publish"
+
+// THE ACCESSORS THE FOUR GUNBC EMITTERS READ. Each returns an Optional so an emitter that is asked to
+// render a job its repository has not declared REFUSES rather than inventing a default: a workflow that
+// fires with nothing to publish is exactly the shape these accessors make visible.
+fn gunbc_roster_gate() -> RosterGate {
+  gunbc_repository_ci_profile().roster
+}
+
+fn gunbc_heal_workflow_policy() -> Optional<HealWorkflowPolicy> {
+  gunbc_repository_ci_profile().heal
+}
+
+fn gunbc_drift_watch_policy() -> Optional<ProjectionDrift> {
+  gunbc_repository_ci_profile().drift
+}
+
+fn gunbc_heal_publisher_policy() -> Optional<HealPublisherPolicy> {
+  gunbc_repository_ci_profile().publisher
+}
+
+// THE SAME THREE ROWS, FOR THE EMITTERS THAT RENDER THEM. An emitter cannot render an Optional, and it
+// must not invent a default either - a fabricated job id or timeout would be the "unadmitted fallback"
+// this corpus refuses. So the total accessor returns the declared row, and the DECLARATION ITSELF is the
+// predicate the emitter checks first: a repository that declares no drift job is refused before a byte is
+// rendered, and the value below is never emitted. The predicate takes a profile rather than reading
+// gunbc's row, so the refusal is a claimable fact about any repository's data rather than an untestable
+// branch inside one hard-wired repository's emitter.
+fn gunbc_drift_watch_job() -> ProjectionDrift {
+  match gunbc_repository_ci_profile().drift {
+    Present { value: policy } => policy
+    Absent => repository_without_drift_job()
+  }
+}
+
+fn gunbc_heal_job() -> HealWorkflowPolicy {
+  match gunbc_repository_ci_profile().heal {
+    Present { value: policy } => policy
+    Absent => repository_without_heal_job()
+  }
+}
+
+fn gunbc_heal_publisher_job() -> HealPublisherPolicy {
+  match gunbc_repository_ci_profile().publisher {
+    Present { value: policy } => policy
+    Absent => repository_without_publisher()
+  }
+}
+
+// THE SHAPE OF A REPOSITORY THAT DECLARES NO SUCH JOB. These values exist so a Workflow value stays
+// constructible for admission; they are NOT jobs, and the emitter that would render one refuses first
+// (repository_declares_drift_job, repository_declares_heal_job, repository_declares_publisher). A
+// committed workflow whose job id reads "no-job-declared" is a bug in this module, not a supported shape.
+fn repository_without_drift_job() -> ProjectionDrift {
+  ProjectionDrift {
+    workflow_file: "no-drift-watch-declared.yml",
+    workflow_name: "no-drift-watch-declared",
+    job_id: "no-drift-watch-declared",
+    job_display_name: "no-drift-watch-declared",
+    runner: FleetSelfHosted,
+    timeout_minutes: 0,
+    cron: Absent,
+    check: DagInvocation { entry: "no-drift-watch-declared", function: "no_drift_watch_declared" },
+    seal: Absent
+  }
+}
+
+fn repository_without_heal_job() -> HealWorkflowPolicy {
+  HealWorkflowPolicy {
+    workflow_file: "no-heal-declared.yml",
+    workflow_name: "no-heal-declared",
+    job_id: "no-heal-declared",
+    job_display_name: "no-heal-declared",
+    runner: FleetSelfHosted,
+    timeout_minutes: 0
+  }
+}
+
+fn repository_without_publisher() -> HealPublisherPolicy {
+  HealPublisherPolicy {
+    workflow_file: "no-heal-publish-declared.yml",
+    workflow_name: "no-heal-publish-declared",
+    job_id: "no-heal-publish-declared",
+    job_display_name: "no-heal-publish-declared",
+    runner: FleetSelfHosted,
+    timeout_minutes: 0,
+    trigger_workflow: "no-heal-declared",
+    candidate_artifact: heal_repair_candidate_artifact_name,
+    admit: Absent,
+    publish: Absent,
+    compose: Absent
+  }
+}
+
+// WHETHER THIS REPOSITORY HAS THE JOB AT ALL. Each emitter's first branch: no row, no file, no check
+// waiting on an event that can never arrive.
+
+fn repository_declares_drift_job(profile: RepositoryCiProfile) -> Bool {
+  match profile.drift {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn repository_declares_heal_job(profile: RepositoryCiProfile) -> Bool {
+  match profile.heal {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn repository_declares_publisher(profile: RepositoryCiProfile) -> Bool {
+  match profile.publisher {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+
+// gunbc's identity as CI sees it: the GitHub slug the required context and every cross-repository
+// checkout are compared against. Data rather than an inference from `origin`, because a runner's remote
+// is not an authority.
+data gunbc_repository_slug: NonEmptyStr = "gunb-ai/gunbc"
+
+fn gunbc_repository_name() -> String {
+  gunbc_repository_slug as String
+}
+
+// The hosted runner class the public publisher runs on, as a TARGET so its label stays a projection of
+// the catalog row (extdeps.github.hosted_runners) rather than a string this row repeats.
+fn github_hosted_publisher_runner_target() -> CiRunnerTarget {
+  GithubHostedRunner { row: github_hosted_ubuntu_2404_arm_public_catalog }
+}
+
+// A FLEET JOB CONFINED TO A DECLARED RUNNER GROUP. The repository naming its own group is the point of
+// passing the name in: the mirror's group is not gunbc's business, and gunbc's group name is not the
+// mirror's.
+fn fleet_runner_group_target(group: NonEmptyStr) -> CiRunnerTarget {
+  FleetSelfHostedInDeclaredGroup { group: DeclaredRunnerGroup { name: group } }
+}
+
+// WHETHER A PROFILE BUILDS ITS COMPILER FROM ANOTHER REPOSITORY. Emitters branch on this instead of on a
+// Bool that would let a profile claim a seed checkout with no repository named to check out.
+fn profile_uses_public_seed(profile: RepositoryCiProfile) -> Bool {
+  match profile.public_seed {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE SEED, when the profile declares one. Emitters that need several seed facts take the row as a
+// parameter (admitted once, at the top) rather than unwrapping an Optional at each step builder, so the
+// refusal for "no seed declared" happens before any step is rendered.
+fn profile_public_seed(profile: RepositoryCiProfile) -> Optional<PublicSeed> {
+  profile.public_seed
+}
+
+// THE OVERLAY, when the roster runs over a composed root. Same reasoning as the seed: the route carries
+// it, and a profile on the instrument route has none.
+fn profile_overlay(profile: RepositoryCiProfile) -> Optional<OverlayIngest> {
+  match profile.roster.route {
+    ComposedOverlayInterpreterRoster { overlay: overlay } => Present { value: overlay }
+    InstrumentLabelRows => Absent
+  }
+}
+
+// A PROFILE IS WELL FORMED when its halves agree and no job pins itself to a pool nothing ensures.
+// Called by every emitter before it renders a byte, so a mis-shapen row is a refusal at emit time rather
+// than a workflow that fails on a runner that was never created, or a seal no publisher will ever read.
+fn repository_ci_profile_refusal(profile: RepositoryCiProfile) -> Optional<NonEmptyStr> {
+  if profile_heal_is_whole(profile: profile) == false {
+    Present { value: "REFUSE: this profile seals repair candidates without a publisher to land them, or publishes candidates that no job sealed. Declare both halves or neither (gunbc.ci.repository_ci_profile profile_heal_is_whole): a seal with no publisher is a candidate no one can land, and a publisher with no seal is a job that can only fail." }
+  } else if any(runners_of(profile: profile), t => profile_runner_group_is_declared(target: t) == false) {
+    Present { value: "REFUSE: a job pins itself to a runner group that gunbc.runner.runner_group_restriction_ensure does not declare. Ensure the group, or select another CiRunnerTarget (gunbc.ci.ci_runner_target FleetSelfHostedInDeclaredGroup)." }
+  } else if profile_publisher_trigger_is_declared(profile: profile) == false {
+    Present { value: "REFUSE: the publisher is triggered by the completion of a workflow this profile does not declare, so it can never run with anything to publish. Name the heal or drift workflow that seals the candidate (gunbc.ci.repository_ci_profile profile_publisher_trigger_is_declared)." }
+  } else if gt_zero(value: profile.roster.timeout_minutes) == false {
+    Present { value: "REFUSE: the required gate declares a timeout that is not positive; it would be killed before it could report a reason." }
+  } else {
+    Absent
+  }
+}
+
+// BOTH HALVES OR NEITHER. The seal and the publisher are one transaction split across two jobs for
+// credential isolation; one of them alone is a broken transaction, not a partial feature.
+fn profile_heal_is_whole(profile: RepositoryCiProfile) -> Bool {
+  profile_has_candidate_source(profile: profile) == profile_publisher_is_declared(profile: profile)
+}
+
+// A CANDIDATE IS SEALED EITHER BY A HEAL JOB OF ITS OWN (gunbc: heal.yml regenerates the committed
+// mirrors and seals) OR BY THE SEAL INSIDE THE DRIFT JOB (a mirror whose projections are checked by
+// projection-drift). Either placement is legitimate; one half alone is not. This is the wall that turns
+// "a publisher that fires with nothing to publish" from an operational mystery into a row error caught
+// before a workflow is written.
+fn profile_has_candidate_source(profile: RepositoryCiProfile) -> Bool {
+  match profile.heal {
+    Present { value: _ } => true
+    Absent => match profile.drift {
+      Present { value: d } => match d.seal {
+        Present { value: _ } => true
+        Absent => false
+      }
+      Absent => false
+    }
+  }
+}
+
+// THE PUBLISHER IS TRIGGERED BY THE NAME OF ANOTHER WORKFLOW, so a name no job in this profile emits is
+// a publisher that never runs - and the only symptom is a check that stayed pending forever.
+fn profile_publisher_trigger_is_declared(profile: RepositoryCiProfile) -> Bool {
+  match profile.publisher {
+    Absent => true
+    Present { value: publisher } => heals_under(profile: profile, trigger: publisher.trigger_workflow)
+      || drift_seals_under(profile: profile, trigger: publisher.trigger_workflow)
+  }
+}
+
+fn heals_under(profile: RepositoryCiProfile, trigger: NonEmptyStr) -> Bool {
+  match profile.heal {
+    Present { value: heal } => heal.workflow_name == trigger
+    Absent => false
+  }
+}
+
+fn drift_seals_under(profile: RepositoryCiProfile, trigger: NonEmptyStr) -> Bool {
+  match profile.drift {
+    Present { value: drift } => match drift.seal {
+      Present { value: _ } => drift.workflow_name == trigger
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn profile_has_seal(profile: RepositoryCiProfile) -> Bool {
+  match profile.drift {
+    Present { value: d } => match d.seal {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn seals_repair_candidates(profile: RepositoryCiProfile) -> Bool {
+  profile_has_seal(profile: profile)
+}
+
+fn profile_publisher_is_declared(profile: RepositoryCiProfile) -> Bool {
+  match profile.publisher {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE RUNNER EVERY JOB LANDS ON, so the group declaration check covers all three jobs rather than the
+// one anyone remembered to check. A job the profile does not declare is represented by the fleet target,
+// which is always declared, so absent jobs cannot spuriously trip the wall.
+fn runners_of(profile: RepositoryCiProfile) -> List<CiRunnerTarget> {
+  [profile.roster.runner, heal_runner(profile: profile), drift_runner(profile: profile), publisher_runner(profile: profile)]
+}
+
+fn heal_runner(profile: RepositoryCiProfile) -> CiRunnerTarget {
+  match profile.heal {
+    Present { value: h } => h.runner
+    Absent => FleetSelfHosted
+  }
+}
+
+fn drift_runner(profile: RepositoryCiProfile) -> CiRunnerTarget {
+  match profile.drift {
+    Present { value: d } => d.runner
+    Absent => FleetSelfHosted
+  }
+}
+
+fn publisher_runner(profile: RepositoryCiProfile) -> CiRunnerTarget {
+  match profile.publisher {
+    Present { value: p } => p.runner
+    Absent => FleetSelfHosted
+  }
+}
+
+// THE GROUP MUST BE A DECLARED GROUP. A restricted runner group is a repository-side resource that an
+// ensure job creates; a job pinned to a group nothing ensures is a job that never runs, and the failure
+// surfaces as a check that stayed pending forever rather than as a refusal with a reason.
+fn profile_runner_group_is_declared(target: CiRunnerTarget) -> Bool {
+  match target {
+    FleetSelfHostedInDeclaredGroup { group: group } =>
+      any(restricted_runner_groups(), g => g.name == group.name)
+    _ => true
+  }
+}
+
+// WHETHER THIS GATE RUNS THROUGH THE INSTRUMENT DISPATCHER. The emitter asks this when it receives rows,
+// because the rows are not in the profile: a declared-red row or a must-not-compile probe is only
+// meaningful where its declared causes are read and compared, and under the dispatcher those arms do not
+// exist - so an expected failure would become a way to make a check green instead of a claim with a
+// trigger on it. The emitter refuses that combination rather than emitting a gate that cannot fail.
+fn roster_route_is_instrument_dispatcher(profile: RepositoryCiProfile) -> Bool {
+  match profile.roster.route {
+    InstrumentLabelRows => true
+    ComposedOverlayInterpreterRoster { overlay: _ } => false
+  }
+}
+
+// THE INVOKE SPELLING FOR A SUBJECT, built one way for every repository so two repositories' CI differs
+// by its row and never by how the command was assembled.
+fn dag_invocation_argv(invocation: DagInvocation, source_roots: List<NonEmptyStr>) -> String {
+  join(
+    concat(
+      map(source_roots, r => source_root_flag(root: r)),
+      ["--entry", invocation.entry as String, "--function", invocation.function as String]
+    ),
+    " "
+  )
+}
+
+fn source_root_flag(root: NonEmptyStr) -> String {
+  join(["--source-root ", root as String], "")
+}
