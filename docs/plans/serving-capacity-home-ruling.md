@@ -14,4 +14,4 @@
 
 **Validation:** read both producers and their live consumer joins before claiming unification; one consumer's imports prove only its path. No occupancy merger or replacement migration is authorized here. `gunbc.recurring_failure_mode.meaning_fork` owns the FabricGroup subject conflation and the rejected same-word/different-module near-miss; `gunbc.rung_drop.serving_cost_axes_asserted_unmeasured` owns the unmeasured cost-values limitation. Neither an address nor a module adjective establishes a capacity fork.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/serving-capacity-home-ruling.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/serving-capacity-home-ruling.md).

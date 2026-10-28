@@ -12,4 +12,4 @@ Each mechanical insert owns cage/envelope, retention, ventilation, cord strain r
 
 **Validate:** obtain exact part/drawing/harness and single-module enable/airflow evidence; select coordinated branch protection and connector; evaluate overload/failure, startup, cable reach, thermal exposure and retained enclosure. Fold complete masses/placements into statics, then review CAD and an unpowered prototype. Printed material, wiring, protection and powered-operation obligations remain open even when the numeric screen passes.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/cassette-server-psu-interface.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/cassette-server-psu-interface.md).

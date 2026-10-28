@@ -2,7 +2,7 @@
 
 **Goal:** replace one semantic authority without retaining it inside its successor. **Method:** cut at the highest complete consumer boundary; delete the old route and fix forward from real obligations. **Validation:** one executing new authority, no old production consumers/adapters/fallbacks, every surviving obligation covered, and explicit retirement or restoration of silent residue.
 
-Extracted from DESIGN §3 by operator ruling on 2026-08-18. This file owns the procedure and exceptions; DESIGN owns the principle. The [pinned prior text](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/replacement-migration-doctrine.md) retains the full dated receipts and original explanations. The following preserves their operative conditions.
+Extracted from DESIGN §3 by operator ruling on 2026-08-18. This file owns the procedure and exceptions; DESIGN owns the principle. The [pinned prior text](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/replacement-migration-doctrine.md) retains the full dated receipts and original explanations. The following preserves their operative conditions.
 
 ## Default and exceptions
 

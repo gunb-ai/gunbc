@@ -14,4 +14,4 @@
 
 **Validation:** `test.claim.printer_batch_workflow_validation.validate_preparation` exercises real approval identity, production preparation and archive/G-code negative controls without printing. `test.claim.print_preparation_kernel_validation` covers the shared process observer, integrity and retrospective output. `observe_process_batch` writes fresh digest-named observations, never authorizes prints. Retraction/commanded-motion evidence retains unknown feed, startup scope, inherited-setting uncertainty and unavailable actual layer time; it proves neither cooling, island count nor a stability threshold. Physical inspection, adhesion/stiffness, loaded-joint/creep/thermal qualification and live controller evidence remain separate. Historical preparation checks are not current CI or live-release receipts.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/print-workflow-integration.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/print-workflow-integration.md).

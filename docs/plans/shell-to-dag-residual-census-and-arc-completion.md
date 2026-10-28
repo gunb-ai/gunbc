@@ -2,7 +2,7 @@
 
 > **Status: dated assessment + scoping draft (witty-ibex-317, 2026-07-12).** Grounded against `origin/main` @ #6507. Builds on the landed slices (Retry #6467, If-band #6475, typed transports #6457/#6478) and lane D's authority [provisioning-window-executor-capability-design.md](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/provisioning-window-executor-capability-design.md). No `.dag` edits — records direction for operator + host-effect-lane sign-off. ⚠ FLAG = a decision needing sign-off.
 
-[Original census, superseded dispatch ledgers and correction receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/shell-to-dag-residual-census-and-arc-completion.md). The scope and remaining obligations below are not a claim that every historical site remains live.
+[Original census, superseded dispatch ledgers and correction receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/shell-to-dag-residual-census-and-arc-completion.md). The scope and remaining obligations below are not a claim that every historical site remains live.
 
 ## 0. The one finding
 
@@ -396,7 +396,7 @@ The 07-22 snapshot is several merges stale. What has landed since, keyed to the 
 
 ### Historical wind-down ledger
 
-The [2026-07-22 PR/session snapshot](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/shell-to-dag-residual-census-and-arc-completion.md) is retained in immutable history, not presented as current dispatch. The final corrections are: #6946 established ExecArgv; #7004/#7006 relocated scripts until #7192/#7194 removed them; the finite new-op list closed; #7184/#7962 closed the retained-script construction edges, not the remaining typed-op path. §4.J owns the later site/trigger roster; operator-deferred work remains deferred unless its specific later receipt discharges it. PR/branch state is read from the PR, never this dated ledger.
+The [2026-07-22 PR/session snapshot](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/shell-to-dag-residual-census-and-arc-completion.md) is retained in immutable history, not presented as current dispatch. The final corrections are: #6946 established ExecArgv; #7004/#7006 relocated scripts until #7192/#7194 removed them; the finite new-op list closed; #7184/#7962 closed the retained-script construction edges, not the remaining typed-op path. §4.J owns the later site/trigger roster; operator-deferred work remains deferred unless its specific later receipt discharges it. PR/branch state is read from the PR, never this dated ledger.
 
 ### 4.I — CI foreign-executor sites the census missed (2026-07-24 audit @ `879c5a2699`)
 

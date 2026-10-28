@@ -14,4 +14,4 @@
 
 **Corrections retained:** redirection-status “decay,” session-flag-as-count and all-failures-share-one-cause claims were withdrawn. Digest agreement did not validate a mistyped timestamp; preserved files did not prevent reused attempt identity. Persistent override was cleared at session end. Concurrent control, self-matching process kills and premature recovery polls contaminated attempted measurements. The later [collector correction](mtcollins1_dram_training_root_cause_2026-09-12.md) further limits inferences from SOL silence. Protocol/boot-policy repairs belong to their modeled owners; this record does not prescribe them.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_memory_census_and_boot_delivery_2026-09-11.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_memory_census_and_boot_delivery_2026-09-11.md). Raw artifacts and modeled evidence are unchanged.

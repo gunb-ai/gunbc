@@ -199,7 +199,7 @@ unless the row says otherwise, and `Unknown` is the honest default.
 
 ### Declared-type inhabitance: scope and remaining obligations
 
-This is one class across caller, field, collection, return and other grammar positions, not the `v2.*` exemption alone. [Original seam measurements, source fixtures, counts and correction receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/compiler-guarantee-recovery-gap-analysis.md) preserves the dated evidence. A repaired specimen or completed lane cannot close the class while another seam or unenumerated position remains.
+This is one class across caller, field, collection, return and other grammar positions, not the `v2.*` exemption alone. [Original seam measurements, source fixtures, counts and correction receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/compiler-guarantee-recovery-gap-analysis.md) preserves the dated evidence. A repaired specimen or completed lane cannot close the class while another seam or unenumerated position remains.
 
 **Direct-call exemption.** The recorded `module_skips_direct_call_arg_check` bypass is keyed by the caller's `v2.` module. Its confinement away from sole_constructor does not make the skipped type judgment safe; exemption-free call SHAPE checking is a different fact. The originating #8854 incident declared OccurrenceId while storing NodeOccurrenceId: callers consistently contradicting the declaration appeared healthy until one obeyed it, producing raw-OccurrenceId match failures (run 32542017600, main 67437fcbe9). This is the risk of a false declaration whose current consumers share its error.
 

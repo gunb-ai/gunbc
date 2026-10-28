@@ -20,7 +20,7 @@ fn status_block() -> MarkdownBlock {
 
 fn section_1() -> List<MarkdownBlock> {
   [
-    p(text: "**Goal:** v2 emits the entire v2 corpus to Rust that cargo builds, then the emitted modules execute their own contracts before seed retirement. Seed size is motivation, not an acceptance count. The [baa4a8586f sizing audit and original plan](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/dag/gunbc/plans/v2_corpus_self_host.dag) record the hand/emitted split and a reproducibility discrepancy. That partition still needs a producer rather than a prose procedure; do not copy its totals into a current board."),
+    p(text: "**Goal:** v2 emits the entire v2 corpus to Rust that cargo builds, then the emitted modules execute their own contracts before seed retirement. Seed size is motivation, not an acceptance count. The [baa4a8586f sizing audit and original plan](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/dag/gunbc/plans/v2_corpus_self_host.dag) record the hand/emitted split and a reproducibility discrepancy. That partition still needs a producer rather than a prose procedure; do not copy its totals into a current board."),
   ]
 }
 

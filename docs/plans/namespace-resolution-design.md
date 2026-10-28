@@ -2,7 +2,7 @@
 
 **Goal:** one naming authority with no silent rebinding. **Method:** build one containment tree, resolve uniquely on the ancestor chain, project downward and derive dependencies from resolved references. **Validation:** exact target identity, typed unresolved/ambiguous controls, shared runtime dispatch and removal of import machinery under the current namespace-cut stage contract.
 
-Operator rulings below supersede earlier proposals explicitly. §13 replaces nearest-wins and expected-type pool filtering; its later no-ambient-prelude ruling bounds current native scope. Current cut sequencing comes from `gunbc.namespace_cut.namespace_cut_landing_order.current_landing_order` and `namespace_cut_stage.stage_prerequisites`, not this document’s historical per-subtree schedule. [Namespace-cut execution](namespace-cut-replacement-plan.md) carries the cut list. [Pinned history](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/namespace-resolution-design.md) retains the dated raw censuses and superseded derivations.
+Operator rulings below supersede earlier proposals explicitly. §13 replaces nearest-wins and expected-type pool filtering; its later no-ambient-prelude ruling bounds current native scope. Current cut sequencing comes from `gunbc.namespace_cut.namespace_cut_landing_order.current_landing_order` and `namespace_cut_stage.stage_prerequisites`, not this document’s historical per-subtree schedule. [Namespace-cut execution](namespace-cut-replacement-plan.md) carries the cut list. [Pinned history](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/namespace-resolution-design.md) retains the dated raw censuses and superseded derivations.
 
 ## 1. The two governing rules
 

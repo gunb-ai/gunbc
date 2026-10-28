@@ -17,4 +17,4 @@
 
 **Assembly limits:** standoff support, underside clearance, actual fastener engagement, retention, loaded joints, power hardware and thermal suitability remained unresolved. M3/M4 length suggestions were geometry estimates, not verified hardware selections. The rear shoe's bolt-clearance reservation was checked geometrically, not physically. Manually prepared plates did not yet supply durable arbitrary-set orchestration or preparation enforcement at start; [batch planning](print-batch-orchestration.md) owns that migration. No print or procurement is authorized by retaining this record.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/cassette-print-day.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/cassette-print-day.md).

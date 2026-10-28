@@ -36,4 +36,4 @@ Observers receive subjects and coverage requests, not desired answers; unread in
 
 **Validate:** real assembled/sliced integration plus adverse controls: distant coaxial bores, ambiguous/missing/occupied providers, reversed fan, rotor crossing, impossible bend, blocked latch, wrong pinout, branch/header overload, short lead and unqualified upright grille. Provider changes must move review, census and admission together. Exercise unread inventory, wrong-revision inspection, stale plans, concurrent reservations, restart, uncertain start and partial acceptance. Preserve old checks until consumer cutover; delete old carriers/prose only after every obligation maps. Fit, fabrication and powered-operation goals remain separately admitted.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/cassette-assembly-requirements.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/cassette-assembly-requirements.md).

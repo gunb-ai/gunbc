@@ -8,4 +8,4 @@
 
 **Access defects:** HTTP login returned a token/session but subsequent authenticated API calls refused; the equivalent HTTPS sequence worked. The rendered power widget said off while IPMI, `/api/chassis-status` and live CPU rails indicated on. Read controller observations, not the widget. The [SMpro source survey](mtcollins1_ampere_smpro_access_paths_2026-09-12.md) adds vendor evidence without erasing the payload-layout mismatch.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_sel_oem_payload_census_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_sel_oem_payload_census_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

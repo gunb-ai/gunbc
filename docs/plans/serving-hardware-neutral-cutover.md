@@ -14,4 +14,4 @@
 
 **Validate:** use an actual growing agent-session trace through the admitted binder, not only random-prefix load generation. Exercise tool gaps, full context envelope, pressure admission, lost-warm-state recovery and addition of a replica without moving sessions. Bind latency/completion/sustainable-load evidence to the performance subject and repeat unchanged for each inventory. Terminal: no old consumers of migrated contracts, undispositioned/uncovered consumers, production adapters/fallbacks or migration flags. Preserve old measurements only as offline evidence.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/serving-hardware-neutral-cutover.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/serving-hardware-neutral-cutover.md).

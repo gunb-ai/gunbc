@@ -6,4 +6,4 @@
 
 **Assessment:** failure implicates the replacement configuration, not an individual defect; training would falsify the declared prediction for this population. Population shape alone had already proved insufficient, without proving its necessity. Neither result distinguishes a defective module from a combination restriction. See the [socket-swap outcome](mtcollins1_socket_swap_outcome_2026-09-12.md) and [bounded firmware finding](mtcollins1_dram_training_root_cause_2026-09-12.md) for subsequent evidence.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_2drx4_group_test_prediction_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_2drx4_group_test_prediction_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

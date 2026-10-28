@@ -18,4 +18,4 @@
 
 The original account retains the dated frontier states, job comparisons and lower-bound invocation. Those readings are not current merge, host or dogfood status; no cutover occurs in this cleanup.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/ci-per-job-microvm-migration.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/ci-per-job-microvm-migration.md).

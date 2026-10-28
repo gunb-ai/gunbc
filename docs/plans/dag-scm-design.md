@@ -20,7 +20,7 @@ compatibility-fidelity contract; this document cannot promote a product stage me
 technical carrier exists. Git is the first adoption realization, not the interface the native model
 derives from.
 
-[Original design and worked provenance](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/dag-scm-design.md). The contracts below remain design obligations; shortened explanations do not promote a stage or retire an unresolved decision.
+[Original design and worked provenance](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/dag-scm-design.md). The contracts below remain design obligations; shortened explanations do not promote a stage or retire an unresolved decision.
 
 ## 0. User contract — SCM-compatible, not SCM-shaped
 

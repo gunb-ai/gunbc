@@ -14,4 +14,4 @@ The operation applies immediately; presentation never delays it or invents an un
 
 **Validate:** band totality and wrong-family red controls over emitted output; persistent anomaly reason; real immediate data update with honest presentation; per-surface links; structured exemplar dispatch; independent live artifact fingerprint and operator walkthrough. Composition machinery and row/altitude/reason projections had dated execution receipts in #7234; provisional row height, clipping and gutter remained located decisions, not universal constants. Finish composition before ticket exemplars/bulk; motion studies follow with first consumers. Management reviews evidence before the operator pass, which records candidate laws rather than scattered style patches.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/roadmap-workspace-remodel-plan.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/roadmap-workspace-remodel-plan.md).

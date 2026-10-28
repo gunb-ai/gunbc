@@ -6,4 +6,4 @@
 
 **Boundaries:** equal per-socket capacity was satisfied by the operator-reported 16 GB modules. Originals operating in these positions ruled out shape alone as a sufficient explanation; that does not qualify replacements. Same-channel mixing rules do not discriminate 1DPC populations. Stage/status/tail fields remain unsupported and cannot name a DIMM. Zero memory-power readings had unestablished validity/freshness and could not distinguish early failure from timeout. The original outcome table was neither exhaustive nor equiprobable. Later evidence is in the [firmware finding](mtcollins1_dram_training_root_cause_2026-09-12.md).
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_socket_swap_outcome_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_socket_swap_outcome_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

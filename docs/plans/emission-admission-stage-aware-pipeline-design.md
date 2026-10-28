@@ -84,7 +84,7 @@ Reuse these owners; the new obligations in §3 extend their joins:
 - `gunbc.bootstrap.CompilerStage` is the pipeline-stage authority; `ChangeClassification.affects_stages` names affected stages. `FrontierProbeStage` is distinct harness vocabulary. `v2.std.change.ChangeKind` / `ChangeSet` feed `v2.lens.affected_set`.
 - `gunbc.generated_artifact` supplies registry/drift checks; `gunbc.guarantee_measurement` supplies per-path receipts. Extend these rather than minting parallel ledgers. BothWays quotient-delta in [module identity/storage binding](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/module-identity-storage-binding-design.md) is orthogonal to emission admission.
 
-The [original design and correction record](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains dated inventories and review provenance. Current contracts and controls follow.
+The [original design and correction record](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains dated inventories and review provenance. Current contracts and controls follow.
 
 ---
 
@@ -724,4 +724,4 @@ promotion and authoritative admission are gated. Carried into the staged plan as
 
 ## 12. Correction record (2026-08-02)
 
-The [immutable nine-correction record](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains each superseded statement and the first revision's merged-but-unaccepted standing. The resulting obligations are in §§3.1–3.11, the discriminating controls in §8, decisions in §9 and ordered implementation in §10. In particular, validation-only enrollment needs no bridge; undeclared movement differs from declared behavioral regression; stage execution extends the existing guarantee measurement rather than creating a parallel receipt.
+The [immutable nine-correction record](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/emission-admission-stage-aware-pipeline-design.md) retains each superseded statement and the first revision's merged-but-unaccepted standing. The resulting obligations are in §§3.1–3.11, the discriminating controls in §8, decisions in §9 and ordered implementation in §10. In particular, validation-only enrollment needs no bridge; undeclared movement differs from declared behavioral regression; stage execution extends the existing guarantee measurement rather than creating a parallel receipt.

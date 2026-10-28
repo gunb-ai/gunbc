@@ -8,4 +8,4 @@
 
 **Score:** use the [corrected outcome](mtcollins1_2rx4_outcome_correction_2026-09-12.md). Quiet telemetry did not score the declared training endpoint; later KVM kernel execution supplied stronger evidence. The original “only organization remains” inference was withdrawn.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_2rx4_group_test_prediction_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_2rx4_group_test_prediction_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

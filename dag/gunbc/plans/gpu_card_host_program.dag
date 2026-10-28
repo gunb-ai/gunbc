@@ -357,7 +357,7 @@ data gpu_card_graph_rows: List<GpuCardGraphRow> = [
 
 fn gpu_card_host_program_body() -> List<MarkdownBlock> {
   [
-    p(text: "Draft under operator design, originally reviewed as #15207; converge leg unstarted. Model before implementation. Typed census/graph rows below remain the standing source; [original design and measured receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/dag/gunbc/plans/gpu_card_host_program.dag) retains the full earlier inventory. One lane under the Mt. Collins worker; no work outside this graph."),
+    p(text: "Draft under operator design, originally reviewed as #15207; converge leg unstarted. Model before implementation. Typed census/graph rows below remain the standing source; [original design and measured receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/dag/gunbc/plans/gpu_card_host_program.dag) retains the full earlier inventory. One lane under the Mt. Collins worker; no work outside this graph."),
     h2(text: "0. Bound and working census"),
     p(text: "`gunbc.plans.gpu_card_host_program::gpu_card_in_bound` includes every card installed in or committed to an operator-owned fleet host, whether serving or not. Finish only when no row remains merely committed and every in-bound card independently reads back converged through the real path. gpu_card_working_census is an operator-confirmation reading (D0), not final authority: N0a moves census and predicate to gunbc.fleet, then imports them here. Passive A16s need fan zones; actively cooled cards need accelerator guards. No unconsumed model or measurement enters this bound."),
     TableBlock {

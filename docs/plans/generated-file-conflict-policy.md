@@ -2,7 +2,7 @@
 
 **Ruled 2026-08-01.** Existing `.dag` artifact, storage, commit and Git authorities own integration policy. `.gitattributes` and repository-local Git config project it; Git remains a compatibility realization of [native integration](dag-scm-design.md).
 
-The motivating failures were redundant projection conflicts, auto-heal `218dea61248d` committing conflict blocks in `publication_grant.dag`, and clean overlapping appends (#7565/#7580) producing eleven duplicate paths. The last case requires construction semantics, not conflict handling. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/generated-file-conflict-policy.md) preserves measurements and lane history.
+The motivating failures were redundant projection conflicts, auto-heal `218dea61248d` committing conflict blocks in `publication_grant.dag`, and clean overlapping appends (#7565/#7580) producing eleven duplicate paths. The last case requires construction semantics, not conflict handling. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/generated-file-conflict-policy.md) preserves measurements and lane history.
 
 ## Policy and authority
 

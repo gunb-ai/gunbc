@@ -2,7 +2,7 @@
 
 **Analysis, not an executor design or schedule.** Price an atomic replacement of the per-attempt Firecracker launch on Mt. Collins. The finding is **medium, gap-intolerant**, with a missing host-boot execution lifecycle. This analysis does not choose an owner or authorize cutover.
 
-**Citation standing at the analysis revision:** `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe` and the FCI-2 `gunbc.runner.runner_microvm_execution_authorization` are proposed on unmerged #10674, not corpus facts. The census and findings below do not depend on their landing. [Original analysis, search instruments and correction receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/microvm-launch-displacement-analysis.md).
+**Citation standing at the analysis revision:** `gunbc.recurring_failure_mode.production_actuation_unmodeled_beside_a_modeled_probe` and the FCI-2 `gunbc.runner.runner_microvm_execution_authorization` are proposed on unmerged #10674, not corpus facts. The census and findings below do not depend on their landing. [Original analysis, search instruments and correction receipts](https://github.com/gunb-ai/gunbc/blob/e0c979b492ffc21d7d7e8128be9e12f13faf2613/docs/plans/microvm-launch-displacement-analysis.md).
 
 ## Goal and measured defect
 

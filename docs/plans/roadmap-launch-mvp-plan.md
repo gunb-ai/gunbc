@@ -22,4 +22,4 @@
 
 **Validation:** execute the whole browser→attempt→verification→publication→acceptance chain on production with the table's adverse controls and independently read release/tree/standing. Current DESIGN governs CI; prior baseline green is not today's receipt. Fabric own-CI, automatic scheduling, provider arbitration, ctrl revival and blue/green are excluded. After the terminal, automate desired-ref convergence, online/offline catch-up and complete host/phase reporting through the same actuator; make dashboard deployment a normal member without changing this acceptance contract.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/roadmap-launch-mvp-plan.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/roadmap-launch-mvp-plan.md).

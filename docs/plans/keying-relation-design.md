@@ -1,6 +1,6 @@
 # Scoped keying relations
 
-**Operator-agreed design, 2026-08-15; no implementation authorized by this note.** Name the relation and scope that make a key meaningful, then migrate a real consumer. Existing typed owners absorb this design as it lands; do not maintain a parallel ledger. [Original design, specimens and rulings](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/keying-relation-design.md).
+**Operator-agreed design, 2026-08-15; no implementation authorized by this note.** Name the relation and scope that make a key meaningful, then migrate a real consumer. Existing typed owners absorb this design as it lands; do not maintain a parallel ledger. [Original design, specimens and rulings](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/keying-relation-design.md).
 
 ## Goal and existing homes
 

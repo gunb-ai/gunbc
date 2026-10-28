@@ -10,4 +10,4 @@
 
 **Probe order:** preserve SEL, inspect SOL instances, read current stage/failure bitmap, then slot syndromes with an established byte order; consume history last. Physical access is a separately authorized fallback. The original register bitfields, source locators and proposed probes remain in the historical survey; they are not a current actuation license or an invented decoder.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_ampere_smpro_access_paths_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_ampere_smpro_access_paths_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

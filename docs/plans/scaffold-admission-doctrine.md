@@ -1,6 +1,6 @@
 # Scaffold admission doctrine
 
-*Authority: admission rulings extracted from DESIGN.md §5 on 2026-08-18; operator ruling 2026-08-10, receipt gunbc#8073. This file owns the verdict vocabulary, external approval and actuation exception. [Original wording](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/scaffold-admission-doctrine.md).*
+*Authority: admission rulings extracted from DESIGN.md §5 on 2026-08-18; operator ruling 2026-08-10, receipt gunbc#8073. This file owns the verdict vocabulary, external approval and actuation exception. [Original wording](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/scaffold-admission-doctrine.md).*
 
 **Default: finish the final construction.** A dissolution condition describes how admitted debt ends; it does not authorize creating it. A current head introducing net-new active dissolution obligations without an explicit operator verdict on that exact population is a hard reject. Unmarked debt adds concealment. Finish the underlying model, decomposition or generation; temporary work is an exceptional admission, never the ordinary alternative.
 

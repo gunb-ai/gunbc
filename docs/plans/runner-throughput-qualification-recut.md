@@ -14,4 +14,4 @@
 
 **Validate:** foreign host/program/specimen/revision, wrong cgroup/effective bound/backing, direct construction, incomplete/duplicate phase roster, sanction mismatch and oversubscribed host plan must refuse. A faster second run exceeding memory cannot be hidden by a slower passing run. No runs/unread bounds/low throughput/unbound effect remain refusing. Exercise the actual fabric consumer and wrong-offer binding with bounded witnesses and current required checks. Retire this plan only after the types/claim/consumer and bound route land, and a real mtcollins1 run mints the observation and dissolves its frontiers.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/runner-throughput-qualification-recut.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/runner-throughput-qualification-recut.md).

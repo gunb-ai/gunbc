@@ -16,4 +16,4 @@
 
 **Validate:** exact-once demand identity; no acquisition after budget/offer/readback refusal; permitted public egress and structurally absent management/cross-cell routes; distinct concurrent cell identities; exact JobStarted binding; held reservations on uncertain teardown; refused reuse and management-reaching profiles; enforced runtime bound; supplier/SCM substitution without customer/core changes. No isolation, scale-set execution, queue-starvation or variance result is claimed by this note.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/ci-minutes-product-design.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/ci-minutes-product-design.md).

@@ -12,4 +12,4 @@
 
 **Validate:** run `assess_mtcollins_memory_change` in `dag/gunbc/host/mtcollins_memory_change.dag` with source roots `dag` and `src/v2`; `explain_mtcollins_memory_change` exposes the structured explanation. This replays committed evidence and expects production refusal, not hardware actuation. `test.claim.host.memory_change_evaluation_witness` and fulfillment/selection/digest controls cover malformed coverage, replacement bytes, collector refusal and carried ceilings. Historical wet results and mutation controls are in the linked account; hermetic `NoMockResponse` and pre-evaluation refusal are unevaluated. They do not substitute for current required CI.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/prospective_memory_change_evaluation_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/prospective_memory_change_evaluation_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

@@ -14,4 +14,4 @@
 
 **Exemplar:** deploy-preflight is a runtime-present authorization query over shared grants/principal evidence, realized as typed effects before mutation. The concat/Pipeline emitter was removed; sudoers materialization remains roster-derived. Broader mutation leaves belong to the census, not a new grant vocabulary or another emitter. Current source owners, not the dated milestone labels, decide what remains implemented.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/shell-intent-emit-realization-design.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/shell-intent-emit-realization-design.md).

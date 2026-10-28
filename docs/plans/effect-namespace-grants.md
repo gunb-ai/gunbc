@@ -1,6 +1,6 @@
 # Effect grants over namespaces
 
-**Design and ruling record.** The 2026-07-16 proposal separates input closure, output reach, handler binding and selection eligibility formerly conflated by Hermetic/Wet. The plan owns remaining decisions below; implementation standing comes from its named carriers. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/effect-namespace-grants.md) preserves dated PR/review receipts and handoff history.
+**Design and ruling record.** The 2026-07-16 proposal separates input closure, output reach, handler binding and selection eligibility formerly conflated by Hermetic/Wet. The plan owns remaining decisions below; implementation standing comes from its named carriers. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/effect-namespace-grants.md) preserves dated PR/review receipts and handoff history.
 
 ## Contract
 
@@ -43,4 +43,4 @@ The operator-approved 2026-07-22 residuals remain explicit: Replay's fixture_sto
 
 Open operator decisions: approve interim path-string-to-index convergence; decide AuthScope convergence only where a real reach-encoding consumer names its cost (identity-side for P-A). Q1 was amended to Execute; Q4 assigned one document home and is settled.
 
-Reference/Publish verbs and AudienceScopeTree were an experiment, deleted by the 2026-08-01 ruling with std.visibility_grant. This retires their carrier, not publication capability. No replacement publication ontology is selected pending design review; reference-edge capability independently awaits a concrete consumer. See [original ruling and experiment references](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/effect-namespace-grants.md).
+Reference/Publish verbs and AudienceScopeTree were an experiment, deleted by the 2026-08-01 ruling with std.visibility_grant. This retires their carrier, not publication capability. No replacement publication ontology is selected pending design review; reference-edge capability independently awaits a concrete consumer. See [original ruling and experiment references](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/effect-namespace-grants.md).

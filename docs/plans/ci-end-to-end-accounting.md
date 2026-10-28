@@ -6,4 +6,4 @@
 
 **Validation:** compare whole-run runner time and latency from job/step timestamps and phase logs; use `required-floor-claim-cost` for marginal claim CPU, excluding separately reported shared fills. Overlapping queue/child durations are not additive. Count PR and merge-group work together. The historical ≤29 runner-minute budget was a target, not a forecast; cache reuse and cold-path improvements were necessary beyond easy sharing cuts. The original account retains its budget breakdown and measured baseline.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/ci-end-to-end-accounting.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/ci-end-to-end-accounting.md).

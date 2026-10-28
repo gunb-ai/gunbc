@@ -1,6 +1,6 @@
 # Fabric recut
 
-Replace the duplicated layer beneath `Demand`, `Work`, `Attempt`, `Offer`, `ExecutionGrant` and `Receipt`, preserving those product concepts and their hardened refusals. The fork census justified this program; the claim that #8413's branch was stale/non-mergeable did not. [Original measured bases, review rulings and correction receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/fabric-recut-program.md) records that evidence and obsolete cut inventories. This plan states the resulting construction; historical branch status is not present merge authority.
+Replace the duplicated layer beneath `Demand`, `Work`, `Attempt`, `Offer`, `ExecutionGrant` and `Receipt`, preserving those product concepts and their hardened refusals. The fork census justified this program; the claim that #8413's branch was stale/non-mergeable did not. [Original measured bases, review rulings and correction receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/fabric-recut-program.md) records that evidence and obsolete cut inventories. This plan states the resulting construction; historical branch status is not present merge authority.
 
 ## Existing authorities and preservation bar
 

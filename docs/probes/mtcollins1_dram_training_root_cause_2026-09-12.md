@@ -17,4 +17,4 @@
 
 **Validate:** replay the hash-verified bytes through `assess_mtcollins_memory_change` and the scoped witnesses described in [prospective assessment](prospective_memory_change_evaluation_2026-09-12.md). Do not generalize the refusal beyond its captured platform, firmware, settings, socket and population, or confuse replay with another boot.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_dram_training_root_cause_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_dram_training_root_cause_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

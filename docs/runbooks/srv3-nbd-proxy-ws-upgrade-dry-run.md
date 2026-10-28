@@ -8,4 +8,4 @@
 
 **Validation:** an authenticated upgrade and observed protocol behavior support endpoint presence, not media attachment or successful installation. Ordinary GET 404 is inconclusive. Authentication, TLS and reachability failures leave capability unread; they do not establish absence. Preserve ambiguous results for reproduction. A capability change requires its independent observation and model update; this procedure alone licenses none.
 
-The [original procedure](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md) is historical provenance, including its retired endpoint assumptions. Use [BMC access](bmc-redfish-operator-access.md) for credential handling.
+The [original procedure](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/runbooks/srv3-nbd-proxy-ws-upgrade-dry-run.md) is historical provenance, including its retired endpoint assumptions. Use [BMC access](bmc-redfish-operator-access.md) for credential handling.

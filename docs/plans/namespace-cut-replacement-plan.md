@@ -14,7 +14,7 @@ At each major step, stop and present for operator satisfaction; fix forward cont
 
 ## Step 0 — historical strip and census
 
-Strip receipts: `d4916cacf3` (`dag`/`src/v2`) and `59db42ffc9` (`src/v1`). The [full dated readings](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/namespace-cut-replacement-plan.md) retain raw counts, class breakdowns and reproduction notes. They are one-off outputs of an **unowned** procedure, not a live instrument.
+Strip receipts: `d4916cacf3` (`dag`/`src/v2`) and `59db42ffc9` (`src/v1`). The [full dated readings](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/namespace-cut-replacement-plan.md) retain raw counts, class breakdowns and reproduction notes. They are one-off outputs of an **unowned** procedure, not a live instrument.
 
 Reproduction used brace-balanced import removal in detached worktrees, not line deletion or test-only `name_resolution_policy_set_namespace_only`. Build each compiler from its named tree with `cargo build --release -p v1-compiler --bin gunbc`; run `gunbc compile --source-root dag --source-root src/v2 --source-root src/v1 --dependency-pool-index primary-precedence --target dag --output-dir <tmp>`, reading hard diagnostics. `compile_clean_source_roots` owns the compile entry, not stripping/classification. A typed source-rewrite capability plus instruments-layer census producer retires these one-off readings; do not build a throwaway count reproducer.
 

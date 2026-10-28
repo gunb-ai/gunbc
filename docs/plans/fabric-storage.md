@@ -14,4 +14,4 @@ The git-to-store cut starts empty only after old seat/quota leases drain; otherw
 
 **Validate:** exercise actual store consumers at admissible cost, CAS races, typed failures, linked closure integrity and identity migration; independently observe publication/readback and retention. This brief supplies no deployment or durability receipt.
 
-[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/fabric-storage.md).
+[Prior design and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/fabric-storage.md).

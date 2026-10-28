@@ -10,4 +10,4 @@
 
 **Sequence:** button/motion/press sound may land first only as a strict visible/audible improvement; session observation/polling, lifecycle tones, redispatch and full walkthrough complete the second slice. Other controls/surfaces wait for that consumed exemplar. Shared progress depth waits for its observation producer. Existing legacy lead/section cleanup and historical tests are not substitutes for this terminal. Stop inferring done/red from missing sessions.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/roadmap-workspace-ux-plan.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/roadmap-workspace-ux-plan.md).

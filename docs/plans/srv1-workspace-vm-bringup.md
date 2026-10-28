@@ -14,4 +14,4 @@ Use installed operator policy and the dedicated srv1 guest key, with host-local 
 
 **Validation:** retain a joined live chain for image/controller readback, commissioned slot, ready allocation, authenticated SSH, release, reuse, expiry cleanup and final released/ready state. Separate desired command success from effective resource limits; use independent digests when transport trims bytes. Reader/publisher network populations must share the deployment authority; workload admission remains separate. Keep the exact policy read grant and protected-state custody. Scoped model/manual checks and historical CI are not current live proof. The original account retains run IDs, hashes, canonical dependency logs and `target/srv1-bringup-evidence/` locations; never publish private keys or signed envelopes.
 
-[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/srv1-workspace-vm-bringup.md).
+[Prior argument, rulings and dated receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/srv1-workspace-vm-bringup.md).

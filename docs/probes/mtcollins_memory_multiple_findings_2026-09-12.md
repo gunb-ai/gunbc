@@ -8,4 +8,4 @@
 
 **Validate:** run the read-only `assess_mtcollins_two_configurations` entry in `dag/gunbc/host/mtcollins_3ds_memory_change.dag` with source roots `dag` and `src/v2`. `test.claim.host.memory_multiple_findings_witness` covers both pairs, unseen pairs, ordering/duplicates, unread evidence, every-cycle coverage, applicability, unbound identity, capacity and real production refusal. Explanation keeps excluded receipts distinct from requirement outcomes. Simulated controls are not host observations; historical execution does not validate later compiler/grammar changes. Current required CI remains separate.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins_memory_multiple_findings_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins_memory_multiple_findings_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.

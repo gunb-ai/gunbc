@@ -16,4 +16,4 @@
 
 **Correction:** the [firmware finding](mtcollins1_dram_training_root_cause_2026-09-12.md) identified a rejected package-byte mixture. It did not prove every module healthy, a universal unequal-byte rule or uniform ADS support. The old “16 spares” population mixed ADS and ASF; a uniform ADS population remained untested. A proposed 1Rx4 substitution duplicated an already-observed monolithic configuration and was withdrawn. Seller labels were not independent organization/speed authority; the socket-bit reading remained bounded and could not identify a DIMM.
 
-[Original dated account](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_micron_module_screen_state_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
+[Original dated account](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/probes/mtcollins1_micron_module_screen_state_2026-09-12.md). Raw artifacts and modeled evidence are unchanged.
