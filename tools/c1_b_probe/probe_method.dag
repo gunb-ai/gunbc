@@ -1,0 +1,4 @@
+module probe_method_count
+import std.types { List, Int }
+import std.nat { Nat }
+fn size_of(xs: List<Int>) -> Nat { xs |> count as Nat }

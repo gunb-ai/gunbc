@@ -1,0 +1,4 @@
+module probe_control_length
+import std.types { List, Int }
+import std.nat { Nat }
+fn size_of(xs: List<Int>) -> Nat { length(xs) as Nat }

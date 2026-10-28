@@ -1,0 +1,4 @@
+module probe_bare_count
+import std.types { List, Int }
+import std.nat { Nat }
+fn size_of(xs: List<Int>) -> Nat { count(xs) as Nat }

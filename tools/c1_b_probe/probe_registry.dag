@@ -1,0 +1,5 @@
+module probe_registry_count
+import std.types { List, Int }
+import std.nat { Nat }
+import std.collection { count }
+fn size_of(xs: List<Int>) -> Nat { count(xs) as Nat }

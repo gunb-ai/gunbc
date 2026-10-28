@@ -1,0 +1,87 @@
+module test.claim.c1_b_count_probe_witness
+
+// DIAGNOSTIC PROBE (not a permanent claim; uncommitted, for the root-cause of the two main reds
+// w_count_is_a_nat and w_method_count_is_a_nat in test.claim.refinement_cast_wall_witness).
+//
+// The two reds assert blocking_count(...) == 0, which CANNOT distinguish "a blocking diagnostic
+// fired" from "the census instrument itself was NotRunnable" (blocking_count returns 0 - 1 there).
+// The first arms below answer exactly that; the rest separate the two variables the existing
+// claims confound: the ROUTE (bare name -> algebra profile `first` over all profiles vs the
+// SEED's receiver-profile method row vs an explicit import) and the RECEIVER (a concrete List<Int>
+// vs a generic T).
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import std.nat { Nat }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn blocking_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn census_is_observed(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+data bare_concrete_source: String = "module probe_b_count_bare_concrete\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { count(xs) as Nat }\n"
+
+data method_concrete_source: String = "module probe_b_count_method_concrete\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { (xs |> count) as Nat }\n"
+
+data registry_generic_source: String = "module probe_b_count_registry_generic\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { count(xs) as Nat }\n"
+
+data bare_generic_source: String = "module probe_b_count_bare_generic\nimport std.nat { Nat }\nfn size_of<T>(xs: T) -> Nat { count(xs) as Nat }\n"
+
+data length_concrete_source: String = "module probe_b_length_concrete\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { (xs |> length) as Nat }\n"
+
+data bare_length_concrete_source: String = "module probe_b_bare_length_concrete\nimport std.types { List, Int }\nimport std.nat { Nat }\nfn size_of(xs: List<Int>) -> Nat { length(xs) as Nat }\n"
+
+// THE INSTRUMENT, on the exact source the two reds use. true => a blocking diagnostic really fired;
+// false => the census never ran and the reds are an instrument fault, not a cast refusal.
+test fn p_bare_concrete_census_is_observed() -> Bool {
+  census_is_observed(source: bare_concrete_source)
+}
+
+test fn p_method_concrete_census_is_observed() -> Bool {
+  census_is_observed(source: method_concrete_source)
+}
+
+// THE TWO REDS, re-measured as counts.
+test fn p_bare_concrete_blocking_zero() -> Bool {
+  blocking_count(source: bare_concrete_source) == 0
+}
+
+test fn p_method_concrete_blocking_zero() -> Bool {
+  blocking_count(source: method_concrete_source) == 0
+}
+
+// THE CONTROLS that already pass on main, re-measured.
+test fn p_registry_generic_blocking_zero() -> Bool {
+  blocking_count(source: registry_generic_source) == 0
+}
+
+test fn p_length_concrete_blocking_zero() -> Bool {
+  blocking_count(source: length_concrete_source) == 0
+}
+
+test fn p_bare_length_concrete_blocking_zero() -> Bool {
+  blocking_count(source: bare_length_concrete_source) == 0
+}
+
+// THE DISCRIMINATOR between ROUTE and RECEIVER: the same bare call, generic receiver.
+test fn p_bare_generic_blocking_zero() -> Bool {
+  blocking_count(source: bare_generic_source) == 0
+}
