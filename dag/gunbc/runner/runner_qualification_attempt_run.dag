@@ -32,7 +32,7 @@ import gunbc.github_effect_perform {
 }
 import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
+  HostUnitSlot, ListenerOwnLifetime, AttemptSlot, HostUnitSlotBound, HostUnitSlotRefused, host_unit_slot_for, host_unit_slot_root,
   host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt,
 }
 import gunbc.runner.runner_jit_mint_binding {
@@ -96,7 +96,7 @@ fn attempt_listener_run_of(launcher: SystemdSummaryPrintingWait, version_line: S
 fn attempt_launch_over(transport: HostEffectTransport, user: NonEmptyStr, slot: HostUnitSlot, credential: EncodedJitConfig) -> ListenerRun
   admit_callers: [decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_bound")]
 {
-  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit)) {
+  match host_unit_listener_wait(listener_unit: slot.unit, user: user, root: host_unit_slot_root(unit: slot.unit), lifetime: ListenerOwnLifetime) {
     HostUnitListenerUnbuilt { cause: c } => ListenerNotLaunched { cause: c }
     HostUnitListenerReady { wait: w } => {
       let version_line = match systemd_run_version_command() {
