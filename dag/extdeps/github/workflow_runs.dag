@@ -17,7 +17,7 @@ import std.algebra { Cons, Empty }
 import std.resources { Network }
 import std.serialization { Text }
 import extdeps.transports.rest { RestResult }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, parse_int }
 
 // WorkflowJobRun.labels are read by gunbc.public_workload_census (observed_job_labels) to
 // settle observed architecture and provider. run_attempt is modeled here and copied onto

@@ -8,6 +8,7 @@ import extdeps.languages.json.emit { JsonNumber }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 import extdeps.github.cli_api_include { GhApiIncludedParsed, GhApiIncludedUnreadable, parse_gh_api_included }
 import std.resources { Network }
+import std.integer { parse_int }
 
 // GET /orgs/{org}: the organization object, whose integer `id` is how GitHub's own id-addressed
 // URLs (`/organizations/{id}/...`) name the same organization the login names.

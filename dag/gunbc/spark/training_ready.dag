@@ -20,6 +20,7 @@ import gunbc.spark.cell_role {
 import extdeps.iproute2.ss { ss_enumeration_is_empty }
 import extdeps.procps.pgrep { pgrep_exit_no_match }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
+import std.integer { parse_int }
 
 // SPARK-PAIR-0 P0. The gate between a host that no longer serves and a host the training fabric may
 // offer. SparkTrainingReadyProof is sole_constructor and has exactly one producer, so a training

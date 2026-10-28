@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Int }
 import gunbc.workspace_allocation { WorkspaceAllocationId, workspace_allocation_id_of }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
+import std.integer { parse_int }
 
 // One JSON contract for allocation creation and incarnation-bound release. Authority-bearing
 // owner, image, access and expiry fields are supplied by verified session and server policy.

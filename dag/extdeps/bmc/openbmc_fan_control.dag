@@ -137,6 +137,7 @@ import std.measure {
   second_count,
 }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, Unit }
+import std.integer { parse_int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

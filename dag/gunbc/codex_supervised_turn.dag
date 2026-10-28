@@ -92,6 +92,7 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+import std.integer { parse_int }
 
 // SUPERVISED-RUNNER REALIZATION (continuity receipt 2026-08-13). In-flight turns do NOT survive
 // client death — tool calls execute in the local app-server process, so one supervised process must

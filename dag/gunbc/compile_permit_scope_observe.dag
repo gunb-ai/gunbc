@@ -34,6 +34,7 @@ import gunbc.runner.runner_slot_allocation {
   CommittedSlotPopulation, CommittedPopulationDerived, CommittedPopulationWidthUnresolved,
   runner_width_unresolved_cause_text,
 }
+import std.integer { parse_int }
 
 data compile_permit_scope_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 

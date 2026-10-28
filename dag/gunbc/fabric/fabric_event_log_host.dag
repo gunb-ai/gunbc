@@ -8,6 +8,7 @@ import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, Dashboa
 import gunbc.fabric.fabric_event_log { event_log_binding_for }
 import gunbc.fabric.fabric_storage_client { FabricStorageBinding }
 import std.optional { Present }
+import std.integer { parse_int }
 
 // WHERE THE EVENT LOG IS FROM THE EXECUTING HOST'S POINT OF VIEW: the dashboard instance declared
 // for the host supplies the identity the fabric DB binding is derived against -- in process on the

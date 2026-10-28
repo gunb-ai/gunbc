@@ -27,6 +27,7 @@ import extdeps.filesystem.filesystem_io {
   FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
   filesystem_listing_observation, filesystem_listing_entry_names,
 }
+import std.integer { parse_int }
 
 // THE RECORD A WORKER UNIT LEAVES WHEN ITS PROCESS ENDS (dogfood interventions #4 and #6, gunbc#13124).
 // The unit's stop hook creates ONE directory in the
@@ -162,7 +163,7 @@ fn attempt_process_signaled_of(status: String) -> AttemptProcessEndDecode {
 fn attempt_process_end_of(code: ServiceExitCode, status: String) -> AttemptProcessEndDecode {
   match code {
     ServiceExitCodeExited =>
-      match parse_int(text: status) {
+      match parse_int(s: status) {
         Present { value: n } => AttemptProcessEndOf { end: AttemptProcessExitedWith { status: n } }
         Absent => AttemptProcessEndRefused { reason: join(["EXIT_CODE is exited but EXIT_STATUS is not a number: ", status], "") }
       }

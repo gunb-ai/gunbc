@@ -30,6 +30,7 @@ import std.content_hash {
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.coercion { unicode_scalar_fold, unicode_scalar_unfold }
+import std.integer { parse_int }
 
 
 // PROGRESS ON THE CARVE-OUT ABOVE, stated narrowly so it is not read as the dissolution: the

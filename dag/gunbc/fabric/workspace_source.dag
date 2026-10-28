@@ -28,6 +28,7 @@ import gunbc.cloudflare.r2_staged_transfer { WriteCredentialShredded, WriteCrede
 import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
 import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
 import gunbc.host.host_effect { LocalShell }
+import std.integer { parse_int }
 
 // THE OPERATOR'S REAL WORKSPACE, CARRIED FROM THE HOST THAT HOLDS IT TO THE HOST THAT MEASURES IT.
 //

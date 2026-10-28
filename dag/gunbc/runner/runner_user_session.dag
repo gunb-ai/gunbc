@@ -21,6 +21,7 @@ import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContex
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import std.integer { parse_int }
 
 // THE JOB ACCOUNT'S USER SYSTEMD MANAGER, CONVERGED ON ONE HOST AND READ BACK. The desired state is the row
 // gunbc.runner.runner_host_deploy runner_job_user_session_hosts: on those hosts the CI job account

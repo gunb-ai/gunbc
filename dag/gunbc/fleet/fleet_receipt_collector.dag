@@ -34,6 +34,7 @@ import gunbc.fleet.fleet_convergence_verdict {
 }
 import gunbc.fleet.fleet_enrollment { fleet_enrollments, fleet_enrollment_refusals }
 import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enroll_apply }
+import std.integer { parse_int }
 
 // Operator verdict join 5 (2026-08-09): the receipts hosts PUBLISH were consumed by
 // nothing — converge wrote /opt/gunbc/receipts/<host>-converge-receipt.txt and

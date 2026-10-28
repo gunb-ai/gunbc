@@ -5,6 +5,7 @@ import std.optional { Present, Absent }
 import extdeps.transports.rest { RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.hetzner_cloud_api { HetznerServerResponse, HetznerServerRead, HetznerServerObserved, HetznerServerReadRefused }
 import gunbc.fleet.provider_acquisition { ProviderResourceAcquisition }
+import std.integer { parse_int }
 
 // ONE ACQUIRED SERVER AS THE CLOUD API ANSWERED ABOUT IT, judged against its acquisition row. Pure:
 // the exchange is gunbc.fleet.hetzner_cloud_server_control's, and this is what both it and the control

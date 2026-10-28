@@ -31,6 +31,7 @@ import extdeps.languages.json.emit {
 }
 import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNumberOutsideExactFragment }
 import extdeps.llm.claude_agent_sdk_stream { claude_stream_event_type_rate_limit_event }
+import std.integer { parse_int }
 
 // THE CLAUDE CODE CLI's OWN stream-json WIRE, as `claude -p --output-format stream-json --verbose`
 // writes it to stdout: one JSON object per line. This is the CLI's surface, versioned with the CLI,

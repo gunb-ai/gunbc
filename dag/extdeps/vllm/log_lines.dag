@@ -8,6 +8,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
+import std.integer { parse_int }
 
 // THE ENGINE'S OWN STARTUP LINES, WHICH ARE THE ONLY AUTHORITY FOR WHAT IT ACTUALLY BUILT.
 //

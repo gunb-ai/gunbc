@@ -80,6 +80,7 @@ import gunbc.runner.runner_host_withdraw_record {
   runner_host_withdraw_identity, host_is_withdrawn, runner_host_withdraw_record_observe_line,
 }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_precheck, fleet_converge_split_read, SplitPrecheck, SplitOk, SplitRefused, SplitRefusalReason, fleet_converge_split_refusal_line }
+import std.integer { parse_int }
 
 // ── The outcomes, typed ──────────────────────────────────────────────────────────────────────────
 

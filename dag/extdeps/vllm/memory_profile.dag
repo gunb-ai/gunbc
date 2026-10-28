@@ -9,6 +9,7 @@ import extdeps.vllm.log_lines {
   VllmStartupReading, VllmStartupLine,
   MemoryProfileSummary, GpuKvCacheSize, MaximumConcurrency, ResolvedKvCacheFormat,
 }
+import std.integer { parse_int }
 
 // THE MEMORY-PROFILE LINE PRINTS TWO KINDS OF NUMBER, AND TYPING THEM ALIKE WOULD FABRICATE
 // PRECISION. Measured on the GLM canary's line, exactly two figures are exact: the byte arguments of

@@ -30,6 +30,7 @@ import gunbc.fabric.fabric_event_log {
   PartitionReadOk, PartitionReadRefused, event_log_read_partition, EventAppended, EventAppendStale, EventAppendRefused,
   event_log_append, event_log_refusal_wire,
 }
+import std.integer { parse_int }
 
 // TWO LIVE RECEIPTS FOR THE SEAT TRANSACTION ON THE PLACED EVENT LOG.
 //

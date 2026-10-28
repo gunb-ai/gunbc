@@ -48,6 +48,7 @@ import gunbc.roadmap.roadmap_attempt_continuation {
 }
 import std.content_hash { content_hash_atom }
 import std.algebra { empty_map, map_insert, map_lookup }
+import std.integer { parse_int }
 
 // The recursive alignment ladder follows the parent each row declares, never reverse blocking. Each
 // level carries the node's declared ticket structure and the edge's contribution argument.

@@ -18,7 +18,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.languages.json.emit { json_bool }
 import extdeps.languages.json.parse { parse_json_document, json_field_string, JsonDocumentParsed, JsonDocumentUnreadable, FieldAbsent, FieldRead, FieldMalformed }
-import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
+import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused, parse_int }
 import std.encoding { base64_decode, base64_encode, UrlSafe, Standard }
 import gunbc.principal_projection { principal_ref_label }
 import gunbc.clock_read { clock_now_probed_at }

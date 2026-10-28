@@ -101,6 +101,7 @@ import gunbc.runner.runner_microvm_lifecycle {
   UnitInvocationReading, UnitInvocationRead, UnitInvocationUnread,
   attempt_teardown_readback, settle_teardown, TeardownSettlement,
 }
+import std.integer { parse_int }
 
 data runner_microvm_lifecycle_realize_disposition: ConstructionMechanism = SingleAuthority
 

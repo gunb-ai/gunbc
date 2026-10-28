@@ -9,6 +9,7 @@ import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
 import std.content_hash { Sha256Digest }
 import gunbc.machine_intake.ampere_dram_console_observation { AmpereDramTrainedDimm, nth_token, prefixed_int }
 import std.measure { ByteSize, MegatransfersPerSecond, gibibyte, gibibyte_to_byte_size, megatransfers_per_second }
+import std.integer { parse_int }
 
 // THE PER-PLATFORM DIMM POPULATION ADMISSION ROW OF MT. COLLINS UNIT 1 (ruling
 // gunbc.design_ruling dimm_population_is_admitted_permissively, 2026-10-17). It lives in the observing

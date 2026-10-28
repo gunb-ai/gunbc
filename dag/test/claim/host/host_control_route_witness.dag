@@ -22,6 +22,7 @@ import gunbc.host.host_control_route {
   HostControlStanding, HostControlled, HostControlRefused, ProviderApiControlRoute, BmcControlRoute,
   BmcHostNotManaged, NoOutOfBandRoute, ProviderResourceNotAcquired, ProviderControlUnobserved, enrolled_host_control,
 }
+import std.integer { parse_int }
 
 // THE PROVIDER'S ANSWER IS SUPPLIED AT THE API BOUNDARY and judged by the production judge
 // (gunbc.fleet.hetzner_cloud_server_reading judge_acquired_server_read), so the route below is the real one

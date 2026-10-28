@@ -18,6 +18,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.integer { parse_int }
 
 // THE BMC KVM SCREEN AS BOOT EVIDENCE (operator ruling 2026-09-27). On run 36335369059 the SOL
 // collector died about 12 s into Linux and the watch went blind, while the KVM screen showed casper's

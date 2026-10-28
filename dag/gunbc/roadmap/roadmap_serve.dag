@@ -228,6 +228,7 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
 }
 import extdeps.ietf.http_semantics { HttpMethod, GET, POST }
+import std.integer { parse_int }
 
 // The gunbc-served dashboard instantiation (belt B,
 // parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler

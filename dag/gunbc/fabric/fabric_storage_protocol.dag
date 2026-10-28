@@ -15,6 +15,7 @@ import gunbc.fabric.fabric_storage_wire { fabric_storage_wire_head, fabric_stora
 import extdeps.tailscale.identity { tailnet_identity_of }
 
 import std.algebra { skip }
+import std.integer { parse_int }
 
 data fabric_storage_closure_bound_cap: Nat = 65536
 

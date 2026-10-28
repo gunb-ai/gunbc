@@ -64,6 +64,7 @@ import extdeps.bmc.pid_control_program {
   phosphor_pid_control_external_authority_anchor,
 }
 import extdeps.external_authority { ExternalAuthority }
+import std.integer { parse_int }
 
 // THE ANCHOR IS A BINDING, NOT A SECOND URI. This module decodes documents the daemon whose
 // authority extdeps.bmc.pid_control_program already declares; a decoder does not republish it.

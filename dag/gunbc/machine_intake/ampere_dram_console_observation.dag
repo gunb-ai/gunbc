@@ -3,6 +3,7 @@ module gunbc.machine_intake.ampere_dram_console_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.optional { Present }
+import std.integer { parse_int }
 
 // WHAT THE AMPERE DRAM FIRMWARE PRINTED ON THE SERIAL CONSOLE DURING ONE BOOT, as an observation
 // receipt of this repository. It is not an upstream fact: Ampere publishes no specification of these

@@ -54,6 +54,7 @@ import product.host_identity { HostIdentity }
 import gunbc.srv3.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }
+import std.integer { parse_int }
 
 data gunbc_srv3_os_install_diagnostic_scope_disposition: Disposition = Terminal {
   reason: "srv3 OS install actuation diagnostic fold — multi-surface observation (nbd serve, BMC session, Redfish system boot/power, virtual media, SOL console, router DHCP lease, weak KVM) over InstallAttemptIntent → InstallDiagnosticVerdict; KVM frozen/keyboard-dead is weak evidence only."

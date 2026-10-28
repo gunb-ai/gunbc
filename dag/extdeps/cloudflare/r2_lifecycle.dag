@@ -17,6 +17,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import std.integer { parse_int }
 
 // THE R2 BUCKET LIFECYCLE RESOURCE OF THE client/v4 API, one module per API resource as
 // extdeps.cloudflare.r2_buckets is (and for its reason: a `service cloudflare.*` binds the name

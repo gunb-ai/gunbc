@@ -2,6 +2,7 @@ module gunbc.floor_cost_distribution
 
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.measure { Millisecond, millisecond, millisecond_count, EvalStepCount, eval_step_count, eval_step_count_value }
+import std.integer { parse_int }
 
 // THE DERIVATIONS BEHIND docs/plans/floor-cost-distribution-near-the-ceiling.md, SO THAT DOCUMENT
 // CITES A PRODUCER INSTEAD OF CARRYING COPIED FIGURES.

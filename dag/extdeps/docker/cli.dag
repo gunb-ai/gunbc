@@ -20,6 +20,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   json_string_value_or_empty,
 }
+import std.integer { parse_int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

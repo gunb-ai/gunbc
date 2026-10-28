@@ -23,6 +23,7 @@ import gunbc.fabric.workspace_source {
   workspace_exclusions, workspace_path_exclusion, workspace_exclusion_spellings, workspace_transcript_exclusions,
   CredentialExclusion, TranscriptExclusion,
 }
+import std.integer { parse_int }
 
 // HOW FAST THE OPERATOR'S AGENT TRANSCRIPTS ACTUALLY GROW, OBSERVED ON THE HOST THAT HOLDS THEM, FROM
 // SIZES AND MODIFICATION TIMES ALONE (step 3 of the workspace stage-0 sequence, operator decision

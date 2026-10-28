@@ -59,6 +59,7 @@ import extdeps.tools.gnu_coreutils {
 import extdeps.tools.chmod { chmod_set_mode_command, chmod_binary_path }
 import extdeps.tools.id { id_gid_command, id_uid_command, id_group_name_command }
 import extdeps.posix.test_utility { test_regular_file_command }
+import std.integer { parse_int }
 
 // RUNNING ONE BUILDER, exactly as the shipper would. This is gunbc.command_runner's production spawn --
 // the call the provision executor makes with the very ArgvCommand values the roadmap hands it -- so what

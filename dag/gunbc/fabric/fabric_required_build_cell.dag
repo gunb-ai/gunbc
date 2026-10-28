@@ -32,6 +32,7 @@ import gunbc.fabric.fabric_cell_converge {
 }
 import std.optional { Present, Absent }
 import extdeps.posix.identity { PosixOwnerSpec }
+import std.integer { parse_int }
 
 // Mode is intentionally a separate coordinate from owner/group. FCI-1 has a production owner/group
 // observer, but no mode observer; carrying this arm makes that absence part of the accepted value

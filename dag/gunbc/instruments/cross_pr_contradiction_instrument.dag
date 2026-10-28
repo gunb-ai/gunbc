@@ -39,6 +39,7 @@ import gunbc.cross_pr_contradiction {
   identity_lookup_pattern,
   content_holds_identity
 }
+import std.integer { parse_int }
 
 // THE CROSS-PR CONTRADICTION INSTRUMENT: the observation half.
 //

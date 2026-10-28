@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.python { PythonProgramText, python_run_program_argv }
+import std.integer { parse_int }
 
 // ── ASKING THE DEVICE WHAT IT CAN DO, AS A MODELLED QUERY RATHER THAN A ONE-LINER ─────────────
 //

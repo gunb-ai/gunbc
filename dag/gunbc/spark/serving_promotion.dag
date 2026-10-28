@@ -17,6 +17,7 @@ import gunbc.spark.arm_memory_fit {
   ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
   CacheFitVerdict, CacheFitProved, CacheFitRefused, CacheFitUnestablished,
 }
+import std.integer { parse_int }
 
 // ── ONE PROMOTION STEP FOR EVERY SERVING SUBJECT ─────────────────────────────────────────────────
 //

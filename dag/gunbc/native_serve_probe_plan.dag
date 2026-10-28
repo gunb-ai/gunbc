@@ -3,6 +3,7 @@ module gunbc.native_serve_probe_plan
 import std.types { String, List, Bool, Int }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitFailure }
+import std.integer { parse_int }
 
 // WHAT ONE NATIVE-SERVE PROBE RUNS AND WHICH READER JUDGES IT, AS A ROW FIELD OF THE BINDING.
 // gunbc.target_binding NativeServeProgramProducer carries a NativeServeProbe, so the host's one

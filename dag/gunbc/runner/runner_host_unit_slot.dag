@@ -33,6 +33,7 @@ import gunbc.runner.runner_registration_labels { RunnerRegistrationLabelsResolut
 import gunbc.runner.runner_slot_allocation { RunnerWidthResolution, RunnerWidthDerived, RunnerWidthUnresolved, RunnerWidthUnresolvedCause, gunbc_runner_committed_width }
 import gunbc.repository { gunbc_repository }
 import gunbc.generated_artifact { artifact_path, WitnessFloorYamlArtifact }
+import std.integer { parse_int }
 
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //

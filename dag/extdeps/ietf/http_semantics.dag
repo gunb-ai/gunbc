@@ -9,6 +9,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.algebra { collection_join_shape }
+import std.integer { parse_int }
 
 // RFC 9110 (HTTP Semantics, June 2022; obsoletes RFC 7231) section 9 METHODS, plus PATCH from
 // RFC 5789 -- the one home of the request-method set. It was declared twice before this module: std.types HttpMethod with

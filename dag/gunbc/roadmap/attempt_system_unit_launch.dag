@@ -106,6 +106,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
+import std.integer { parse_int }
 
 data attempt_system_unit_launch_entry: String = "dag/gunbc/roadmap/attempt_system_unit_launch.dag"
 data attempt_system_unit_launch_function: String = "attempt_system_unit_launch_cli"
@@ -512,7 +513,7 @@ fn attempt_system_unit_start_request_fields(verb: AttemptSystemUnitStartVerb, li
           match lines[3] {
             Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
             Present { value: granted_text } =>
-              match parse_int(text: granted_text) {
+              match parse_int(s: granted_text) {
                 Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request granted kibibyte is not an integer" }
                 Present { value: granted_n } =>
                   match lines[4] {

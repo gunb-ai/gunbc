@@ -16,6 +16,7 @@ import extdeps.linux.proc_meminfo { MemoryMetric, meminfo_line_metric }
 import product.fabric.envelope { cpu_memory_envelope }
 import product.fabric.work { Shape, HardRequirements }
 import product.fabric.supply { UnmetShapeAxis, unmet_shape_axes }
+import std.integer { parse_int }
 
 // FOUR QUESTIONS, NOT ONE VERDICT (docs/plans/mtcollins1-boot-observe-publish-capacity.md).
 //

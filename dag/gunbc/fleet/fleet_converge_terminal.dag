@@ -1,6 +1,7 @@
 module gunbc.fleet.fleet_converge_terminal
 
 import std.types { String, Int }
+import std.integer { parse_int }
 
 // Shared terminal and wire authority. Receipt decoding must not load the fleet planning graph.
 type FleetConvergeApplyTerminal

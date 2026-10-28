@@ -43,6 +43,7 @@ import gunbc.machine_intake.mtcollins1_power_on_account {
   FirmwareReadbacks, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded, FirmwareReadbackRow,
 }
 import extdeps.bmc.ipmitool_hpm_check { HpmCheckTable, HpmCheckRead, HpmCheckUpgradeVariant, HpmCheckUnreadable, hpm_version_cell_text }
+import std.integer { parse_int }
 
 // THE ADMISSION OF ONE BOOT ATTEMPT'S CONFIGURATION RECEIPT, host-generic over a gunbc.host.managed_host
 // BmcControlBoundRoute (docs/plans/power-on-sequence-model.md section 12; Q5 decided by eager-gull-22

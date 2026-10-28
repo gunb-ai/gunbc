@@ -37,6 +37,7 @@ import gunbc.cloudflare.r2_origin {
   R2OriginAllocated, R2OriginUnallocated, fabric_workspace_standing,
   OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
 }
+import std.integer { parse_int }
 
 // THE INSTRUMENT THAT GROUNDS extdeps.cloudflare.r2 r2_conditional_put_linearizability, AND NOTHING
 // ELSE. That row is a bet (DESIGN 4d): that two concurrent PutObject requests carrying If-Match on one

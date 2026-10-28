@@ -25,6 +25,7 @@ import gunbc.runner.runner_claim_set_results {
   ClaimSetResultsDecode, ClaimSetResultsRefused, ResultsDriveSizeMismatch, ResultsDriveUnobserved, ClaimSetResultsAdmission,
   ClaimSetResultsAdmitted, ClaimSetResult, decode_claim_set_results, admit_claim_set_results,
 }
+import std.integer { parse_int }
 
 // THE REVISION JOB'S RECEIPT, BUILT ONLY FROM WHAT THE HOST READ.
 //

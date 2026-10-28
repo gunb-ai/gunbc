@@ -35,6 +35,7 @@ import v2.workflow.roster_import_sweep {
   roster_rows_for_scope,
   roster_sweep_text_scoped
 }
+import std.integer { parse_int }
 
 // THE VERIFIED OCCURRENCE JOIN, one path for a module's complete rows and its partial rows. The census prints, per
 // occurrence, with its source locus (v2.compiler.source_root_eval native_census_binding_loci / native_census_unbound_lines):

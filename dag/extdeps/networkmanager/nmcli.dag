@@ -6,6 +6,7 @@ import std.optional { Present, Absent, Optional }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
+import std.integer { parse_int }
 
 // NetworkManager's command-line client. Its own independently versioned upstream (DESIGN §3,
 // external upstream decomposition), so it owns its module rather than rows on a network hub.

@@ -3,6 +3,7 @@ module gunbc.fleet.fleet_generation_publication
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.algebra { trim }
 import std.content_hash { ContentHash, parse_content_hash, serialize_content_hash }
+import std.integer { parse_int }
 
 // A number alone cannot attribute a lost commit response to an apply. Existing numeric records
 // remain readable for migration, but are explicitly weaker evidence than a plan-bound publication.

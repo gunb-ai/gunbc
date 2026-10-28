@@ -3,6 +3,7 @@ module std.fabric_storage
 import std.types { NonEmptyStr, String, Int, Bool, List }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, content_hash_from_structural_digest }
 import std.durable_compare_and_set { CasGeneration, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_unreadable_slot_detail }
+import std.integer { parse_int }
 
 // THE FABRIC DB INTERFACE: IMMUTABLE CONTENT-ADDRESSED OBJECTS AND COMPARE-AND-SET NAMED HEADS.
 //

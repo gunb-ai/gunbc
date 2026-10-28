@@ -80,6 +80,7 @@ import gunbc.runner.runner_slot_retirement {
   host_maskable_units,
   unit_in_maskable_scope,
 }
+import std.integer { parse_int }
 
 // RunnerSlotProvision owns runner installation end-to-end in gunbc (operator ruling 2026-08-06:
 // ctrl is a dead repo; prior ctrl:install-actions-runner citations are void legacy pointers).

@@ -64,6 +64,7 @@ import extdeps.systems.nvidia { nvidia_dgx_spark_4tb_catalog }
 import extdeps.vllm.weight_offload {
   VllmWeightOffloadSplitStanding, WeightOffloadSplitEstablished, WeightOffloadSplitUnestablished, WeightOffloadSplitRefused,
 }
+import std.integer { parse_int }
 
 // ── WHAT THIS MODULE IS ─────────────────────────────────────────────────────────────────────────
 //

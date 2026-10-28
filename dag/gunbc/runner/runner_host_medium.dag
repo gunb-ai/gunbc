@@ -43,6 +43,7 @@ import gunbc.machine_intake.host_capture_envelope {
   host_capture_program, host_capture_bind, host_capture_section_reading,
 }
 import gunbc.runner.runner_host_unit_slot { host_unit_slot_runner_release }
+import std.integer { parse_int }
 
 // THE RUNNER MEDIUM: A DISKLESS LIVE HOST THAT CAN TAKE A HOST-UNIT SLOT.
 //

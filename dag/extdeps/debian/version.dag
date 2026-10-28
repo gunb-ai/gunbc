@@ -6,6 +6,7 @@ import std.algebra { trim }
 import std.decimal { decimal_digit_char }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.integer { parse_int }
 
 // DEBIAN PACKAGE VERSIONS AND THE RELATIONS BETWEEN PACKAGES, as Debian Policy defines them.
 //

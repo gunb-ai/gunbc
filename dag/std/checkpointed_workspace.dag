@@ -17,6 +17,7 @@ import std.fabric_storage {
   FabricStorageFault, fabric_object_ref_of,
   fabric_object_verified, FabricObjectVerified, FabricObjectVerificationFailed,
 }
+import std.integer { parse_int }
 
 // THE CHECKPOINTED WORKSPACE: ONE PERSISTENT SURFACE, COMMITTED BY REVISION, FENCED BY EPOCH.
 //

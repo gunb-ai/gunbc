@@ -35,6 +35,7 @@ import gunbc.fleet.fleet_host_backing {
   backing_microvm_forbidding_offer,
 }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent }
+import std.integer { parse_int }
 
 // ADOPTING A RENTED GUEST INTO THE FLEET. An owned machine arrives through its own provisioning --
 // BMC credential convergence and a virtual-media OS install -- and a provider guest arrives already

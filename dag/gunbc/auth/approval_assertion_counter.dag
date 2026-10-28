@@ -11,6 +11,7 @@ import std.durable_compare_and_set {
   CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent,
   CasGeneration, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration,
 }
+import std.integer { parse_int }
 
 // ── THE APP ATTEST ASSERTION COUNTER, COMMITTED BY ITS CONSUMER ──────────────────────────────
 // extdeps.apple.app_attest carries AuthenticAssertion.counter OUT of the verifier because Apple's

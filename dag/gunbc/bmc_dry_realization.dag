@@ -34,6 +34,7 @@ import extdeps.bmc.ipmitool_observed_output {
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
   ipmitool_sel_elist_line,
 }
+import std.integer { parse_int }
 
 // THE DRY ADAPTER BETWEEN THE extdeps.bmc INTERFACE AND THE ONE BMC MODEL. For each bound operation
 // it reads the actual inputs the dispatcher bound, asks gunbc.bmc_model for the transition, and

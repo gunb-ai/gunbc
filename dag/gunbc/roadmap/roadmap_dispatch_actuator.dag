@@ -292,6 +292,7 @@ import gunbc.roadmap.roadmap_dispatch_destination {
   destination_is_this_spawn_tree,
   destination_not_this_spawn_tree_reason,
 }
+import std.integer { parse_int }
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: Disposition = Terminal {
   reason: "DISSOLVED (U4, 2026-07-25): the pane-fingerprint observation landed — tmux list-panes with the cited format variables feeds tmux_session_observation_with_panes, so SessionObserved carries pane_current_command and the lease classification's Converged/Conflict arms are reachable by observation, not only by fixture. The R5 owned-only teardown gate (dispatch_stop_gate) is its first live consumer." as NonEmptyStr
 }
@@ -4567,7 +4568,7 @@ fn worker_process_from_attempt_unit(
     AttemptUnitAbsent => WorkerProcessAbsent
     AttemptUnitActive => WorkerProcessRunning { command: unit }
     AttemptUnitFinished { exit_status: status } =>
-      match parse_int(text: status) {
+      match parse_int(s: status) {
         Present { value: code } =>
           WorkerProcessExited { exit_code: code, last_command: unit as String }
         Absent =>

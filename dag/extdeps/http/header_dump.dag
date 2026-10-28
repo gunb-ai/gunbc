@@ -7,6 +7,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.ietf.http_semantics { HttpRetryAfter, RetryAfterAbsent, RetryAfterUnread, http_retry_after_from_text }
+import std.integer { parse_int }
 
 // A CURL -D HEADER DUMP is the status line and headers of each response the transport saw, in order.
 // Only the LAST block describes the answer the caller got, so a status line starts a fresh reading.

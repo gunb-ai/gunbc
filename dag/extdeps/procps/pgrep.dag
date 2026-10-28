@@ -2,6 +2,7 @@ module extdeps.procps.pgrep
 
 import std.types { Int, List, Bool, NonEmptyStr, Unit }
 import std.algebra { trim }
+import std.integer { parse_int }
 
 // pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this
 // repository reads are modelled.

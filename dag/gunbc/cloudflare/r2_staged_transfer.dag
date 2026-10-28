@@ -32,6 +32,7 @@ import gunbc.cloudflare.r2_s3_netrc {
   place_r2_s3_netrc,
   shred_r2_s3_netrc,
 }
+import std.integer { parse_int }
 
 // ONE FILE TO ONE R2 OBJECT, OR ONE R2 OBJECT INTO A DIRECTORY THIS MODULE MINTED, AND NOTHING ABOUT
 // WHAT THE BYTES ARE FOR. This is the staged-file R2 mechanism that gunbc.cloudflare.r2_origin_object

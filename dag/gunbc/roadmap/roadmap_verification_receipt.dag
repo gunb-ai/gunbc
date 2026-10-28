@@ -102,6 +102,7 @@ import extdeps.filesystem.filesystem_io {
   filesystem_file_observation,
 }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import std.integer { parse_int }
 
 // ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity
 // under one criteria revision, in one attempt and branch, at one committed head, against one exact

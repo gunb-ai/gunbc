@@ -191,7 +191,7 @@ import gunbc.scm.load_standing {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, parse_int }
 
 // THE ENCODING IS NOT CANONICAL WITH RESPECT TO INSERTION HISTORY, and that is declared here rather
 // than left for someone to discover by diffing two repositories that ought to match.

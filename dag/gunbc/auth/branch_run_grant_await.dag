@@ -17,6 +17,7 @@ import gunbc.auth.heal_publisher_provision { rest_refusal_text }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
 import gunbc.auth.branch_dispatch_federation { branch_run_key }
 import gunbc.auth.branch_run_grant_broker { branch_run_grant_dispatch_ref }
+import std.integer { parse_int }
 
 // ── THE REQUESTING RUN'S SIDE OF A RUN-SCOPED GRANT ─────────────────────────────────────────────
 // A fleet-converge run whose mode needs a run-scoped account waits here, BEFORE its auth step, for

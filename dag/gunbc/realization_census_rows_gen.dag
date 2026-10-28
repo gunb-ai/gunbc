@@ -64,6 +64,7 @@ import gunbc.realization_census {
   EvidenceUncited,
 }
 import std.decl_ref { decl_ref }
+import std.integer { parse_int }
 
 // THE INTERIM PRODUCER OF THE REALIZATION CENSUS ROWS. The census was read by hand by a sibling
 // lane and handed over as three TSVs, kept as the dated receipt under

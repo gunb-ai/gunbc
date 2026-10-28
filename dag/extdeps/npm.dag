@@ -2,7 +2,7 @@ module extdeps.npm
 
 import std.types { NonEmptyStr, String, Bool, List, Int }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, CitedUpstream, RegenerableFromSource }
-import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
+import std.integer { QualifiedOctets, QualifiedOctetsReady, QualifiedOctetsRefused, UInt8, parse_int }
 import std.encoding { base64_decode, base64_encode, base64_octets, Standard }
 import std.content_hash {
   ContentHash,

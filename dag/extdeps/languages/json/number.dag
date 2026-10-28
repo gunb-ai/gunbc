@@ -7,6 +7,7 @@ import extdeps.languages.json.grammar { JsonNumberLexeme }
 import extdeps.languages.json.emit { JsonArray, JsonBool, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.integer { parse_int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

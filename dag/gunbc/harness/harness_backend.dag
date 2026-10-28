@@ -50,6 +50,7 @@ import extdeps.tools.curl { curl_exit_outcome, CurlCouldNotConnect, CurlOperatio
 import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
 }
+import std.integer { parse_int }
 
 
 // THE HARNESS REPORTS ITS OWN STANDING, WHICH IS THE POINT RATHER THAN A CONVENIENCE.

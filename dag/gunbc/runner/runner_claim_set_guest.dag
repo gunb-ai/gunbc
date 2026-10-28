@@ -15,6 +15,7 @@ import gunbc.command_runner { run_shell_command_observe_outcome }
 import gunbc.gunbc_cli_command { gunbc_test_command }
 import std.decimal { decimal_digits_only }
 import gunbc.runner.runner_claim_set_results { ClaimSetResult, claim_set_results_frame }
+import std.integer { parse_int }
 
 // THE GUEST'S HALF OF A REVISION JOB, AFTER THE TREE IS VERIFIED AND BUILT.
 //

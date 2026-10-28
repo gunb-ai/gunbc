@@ -9,6 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.numeric.base16 { base16_word_value }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.integer { parse_int }
 
 // /proc/cpuinfo AS THE KERNEL PRINTS IT: one `key<tab>: value` block per logical CPU, blocks separated by
 // a blank line, each opening with `processor : N`. What names the CPU differs by architecture, and both

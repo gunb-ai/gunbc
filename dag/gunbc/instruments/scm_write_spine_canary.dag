@@ -73,6 +73,7 @@ import gunbc.scm.ancestry {
   AncestryWalk, AncestryTraced, AncestryBrokenAt,
   AncestryStartNotInHistory, AncestryRevisitsACommit,
 }
+import std.integer { parse_int }
 
 // THE SLOT COMES FROM ARGV AS TWO STRINGS AND IS REFUSED WHEN EITHER IS EMPTY, once, here. `--arg`
 // values enter as String, so this is the only boundary at which an unchecked String becomes the

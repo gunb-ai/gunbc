@@ -8,6 +8,7 @@ import extdeps.clock { Clock }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.resources { Network }
 import std.algebra { trim }
+import std.integer { parse_int }
 
 // THE SMALLEST SERVICE THAT EXERCISES EVERY DECISION OF THE NATIVE SERVE DOOR, served by
 // `gunbc test //gunbc/instruments:native-serve` (gunbc.native_serve_probe judges what it answers).

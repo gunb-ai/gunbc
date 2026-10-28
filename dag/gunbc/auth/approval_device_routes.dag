@@ -2,7 +2,7 @@ module gunbc.auth.approval_device_routes
 
 import std.types { NonEmptyStr, String, Int, List, Timestamp, HttpStatus }
 import std.logic { Bool }
-import std.integer { UInt8 }
+import std.integer { UInt8, parse_int }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, exit_failure }
 import std.encoding { base64_decode, Standard, UrlSafe }

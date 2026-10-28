@@ -6,6 +6,7 @@ import std.algebra { trim }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
 import std.optional { Present }
 import gunbc.machine_intake.host_capture_envelope { HostCaptureWorkloadShape }
+import std.integer { parse_int }
 
 // WHAT A MILESTONE BOOT MUST SHOW: exactly `threads` hardware threads, ALL of them on `socket`, and
 // no CPU on any other socket. The count alone is not the milestone -- 80 CPUs split 40/40 across

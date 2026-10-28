@@ -24,6 +24,7 @@ import gunbc.fleet.fleet_posix_accounts {
   FleetAccountRoot,
   FleetPosixAccountKey,
 }
+import std.integer { parse_int }
 
 // WHO MAY CHANGE WHAT A MACHINE BOOTS. The directory a controller reads its virtual media from is
 // the payload half of the boot path: write access to it is equivalent to choosing what the host

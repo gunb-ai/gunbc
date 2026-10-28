@@ -11,6 +11,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
+import std.integer { parse_int }
 
 // Identity-keyed review projection. This is the shape the buyer-agent lane binds to: every row
 // keyed by listing identity, every column Derived, OperatorEntered, or ListingStanding. Sheets types

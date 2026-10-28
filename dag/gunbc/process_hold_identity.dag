@@ -18,6 +18,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
   FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
 }
+import std.integer { parse_int }
 
 // A HOLDER THAT IS A PROCESS ON THIS HOST: its identity as this process reads it, its rendering into a
 // hold owner, and whether it still runs -- observed, never aged. Moved MECHANICALLY out of

@@ -162,6 +162,7 @@ import gunbc.runner.runner_slot_retirement {
 import gunbc.runner.runner_host_grants { bootstrap_principal_is_not_the_grantee, runner_host_sudoers_body, RunnerHostSudoersBodyProduced, RunnerHostSudoersBodyRefused, runner_host_sudoers_install_path }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.generated_artifact { RunnerHostSudoersArtifact, artifact_path }
+import std.integer { parse_int }
 
 // THE HOST FILES A RUNNER HOST MUST CARRY FOR ITS SLOTS TO BE TORN DOWN WHOLE, CONVERGED OVER THE
 // FLEET EDGE AS THE HOST'S ADMINISTRATOR.

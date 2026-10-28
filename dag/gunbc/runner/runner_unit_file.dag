@@ -79,6 +79,7 @@ import gunbc.build_cache.build_cache_unit {
   sccache_error_log_env_assignment,
   sccache_cache_dir_env_assignment,
 }
+import std.integer { parse_int }
 
 data gunbc_runner_unit_file_scope_disposition: ConstructionMechanism = SingleAuthority
 

@@ -15,6 +15,7 @@ import gunbc.fleet.fleet_shell_transport_observation {
   ShellTransportReachRefused,
   ShellTransportUnobserved,
 }
+import std.integer { parse_int }
 
 data host_disk_observation_authority_disposition: ConstructionMechanism = SingleAuthority
 

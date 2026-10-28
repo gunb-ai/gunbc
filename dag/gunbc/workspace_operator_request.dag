@@ -19,6 +19,7 @@ import gunbc.workspace_allocation_policy { workspace_operator_principal, workspa
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
 import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, WorkspaceAllocation, workspace_allocation_json, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_request_release_at }
+import std.integer { parse_int }
 
 // OPERATOR-ONLY FIRST REVISION. The owner is the single enrolled operator principal, not a
 // caller-supplied identity: this producer exists so a first request can be recorded while the

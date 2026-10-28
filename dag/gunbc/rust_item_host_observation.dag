@@ -38,7 +38,7 @@ import gunbc.rust_item_scan {
 import std.algebra { trim, list_append, list_snoc_item, fold_list, length, list_head, list_map }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, Set, String }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, parse_int }
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
 //

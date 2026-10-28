@@ -94,6 +94,7 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+import std.integer { parse_int }
 
 // Account-standing observation for the Codex app-server specimen. This module does NOT claim a
 // provider turn. Rate-limit standing is PER limit_id (rateLimitsByLimitId): a live Pro account can

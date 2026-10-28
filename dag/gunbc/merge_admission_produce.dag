@@ -36,6 +36,7 @@ import gunbc.merge_admission_subject {
   parse_git_object_id_wire,
   receipt_wire_lines,
 }
+import std.integer { parse_int }
 
 data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
 

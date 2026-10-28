@@ -5,6 +5,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.access.posix { FileOwnership, FileMode, file_mode_of_octal_text }
 import std.types { Bool, Int, List, NonEmptyStr, Unit }
 import std.algebra { trim }
+import std.integer { parse_int }
 
 // OBSERVING WHO OWNS A PATH, as a modeled operation. extdeps.access.posix owns the CONCEPT --
 // FileOwnership is a uid and a gid, cited to the Open Group's sys/stat.h -- and this module is one

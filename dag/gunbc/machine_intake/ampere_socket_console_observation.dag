@@ -9,6 +9,7 @@ import extdeps.ampere.ras_error_section {
   ampere_ras_section_guid, ampere_ras_section_header_of, ampere_ras_error_type_code, ampere_ras_error_type_reading_text,
 }
 import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_line, text_after }
+import std.integer { parse_int }
 
 // WHAT ONE BOOT'S CONSOLE SAYS ABOUT EACH SOCKET, from two independent printers, as an observation
 // receipt of this repository.

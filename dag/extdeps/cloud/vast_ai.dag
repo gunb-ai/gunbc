@@ -17,6 +17,7 @@ import std.measure {
 import extdeps.currency.currency { CurrencyCode, Usd }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import std.integer { parse_int }
 
 // VAST.AI, THE GPU MARKETPLACE INTERFACE: what its REST API returns for rentable offers. Read
 // 2026-10-11 from docs.vast.ai (search-offers, create-instance). Vast is a marketplace of

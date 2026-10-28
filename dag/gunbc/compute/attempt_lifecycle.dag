@@ -24,6 +24,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
   JsonString, JsonNumber,
 }
+import std.integer { parse_int }
 
 // THE ATTEMPT'S OWN RECORD, AND THE ONE PLACE ITS LIFECYCLE IS DECIDED.
 //

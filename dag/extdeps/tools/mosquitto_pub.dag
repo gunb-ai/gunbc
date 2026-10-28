@@ -13,6 +13,7 @@ import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.tools { CliTool, SourceApt }
 import extdeps.package_managers.apt { apt_bin_dir, package_mosquitto_clients }
 import extdeps.oasis.mqtt { MqttQos, mqtt_qos_wire_level, MqttEndpoint }
+import std.integer { parse_int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

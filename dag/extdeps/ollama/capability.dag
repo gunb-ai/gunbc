@@ -26,6 +26,7 @@ import extdeps.ollama.gpu_support {
   OllamaNvidiaDriverRequirementUnobserved,
   ollama_nvidia_driver_requirement_verdict,
 }
+import std.integer { parse_int }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

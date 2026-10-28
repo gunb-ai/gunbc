@@ -28,6 +28,7 @@ import gunbc.auth.approval_device_wire {
   WireDecode, WireDecoded, WireRefused, wire_object, wire_string, wire_member, wire_refused_at,
   decode_verifying_key_in, decode_signature_bytes_in, verifying_key_json, signature_bytes_json,
 }
+import std.integer { parse_int }
 
 // THE BYTE CONTRACT OF THE DEVICE-CRYPTO VERIFIER SERVICE (gunbc.auth.approval_device_crypto_serve),
 // and nothing else. The service is the broker's verifier for the four DeviceCryptoObligation rows

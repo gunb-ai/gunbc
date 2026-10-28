@@ -14,6 +14,7 @@ import gunbc.serve_liveness {
   ServeLivenessRevisionAbsent, ServeLivenessRevisionDuplicated, ServeLivenessRevisionNotAString,
   ServeLivenessRevisionMalformed
 }
+import std.integer { parse_int }
 
 // THE READER FOR `gunbc test //gunbc/instruments:native-serve`. The seed host emits and builds
 // gunbc.instruments.native_serve_fixture, starts it, writes each request below to a real TCP

@@ -44,6 +44,7 @@ import gunbc.runner.runner_slot_allocation {
   SlotServesGitHubActions,
   SlotServesFabricExecution,
 }
+import std.integer { parse_int }
 
 // SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width,
 // admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a

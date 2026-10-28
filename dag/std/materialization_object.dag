@@ -46,6 +46,7 @@ import std.materialization_provider {
   carried_outputs_digest, request_artifact_binding, request_artifact_binding_at, lookup_fold,
   provider_lookup_outcome_tag,
 }
+import std.integer { parse_int }
 
 // THE REALIZATION-AGNOSTIC HALF OF A PERSISTENT MATERIALIZATION STORE.
 //

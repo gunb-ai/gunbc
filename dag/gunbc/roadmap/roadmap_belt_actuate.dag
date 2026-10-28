@@ -703,6 +703,7 @@ import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.integer { parse_int }
 
 // Slice 2b actuation: the belt DECISION (gunbc.roadmap.roadmap_belt.belt_reconcile) is CLOSED against the
 // host by three single-authorities — the actuator's HostExecArgv argv model
@@ -16164,7 +16165,7 @@ fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: HostSpool
           let cmd = stat_mtime_epoch_command(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", n], ""))
           match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
             ExecOk { stdout } =>
-              match parse_int(text: trim(stdout)) {
+              match parse_int(s: trim(stdout)) {
                 Present { value: t } =>
                   if t >= 0 {
                     BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: stage, entry: n, mtime_epoch: t as EpochSecs }]) }

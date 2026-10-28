@@ -19,6 +19,7 @@ import extdeps.systemd {
 import extdeps.systemd.systemctl { systemd_major_version }
 import extdeps.exec.command { ArgvCommand, argv_command, argv_words }
 import extdeps.systemd.unit_file { LoadCredential, systemd_service_directive_line }
+import std.integer { parse_int }
 
 // EmptyCapabilityBoundingSet is the empty capability-set carrier: systemd.exec(5)
 // CapabilityBoundingSet= with no names drops every capability. It is its own arm, not a

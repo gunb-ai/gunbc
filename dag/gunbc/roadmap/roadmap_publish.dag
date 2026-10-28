@@ -33,6 +33,7 @@ import extdeps.languages.json.parse {
   JsonMemberDuplicated,
   JsonMemberNotAnObject,
 }
+import std.integer { parse_int }
 
 // PUBLICATION IS ADJUDICATED AGAINST AN EXACT HEAD, NOT LOOKED UP BY BRANCH (operator ruling,
 // 2026-07-31). An earlier cut answered 'which pull request belongs to this branch' — a lookup, not a

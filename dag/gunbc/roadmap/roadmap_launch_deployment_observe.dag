@@ -25,6 +25,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_tick_receipt_decode,
 }
+import std.integer { parse_int }
 
 // LIVE HTTP OBSERVATIONS OF THE DEPLOYED PUBLIC ROUTES, DECODED INTO THE TYPES THE ROUTES
 // SERIALIZE. The RLM-2 ruling (section 5) rejects renderers as evidence:

@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import std.measure { Second }
+import std.integer { parse_int }
 
 // ── ONE INCARNATION AND ONE DEADLINE, END TO END (side-chat ruling on #13319 at 43cc61a0) ─────────
 //

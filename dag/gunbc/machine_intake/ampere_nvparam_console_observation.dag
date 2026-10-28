@@ -10,6 +10,7 @@ import extdeps.ampere.nvparam {
   NvParamKey, NvParamKeyReading, NvParamKeyDefined, NvParamKeyUndefined, nvparam_key_index, nvparam_key_in, nvparam_key_text, nvparam_size, nvparam_region_start, nvparam_region_max,
 }
 import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_line }
+import std.integer { parse_int }
 
 // THE NVPARAM DUMP A BOOT PRINTS, READ INTO NAMED SETTINGS. The firmware's PrintNVRAM
 // (edk2-platforms@2170c80c Silicon/Ampere/AmpereAltraPkg/Drivers/DebugInfoPei/DebugInfoPei.c) walks

@@ -11,6 +11,7 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Https, Uri }
 import extdeps.linux.kernel { LinuxKernelRelease }
 import std.optional { Present, Absent }
+import std.integer { parse_int }
 
 // /proc/diskstats, Documentation/admin-guide/iostats.rst. The 14-field-after-name layout this
 // module reads has been stable since 2.6; later kernels APPEND discard (4.18) and flush (5.5)

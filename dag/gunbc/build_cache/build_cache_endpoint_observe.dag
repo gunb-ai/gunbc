@@ -75,6 +75,7 @@ import gunbc.runner.runner_slot_allocation {
   runner_width_unresolved_cause_text,
 }
 import product.host_identity { HostIdentity }
+import std.integer { parse_int }
 
 data build_cache_endpoint_observe_scope_disposition: ConstructionMechanism = SingleAuthority
 

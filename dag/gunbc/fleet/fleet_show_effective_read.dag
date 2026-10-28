@@ -63,6 +63,7 @@ import gunbc.systemctl_show_read {
 }
 import std.measure { percent_count }
 import std.realization_reconcile { ReadAbsent, ReadObserved, ShowEffectiveRead }
+import std.integer { parse_int }
 
 
 type RunnerSliceCapLiveReadRow {

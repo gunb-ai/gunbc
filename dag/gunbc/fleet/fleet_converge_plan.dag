@@ -238,7 +238,7 @@ import gunbc.runner.runner_service_activation {
   runner_activation_safety_report,
 }
 import extdeps.access.posix { file_mode_octal }
-import std.integer { int_to_decimal_string }
+import std.integer { int_to_decimal_string, parse_int }
 
 type TimerRetirementMemberAt = NonEmptyStr
 

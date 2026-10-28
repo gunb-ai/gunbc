@@ -14,6 +14,7 @@ import std.checked_arithmetic { checked_int_to_nat }
 import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import extdeps.transports.shell { ShellExchangeObservation, ShellProcessExited }
 import extdeps.transports.file { FileExchangeObservation }
+import std.integer { parse_int }
 
 // A MODELED OPERATION REALIZATION: the dry arm of an operation's realization, bound per grant.
 //

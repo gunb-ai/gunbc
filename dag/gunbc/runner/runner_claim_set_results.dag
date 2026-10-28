@@ -13,6 +13,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex }
 import gunbc.fabric.fabric_witness_run { VerifiedGitCommitTree }
 import std.decimal { decimal_digits_only }
 import gunbc.target_invocation { ClaimRouteVerdict, claim_route_verdict_exit, claim_route_verdict_of_exit }
+import std.integer { parse_int }
 
 // THE CLAIM-SET RESULTS FRAME: WHAT A REVISION JOB'S GUEST HANDS BACK, AND HOW THE HOST READS IT.
 //

@@ -58,6 +58,7 @@ import gunbc.runner.runner_revision_job_receipt {
   RevisionJobReceiptDocument, RevisionJobPublication, RevisionJobPublished, RevisionJobAlreadyPublished, RevisionJobPublicationRefused,
   publish_revision_job_receipt,
 }
+import std.integer { parse_int }
 
 // ONE REVISION JOB, FROM ITS SPEC TO ITS PUBLISHED RECEIPT. This replaces the hand-run qualification
 // scripts: the submitter writes a spec (gunbc.runner.runner_revision_job_spec), and this entry runs it

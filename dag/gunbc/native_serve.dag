@@ -7,6 +7,7 @@ import extdeps.http.server { ServeWireResponse, ServeWireHeader }
 import gunbc.running_release_identity { release_revision_text_valid }
 import extdeps.tailscale.identity { tailscale_user_login_header }
 import gunbc.serve_liveness { serve_liveness_path, serve_liveness_document }
+import std.integer { parse_int }
 
 // THE NATIVE SERVE DOOR: EVERYTHING A SERVED REQUEST DECIDES, AS FOLDS THE RENDERED MAIN CALLS.
 //

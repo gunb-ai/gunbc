@@ -2,6 +2,7 @@ module gunbc.emit_diagnostic_observation
 
 import std.types { Bool, Int, String }
 import std.measure { ByteSize, byte_size, byte_size_count }
+import std.integer { parse_int }
 
 // THE EMIT STAGE'S OWN POPULATION, decoded from the only surface `gunbc compile` offers.
 //

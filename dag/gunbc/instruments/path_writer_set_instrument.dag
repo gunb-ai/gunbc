@@ -38,6 +38,7 @@ import gunbc.path_writer_set {
   writer_set_response,
   writer_set_refusal
 }
+import std.integer { parse_int }
 
 // THE WRITER-SET INSTRUMENT: the observation half.
 //

@@ -9,6 +9,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound,
 }
 import product.capacity.event_chain { PartitionId, EventId, ChainEvent, EventDecode, EventDecoded, EventUndecodable }
+import std.integer { parse_int }
 
 // ── THE ENVELOPE ON THE WIRE, ONCE, FOR EVERY PARTITION KIND ────────────────────────────────────
 //

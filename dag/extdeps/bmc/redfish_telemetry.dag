@@ -19,6 +19,7 @@ import gunbc.scm.json_member {
   read_string_member,
 }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.integer { parse_int }
 
 // WHAT A REDFISH SERVICE SAYS ABOUT A SENSOR, A THERMAL SUBSYSTEM AND A LOG, as the DMTF schemas
 // define those resources -- and nothing about what the readings mean for a host.

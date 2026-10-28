@@ -22,6 +22,7 @@ import extdeps.languages.json.parse {
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject
 }
 import std.host_text { chars }
+import std.integer { parse_int }
 
 // A CREDENTIAL-ISOLATED BOUNDARY FOR HEAL REPAIRS (gunbc#10958), bidirectional and stated as an
 // invariant rather than a convention:

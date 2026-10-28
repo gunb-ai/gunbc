@@ -20,6 +20,7 @@ import gunbc.actions_run_binding {
   JsonStringMemberFound, JsonStringMemberRefused,
   actions_run_binding_identity_text,
 }
+import std.integer { parse_int }
 
 // THE TYPED PLAN AND APPLY RECEIPTS THE FLEET TRANSACTION LACKED. gunbc.fleet.fleet_converge_plan_cli
 // flattened both wet entries to ProcessExit: the plan artifact on disk carried the subject,

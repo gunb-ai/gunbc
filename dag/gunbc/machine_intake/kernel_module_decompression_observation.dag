@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.optional { Present }
 import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_prefix, linux_module_zstd_decompress_failed_stem, ZstdErrorCode, zstd_error_code_of, zstd_error_code_name }
 import extdeps.kmod.libkmod { libkmod_insert_failed_prefix, libkmod_insert_failed_stem, libkmod_insert_failed_path_end }
+import std.integer { parse_int }
 
 // WHAT A RETAINED CONSOLE CAPTURE SAYS ABOUT IN-KERNEL MODULE DECOMPRESSION, AT ITS REAL STRENGTH.
 //

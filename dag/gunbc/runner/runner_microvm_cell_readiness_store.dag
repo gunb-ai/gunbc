@@ -44,6 +44,7 @@ import gunbc.runner.runner_microvm_cell_readiness {
   CellReadinessWrite, CellReadinessWriteResult, WriteAccepted, apply_cell_readiness_write, record_of_write,
   record_cell,
 }
+import std.integer { parse_int }
 
 data runner_microvm_cell_readiness_store_disposition: ConstructionMechanism = SingleAuthority
 

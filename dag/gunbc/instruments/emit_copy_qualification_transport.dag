@@ -32,6 +32,7 @@ import gunbc.emit_copy_qualification_fixture_gen {
   fixture_module_text, fixture_module_name, driver_module_text, runner_main_text,
   shard_case_rows, shard_cardinalities, shard_runner_bin_name
 }
+import std.integer { parse_int }
 
 // EMIT-COST-QUAL-0 wet transport: the one transaction that takes a carrier shard from generated
 // .dag source through the PRODUCTION emission door (the real `gunbc compile` binary — never a

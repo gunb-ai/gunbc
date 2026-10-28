@@ -19,6 +19,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
+import std.integer { parse_int }
 
 // PRIVILEGED HOST APPLY OVER SSH, WITHOUT A SERVING REALIZATION. The Spark pair/native serving
 // apply used this leg shape; serving actuation is retired (hardware sold). Fabric rail apply still
