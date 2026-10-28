@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_module_level_value_in_pattern_position_reads_as_a_binder
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { AtCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+
+data a_module_level_value_in_pattern_position_reads_as_a_binder: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_module_level_value_in_pattern_position_reads_as_a_binder" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: AtCeiling { rung: StructurallyGuaranteed, ceiling_reason: "whether a pattern atom names a visible value is decided by the index's declaration-shape fact (a data row is an Arrow marked ConstantMemberEdge), and every such atom refuses resolve_reason_pattern_atom_names_visible_value; no Accepted program reads a visible value as a fresh binder." as NonEmptyStr } },
+
+  receipts: [
+    "INVALID STATE: a bare pattern atom names a module-level `data` row the author meant to COMPARE against (a constant pattern, which neither compiler has). Specimen: v2.extdeps.languages.wasm wasm_integer_inhabitant_id / wasm_float_inhabitant_id matched facts against `wasm_facts_i32 => ..`.",
+
+    "HARM: the seed reads every bare lowercase atom as a binder, so the first arm took every value and f64 facts got the f32 id, silently (fixed directly by the catch-all codemod PR, which dispatches on width, with a RED). In v2 after gunbc#15125 an atom naming no declared payload is a binder: if its arm does not read it, it refuses resolve_reason_catch_all_binder_unread, which is loud but carries the wrong remedy (`_`); if its arm DOES read it (`fa => fa`), it binds the scrutinee and is Accepted silently.",
+
+    "WHAT IS ALREADY DECIDED: an atom naming a value of an ENCLOSING FRAME (a parameter or `let`) refuses resolve_reason_pattern_atom_names_visible_value (remedy: rename to bind, or use an equality guard to compare), the A2 rule. A MODULE-level name is not decided, because v2.std.symbol_index type_decl_member_shape answers TypeDeclShapeValue for every NotATypeDecl declaration, an `fn` and a `data` row alike, so symbol_index_candidate_category cannot tell a constant from a callable. Applying the rule at module level today would refuse every binder spelled like any visible module function (measured in a prototype on 2026-10-25: it reversed mab_shadowing_binder_binds_the_arm, mab_binder_spelling_a_record_data_row_binds and #15125's own RED device).",
+
+    "THE PLAN (tidy-ant-251, Manager 1, 2026-10-25, queued to jolly-cat-271): first a census of every consumer of the value and callable categories, since value-reference eligibility admits callables today and must not change silently; then split NotATypeDecl by the declaration's own fact, with no new carrier; then the module-level constant-pattern rule, with the wasm shape at module level as its RED, deciding mab_binder_spelling_a_record_data_row_binds there with its reason.",
+
+    "RUNG: found BELOW the ladder (silent when the arm reads the atom). Ceiling structurally guaranteed: whether a name is a visible module-level value is decidable once the index carries the shape fact.",
+
+    "CLIMBED IN gunbc#15125 (tidy-ant-251 option (1), 2026-10-25), because `fa => fa` was Accepted silently on that PR's earlier head, where it had refused before: v2.std.symbol_index type_decl_member_shape splits NotATypeDecl by the declaration's own fact (an Arrow marked ConstantMemberEdge, read through its one reader v2.std.node_query arrow_constant_member_codomain, is a value; any other Arrow is a callable), and v2.compiler.resolve resolve_pattern_atom_names_module_value refuses a pattern atom naming a visible module-level value with the same cause as a frame value. REDs: v2.test.claim.match_arm_binder_frame mab_a_module_constant_in_pattern_position_refuses_naming_both_readings (the wasm shape, and `fa => fa`); a binder spelled like a module FUNCTION still binds (mab_a_binder_spelled_like_a_module_function_still_binds); the record-data control is reversed with its reason (mab_binder_spelling_a_record_data_row_refuses).",
+
+    "REVIEW TELL: a match whose arms are bare lowercase names of the module's own `data` rows.",
+  ],
+
+  evidence: [],
+}

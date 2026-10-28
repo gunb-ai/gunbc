@@ -585,6 +585,8 @@ fn stage_key_file(key: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging ad
 
 fn stage_controller_app_key(wif_access_token: Secret, key_path: NonEmptyStr) -> ControllerKeyStaging uses net: Network admit_callers: [
   decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "sweep_under_staged_key"),
+  decl_ref(module_path: "gunbc.runner.runner_lost_boot_sweep_run", decl_name: "dry_run_under_staged_key"),
+  decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
 ] {
   match gcp.SecretManager.AccessVersion(
     access_token: wif_access_token,

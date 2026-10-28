@@ -27,7 +27,7 @@ import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, 
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, trust_root_ceremony_entry }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
-  iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned,
+  iam_bootstrap_resource_key, iam_bootstrap_identity_federations, iam_bootstrap_cell_owner, BootstrapCellOwner, RootCeremonyOwned, DeltaOwned, ceremony_cell_phrase,
 }
 import gunbc.auth.gcp_iam_bootstrap { iam_bootstrap_read_policy, iam_bootstrap_write_policy, BootstrapPolicyWritten, BootstrapPolicyWriteRefused, iam_bootstrap_publish_initial_pool_policy, iam_bootstrap_ensure_bare_secret, BareSecretOutcome, BareSecretSettled, BareSecretRefused, PoolInitApprovedDelta, PoolPublication, PoolPublicationSettled, PoolPublicationRefused }
 import gunbc.auth.gcp_iam_bootstrap_delta {
@@ -83,8 +83,11 @@ fn missing_root_cells(s: SubjectNotBootstrapped) -> List<RootCellMissing> {
   })
 }
 
+// THE CELL ITSELF IS SPOKEN WITH ceremony_cell_phrase -- the SAME phrase the ceremony's post-run proof
+// uses (gunbc.auth.gcp_iam_bootstrap_model) -- so the delta's refusal and the ceremony's refusal name a
+// cell identically and cannot drift into two dialects for one fact (DESIGN section 2/3).
 fn root_cell_missing_text(m: RootCellMissing) -> String {
-  join([iam_bootstrap_resource_key(resource: m.subject), " ", m.binding.cell.role, " to ", m.binding.cell.member, ": repair with ", trust_root_ceremony_entry(ceremony: m.ceremony)], "")
+  join([ceremony_cell_phrase(b: m.binding), ": repair with ", trust_root_ceremony_entry(ceremony: m.ceremony)], "")
 }
 
 type BootstrapDeltaRequestBody {
