@@ -4373,7 +4373,7 @@ jobs:
         id: writer_token
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
-          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-review-sheet-converge/providers/github-review-sheet-converge-oidc
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-review-sheet-converge/providers/github-review-sheet-oidc
           service_account: review-sheet-writer@gunbai-sheets.iam.gserviceaccount.com
           delegates: review-sheet-converge@gunbai-secrets.iam.gserviceaccount.com
           token_format: access_token

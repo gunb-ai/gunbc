@@ -442,10 +442,16 @@ data a16_end_cap_scroll_is_the_operators_reference_design: DesignRuling = Design
   decided: "2026-10-27",
   section: "4d",
   provenance: "Operator, 2026-10-27, to session snappy-boar-382, proposing the shape the A16 cooling should take, and naming it as a reference rather than a part to buy (an end-cap scroll: a small centrifugal blower at the card's plug end with its wheel axis perpendicular to the card face, taking air in sideways, and a short curved scroll turning the flow straight into the heatsink's end; wheel diameter about the card height, staying roughly within card height, a little behind the end and a little to one side). Ruled here because it settles which SHAPE the design is allowed to pursue, which is the operator's call, and because the shape came from a picture the operator chose, not from a catalogue: there is no vendor, no model and no datasheet behind it, so it is carried in product.printed_chassis.card_cooling_route as a hypothetical planform named for what it is (hypothetical_blower_shape) -- a shape the corpus may reason about and may not buy, and any real blower eventually chosen arrives with its own citation obligations in the extdeps.fans pattern. The reference is a preference between shapes and nothing more: it does not admit the home, and the scroll's envelope, its largest wheel that fits the measured gaps, and the airflow it must deliver are derived in card_cooling_route, not assumed here.",
+data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
+  decided: "2026-10-28",
+  section: "Building & checks",
+  provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
 }
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
     native_claim_route_admits_the_docker_cli,
     emit_build_subjects_are_the_two_compiler_products,
