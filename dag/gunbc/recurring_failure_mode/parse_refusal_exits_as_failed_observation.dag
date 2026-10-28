@@ -1,10 +1,14 @@
 module gunbc.recurring_failure_mode.parse_refusal_exits_as_failed_observation
 
 import std.types { NonEmptyStr }
-import gunbc.recurring_failure_mode { RecurringFailureMode }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data parse_refusal_exits_as_failed_observation: RecurringFailureMode = RecurringFailureMode {
   identity: "parse_refusal_exits_as_failed_observation" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the module-index walk returning its parse refusal as a typed result carrying whether the unparsable file is inside or outside the entry's closure, with each command boundary mapping the outside-closure case to exit 2" } },
 
   receipts: [
     "**a refusal that made no observation is reported with the exit that means the observation did not hold** (found by the C4-B measurement, gunbc#14369). DESIGN Building & checks fixes the contract: exit 0 the observation held, 1 it did not, 2 there was no observation. An unparsable `.dag` in the module-index walk that the entry's closure does not reach is the second case, the claim was not reached and says nothing about it (one inside the closure is a finding, exit 1, like a name or type error), yet `cli_run` `refuse_unparseable_module_sources` ends the process with exit 1 for every command that builds the index, `gunbc test`, `claim_batch` and `claim_executor --required-regen` among them. The refusal itself is loud, typed and located, so this is not a fail-open; the harm, for the outside-closure case, is a caller that branches on 1 versus 2 reading a located parse refusal as a failed claim.",

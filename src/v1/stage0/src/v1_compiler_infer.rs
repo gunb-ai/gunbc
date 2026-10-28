@@ -418,15 +418,15 @@ pub use crate::v1_std_core::{
     record_lit_named_field_value_optional, record_lit_type_name_at,
     resolved_node_is_kernel_identity_for_name, resource_use_name_at, resource_use_resource,
     return_value, service_config_field_for_property_name, slice_base, slice_end, slice_start,
-    string_type, type_name_compatible, type_reference_provenance, type_variable_binder_name,
-    unaryop_operand, unit_type, variant_node_fields, with_optional_cardinality,
-    with_required_cardinality, AdmitCallersEntry, CallSemantics, CallTargetIdentity, Cardinality,
-    CompilerDiagnostic, Connective, DeclRefCoords, DeclarationMarker, DeclaredCallableIdentity,
-    DeclaredFuncEnv, DeclaredFuncSig, ErrorNode, ExprData, ExprErrorKind, FieldAccessSpine,
-    FieldAccessStyle, FieldSummary, FieldValueShape, FrontierOccurrenceKey, InferredNode,
-    InternTable, MatchPattern, MethodSemantics, NewlineIndex, Node, ParsedModuleItemKind,
-    ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart, UnaryOpKind,
-    VarBindingKind,
+    string_type, symbol_type, type_name_compatible, type_reference_provenance,
+    type_variable_binder_name, unaryop_operand, unit_type, variant_node_fields,
+    with_optional_cardinality, with_required_cardinality, AdmitCallersEntry, CallSemantics,
+    CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, DeclRefCoords,
+    DeclarationMarker, DeclaredCallableIdentity, DeclaredFuncEnv, DeclaredFuncSig, ErrorNode,
+    ExprData, ExprErrorKind, FieldAccessSpine, FieldAccessStyle, FieldSummary, FieldValueShape,
+    FrontierOccurrenceKey, InferredNode, InternTable, MatchPattern, MethodSemantics, NewlineIndex,
+    Node, ParsedModuleItemKind, ResolvedCallFormal, ResolvedFormal, ServiceConfigField, StringPart,
+    UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -4837,6 +4837,10 @@ pub fn kernel_value_declared_type_mismatch(
     )
 }
 
+pub fn is_minted_caret_symbol(n: Rc<Node>) -> bool {
+    (n.clone() == symbol_type())
+}
+
 pub fn kernel_value_declared_type_mismatch_bounded(
     mut __tco_loop_formal: Rc<Node>,
     mut __tco_loop_actual: Rc<Node>,
@@ -4879,7 +4883,8 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                     source_indices.clone(),
                     actual_base.clone(),
                 );
-                if ((crate::std_types::is_kernel_type(actual_name.clone()) == false)
+                if (((crate::std_types::is_kernel_type(actual_name.clone()) == false)
+                    && (is_minted_caret_symbol(actual_base.clone()) == false))
                     || (actual_name.clone() == "Unit".to_string()))
                 {
                     break false;
@@ -4892,7 +4897,11 @@ pub fn kernel_value_declared_type_mismatch_bounded(
                     } else {
                         formal_name_override.clone()
                     };
-                    if (((formal_name.clone() == "".to_string())
+                    let symbol_at_text = ((is_minted_caret_symbol(actual.clone())
+                        || is_minted_caret_symbol(actual_base.clone()))
+                        && (crate::v1_std_core::qualified_last_segment(formal_name.clone())
+                            == "String".to_string()));
+                    if ((((formal_name.clone() == "".to_string()) || symbol_at_text.clone())
                         || (crate::v1_std_core::qualified_last_segment(formal_name.clone())
                             == crate::v1_std_core::qualified_last_segment(actual_name.clone())))
                         || crate::std_coercion::dag_can_cast(
@@ -35719,6 +35728,7 @@ pub fn build_emit_graph_info(
             fn_decl_items: built.fn_decl_items.clone(),
             fn_decl_identity_items: built.fn_decl_identity_items.clone(),
             fn_map_key_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            fn_equality_bounds: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             recursive_type_set: all_recursive.clone(),
             fielded_variants: variant_shapes.fielded.clone(),
             positional_payload_variants: variant_shapes.positional_payload.clone(),
