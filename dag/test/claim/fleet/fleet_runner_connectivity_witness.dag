@@ -265,9 +265,9 @@ test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
 // a composition that dropped a label would turn the positive control red.
 //
 // SRV4'S SET CARRIES gunbc-user-session because gunbc.runner.runner_host_deploy
-// runner_job_user_session_hosts names srv4; that row's converge receipt is carried as data beside it
-// (runner_job_user_session_converge_run_id + runner_job_user_session_converge_readback). The composition
-// derives the label from that row, so this fixture spells
+// runner_job_user_session_hosts names srv4 AND its converge receipt row holds
+// (gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_rows). The composition
+// derives the label from that gate, so this fixture spells
 // the set the row entails: deleting srv4's row would turn the two positive controls red here, which is
 // the point -- the roster check notices a host that lost its user session. srv3's controls are
 // unchanged, because srv3 has no row and gains nothing.

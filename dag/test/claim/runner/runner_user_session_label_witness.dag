@@ -1,21 +1,22 @@
 module test.claim.runner.runner_user_session_label_witness
 
-// THE CLAIM: the user-session label is granted by the row, and by nothing else.
+// THE CLAIM: the user-session label is granted by the roster AND its receipt, and by nothing else.
 //
-// gunbc.runner.runner_host_deploy runner_job_user_session_hosts is the only authority for
-// gunbc.runner.runner_registration_labels gunbc_user_session_label. The controls drive each channel a
-// label could reach the registration through, rather than restating the grant:
-//   1. THE ROW ITSELF -- srv4 registers with it, because the row names srv4 and its converge receipt is
-//      recorded as data beside the row (gunbc.runner.runner_host_deploy
-//      runner_job_user_session_converge_run_id + runner_job_user_session_converge_readback; DESIGN 4c
-//      keeps a machine claim's receipt in a typed carrier, never in prose). srv1 and srv3 carry no row
-//      and must not appear in the population that can take a user-session job.
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts names the converged hosts, and
+// gunbc.runner.runner_user_session_receipt runner_user_session_converge_receipt_rows carries what a
+// converge run read back for each one -- the composition (gunbc.runner.runner_registration_labels
+// gunbc_user_session_label) grants the label only to a host that is BOTH rostered and backed by a
+// holding receipt row. The controls drive each channel a label could reach the registration through,
+// rather than restating the grant:
+//   1. THE GATE -- srv4 registers with it; a host FORGED INTO the roster, with no receipt row, must not.
+//      That forged-roster control is what makes the receipt a gate and not a caption: it fails the moment
+//      the label is derived from the list alone.
 //   2. THE CLASS-ARGUMENT CHANNEL -- runner_registration_labels_of_class takes class_labels from its
 //      caller, so a forged argument must not be able to grant the label.
 //   3. THE HOST-SPELLABLE PLATFORM HALF -- the composition strips the label from the offer-derived half
-//      before re-adding it from the row (today that half is derived from supply facts with custom: [], so
+//      before re-adding it from the gate (today that half is derived from supply facts with custom: [], so
 //      this guards the channel an offer row would open, and the strip is what keeps it closed).
-//   4. THE SLOT GRAIN -- the CI slot follows its host's row, and the deploy slot (a different principal)
+//   4. THE SLOT GRAIN -- the CI slot follows its host's gate, and the deploy slot (a different principal)
 //      does not inherit the host's capability.
 //   5. THE CONSUMER -- the label's consumer is the runs-on selector of the jobs that run a command under
 //      the job account's user manager: gunbc#14972's credential-acquisition rows, realized today by
@@ -23,16 +24,16 @@ module test.claim.runner.runner_user_session_label_witness
 //      is recorded beside the row). The consumer control checks that selector, built the way the emitter
 //      builds a host-pinned spec, against what each host's registration actually advertises.
 //
-// Each control states the mechanism it refuses and what main would answer without the guard. The row is
-// the fleet's own declaration: these are statements about it, so a row edit that changed who holds a user
-// session moves them, which is exactly what makes them controls instead of tautologies.
+// Each control states the mechanism it refuses and what main would answer without the guard. The roster
+// and the receipt rows are the fleet's own declarations: these are statements about them, so an edit that
+// changed who holds a user session moves them, which is exactly what makes them controls instead of
+// tautologies.
 //
-// WHAT THIS DOES NOT CHECK. That srv4's user manager is up RIGHT NOW is a live fact; its evidence is the
-// converge receipt the cited data names, not this interpreter. What this file checks is that the label
-// follows the row and nothing else. A REFUSAL IS NOT AN ABSENCE either: the controls that assert the
-// label is NOT there require the host to have resolved, so a host whose facts stopped resolving makes
-// them false rather than vacuously green -- matching how every other control in this file already treats
-// RegistrationLabelsRefused.
+// A REFUSAL IS NOT AN ABSENCE, AND NO HELPER HIDES ONE. There is no labels_of with a Refused => []
+// default: every control matches the RunnerRegistrationLabelsResolution directly, so a host whose facts
+// stopped resolving makes that control FALSE rather than vacuously green (reviews 86935 and 87051;
+// DESIGN 5: "no plausible output is fabricated" -- a folded-in empty list is exactly the fabricated
+// default a later control would inherit).
 
 import std.types { String, Bool, Int, List }
 import std.optional { Optional, Present, Absent }
@@ -43,16 +44,19 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3,
 import gunbc.runner.runner_registration_labels {
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
   gunbc_user_session_label, runner_registration_labels, runner_registration_labels_of_class,
-  runner_slot_registration_labels, runner_user_session_labels_for, runner_user_session_label_stripped,
+  runner_slot_registration_labels, runner_user_session_labels_for, runner_user_session_labels_of_roster,
+  runner_user_session_label_stripped,
 }
-import gunbc.runner.runner_host_deploy {
-  runner_job_user_session_on,
-  runner_job_user_session_converge_run_id, runner_job_user_session_converge_readback,
+import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
+import gunbc.runner.runner_user_session_receipt {
+  runner_user_session_converge_receipt_for, runner_user_session_converge_receipt_row_holds,
+  runner_user_session_converge_receipt_holds,
 }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
+import extdeps.github.workflow_runs { github_workflow_run_id_is_positive }
 import extdeps.github.actions { SelfHosted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,78 +69,77 @@ fn label_count(labels: List<String>) -> Int {
   length(filter(labels, l => l == gunbc_user_session_label))
 }
 
-// A REFUSAL IS NOT AN ABSENCE. These two helpers carry the resolution status instead of folding it into
-// the empty list: `resolved` is what makes the negative controls falsifiable -- a host that stopped
-// resolving fails them -- and `labels_of` answers only for hosts that resolved, so it has no fabricated
-// default to hide behind (DESIGN 5: a fabricated default is a hard reject).
-fn resolved(reg: RunnerRegistrationLabelsResolution) -> Bool {
-  match reg {
-    RegistrationLabelsResolved { labels: _ } => true
-    RegistrationLabelsRefused { host: _, cause: _ } => false
-  }
-}
-
-fn labels_of(reg: RunnerRegistrationLabelsResolution) -> List<String> {
-  match reg {
-    RegistrationLabelsResolved { labels: ls } => ls
-    RegistrationLabelsRefused { host: _, cause: _ } => []
-  }
-}
-
+// THE HOST ANSWERED, THEN THE CHECK RUNS. A Refused resolution matches to false in every control below,
+// so "the label is absent" is only credited when the host actually resolved and the label genuinely was
+// not there.
 fn srv4_ci_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
 }
 
-// THE ROW AS THE FLEET RECORDS IT. srv4 only: a host joins by joining the list, so this is the same fact
-// the converge's readback wrote, read from its single source.
-test fn the_row_names_srv4_alone_as_holding_a_user_session() -> Bool {
-  runner_job_user_session_on(host: operator_host_srv4)
-    && !runner_job_user_session_on(host: operator_host_srv1)
-    && !runner_job_user_session_on(host: operator_host_srv3)
+// THE GATE, FROM BOTH SIDES. srv4 is rostered AND receipted, and registers with the label. The forged
+// roster is the control that makes the receipt load-bearing: srv1 forged INTO the roster (the list a
+// second host would join) still gets nothing, because no converge run ever read its user manager back.
+// If the grant ever goes back to reading the list alone -- the shape review 87054 cut -- the forged arm
+// goes red. The positive arm is no decoration: a gate that always refused would fail it.
+test fn the_roster_grants_nothing_without_a_receipt_row() -> Bool {
+  match runner_registration_labels(host: operator_host_srv4) {
+    RegistrationLabelsResolved { labels: ls } => has_label(labels: ls)
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
+    && runner_user_session_labels_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts)
+      == [gunbc_user_session_label]
+    && runner_user_session_labels_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) == []
+    && !has_label(labels: runner_user_session_labels_for(host: operator_host_srv1))
 }
 
-// THE POSITIVE CONTROL: the row reaches the registration. On main this is RED the other way -- the label
-// does not exist, so srv4 advertises no user session and gunbc#14972's credential-acquisition rows have
-// nothing to select on. Resolving is a precondition, not a fifth label test.
-test fn srv4_registers_with_the_user_session_label() -> Bool {
-  let reg = runner_registration_labels(host: operator_host_srv4)
-  resolved(reg: reg) && has_label(labels: labels_of(reg: reg))
-    && has_label(labels: runner_user_session_labels_for(host: operator_host_srv4))
-}
-
-// THE NEGATIVE CONTROLS: a host with no row gains nothing. On main this passes vacuously because the
-// label never appears anywhere; the guard is what turns the absence into a rule. If srv1 or srv3 stopped
-// resolving (its compute offer deleted) they would REFUSE, and this control goes red -- an absence is
-// only allowed to mean "the row does not name it", never "the host could not answer".
+// THE NEGATIVE CONTROLS: a host that is neither rostered nor receipted gains nothing, and the absence is
+// only credited on a RESOLVED registration -- if srv1 or srv3 stopped resolving (its compute offer
+// deleted) they would Refuse, and this control goes red. An absence is only allowed to mean "the gate
+// does not admit it", never "the host could not answer".
 test fn an_unconverged_host_never_gains_the_label() -> Bool {
-  let srv1 = runner_registration_labels(host: operator_host_srv1)
-  let srv3 = runner_registration_labels(host: operator_host_srv3)
-  resolved(reg: srv1) && resolved(reg: srv3)
-    && !has_label(labels: labels_of(reg: srv1))
-    && !has_label(labels: labels_of(reg: srv3))
-    && runner_user_session_labels_for(host: operator_host_srv1) == []
-    && runner_user_session_labels_for(host: operator_host_srv3) == []
+  match runner_registration_labels(host: operator_host_srv1) {
+    RegistrationLabelsResolved { labels: srv1 } =>
+      match runner_registration_labels(host: operator_host_srv3) {
+        RegistrationLabelsResolved { labels: srv3 } =>
+          !has_label(labels: srv1) && !has_label(labels: srv3)
+            && runner_user_session_labels_for(host: operator_host_srv1) == []
+            && runner_user_session_labels_for(host: operator_host_srv3) == []
+        RegistrationLabelsRefused { host: _, cause: _ } => false
+      }
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
 }
 
-// srv4'S ELIGIBILITY NAMES ITS RECEIPT, AS DATA (DESIGN 4c). The converge that produced srv4's row
-// reported enable_linger=ok, linger=yes, user_manager=answered, and the run that reported them is
-// fleet-converge run 40270496735 at 8353c21c84a. Those facts live in runner_host_deploy beside the row;
-// this control refuses if the carrier has been emptied, so the label claim cannot outlive its evidence.
-test fn srv4_eligibility_names_its_converge_receipt() -> Bool {
-  runner_job_user_session_converge_run_id == "40270496735"
-    && runner_job_user_session_converge_readback == "enable_linger=ok, linger=yes, bus=present"
+// THE GATE READS THE RECEIPT, NOT A SENTENCE ABOUT IT (DESIGN 4c). srv4's row exists, every reading in
+// it holds, and the run it cites is a real positive run id -- that run is fleet-converge 40270496735,
+// the evidence the PR body cites. Emptying the row does not just make this control red: the gate then
+// refuses srv4 and control 1 goes red with it, which is the difference between a gate and a caption
+// (review 87051: two String rows compared to literals showed the strings existed, not that srv4 is
+// eligible).
+test fn srv4_receipt_row_holds_and_cites_a_positive_run() -> Bool {
+  match runner_user_session_converge_receipt_for(host: operator_host_srv4) {
+    Present { value: row } =>
+      runner_user_session_converge_receipt_row_holds(row: row)
+        && github_workflow_run_id_is_positive(id: row.run_id)
+    Absent => false
+  }
+    && runner_user_session_converge_receipt_holds(host: operator_host_srv4)
+    && !runner_user_session_converge_receipt_holds(host: operator_host_srv1)
 }
 
 // THE GRANT IS EXACTLY ONCE, NOT ACCUMULATED: srv4's set carries the label one time, so the composition
 // and a host spelling it for itself cannot stack it.
-test fn the_row_grants_the_label_exactly_once() -> Bool {
-  let reg = runner_registration_labels(host: operator_host_srv4)
-  resolved(reg: reg) && label_count(labels: labels_of(reg: reg)) == 1
+test fn the_grant_adds_the_label_exactly_once() -> Bool {
+  match runner_registration_labels(host: operator_host_srv4) {
+    RegistrationLabelsResolved { labels: ls } => label_count(labels: ls) == 1
+    RegistrationLabelsRefused { host: _, cause: _ } => false
+  }
 }
 
 // THE CLASS-ARGUMENT CHANNEL REFUSES THE LABEL. runner_registration_labels_of_class accepts class_labels
 // from its caller and the role drop-ins pass their own labels through it; without the strip one argument
-// carrying the label would hand a host a user session it never converged.
+// carrying the label would hand a host a user session it never converged. A Refused resolution is false
+// here too -- an absence proven by silence is not a refusal proven by the strip.
 // RED control: main (no strip) unions the forged class label straight into srv1's registration.
 test fn a_caller_cannot_grant_the_label_through_the_class_labels_argument() -> Bool {
   match runner_registration_labels_of_class(host: operator_host_srv1, class_labels: [gunbc_user_session_label]) {
@@ -147,7 +150,7 @@ test fn a_caller_cannot_grant_the_label_through_the_class_labels_argument() -> B
 
 // THE HOST-SPELLABLE PLATFORM HALF REFUSES THE LABEL, AND THE STRIP TARGETS ONLY IT. The composition
 // strips the label from the union of the offer-derived platform half and the class half, then re-adds it
-// only from the row. With the label present in the host-spelled input, the stripped output must not carry
+// only from the gate. With the label present in the host-spelled input, the stripped output must not carry
 // it, and stripping must leave the ordinary labels alone (the strip is targeted, not a ban).
 // RED control: a strip that filtered nothing (or dropped every label) fails one arm here.
 test fn the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels() -> Bool {
@@ -159,23 +162,23 @@ test fn the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels() -> B
     && label_count(labels: stripped) == 0
 }
 
-// THE STRIP AND THE GRANT COMPOSE: stripping a host-spelled copy and then applying the row still yields
+// THE STRIP AND THE GRANT COMPOSE: stripping a host-spelled copy and then applying the gate still yields
 // the label on a converged host -- so the guard closes the forge without disabling the grant.
-test fn the_strip_does_not_disable_the_row_grant() -> Bool {
+test fn the_strip_does_not_disable_the_grant() -> Bool {
   let stripped = runner_user_session_label_stripped(labels: [gunbc_user_session_label])
   !has_label(labels: stripped) && has_label(labels: runner_user_session_labels_for(host: operator_host_srv4))
 }
 
-// THE SLOT GRAIN FOLLOWS THE ROW, AT BOTH SIDES OF THE PRINCIPAL LINE. srv4's CI slot registers with the
+// THE SLOT GRAIN FOLLOWS THE GATE, AT BOTH SIDES OF THE PRINCIPAL LINE. srv4's CI slot registers with the
 // label and srv1's deploy slot does not, so a per-slot reader (the JIT mint, the replace postcondition,
 // the conformance check's desired set) agrees with the host composition instead of disagreeing by one
 // label -- which is what would make the first srv4 replacement read as a divergence -- while the deploy
 // slot, a DIFFERENT principal, never inherits the host's capability. That is why the gate sits at the job
 // entry and not inside _of_class: gating there would hand the deploy principal a capability it never
-// earned.
+// earned. Both resolutions must Resolve; either refusal is a false.
 // RED control: if the grant were wired only into the host entry and not the slot composition, srv4's slot
 // would lack the label; if the gate moved into _of_class, srv1's deploy slot would carry it.
-test fn a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out() -> Bool {
+test fn a_ci_slot_label_set_follows_its_host_gate_and_the_deploy_slot_stays_out() -> Bool {
   match runner_slot_registration_labels(slot: srv4_ci_slot()) {
     RegistrationLabelsResolved { labels: srv4_labels } =>
       match runner_slot_registration_labels(slot: srv1_deploy_slot()) {
@@ -187,7 +190,7 @@ test fn a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out()
   }
 }
 
-// THE CONSUMER'S runs-on SELECTS ON THE CONSTANT, AND ONLY A ROW-GRANTED REGISTRATION SATISFIES IT. The
+// THE CONSUMER'S runs-on SELECTS ON THE CONSTANT, AND ONLY A GATED REGISTRATION SATISFIES IT. The
 // restatement of the constant's definition is gone (it could never go red -- DESIGN 4b's decoration).
 // What replaces it checks the label's consumer: the runs-on selector of the jobs that run a command under
 // the job account's user manager (gunbc#14972's credential-acquisition rows; realized today by
@@ -195,19 +198,26 @@ test fn a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out()
 // selector is built the way the emitter builds a host-pinned CI spec -- the offer's platform labels plus
 // the label the job must select on -- and satisfaction is GitHub's rule: every named label must be held
 // (gunbc.runner.runner_slot_allocation runner_labels_satisfy_selector models it). srv4's registration
-// satisfies it; srv1's registration, which the row does not name, does not.
-// RED control: a wrong label on srv4's grant (or a second spelling) breaks the first arm; a label
-// granted to a host the row does not name breaks the second.
-test fn the_consumer_selector_is_satisfied_by_the_row_grant_and_by_nothing_else() -> Bool {
+// satisfies it; srv1's registration, which the gate does not admit, does not -- and ONLY when srv1
+// resolved: a srv1 that refuses makes this control false, never green (review 87051's arm, guarded by
+// matching the resolutions directly).
+// RED control: a wrong label on srv4's grant (or a second spelling) breaks the first arm; a label granted
+// to a host the gate does not admit breaks the second.
+test fn the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else() -> Bool {
   match runner_spec_from_offer(offer: srv4_offer) {
-    SelfHosted { labels: platform } => {
-      let srv4 = runner_registration_labels(host: operator_host_srv4)
-      let srv1 = runner_registration_labels(host: operator_host_srv1)
-      let selector = concat(platform, [gunbc_user_session_label])
-      resolved(reg: srv4) && resolved(reg: srv1)
-        && runner_labels_satisfy_selector(held: labels_of(reg: srv4), selector: selector)
-        && !runner_labels_satisfy_selector(held: labels_of(reg: srv1), selector: selector)
-    }
+    SelfHosted { labels: platform } =>
+      match runner_registration_labels(host: operator_host_srv4) {
+        RegistrationLabelsResolved { labels: srv4_labels } =>
+          match runner_registration_labels(host: operator_host_srv1) {
+            RegistrationLabelsResolved { labels: srv1_labels } => {
+              let selector = concat(platform, [gunbc_user_session_label])
+              runner_labels_satisfy_selector(held: srv4_labels, selector: selector)
+                && !runner_labels_satisfy_selector(held: srv1_labels, selector: selector)
+            }
+            RegistrationLabelsRefused { host: _, cause: _ } => false
+          }
+        RegistrationLabelsRefused { host: _, cause: _ } => false
+      }
     other => false
   }
 }
@@ -220,10 +230,9 @@ test fn the_consumer_selector_is_satisfied_by_the_row_grant_and_by_nothing_else(
 // (extdeps.apple.app_attest records that around gunbc#11989), and this witness must emit as cleanly as it
 // runs.
 type WitnessControl
-  = TheRowNamesSrv4AloneStep
-  | Srv4RegistersStep
+  = GateFromBothSidesStep
   | UnconvergedHostStep
-  | ConvergeReceiptStep
+  | ReceiptRowHoldsStep
   | ExactlyOnceStep
   | ClassArgumentChannelStep
   | PlatformHalfStep
@@ -233,10 +242,9 @@ type WitnessControl
 
 fn witness_control_order() -> List<WitnessControl> {
   [
-    TheRowNamesSrv4AloneStep,
-    Srv4RegistersStep,
+    GateFromBothSidesStep,
     UnconvergedHostStep,
-    ConvergeReceiptStep,
+    ReceiptRowHoldsStep,
     ExactlyOnceStep,
     ClassArgumentChannelStep,
     PlatformHalfStep,
@@ -248,31 +256,29 @@ fn witness_control_order() -> List<WitnessControl> {
 
 fn witness_control_name(step: WitnessControl) -> String {
   match step {
-    TheRowNamesSrv4AloneStep => "the_row_names_srv4_alone_as_holding_a_user_session"
-    Srv4RegistersStep => "srv4_registers_with_the_user_session_label"
+    GateFromBothSidesStep => "the_roster_grants_nothing_without_a_receipt_row"
     UnconvergedHostStep => "an_unconverged_host_never_gains_the_label"
-    ConvergeReceiptStep => "srv4_eligibility_names_its_converge_receipt"
-    ExactlyOnceStep => "the_row_grants_the_label_exactly_once"
+    ReceiptRowHoldsStep => "srv4_receipt_row_holds_and_cites_a_positive_run"
+    ExactlyOnceStep => "the_grant_adds_the_label_exactly_once"
     ClassArgumentChannelStep => "a_caller_cannot_grant_the_label_through_the_class_labels_argument"
     PlatformHalfStep => "the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels"
-    StripComposesWithGrantStep => "the_strip_does_not_disable_the_row_grant"
-    SlotGrainStep => "a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out"
-    ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_row_grant_and_by_nothing_else"
+    StripComposesWithGrantStep => "the_strip_does_not_disable_the_grant"
+    SlotGrainStep => "a_ci_slot_label_set_follows_its_host_gate_and_the_deploy_slot_stays_out"
+    ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else"
   }
 }
 
 fn witness_control_holds(step: WitnessControl) -> Bool {
   match step {
-    TheRowNamesSrv4AloneStep => the_row_names_srv4_alone_as_holding_a_user_session()
-    Srv4RegistersStep => srv4_registers_with_the_user_session_label()
+    GateFromBothSidesStep => the_roster_grants_nothing_without_a_receipt_row()
     UnconvergedHostStep => an_unconverged_host_never_gains_the_label()
-    ConvergeReceiptStep => srv4_eligibility_names_its_converge_receipt()
-    ExactlyOnceStep => the_row_grants_the_label_exactly_once()
+    ReceiptRowHoldsStep => srv4_receipt_row_holds_and_cites_a_positive_run()
+    ExactlyOnceStep => the_grant_adds_the_label_exactly_once()
     ClassArgumentChannelStep => a_caller_cannot_grant_the_label_through_the_class_labels_argument()
     PlatformHalfStep => the_platform_half_cannot_carry_the_label_but_keeps_its_own_labels()
-    StripComposesWithGrantStep => the_strip_does_not_disable_the_row_grant()
-    SlotGrainStep => a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out()
-    ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_row_grant_and_by_nothing_else()
+    StripComposesWithGrantStep => the_strip_does_not_disable_the_grant()
+    SlotGrainStep => a_ci_slot_label_set_follows_its_host_gate_and_the_deploy_slot_stays_out()
+    ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else()
   }
 }
 

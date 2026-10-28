@@ -9,7 +9,8 @@ import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_host_deploy { runner_job_user_session_on }
+import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
+import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_holds }
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 
@@ -83,28 +84,42 @@ fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrati
 // registration as a label, so a workflow can select it and a host that never went through the converge
 // simply never appears in its pool.
 //
-// ITS ONLY AUTHORITY IS THE ROW: gunbc.runner.runner_host_deploy runner_job_user_session_hosts records
-// the hosts whose job account was lingered by the administrator and whose user manager at
-// /run/user/<uid>/bus answers -- that is exactly what that row's converge leg observes and reads back
-// (gunbc.runner.runner_user_session: enable-linger ran, Linger=yes read back, the bus socket answers).
-// No caller may pass this label; the composition adds it iff the row names the host, so deleting the
-// row deletes the label. srv4 earned it on 2026-10-26: the receipt sits beside the row as data
-// (gunbc.runner.runner_host_deploy runner_job_user_session_converge_run_id +
-// runner_job_user_session_converge_readback), not as a restatement here. srv1/srv3/srv2 carry no row, so their
+// ITS ONLY AUTHORITY IS THE ROW TOGETHER WITH ITS RECEIPT:
+// gunbc.runner.runner_host_deploy runner_job_user_session_hosts records the hosts whose job account an
+// administrator put on the converge roster, and gunbc.runner.runner_user_session_receipt
+// runner_user_session_converge_receipt_rows records what a converge run READ BACK for each such host
+// (enable-linger ran, Linger=yes, the bus answers -- the three readings, per-host, typed). Composition
+// adds the label iff the roster names the host AND its receipt row holds, so deleting either deletes the
+// label, and adding a host to the roster without running its converge grants nothing. srv4 carries both
+// (its row cites fleet-converge run 40270496735); srv1/srv3/srv2 carry neither, so their
 // label sets are byte-identical to before this constant existed -- the label PR adds no label to a
 // host that has not been converged, and the runs-on selector step lands only once every pool host
 // reads ready.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
-// THE ROW, NOT AN ARGUMENT. The labels a JOB runner registers with, gated by the row. It is added at
-// the job entry, not inside runner_registration_labels_of_class: the row is about the job account's user
-// manager, and the deploy slot runs the separate deploy principal (whose own labels the role drop-in
-// sets) -- gating inside _of_class would hand a capability the deploy principal never earned. Every
-// producer reads the job entry (unit fragment, JIT mint, the replace postcondition, the roster readback,
-// and the conformance check's desired set), so the grant, the registration and the observed-vs-desired
-// comparison cannot disagree about it.
+// THE ROW AND ITS RECEIPT, NOT AN ARGUMENT. The labels a JOB runner registers with, gated by the roster
+// AND by the per-host converge receipt (gunbc.runner.runner_user_session_receipt
+// runner_user_session_converge_receipt_holds): a host on the roster whose converge never reported its
+// three readings gets nothing. The roster is a PARAMETER with the fleet list as its only argument at
+// every real call site, exactly the class_labels discipline above -- a control can pass a forged roster
+// and prove the receipt, not the list, is what grants. It is added at the job entry, not inside
+// runner_registration_labels_of_class: the row is about the job account's user manager, and the deploy
+// slot runs the separate deploy principal (whose own labels the role drop-in sets) -- gating inside
+// _of_class would hand a capability the deploy principal never earned. Every producer reads the job
+// entry (unit fragment, JIT mint, the replace postcondition, the roster readback, and the conformance
+// check's desired set), so the grant, the registration and the observed-vs-desired comparison cannot
+// disagree about it.
+fn runner_user_session_labels_of_roster(host: HostIdentity, roster: List<HostIdentity>) -> List<String> {
+  if any(roster, h => (h as String) == (host as String))
+    && runner_user_session_converge_receipt_holds(host: host) {
+    [gunbc_user_session_label]
+  } else {
+    []
+  }
+}
+
 fn runner_user_session_labels_for(host: HostIdentity) -> List<String> {
-  if runner_job_user_session_on(host: host) { [gunbc_user_session_label] } else { [] }
+  runner_user_session_labels_of_roster(host: host, roster: runner_job_user_session_hosts)
 }
 
 // THE GRANT IS NOT FORGEABLE THROUGH A CALLER OR AN OFFER ROW. Both halves a host can reach the

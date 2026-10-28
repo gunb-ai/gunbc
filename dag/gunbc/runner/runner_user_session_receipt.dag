@@ -1,0 +1,142 @@
+module gunbc.runner.runner_user_session_receipt
+
+import std.types { String, Bool, Int, List }
+import std.algebra { trim }
+import std.optional { Optional, Present, Absent }
+import std.list { first_where }
+import product.host_identity { HostIdentity }
+import extdeps.systemd.loginctl { LoginctlLingerReading, LoginctlLingerEnabled, LoginctlLingerDisabled, LoginctlLingerUnread }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_of_wire }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+
+// THE EVIDENCE BEHIND A USER-SESSION LABEL, ONE TYPED ROW PER HOST (DESIGN 4c).
+//
+// A host joins gunbc.runner.runner_host_deploy runner_job_user_session_hosts when an administrator
+// converged its job account's user manager. What makes that claim a fleet fact rather than prose is the
+// CONVERGE RUN that observed it: gunbc.runner.runner_user_session's converge leg runs
+// loginctl enable-linger, reads Linger back with loginctl show-user, and asks the manager itself over
+// /run/user/<uid>/bus. Those three readings already have a vocabulary -- UserSessionLingerEnable here,
+// extdeps.systemd.loginctl's LoginctlLingerReading, gunbc.runner.runner_user_session's
+// UserSessionAnswer -- and this module keeps one row per host in that vocabulary, each row naming the
+// workflow run that reported it.
+//
+// WHY THIS IS A GATE AND NOT A COMMENT. gunbc.runner.runner_registration_labels
+// runner_user_session_labels_for derives the capability label only for a host that is BOTH in the roster
+// and has a complete row here -- every reading present and holding. Adding a host to the roster therefore
+// does not by itself grant it the label; the population the runs-on selector selects over is the
+// population with evidence. Two String rows beside the list would not do that: nothing but a literal
+// comparison could read them (reviews 87051 and 87054; DESIGN 4c "a String declaration whose only purpose
+// is commentary is misplaced or dead data", DESIGN 2 "a String leaf hiding named parts is anemic
+// modeling", and one global scalar left a second rostered host eligible with no receipt at all).
+//
+// WHAT A ROW IS. It records the result of a past converge run -- transcribed from the run the fleet
+// cites -- so its fields are named readings, not a sentence. That a user manager is up RIGHT NOW is a
+// live fact no row can carry; the live check stays where it belongs, in the converge's own holds
+// (gunbc.runner.runner_user_session runner_user_session_converge_ci_wet). The row is what makes a host
+// eligible to advertise the capability in the meantime.
+
+// loginctl enable-linger's outcome, as the converge records it: the step either ran clean or reported a
+// cause (the converge's observed_or_cause renders the failure form into exactly this line shape).
+type UserSessionLingerEnable
+  = UserSessionLingerEnableOk
+  | UserSessionLingerEnableFailed { cause: String }
+
+// THE USER MANAGER'S OWN ANSWER over /run/user/<uid>/bus. The converge probes it with
+// systemctl --user show-environment under the job account; the exit code is the reading. This is the
+// vocabulary gunbc.runner.runner_user_session's converge and
+// test.claim.runner.runner_user_session_witness read, moved here so the receipt row and the live probe
+// name the same readings (it lives in the leaf because the receipt rows are its only data home, and
+// runner_user_session reaches this module's consumers through its effect chain -- importing the other way
+// would cycle).
+type UserSessionAnswer
+  = UserSessionAnswered
+  | UserSessionNotAnswered { cause: String }
+
+fn user_session_answer_of(exit_code: Int, stderr: String) -> UserSessionAnswer {
+  if exit_code == 0 {
+    UserSessionAnswered
+  } else {
+    UserSessionNotAnswered { cause: join(["systemctl --user show-environment exit ", to_string(value: exit_code), ": ", trim(s: stderr)], "") }
+  }
+}
+
+fn user_session_answer_text(a: UserSessionAnswer) -> String {
+  match a {
+    UserSessionAnswered => "user_manager=answered"
+    UserSessionNotAnswered { cause: c } => concat("user_manager=not-answered cause=", c)
+  }
+}
+
+fn user_session_linger_enable_text(r: UserSessionLingerEnable) -> String {
+  match r {
+    UserSessionLingerEnableOk => "enable_linger=ok"
+    UserSessionLingerEnableFailed { cause: c } => concat("enable_linger=", c)
+  }
+}
+
+fn user_session_linger_enable_holds(r: UserSessionLingerEnable) -> Bool {
+  match r {
+    UserSessionLingerEnableOk => true
+    UserSessionLingerEnableFailed { cause: _ } => false
+  }
+}
+
+fn user_session_answer_holds(a: UserSessionAnswer) -> Bool {
+  match a {
+    UserSessionAnswered => true
+    UserSessionNotAnswered { cause: _ } => false
+  }
+}
+
+// ONE HOST'S RECEIPT: the three readings the converge took, and the run that took them. The readings are
+// the shape the converge's own receipt lines print (enable_linger=..., Linger=..., user_manager=...), so
+// a row is the machine-verified form of what that run reported rather than a sentence about it.
+type RunnerUserSessionConvergeReceiptRow {
+  host: HostIdentity,
+  run_id: GitHubWorkflowRunId,
+  enable_linger: UserSessionLingerEnable,
+  linger: LoginctlLingerReading,
+  bus: UserSessionAnswer,
+}
+
+// THE RECEIPT ROWS, THE PROVENANCE OF THE USER-SESSION ROSTER. srv4's row is what its roster entry rests
+// on: fleet-converge run 40270496735 (host=srv4, mode=runner_user_session_converge, at 8353c21c84a,
+// 2026-10-26) reported enable_linger=ok, Linger=yes and an answering user manager, and wrote
+// /srv/gunbc/converge/runner-user-session-srv4.json. A host enters the label's population by EARNING a
+// row here, which is why adding one to the roster list alone gets it nothing.
+data runner_user_session_converge_receipt_rows: List<RunnerUserSessionConvergeReceiptRow> = [
+  RunnerUserSessionConvergeReceiptRow {
+    host: operator_host_srv4,
+    run_id: github_workflow_run_id_of_wire(n: 40270496735),
+    enable_linger: UserSessionLingerEnableOk,
+    linger: LoginctlLingerEnabled,
+    bus: UserSessionAnswered,
+  },
+]
+
+// THE ROW FOR A HOST, if the fleet holds one. Absent is honest here: it means no converge run has
+// reported this host, and the caller must treat that as "not eligible", never as "eligible by default".
+fn runner_user_session_converge_receipt_for(host: HostIdentity) -> Optional<RunnerUserSessionConvergeReceiptRow> {
+  first_where(runner_user_session_converge_receipt_rows, r => (r.host as String) == (host as String))
+}
+
+// EVERY READING IN THE ROW HOLDS. A row whose readings did not all hold records a failed converge -- it
+// says what happened but grants nothing.
+fn runner_user_session_converge_receipt_row_holds(row: RunnerUserSessionConvergeReceiptRow) -> Bool {
+  user_session_linger_enable_holds(r: row.enable_linger)
+    && match row.linger {
+      LoginctlLingerEnabled => true
+      LoginctlLingerDisabled => false
+      LoginctlLingerUnread { cause: _ } => false
+    }
+    && user_session_answer_holds(a: row.bus)
+}
+
+// THE GATE THE LABEL READS. Present-and-holding is the only admitted shape: no row, a row with a failed
+// reading, or a row whose linger is unread all answer false.
+fn runner_user_session_converge_receipt_holds(host: HostIdentity) -> Bool {
+  match runner_user_session_converge_receipt_for(host: host) {
+    Present { value: row } => runner_user_session_converge_receipt_row_holds(row: row)
+    Absent => false
+  }
+}
