@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.the_census_scratch_demands_a_hard_coded_root
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyImpossible }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // THE CENSUS SCRATCH DEMANDS A ROOT PAIR IT CARRIES, NOT THE ROOTS IT RUNS OVER.
@@ -46,7 +46,7 @@ import gunbc.rung_climb { ClimbableButUnbuilt }
 data the_census_scratch_demands_a_hard_coded_root_pair: RecurringFailureMode = RecurringFailureMode {
   identity: "the_census_scratch_demands_a_hard_coded_root_pair" as NonEmptyStr,
 
-  rung: RungRead { found_at: FoundOnRung { rung: MechanicallyPreventable }, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "re-key the fixture-closure scratch index demand to the resident pool's acquired roots (derive the demanded root list from the acquired shared slot, not from the carried witness-layer pair), with a witness that a census over a three-root resident pool reports Observed where the residency refusal fires today" } },
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyImpossible, blocker: ClimbableButUnbuilt, trigger_capability: "re-key the fixture-closure scratch index demand to the resident pool's acquired roots (derive the demanded root list from the acquired shared slot, not from the carried witness-layer pair), with a witness that a census over a non-fleet resident root set reports Observed where the residency refusal fires today" } },
 
   receipts: [
     "A SCRATCH INDEX DEMANDS A ROOT SET IT CARRIES INSTEAD OF THE ROOTS IT IS BUILT OVER. `scratch_index_for_fixture_closure_extension` acquires the process-shared slot by demanding `witness_layer_roots()` — the fleet pair [dag, src/v2] — then builds its scratch over the acquired slot's own `source_roots`. For the fleet's resident shape the two agree and nothing notices the duplicate keying; for any other resident root set the acquisition itself refuses, before any scratch exists.",
