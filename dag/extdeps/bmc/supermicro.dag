@@ -1,0 +1,519 @@
+module extdeps.bmc.supermicro
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.algebra { trim, skip }
+import std.host_text { chars }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import std.measure { Mebibyte, mebibyte, MegatransfersPerSecond, megatransfers_per_second }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.uri { Uri, Https }
+import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
+import extdeps.languages.json.emit { JsonValue, JsonArray, JsonNull, JsonBool, JsonNumber, JsonString, JsonObject }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string,
+}
+import extdeps.languages.xml.read { XmlElement, XmlParsed, XmlRefused, read_xml_subset, xml_attribute, xml_children }
+
+// SUPERMICRO'S BMC FIRMWARE FOR THE X11/H11 GENERATION, AS ITS OWN UPSTREAM (DESIGN section 3, external
+// upstream decomposition). Supermicro states that the X11/H11/H12 BMC is built on the ASPEED AST2500
+// (bmc-resources page, the anchor below); the silicon is extdeps.bmc.aspeed_ast2500 and is not this
+// module. This module is the firmware stack that answers on that silicon: Supermicro's IPMI 2.0 service,
+// its Redfish service, and the vendor CGI behind the web interface (/cgi/ipmi.cgi), whose pages still
+// carry ATEN International's copyright, the developer of the stack's lineage. That is why the family is
+// spelled SupermicroAten in extdeps.bmc.endpoint BmcFirmwareFamily.
+//
+// THE VERSION THIS MODEL WAS WRITTEN AGAINST is supermicro_bmc_modeled_releases: the two releases whose
+// served surface the decoders below were read from. A reading from any other release is not refused by
+// the decoders (the wire shapes may well hold), but the reader in the observing layer reports it as
+// outside the modeled set rather than as covered.
+//
+// WHAT IS NOT HERE. What a unit returned is a receipt in the observing layer
+// (gunbc.machine_intake.supermicro_bmc_reading), never a row in this module. The Supermicro OEM fan
+// commands are the same upstream but a separately governed command set and keep their module,
+// extdeps.bmc.supermicro_oem_fan. The IPMI 2.0 commands themselves (chassis, bootparam, SDR, SEL, FRU,
+// SOL) are Intel's specification realized by ipmitool, so they live in extdeps.bmc.ipmi and its
+// siblings; this firmware answers them, it does not define them.
+data supermicro_bmc_resources_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/en/solutions/management-software/bmc-resources"
+  }
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = supermicro_bmc_resources_authority
+
+// "End-to-end Redfish functionalities are covered under the SFT-DCMS-SINGLE license." and "Supermicro
+// enables Redfish feature sets on Intel-based X10 and AMD-based H11 and later generation platforms."
+// (read 2026-10-27). Its Redfish User Guide (v6.1) and Reference Guide (v4.0) are linked from it.
+data supermicro_redfish_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/en/solutions/management-software/redfish"
+  }
+}
+
+// "BMC Unique Password for Supermicro Products" (read 2026-10-27): from November 2019 new X10, X11, H11
+// and H12 products ship a unique pre-programmed password, "a string of exactly 10 uppercase alphabetic
+// letters", printed on a non-removable sticker near the BMC and on a removable one; "For other systems
+// that are not assigned a unique password, the default setting of user id=ADMIN and password=ADMIN will
+// be used."
+data supermicro_unique_password_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/support/BMC_Unique_Password_Guide.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.supermicro",
+      decl_name: "supermicro_bmc_modeled_releases",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [supermicro_redfish_authority, supermicro_unique_password_authority]
+}
+
+// ── THE VERSION. One release identity, two wire encodings of it: Redfish Manager.FirmwareVersion spells
+// it "01.52.25", the CGI GENERIC_INFO page's IPMIFW_VERSION spells the same release "015225" (space
+// padded). Both decode into the shared FirmwareSemanticVersion so the two readings of one unit can be
+// compared, and a reading that disagrees with itself is visible rather than averaged.
+type SupermicroBmcModeledRelease { version: FirmwareSemanticVersion }
+
+data supermicro_bmc_modeled_releases: List<SupermicroBmcModeledRelease> = [
+  SupermicroBmcModeledRelease { version: firmware_semantic_version(major: 1, minor: 52, patch: 0) },
+  SupermicroBmcModeledRelease { version: firmware_semantic_version(major: 1, minor: 52, patch: 25) },
+]
+
+fn supermicro_bmc_release_is_modeled(version: FirmwareSemanticVersion) -> Bool {
+  any(supermicro_bmc_modeled_releases, r => r.version == version)
+}
+
+fn decimal_digits(s: String) -> Nat? {
+  if s != "" && all(s |> chars, c => c >= 48 && c <= 57) {
+    match parse_int(s: s) {
+      Absent => none
+      Present { value: i } => checked_int_to_nat(n: i)
+    }
+  } else { none }
+}
+
+fn decimal_pair(s: String, start: Int) -> Nat? {
+  decimal_digits(s: substring(s: s, start: start, end: start + 2))
+}
+
+// "015225" with its padding trimmed: exactly six decimal digits, read as three two-digit fields. Any
+// other length or any non-digit has no version, rather than a guessed split.
+fn supermicro_cgi_firmware_version_of_wire(wire: String) -> FirmwareSemanticVersion? {
+  let t = trim(wire)
+  if string_length(s: t) != 6 { none } else {
+    match decimal_pair(s: t, start: 0) {
+      Absent => none
+      Present { value: major } => match decimal_pair(s: t, start: 2) {
+        Absent => none
+        Present { value: minor } => match decimal_pair(s: t, start: 4) {
+          Absent => none
+          Present { value: patch } => Present { value: firmware_semantic_version(major: major, minor: minor, patch: patch) }
+        }
+      }
+    }
+  }
+}
+
+// "01.52.25": three dot-separated two-digit decimal fields, the Manager resource's spelling.
+fn supermicro_redfish_firmware_version_of_wire(wire: String) -> FirmwareSemanticVersion? {
+  let fields = split(s: wire, delimiter: ".")
+  if fields.length() != 3 || string_length(s: wire) != 8 { none } else {
+    supermicro_cgi_firmware_version_of_wire(wire: join(fields, ""))
+  }
+}
+
+// ── FAMILY-GRAIN ANSWERS the dispatch (gunbc.bmc.bmc_implementation_dispatch) returns for this stack.
+//
+// FACTORY LOGIN. There is no published password at the family grain: a unit from November 2019 onward
+// carries a per-unit password on its sticker, an older unit ADMIN/ADMIN, and the firmware does not say
+// which a given unit is. The username is the one fact the family fixes. (On the H11SSL units ADMIN/ADMIN
+// was rejected and the sticker credential accepted: gunbc.machine_intake.supermicro_h11ssl_first_contact.)
+data supermicro_factory_username: NonEmptyStr = "ADMIN"
+
+data supermicro_factory_password_form: NonEmptyStr = "exactly 10 uppercase alphabetic letters, printed on the board's BMC password sticker"
+
+// PROTOCOL FLOOR. IPMI 2.0 is served unlicensed; Redfish is licence-gated (SFT-DCMS-SINGLE per the
+// Redfish page, and on the H11SSL an unlicensed service root refuses with OemLicenseNotPassed), so it is
+// not a family-grain guarantee.
+data supermicro_supported_protocols_floor: List<BmcProtocol> = [Ipmi]
+
+// ── THE LICENCE GATE, AS THE SERVICE STATES IT. A licence-gated Redfish resource answers HTTP 403 with
+// the standard error object whose @Message.ExtendedInfo carries one of these MessageIds, a MessageArgs
+// string naming the licences ("SUM DCMS OOB "), and the Resolution "Please activate at least one license
+// in above message." -- so the licences listed are alternatives, any one of which admits the request.
+// The registry prefix moved between the two modeled releases (Base.v1_4_0 on 01.52.00, SMC.1.0 on
+// 01.52.25); both are rows, and an id that is neither is not read as a licence refusal.
+data supermicro_licence_refusal_message_ids: List<NonEmptyStr> = [
+  "Base.v1_4_0.OemLicenseNotPassed",
+  "SMC.1.0.OemLicenseNotPassed",
+]
+
+data supermicro_licence_message_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The Supermicro Redfish Reference Guide's statement of the OemLicenseNotPassed message (its MessageArgs licence tokens and which resources each licence gates). The ids and tokens here are what the H11SSL units served (artifacts/bmc/h11ssl-unit2-first-contact-redfish-root.json, artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/), not a documented contract.",
+}
+
+// The licence names as MessageArgs spells them. DCMS is the Data Center Management Suite the Redfish
+// page names (SFT-DCMS-SINGLE); OOB is the out-of-band licence (product code SFT-OOB-LIC on the unit-1
+// activation); SUM is the Supermicro Update Manager licence.
+type SupermicroLicence = SupermicroLicenceSum | SupermicroLicenceDcms | SupermicroLicenceOob
+
+type SupermicroLicenceToken { token: NonEmptyStr, licence: SupermicroLicence }
+
+data supermicro_licence_tokens: List<SupermicroLicenceToken> = [
+  SupermicroLicenceToken { token: "SUM", licence: SupermicroLicenceSum },
+  SupermicroLicenceToken { token: "DCMS", licence: SupermicroLicenceDcms },
+  SupermicroLicenceToken { token: "OOB", licence: SupermicroLicenceOob },
+]
+
+type SupermicroLicenceGate
+  = SupermicroLicenceRefused { message_id: NonEmptyStr, any_of: List<SupermicroLicence> }
+  | SupermicroLicenceNotRefused
+  | SupermicroLicenceUnreadable { cause: NonEmptyStr }
+
+fn licence_of_token(token: String) -> SupermicroLicence? {
+  match first(filter(supermicro_licence_tokens, t => (t.token as String) == token)) {
+    Absent => none
+    Present { value: t } => Present { value: t.licence }
+  }
+}
+
+type LicenceTokenFold = LicenceTokensRead { licences: List<SupermicroLicence> } | LicenceTokenUnknown { token: String }
+
+// Every token must be a known licence; one unknown token makes the whole list unreadable, because a
+// partial list would understate what the service asked for.
+fn supermicro_licences_of_message_args(args: String) -> LicenceTokenFold {
+  let none_yet: List<SupermicroLicence> = []
+  let init: LicenceTokenFold = LicenceTokensRead { licences: none_yet }
+  fold(filter(split(s: args, delimiter: " "), t => t != ""), init: init, f: (acc, t) => match acc {
+    LicenceTokenUnknown { token: u } => LicenceTokenUnknown { token: u }
+    LicenceTokensRead { licences: ls } => match licence_of_token(token: t) {
+      Absent => LicenceTokenUnknown { token: t }
+      Present { value: l } => LicenceTokensRead { licences: concat(ls, [l]) }
+    }
+  })
+}
+
+fn json_first_string(v: JsonValue) -> String? {
+  match v {
+    JsonArray { elements: es } => match first(es) {
+      Absent => none
+      Present { value: e } => match e {
+        JsonString { value: s } => Present { value: s }
+        JsonNull => none
+        JsonBool { value: _ } => none
+        JsonNumber { lexeme: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+    }
+    JsonNull => none
+    JsonBool { value: _ } => none
+    JsonNumber { lexeme: _ } => none
+    JsonString { value: _ } => none
+    JsonObject { members: _ } => none
+  }
+}
+
+fn licence_gate_of_message(message: JsonValue) -> SupermicroLicenceGate {
+  match json_field_string(obj: message, key: "MessageId") {
+    FieldAbsent => SupermicroLicenceNotRefused
+    FieldMalformed { cause: c } => SupermicroLicenceUnreadable { cause: c as NonEmptyStr }
+    FieldRead { value: id } =>
+      if !any(supermicro_licence_refusal_message_ids, m => (m as String) == id) { SupermicroLicenceNotRefused } else {
+        match json_field(obj: message, key: "MessageArgs") {
+          FieldAbsent => SupermicroLicenceUnreadable { cause: "a licence refusal carries no MessageArgs naming the licences" }
+          FieldMalformed { cause: c } => SupermicroLicenceUnreadable { cause: c as NonEmptyStr }
+          FieldRead { value: args } => match json_first_string(v: args) {
+            Absent => SupermicroLicenceUnreadable { cause: "a licence refusal's MessageArgs is not an array whose first member is a string" }
+            Present { value: s } => match supermicro_licences_of_message_args(args: s) {
+              LicenceTokenUnknown { token: u } => SupermicroLicenceUnreadable { cause: concat("a licence refusal names a licence this model has no row for: ", u) as NonEmptyStr }
+              LicenceTokensRead { licences: ls } =>
+                if ls.length() == 0 { SupermicroLicenceUnreadable { cause: "a licence refusal names no licence" } }
+                else { SupermicroLicenceRefused { message_id: id as NonEmptyStr, any_of: ls } }
+            }
+          }
+        }
+      }
+  }
+}
+
+// The first licence-refusal entry of error.@Message.ExtendedInfo decides; a body with no error object,
+// or an ExtendedInfo with no licence-refusal id, is not refused BY LICENCE (it may still be any other
+// answer, which is the caller's to read).
+fn supermicro_redfish_licence_gate(body: String) -> SupermicroLicenceGate {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => SupermicroLicenceUnreadable { cause: concat("the response body is not a JSON document: ", json_document_gap_text(gap: g)) as NonEmptyStr }
+    JsonDocumentParsed { value: doc } => match json_field(obj: doc, key: "error") {
+      FieldAbsent => SupermicroLicenceNotRefused
+      FieldMalformed { cause: c } => SupermicroLicenceUnreadable { cause: c as NonEmptyStr }
+      FieldRead { value: err } => match json_field(obj: err, key: "@Message.ExtendedInfo") {
+        FieldAbsent => SupermicroLicenceNotRefused
+        FieldMalformed { cause: c } => SupermicroLicenceUnreadable { cause: c as NonEmptyStr }
+        FieldRead { value: info } => match info {
+          JsonArray { elements: es } => {
+            let init: SupermicroLicenceGate = SupermicroLicenceNotRefused
+            fold(es, init: init, f: (acc, m) => match acc {
+              SupermicroLicenceRefused { message_id: _, any_of: _ } => acc
+              SupermicroLicenceUnreadable { cause: _ } => acc
+              SupermicroLicenceNotRefused => licence_gate_of_message(message: m)
+            })
+          }
+          JsonNull => SupermicroLicenceNotRefused
+          JsonBool { value: _ } => SupermicroLicenceUnreadable { cause: "@Message.ExtendedInfo is not an array" }
+          JsonNumber { lexeme: _ } => SupermicroLicenceUnreadable { cause: "@Message.ExtendedInfo is not an array" }
+          JsonString { value: _ } => SupermicroLicenceUnreadable { cause: "@Message.ExtendedInfo is not an array" }
+          JsonObject { members: _ } => SupermicroLicenceUnreadable { cause: "@Message.ExtendedInfo is not an array" }
+        }
+      }
+    }
+  }
+}
+
+// ── THE REDFISH Oem KEY. The Manager, ServiceRoot, ComputerSystem and EthernetInterface resources carry
+// their vendor extension under Oem.Supermicro (SmcManagerExtensions.v1_0_0 on the Manager).
+data supermicro_redfish_oem_key: NonEmptyStr = "Supermicro"
+
+data supermicro_redfish_oem_key_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The Supermicro Redfish Reference Guide's Oem member name for the Manager resource, with the release that names it. Read off Managers/1 on firmware 01.52.25 (artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1_Managers_1.json), not cited.",
+}
+
+// ── BOOT OVERRIDE TOKENS OUTSIDE DMTF. ComputerSystem.Boot BootSourceOverrideTarget@Redfish.AllowableValues
+// on 01.52.25 lists "UsbCd", which is not a member of DMTF's BootSource enum. It is this firmware's own
+// token; the DMTF members are extdeps.bmc.types RedfishBootSourceOverrideTarget.
+data supermicro_boot_target_extension_tokens: List<NonEmptyStr> = ["UsbCd"]
+
+// ── THE VENDOR CGI. The web interface reads the BMC through POST /cgi/ipmi.cgi with an `op` naming a
+// page; each answers an <IPMI> XML document. The pages decoded here are the ones whose bodies this
+// repository holds (artifacts/bmc/h11ssl-unit*-*.xml); the requests that produced them were not
+// committed, so no op spelling is modeled here until one is. An expired or absent web session answers an HTML meta-refresh to "/" (carrying
+// ATEN's copyright META) instead of the page, which is a refusal of the read, not a page.
+type SupermicroCgiRead<T>
+  = SupermicroCgiPageRead { page: T }
+  | SupermicroCgiSessionRedirect
+  | SupermicroCgiUnreadable { cause: NonEmptyStr }
+
+fn supermicro_cgi_is_session_redirect(body: String) -> Bool {
+  string_contains(s: body, pattern: "HTTP-EQUIV=\"refresh\"") && string_contains(s: body, pattern: "CONTENT=\"0;URL=/\"")
+}
+
+fn supermicro_cgi_root(body: String) -> SupermicroCgiRead<XmlElement> {
+  if supermicro_cgi_is_session_redirect(body: body) { SupermicroCgiSessionRedirect } else {
+    match read_xml_subset(s: body) {
+      XmlRefused => SupermicroCgiUnreadable { cause: "the page is not an XML document this reader admits" }
+      XmlParsed { element: e, next: _ } =>
+        if e.name != "IPMI" { SupermicroCgiUnreadable { cause: concat("the page's root element is not IPMI: ", e.name) as NonEmptyStr } }
+        else { SupermicroCgiPageRead { page: e } }
+    }
+  }
+}
+
+fn only_child(e: XmlElement, name: String) -> XmlElement? {
+  let cs = xml_children(e: e, name: name)
+  if cs.length() == 1 { first(cs) } else { none }
+}
+
+// GENERIC_INFO: the firmware identity as the CGI reports it.
+type SupermicroGenericInfo {
+  bmc_mac_as_read: NonEmptyStr
+  firmware_tag: NonEmptyStr
+  firmware_version: FirmwareSemanticVersion
+  firmware_build_date: NonEmptyStr
+}
+
+fn nonempty_attribute(e: XmlElement, name: String) -> NonEmptyStr? {
+  let v = trim(xml_attribute(e: e, name: name))
+  if v == "" { none } else { Present { value: v as NonEmptyStr } }
+}
+
+fn supermicro_cgi_generic_info_of(body: String) -> SupermicroCgiRead<SupermicroGenericInfo> {
+  match supermicro_cgi_root(body: body) {
+    SupermicroCgiSessionRedirect => SupermicroCgiSessionRedirect
+    SupermicroCgiUnreadable { cause: c } => SupermicroCgiUnreadable { cause: c }
+    SupermicroCgiPageRead { page: root } => match only_child(e: root, name: "GENERIC_INFO") {
+      Absent => SupermicroCgiUnreadable { cause: "the page carries no single GENERIC_INFO element" }
+      Present { value: info } => match only_child(e: info, name: "GENERIC") {
+        Absent => SupermicroCgiUnreadable { cause: "GENERIC_INFO carries no single GENERIC element" }
+        Present { value: g } => match nonempty_attribute(e: g, name: "BMC_MAC") {
+          Absent => SupermicroCgiUnreadable { cause: "GENERIC carries no BMC_MAC" }
+          Present { value: mac } => match nonempty_attribute(e: g, name: "IPMIFW_TAG") {
+            Absent => SupermicroCgiUnreadable { cause: "GENERIC carries no IPMIFW_TAG" }
+            Present { value: tag } => match supermicro_cgi_firmware_version_of_wire(wire: xml_attribute(e: g, name: "IPMIFW_VERSION")) {
+              Absent => SupermicroCgiUnreadable { cause: concat("IPMIFW_VERSION is not six decimal digits: ", xml_attribute(e: g, name: "IPMIFW_VERSION")) as NonEmptyStr }
+              Present { value: v } => match nonempty_attribute(e: g, name: "IPMIFW_BLDTIME") {
+                Absent => SupermicroCgiUnreadable { cause: "GENERIC carries no IPMIFW_BLDTIME" }
+                Present { value: built } => SupermicroCgiPageRead { page: SupermicroGenericInfo { bmc_mac_as_read: mac, firmware_tag: tag, firmware_version: v, firmware_build_date: built } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// SMBIOS_INFO: the host's SMBIOS memory devices as the BMC cached them at the host's last POST. This is
+// the DIMM inventory route that needs no Redfish licence. SIZE is "<n> MiB" and CFG_SPEED "<n> MHz"
+// (the page's unit for a DDR transfer rate; the figure is MT/s). A DIMM element whose size or speed does
+// not have that shape refuses the page rather than dropping the slot.
+type SupermicroSmbiosDimm {
+  location: NonEmptyStr
+  bank_location: String
+  size: Mebibyte
+  configured_speed: MegatransfersPerSecond
+  manufacturer_as_read: String
+  part_number_as_read: String
+  serial_as_read: String
+}
+
+fn count_with_unit(s: String, unit: String) -> Nat? {
+  let parts = split(s: trim(s), delimiter: " ")
+  if parts.length() != 2 { none } else {
+    match parts.skip(n: 1).first() {
+      Absent => none
+      Present { value: u } => if u != unit { none } else {
+        match first(parts) {
+          Absent => none
+          Present { value: n } => decimal_digits(s: n)
+        }
+      }
+    }
+  }
+}
+
+type SmbiosDimmFold = SmbiosDimmsRead { dimms: List<SupermicroSmbiosDimm> } | SmbiosDimmRefused { cause: NonEmptyStr }
+
+fn smbios_dimm_of(e: XmlElement) -> ObservationAttempt<SupermicroSmbiosDimm, NonEmptyStr> {
+  match nonempty_attribute(e: e, name: "LOCATION") {
+    Absent => ObservationRefused { cause: "a DIMM element carries no LOCATION" }
+    Present { value: loc } => match count_with_unit(s: xml_attribute(e: e, name: "SIZE"), unit: "MiB") {
+      Absent => ObservationRefused { cause: concat(concat("DIMM ", loc), " SIZE is not '<n> MiB'") as NonEmptyStr }
+      Present { value: mib } => match count_with_unit(s: xml_attribute(e: e, name: "CFG_SPEED"), unit: "MHz") {
+        Absent => ObservationRefused { cause: concat(concat("DIMM ", loc), " CFG_SPEED is not '<n> MHz'") as NonEmptyStr }
+        Present { value: rate } => ObservationEstablished { observed: SupermicroSmbiosDimm {
+          location: loc,
+          bank_location: trim(xml_attribute(e: e, name: "BANK_LOCATION")),
+          size: mebibyte(count: mib),
+          configured_speed: megatransfers_per_second(count: rate),
+          manufacturer_as_read: trim(xml_attribute(e: e, name: "MANUFACTURER")),
+          part_number_as_read: trim(xml_attribute(e: e, name: "PN")),
+          serial_as_read: trim(xml_attribute(e: e, name: "SN")),
+        } }
+      }
+    }
+  }
+}
+
+fn supermicro_cgi_smbios_dimms_of(body: String) -> SupermicroCgiRead<List<SupermicroSmbiosDimm>> {
+  match supermicro_cgi_root(body: body) {
+    SupermicroCgiSessionRedirect => SupermicroCgiSessionRedirect
+    SupermicroCgiUnreadable { cause: c } => SupermicroCgiUnreadable { cause: c }
+    SupermicroCgiPageRead { page: root } =>
+      if xml_children(e: root, name: "BIOS").length() != 1 { SupermicroCgiUnreadable { cause: "the page carries no single BIOS element, so it is not an SMBIOS_INFO page" } } else {
+        let none_yet: List<SupermicroSmbiosDimm> = []
+        let init: SmbiosDimmFold = SmbiosDimmsRead { dimms: none_yet }
+        match fold(xml_children(e: root, name: "DIMM"), init: init, f: (acc, d) => match acc {
+          SmbiosDimmRefused { cause: c } => SmbiosDimmRefused { cause: c }
+          SmbiosDimmsRead { dimms: ds } => match smbios_dimm_of(e: d) {
+            ObservationRefused { cause: c } => SmbiosDimmRefused { cause: c }
+            ObservationEstablished { observed: dimm } => SmbiosDimmsRead { dimms: concat(ds, [dimm]) }
+          }
+        }) {
+          SmbiosDimmRefused { cause: c } => SupermicroCgiUnreadable { cause: c }
+          SmbiosDimmsRead { dimms: ds } => SupermicroCgiPageRead { page: ds }
+        }
+      }
+  }
+}
+
+// ── GET DEVICE ID (IPMI v2.0, Get Device ID; ipmitool `raw 0x06 0x01`), as this firmware fills it. Zero-based
+// response bytes: 2 firmware major (bits 6:0), 3 firmware minor in BCD, 6..8 manufacturer id (least
+// significant first), 9..10 product id, 11..14 auxiliary firmware revision. The specification leaves
+// the auxiliary bytes to the vendor; this firmware carries the release's third component in byte 11, BCD
+// (0x25 on 01.52.25), which is the third reading of one release beside the Redfish and CGI spellings.
+data supermicro_aux_revision_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Supermicro's statement of what the Get Device ID auxiliary firmware revision bytes carry. Inferred from 01.52.25 answering aux byte 0x25 while its Manager resource reports FirmwareVersion 01.52.25 (artifacts/bmc/h11ssl-unit1-ipmitool-2026-10-27/raw-0x06-0x01.txt).",
+}
+
+// Supermicro's IANA Private Enterprise Number, which IPMI carries as the manufacturer id.
+data iana_enterprise_numbers_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iana.org/assignments/enterprise-numbers/"
+  }
+}
+
+data supermicro_ipmi_manufacturer_id: Int = 10876
+
+type SupermicroDeviceIdentity {
+  manufacturer_id: Int
+  product_id: Int
+  firmware_version: FirmwareSemanticVersion
+}
+
+fn bcd_byte(b: Int) -> Nat? {
+  if b < 0 || b > 255 || b / 16 > 9 || b % 16 > 9 { none } else { checked_int_to_nat(n: (b / 16) * 10 + b % 16) }
+}
+
+fn byte_at(bytes: List<Int>, i: Int) -> Int? { first(bytes.skip(n: i)) }
+
+fn bcd_at(bytes: List<Int>, i: Int) -> Nat? {
+  match byte_at(bytes: bytes, i: i) {
+    Absent => none
+    Present { value: b } => bcd_byte(b: b)
+  }
+}
+
+// `count` bytes from `start`, least significant first; any missing byte is no value.
+fn little_endian_at(bytes: List<Int>, start: Int, count: Int) -> Int? {
+  if count == 0 { Present { value: 0 } } else {
+    match byte_at(bytes: bytes, i: start) {
+      Absent => none
+      Present { value: b } => match little_endian_at(bytes: bytes, start: start + 1, count: count - 1) {
+        Absent => none
+        Present { value: rest } => Present { value: b + rest * 256 }
+      }
+    }
+  }
+}
+
+fn supermicro_device_identity_of_get_device_id(bytes: List<Int>) -> SupermicroDeviceIdentity? {
+  if bytes.length() != 15 { none } else {
+    match byte_at(bytes: bytes, i: 2) {
+      Absent => none
+      Present { value: fw1 } => match checked_int_to_nat(n: fw1 % 128) {
+        Absent => none
+        Present { value: major } => match bcd_at(bytes: bytes, i: 3) {
+          Absent => none
+          Present { value: minor } => match bcd_at(bytes: bytes, i: 11) {
+            Absent => none
+            Present { value: patch } => match little_endian_at(bytes: bytes, start: 6, count: 3) {
+              Absent => none
+              Present { value: manufacturer } => match little_endian_at(bytes: bytes, start: 9, count: 2) {
+                Absent => none
+                Present { value: product } => Present { value: SupermicroDeviceIdentity {
+                  manufacturer_id: manufacturer,
+                  product_id: product,
+                  firmware_version: firmware_semantic_version(major: major, minor: minor, patch: patch),
+                } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

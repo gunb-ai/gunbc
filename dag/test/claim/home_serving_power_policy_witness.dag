@@ -11,13 +11,8 @@ import extdeps.external_authority {
   CitedToAuthority,
   TranscribedUncited,
 }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_rows_of_class,
-  census_total_count
-}
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { any_class_census, total_rows_census, census_verdict, census_verdict_all, census_exit, CensusVerdict }
 import gunbc.serving.home_serving_power_policy {
   HomeServingPowerReading,
   HomeServingPowerPolicy,
@@ -203,27 +198,44 @@ test fn an_admitted_pair_arrives_with_both_figures_intact_and_distinct() -> Bool
 // THE SEAL, measured against synthetic sources rather than asserted.
 // ---------------------------------------------------------------------------
 
-// KNOWN INSTRUMENT LIMIT, named not hidden (DESIGN §5). The NotRunnable arm
-// collapses to 0 - 1, so "the census could not run" and "the census ran and
-// found nothing" are indistinguishable at this seam — a -1 fails a >= 1
-// conjunct AND an == 0 conjunct at once, and the cause string is discarded by
-// the pattern. Measured on this head, not inferred: the same file driven
-// through claim_batch with --source-root src/v1 among its roots returns
-// CensusNotRunnable for EVERY source, including a two-line clean module, and
-// reddens the committed sibling dag/test/claim/admit_callers_roster_integrity_witness.dag
-// 6/6; under the sanctioned driver (gunbc run --claim-run, roots dag and
-// src/v2) the census runs and every claim here passes. So a red on this file
-// is only evidence once its driver is named. The fix is host-side, not here:
-// Charter 4 (warm-wolf-570) reclassifies NotRunnable-plus-false to
-// UNOBSERVED/exit 2 in claim_batch, behind #14692, consuming
-// gunbc.guarantee_measurement::ProbeObservation — which already separates
-// "absent, which is a verdict" from "could not run, which is not". Do not
-// hand-roll a second probe algebra beside it (DESIGN §3).
-fn violation_count(source: String, wanted: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
-    CensusNotRunnable { cause: _ } => 0 - 1
-  }
+// THE CENSUS REACHES THESE CLAIMS THROUGH THE SHARED PROBE ALGEBRA, and no answer here stands in for
+// an observation. Each claim below returns ProcessExit: an unrunnable census is CensusUnobserved
+// carrying the builtin's own cause text, which the claim returns as ExitFailure with code 2. State what
+// that buys TODAY, not what it will buy: the harness still renders any claim's ExitFailure as a FAIL
+// row, so a refused census and a genuine finding BOTH print FAIL -- the driver exits 1 either way --
+// and are separated only by the reason text and by the code the claim returned (2 for a refusal, 1 for
+// a finding) -- which is why the reason carries the cause verbatim. Mapping a returned code 2 onto a
+// UNOBSERVED verdict line is a named follow-up in claim_batch's own lane (on gunbc#14539's axis) and is
+// deliberately not done here.
+// What stood at this seam was a hand-written fold of the refusal arm onto `0 - 1`
+// beside a hand-written Bool "did it run" predicate, so "the census could not run" and "the census ran
+// and found nothing" shared one Int and the cause string was dropped on the floor. State it exactly,
+// because the honest version is narrower than it sounds: every path out of that refusal arm fed a `>= 1`
+// or an `== 0` behind a guarding `census_ran_on`, so all of them answered false and the claims FAILED
+// CLOSED -- no green was ever bought by a refusal. The defect was indistinguishability, not a wrong
+// verdict: a driver fault and a genuine defect printed the same one word, and an `== 0` conjunct is one
+// arithmetic slip from reading the other way. That collapse is one of the could-not-measure instances
+// Charter 4 census, and it is removed here rather than documented. The algebra is
+// gunbc.compile_census_probe (keen-owl-704, row 11) consumed rather than forked, per DESIGN §3; the
+// harness-side half (a code 2 printing as UNOBSERVED rather than FAIL) belongs to claim_batch's own
+// lane on gunbc#14539's axis, NOT to #14783, which converts the six consumer sites. Neither is waited
+// on here: these claims no longer answer false when they cannot run, which is the change this file makes.
+//
+// THE DRIVER IS PART OF THE EVIDENCE, named so any green here can be checked. Measured on this head:
+// driven through claim_batch with --source-root src/v1 among its roots, the census is refused outright
+// (SharedIndexSecondResidentPool -- the slot already holds ["dag", "src/v1", "src/v2"] while the claim
+// demands ["dag", "src/v2"]) and each census claim here returns ExitFailure code 2 with that cause
+// preserved verbatim, so the FAIL row names the refusal rather than a measured disagreement; under the
+// sanctioned driver -- claim_batch, roots dag and src/v2, run
+// from inside the checkout -- the census runs and all eleven pass. A red on this file is therefore
+// evidence only once its driver is named, and a run that prints no PASS/FAIL line is a refusal, not a
+// result.
+fn violation_verdict(source: String, wanted: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: any_class_census(source: source, wanted_class: wanted), holds: holds)
+}
+
+fn census_ran_verdict(source: String) -> CensusVerdict {
+  census_verdict(census: total_rows_census(source: source), holds: fn(n) { n >= 1 })
 }
 
 // A foreign module populating the sealed admission by literal. There is no second defect here: the
@@ -231,16 +243,16 @@ fn violation_count(source: String, wanted: String) -> Int {
 // is that `HomeServingPowerAdmission` is `sole_constructor`.
 data foreign_literal_source: String = "module probe_home_power_foreign\nimport std.measure { Watt }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerAdmission }\nfn forge(ceiling: Watt, limit: Watt, ground: CitedFigureStanding) -> HomeServingPowerAdmission = HomeServingPowerAdmission {\n  tdp_watts: ceiling,\n  tdp_standing: ground,\n  applied_watts: limit,\n  applied_standing: ground,\n}\n"
 
-test fn a_foreign_module_cannot_write_the_funded_admission_by_literal() -> Bool {
-  violation_count(source: foreign_literal_source, wanted: "SoleConstructorViolation") >= 1
+test fn a_foreign_module_cannot_write_the_funded_admission_by_literal() -> ProcessExit {
+  census_exit(verdict: violation_verdict(source: foreign_literal_source, wanted: "SoleConstructorViolation", holds: fn(n) { n >= 1 }))
 }
 
 // The roster's other direction: a caller the roster does not name is refused even THROUGH the mint.
 // Without this the claim above would also pass under a wall that refused everything.
 data unlisted_caller_source: String = "module probe_home_power_unlisted\nimport std.measure { Watt }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerAdmission, home_serving_power_admission }\nfn forge_unlisted(ceiling: Watt, limit: Watt, ground: CitedFigureStanding) -> HomeServingPowerAdmission = home_serving_power_admission(\n  tdp_watts: ceiling,\n  tdp_standing: ground,\n  applied_watts: limit,\n  applied_standing: ground,\n)\n"
 
-test fn an_unlisted_caller_is_refused_by_the_roster() -> Bool {
-  violation_count(source: unlisted_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+test fn an_unlisted_caller_is_refused_by_the_roster() -> ProcessExit {
+  census_exit(verdict: violation_verdict(source: unlisted_caller_source, wanted: "ConstructorCallAdmissionRefused", holds: fn(n) { n >= 1 }))
 }
 
 // THE POSITIVE CONTROL, which keeps the two refusals above from being vacuous.
@@ -257,20 +269,13 @@ test fn an_unlisted_caller_is_refused_by_the_roster() -> Bool {
 // the second one can go red.
 data admitted_call_source: String = "module probe_home_power_admitted_call\nimport std.measure { Watt, watt }\nimport std.optional { Present }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy { HomeServingPowerReading, home_serving_power_policy }\nfn read_the_ceiling(ground: CitedFigureStanding) -> Bool =\n  match home_serving_power_policy(\n    tdp: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n    applied: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n  ) {\n    _ => false\n  }\n"
 
-// Whether the census RAN on this source at all. `CensusNotRunnable` must never be read as "nothing
-// wrong found", so it answers false here and `violation_count` answers -1 above.
-fn census_ran_on(source: String) -> Bool {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: rows) >= 1
-    CensusNotRunnable { cause: _ } => false
-  }
-}
-
-test fn the_census_resolves_the_subject_module_so_the_refusals_are_not_vacuous() -> Bool {
-  census_ran_on(source: admitted_call_source)
-    && violation_count(source: admitted_call_source, wanted: "UnresolvedImport") == 0
-    && violation_count(source: admitted_call_source, wanted: "SoleConstructorViolation") == 0
-    && violation_count(source: admitted_call_source, wanted: "ConstructorCallAdmissionRefused") == 0
+test fn the_census_resolves_the_subject_module_so_the_refusals_are_not_vacuous() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran_verdict(source: admitted_call_source),
+    violation_verdict(source: admitted_call_source, wanted: "UnresolvedImport", holds: fn(n) { n == 0 }),
+    violation_verdict(source: admitted_call_source, wanted: "SoleConstructorViolation", holds: fn(n) { n == 0 }),
+    violation_verdict(source: admitted_call_source, wanted: "ConstructorCallAdmissionRefused", holds: fn(n) { n == 0 })
+  ])
 }
 
 // THE ARM THAT MAKES THE CONTROL DISCRIMINATING. §4b will not accept a green as evidence unless the
@@ -283,7 +288,9 @@ test fn the_census_resolves_the_subject_module_so_the_refusals_are_not_vacuous()
 // THIS claim goes red first and the control above stops being coverage it never earned.
 data unresolvable_import_source: String = "module probe_home_power_unresolvable\nimport std.measure { Watt, watt }\nimport std.optional { Present }\nimport extdeps.external_authority { CitedFigureStanding }\nimport gunbc.serving.home_serving_power_policy_typo { HomeServingPowerReading, home_serving_power_policy }\nfn read_the_ceiling(ground: CitedFigureStanding) -> Bool =\n  match home_serving_power_policy(\n    tdp: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n    applied: Present { value: HomeServingPowerReading { limit: watt(count: 600), standing: ground } },\n  ) {\n    _ => false\n  }\n"
 
-test fn the_control_can_go_red_when_the_subject_module_stops_resolving() -> Bool {
-  census_ran_on(source: unresolvable_import_source)
-    && violation_count(source: unresolvable_import_source, wanted: "UnresolvedImport") >= 1
+test fn the_control_can_go_red_when_the_subject_module_stops_resolving() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_ran_verdict(source: unresolvable_import_source),
+    violation_verdict(source: unresolvable_import_source, wanted: "UnresolvedImport", holds: fn(n) { n >= 1 })
+  ])
 }

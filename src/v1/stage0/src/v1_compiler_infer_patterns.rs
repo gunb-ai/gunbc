@@ -14,12 +14,10 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     declaration_ref_of_declaration_node, declaration_ref_of_type_node, lookup_type,
-    lookup_type_by_name, lookup_type_for, symbol_index_lookup, TypeEnv,
+    lookup_type_by_name, lookup_type_for, substitute_type_slots, substitute_type_slots_scoped,
+    symbol_index_lookup, TypeEnv,
 };
-pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
-    substitute_type_slots_scoped,
-};
+pub use crate::v1_compiler_infer_resolve::{is_user_generic_use_site, resolve_generic_use_decl};
 pub use crate::v1_compiler_infer_types::{child_type_node, extract_optional_inner_node};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -163,7 +161,7 @@ pub fn expand_scrut_from_decl(
             {
                 {
                     let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                    crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                    crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                         decl.clone(),
                         subst.clone(),
                         crate::v1_std_core::authored_name_at(
@@ -183,7 +181,7 @@ pub fn expand_scrut_from_decl(
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
                         let substituted =
-                            crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                            crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                                 target.clone(),
                                 subst.clone(),
                                 name,
@@ -201,7 +199,7 @@ pub fn expand_scrut_from_decl(
                 {
                     {
                         let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                        crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(
+                        crate::v1_compiler_infer_env::substitute_type_slots_scoped(
                             decl.clone(),
                             subst.clone(),
                             crate::v1_std_core::authored_name_at(
@@ -265,7 +263,7 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                                         scrut_node.clone(),
                                                         env.clone(),
                                                     );
-                                                    let substituted = crate::v1_compiler_infer_resolve::substitute_type_slots_scoped(target.clone(), subst, name.clone(), env.source_indices.clone(), true);
+                                                    let substituted = crate::v1_compiler_infer_env::substitute_type_slots_scoped(target.clone(), subst, name.clone(), env.source_indices.clone(), true);
                                                     expand_scrut_type_for_variant_lookup(
                                                         substituted,
                                                         env.clone(),
