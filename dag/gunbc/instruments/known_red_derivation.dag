@@ -68,6 +68,7 @@ import v2.workflow.floor_terminal_ledger {
   NotAttemptedAfterAbort,
   ObservationUnrepresentable,
   OpaqueHostCallUnbounded,
+  ReachabilityUnobserved,
   ObservedVerdict,
   Panicked,
   Passed,
@@ -2487,6 +2488,7 @@ fn known_red_safety_equal(a: ClaimSafetyOutcome, b: ClaimSafetyOutcome) -> Bool 
 fn known_red_preemption_equal(a: ClaimPreemptionReachability, b: ClaimPreemptionReachability) -> Bool {
   match a {
     CooperativelyPollable => match b { CooperativelyPollable => true _ => false }
+    ReachabilityUnobserved => match b { ReachabilityUnobserved => true _ => false }
     OpaqueHostCallUnbounded { operation: o } =>
       match b {
         OpaqueHostCallUnbounded { operation: p } => o == p

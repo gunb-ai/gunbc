@@ -163,9 +163,16 @@ import v2.workflow.floor_route_gap {
 // runs (`OpaqueHostCallUnbounded`, naming the operation). These are exactly the two mechanisms
 // `std.evaluation_budget` `evaluation_budget_opaque_host_call_note` and this module's own prior
 // comment already described in prose; this type is what the ruling asked that prose become.
+//
+// A THIRD ARM, ADDED BECAUSE THE SEED CAN ANSWER "NOT OBSERVED" (review 85191 on gunbc#14933). The
+// seed's `OpaqueHostCallReach::SurfaceUnarmed` means the run armed no reachability surface, so
+// neither claim above is established. Sending `CooperativelyPollable` for it would fabricate a
+// protection the poll never demonstrated (DESIGN section 5), and dropping the row would hide the
+// claim; the absence gets its own arm. `claim_preemption_admission` refuses it.
 type ClaimPreemptionReachability =
     CooperativelyPollable
   | OpaqueHostCallUnbounded { operation: String }
+  | ReachabilityUnobserved
 
 // THE THREE-WAY OUTCOME THE RULING NAMED, replacing the binary `ClaimTerminality` this module's
 // prose used to describe as though a third state did not need its own arm. `SafetyInterrupted`

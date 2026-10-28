@@ -3796,6 +3796,18 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row" },
+      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
+      function: "an_outcomes_out_run_of_a_code_2_claim_writes_the_unobserved_row",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.claim_batch_outcomes_out_witness", function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0" },
+      entry: "dag/test/claim/claim_batch_outcomes_out_witness.dag",
+      function: "an_outcomes_out_run_of_a_held_claim_writes_the_held_row_and_exits_0",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "v2.test.claim.body_lowering.map_literal", function: "ml_the_key_law_names_both_occurrences_holds" },
       entry: "src/v2/test/claim/body_lowering/map_literal.dag",
       function: "ml_the_key_law_names_both_occurrences_holds",
