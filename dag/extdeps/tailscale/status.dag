@@ -9,7 +9,8 @@ import extdeps.languages.json.parse {
   json_field_string, json_field_string_list, json_member_presence, parse_json_document,
 }
 import extdeps.tailscale.devices {
-  DeviceKey, NodeId, StableNodeId, IdentityParsed, IdentityRefused,
+  DeviceKey, NodeId, StableNodeId,
+  DeviceKeyOk, DeviceKeyBad, NodeIdOk, NodeIdBad, StableNodeIdOk, StableNodeIdBad,
   parse_device_key, parse_node_id, parse_stable_node_id,
 }
 import extdeps.external_authority { ExternalAuthority }
@@ -133,27 +134,79 @@ fn string_members_or_empty(document: JsonValue, key: String) -> List<NonEmptyStr
   }
 }
 
-// An identity field, read and then put through its parser. The PARSE'S OWN REASON is carried into the
-// refusal rather than being dropped: silently turning a malformed field into a missing one is how a machine
-// with a corrupt identity starts being reported as a machine with no identity, and those two findings mean
-// very different things about a fleet.
-fn parsed_field(
-  document: JsonValue,
-  key: String,
-  field: NonEmptyStr,
-  parse: fn(String) -> IdentityParseResult,
-  upstream_form: NonEmptyStr,
-) -> FieldRead {
-  match member_string(document: document, key: key) {
-    Absent => Gone {
-      field: field,
-      cause: string_concat_join(fields: ["the status document carries no readable \"", key, "\" member, whose upstream form is \"", upstream_form, "\""], separator: "") as NonEmptyStr,
+// ONE IDENTITY FIELD of a member's own status document, in the states this read acts on. Each identity
+// field gets its OWN sum carrying its OWN brand, so a brand travels from its parser to the StatusIdentity
+// without ever passing through a String and coming back cast. There is no cast in this module at all: the
+// value in `Ok` is the one the parser in extdeps.tailscale.devices built, under its own check, and a
+// reader that wanted to skip the check would have to name a different function to do it.
+//
+// WHY THE REASONS ARE KEPT AND NOT COLLAPSED. "The document carried no such member" and "the member is
+// there but is not in its upstream form" both mean this member is refused, so both are `Gone` -- but they
+// arrive with different causes, because "a machine whose identity field is corrupt" and "a machine that
+// never reported one" are different findings about a fleet, and dropping the second into the first is how a
+// fleet quietly starts reporting the wrong story about why it is unjoinable.
+type DeviceKeyField =
+  DeviceKeyHere { value: DeviceKey }
+  | DeviceKeyGone { field: NonEmptyStr, cause: NonEmptyStr }
+
+type StableNodeField =
+  StableNodeHere { value: StableNodeId }
+  | StableNodeGone { field: NonEmptyStr, cause: NonEmptyStr }
+
+type NodeField =
+  NodeHere { value: NodeId }
+  | NodeGone { field: NonEmptyStr, cause: NonEmptyStr }
+
+// Self's "Key" -- ipnstate: "the wireguard public key of the peer", in the form ipnstate prints it,
+// "nodekey:<64 lowercase hex>". This is THE JOIN KEY of the census, and it is validated here in exactly the
+// form the provider's "nodeKey" is validated in devices.dag, because the join is only as honest as the two
+// sides that meet in it.
+fn device_key_field(document: JsonValue) -> DeviceKeyField {
+  match member_string(document: document, key: "Key") {
+    Absent => DeviceKeyGone {
+      field: "DeviceKey" as NonEmptyStr,
+      cause: "the status document's Self record carries no readable \"Key\" member, whose upstream form is \"nodekey:<64 lowercase hex>\"" as NonEmptyStr,
     }
-    Present { value: text } => match parse(text) {
-      IdentityParsed { value: ok } => Here { text: ok as NonEmptyStr }
-      IdentityRefused { failure: f } => Gone {
-        field: field,
-        cause: string_concat_join(fields: ["the status document's \"", key, "\" member is not a ", field, " (upstream form \"", upstream_form, "\"): ", f.reason], separator: "") as NonEmptyStr,
+    Present { value: text } => match parse_device_key(text: text) {
+      DeviceKeyOk { value: k } => DeviceKeyHere { value: k }
+      DeviceKeyBad { failure: f } => DeviceKeyGone {
+        field: "DeviceKey" as NonEmptyStr,
+        cause: string_concat_join(fields: ["the status document's \"Key\" member is not a node key: ", f.reason], separator: "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// Self's "ID" -- ipnstate: "ID is the stable node ID, such as
+// 0x28518fab7980f5a391d606f199476b5b967d401a2562e77844177ee510a70c89".
+fn stable_node_field(document: JsonValue) -> StableNodeField {
+  match member_string(document: document, key: "ID") {
+    Absent => StableNodeGone {
+      field: "StableNodeId" as NonEmptyStr,
+      cause: "the status document's Self record carries no readable \"ID\" member (ipnstate: \"ID is the stable node ID\")" as NonEmptyStr,
+    }
+    Present { value: text } => match parse_stable_node_id(text: text) {
+      StableNodeIdOk { value: id } => StableNodeHere { value: id }
+      StableNodeIdBad { failure: f } => StableNodeGone {
+        field: "StableNodeId" as NonEmptyStr,
+        cause: string_concat_join(fields: ["the status document's \"ID\" member is not a stable node id: ", f.reason], separator: "") as NonEmptyStr,
+      }
+    }
+  }
+}
+
+// Self's "NodeID" -- ipnstate: "NodeID is the node ID, a 64-bit unsigned integer", printed as decimal.
+fn node_field(document: JsonValue) -> NodeField {
+  match member_string(document: document, key: "NodeID") {
+    Absent => NodeGone {
+      field: "NodeId" as NonEmptyStr,
+      cause: "the status document's Self record carries no readable \"NodeID\" member (ipnstate: \"NodeID is the node ID, a 64-bit unsigned integer\")" as NonEmptyStr,
+    }
+    Present { value: text } => match parse_node_id(text: text) {
+      NodeIdOk { value: id } => NodeHere { value: id }
+      NodeIdBad { failure: f } => NodeGone {
+        field: "NodeId" as NonEmptyStr,
+        cause: string_concat_join(fields: ["the status document's \"NodeID\" member is not a node id: ", f.reason], separator: "") as NonEmptyStr,
       }
     }
   }
@@ -212,20 +265,20 @@ fn observe_local_node_identity(document_text: String) -> StatusObservation {
 // read: a record whose identity is incomplete is not a record with a blank identity, and the census has to
 // say WHICH fact is missing rather than quietly pairing on what remained.
 fn read_identity_record(record: JsonValue) -> StatusObservation {
-  match parsed_field(document: record, key: "Key", field: "DeviceKey" as NonEmptyStr, parse: parse_device_key, upstream_form: "nodekey:<64 hex>") {
-    Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
-    Here { text: node_key_text } => match parsed_field(document: record, key: "ID", field: "StableNodeId" as NonEmptyStr, parse: parse_stable_node_id, upstream_form: "an opaque non-empty id") {
-      Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
-      Here { text: stable_text } => match parsed_field(document: record, key: "NodeID", field: "NodeId" as NonEmptyStr, parse: parse_node_id, upstream_form: "<decimal integer>") {
-        Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
-        Here { text: node_text } => match host_name_field(document: record) {
+  match device_key_field(document: record) {
+    DeviceKeyGone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+    DeviceKeyHere { value: node_key } => match stable_node_field(document: record) {
+      StableNodeGone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+      StableNodeHere { value: stable_node_id } => match node_field(document: record) {
+        NodeGone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
+        NodeHere { value: node_id } => match host_name_field(document: record) {
           Gone { field: f, cause: c } => Refused { failure: MemberIdentityFieldMalformed { field: f, cause: c } }
-          Here { text: name_text } => Observed {
+          Here { text: host_name } => Observed {
             identity: StatusIdentity {
-              node_key: node_key_text as DeviceKey,
-              stable_node_id: stable_text as StableNodeId,
-              node_id: node_text as NodeId,
-              host_name: name_text,
+              node_key: node_key,
+              stable_node_id: stable_node_id,
+              node_id: node_id,
+              host_name: host_name,
               tailscale_ips: string_members_or_empty(document: record, key: "TailscaleIPs"),
             },
           }
