@@ -529,6 +529,7 @@ fn local_store_read(path: String) -> FilesystemExactRead
 
 fn local_store_create_new(path: String, content: String) -> FilesystemCreateNew
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_bind_retention"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_initialize"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_verified"),
@@ -880,6 +881,90 @@ fn local_store_name_set(names: List<String>) -> Set<String> {
   fold(names, init: empty_set(), f: (acc, n) => set_insert(acc, n))
 }
 
+// Retention's root authority is pinned before its first write. Reopening the same
+// byte store against a different metadata registry must not authorize deletion.
+fn local_store_bind_retention(held: LocalStoreFamilyHeld, scope: NonEmptyStr) -> String?
+  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store")]
+{
+  match local_store_hold_check(held: held) {
+    LocalStoreHoldCurrent => match local_store_family_budget(budgets: held.binding.budgets, family: held.family) {
+      Absent => Present { value: "retention family has no budget" }
+      Present { value: b } => match b.at_capacity {
+        RefuseNewStore => {
+          let path = store_path(root_path: local_store_binding_path(b: held.binding), name: concat("retention-", held.family as String))
+          match local_store_create_new(path: path, content: scope as String) {
+            FilesystemCreated { path: _ } => none
+            FilesystemCreateTargetOccupied { path: _ } => {
+              let read = Filesystem.Read(path: path)
+              if read.success && read.content == (scope as String) { none }
+              else { Present { value: "retention registry differs from the store's bound authority" } }
+            }
+            _ => Present { value: "retention authority binding could not be published" }
+          }
+        }
+        _ => Present { value: "retained blobs require RefuseNewStore" }
+      }
+    }
+    _ => Present { value: "retention family hold is no longer current" }
+  }
+}
+
+// Only the root-reading consumer may request reclamation. It keeps the family
+// hold through the complete metadata read and this operation; readers use that
+// same hold until their copy finishes. Mark doomed before unlinking, and keep
+// every unconfirmed deletion charged, exactly as capacity eviction does.
+fn local_store_reclaim_unreferenced(held: LocalStoreFamilyHeld, roots: List<ArtifactRequest>) -> String?
+  admit_callers: [decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under")]
+{
+  let names = roots |> flat_map(q => match evaluation_store_address(req: q) {
+    Admitted { address: address } => if request_kind(req: q) == held.family { [store_object_name(address: address)] } else { [] }
+    IdentityComponentsRefused { components: _, scope: _ } => []
+  })
+  if count(names) != count(roots) { Present { value: "retention root cannot address this family" } } else {
+    match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
+      LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+      LocalStoreIndexAt { index: index, expected: expected } => {
+        let keep = local_store_name_set(names: names)
+        let retired = index.rows |> filter(r => !set_contains(keep, r.name))
+        let next = LocalStoreIndex {
+          next_ordinal: index.next_ordinal,
+          rows: index.rows |> filter(r => set_contains(keep, r.name)),
+          doomed: concat(index.doomed, retired |> map(r => LocalStoreDoomedRow { name: r.name, bytes: r.bytes }))
+        }
+        match local_store_write_index(held: held, expected: expected, index: next) {
+          LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+          LocalStoreIndexLostRace => Present { value: "retention index moved under its exclusive hold" }
+          LocalStoreIndexWritten { reclamation: _ } => local_store_reclaim_doomed(held: held)
+        }
+      }
+    }
+  }
+}
+
+fn local_store_reclaim_doomed(held: LocalStoreFamilyHeld) -> String?
+  admit_callers: [decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced")]
+{
+  match local_store_read_index(root_path: local_store_binding_path(b: held.binding), family: held.family) {
+    LocalStoreIndexUnavailable { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+    LocalStoreIndexAt { index: index, expected: expected } => {
+      let authority = LocalStoreFamilyAuthority { held: held }
+      let copies = local_store_delete_split(attempts: local_store_delete_attempts(authority: authority,
+        names: index.doomed |> filter(d => local_store_is_copy_name(name: d.name)) |> map(d => d.name)))
+      let records = local_store_record_delete_split(attempts: local_store_delete_records(authority: authority,
+        records: index.doomed |> filter(d => !local_store_is_copy_name(name: d.name)) |> map(d => d.name)))
+      let gone = local_store_name_set(names: concat(copies.gone, records.gone))
+      let remaining = index.doomed |> filter(d => !set_contains(gone, d.name))
+      match local_store_write_index(held: held, expected: expected,
+        index: LocalStoreIndex { next_ordinal: index.next_ordinal, rows: index.rows, doomed: remaining }) {
+        LocalStoreIndexWriteRefused { refusal: r } => Present { value: local_store_index_refusal_text(refusal: r) }
+        LocalStoreIndexLostRace => Present { value: "retention cleanup index moved under its exclusive hold" }
+        LocalStoreIndexWritten { reclamation: _ } => if count(remaining) == 0 { none }
+          else { Present { value: "retention deletion is unconfirmed; bytes remain charged" } }
+      }
+    }
+  }
+}
+
 fn local_store_index_window() -> CasGenerationWindow? {
   match cas_generation_window(k: local_store_index_window_k) {
     CasGenerationWindowAdmitted { window: w } => Present { value: w }
@@ -988,6 +1073,8 @@ type LocalStoreIndexRead
 
 fn local_store_read_index(root_path: String, family: ArtifactKindId) -> LocalStoreIndexRead
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_doomed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_indexed_names"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
@@ -1019,6 +1106,8 @@ type LocalStoreIndexWrite
 
 fn local_store_write_index(held: LocalStoreFamilyHeld, expected: CasExpectation, index: LocalStoreIndex) -> LocalStoreIndexWrite
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_unreferenced"),
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_doomed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_current"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_doom_copy"),
@@ -1260,6 +1349,7 @@ type LocalStoreHoldCheck
 
 fn local_store_hold_check(held: LocalStoreFamilyHeld) -> LocalStoreHoldCheck
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_bind_retention"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_write_index"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_held"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_record_recency_held"),
@@ -1339,6 +1429,7 @@ fn local_store_with_family_of<T>(binding: LocalStoreBinding, family: ArtifactKin
 // whose process has died is recovered by the next writer's liveness observation, never by age.
 fn local_store_held_session<T>(capability: LocalStoreCapability, family: ArtifactKindId, run: fn(LocalStoreFamilyHeld) -> T) -> LocalStoreBracket<T>
   admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_with_store"),
     decl_ref(module_path: "test.claim.materialization_store_local_wet_witness", decl_name: "n_commits_under_one_held_session_acquire_the_hold_once_by_real_execution"),
   ]
 {
@@ -1404,6 +1495,7 @@ fn local_store_authority_root(authority: LocalStoreWriteAuthority) -> String {
 
 fn local_store_delete_attempts(authority: LocalStoreWriteAuthority, names: List<String>) -> List<LocalStoreDeleteAttempt>
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_doomed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_sweep_current"),
@@ -1627,6 +1719,7 @@ fn local_store_group_refused_part(by_record: Map<String, List<LocalStoreDeleteAt
 
 fn local_store_delete_records(authority: LocalStoreWriteAuthority, records: List<String>) -> List<LocalStoreRecordDeleteAttempt>
   admit_callers: [
+    decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reclaim_doomed"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_reserve"),
     decl_ref(module_path: "extdeps.realization.materialization_store_local", decl_name: "local_store_commit_reserved"),
   ]

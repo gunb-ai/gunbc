@@ -1,0 +1,200 @@
+module test.claim.retained_checkpoint_store_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.fabric_storage { FabricHeadReading, FabricHeadAbsent, FabricHeadExpectation, FabricObject, FabricObjectStored, FabricHeadAdvanced }
+import std.fabric_blob { FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob, fabric_blob_reading_digest }
+import std.retained_materialization { RetainedOwner, RetainedOpen, RetainedClosed, RetainedRegistry, retained_expectation, retained_owner_object, retained_owner_decode, retained_registry_object, retained_registry_decode }
+import std.durable_compare_and_set { cas_generation_first }
+import std.measure { byte_size }
+import std.cache_identity { fabric_blob_artifact_kind }
+import std.cache_interface { RefuseNewStore }
+import std.judgment_contract { output_fabric_blob }
+import std.materialization_provider { FabricBlobRequest }
+import std.materialization_object { store_lookup_is_hit, store_commit_refusal_tag }
+import std.materialization_store_grant { WitnessScratchRoot }
+import extdeps.realization.materialization_store_local {
+  LocalStoreFamilyBudget, LocalStoreInitialized, LocalStoreOpened, LocalStoreCapability,
+  LocalStoreBracket, LocalStoreBracketRan, LocalStoreBracketRefused, LocalStoreHoldReleased, LocalStoreStagedPart,
+  local_store_initialize, local_store_open, local_store_commit, local_store_lookup,
+}
+import gunbc.fabric.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+import gunbc.fabric.fabric_storage_client { FabricStorageLocalFiles, fabric_storage_put, fabric_storage_advance }
+import gunbc.serving.checkpoint_store {
+  CheckpointStore, CheckpointResult, CheckpointReady, CheckpointRefused, CheckpointWriteRefused,
+  checkpoint_begin, checkpoint_publish, checkpoint_read, checkpoint_close, checkpoint_collect, checkpoint_registry,
+}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn read_head(result: LocalStoreBracket<CheckpointResult<FabricHeadReading>>) -> FabricHeadReading? {
+  match result {
+    LocalStoreBracketRan { value: CheckpointReady { value: r }, hold_release: LocalStoreHoldReleased } => Present { value: r }
+    _ => none
+  }
+}
+
+fn ready(result: LocalStoreBracket<CheckpointResult<Bool>>) -> Bool {
+  match result {
+    LocalStoreBracketRan { value: CheckpointReady { value: b }, hold_release: LocalStoreHoldReleased } => b
+    _ => false
+  }
+}
+
+fn refused<T>(result: LocalStoreBracket<CheckpointResult<T>>) -> Bool {
+  match result {
+    LocalStoreBracketRan { value: CheckpointRefused { cause: _ }, hold_release: LocalStoreHoldReleased } => true
+    _ => false
+  }
+}
+
+fn retained_matches(store: CheckpointStore, owner: NonEmptyStr, head: FabricHeadReading, address: FabricBlobAddress) -> Bool {
+  ready(result: checkpoint_read(store: store, owner: owner, expected: retained_expectation(reading: head),
+    consume: bytes => fabric_blob_reading_digest(reading: bytes) == address.key))
+}
+
+fn publish(store: CheckpointStore, owner: NonEmptyStr, source: NonEmptyStr) -> FabricHeadReading? {
+  match read_head(result: checkpoint_begin(store: store, owner: owner)) {
+    Absent => none
+    Present { value: head } => read_head(result: checkpoint_publish(store: store, owner: owner,
+      expected: retained_expectation(reading: head), staged: source))
+  }
+}
+
+// The persisted cut before head publication: the new blob exists, but the old
+// head remains authoritative after reopening. Recovery removes only the orphan.
+fn interrupted_publication(store: CheckpointStore, a: NonEmptyStr, b: NonEmptyStr, address_a: FabricBlobAddress, address_b: FabricBlobAddress) -> Bool {
+  match publish(store: store, owner: "interrupted", source: a) {
+    Absent => false
+    Present { value: head } => {
+      let orphan = local_store_commit(capability: store.blobs, req: FabricBlobRequest { address: address_b }, payloads: [],
+        parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: b }])
+      match local_store_open(root: store.blobs.binding.root, budgets: store.blobs.binding.budgets) {
+      LocalStoreOpened { capability: reopened, durability: _ } => {
+      let store = CheckpointStore { blobs: reopened, metadata: store.metadata, registry: store.registry }
+      let was_present = store_lookup_is_hit(l: local_store_lookup(capability: store.blobs, req: FabricBlobRequest { address: address_b }))
+      let collected = ready(result: checkpoint_collect(store: store))
+      let prior_survives = retained_matches(store: store, owner: "interrupted", head: head, address: address_a)
+      let orphan_gone = !store_lookup_is_hit(l: local_store_lookup(capability: store.blobs, req: FabricBlobRequest { address: address_b }))
+      let reader_held = ready(result: checkpoint_read(store: store, owner: "interrupted", expected: retained_expectation(reading: head), consume: bytes =>
+        match checkpoint_collect(store: store) { LocalStoreBracketRefused { refusal: _ } => true _ => false }))
+      let changed_scope = CheckpointStore { blobs: store.blobs, metadata: store.metadata, registry: "unrelated-empty-registry" }
+      let scope_refused = refused(result: checkpoint_collect(store: changed_scope))
+      let closed = ready(result: checkpoint_close(store: store, owner: "interrupted", expected: retained_expectation(reading: head)))
+      store_commit_refusal_tag(c: orphan.commit) == "committed" && was_present && collected && prior_survives && orphan_gone && reader_held && scope_refused && closed
+      }
+      _ => false
+      }
+    }
+  }
+}
+
+fn malformed_registry_blocks_cleanup(store: CheckpointStore, source: NonEmptyStr, address: FabricBlobAddress) -> Bool {
+  match publish(store: store, owner: "protected", source: source) {
+    Absent => false
+    Present { value: _ } => match checkpoint_registry(store: store) {
+      CheckpointRefused { cause: _ } => false
+      CheckpointReady { value: registry } => match fabric_storage_put(binding: store.metadata, object: FabricObject { links: [], body: "{}" }) {
+        FabricObjectStored { object: malformed } => match fabric_storage_advance(binding: store.metadata, name: store.registry,
+          expected: retained_expectation(reading: registry.reading), target: malformed) {
+          FabricHeadAdvanced { object: _, generation: _ } => refused(result: checkpoint_collect(store: store))
+            && store_lookup_is_hit(l: local_store_lookup(capability: store.blobs, req: FabricBlobRequest { address: address }))
+          _ => false
+        }
+        _ => false
+      }
+    }
+  }
+}
+
+fn failed_replacement_keeps_head(store: CheckpointStore, source: NonEmptyStr, address: FabricBlobAddress, oversized: NonEmptyStr) -> Bool {
+  match publish(store: store, owner: "capacity", source: source) {
+    Absent => false
+    Present { value: head } => {
+      let attempted = checkpoint_publish(store: store, owner: "capacity", expected: retained_expectation(reading: head), staged: oversized)
+      let full = match attempted {
+        LocalStoreBracketRan { value: CheckpointRefused { cause: CheckpointWriteRefused { commit: c } }, hold_release: LocalStoreHoldReleased } => store_commit_refusal_tag(c: c) == "did_not_fit"
+        _ => false
+      }
+      let kept = retained_matches(store: store, owner: "capacity", head: head, address: address)
+      let closed = ready(result: checkpoint_close(store: store, owner: "capacity", expected: retained_expectation(reading: head)))
+      full && kept && closed
+    }
+  }
+}
+
+// Actual file provider + fabric metadata CAS, not a supplied transition table.
+// Two owners share bytes; replacement and closure release only the final root.
+fn shared_lifecycle(store: CheckpointStore, a: NonEmptyStr, b: NonEmptyStr, address_a: FabricBlobAddress, address_b: FabricBlobAddress) -> Bool {
+  match publish(store: store, owner: "one", source: a) {
+    Absent => false
+    Present { value: one } => match publish(store: store, owner: "two", source: a) {
+      Absent => false
+      Present { value: two } => {
+        let closed_one = ready(result: checkpoint_close(store: store, owner: "one", expected: retained_expectation(reading: one)))
+        let still_shared = retained_matches(store: store, owner: "two", head: two, address: address_a)
+        let no_reopen = refused(result: checkpoint_begin(store: store, owner: "one"))
+        match read_head(result: checkpoint_publish(store: store, owner: "two", expected: retained_expectation(reading: two), staged: b)) {
+          Absent => false
+          Present { value: updated } => {
+            let stale = refused(result: checkpoint_publish(store: store, owner: "two", expected: retained_expectation(reading: two), staged: a))
+            let collected = ready(result: checkpoint_collect(store: store))
+            let old_gone = !store_lookup_is_hit(l: local_store_lookup(capability: store.blobs, req: FabricBlobRequest { address: address_a }))
+            let current_kept = retained_matches(store: store, owner: "two", head: updated, address: address_b)
+            let closed_two = ready(result: checkpoint_close(store: store, owner: "two", expected: retained_expectation(reading: updated)))
+            let gone = !store_lookup_is_hit(l: local_store_lookup(capability: store.blobs, req: FabricBlobRequest { address: address_b }))
+            closed_one && still_shared && no_reopen && stale && collected && old_gone && current_kept && closed_two && gone
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn shared_roots_replacement_and_terminal_release() -> Bool {
+  let scratch = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_matstore.XXXXXX")
+  let root = scratch.path
+  let metadata = fabric_storage_file_root(root: concat(root, "/metadata") as NonEmptyStr)
+  let ensured = fabric_storage_file_root_ensure(root: metadata)
+  let blob_directory = shell.Mkdir.Parents(path: concat(root, "/blobs"))
+  let source_a = "dag/test/fixture/fabric_blob/capture-a.bin" as NonEmptyStr
+  let source_b = "dag/test/fixture/fabric_blob/capture-b.bin" as NonEmptyStr
+  let oversized = concat(root, "/oversized") as NonEmptyStr
+  let large_written = Filesystem.Write(path: oversized as String, content: repeat_string(s: "x", n: 4097))
+  let verdict = match local_store_initialize(root: WitnessScratchRoot { root: concat(root, "/blobs") }, instance_label: "retained-test",
+    budgets: [LocalStoreFamilyBudget { family: fabric_blob_artifact_kind, budget: byte_size(count: 4096), at_capacity: RefuseNewStore }]) {
+    LocalStoreInitialized { opening: LocalStoreOpened { capability: blobs, durability: _ } } => {
+      let store = CheckpointStore { blobs: blobs, metadata: FabricStorageLocalFiles { root: metadata }, registry: "checkpoint-roots" }
+      match read_staged_fabric_blob(path: source_a) {
+        FabricBlobReadRefused { fault: _ } => false
+        FabricBlobRead { reading: a } => match read_staged_fabric_blob(path: source_b) {
+          FabricBlobReadRefused { fault: _ } => false
+          FabricBlobRead { reading: b } => {
+            let address_a = FabricBlobAddress { key: fabric_blob_reading_digest(reading: a) }
+            let address_b = FabricBlobAddress { key: fabric_blob_reading_digest(reading: b) }
+            let shared = shared_lifecycle(store: store, a: source_a, b: source_b, address_a: address_a, address_b: address_b)
+            let interrupted = interrupted_publication(store: store, a: source_a, b: source_b, address_a: address_a, address_b: address_b)
+            let capacity = failed_replacement_keeps_head(store: store, source: source_a, address: address_a, oversized: oversized)
+            let corrupt = malformed_registry_blocks_cleanup(store: store, source: source_a, address: address_a)
+            shared && interrupted && capacity && corrupt
+          }
+        }
+      }
+    }
+    _ => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: root)
+  scratch.success && blob_directory.success && large_written.success && (match ensured { FabricStorageRootReady => true _ => false }) && verdict && cleaned.success
+}
+
+test fn retention_metadata_refuses_incomplete_or_ambiguous_roots() -> Bool {
+  let owner = RetainedOwner { owner: "attempt/with arbitrary characters", revision: cas_generation_first(), head: RetainedOpen { blob: none } }
+  let registry = RetainedRegistry { revision: cas_generation_first(), owners: [owner.owner] }
+  let owner_ok = match retained_owner_decode(object: retained_owner_object(record: owner)) { Present { value: r } => r == owner Absent => false }
+  let registry_ok = match retained_registry_decode(object: retained_registry_object(record: registry)) { Present { value: r } => r == registry Absent => false }
+  let missing_head = match retained_owner_decode(object: FabricObject { links: [], body: "{\"format\":\"retained-owner/1\",\"revision\":1,\"owner\":\"a\"}" }) { Absent => true _ => false }
+  let duplicated = RetainedRegistry { revision: registry.revision, owners: [owner.owner, owner.owner] }
+  let duplicate_refused = match retained_registry_decode(object: retained_registry_object(record: duplicated)) { Absent => true _ => false }
+  owner_ok && registry_ok && missing_head && duplicate_refused
+}

@@ -1,0 +1,388 @@
+module gunbc.serving.checkpoint_store
+
+import gunbc.fabric.fabric_storage_address { fabric_storage_state_suffix }
+import std.decl_ref { decl_ref }
+import std.types { String, NonEmptyStr, List, Bool }
+import std.optional { Present, Absent }
+import std.fabric_storage {
+  FabricObject, FabricHeadReading, FabricHeadAbsent, FabricHeadAt,
+  FabricHeadExpectation, FabricHeadAdvanced, FabricHeadMoved, FabricHeadAdvanceRefused,
+  FabricObjectStored, FabricPutRefused, FabricClosureRead, FabricClosureRefused,
+  FabricClosureBudgetExhausted, fabric_head_admits, FabricStorageFault,
+}
+import std.durable_compare_and_set { CasGeneration, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
+import std.retained_materialization {
+  RetainedHead, RetainedOpen, RetainedClosed, RetainedOwner, RetainedRegistry,
+  retained_owner_name, retained_owner_object, retained_registry_object,
+  retained_owner_decode, retained_registry_decode, retained_expectation, retained_head_roots,
+}
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobReading, FabricBlobRead, FabricBlobReadRefused,
+  read_staged_fabric_blob, fabric_blob_reading_digest, FabricBlobFault,
+}
+import std.cache_identity { fabric_blob_artifact_kind }
+import std.materialization_provider { ArtifactRequest, FabricBlobRequest }
+import std.materialization_object { StoreCommit, StoreCommitSettled, StoreCommitRefused, StoreLookup, store_lookup_is_hit }
+import std.judgment_contract { output_fabric_blob }
+import extdeps.realization.materialization_store_local {
+  LocalStoreCapability, LocalStoreFamilyHeld, LocalStoreBracket, LocalStoreStagedPart,
+  local_store_held_session, local_store_bind_retention, local_store_reclaim_unreferenced,
+  local_store_commit_under_request, local_store_lookup_parts,
+}
+import gunbc.fabric.fabric_storage_client {
+  FabricStorageBinding, FabricStorageLocalFiles, FabricStorageDoorSocket, FabricStorageServed,
+  FabricStorageBindingUnplaced, FabricStorageBindingRefused,
+  fabric_storage_closure, fabric_storage_put, fabric_storage_advance,
+}
+import extdeps.languages.json.emit { json_array, json_string, serialize_json }
+
+// Blob bytes use the existing bounded materialization provider; heads use the
+// fabric metadata service. Production supplies fabric_state_storage_binding();
+// LocalFiles is only the injected wet-test realization, never a deployment route.
+// PR2's turn owner calls begin/read -> restore/serve/save -> publish under its
+// engine grant. Attempt terminal/abandonment, not stream end, calls close.
+type CheckpointStore {
+  blobs: LocalStoreCapability
+  metadata: FabricStorageBinding
+  registry: NonEmptyStr
+}
+
+type CheckpointResult<T>
+  = CheckpointReady { value: T }
+  | CheckpointRefused { cause: CheckpointFault }
+
+type CheckpointFault
+  = CheckpointMetadataUnavailable { fault: FabricStorageFault }
+  | CheckpointBlobUnavailable { fault: FabricBlobFault }
+  | CheckpointWriteRefused { commit: StoreCommit }
+  | CheckpointReadRefused { lookup: StoreLookup }
+  | CheckpointRetentionRefused { detail: String }
+  | CheckpointOwnerClosed
+  | CheckpointOwnerUnregistered
+  | CheckpointOwnerMissing
+  | CheckpointEmpty
+  | CheckpointStaleHead
+  | CheckpointRevisionExhausted
+
+fn checkpoint_refused<T>(detail: String) -> CheckpointResult<T> {
+  CheckpointRefused { cause: CheckpointRetentionRefused { detail: detail } }
+}
+
+type CheckpointMetadata {
+  reading: FabricHeadReading
+  object: FabricObject?
+}
+
+type CheckpointOwner {
+  reading: FabricHeadReading
+  record: RetainedOwner?
+}
+
+type CheckpointRegistry {
+  reading: FabricHeadReading
+  owners: List<NonEmptyStr>
+}
+
+type CheckpointRoots {
+  requests: List<ArtifactRequest>
+  owners: List<NonEmptyStr>
+}
+
+fn checkpoint_scope(store: CheckpointStore) -> CheckpointResult<NonEmptyStr> {
+  let binding: CheckpointResult<List<String>> = match store.metadata {
+    FabricStorageLocalFiles { root: r } => CheckpointReady { value: ["files", r.objects as String, r.heads as String] }
+    FabricStorageDoorSocket { socket: s, route_prefix: r } => if (r as String).ends_with(suffix: fabric_storage_state_suffix) {
+      CheckpointReady { value: ["socket", s as String, r as String] }
+    } else { checkpoint_refused(detail: "retention requires the authenticated state route") }
+    FabricStorageServed { endpoint: e } => if (e as String).ends_with(suffix: fabric_storage_state_suffix) {
+      CheckpointReady { value: ["served", e as String] }
+    } else { checkpoint_refused(detail: "retention requires the authenticated state route") }
+    FabricStorageBindingUnplaced => checkpoint_refused(detail: "retention metadata is unplaced")
+    FabricStorageBindingRefused { detail: d } => checkpoint_refused(detail: d as String)
+  }
+  match binding {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: parts } => CheckpointReady { value: serialize_json(v: json_array(
+      elements: concat(parts, [store.registry as String]) |> map(s => json_string(s: s)))) as NonEmptyStr }
+  }
+}
+
+fn checkpoint_with_store<T>(store: CheckpointStore, run: fn(LocalStoreFamilyHeld) -> CheckpointResult<T>) -> LocalStoreBracket<CheckpointResult<T>> {
+  local_store_held_session(capability: store.blobs, family: fabric_blob_artifact_kind, run: held =>
+    match checkpoint_scope(store: store) {
+      CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+      CheckpointReady { value: scope } => match local_store_bind_retention(held: held, scope: scope) {
+        Present { value: cause } => checkpoint_refused(detail: cause)
+        Absent => run(held)
+      }
+    })
+}
+
+fn checkpoint_metadata(store: CheckpointStore, name: NonEmptyStr) -> CheckpointResult<CheckpointMetadata> {
+  match fabric_storage_closure(binding: store.metadata, name: name, bound: 1) {
+    FabricClosureRefused { fault: f } => CheckpointRefused { cause: CheckpointMetadataUnavailable { fault: f } }
+    FabricClosureBudgetExhausted { at: _, bound: _ } => checkpoint_refused(detail: "retention head has unexpected history links")
+    FabricClosureRead { reading: r, newest_first: objects } => match r {
+      FabricHeadAbsent => if count(objects) == 0 { CheckpointReady { value: CheckpointMetadata { reading: r, object: none } } }
+        else { checkpoint_refused(detail: "absent retention head returned objects") }
+      FabricHeadAt { object: _, generation: _ } => match first(objects) {
+        Present { value: o } => if count(objects) == 1 { CheckpointReady { value: CheckpointMetadata { reading: r, object: Present { value: o.content } } } }
+          else { checkpoint_refused(detail: "retention head returned multiple objects") }
+        Absent => checkpoint_refused(detail: "retention head's object is missing")
+      }
+    }
+  }
+}
+
+fn checkpoint_registry(store: CheckpointStore) -> CheckpointResult<CheckpointRegistry> {
+  match checkpoint_metadata(store: store, name: store.registry) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: m } => match m.object {
+      Absent => CheckpointReady { value: CheckpointRegistry { reading: m.reading, owners: [] } }
+      Present { value: object } => match retained_registry_decode(object: object) {
+        Absent => checkpoint_refused(detail: "retention registry is malformed")
+        Present { value: r } => match m.reading {
+          FabricHeadAt { object: _, generation: g } => if g == r.revision {
+            CheckpointReady { value: CheckpointRegistry { reading: m.reading, owners: r.owners } }
+          } else { checkpoint_refused(detail: "retention registry revision differs from its head") }
+          FabricHeadAbsent => checkpoint_refused(detail: "retention registry lost its head")
+        }
+      }
+    }
+  }
+}
+
+fn checkpoint_owner(store: CheckpointStore, owner: NonEmptyStr) -> CheckpointResult<CheckpointOwner> {
+  match checkpoint_metadata(store: store, name: retained_owner_name(registry: store.registry, owner: owner)) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: m } => match m.object {
+      Absent => CheckpointReady { value: CheckpointOwner { reading: m.reading, record: none } }
+      Present { value: object } => match retained_owner_decode(object: object) {
+        Absent => checkpoint_refused(detail: "retention owner is malformed")
+        Present { value: r } => match m.reading {
+          FabricHeadAt { object: _, generation: g } => if g == r.revision && r.owner == owner {
+            CheckpointReady { value: CheckpointOwner { reading: m.reading, record: Present { value: r } } }
+          } else { checkpoint_refused(detail: "retention owner identity or revision differs from its head") }
+          FabricHeadAbsent => checkpoint_refused(detail: "retention owner lost its head")
+        }
+      }
+    }
+  }
+}
+
+fn checkpoint_next(reading: FabricHeadReading) -> CheckpointResult<CasGeneration> {
+  match reading {
+    FabricHeadAbsent => CheckpointReady { value: cas_generation_first() }
+    FabricHeadAt { object: _, generation: g } => match cas_generation_successor(g: g) {
+      CasSuccessorGeneration { generation: n } => CheckpointReady { value: n }
+      CasSuccessorExhausted { head: _ } => CheckpointRefused { cause: CheckpointRevisionExhausted }
+    }
+  }
+}
+
+fn checkpoint_advance(store: CheckpointStore, name: NonEmptyStr, prior: FabricHeadReading, object: FabricObject) -> CheckpointResult<FabricHeadReading>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_register"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_set_owner"),
+  ]
+{
+  match fabric_storage_put(binding: store.metadata, object: object) {
+    FabricPutRefused { fault: f } => CheckpointRefused { cause: CheckpointMetadataUnavailable { fault: f } }
+    FabricObjectStored { object: target } => match fabric_storage_advance(binding: store.metadata, name: name,
+      expected: retained_expectation(reading: prior), target: target) {
+      FabricHeadAdvanced { object: o, generation: g } => CheckpointReady { value: FabricHeadAt { object: o, generation: g } }
+      FabricHeadMoved { expected: _, observed: _ } => CheckpointRefused { cause: CheckpointStaleHead }
+      FabricHeadAdvanceRefused { fault: f } => CheckpointRefused { cause: CheckpointMetadataUnavailable { fault: f } }
+    }
+  }
+}
+
+fn checkpoint_register(store: CheckpointStore, registry: CheckpointRegistry, owners: List<NonEmptyStr>) -> CheckpointResult<FabricHeadReading>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect_under"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_begin"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_close"),
+  ]
+{
+  match checkpoint_next(reading: registry.reading) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: revision } => checkpoint_advance(store: store, name: store.registry, prior: registry.reading,
+      object: retained_registry_object(record: RetainedRegistry { revision: revision, owners: owners }))
+  }
+}
+
+fn checkpoint_set_owner(store: CheckpointStore, owner: NonEmptyStr, prior: FabricHeadReading, head: RetainedHead) -> CheckpointResult<FabricHeadReading>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_begin"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_publish"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_close"),
+  ]
+{
+  match checkpoint_next(reading: prior) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: revision } => checkpoint_advance(store: store,
+      name: retained_owner_name(registry: store.registry, owner: owner), prior: prior,
+      object: retained_owner_object(record: RetainedOwner { owner: owner, revision: revision, head: head }))
+  }
+}
+
+fn checkpoint_collect_under(store: CheckpointStore, held: LocalStoreFamilyHeld) -> CheckpointResult<Bool>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_collect"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_publish"),
+    decl_ref(module_path: "gunbc.serving.checkpoint_store", decl_name: "checkpoint_close"),
+  ]
+{
+  match checkpoint_registry(store: store) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: registry } => {
+      let initial: CheckpointResult<CheckpointRoots> = CheckpointReady { value: CheckpointRoots { requests: [], owners: [] } }
+      let roots = fold(registry.owners, init: initial, f: (acc, owner) => match acc {
+        CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+        CheckpointReady { value: collected } => match checkpoint_owner(store: store, owner: owner) {
+          CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+          CheckpointReady { value: observed } => {
+            let more: List<ArtifactRequest> = match observed.record {
+              Absent => []
+              Present { value: r } => retained_head_roots(head: r.head) |> map(a => FabricBlobRequest { address: a })
+            }
+            let closed = match observed.record {
+              Absent => false
+              Present { value: r } => match r.head { RetainedClosed => true RetainedOpen { blob: _ } => false }
+            }
+            CheckpointReady { value: CheckpointRoots { requests: concat(collected.requests, more),
+              owners: if closed { collected.owners } else { concat(collected.owners, [owner]) } } }
+          }
+        }
+      })
+      match roots {
+        CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+        CheckpointReady { value: live } => {
+          let pruned = if live.owners == registry.owners { CheckpointReady { value: registry.reading } }
+            else { checkpoint_register(store: store, registry: registry, owners: live.owners) }
+          match pruned {
+            CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+            CheckpointReady { value: _ } => match local_store_reclaim_unreferenced(held: held, roots: live.requests) {
+              Present { value: c } => checkpoint_refused(detail: c)
+              Absent => CheckpointReady { value: true }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn checkpoint_collect(store: CheckpointStore) -> LocalStoreBracket<CheckpointResult<Bool>> {
+  checkpoint_with_store(store: store, run: held => checkpoint_collect_under(store: store, held: held))
+}
+
+fn checkpoint_begin(store: CheckpointStore, owner: NonEmptyStr) -> LocalStoreBracket<CheckpointResult<FabricHeadReading>> {
+  checkpoint_with_store(store: store, run: held => match checkpoint_registry(store: store) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: registry } => match checkpoint_owner(store: store, owner: owner) {
+      CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+      CheckpointReady { value: observed } => match observed.record {
+        Present { value: r } => match r.head {
+          RetainedClosed => CheckpointRefused { cause: CheckpointOwnerClosed }
+          RetainedOpen { blob: _ } => if any(registry.owners, o => o == owner) { CheckpointReady { value: observed.reading } }
+            else { CheckpointRefused { cause: CheckpointOwnerUnregistered } }
+        }
+        Absent => {
+          let registered = if any(registry.owners, o => o == owner) { CheckpointReady { value: registry.reading } }
+            else { checkpoint_register(store: store, registry: registry, owners: concat(registry.owners, [owner])) }
+          match registered {
+            CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+            CheckpointReady { value: _ } => checkpoint_set_owner(store: store, owner: owner, prior: observed.reading, head: RetainedOpen { blob: none })
+          }
+        }
+      }
+    }
+  })
+}
+
+fn checkpoint_publish(store: CheckpointStore, owner: NonEmptyStr, expected: FabricHeadExpectation, staged: NonEmptyStr) -> LocalStoreBracket<CheckpointResult<FabricHeadReading>> {
+  checkpoint_with_store(store: store, run: held => match checkpoint_open_owner(store: store, owner: owner, expected: expected) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: observed } => match checkpoint_collect_under(store: store, held: held) {
+      CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+      CheckpointReady { value: _ } => match read_staged_fabric_blob(path: staged) {
+        FabricBlobReadRefused { fault: f } => CheckpointRefused { cause: CheckpointBlobUnavailable { fault: f } }
+        FabricBlobRead { reading: blob } => {
+          let address = FabricBlobAddress { key: fabric_blob_reading_digest(reading: blob) }
+          let committed = local_store_commit_under_request(held: held, req: FabricBlobRequest { address: address }, payloads: [],
+            parts: [LocalStoreStagedPart { id: output_fabric_blob, staged: staged }])
+          match committed.commit {
+            StoreCommitRefused { key: _, refusal: _ } => CheckpointRefused { cause: CheckpointWriteRefused { commit: committed.commit } }
+            StoreCommitSettled { receipt: _ } => checkpoint_set_owner(store: store, owner: owner, prior: observed.reading, head: RetainedOpen { blob: Present { value: address } })
+          }
+        }
+      }
+    }
+  })
+}
+
+fn checkpoint_open_owner(store: CheckpointStore, owner: NonEmptyStr, expected: FabricHeadExpectation) -> CheckpointResult<CheckpointOwner> {
+  match checkpoint_registry(store: store) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: registry } => if !any(registry.owners, o => o == owner) { CheckpointRefused { cause: CheckpointOwnerUnregistered } }
+      else { match checkpoint_owner(store: store, owner: owner) {
+        CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+        CheckpointReady { value: observed } => if !fabric_head_admits(expected: expected, observed: observed.reading) { CheckpointRefused { cause: CheckpointStaleHead } }
+          else { match observed.record {
+            Absent => CheckpointRefused { cause: CheckpointOwnerMissing }
+            Present { value: r } => match r.head {
+              RetainedClosed => CheckpointRefused { cause: CheckpointOwnerClosed }
+              RetainedOpen { blob: _ } => CheckpointReady { value: observed }
+            }
+          } }
+      } }
+  }
+}
+
+fn checkpoint_read<T>(store: CheckpointStore, owner: NonEmptyStr, expected: FabricHeadExpectation, consume: fn(FabricBlobReading) -> T) -> LocalStoreBracket<CheckpointResult<T>> {
+  checkpoint_with_store(store: store, run: held => match checkpoint_open_owner(store: store, owner: owner, expected: expected) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: observed } => {
+      let roots = match observed.record { Absent => [] Present { value: r } => retained_head_roots(head: r.head) }
+      match first(roots) {
+        Absent => CheckpointRefused { cause: CheckpointEmpty }
+        Present { value: address } => {
+          let found = local_store_lookup_parts(capability: store.blobs, req: FabricBlobRequest { address: address })
+          if !store_lookup_is_hit(l: found.lookup) { CheckpointRefused { cause: CheckpointReadRefused { lookup: found.lookup } } }
+          else { match first(found.parts) {
+            Absent => checkpoint_refused(detail: "checkpoint byte part is missing")
+            Present { value: bytes } => CheckpointReady { value: consume(bytes) }
+          } }
+        }
+      }
+    }
+  })
+}
+
+fn checkpoint_close(store: CheckpointStore, owner: NonEmptyStr, expected: FabricHeadExpectation) -> LocalStoreBracket<CheckpointResult<Bool>> {
+  checkpoint_with_store(store: store, run: held => match checkpoint_owner(store: store, owner: owner) {
+    CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+    CheckpointReady { value: observed } => {
+      let closed = match observed.record {
+        Absent => CheckpointRefused { cause: CheckpointOwnerMissing }
+        Present { value: r } => match r.head {
+          RetainedClosed => CheckpointReady { value: observed.reading }
+          RetainedOpen { blob: _ } => if fabric_head_admits(expected: expected, observed: observed.reading) {
+            checkpoint_set_owner(store: store, owner: owner, prior: observed.reading, head: RetainedClosed)
+          } else { CheckpointRefused { cause: CheckpointStaleHead } }
+        }
+      }
+      match closed {
+        CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+        CheckpointReady { value: _ } => match checkpoint_registry(store: store) {
+          CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+          CheckpointReady { value: registry } => match checkpoint_register(store: store, registry: registry, owners: registry.owners |> filter(o => o != owner)) {
+            CheckpointRefused { cause: c } => CheckpointRefused { cause: c }
+            CheckpointReady { value: _ } => checkpoint_collect_under(store: store, held: held)
+          }
+        }
+      }
+    }
+  })
+}
