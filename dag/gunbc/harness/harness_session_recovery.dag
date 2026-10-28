@@ -794,8 +794,11 @@ fn session_request_pending_since_of(lines: List<String>, round: Int, now: EpochS
   let events = lines |> map(l => session_recovery_event_of_line(line: l))
   match session_request_pending_since_for(events: events, round: round) {
     // A window from a stream we did not read is clamped to the reading at hand; the window may never be
-    // in the future, and it is never the sentinel of a default.
-    Present { value: window } => if window < now { window } else { now }
+    // in the future, and it is never the sentinel of a default. The clamp joins the window against the
+    // clock's reading, so it ADMITS the window here: the Option fold's untyped init re-infers the element
+    // shape, so the read-back window arrives as a plain integer reading and the join, not the fold, is
+    // where the two shapes must meet as one (srv1 resolve diagnostic, 2026-10-28).
+    Present { value: window } => if window < now { window as EpochSecs } else { now }
     Absent => now
   }
 }
