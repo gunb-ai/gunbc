@@ -147,8 +147,8 @@ import gunbc.fleet.fleet_naming_policy {
   select_fleet_naming_policy,
   selector_form_is_accepted,
 }
-import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, SocketAddress, render_uri_host }
-import extdeps.dns.domain_name { HostName, host_name_eq }
+import extdeps.network.endpoint { NetworkHost, HostByName, HostByAddress, render_uri_host }
+import extdeps.dns.domain_name { host_name_eq }
 import product.host_identity { HostIdentity }
 
 // THE FIVE SLOTS THE PLAN NAMES, listed here rather than filtered out of the roster so a witness that
@@ -316,24 +316,66 @@ test fn witness_literal_address_is_not_a_service_endpoint() -> Bool {
 // TWO ENDPOINTS ADDRESS THE SAME SERVICE ONLY WHEN THE HOST, PORT, SERVICE AND AUTHORITY ALL AGREE. The
 // comparison replaces endpoint-string equality, which says "different" for a trailing dot and "same" for
 // two hosts that merely look alike.
-test fn witness_endpoint_equality_is_not_string_equality() -> Bool {
+test fn witness_endpoint_equality_asks_who_answers_as_well_as_where() -> Bool {
   match member_endpoint_for(slot: operator_host_srv9) {
     Err { value: _ } => false
-    Ok { value: m } => match service_endpoint_identity(
-      authority: ProviderNameserver,
-      service: NtfyNotifier,
-      member: m,
-      port: ntfy_port(),
-    ) {
+    Ok { value: member } => match member_endpoint_for(slot: operator_host_srv10) {
       Err { value: _ } => false
-      Ok { value: a } => match service_endpoint_identity(
-        authority: FleetDns,
+      Ok { value: other_member } => match service_endpoint_identity(
+        authority: ProviderNameserver,
         service: NtfyNotifier,
-        member: m,
+        member: member,
         port: ntfy_port(),
       ) {
         Err { value: _ } => false
-        Ok { value: b } => service_endpoint_identity_eq(a: a, b: b) && !(a.authority == b.authority)
+        Ok { value: provider } => match service_endpoint_identity(
+          authority: FleetDns,
+          service: NtfyNotifier,
+          member: member,
+          port: ntfy_port(),
+        ) {
+          Err { value: _ } => false
+          Ok { value: fleet_dns } => match service_endpoint_identity(
+            authority: ProviderNameserver,
+            service: NtfyNotifier,
+            member: member,
+            port: other_port(),
+          ) {
+            Err { value: _ } => false
+            Ok { value: other_port } => match service_endpoint_identity(
+              authority: ProviderNameserver,
+              service: NtfyNotifier,
+              member: other_member,
+              port: ntfy_port(),
+            ) {
+              Err { value: _ } => false
+              Ok { value: another_member } => match service_endpoint_identity(
+                authority: ProviderNameserver,
+                service: NtfyNotifier,
+                member: member,
+                port: ntfy_port(),
+              ) {
+                Err { value: _ } => false
+                Ok { value: again } =>
+                  // THE SAME MINT TWICE IS ONE ENDPOINT, so a reconciliation pass collapses duplicates
+                  // instead of reporting a conflict.
+                  service_endpoint_identity_eq(a: provider, b: again)
+                    // WHO ANSWERS IS PART OF THE IDENTITY. The host text and the port can be identical and
+                    // the two endpoints still be different endpoints: one asks the fleet's own DNS and the
+                    // other asks the provider's nameserver, and an incident that names the wrong one is
+                    // unrecoverable from the record.
+                    && !service_endpoint_identity_eq(a: provider, b: fleet_dns)
+                    && provider.authority != fleet_dns.authority
+                    // THE PORT IS PART OF IT: a second port is a second endpoint, not a variant.
+                    && !service_endpoint_identity_eq(a: provider, b: other_port)
+                    // AND SO IS THE MEMBER. Two services that share a role and a port on different machines
+                    // are not the same service -- the case a string comparison over host text would get
+                    // right only by accident.
+                    && !service_endpoint_identity_eq(a: provider, b: another_member)
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -455,7 +497,7 @@ test fn witness_deployment_risk_projection_is_the_endpoint() -> Bool {
 // asserted. The companion claims below take the refusals: another member's slot, an unenrolled role, an
 // unnamed realization, another machine's life, an ended life.
 test fn witness_overlay_binding_records_a_desired_label_not_a_route() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: row } => match fleet_member_label(allocation: row) {
       Err { value: _ } => false
@@ -477,9 +519,9 @@ test fn witness_overlay_binding_records_a_desired_label_not_a_route() -> Bool {
 // plan's defect shape at the overlay layer -- one member's overlay fact recorded as evidence about another
 // -- and it refuses at its mint rather than being corrected downstream.
 test fn witness_binding_for_another_member_refuses() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: "operator_host_srv13") {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
       Absent => false
       Present { value: other } => match attachment_of(subject: srv1.fleet_slot) {
         Absent => false
@@ -503,7 +545,7 @@ test fn witness_binding_for_another_member_refuses() -> Bool {
 // A ROLE THE MEMBER NEVER ENROLLED FOR REFUSES. A census cannot grant a part, so a binding that asks for
 // capacity nobody enrolled never becomes an enrolled fact any population can read.
 test fn witness_undeclared_role_refuses_a_binding() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
@@ -533,7 +575,7 @@ test fn witness_overlay_frontier_rows_are_well_formed() -> Bool {
 // AN ATTACHMENT WITH NO REALIZATION IS NOTHING TO HAVE JOINED TO, so it is refused where it is minted
 // rather than discovered when a census has already trusted it.
 test fn witness_unnamed_attachment_refuses() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match fleet_overlay_attachment(
       subject: srv1.fleet_slot,
@@ -571,7 +613,7 @@ test fn witness_incarnation_extends_the_boundary_it_is_handed() -> Bool {
           // THE REALIZATION IS CARRIED IN FROM THE BOUNDARY, as text, and this module does not compare it
           // to a provider's name -- the most a provider-neutral model may say.
           && (incarnation_realization(incarnation: i) as String) == "fleet-record"
-          && (match row_for(slot: "operator_host_srv1") {
+          && (match row_for(slot: operator_host_srv1) {
             Absent => false
             Present { value: row } =>
               // THE NAME IS THE POLICY'S, not the caller's: asked of the naming module directly, so a
@@ -593,7 +635,7 @@ test fn witness_incarnation_extends_the_boundary_it_is_handed() -> Bool {
 // fleet refuses rather than proceeding "with a warning": a warning is how a machine whose prior life was
 // never archived joins the fleet and is later treated as continuous with itself.
 test fn witness_intake_without_a_boundary_refuses() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: row } => match fleet_member_label(allocation: row) {
       Err { value: _ } => false
@@ -620,9 +662,9 @@ test fn witness_intake_without_a_boundary_refuses() -> Bool {
 // against each other, so the machine that returns cannot be handed the identity of the machine that left
 // by passing the label its operator prefers.
 test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
-    Present { value: srv1 } => match row_for(slot: "operator_host_srv13") {
+    Present { value: srv1 } => match row_for(slot: operator_host_srv13) {
       Absent => false
       Present { value: other } => match fleet_member_label(allocation: other) {
         Err { value: _ } => false
@@ -650,7 +692,7 @@ test fn witness_incarnation_with_a_borrowed_label_refuses() -> Bool {
 // the model refuses at the binding's mint instead of letting the census record srv13's overlay facts as
 // evidence about srv1 -- the plan's defect, typed at the seam where it would actually be committed.
 test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
@@ -678,7 +720,7 @@ test fn witness_binding_cannot_cite_another_machines_life() -> Bool {
 // slot and its label -- that is the whole hazard -- so only the termination the boundary gave it
 // separates it from a live one, and a binding that cites it is refused.
 test fn witness_binding_cannot_cite_an_ended_life() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
@@ -730,7 +772,7 @@ fn srv1_selection() -> AttachmentSelection {
 }
 
 fn binding_for_srv1() -> Result<OverlayMemberBinding, OverlayRefusal> {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => Err {
       value: BindingNeedsALabel {
         subject: operator_host_srv1,
@@ -755,7 +797,8 @@ fn binding_for_srv1() -> Result<OverlayMemberBinding, OverlayRefusal> {
           attachment: attachment,
           allocation: row,
           incarnation: Present { value: life },
-          desired_roles: ci_runner_enrollment_participation,
+          // WHAT THE MEMBER DECLARED, read from the enrollment record rather than typed at this call site.
+          desired_roles: declared_roles(subject: row.fleet_slot),
         )
       }
     }
@@ -815,7 +858,7 @@ fn incarnation_id_of(slot_text: HostIdentity) -> OwnedHostIncarnationId {
 // THE SAME SLOT, A LIFE THAT ENDED. Same slot, same label, different termination -- the pair the corpus
 // confuses, which is why the refusal has to exist.
 fn incarnation_of_ended() -> Result<OwnedHostIncarnation, IncarnationRefusal> {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => Err { value: no_fixture_row() }
     Present { value: row } => match fleet_member_label(allocation: row) {
       Err { value: _ } => Err { value: no_fixture_label(slot: row.fleet_slot) }
@@ -940,6 +983,12 @@ fn ntfy_port() -> Port {
   8443
 }
 
+// A SECOND PORT FOR THE SAME SERVICE, so a claim can ask whether the port is part of the identity rather
+// than asserting that it is.
+fn other_port() -> Port {
+  8444
+}
+
 fn service_endpoint_fixture(
   authority: ServiceEndpointAuthority,
 ) -> Result<ServiceEndpointIdentity, ServiceEndpointRefusal> {
@@ -1008,7 +1057,7 @@ test fn witness_endpoint_socket_is_the_members_address_and_the_endpoints_port() 
 // nothing else: a filter that also leaned on the realization's spelling, or on the member, would hand a
 // census an attachment that traverses the site LAN while reading like fabric.
 test fn witness_the_managed_overlay_filter_selects_on_kind_alone() -> Bool {
-  match row_for(slot: "operator_host_srv1") {
+  match row_for(slot: operator_host_srv1) {
     Absent => false
     Present { value: srv1 } => match attachment_of(subject: srv1.fleet_slot) {
       Absent => false
