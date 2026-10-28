@@ -10,7 +10,7 @@ module test.claim.runner.store_provisioning_plan_refusal_witness
 // line through two channels the repo already owns -- the sudoers artifact is withheld, and the grant
 // census gets a standing GrantBlocking row so the apply refuses before its first mutation.
 //
-// Six conjuncts, one per obligation the fix owes:
+// Eight conjuncts, one per obligation the fix owes:
 //   1 POSITIVE CONTROL  an admitted target still contributes exactly one directory row.
 //   2 THE RED           a refused target contributes one located refusal and no rows -- under `=> []`
 //                       this witness is red, because the plan carried no trace of the directory.
@@ -71,10 +71,16 @@ fn stranger_user() -> PosixUser {
 // owned_directory_install_plan_of answer EnsurePlanUnavailable, so the refusal is not a scenario
 // invented for the test.
 fn managed_with(writers: List<PosixUser>) -> OwnedDirectoryTarget {
+  managed_at(path: "/synthetic/store-root", writers: writers)
+}
+
+// THE SAME SYNTHETIC TARGET AT A DECLARED PATH, so one plan can carry TWO distinct targets and the
+// countability of a SECOND refusal can be pinned (conjunct 4b), not just the presence of a first.
+fn managed_at(path: String, writers: List<PosixUser>) -> OwnedDirectoryTarget {
   OwnedDirectoryManaged {
     directory: ManagedDirectory {
       member: "synthetic-store",
-      path: "/synthetic/store-root",
+      path: path,
       owner: owner_user(),
       group_principal: owner_user(),
       dependents: map(writers, w => DirectoryDependent { who: w, needs: [Read, Write, Execute] }),
@@ -86,6 +92,10 @@ fn managed_with(writers: List<PosixUser>) -> OwnedDirectoryTarget {
 
 fn refused_plan() -> ExecutorPrivilegedProvisioningPlan {
   executor_privileged_owned_directory_plan(t: managed_with(writers: [stranger_user()]))
+}
+
+fn second_refused_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_at(path: "/synthetic/second-root", writers: [stranger_user()]))
 }
 
 fn admitted_plan() -> ExecutorPrivilegedProvisioningPlan {
@@ -158,6 +168,43 @@ fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
     && length(xs: executor_privileged_plan_merge(a: admitted_plan(), b: refused_plan()).refusals) == 1
     // an empty plan contributes nothing to either population: distinguishable from a refusal.
     && length(xs: executor_privileged_plan_merge(a: executor_privileged_empty_provisioning_plan(), b: admitted_plan()).refusals) == 0
+}
+
+// 4b. EVERY REFUSAL IS COUNTED, NOT JUST THE FIRST (review 87063). A host with two refused directory
+// targets must report TWO blocking rows -- one per refused target is what makes the degradation
+// countable (DESIGN section 5); truncating to the first let the apply block anyway, but the operator
+// learned about missing directories one per run and the census undercounted. Pins all three places the
+// population is combined: the fold over targets, the merge of site plans, and the census rows derived
+// from either. Under the first-refusal fold/merge this conjunct is red: each produced one.
+fn every_refused_target_is_counted() -> Bool {
+  // the fold over two refused targets and one admitted target: two refusals, located by both paths, and
+  // the admitted target's row is still there to be provisioned if the host is fixed.
+  let folded = executor_privileged_owned_directory_plans(targets: [
+    managed_at(path: "/synthetic/store-root", writers: [stranger_user()]),
+    managed_at(path: "/synthetic/second-root", writers: [owner_user()]),
+    managed_at(path: "/synthetic/third-root", writers: [stranger_user()]),
+  ])
+  length(xs: folded.refusals) == 2
+    && count(executor_privileged_plan_rows(plan: folded)) == 1
+    && match folded.refusals.first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/store-root"
+    }
+    && match folded.refusals.skip(n: 1).first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/third-root"
+    }
+    // the merge of two refused site plans keeps both, in order.
+    && length(xs: executor_privileged_plan_merge(a: refused_plan(), b: second_refused_plan()).refusals) == 2
+    // and the census turns them into one blocking row EACH, with both paths in the plan text.
+    && match host_grant_awaiting_capability(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease")) {
+      Absent => false
+      Present { value: _ } => true
+    }
+    && count(host_grant_blocking_texts(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease"))) == 2
+    && any(xs: host_grant_plan_lines(rows: host_grant_provisioning_target_rows_of(refusals: folded.refusals, lease_owner: "lease")), predicate: fn(line) {
+      string_contains(s: line, pattern: "provisioning-target-refused (2): /synthetic/store-root; /synthetic/third-root")
+    })
 }
 
 // 5. THE SUDOERS CHANNEL STOPS. With a refusal the gate withholds the WHOLE artifact -- the content that

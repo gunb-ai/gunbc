@@ -484,24 +484,22 @@ fn executor_privileged_owned_directory_plan(t: OwnedDirectoryTarget) -> Executor
   }
 }
 
-// TARGETS INTO ONE PLAN. A refusal is never dropped and never lost behind later rows: once the plan
-// carries a refusal it stays that plan, so the fold's result says either what to provision or which
-// single located cause stops it.
+// TARGETS INTO ONE PLAN. EVERY refusal is kept, in target order: a plan that stops does not stop
+// early. Stopping at the first refusal (what this fold used to do) made the second and later refused
+// directories invisible -- the apply blocked anyway, but the operator learned about missing directories
+// one per run and the census undercounted, which is the countability half of DESIGN section 5 ("every
+// degradation is typed, located and countable") left unmet. Rows are accumulated too: renderers gate on
+// refusals being non-empty, so keeping them cannot weaken the stop, and a plan that carries rows AND
+// refusals is the honest description of what the host was asked for.
 fn executor_privileged_owned_directory_plans(
   targets: List<OwnedDirectoryTarget>,
 ) -> ExecutorPrivilegedProvisioningPlan {
   fold_list(
     xs: targets,
-    empty: ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [] },
+    empty: executor_privileged_empty_provisioning_plan(),
     cons: (acc, t) =>
       let p = executor_privileged_owned_directory_plan(t: t)
-      if length(xs: acc.refusals) > 0 {
-        acc
-      } else if length(xs: p.refusals) > 0 {
-        p
-      } else {
-        ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: [] }
-      }
+      ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: concat(acc.refusals, p.refusals) }
   )
 }
 
@@ -524,15 +522,16 @@ fn executor_privileged_plan_of_rows(rows: List<ExecutorPrivilegedOperation>) -> 
   ExecutorPrivilegedProvisioningPlan { rows: rows, refusals: [] }
 }
 
-// THE ONE COMPOSITION OF SITE PLANS. A refusal survives every merge -- it is never overwritten by a
-// later site's rows -- so a host plan that carries a refusal is a host plan whose renderers must stop.
+// THE ONE COMPOSITION OF SITE PLANS. EVERY refusal from BOTH sides survives every merge -- never
+// overwritten by a later site's rows, never truncated to the first: a host with two refused directories
+// must report two, so the census counts what is actually missing (DESIGN section 5, countable).
 fn executor_privileged_plan_merge(
   a: ExecutorPrivilegedProvisioningPlan,
   b: ExecutorPrivilegedProvisioningPlan,
 ) -> ExecutorPrivilegedProvisioningPlan {
   ExecutorPrivilegedProvisioningPlan {
     rows: concat(a.rows, b.rows),
-    refusals: if length(xs: a.refusals) > 0 { a.refusals } else { b.refusals },
+    refusals: concat(a.refusals, b.refusals),
   }
 }
 
