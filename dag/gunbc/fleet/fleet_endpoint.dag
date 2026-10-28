@@ -36,6 +36,10 @@ module gunbc.fleet.fleet_endpoint
 // directly. A refused construction carries WHY, never a fallback endpoint.
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String, brand }
+import std.measure { Second, second_count }
+import std.decl_ref { decl_ref }
+import std.dissolution { bound_dissolution, unbound_dissolution }
+import std.roster_frontier { FrontierRow, DeclSubject, frontier_row_decl, frontier_rows_well_formed }
 import std.error_primitives { Err, Ok, Result }
 import extdeps.dns.domain_name {
   DomainName,
@@ -118,14 +122,25 @@ type ServiceEndpointRefusal
   | PortOutOfRange { service: FleetServiceRole, port: Int }
   | AuthorityWithoutProof { service: FleetServiceRole, claimed: ServiceEndpointAuthority, source: HostIdentity }
 
-// THE ONE CONSTRUCTION PATH FOR A SERVICE ENDPOINT. The authority is supplied by the caller as an
-// assertion, checked against the member the endpoint was resolved from; the host is parsed rather than
-// accepted, and the port is checked against the Port brand's range rather than trusted.
+// THE ONE CONSTRUCTION PATH FOR A SERVICE ENDPOINT. The host is parsed rather than accepted, the port is
+// checked against the Port brand's range rather than trusted, and the authority is checked for whether
+// this model can carry it at all.
 //
-// WHY THE CHECK RUNS AGAINST THE MEMBER. A fleet-DNS endpoint must be the member's own resolved name: if
-// the member's name came from the provider, calling it a fleet-DNS name is a claim the roster does not
-// support, and the whole fleet could be addressed by strings that looked right. This is the gate the plan
-// puts at the string's entry point.
+// WHAT THIS GATE DOES CHECK. `member` cannot be a string, an address, or a self-described endpoint: it is a
+// ProviderEndpoint, and the only way to hold one is to have had an allocation read through gunbc.fleet's
+// naming policy -- the plan's HostIdentity -> HostnameAllocation -> named-member route. So the address in
+// this record is provably the fleet's own name for the slot it names, which is what the equality and
+// socket projections below are allowed to rest on.
+//
+// WHAT THIS GATE DOES NOT CHECK, STATED RATHER THAN IMPLIED. `authority` is an ASSERTION about who answers
+// the member's name -- fleet DNS, or the provider's nameserver -- and dag/ holds no evidence either way
+// yet: no resolution record, no zone ownership, no observed answer. So this function cannot tell a name
+// the fleet's own zone resolved from a name the provider published, and a caller that asserts FleetDns
+// passes on its word. The check that runs today is therefore the one cause the model CAN decide: an
+// authority this phase does not realize is refused outright (LiteralAddress). Naming an authority is not
+// proof of it, and the claim that it was, in a comment above this function, was itself the defect: it made
+// an unchecked argument look gated. The missing evidence is the frontier below, and whoever lands
+// resolution evidence should extend this gate rather than trust the argument.
 fn service_endpoint_identity(
   authority: ServiceEndpointAuthority,
   service: FleetServiceRole,
@@ -162,12 +177,53 @@ fn service_endpoint_identity(
   }
 }
 
-// Whether an authority can carry a service endpoint at all: only an authority that actually answers for
-// the member's name. LiteralAddress is the arm that carries no proof, so an endpoint claiming to be a
-// published service is refused there -- a typed literal stays what it is (an observation a census
-// reports), not an identity that licenses a call.
+// Whether an authority can carry a service endpoint at all, as far as this phase can decide. LiteralAddress
+// is the arm that carries no proof by construction -- someone typed a number -- so an endpoint claiming to
+// be a published service is refused there, and the typed literal stays what it is (an observation a census
+// reports), not an identity that licenses a call. FleetDns and ProviderNameserver are both admitted here
+// because neither can be refuted from dag/ yet; see the frontier below.
 fn service_endpoint_authority_is_supported(authority: ServiceEndpointAuthority) -> Bool {
   authority != LiteralAddress
+}
+
+// WHAT WOULD TURN THE AUTHORITY ARGUMENT INTO PROOF, as a declared frontier rather than a comment.
+//
+// WHY A FRONTIER AND NOT A CHECK. A check needs a fact to consult, and no fact exists to consult: nothing
+// in dag/ records which zone answered for a member's name, when, or from what source. P1's overlay census
+// observes a member's own view of itself and gunbc.network_access_policy models who may reach through the
+// provider fabric; neither is a record that the fleet's zone served this name. Minting a
+// "resolution evidence" type now would put a wall where nothing stands (DESIGN 4b), and quietly letting
+// the argument stand for the evidence is the laundering this frontier exists to name.
+//
+// WHAT DISSOLVES IT, and the order it must go in: a resolution/ownership record with a producer that
+// OBSERVES the answer (a resolver query result carrying the zone that answered and when), not a row
+// somebody asserts, plus the consumer that is this gate consulting it. Until then, this module's
+// declarations -- which carry the member and its name, both grounded -- stay usable, and the authority
+// field must be read as claimed rather than shown.
+data fleet_endpoint_authority_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet", decl_name: "service_endpoint_identity"),
+    reason: "the authority argument (FleetDns / ProviderNameserver) is unchecked because no resolution or zone-ownership observation exists in dag/ to check it against; a caller can label a provider-derived name FleetDns and this gate cannot see the difference. Only LiteralAddress is refused today.",
+    dissolution: unbound_dissolution(description: "a resolution/ownership observation with a real producer (zone that answered a query for this member's name, and when) lands with a named consumer, and service_endpoint_identity consults it instead of accepting the caller's assertion -- P4's resolution record is the expected landing"),
+  ),
+]
+
+// The frontier above is data, and data can be wrong without anything noticing, so the shape is checked
+// here as a claim: every row names a real declaration and gives a real reason and dissolution.
+fn fleet_endpoint_authority_frontier_is_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: fleet_endpoint_authority_frontier)
+}
+
+// Whether the authority gap is recorded WHERE THE ARGUMENT IS ACCEPTED -- on service_endpoint_identity
+// itself -- rather than somewhere decorative. Subject refs again, not prose: a frontier on the wrong
+// declaration would dissolve without closing the gate it names.
+fn authority_gap_frontier_names_this_gate() -> Bool {
+  fleet_endpoint_authority_frontier.any(
+    r => match r.subject {
+      DeclSubject { ref: d } => d.module_path == "gunbc.fleet" && d.decl_name == "service_endpoint_identity"
+      _ => false
+    },
+  )
 }
 
 // THE ADDRESS A CONSUMER DIALS, from the identity: the existing NetworkEndpoint, not a parallel one. This
@@ -198,15 +254,48 @@ fn service_endpoint_identity_eq(a: ServiceEndpointIdentity, b: ServiceEndpointId
     && host_name_eq(a: a.host, b: b.host)
 }
 
-// THE SERVICE A DEPLOYMENT RISK ROW IS ABOUT, as its endpoint says who to ask. The plan's line: the
-// DeploymentId in gunbc.deployment_risk is the nearest existing type and it stays -- this is what a
-// DeploymentRiskRef's endpoint field becomes. Held as a function rather than a type edit so P5 can cut
-// the field over without touching the risk rows themselves (the plan's "no parallel vocabulary and no
-// big-bang").
-fn deployment_risk_endpoint(
-  endpoint: ServiceEndpointIdentity,
-) -> ServiceEndpointIdentity {
-  endpoint
+// THE DEPLOYMENT-RISK ENDPOINT SEAM IS A DECLARED FRONTIER, NOT A FUNCTION THAT PRETENDS TO PROJECT.
+//
+// WHY THE IDENTITY FUNCTION THAT WAS HERE IS GONE. It read `endpoint -> endpoint`, which is not a
+// projection: it took a ServiceEndpointIdentity and returned the same value, so it converted nothing,
+// guaranteed nothing, and could not fail -- DESIGN section 5's "a second representation of the same thing"
+// with a name that implied a relation. Its comment also claimed it was the endpoint field of a
+// DeploymentRiskRef, and gunbc.deployment_risk has no such declaration: the module holds DeploymentId,
+// DeploymentRiskClass, ProdRoleSelection, and the binding table, and no risk row carries an endpoint. A
+// comment that cites a type which does not exist is worse than no comment, because it makes the next
+// reader believe a seam has been grounded when nothing has.
+//
+// WHAT THE PLAN ACTUALLY ASKED FOR, and where it stands. P2's line is that ServiceEndpointIdentity is
+// what a deployment-risk row's endpoint BECOMES and that gunbc.deployment_risk's DeploymentId is the
+// nearest existing type. P2 is model-only, so the risk rows are not touched here (that is the P5 cutover);
+// what belongs at P2 is the honest statement of the seam and its condition, which is the frontier below.
+// No gunbc.deployment_risk declaration is edited or forked by this module.
+data fleet_endpoint_deployment_risk_frontier: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table"),
+    reason: "a deployment-risk row is meant to name the service endpoint it is about; today it names only its external bindings, so an operator reading a ProdRisk row cannot see which service answering which member the row was filed against. The field is not added at P2 (model-only phase; the plan puts the cutover at P5), and ServiceEndpointIdentity is not slipped in beside it, which would be a second source for the same fact.",
+    dissolution: bound_dissolution(ref: decl_ref(module_path: "gunbc.deployment_risk", decl_name: "deployment_external_binding_table")),
+  ),
+]
+
+// The frontier above is data, and data can be wrong without anything noticing, so the shape is checked
+// here as a claim: every row names a real declaration and gives a real reason and dissolution.
+fn fleet_endpoint_frontier_is_well_formed() -> Bool {
+  frontier_rows_well_formed(rows: fleet_endpoint_deployment_risk_frontier)
+}
+
+// Whether the deployment-risk seam actually points at the table it has to change. Well-formedness alone
+// would pass on a row naming anything at all, so the claim an operator asks -- "does the corpus know where
+// this endpoint must land?" -- is answered against the row's SUBJECT ref, which is a fact, rather than
+// against its reason prose, which is free text.
+fn deployment_risk_seam_names_the_binding_table() -> Bool {
+  fleet_endpoint_deployment_risk_frontier.any(
+    r => match r.subject {
+      DeclSubject { ref: d } =>
+        d.module_path == "gunbc.deployment_risk" && d.decl_name == "deployment_external_binding_table"
+      _ => false
+    },
+  )
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -305,13 +394,33 @@ type ReachDemand sole_constructor {
 // already has that atom -- fleet_remote_control.SessionDuration, which offers bounded or indefinite and
 // is a REMOTE-CONTROL session length, not an authorization lifetime. Reusing it here would let a
 // remote-control concept and an access-decision concept diverge silently, so this is its own two arms.
+//
+// THE MAGNITUDE IS std.measure's Second, the corpus's own duration carrier -- not a bare Int, and not a
+// newly minted fleet seconds wrapper beside it (DESIGN section 2, "net concepts must not grow by
+// re-invention"). std.retry_law states the standing rule for a length in dag/: delays, caps and hints are
+// std.measure Second, "the length already used by belt run bounds and event_backlog -- not a second Nat
+// beside the failure count", and it names std.types' Seconds/Duration as NOT the length carrier. A demand
+// that stored its window as a bare Int was the defect this rule refuses: an ununitated number in the
+// field that decides how long a machine may be reached.
+//
+// WHAT THE CARRIER DOES AND DOES NOT GUARANTEE. Second is Measure<Time, One, Nat>, so the unit is carried
+// and the count cannot be negative; the floor is therefore structural, and a zero-second window is
+// representable -- it means "no time at all", which is a demand nobody means to file. reach_demand refuses
+// that case rather than letting it mean "all time" by accident, and names it (see ReachDemandRefusal).
 type ReachDuration
   = ForSession
-  | ForWindow { seconds: Int }
+  | ForWindow { window: Second }
 
-// WHY A DEMAND CANNOT BE STATED. A justification is not decoration: it is what makes a demand auditable,
-// and an empty one is how a standing grant gets written by someone who intended a session.
-type ReachDemandRefusal = JustificationMissing { requester: ReachRequester, target: ReachTarget }
+// WHY A DEMAND CANNOT BE STATED -- TWO CAUSES, TWO NAMES. DESIGN section 3: "a materially different
+// contract needs a materially different name", and section 5 wants each path to fail with a typed, located
+// diagnostic. A missing reason and an empty window are fixed in different places -- the first by whoever
+// writes the demand, the second by the caller's arithmetic -- so one name over both sends the reader to
+// the wrong field.
+//   JustificationMissing -- no one has said WHY the reach is wanted. The fix is with the demand's author.
+//   WindowNotPositive    -- the reason may be perfectly good and the window still asks for no time.
+type ReachDemandRefusal
+  = JustificationMissing { requester: ReachRequester, target: ReachTarget, cause: NonEmptyStr }
+  | WindowNotPositive { requester: ReachRequester, target: ReachTarget }
 
 // THE ONE CONSTRUCTION PATH FOR A DEMAND. Refuses a demand with no reason rather than inventing one, and
 // refuses a non-positive window rather than letting it mean "no time" or "all time" by accident -- a
@@ -324,16 +433,23 @@ fn reach_demand(
   duration: ReachDuration,
   justification: NonEmptyStr,
 ) -> Result<ReachDemand, ReachDemandRefusal> {
+  // WHY THE JUSTIFICATION CHECK IS NOT A RESTATEMENT OF THE TYPE -- and why there is no empty-string
+  // branch. NonEmptyStr already refuses "", so a branch for it could never fire and would be a second
+  // representation of the brand (DESIGN section 5). What the brand does NOT refuse is whitespace: "   " is
+  // a perfectly legal NonEmptyStr, and it is exactly what a caller holding a blank form field produces. So
+  // the check trims before it asks, which is a question the type does not answer.
   let reason = justification as String
-  let window_is_usable = reach_duration_is_meaningful(duration: duration)
-  if reason == "" {
-    Err { value: JustificationMissing { requester: requester, target: target } }
-  } else if !window_is_usable {
+  if reason.trim() == "" {
     Err {
       value: JustificationMissing {
         requester: requester,
         target: target,
+        cause: "the justification is whitespace, which states no reason" as NonEmptyStr,
       }
+    }
+  } else if !reach_duration_is_meaningful(duration: duration) {
+    Err {
+      value: WindowNotPositive { requester: requester, target: target }
     }
   } else {
     Ok {
@@ -349,12 +465,13 @@ fn reach_demand(
   }
 }
 
-// Whether a duration asks for something: a session lasts as long as it lasts and is meaningful, and a
-// window has to ask for a positive amount.
+// Whether a duration asks for anything at all. A session lasts as long as it lasts, which is a decision
+// made at the session (the plan's D8), so it is always meaningful; a window has to ask for a positive
+// amount, asked of the carrier rather than of a number this module invented.
 fn reach_duration_is_meaningful(duration: ReachDuration) -> Bool {
   match duration {
     ForSession => true
-    ForWindow { seconds: s } => s > 0
+    ForWindow { window: w } => second_count(s: w) > 0
   }
 }
 

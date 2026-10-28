@@ -16,6 +16,7 @@ module test.claim.fleet_naming_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, Port, String }
 import std.algebra { string_contains }
+import std.measure { second }
 import std.error_primitives { Err, Ok, Result }
 import std.optional { Absent, Optional, Present }
 import gunbc.hostname_allocation {
@@ -122,6 +123,7 @@ import gunbc.fleet.fleet_endpoint {
   ForSession,
   ForWindow,
   GrantToAnother,
+  JustificationMissing,
   LiteralAddress,
   NtfyNotifier,
   ObserveStatus,
@@ -132,7 +134,11 @@ import gunbc.fleet.fleet_endpoint {
   ServiceEndpointIdentity,
   ServiceEndpointRefusal,
   ServiceOnMember,
-  deployment_risk_endpoint,
+  WindowNotPositive,
+  authority_gap_frontier_names_this_gate,
+  deployment_risk_seam_names_the_binding_table,
+  fleet_endpoint_authority_frontier_is_well_formed,
+  fleet_endpoint_frontier_is_well_formed,
   reach_demand,
   reach_duration_is_meaningful,
   reach_intent_is_administrative,
@@ -381,10 +387,13 @@ test fn witness_endpoint_equality_asks_who_answers_as_well_as_where() -> Bool {
   }
 }
 
-// A REACH DEMAND REFUSES AN UNSTATED REASON AND AN EMPTY WINDOW, rather than defaulting either. Both
-// defaults would silently create standing access, which is the defect the plan's D8 is about. The fixture
-// reports Absent when the roster cannot supply a member, and an absent fixture makes the claim false --
-// a precondition that failed is not a pass.
+// A REACH DEMAND REFUSES AN UNSTATED REASON AND AN EMPTY WINDOW, EACH UNDER ITS OWN NAME. Neither defaults,
+// because either default would silently create standing access (the plan's D8). The claims are discriminating
+// rather than "something failed": the blank-reason call must refuse with JustificationMissing, the zero-window
+// call must refuse with WindowNotPositive, and neither may arrive under the other's name -- one name covering
+// both causes would send a reader to the wrong field (DESIGN sections 3 and 5). The fixture reports Absent
+// when the roster cannot supply a member, and an absent fixture makes the claim false: a precondition that
+// failed is not a pass.
 test fn witness_reach_demand_refuses_an_unstated_reason_and_an_empty_window() -> Bool {
   match reach_target_fixture() {
     Absent => false
@@ -405,15 +414,32 @@ test fn witness_reach_demand_refuses_an_unstated_reason_and_an_empty_window() ->
           target: target,
           transport: OutOfBand,
           intent: ObserveStatus,
-          duration: ForWindow { seconds: 0 },
+          duration: ForWindow { window: second(count: 0) },
           justification: "the status census reads a member" as NonEmptyStr,
         ) {
           Ok { value: _ } => false
-          Err { value: _ } => true
+          // THE CAUSE IS NAMED, not merely "an error": an empty window is not a missing reason.
+          Err { value: WindowNotPositive { requester: r, target: t } } =>
+            r == ExternalConsumer && t == target
+          Err { value: _ } => false
         }
-        && reach_duration_is_meaningful(duration: ForWindow { seconds: 1 })
+        && match reach_demand(
+          requester: CiConvergence,
+          target: target,
+          transport: Fabric,
+          intent: ObserveStatus,
+          duration: ForSession,
+          justification: "   " as NonEmptyStr,
+        ) {
+          Ok { value: _ } => false
+          // Whitespace is a legal NonEmptyStr, so this is the branch the brand cannot serve.
+          Err { value: JustificationMissing { requester: r, target: t, cause: _ } } =>
+            r == CiConvergence && t == target
+          Err { value: _ } => false
+        }
+        && reach_duration_is_meaningful(duration: ForWindow { window: second(count: 1) })
         && reach_duration_is_meaningful(duration: ForSession)
-        && !reach_duration_is_meaningful(duration: ForWindow { seconds: 0 })
+        && !reach_duration_is_meaningful(duration: ForWindow { window: second(count: 0) })
   }
 }
 
@@ -427,7 +453,7 @@ test fn witness_a_well_formed_reach_demand_is_admitted() -> Bool {
       target: target,
       transport: DirectLane,
       intent: ReachService,
-      duration: ForWindow { seconds: 900 },
+      duration: ForWindow { window: second(count: 900) },
       justification: "the runner needs one member's status endpoint for one session" as NonEmptyStr,
     ) {
       Ok { value: d } =>
@@ -479,16 +505,29 @@ test fn witness_reach_demand_is_provider_neutral() -> Bool {
   }
 }
 
-// A DEPLOYMENT RISK ROW KEEPS ITS OWN IDENTITY AND GAINS AN ENDPOINT: the projection is the endpoint
-// itself, so a risk row and an addressable service are different things that can be cited together.
-test fn witness_deployment_risk_projection_is_the_endpoint() -> Bool {
-  match service_endpoint_fixture(authority: FleetDns) {
-    Ok { value: e } => {
-      let projected = deployment_risk_endpoint(endpoint: e)
-      projected.service == e.service && projected.port == e.port && service_endpoint_identity_eq(a: projected, b: e)
-    }
-    Err { value: _ } => false
-  }
+// THE DEPLOYMENT-RISK SEAM IS DECLARED, NOT SIMULATED. What P2 owes the seam is the truth about it: no
+// gunbc.deployment_risk row carries an endpoint today (its declarations are DeploymentId, DeploymentRiskClass,
+// ProdRoleSelection and the binding table -- no risk row names a service), so a function that "projected" an
+// endpoint into one would have been an identity function wearing a projection's name. The claim is that the
+// seam is recorded as a frontier, that the frontier's shape is checked, and that this module does not fork a
+// deployment-risk type in the meantime.
+test fn witness_deployment_risk_seam_is_a_declared_frontier() -> Bool {
+  fleet_endpoint_frontier_is_well_formed()
+    && deployment_risk_seam_names_the_binding_table()
+}
+
+// THE AUTHORITY ARGUMENT IS AN ASSERTION, AND THE CORPUS SAYS SO WHERE IT CAN BE FOUND. The gate today
+// refuses only the authority that carries no proof by construction (LiteralAddress); FleetDns and
+// ProviderNameserver are accepted on the caller's word because no resolution or zone-ownership observation
+// exists in dag/ to consult. That is a gap, so it is declared as one and checked for shape: a frontier row
+// on service_endpoint_identity, with a dissolution naming the evidence that would close it. Minting an
+// "authority proof" type now would put a wall where nothing stands (DESIGN 4b).
+test fn witness_endpoint_authority_gap_is_a_declared_frontier() -> Bool {
+  fleet_endpoint_authority_frontier_is_well_formed()
+    && authority_gap_frontier_names_this_gate()
+    // The one cause the gate CAN decide still decides: an authority with no proof is refused outright.
+    && !service_endpoint_authority_is_supported(authority: LiteralAddress)
+    && service_endpoint_authority_is_supported(authority: FleetDns)
 }
 
 // THE OVERLAY RECORDS A DESIRED LABEL RATHER THAN A ROUTE. A binding is minted only when the member has
