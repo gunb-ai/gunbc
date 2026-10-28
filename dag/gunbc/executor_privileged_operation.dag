@@ -515,11 +515,35 @@ fn executor_privileged_empty_provisioning_plan() -> ExecutorPrivilegedProvisioni
   ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [] }
 }
 
-// A PLAN OVER ROWS THIS MODULE DERIVES DIRECTLY (the host-wide rows carry their literal owner and
-// mode, so their mode is not a DeclaredManaged decision and cannot refuse). Lifting them into the
-// plan type is what lets one host plan carry every directory row.
-fn executor_privileged_plan_of_rows(rows: List<ExecutorPrivilegedOperation>) -> ExecutorPrivilegedProvisioningPlan {
-  ExecutorPrivilegedProvisioningPlan { rows: rows, refusals: [] }
+// ROWS THE CALLER DERIVES DIRECTLY, ADDED TO A PLAN IT ALREADY HAS. This replaces
+// executor_privileged_plan_of_rows, which is DELETED: the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94) found that a public
+// builder manufacturing `refusals: []` let any module rebuild a plan with its refusals dropped, so the
+// seal on ExecutorPrivilegedProvisioningPlan proved nothing about PRESERVING them. The required-parameter
+// variant was rejected for the same reason it is deleted here -- a caller could still pass `[]` and drop
+// a population it had been handed, which is the exact capability the RED below must show is impossible.
+//
+// THE SHAPE THAT CLOSES IT: the refusals are not a parameter at all. This function takes a PLAN and can
+// only ADD rows to it, so the refusal population always comes from the plan the caller was GIVEN, and a
+// module outside this one has no route to a plan except the ones that derive refusals from the one
+// decision (executor_privileged_owned_directory_plan / _plans), merge them (executor_privileged_plan_merge,
+// which concatenates both sides and can only grow them), or take the empty plan (no rows, no refusals).
+// Record literals are available to no one else: ExecutorPrivilegedProvisioningPlan and
+// OwnedDirectoryPlanRefusal are both sole_constructor to this module, so dropping a refusal would require
+// constructing the record, which is what the seal forbids. Rows the caller supplies are the host-wide
+// literal rows -- a converge state directory, the runner base and cache directories, /dev/kvm membership
+// and a daemon-reload -- none of which is a managed-directory decision that can refuse, so carrying them
+// outside the one decision cannot hide a refusal.
+//
+// `rows` is placed BEFORE the plan's own rows: the host-wide population's order is what the sudoers
+// renderers and the census read today, and this keeps it exactly.
+fn executor_privileged_plan_with_rows(
+  plan: ExecutorPrivilegedProvisioningPlan,
+  rows: List<ExecutorPrivilegedOperation>,
+) -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan {
+    rows: concat(rows, plan.rows),
+    refusals: plan.refusals,
+  }
 }
 
 // THE ONE COMPOSITION OF SITE PLANS. EVERY refusal from BOTH sides survives every merge -- never

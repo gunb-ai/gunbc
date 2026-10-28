@@ -16,7 +16,7 @@ import gunbc.executor_privileged_operation {
 }
 import gunbc.runner.runner_host_grants {
   runner_host_wide_refused_operations,
-  runner_host_wide_plan_refusals,
+  runner_host_provisioning_plan_refusals,
   runner_host_sudoers_install_path,
 }
 import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
@@ -249,7 +249,7 @@ fn host_grant_provisioning_target_rows(host: NonEmptyStr, lease_owner: NonEmptyS
   match runner_host_spec_for(host: host as HostIdentity) {
     RunnerHostSpecAbsent { host: _ } => []
     RunnerHostSpecFound { spec: spec } =>
-      host_grant_provisioning_target_rows_of(refusals: runner_host_wide_plan_refusals(spec: spec), lease_owner: lease_owner)
+      host_grant_provisioning_target_rows_of(refusals: runner_host_provisioning_plan_refusals(spec: spec), lease_owner: lease_owner)
   }
 }
 

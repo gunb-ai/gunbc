@@ -21,7 +21,7 @@ module test.claim.runner.store_provisioning_plan_refusal_witness
 //   6 CENSUS STOP       the census blocks on the directory, and the blocking text is countable.
 
 import std.types { Bool, String, NonEmptyStr, List }
-import std.algebra { length, string_contains }
+import std.algebra { length, string_contains, for_all }
 import std.optional { Present, Absent }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.access.posix { PosixUser, LoginShellUnobserved }
@@ -42,14 +42,28 @@ import gunbc.executor_privileged_operation {
   executor_privileged_plan_rows,
   executor_privileged_plan_merge,
   executor_privileged_empty_provisioning_plan,
-  executor_privileged_plan_of_rows,
+  executor_privileged_plan_with_rows,
   executor_privileged_operations_sudoers_body,
 }
 import gunbc.runner.runner_host_grants {
   runner_host_sudoers_body_guard,
   RunnerHostSudoersBodyProduced,
   RunnerHostSudoersBodyRefused,
+  runner_host_wide_plan,
+  runner_host_provisioning_plan_refusals,
+  printer_state_store_plan,
 }
+import gunbc.runner.runner_host_deploy {
+  RunnerHostSpec,
+  RunnerHostSpecFound,
+  RunnerHostSpecAbsent,
+  runner_host_spec_for,
+}
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.printer_workflow_artifact { printer_state_directories, printer_start_claim_directory }
+import gunbc.owned_directory { owned_directory_path }
+import gunbc.compile_census_probe { blocking_subject_census, census_verdict, census_verdict_all, census_exit }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.fleet.fleet_host_grant_coverage {
   host_grant_provisioning_target_rows_of,
   host_grant_blocking_texts,
@@ -259,4 +273,227 @@ test fn an_admitted_target_blocks_nothing() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+}
+
+// ---------------------------------------------------------------------------
+// THE ONE REFUSAL POPULATION AND THE SEALED PLAN (the lane lead's side-chat finding (jolly-hawk-60, msg_9915ec94); DESIGN §3 "each fact
+// lives in exactly one place", §5 "a refusal that fires -> the line stops").
+//
+// THE BUG: gunbc.fleet.fleet_host_grant_coverage built its blocking rows from the host-WIDE refusal
+// population alone, while the sudoers gate consumed the COMBINED population that also carries the
+// printer-state directories. One fact, two populations -- so a refused printer-state directory withheld
+// the sudoers artifact but produced no blocking row, and the apply reached its first mutation without
+// the directory. Both channels now call runner_host_provisioning_plan_refusals; the host-wide-only
+// accessor is deleted, so there is no second name to pick.
+//
+// WHAT CAN AND CANNOT BE PINNED HERE, stated rather than hidden: every provisioning target in the model
+// today is OwnedDirectoryDeclared, and owned_directory_install_plan_of refuses only a target whose
+// managed-directory admission fails (OwnedDirectoryManaged with a writer who is neither owner nor group).
+// So for a REAL host spec BOTH populations are empty, and a claim phrased as "the combined population
+// contains the printer site's refusals" would read 0 == 0 -- vacuous, and it would still pass with the
+// printer term deleted. That claim is therefore NOT what is claimed. What is pinned, non-vacuously:
+//   claims 7-8  the census reads the one exported population and CANNOT name the deleted host-wide one
+//               (a compile probe whose MissingExport count IS the deletion's own diagnostic), and a
+//               refusal over the REAL printer-state path produces the blocking row, the apply stop and
+//               the withheld sudoers -- over the synthetic managed target, the only route by which any
+//               provisioning target refuses at all;
+//   claims 9-10 the printer host really demands all three printer-state directories and a non-printer
+//               host demands none, which is the premise that made the omission a stop-the-host defect;
+//   claim 11    the sealed plan cannot be built with its refusals dropped (item 2 below).
+// ---------------------------------------------------------------------------
+
+// THE RED'S FIXTURE: the SAME managed-target route the earlier conjuncts use (managed_directory_admit
+// refusing a writer who is neither owner nor group -- the one route by which any provisioning target
+// refuses), placed at the REAL printer-state path so the blocking row names a directory the host needs.
+fn refused_printer_target() -> OwnedDirectoryTarget {
+  managed_at(path: printer_start_claim_directory as String, writers: [stranger_user()])
+}
+
+data census_reads_combined_source: String = "module probe_census_reads_combined\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_provisioning_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_provisioning_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
+
+// THE FORK'S OTHER SIDE, as the compiler sees it: the name the census used to read no longer exists, so
+// importing it is a MissingExport naming that very name. That diagnostic IS the deletion -- the fork
+// cannot be reintroduced by choosing the other population, because there is no other population.
+data census_reads_forked_source: String = "module probe_census_reads_forked\nimport std.types { NonEmptyStr }\nimport std.algebra { length }\nimport gunbc.runner.runner_host_deploy { srv1_runner_host_spec }\nimport gunbc.runner.runner_host_grants { runner_host_wide_plan_refusals }\nfn f() -> Int {\n  length(xs: runner_host_wide_plan_refusals(spec: srv1_runner_host_spec))\n}\n"
+
+// 7. ONE POPULATION, BOTH CHANNELS. The combined name resolves (no MissingExport for it) and the deleted
+// host-wide name does not (exactly one MissingExport, naming it).
+test fn the_census_reads_the_combined_refusal_population() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(
+        source: census_reads_combined_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "runner_host_provisioning_plan_refusals",
+      ),
+      holds: fn(n) { n == 0 },
+    ),
+    census_verdict(
+      census: blocking_subject_census(
+        source: census_reads_forked_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "runner_host_wide_plan_refusals",
+      ),
+      holds: fn(n) { n == 1 },
+    ),
+  ])
+}
+
+// 8. A REFUSED PRINTER-STATE TARGET REACHES THE CENSUS, and the apply refuses before its first mutation.
+// The blocking row names the directory the host actually needs (the real /var/lib/gunbc/printer-starts),
+// host_grant_awaiting_capability refuses the apply as ApplyAwaitingCapability -- the channel that runs
+// BEFORE any host mutation -- and the same refusal withholds the sudoers artifact, so one refusal stops
+// both channels rather than one.
+test fn a_refused_printer_state_target_blocks_the_apply() -> Bool {
+  let refusals = executor_privileged_owned_directory_plan(t: refused_printer_target()).refusals
+  let rows = host_grant_provisioning_target_rows_of(refusals: refusals, lease_owner: "lease")
+  count(rows) == 1
+    && match host_grant_blocking_texts(rows: rows).first() {
+      Absent => false
+      Present { value: t } =>
+        string_contains(s: t, pattern: "/var/lib/gunbc/printer-starts")
+          && string_contains(s: t, pattern: "outsider")
+    }
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => false
+      Present { value: cap } => string_contains(s: cap, pattern: "/var/lib/gunbc/printer-starts")
+    }
+    && match runner_host_sudoers_body_guard(refusals: refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: _ } => false
+      RunnerHostSudoersBodyRefused { reason: why } =>
+        string_contains(s: why, pattern: "/var/lib/gunbc/printer-starts")
+    }
+}
+
+// 8b. THE CONTROL FOR CLAIM 8: an ADMITTED target over the same real path blocks nothing, so the stop
+// above is caused by the refusal and not by the path or the row shape.
+test fn an_admitted_printer_state_target_blocks_nothing() -> Bool {
+  let admitted = executor_privileged_owned_directory_plans(targets: printer_state_directories())
+  let rows = host_grant_provisioning_target_rows_of(refusals: admitted.refusals, lease_owner: "lease")
+  count(rows) == 0
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match runner_host_sudoers_body_guard(refusals: admitted.refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: c } => (c as String) == "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true"
+      RunnerHostSudoersBodyRefused { reason: _ } => false
+    }
+}
+
+// 9. THE PRINTER HOST REALLY DEMANDS THE DIRECTORIES THAT THE CENSUS WAS MISSING -- the premise of the
+// defect. Falsifiable two ways: delete the site and the count drops to zero; key it on the wrong host and
+// claim 10 fails.
+test fn the_printer_host_demands_every_printer_state_directory() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv1) {
+    RunnerHostSpecAbsent { host: _ } => false
+    RunnerHostSpecFound { spec: spec } =>
+      count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)))
+        == count(printer_state_directories())
+      // and each demanded directory is its own row, matched BY PATH -- a count two unrelated
+      // directories could not satisfy.
+      && for_all(
+        xs: map(printer_state_directories(), t => owned_directory_path(t: t) as String),
+        predicate: fn(p) {
+          any(
+            xs: executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec)),
+            predicate: fn(row) {
+              match row {
+                EnsureOwnedDirectory { path: q, owner: _, group: _, mode: _ } => (q as String) == p
+                _ => false
+              }
+            },
+          )
+        },
+      )
+  }
+}
+
+// 10. A HOST THAT IS NOT THE PRINTER HOST DEMANDS NONE OF THEM, and its population is exactly the
+// host-wide one -- the control for claim 9, and the reason the printer term is per-host rather than global.
+test fn a_non_printer_host_demands_no_printer_state_directory() -> Bool {
+  match runner_host_spec_for(host: operator_host_srv2) {
+    RunnerHostSpecAbsent { host: _ } => false
+    RunnerHostSpecFound { spec: spec } =>
+      count(executor_privileged_plan_rows(plan: printer_state_store_plan(spec: spec))) == 0
+        && length(xs: runner_host_provisioning_plan_refusals(spec: spec))
+        == length(xs: runner_host_wide_plan(spec: spec).refusals)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE PLAN CANNOT BE BUILT WITH ITS REFUSALS DROPPED (the lane lead's second side-chat item,
+// jolly-hawk-60 msg_4690f1b7).
+//
+// executor_privileged_plan_of_rows was PUBLIC and manufactured `refusals: []`, so any module could
+// re-house a plan's rows in a fresh plan and silently lose the refusals -- the seal on
+// ExecutorPrivilegedProvisioningPlan proved nothing about PRESERVING them. It is DELETED (the required-
+// parameter variant was rejected for the same reason: a caller could still pass []). The one public
+// builder over caller-supplied rows is now executor_privileged_plan_with_rows, which takes a PLAN and can
+// only ADD rows: the refusal population always comes from the plan the caller was handed, and there is no
+// route to a plan from outside this module except the builders that derive refusals from the one decision,
+// the merge that concatenates both sides, and the empty plan.
+//
+// THE EXACT DIAGNOSTIC ASSERTED (as asked): constructing the sealed record from a foreign module is
+// `CompilerDiagnostic::SoleConstructorViolation` with type_name = "ExecutorPrivilegedProvisioningPlan"
+// (rendered "sole_constructor type 'ExecutorPrivilegedProvisioningPlan' cannot be constructed outside its
+// defining module"), one occurrence per construction site. The refusal record is pinned the same way with
+// type_name = "OwnedDirectoryPlanRefusal": a caller cannot even fabricate the population it would pass.
+// ---------------------------------------------------------------------------
+
+// THE DROPPING ATTEMPT, as the compiler sees it: re-house a refused plan's rows in a plan with no
+// refusals. Blocked at construction, before inference.
+data plan_refusals_dropped_source: String = "module probe_plan_refusals_dropped\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal, executor_privileged_plan_rows }\nfn f(plan: ExecutorPrivilegedProvisioningPlan) -> ExecutorPrivilegedProvisioningPlan {\n  ExecutorPrivilegedProvisioningPlan { rows: executor_privileged_plan_rows(plan: plan), refusals: [] }\n}\n"
+
+// THE REFUSAL FORGERY: a plan whose refusals are not the ones the one decision derived, made by hand.
+// Blocked too -- so the population a caller passes is always one the decision produced.
+data refusal_forged_source: String = "module probe_refusal_forged\nimport std.types { List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal }\nimport gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }\nfn f() -> ExecutorPrivilegedProvisioningPlan {\n  ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [OwnedDirectoryPlanRefusal { path: printer_start_claim_directory, reason: printer_start_claim_directory }] }\n}\n"
+
+// THE CONTROL: the SAME module shape, going through the exported builders only, compiles with no seal
+// violation -- so what fails above is the construction, not the probe.
+data plan_refusals_preserved_source: String = "module probe_plan_refusals_preserved\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, OwnedDirectoryPlanRefusal, executor_privileged_plan_rows, executor_privileged_plan_with_rows, executor_privileged_plan_merge, executor_privileged_empty_provisioning_plan }\nfn f(plan: ExecutorPrivilegedProvisioningPlan, other: ExecutorPrivilegedProvisioningPlan) -> ExecutorPrivilegedProvisioningPlan {\n  executor_privileged_plan_merge(a: executor_privileged_plan_with_rows(plan: plan, rows: []), b: other)\n}\n"
+
+fn plan_seal_violations(source: String, subject: String) -> CompileDiagnosticCensus {
+  blocking_subject_census(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+// 11. A FOREIGN MODULE CANNOT DROP A PLAN'S REFUSALS. Both sealed records are refused at construction
+// (exactly one violation each), and the control that only builds through the exported builders is clean.
+test fn a_foreign_module_cannot_drop_a_plans_refusals() -> ProcessExit {
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: plan_seal_violations(source: plan_refusals_dropped_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: refusal_forged_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: refusal_forged_source, subject: "OwnedDirectoryPlanRefusal"),
+      holds: fn(n) { n == 1 },
+    ),
+    census_verdict(
+      census: plan_seal_violations(source: plan_refusals_preserved_source, subject: "ExecutorPrivilegedProvisioningPlan"),
+      holds: fn(n) { n == 0 },
+    ),
+  ])
+}
+
+// 12. THE DELETED BUILDER IS GONE BY NAME, from production and from the tests: importing it is a
+// MissingExport naming it. This is what makes the fix a deletion rather than a deprecation -- a name that
+// still exists is a name a later caller can pick up.
+data plan_of_rows_removed_source: String = "module probe_plan_of_rows_removed\nimport std.types { NonEmptyStr, List }\nimport gunbc.executor_privileged_operation { ExecutorPrivilegedProvisioningPlan, executor_privileged_plan_of_rows }\nfn f(rows: List<ExecutorPrivilegedOperation>) -> ExecutorPrivilegedProvisioningPlan {\n  executor_privileged_plan_of_rows(rows: rows)\n}\n"
+
+test fn the_refusal_dropping_builder_is_deleted() -> ProcessExit {
+  census_exit(
+    census_verdict(
+      census: blocking_subject_census(
+        source: plan_of_rows_removed_source,
+        wanted_class: "MissingExport",
+        wanted_subject: "executor_privileged_plan_of_rows",
+      ),
+      holds: fn(n) { n == 1 },
+    )
+  )
 }
