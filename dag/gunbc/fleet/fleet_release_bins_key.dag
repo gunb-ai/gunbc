@@ -332,9 +332,10 @@ fn release_bins_roster_text(product: ReleaseBinsProduct) -> String {
 // would restore pre-change binaries and call them current. Dropping a remap prefix moves this digest,
 // and therefore moves the key, so the stale-restore path is closed by this row alone. The byte claim
 // itself is checked by an ON-DEMAND instrument, not by this row and not by any enrolled gate:
-// src/v1/stage0/src/compiler_tests.rs::seed_build_reproducibility_falsifier, which is #[ignore]d
-// because it runs cold release builds and the required path does not run v1 unit tests -- see
-// docs/measurements/seed_build_reproducibility and the rung on
+// src/v1/stage0/src/compiler_tests.rs::seed_build_reproducibility_falsifier -- instrument label
+// seed_build_reproducibility_falsifier; run it, do not cite a copy of its output -- which is
+// #[ignore]d because it runs cold release builds and the required path does not run v1 unit tests.
+// The rung, and why it is on-demand rather than enrolled, are the typed fields on
 // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative.
 fn release_bins_seed_build_environment_digest() -> String {
   join(["sha256:", sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: repo_self_build_env_preamble())))], "")
