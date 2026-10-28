@@ -26238,34 +26238,7 @@ pub fn unify_generics(
 }
 
 pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
-    {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static BK381_CALLS: AtomicUsize = AtomicUsize::new(0);
-        let n = BK381_CALLS.fetch_add(1, Ordering::SeqCst);
-        if n < 1500 {
-            let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-                use std::io::Write;
-                let (rname, rconn, rchildren) = match slot.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: r, .. }) => (r.name.clone(), format!("{:?}", r.connective.clone()), r.children.clone().len()),
-                    _ => ("-".to_string(), "-".to_string(), 0usize),
-                };
-                let _ = writeln!(
-                    f,
-                    "BK381-ARM#{} slot.name={} slot.conn={:?} slot.children={} slot.params={} r.name={} r.conn={} r.children={}",
-                    n,
-                    slot.name.clone(),
-                    slot.connective.clone(),
-                    slot.children.clone().len(),
-                    slot.params.clone().len(),
-                    rname,
-                    rconn,
-                    rchildren,
-                );
-            }
-        }
-    }
-    if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
+    let result = if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
         match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
                 if is_unsolved_type_variable(r.clone()) {
@@ -26278,7 +26251,52 @@ pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
         }
     } else {
         slot.clone()
+    };
+    {
+        let rname = match slot.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.name.clone(),
+            _ => "-".to_string(),
+        };
+        let sname = slot.name.clone();
+        let in_class = rname == "FreeMonoid"
+            || sname == "module".to_string()
+            || sname == "examples".to_string()
+            || sname == "xs".to_string()
+            || sname == "acc".to_string()
+            || sname == "key".to_string()
+            || result.name.clone() == "tail".to_string();
+        if in_class {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            static BK381_CALLS: AtomicUsize = AtomicUsize::new(0);
+            let n = BK381_CALLS.fetch_add(1, Ordering::SeqCst);
+            if n < 50000 {
+                let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                    use std::io::Write;
+                    let rd = match slot.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: r, .. }) => format!("{} conn={:?} children={} params={}", r.name.clone(), r.connective.clone(), r.children.clone().len(), r.params.clone().len()),
+                        _ => "-".to_string(),
+                    };
+                    let _ = writeln!(
+                        f,
+                        "BK381-ARM#{} slot.name={} conn={:?} slot.children={} slot.params={} resolved[{}] out.name={} out.conn={:?} out.children={} out.params={} out.span={:?}",
+                        n,
+                        sname,
+                        slot.connective.clone(),
+                        slot.children.clone().len(),
+                        slot.params.clone().len(),
+                        rd,
+                        result.name.clone(),
+                        result.connective.clone(),
+                        result.children.clone().len(),
+                        result.params.clone().len(),
+                        result.span.clone(),
+                    );
+                }
+            }
+        }
     }
+    result
 }
 
 pub fn unify_generic_child_pairs(
