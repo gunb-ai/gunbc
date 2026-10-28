@@ -5926,6 +5926,20 @@ fn fleet_converge_grant_wait_admits(mode: FleetConvergeWorkflowMode, on_reviewed
   }
 }
 
+// THE WAIT'S ADMISSION AT AN EXACT REF. The class-level question above answers "does this mode require a
+// grant off main, generally" -- true for the boot, because most branches do. But Change 2 made a SKIP
+// legitimate for one mode at one ref, so the admission has to be asked at the ref it is decided on, or the
+// model would forbid what the rendered pipeline does: the wait job skips at a rostered boot ref, and only
+// the ref-aware rule says that skip is admitted rather than a missing authorization.
+fn fleet_converge_grant_wait_admits_at_ref(mode: FleetConvergeWorkflowMode, branch: String, result: GrantWaitResult) -> Bool {
+  match result {
+    GrantWaitSucceeded => true
+    GrantWaitSkipped => !fleet_converge_grant_required_at_ref(mode: mode, branch: branch)
+    GrantWaitFailed => false
+    GrantWaitCancelled => false
+  }
+}
+
 fn fleet_converge_grant_wait_gate(after_build: Bool) -> Expression {
   let waited = LogicalOr {
     left: needs_result_is(job: fleet_converge_branch_run_grant_await_job_id, result: "success"),

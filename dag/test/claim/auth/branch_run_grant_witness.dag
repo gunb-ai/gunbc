@@ -35,7 +35,10 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
   mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource, first_trusted_branch,
 }
-import gunbc.fleet.fleet_converge_workflow { FleetConvergeWorkflowMode, fleet_converge_grant_required_at_ref }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_grant_required_at_ref, fleet_converge_grant_wait_admits_at_ref, GrantWaitSkipped, GrantWaitSucceeded, GrantWaitFailed, GrantWaitCancelled,
+  MtCollins1Boot, HostResetReturn, GcpIamConverge,
+}
 import gunbc.auth.branch_run_grant {
   BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
@@ -529,4 +532,19 @@ test fn the_branch_boot_row_adds_no_new_discharge() -> Bool {
     match site_verdict(row: r).conformance { Conforms => true  _ => false })
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_on_reviewed_main")
     && census_boot_credential_effect_conforms(decl_name: "boot_credential_effect_off_reviewed_main")
+}
+
+// THE WAIT IS SKIPPED, AND THAT SKIP IS ADMITTED -- at the rostered ref, for the boot only. Before
+// Change 2 a skipped wait off main was always an unauthorized boot; the class-level question still says
+// that (most branches DO need the grant), so the ref-aware admission is what makes this route legal
+// instead of a hole. Failure and cancellation are never admitted, at any ref.
+test fn the_approval_free_boot_admits_a_skipped_wait() -> Bool {
+  fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSkipped)
+    && fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitSucceeded)
+    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitFailed)
+    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: trusted_boot_branch(), result: GrantWaitCancelled)
+    // an unrostered branch keeps the OLD admission: no grant, no boot
+    && !fleet_converge_grant_wait_admits_at_ref(mode: MtCollins1Boot, branch: concat(trusted_boot_branch(), "-not-rostered"), result: GrantWaitSkipped)
+    // and a different mode at the rostered ref does too
+    && !fleet_converge_grant_wait_admits_at_ref(mode: HostResetReturn, branch: trusted_boot_branch(), result: GrantWaitSkipped)
 }
