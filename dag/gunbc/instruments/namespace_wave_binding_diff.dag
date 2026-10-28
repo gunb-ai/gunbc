@@ -420,6 +420,15 @@ fn verdict_code(r: CliWireResponse) -> Int {
   }
 }
 
+// What a verdict actually printed, so a control can check a ROW rather than only an exit code. An unprintable
+// verdict prints nothing, which no row-matching control may read as a row that happens to be absent.
+fn verdict_bytes(r: CliWireResponse) -> String {
+  match r {
+    CliWirePrintable { bytes: b, exit: _ } => b
+    CliWireUnprintable { cause: _ } => ""
+  }
+}
+
 // The texts a verdict joins by: supplied by the controls, read from the two roots by the standing.
 type WaveProof {
   evidence: Map<String, ModuleEvidence>
@@ -437,8 +446,12 @@ fn wave_proof(prepared: PreparedGrammar, lex: PreparedLexRules, head: String, cl
 }
 
 // What the ambient census prints beside the infer rows for a rewritten module refused at resolve, and the status 2 it answers.
+// Fields 3 and 4 are the FIRST REFUSAL (the resolve reason's identity, and the site with its located position) as
+// gunbc.instruments.ambient_name_census_reading prints them from the walk's own binding_unreached row; a wave receipt must
+// carry them so a refusal is named by cause rather than only by the generic resolve stage. A refusal the walk located
+// nowhere reads "-" " "- the absence is printed, not fabricated.
 fn wave_refused_row() -> String {
-  "refused_rewritten\texamples.wave\tresolve\n"
+  "refused_rewritten\texamples.wave\tresolve\tresolve_reason_unbound_symbol\tunbound_name=not_declared_anywhere line 12:3\n"
 }
 
 // A SUCCESSFUL JOIN CLEARS ITS OWN MODULE'S INCOMPLETENESS and nothing else's: the admitted wave answers 0 despite the
@@ -446,6 +459,18 @@ fn wave_refused_row() -> String {
 fn wave_other_incompleteness_control_failure(base: String, admit: String, proof: WaveProof) -> Optional<String> {
   let got = verdict_code(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: admit + wave_refused_row() + "unobserved_subject\tsome subject\n", base_status: 2, head_status: 2, proof: proof))
   if got == 2 { optional_absent() } else { optional_present(value: "a joined wave with another incomplete subject answered " + to_string(got) + ", not 2") }
+}
+
+// THE CAUSE TRAVELS BY IDENTITY. A wave receipt carries the refused module's FIRST REFUSAL, not only the generic
+// resolve stage: the refused_rewritten row the reader prints is forwarded verbatim, so its cause symbol and located
+// site must still be there, at the fields the reader prints them in. A refusal the walk located nowhere reads "-":
+// the absence is printed, never a plausible cause.
+fn refused_cause_identity_control_failure(base: String, admit: String, proof: WaveProof) -> Optional<String> {
+  let got = split(s: verdict_bytes(r: binding_diff_verdict(base_stdout: base + wave_refused_row(), head_stdout: admit + wave_refused_row(), base_status: 2, head_status: 2, proof: proof)), delimiter: "\n")
+    |> filter(l => starts_with(s: l, prefix: "head_incomplete\trefused_rewritten\t"))
+    |> join(separator: "\n")
+  let want = "head_incomplete\trefused_rewritten\texamples.wave\tresolve\tresolve_reason_unbound_symbol\tunbound_name=not_declared_anywhere line 12:3"
+  if got == want { optional_absent() } else { optional_present(value: "a refused module's wave receipt does not name its first refusal by identity; want " + want + ", got " + got) }
 }
 
 fn wave_join_case(name: String, base: String, head: String, want: Int, proof: WaveProof) -> String {
@@ -1219,7 +1244,7 @@ fn binding_diff_standing_prepared(
   match rebind_red_failure(base_stdout: rebind_base_stdout, head_stdout: rebind_head_stdout) {
     Present { value: why } => CliWirePrintable { bytes: rebind_base_stdout + "\n" + rebind_head_stdout + "\n", exit: ExitFailure { code: 1, reason: "re-bind RED: " + why } }
     Absent =>
-      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure(), kit_fixture_control_failure(head_stdout: head_stdout), kit_unreached_control_failure(), kit_probe_text_control_failure(), shard_merge_control_failure(), wave_carry_control_failure(prepared: prepared, lex: lex, closures: closures), occurrence_join_controls_failure(prepared: prepared, lex: lex, closures: closures), wave_unobserved_control_failure(prepared: prepared, lex: lex, closures: closures), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex, closures: closures), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex, closures: closures)]) {
+      match first_control_failure(controls: [home_control_failure(), formatter_control_failure(), declaration_row_control_failure(), incomplete_side_control_failure(), kit_fixture_control_failure(head_stdout: head_stdout), kit_unreached_control_failure(), kit_probe_text_control_failure(), shard_merge_control_failure(), wave_carry_control_failure(prepared: prepared, lex: lex, closures: closures), occurrence_join_controls_failure(prepared: prepared, lex: lex, closures: closures), wave_unobserved_control_failure(prepared: prepared, lex: lex, closures: closures), unobserved_guards_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, prepared: prepared, lex: lex, closures: closures), wave_other_incompleteness_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)), refused_cause_identity_control_failure(base: wave_base_stdout, admit: wave_admit_stdout, proof: wave_proof(prepared: prepared, lex: lex, head: wave_derived_head_with(prepared: prepared, lex: lex, closures: closures), closures: closures)), wave_join_route_failure(base: wave_base_stdout, admit: wave_admit_stdout, moved: wave_moved_stdout, wrong_home: wave_wrong_home_stdout, prepared: prepared, lex: lex, closures: closures)]) {
         Present { value: why } => CliWirePrintable { bytes: "", exit: ExitFailure { code: 1, reason: "control: " + why } }
         Absent =>
           // The kit fixtures ride the head census; a mode that ran no head census (no binding rows) is judged by the
