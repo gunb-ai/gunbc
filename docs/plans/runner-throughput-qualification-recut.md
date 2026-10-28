@@ -1,20 +1,15 @@
 # Runner-throughput qualification — the recut
 
-Subject: gunbc#11722 (HW1-QUAL, dashboard node `adhoc-e7a8de23-9fa`). Ruling: the operator's
-SOURCE HOLD on `03175fd0` (2026-09-19 19:13Z, six items against DESIGN §3d), re-posted as a
-side-chat ruling at 19:46Z; parent eager-owl-205's confirmation of 2026-09-20 02:3xZ that the
-recut lands on #11722 and that two things stay constant: **the assessment CONSUMES a selected
-`ExecutorSanction`/offer and a selected conserving host-plan receipt and never mints either**, and
-**runner register / dispatch / deregister are modeled control-plane mutations bound like every
-other controller write**. This document is the recut plan the meta-review 68822 asks for before
-the next implementation round; the parent reads it before anything is built.
+Subject: gunbc#11722 (HW1-QUAL, dashboard node `adhoc-e7a8de23-9fa`). Authority: operator SOURCE
+HOLD on `03175fd0` (2026-09-19 19:13Z, six DESIGN §3d items; reposted at 19:46Z), confirmed by
+parent eager-owl-205 on 2026-09-20 02:3xZ for a recut on #11722. Meta-review 68822 requires
+this plan and the parent's read before implementation.
 
-The hold is a recut and not a fix list because it condemns the DIRECTION of the module's central
-edge: today `RunnerThroughputQualification → qualify_runner_throughput → ExecutorSanction /
-SupplierOffer`, i.e. the assessment mints the permission and the advertised supply it exists to
-assess. §3d: selection precedes convergence — the selected class, offer and requirements exist
-BEFORE the assessment, and an independent observation says whether that selected candidate
-delivers. Nothing imports either module, so the cost of the recut is zero consumers.
+Two invariants: **assessment consumes, never mints, the selected `ExecutorSanction`/offer and
+conserving host-plan receipt**; **runner register / dispatch / deregister are bound control-plane
+mutations**. The condemned edge is `RunnerThroughputQualification → qualify_runner_throughput →
+ExecutorSanction / SupplierOffer`: assessment mints what it should assess. Under §3d, class,
+offer and requirements precede independent observation. Neither module has importing consumers.
 
 ## 1. The hold, item by item, and what discharges each
 
@@ -72,28 +67,22 @@ Then per-axis standings under the sampling policy: `ThroughputStanding` (min rat
 slice ÷ selected slot, min with effective CPU cap ÷ cores-per-slot). `assessed_facts` names the
 two facts the claim covers.
 
-**The fourth type IS the new arm on the existing carrier** (parent ruling 2026-09-20):
+**The fourth type is an arm on the existing carrier** (parent ruling 2026-09-20):
 `product.fabric.node_qualification OfferDeliveryClaim<P>` gains
 `OfferClaimsRunnerDelivery { offer: FabricIdentity<P, OfferKey>, assessment: RunnerThroughputAssessment<P> }`,
-and `claimed_delivery_check` gains one dispatch arm: the named offer must equal the assessment's
-selected offer, and the assessment's refusals surface as
+`claimed_delivery_check` requires the named offer to equal the assessment's selected offer and exposes refusals as
 `QualificationRefusal::RunnerThroughputDidNotHold { refusals }`. There is no standalone runner claim
-type and no mirrored check — that would be option (b)'s shape surviving beside (a).
+type or mirrored check.
 
 ### The join point, and one edit outside the new modules
 
-`product.fabric.capacity_admission admit_delivered_offer` takes
-`product.fabric.node_qualification OfferDeliveryClaim<P>`, whose only positive arm is the Spark
-group admission. Two honest options; the parent ruled (a) on 2026-09-20, and the departure is stated in the PR body:
-
-- **(a) Extend the existing carrier** — `OfferDeliveryClaim<P>` gains
-  `OfferClaimsRunnerDelivery { offer, assessment }` and `QualificationRefusal` gains
-  `RunnerThroughputDidNotHold { refusals: List<ThroughputRefusal> }`; `claimed_delivery_check`
-  dispatches. One delivery-claim authority, one admission fold, no new admission. This touches
-  `product.fabric.node_qualification` (a §3b home) — the edit is an arm on its coproduct and an arm
-  on its refusal list, nothing in its accelerator axes.
-- (b) A parallel `RunnerOfferDeliveryClaim` consumed by a second `admit_delivered_runner_offer` —
-  rejected: two delivery-claim vocabularies feeding one admission is the §3 fork the hold names.
+`product.fabric.capacity_admission admit_delivered_offer` already consumes
+`product.fabric.node_qualification OfferDeliveryClaim<P>` (then positive only for Spark group
+admission). The parent's 2026-09-20 ruling selects **(a), extending that carrier**, as stated in
+the PR body. The §3b home gains the arm above and
+`RunnerThroughputDidNotHold { refusals: List<ThroughputRefusal> }`; accelerator axes and the
+admission fold stay unchanged. Option (b), a parallel `RunnerOfferDeliveryClaim` and
+`admit_delivered_runner_offer`, is rejected as a second delivery-claim authority.
 
 ## 3. Disposition of every existing declaration
 
