@@ -48,6 +48,7 @@ import v2.compiler.source_root_eval { native_test_context_from_ingest, native_te
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
 import v2.std.node { symbol_intern_lexeme }
 import v2.std.operation_declaration {
   DeclaredShape,
@@ -267,11 +268,11 @@ test fn the_read_authority_reaches_by_its_declaration_in_the_b0_reach_table_hold
   match effect_reach_reason(table: table, callee: read_seam_path()) {
     Present { value: ReachesDeclaredResource { operation: p } } =>
       p == read_seam_path()
-        && !fold_list(
+        && fold_list(
           xs: table.unclassified,
           empty: false,
           cons: fn(any, path) { if path == read_seam_path() { true } else { any } }
-        )
+        ) == false
     _ => false
   }
 }
