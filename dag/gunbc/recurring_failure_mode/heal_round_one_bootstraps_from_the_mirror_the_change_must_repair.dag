@@ -44,7 +44,7 @@ data heal_round_one_bootstraps_from_the_mirror_the_change_must_repair: Recurring
   evidence: [
     DeclarationRef { module_path: "std.measure", decl_name: "PositiveMeasureCount", field: WholeDeclaration },
     DeclarationRef { module_path: "std.measure", decl_name: "credits_per_minute", field: WholeDeclaration },
-    DeclarationRef { module_path: "std.checked_arithmetic", decl_name: "PrefixedLineNat", field: WholeDeclaration },
-    DeclarationRef { module_path: "std.checked_arithmetic", decl_name: "prefixed_line_last_space_nat", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.prefixed_line", decl_name: "PrefixedLineNat", field: WholeDeclaration },
+    DeclarationRef { module_path: "std.prefixed_line", decl_name: "prefixed_line_last_space_nat", field: WholeDeclaration },
   ],
 }

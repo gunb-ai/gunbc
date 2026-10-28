@@ -51,6 +51,14 @@ fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> BmcFactoryLoginStand
   }
 }
 
+// THE ACCOUNT THE FACTORY LOGIN NAMES, published or per-unit: the account a first rotation writes.
+fn bmc_firmware_factory_account(family: BmcFirmwareFamily) -> NonEmptyStr {
+  match bmc_firmware_factory_login(family: family) {
+    FactoryLoginPublished { login: l } => l.username
+    FactoryLoginPerUnit { username: u, password_form: _, authority: _ } => u
+  }
+}
+
 fn bmc_firmware_supported_protocols(family: BmcFirmwareFamily) -> List<BmcProtocol> {
   match family {
     OpenBmc => openbmc_supported_protocols
