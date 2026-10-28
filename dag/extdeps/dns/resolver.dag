@@ -25,9 +25,20 @@ module extdeps.dns.resolver
 // name can be all three. That is the operator ruling of 2026-10-24 ("do not rely on IP addresses; every
 // host gets a STABLE HOSTNAME"), and the refusal below is that ruling enforced at the one place a
 // spelling becomes a lookup.
+//
+// WHY THE STATES ARE CARRIED IN TYPES AND NOT IN FLAGS (review 87047, DESIGN §5 "correctness by
+// construction, not validation"). An earlier draft of this module carried the reply as
+// `{ asked: Optional<List<Ipv4Address>>, name_known: Bool }` and refused the impossible combinations at
+// runtime. That made four legal shapes and four illegal ones equally writable, and forced every reader
+// — the admission, and the function that derived a state from the reply — to decode the same two flags
+// again. The reply is a COPRODUCT of exactly the four observable shapes now, so the illegal states have
+// no syntax: there is no admission to call and no decode step to get wrong. The server list moved the
+// same way, from `List` plus a runtime emptiness check to `FreeSemigroup` (DESIGN §3b, cardinality:
+// nonemptiness is constructed or proved), which deleted both that check and the invented cause the
+// iteration needed for the case the check was supposed to make unreachable.
 
-import std.types { String, Bool, List, Int, Present, Absent, Optional, list_length }
-import std.algebra { Cons, Empty }
+import std.types { String, List, Int, Present, Absent, Optional, list_length }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.network.address { IpAddress, IpV4, IpV6 }
 import extdeps.network.endpoint {
@@ -41,10 +52,10 @@ import extdeps.network.endpoint {
   parse_network_host,
 }
 import extdeps.dns.domain_name {
+  DnsLabel,
   HostName,
+  NameQualification,
   DomainNameParseError,
-  FullyQualified,
-  PartiallyQualified,
   domain_name_wire,
 }
 
@@ -55,37 +66,40 @@ import extdeps.dns.domain_name {
 // until the suffix is guessed — a meaning-fork (§3). A consumer that wants suffix behaviour asks for a
 // fully-qualified name and gets a definite answer or a definite refusal.
 //
-// sole_constructor: `resolver_admit` is the ONLY way to hold one. A zero-server resolver is not a
-// resolver that answers nothing — it is a row that LOOKS configured while nothing can be deduced from
-// it, and every consumer would then have to re-check for the empty case, with the one that forgets
-// treating "nobody answered" as "it resolved" (§5, a missing check is the failure mode).
+// NON-EMPTINESS IS IN THE TYPE, not in a check. `FreeSemigroup` is the free semigroup over the address
+// — the carrier DESIGN §3b names for a non-empty sequence — and its `head` field is the construction
+// wall: an empty inhabitant has no syntax at all. An earlier draft kept a `List` and refused the empty
+// list in `resolver_admit`; that left two things the type could have made impossible. First, the check
+// could only be applied at one entry point, so every other holder of a `Resolver` still had to trust it.
+// Second — and this is what made it more than tidiness — the iteration over the list then needed an arm
+// for the empty case, and that arm had to REPORT something: it claimed a grammar refusal for a defect
+// that had nothing to do with grammar. A fabricated cause is worse than a missing one, because it is
+// believed (§5). With `FreeSemigroup` there is no empty case to report, so there is no arm and no lie.
 type Resolver sole_constructor {
-  servers: List<Ipv4Address>
+  servers: FreeSemigroup<Ipv4Address>
 }
 
-type ResolverAdmission
-  = ResolverAdmitted { resolver: Resolver }
-  | ResolverRefused { cause: String }
-
-// THE ONE ADMISSION: it refuses the empty server list, so the check exists once at the boundary rather
-// than at every consumer. Duplicates are NOT refused — a repeated server is a redundant query, not a
-// lie (resolv.conf permits it), and refusing it would forbid more of the world than the variables
-// support (§4d).
-fn resolver_admit(servers: List<Ipv4Address>) -> ResolverAdmission {
-  if list_length(items: servers) == 0 {
-    ResolverRefused {
-      cause: "a resolver with no servers answers nothing, and a row that looks configured while answering nothing is the fail-open trap this type closes. Remedy: name the zone's authoritative server — the LAN zone is served by the router, the tailnet zone by the tailnet's own resolver",
-    }
-  } else {
-    ResolverAdmitted { resolver: Resolver { servers: servers } }
-  }
+// THE ONLY WAY TO HOLD A RESOLVER. It carries no rule of its own — the type does — and exists because
+// `sole_constructor` requires an admission in the defining module, which keeps construction to one
+// named door. Constructing one from a plain list is a TYPE ERROR, not a runtime refusal, and the witness
+// asserts exactly that: the probe source that tries it is refused by the compiler with a TypeMismatch,
+// so the fail-open row cannot be authored even by someone who never reads this comment.
+fn resolver_admit(servers: FreeSemigroup<Ipv4Address>) -> Resolver {
+  Resolver { servers: servers }
 }
 
 // THE SERVERS AS SPELLINGS, for the one surface that needs text: a resolver settings row. A BMC's own
 // network settings name their DNS servers by spelling, and reading them back compares spellings.
 // Rendered through extdeps.network.ipv4's single renderer (§3).
 fn resolver_server_texts(resolver: Resolver) -> List<String> {
-  resolver.servers.map(s => render_ipv4_address(addr: s))
+  (non_empty_to_list(xs: resolver.servers)).map(s => render_ipv4_address(addr: s))
+}
+
+// THE FIRST SERVER, which is what a stub resolver would have asked first, and therefore the server a
+// reader goes to check when nothing answered. `head` is a field, not a `first()` that may be absent —
+// the same fact as above, visible in the shape of this signature.
+fn resolver_first_server(resolver: Resolver) -> Ipv4Address {
+  resolver.servers.head
 }
 
 // ── THE QUESTION ─────────────────────────────────────────────────────────────────────────────
@@ -168,155 +182,137 @@ fn resolvable_name_wire(name: ResolvableName) -> String {
   domain_name_wire(name: name.name.name)
 }
 
-fn resolvable_name_is_fully_qualified(name: ResolvableName) -> Bool {
-  match name.name.qualification {
-    FullyQualified => true
-    PartiallyQualified => false
-  }
+// THE LABELS OF THE QUESTION, as the grammar module carries them. A gate that needs a suffix test
+// compares these with the zone's own parsed labels — NOT two rendered strings split on '.': the labels
+// are already structure, and re-deriving them from text re-implements the parser that produced them and
+// silently loses the qualification the parser settled (§2, "a String leaf hiding named parts").
+fn resolvable_name_labels(name: ResolvableName) -> List<DnsLabel> {
+  name.name.name.labels
+}
+
+// THE QUALIFICATION OF THE QUESTION, handed through rather than flattened to a Bool. A consumer matches
+// the two arms itself, so the reason it refuses is its own words and this module does not answer a
+// yes/no question about a state whose name already says the answer.
+fn resolvable_name_qualification(name: ResolvableName) -> NameQualification {
+  name.name.qualification
 }
 
 // THE LABEL COUNT, for gates that must refuse a single label — the BMC media leg's own requirement,
-// where the firmware's field validator rejects a one-label spelling.
+// where the firmware's field validator rejects a one-label spelling. A count, not a Bool: the gate
+// compares it against its own rule rather than being told the gate's conclusion.
 fn resolvable_name_label_count(name: ResolvableName) -> Int {
   list_length(items: name.name.name.labels)
 }
 
 // ── THE ANSWER ───────────────────────────────────────────────────────────────────────────────
 
-// WHY FOUR CAUSES AND NOT ONE FAILURE STRING: each arm has a different remedy, and a blended "failed"
-// would push the reader to re-derive which applies (§5). The separation is load-bearing in both
-// directions:
-//   ServerUnreachable — asked, no reply. The remedy is the server or the cable, NOT the name. Merging
-//     this with NameUnknown would let a network outage license rewriting a correct name — the exact
-//     wrong inference to draw in the middle of a failed boot.
-//   NameUnknown — a server answered authoritatively that the name does not exist. The ONLY arm that
-//     licenses changing the name.
-//   AnswerEmpty — the name exists but carries no record of the type asked (NODATA). Reading it as
-//     NameUnknown would delete a live name because one record type is absent; the LAN router shows this
-//     shape directly, answering an AAAA query for srv2 with NOERROR and one answer where the same name's
-//     A query answers with a different count (measured 2026-10-27 against 192.168.1.1).
-//   NameRefusedByGrammar — the question was never sendable; the defect sits in the row that authored the
-//     spelling, upstream of any server.
+// WHAT A SERVER REPLIED — the four shapes a reply can have, closed, and nothing else. No admission is
+// needed because no combination is illegal: the arms ARE the legal combinations, and each carries only
+// what that shape of reply actually has. This is the repair review 87047 asked for, and the table below
+// is why the four cannot be collapsed into one another.
+//
+//   ServerGaveNoReply       asked, nothing came back. The remedy is the server or the cable, NOT the
+//                           name. Merging this with NameDoesNotExist would let a network outage license
+//                           rewriting a correct name — the exact wrong inference to draw mid-boot.
+//   NameDoesNotExist        a server answered authoritatively that the name is not in the zone
+//                           (NXDOMAIN). The ONLY arm that licenses changing the name.
+//   NoAnswerOfThisType      the name is in the zone and carries no record of the type asked (NODATA:
+//                           NOERROR, zero answers). Reading it as NameDoesNotExist would delete a live
+//                           name because one record type is missing; the LAN router shows this shape
+//                           directly, answering an AAAA query for srv2 with NOERROR and one answer where
+//                           the same name's A query answers with a different count (measured 2026-10-27
+//                           against 192.168.1.1).
+//   Addresses               at least one address came back. `FreeSemigroup`, not `List`: a reply of
+//                           zero addresses is the NODATA arm above and has no representation here, so a
+//                           "resolved" verdict backed by nothing is unwritable rather than refused.
+//
+// The `server` field travels with every arm because every remedy above is about a particular server, and
+// a cause that cannot name the machine it is about sends the reader to guess (§5).
+type ResolverAnswer
+  = ServerGaveNoReply { server: Ipv4Address }
+  | NameDoesNotExist { server: Ipv4Address }
+  | NoAnswerOfThisType { server: Ipv4Address }
+  | Addresses { server: Ipv4Address, addresses: FreeSemigroup<Ipv4Address> }
+
+// WHAT A LOOKUP CONCLUDED. Derived by the iteration below out of a `ResolverAnswer` arm, so a claim that
+// a name "resolves" cannot be built without passing through a reply of the type above.
 type NameResolution
-  = Resolved { name: ResolvableName, addresses: List<Ipv4Address> }
+  = Resolved { name: ResolvableName, addresses: FreeSemigroup<Ipv4Address> }
   | Unresolved { name: ResolvableName, cause: ResolutionCause }
 
+// WHAT A REPLY MEANS, told once. This is the only place a reply is read, and it is TOTAL: four arms in,
+// four arms out, no flags to re-decode and no fifth arm standing in for a state the coproduct does not
+// have. An earlier draft carried this alongside an admission that refused impossible flag combinations,
+// and both this function and the admission had to interpret the same two Booleans; with the reply declared
+// as the coproduct above, the admission is gone and this function cannot be wrong about a combination that
+// has no syntax. A row's `outcome` goes through here, so "resolved" is a conclusion read out of a cited
+// reply rather than a word placed beside one.
+fn resolution_from_answer(name: ResolvableName, answer: ResolverAnswer) -> NameResolution {
+  match answer {
+    ServerGaveNoReply { server: s } => Unresolved { name: name, cause: ServerUnreachable { server: s } }
+    NameDoesNotExist { server: s } => Unresolved { name: name, cause: NameUnknown { server: s } }
+    NoAnswerOfThisType { server: s } => Unresolved { name: name, cause: AnswerEmpty { server: s } }
+    Addresses { server: _, addresses: addrs } =>
+      Resolved { name: name, addresses: addrs }
+  }
+}
+
+// WHY FOUR CAUSES AND NOT ONE FAILURE STRING: each arm has a different remedy, and a blended "failed"
+// would push the reader to re-derive which applies (§5). They mirror the four reply shapes one-for-one;
+// there is no fifth arm standing in for "the row was built wrong", because the types above make that
+// unreachable and an unreachable arm that still prints a cause is a fabricated output.
 type ResolutionCause
-  = NameRefusedByGrammar { detail: String }
-  | ServerUnreachable { server: Ipv4Address }
+  = ServerUnreachable { server: Ipv4Address }
   | NameUnknown { server: Ipv4Address }
   | AnswerEmpty { server: Ipv4Address }
 
-// WHAT A SERVER REPLIED, before any state is derived from it. sole_constructor over the raw reply
-// because the NameResolution is DERIVED from it and never asserted beside it: a claim that a name
-// "resolves" that does not pass through a carrier of this type cannot be built, which is the point.
-// `asked == Absent` is "no reply"; `asked == Present([])` is "a reply carrying no address". They are
-// different facts and the type keeps them apart.
-type ResolverAnswer sole_constructor {
-  server: Ipv4Address
-  asked: Optional<List<Ipv4Address>>
-  // Authoritative-negative flag, set only by the reader that saw the header — the only place NODATA and
-  // NXDOMAIN can be told apart.
-  name_known: Bool
-}
+// ── THE ASK ──────────────────────────────────────────────────────────────────────────────────
 
-type ResolverAnswerAdmission
-  = ResolverAnswerAdmitted { answer: ResolverAnswer }
-  | ResolverAnswerRefused { cause: String }
-
-// THE ONE ADMISSION OF A REPLY. Two shapes are refused because no header can carry them: a reply that
-// says the name is unknown AND carries addresses, and a reply with no server to have replied.
-fn resolver_answer_admit(
-  server: Ipv4Address,
-  asked: Optional<List<Ipv4Address>>,
-  name_known: Bool,
-) -> ResolverAnswerAdmission {
-  match asked {
-    Present { value: addrs } =>
-      if name_known == false && list_length(items: addrs) > 0 {
-        ResolverAnswerRefused {
-          cause: "a reply cannot say the name is unknown and carry addresses at once; report the state the server actually returned",
-        }
-      } else {
-        ResolverAnswerAdmitted {
-          answer: ResolverAnswer { server: server, asked: asked, name_known: name_known },
-        }
-      }
-    Absent =>
-      ResolverAnswerAdmitted {
-        answer: ResolverAnswer { server: server, asked: asked, name_known: name_known },
-      }
-  }
-}
-
-// THE DERIVATION, in the one place. Every NameResolution in the corpus comes through here, so the
-// ordering of the checks is not re-decided per call site (§3): no reply outranks everything (we do not
-// know), then the authoritative negative, then the empty answer, then a real answer.
-fn resolution_from_answer(name: ResolvableName, answer: ResolverAnswer) -> NameResolution {
-  match answer.asked {
-    Absent => Unresolved { name: name, cause: ServerUnreachable { server: answer.server } }
-    Present { value: addrs } =>
-      if answer.name_known == false {
-        Unresolved { name: name, cause: NameUnknown { server: answer.server } }
-      } else if list_length(items: addrs) == 0 {
-        Unresolved { name: name, cause: AnswerEmpty { server: answer.server } }
-      } else {
-        Resolved { name: name, addresses: addrs }
-      }
-  }
-}
-
-// THE SERVERS ASKED IN ORDER, first definite answer wins — the stub-resolver behaviour a host actually
-// has (RFC 1035 §6, and the host's own resolv.conf semantics). THE FAIL-CLOSED HALF (§5): a server that
-// never replies is NOT success, and a silent server cannot be buried by a later row, so no consumer can
-// read "nobody answered" as "it resolved". `ask` is a PARAMETER, not an effect: this module stays pure
-// and hermetically testable, and the real query is supplied by the observing layer that cites the packet
-// (§4d — the witness carries its own observation, the model never invents one). An empty server list
-// cannot reach here, because `resolver_admit` refuses it; the exhaustion arm therefore names a server
-// that was actually tried rather than inventing one.
+// ASK THE RESOLVER, in order, and stop at the first reply that is not silence. `ask` is a PARAMETER
+// rather than a live query: the rule must be checkable without a network, and the I/O belongs to the
+// observing layer that can cite the packet (§4d). A witness supplies a reply table; production supplies
+// a socket.
+//
+// Only `ServerGaveNoReply` falls through to the next server — a reply that REFUSES the name is an answer,
+// and asking a second server after an authoritative NXDOMAIN would let a stale secondary overrule a zone.
+//
+// There is no arm here for "the resolver had no servers". There cannot be: `remaining` is derived from a
+// `FreeSemigroup`, so the list has a head, and the recursion's `Empty` case is reached only after that
+// head has been asked. The first server is passed in as a plain address, not an `Optional`, for the same
+// reason — when every server is silent the resolution names the one the host would have asked first.
 fn resolve_name(
   name: ResolvableName,
   resolver: Resolver,
   ask: fn(Ipv4Address, ResolvableName) -> ResolverAnswer,
 ) -> NameResolution {
-  ask_in_order(name: name, remaining: resolver.servers, first: resolver.servers.first(), ask: ask)
+  ask_in_order(
+    name: name,
+    remaining: non_empty_to_list(xs: resolver.servers),
+    first: resolver.servers.head,
+    ask: ask,
+  )
 }
 
 fn ask_in_order(
   name: ResolvableName,
   remaining: List<Ipv4Address>,
-  first: Optional<Ipv4Address>,
+  first: Ipv4Address,
   ask: fn(Ipv4Address, ResolvableName) -> ResolverAnswer,
 ) -> NameResolution {
   match remaining {
     Empty {} =>
       // Every server was silent. Report the FIRST: it is the one the host would have asked first, which
       // is the one a reader goes to check.
-      match first {
-        Present { value: first_server } => Unresolved { name: name, cause: ServerUnreachable { server: first_server } }
-        Absent => Unresolved { name: name, cause: NameRefusedByGrammar { detail: "the resolver carried no server to ask; such a row cannot be admitted by resolver_admit, so reaching this arm means a Resolver was built without it" } }
-      }
+      Unresolved { name: name, cause: ServerUnreachable { server: first } }
     Cons { head: server, tail: rest } =>
       match ask(server, name) {
-        answer =>
-          match resolution_from_answer(name: name, answer: answer) {
-            // The arm binds the derived answer's own data, so the classifier above stays the SINGLE
-            // authority on what a reply means (§3): nothing here re-reads the reply to decide its state.
-            Resolved { name: _, addresses: addrs } => Resolved { name: name, addresses: addrs }
-            Unresolved { name: _, cause: ServerUnreachable { server: _ } } =>
-              ask_in_order(name: name, remaining: rest, first: first, ask: ask)
-            Unresolved { name: _, cause: c } => Unresolved { name: name, cause: c }
-          }
+        ServerGaveNoReply { server: _ } => ask_in_order(name: name, remaining: rest, first: first, ask: ask)
+        NameDoesNotExist { server: answering } =>
+          Unresolved { name: name, cause: NameUnknown { server: answering } }
+        NoAnswerOfThisType { server: answering } =>
+          Unresolved { name: name, cause: AnswerEmpty { server: answering } }
+        Addresses { server: _, addresses: addrs } =>
+          Resolved { name: name, addresses: addrs }
       }
-  }
-}
-
-// IS THE NAME RESOLVABLE, for a gate that needs only the verdict. IT IS DERIVED FROM A RESOLUTION and
-// never from the name alone: there is deliberately no function here that takes a name and answers true,
-// because "does it resolve?" is a question about a server's behaviour, not about a spelling (§4d).
-fn name_resolves(resolution: NameResolution) -> Bool {
-  match resolution {
-    Resolved { name: _, addresses: _ } => true
-    Unresolved { name: _, cause: _ } => false
   }
 }
