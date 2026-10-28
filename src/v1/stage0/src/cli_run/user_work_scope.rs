@@ -75,9 +75,10 @@ pub(crate) enum UserWorkScopeStanding {
     ExternallyBoundedExecutor {
         run_id: String,
     },
-    // macOS has no cgroup facility, so no memory bound can be observed or installed. Admitted only
-    // for an operator-attended run outside CI (operator ruling 2026-10-28: the IAM root ceremony is
-    // run from the operator's Mac); the wrap is skipped with a notice naming the missing bound.
+    // macOS has no cgroup facility, so no memory bound can be observed or installed. Admitted when
+    // GITHUB_ACTIONS is unset and stdin is a terminal; the wrap is skipped with a notice. Ruling:
+    // gunbc.design_ruling macos_operator_terminal_runs_without_a_memory_bound; the loss is
+    // gunbc.rung_drop.macos_operator_terminal_run_unbounded.
     OperatorHostWithoutCgroups,
 }
 
@@ -702,7 +703,10 @@ pub(crate) fn user_work_scope_standing() -> UserWorkScopeStanding {
     let cg = cg_read.as_deref().ok();
     let systemd_manager = Path::new(SYSTEMD_MANAGER_DIR).exists();
     let github_actions = std::env::var_os(USER_WORK_SCOPE_CI_ENV).is_some();
-    if cfg!(target_os = "macos") && !github_actions {
+    if cfg!(target_os = "macos")
+        && !github_actions
+        && std::io::IsTerminal::is_terminal(&std::io::stdin())
+    {
         return UserWorkScopeStanding::OperatorHostWithoutCgroups;
     }
     let xdg_runtime_dir = std::env::var_os(USER_WORK_SCOPE_XDG_RUNTIME_DIR_ENV).is_some();
