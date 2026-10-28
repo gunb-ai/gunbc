@@ -160,8 +160,23 @@ test fn no_acquire_takes_a_lease_store_beside_its_context() -> ProcessExit {
   census_exit(blocking_delta(hostile: store_beside_context_acquire_source, holds: fn(n) { n >= 1 }))
 }
 
+// THE GUARD MINT HAS NO PUBLIC FOLD, and it is ATTRIBUTED, not counted. This is the replacement for
+// #15081's RED no_authored_create_outcome_mints_a_guard, which is dropped here because it keys on the deleted
+// LeaseCreateOutcome. `lease_acquisition_from_create(subject, holder, outcome: LeaseCreateSucceeded)` used to
+// answer a sealed TransitionGuard to any module that could WRITE that success arm -- no exclusive create
+// anywhere. The fold now lives inside `acquire_transition_lease`, beside the `Filesystem.WriteOwnerOnly` whose
+// answer it destructures, and neither name is importable. So the probe names the deleted fold IN ITS IMPORT LIST
+// and the claim asserts the row that says it is missing -- exactly one blocking MissingExport keyed on
+// `lease_acquisition_from_create` -- with the same-closure delta on top. Restore the fold and the keyed row goes
+// to zero and this claim reds whatever else the closure carries; a count alone could be met by closure noise.
 test fn no_guard_is_minted_from_an_authored_create_outcome() -> ProcessExit {
-  census_exit(blocking_delta(hostile: authored_create_outcome_source, holds: fn(n) { n >= 1 }))
+  census_verdict_all(verdicts: [
+    census_verdict(
+      census: blocking_subject_census(source: authored_create_outcome_source, wanted_class: "MissingExport", wanted_subject: "lease_acquisition_from_create"),
+      holds: fn(n) { n == 1 },
+    ),
+    blocking_delta(hostile: authored_create_outcome_source, holds: fn(n) { n >= 1 }),
+  ])
 }
 
 // THE THREE LAUNDERING ROUTES THE REVIEW FOUND, each a call to a fold that used to take an outcome and mint a
