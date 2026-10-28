@@ -12,6 +12,11 @@ import std.measure { Mebibyte, mebibyte, MegatransfersPerSecond, megatransfers_p
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
+import extdeps.bmc.types {
+  RedfishServiceRootMember, ServiceRootSystems, ServiceRootChassis, ServiceRootManagers, ServiceRootTasks,
+  ServiceRootSessionService, ServiceRootAccountService, ServiceRootEventService, ServiceRootUpdateService,
+  ServiceRootRegistries, ServiceRootCertificateService, ServiceRootJsonSchemas,
+}
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonNull, JsonBool, JsonNumber, JsonString, JsonObject }
 import extdeps.languages.json.parse {
@@ -145,6 +150,14 @@ fn supermicro_redfish_firmware_version_of_wire(wire: String) -> FirmwareSemantic
 data supermicro_factory_username: NonEmptyStr = "ADMIN"
 
 data supermicro_factory_password_form: NonEmptyStr = "exactly 10 uppercase alphabetic letters, printed on the board's BMC password sticker"
+
+// The two factory-credential forms the unique-password guide states, as SHAPES: which form a unit
+// carries is not readable from the firmware, so an observing layer records the form it TRIED. No value
+// of either form is modeled here or anywhere in the corpus; a unit's sticker password is an
+// operator-held secret reference.
+type SupermicroFactoryCredentialForm
+  = SupermicroDefaultAdminCredential
+  | SupermicroUniqueStickerCredential
 
 // PROTOCOL FLOOR. IPMI 2.0 is served unlicensed; Redfish is licence-gated (SFT-DCMS-SINGLE per the
 // Redfish page, and on the H11SSL an unlicensed service root refuses with OemLicenseNotPassed), so it is
@@ -281,6 +294,64 @@ fn supermicro_redfish_licence_gate(body: String) -> SupermicroLicenceGate {
       }
     }
   }
+}
+
+// ── THE SERVICE ROOT, PER RELEASE. Which DMTF ServiceRoot members, Redfish version and ServiceRoot
+// schema each modeled release served on an unlicensed-then-activated H11SSL. The two releases differ: a
+// consumer that expects a member reads the row for the release it observed, never a family-wide set.
+type SupermicroServiceRootRow {
+  firmware: FirmwareSemanticVersion
+  redfish_version: NonEmptyStr
+  root_schema: NonEmptyStr
+  members: List<RedfishServiceRootMember>
+}
+
+data supermicro_service_root_rows: List<SupermicroServiceRootRow> = [
+  SupermicroServiceRootRow {
+    firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0),
+    redfish_version: "1.0.1",
+    root_schema: "ServiceRoot.v1_1_0",
+    members: [ServiceRootSystems, ServiceRootChassis, ServiceRootManagers, ServiceRootTasks, ServiceRootSessionService, ServiceRootAccountService, ServiceRootEventService, ServiceRootUpdateService, ServiceRootRegistries],
+  },
+  SupermicroServiceRootRow {
+    firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25),
+    redfish_version: "1.8.0",
+    root_schema: "ServiceRoot.v1_5_2",
+    members: [ServiceRootAccountService, ServiceRootCertificateService, ServiceRootChassis, ServiceRootEventService, ServiceRootJsonSchemas, ServiceRootManagers, ServiceRootRegistries, ServiceRootSessionService, ServiceRootSystems, ServiceRootTasks, ServiceRootUpdateService],
+  },
+]
+
+data supermicro_service_root_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "The Supermicro Redfish Reference Guide's ServiceRoot for each release. 01.52.00 is what an H11SSL served on 2026-10-17 after licence activation (gunbc.machine_intake.supermicro_h11ssl_first_contact); 01.52.25 is artifacts/bmc/h11ssl-unit1-redfish-2026-10-27/redfish_v1.json. Not cited.",
+}
+
+fn supermicro_service_root_of_release(firmware: FirmwareSemanticVersion) -> SupermicroServiceRootRow? {
+  first(filter(supermicro_service_root_rows, r => r.firmware == firmware))
+}
+
+// ── LICENCE ACTIVATION THROUGH THE VENDOR CGI. POST /cgi/ipmi.cgi with this op (the firmware's own
+// spelling, LINCENSE included) activates a licence key; the page answers a CHECK attribute. The key
+// itself is an operator-held secret and is never a value in the corpus.
+data supermicro_cgi_licence_activate_op: NonEmptyStr = "BIOS_LINCENSE_ACTIVATE.XML"
+
+// A CHECK value this release answered to an activation that then admitted the gated resources. Only
+// a value observed so is a row: any other CHECK, or any CHECK on a release with no row, is not read as
+// acceptance.
+type SupermicroLicenceActivationAcceptedRow {
+  firmware: FirmwareSemanticVersion
+  check: Nat
+}
+
+data supermicro_licence_activation_accepted_rows: List<SupermicroLicenceActivationAcceptedRow> = [
+  SupermicroLicenceActivationAcceptedRow { firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1 },
+]
+
+data supermicro_licence_activation_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Supermicro's statement of the BIOS_LINCENSE_ACTIVATE.XML response and its CHECK values. CHECK=1 is what an H11SSL on 01.52.00 answered on 2026-10-17 to an activation that then admitted the Redfish root (gunbc.machine_intake.supermicro_h11ssl_first_contact). Not cited.",
+}
+
+fn supermicro_licence_activation_accepted(firmware: FirmwareSemanticVersion, check: Nat) -> Bool {
+  any(supermicro_licence_activation_accepted_rows, r => r.firmware == firmware && r.check == check)
 }
 
 // ── THE REDFISH Oem KEY. The Manager, ServiceRoot, ComputerSystem and EthernetInterface resources carry

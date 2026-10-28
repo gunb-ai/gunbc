@@ -1,6 +1,9 @@
 module test.claim.supermicro_h11ssl_witness
 
-import std.types { Bool }
+import std.types { Bool, List }
+import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
+import extdeps.bmc.types { RedfishServiceRootMember, ServiceRootCertificateService }
+import extdeps.bmc.supermicro { supermicro_licence_activation_accepted, supermicro_service_root_of_release }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
   OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
   operator_inventory_attests, FactoryLoginCredential, OobLicenceKey,
@@ -94,7 +97,7 @@ test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
 
 fn without_outcome(r: H11sslFirstContactReceipt, drop_activation: Bool) -> H11sslFirstContactReceipt {
   H11sslFirstContactReceipt {
-    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
+    board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
     observations: filter(r.observations, o => match o {
       LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: _, unit_state_changed: _ } => !drop_activation
       RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootRefused { message_id: _ }, unit_state_changed: _ } => drop_activation
@@ -108,7 +111,7 @@ fn without_outcome(r: H11sslFirstContactReceipt, drop_activation: Bool) -> H11ss
 // The receipt with its licence activation replaced by `f` of it (instrument and arm unchanged).
 fn with_activation(r: H11sslFirstContactReceipt, f: fn(H11sslObservation) -> H11sslObservation) -> H11sslFirstContactReceipt {
   H11sslFirstContactReceipt {
-    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
+    board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
     observations: map(r.observations, o => match o {
       LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: _, unit_state_changed: _ } => f(o)
       _ => o
@@ -154,6 +157,52 @@ test fn w_redfish_root_answered_only_after_ordered_activation() -> Bool {
     && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_on_bmc_clock))
     && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_that_changed_nothing))
     && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_refused_check))
+}
+
+fn on_firmware(r: H11sslFirstContactReceipt, firmware: FirmwareSemanticVersion) -> H11sslFirstContactReceipt {
+  H11sslFirstContactReceipt {
+    board: r.board, bmc_firmware: firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
+    observations: r.observations, licences: r.licences, label: r.label,
+  }
+}
+
+// What CHECK=1 means is the release's row in extdeps.bmc.supermicro, not a literal in this receipt:
+// the same observations read on 01.52.25, which has no activation row, are not an activation, so
+// the transition does not hold. A CHECK with no row on its own release is not read as acceptance.
+test fn w_activation_check_is_read_through_the_releases_row() -> Bool {
+  let r = supermicro_h11ssl_first_contact_receipt
+  supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1)
+    && !supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 0)
+    && !supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25), check: 1)
+    && supermicro_h11ssl_redfish_root_answered_after_activation(r: r)
+    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: on_firmware(r: r, firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)))
+}
+
+fn answered_members(r: H11sslFirstContactReceipt) -> List<RedfishServiceRootMember> {
+  flat_map(r.observations, o => match o {
+    RedfishRootObservation { instant: _, observed_by: _, outcome: ServiceRootAnswered { redfish_version: _, root_schema: _, uuid: _, members: ms }, unit_state_changed: _ } => ms
+    _ => []
+  })
+}
+
+// The ServiceRoot each release served is a per-release row: 01.52.00's row is exactly what the
+// first-contact receipt observed answered, and 01.52.25 serves a different member set (it adds
+// CertificateService and JsonSchemas), so no family-wide member set exists to read.
+test fn w_service_root_members_are_per_release() -> Bool {
+  match supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0)) {
+    Absent => false
+    Present { value: old } => match supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)) {
+      Absent => false
+      Present { value: new } =>
+        old.members == answered_members(r: supermicro_h11ssl_first_contact_receipt)
+          && old.redfish_version == "1.0.1"
+          && new.redfish_version == "1.8.0"
+          && new.members.length() == 11
+          && any(new.members, m => m == ServiceRootCertificateService)
+          && !any(old.members, m => m == ServiceRootCertificateService)
+    }
+  }
+    && match supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 51, patch: 0)) { Absent => true  Present { value: _ } => false }
 }
 
 // The manual's 7001 table lists 4R under LRDIMM 3DS (beside 8R), not under RDIMM, and the 7002
@@ -241,17 +290,17 @@ fn other_mac() -> Eui48Address {
 // reference moved off the receipt, and a licence's inventory row moved off the receipt.
 test fn w_receipt_bmc_identity_is_one_mac() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
-  let receipt_moved = H11sslFirstContactReceipt { board: r.board, bmc_address: r.bmc_address, bmc_mac: other_mac(), observations: r.observations, licences: r.licences, label: r.label }
+  let receipt_moved = H11sslFirstContactReceipt { board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: other_mac(), observations: r.observations, licences: r.licences, label: r.label }
   let l = r.label
   let label_moved = H11sslFirstContactReceipt {
-    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, licences: r.licences,
+    board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, licences: r.licences,
     label: H11sslLabelObservation {
       top_label_serial_barcode: l.top_label_serial_barcode, lan_macs: l.lan_macs, jps1_silkscreen: l.jps1_silkscreen, label_photo: l.label_photo,
       bmc_factory_credential: OperatorHeldSecretRef { bmc_mac: other_mac(), secret: FactoryLoginCredential },
     },
   }
   let licence_moved = H11sslFirstContactReceipt {
-    board: r.board, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, label: r.label,
+    board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac, observations: r.observations, label: r.label,
     licences: map(r.licences, x => H11sslLicenceActivation {
       product_code: x.product_code,
       source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: other_mac(), secret: OobLicenceKey } },
