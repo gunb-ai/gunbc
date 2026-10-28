@@ -1,0 +1,615 @@
+module std.coercion
+
+import std.optional { Present, Absent }
+import std.types { NonEmptyStr, List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind }
+import std.algebra { collection_concat_shape, collection_count_shape, collection_map_shape }
+import std.host_text { chars, text_of_chars }
+
+type TypeCheckpoint {
+  dag_name: String
+  target_type: String
+  grounding_type: String
+  default_expr: String?
+  is_copy: Bool?
+  literal_suffix: String?
+}
+
+// WHY A CHECKPOINT CARRIES TWO SPELLINGS, AND WHY THE SECOND IS NOT A REFINEMENT OF THE FIRST.
+//
+// A checkpoint is asked two different questions by two different consumers, and one field could
+// only answer one of them:
+//
+//   target_type    -- REFERENCE position. What does the target render where a program MENTIONS this
+//                     type? In Rust, the dag name String renders as the bare `String`, correct and
+//                     idiomatic wherever a type is mentioned.
+//   grounding_type -- DECLARATION right-hand side. What host type is a declaration of this name
+//                     GROUNDED IN? Here the bare spelling is wrong, not merely unidiomatic:
+//                     `pub type String = String;` is self-referential, and the alias being defined
+//                     shadows the very name its right-hand side reaches for. The grounding
+//                     spelling is `std::string::String`, which no alias can shadow.
+//
+// The two coincide for most rows -- i64, bool and () are unshadowable spellings -- and where they
+// coincide the row says so explicitly rather than defaulting, because a default is a rule and a
+// rule is what this split exists to remove.
+//
+// WHAT THIS REPLACES, so the shape is not re-collapsed later. One field answering both questions is
+// a TWO-ROLE defect, not a wrong value: whichever spelling it carries, one consumer is wrong. (The
+// word ARITY is deliberately avoided: here it already means type-parameter count --
+// v1.compiler.emit_rust carries AliasDeclArityVerdict and a scalar declared-arity guard -- so
+// naming this defect that way would collide with a live, different meaning a few declarations
+// away.) The cost while it stood was a compensating fork at the consumer -- v1.compiler.emit_rust's
+// type alias arm special-cased `item_text == "String"` and emitted the grounded line by hand,
+// ahead of and bypassing the identity-keyed authority every other consumer routed through. So the
+// declaration site could not honour declaration identity even after the reference side did, and
+// one emitted file disagreed with itself. Splitting the field deletes that arm rather than guarding
+// it: the next name whose reference spelling collides with its own declaration cannot reach the
+// ambiguity, because there is no longer a single field to be ambiguous in (DESIGN section 4b --
+// construction, not a wall over a state that stays writable).
+//
+// ON THE NAME `target_type`, WHICH IS NARROWER THAN IT READS. It means the REFERENCE-position
+// spelling and nothing broader -- not the general answer to "what is this type in the target",
+// because that question no longer has a single answer here. The name survives only because
+// renaming it to reference_type reaches every target table; it is the one-name-two-meanings shape
+// this split removed from the field's VALUE, still standing in its NAME. A reader must not take
+// target_type for the universal spelling, and a new consumer must decide which of the two
+// questions it is asking rather than reaching for the familiar name.
+
+// TypeCheckpoint (above) is cited to the target LANGUAGE reference and states how a spelling
+// renders. TypeRealizationDecision is the gunbc-corpus fact answering which of a named
+// declaration's possible renderings applies at a given reference, keyed on declaration identity
+// (dag_name, decl_file) rather than bare spelling -- the corpus-side half of the two-authority
+// shape v1.compiler.emit_rust checkpoint_table_bypasses_identity_note names as this class's
+// terminal shape. Unrealized is not merely 'no row' -- it is the DERIVED conclusion that the
+// emitter must render the declaration's own structure because no checkpoint governs THIS
+// declaration (a same-spelling sibling elsewhere may still be Realized). RealizationRefused is reserved for a
+// reference whose declaration identity the caller could not supply -- never a guess standing in
+// for Unrealized, because a silently-assumed Unrealized is exactly the false negative this
+// decision keeps out of the render path (DESIGN section 5). Named Unrealized rather than
+// Structural because gunbc.ci.ci_failure_class already declares a fielded Structural { reason:
+// String } resolved as an unqualified global name (imports do not bind it), so a second,
+// differently-shaped Structural here would collide corpus-wide.
+//
+// This decision's identity key is sound ONLY while v2.compiler.source_authority
+// module_storage_binding_authority_note's file<->module binding stays 1:1 -- that note is the sole
+// owner of this scope and names many-to-many (fragment identity/order, several-modules-one-file)
+// as a deferral until a consumer prices it (DESIGN section 6), never a silent assumption. If
+// many-to-many lands, decl_file stops discriminating declarations and BOTH Unrealized and Realized
+// remain reachable on an input that no longer identifies one declaration -- RealizationRefused covers
+// decl_file == "" (identity ABSENT), not identity AMBIGUOUS, so a many-to-many regression here
+// would not refuse but answer confidently and wrongly. Whoever prices many-to-many in
+// source_authority must revisit this type first.
+// WHY THE REFUSAL CAUSE IS A TYPE AND NOT A SENTENCE. The cause was a String, and one of its
+// inhabitants -- "declaration identity unknown: empty decl_file" -- was the empty-string sentinel
+// PROMOTED ONE LEVEL rather than removed: a caller that could not name a declaration produced a
+// value whose only reading was prose. A consumer wanting to act differently on `identity absent`
+// than on `this declaration is bound to a representation with no realization row` had to compare
+// sentences, and a witness that wanted to pin the behaviour asserted the sentence itself.
+//
+// The variants are ordered by who must act: the first two are the ASKING side's defect (a caller
+// reached a declaration-keyed authority without a declaration), the last two are the CORPUS's (a
+// binding roster that is silent or contradictory). BareRowMigratedToExactBinding sits between them
+// deliberately -- the caller did supply identity and the corpus does have an answer, but the
+// spelling-keyed route is closed for that name, so the remedy is to ask the exact path instead.
+//
+// GroundedByUnidentifiedBareRow is the declared safety regression made VISIBLE. A caller that
+// supplies no declaration identity is still answered from the bare table today; that is a bounded
+// rung drop with a restoration trigger, and while it was spelled as a String comparison against ""
+// no consumer could tell such an answer apart from one keyed on a real declaration. As a ground it
+// is countable, and a consumer that must not accept it can now refuse it -- which is the whole
+// difference between a documented drop and a silent one.
+// THE IDENTITY OF A DECLARATION, AS A STATE SPACE RATHER THAN AS A PATH. The value threaded to
+// every realization gate used to be a file path carrying three disjoint inhabitants in one String:
+// a real corpus file, the synthetic pseudo-file a compiler mints for a node that has no
+// declaration, and the empty string meaning identity is unknown. Consumers discriminated only empty
+// from non-empty, so the other two were told apart -- where they were told apart at all -- by
+// separate spelling tests scattered across the emitter, and each such test was a second authority
+// for a state the type could not express.
+//
+// It is homed here rather than in the seed because it is the SUBJECT of the decision below and the
+// two are one fact: a decision keyed on an identity that cannot say `there is no declaration` is
+// exactly the shape whose absent case gets guessed. CorpusDeclared still carries a path, and that
+// is honest residue with a named successor rather than a resting place -- the declared module path
+// is the containment tree's key, and re-keying this arm on it is a separate change with its own
+// prerequisite.
+type TypeDeclarationProvenance
+  = CorpusDeclared { decl_file: String }
+  | KernelMinted { minted_name: String }
+  | DeclarationIdentityAbsent
+
+// THE TWO REPRESENTATIONS OF TEXT (operator Ruling 3, 2026-07-15; XL-0T ruling B). Kernel String is
+// HOST TEXT; a FreeMonoid<Char> declared in the corpus is a CODE-POINT SEQUENCE. One type, two
+// representations, and the only declared route between them is the literal homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows UnicodeScalarSequenceUnfold). A
+// value of one representation at a position of the other is therefore a crossing with no route,
+// and the type-compatibility relation refuses it rather than matching the two by spelling.
+// NotText is every other type: this classification says nothing about it.
+type TextRepresentation = HostText | CodePointSequence | NotText | TextRepresentationUnidentified
+
+// TextRepresentationUnidentified: the node's declaration could not be read by identity (no declaring
+// span in the global index, no resolvable qualified name, an alias chain that cycles or exceeds its
+// bound). It is never read as NotText, and it is not refused either: a boundary where one side is
+// unidentified is UNJUDGED by the text wall. text_representations_cross answers false for it, the
+// wall adds no verdict, base type compatibility decides exactly as before, and the site emits only
+// the non-blocking TextRepresentationUnidentifiedAtBoundary advisory, located. That population is
+// the declared drop gunbc.rung_drop text_boundary_identity_wall, whose restoration trigger is the
+// capability: the resolver records declaration identity on every type reference; zero unidentified
+// in the self-host and dag closures.
+
+// WHICH STATE A TYPE REFERENCE IS IN WHEN ITS DECLARATION IS ASKED FOR -- the split of the one arm
+// the reference-site read used to answer for two states. v1.std.core type_reference_provenance
+// falls back to the reference node's OWN span whenever no Resolved node is bound, so `this node IS
+// a declaration` and `this reference's declaration was not recovered here` both answer
+// CorpusDeclared on the file the node sits in. The second case is a location standing where an
+// identity was owed: DESIGN section 5's absorbing fallback, and gunbc.recurring_failure_mode
+// state_space_conflation's form for this carrier.
+//
+// Each arm is decided from STRUCTURE, never from span presence. A declaration node is one the parser
+// marked ModuleItemTypeDeclaration, or the kernel mint for its own name. A Resolved node that is
+// neither is NOT a declaration: the resolver builds the Resolved node of an applied reference on
+// the REFERENCE's span, so reading its span is the same location key one hop later. Those arms
+// refuse, and the cause says which of the two shapes refused.
+//
+// A TYPE-VARIABLE BINDER IS ITS OWN ARM. A generic parameter such as T is bound by the enclosing
+// declaration and has no declaring module to key on. Filing it as a declaration would let the kernel
+// span its binding is minted on pass for a KernelMinted type. Filing it as a refusal would count a
+// correctly bound name as a missing identity. It is recognized only when the node itself carries
+// the binding (inferred TypeVariable). An unresolved T sitting in a field still has no binding on the
+// node, and refuses like any other unresolved reference.
+//
+// THIS IS NOT YET A PRODUCTION WALL. The production read is unchanged and still mis-keys, which is
+// declared as gunbc.rung_drop type_reference_location_fallback_keys_production_realization. The
+// consumer today is the census and the witness; the restoration trigger is the renderer reroute
+// onto this query.
+type TypeReferenceIdentity
+  = ReferenceResolvedToDeclaration { provenance: TypeDeclarationProvenance }
+  | ReferenceIsTheDeclaration { provenance: TypeDeclarationProvenance }
+  | ReferenceIsTypeVariableBinder { binder_name: String }
+  | ReferenceIdentityUnavailable { cause: ReferenceIdentityUnavailableCause }
+
+type ReferenceIdentityUnavailableCause
+  = NoResolutionBoundAtReference
+  | ResolvedNodeIsNotADeclaration
+  | DeclarationNodeCarriesNoSpan
+
+type RealizationRefusalCause
+  = DeclarationIdentityUnavailable
+  | ExactSourceIdentityAbsent { detail: String }
+  | BareRowMigratedToExactBinding { dag_name: String }
+  | BoundRepresentationHasNoRealizationRow { decl_name: String }
+  | ExactBindingAmbiguousForOneDeclaration
+
+// The human rendering of a refusal, homed with the cause so a consumer never re-spells one. Each
+// arm says what the ASKER must do differently, which is the distinction the String form could only
+// gesture at.
+fn realization_refusal_label(cause: RealizationRefusalCause) -> String {
+  match cause {
+    DeclarationIdentityUnavailable => "no declaration identity was supplied"
+    ExactSourceIdentityAbsent { detail: d } => d
+    BareRowMigratedToExactBinding { dag_name: n } => concat("declaration-keyed name `", n, "` reached the spelling-keyed arm without a declaration: its bare row is migrated, answer from the exact binding")
+    BoundRepresentationHasNoRealizationRow { decl_name: n } => concat("declaration `", n, "` is bound to a target representation with no realization row")
+    ExactBindingAmbiguousForOneDeclaration => "ambiguous exact binding: more than one row for one declaration"
+  }
+}
+
+// HOW A REALIZATION WAS GROUNDED, carried because two consumers ask different questions of one
+// Realized. A checkpoint row and a host numeric alias both produce a TypeCheckpoint, and until this
+// field existed they were indistinguishable at the periphery -- so a site asking `is this the host
+// numeric` could not read the decision and had to re-derive the answer from a name and a file. That
+// re-derivation is the identity channel this field exists to close: the question is answered where
+// the decision is made, and the answer travels instead of the key.
+type RealizationGround
+  = GroundedByCheckpointRow
+  | GroundedByHostNumericAlias
+  | GroundedByUnidentifiedBareRow
+
+type TypeRealizationDecision
+  = Realized { checkpoint: TypeCheckpoint, ground: RealizationGround }
+  | Unrealized
+  | RealizationRefused { cause: RealizationRefusalCause }
+
+type InhabitantDecl {
+  algebra: String
+  template: String
+  arity: Int
+  identity_expr: String?
+  import_path: String?
+  is_copy: Bool?
+}
+
+type CallableRepr {
+  template: String
+  param_separator: String
+  return_separator: String
+  import_path: String?
+}
+
+type CastRule {
+  from_type: String
+  to_type: String
+}
+
+// A REFINEMENT ROW NAMES ITS TARGET'S DECLARATION, not only its spelling. The spelling "Nat" is
+// declared twice in one corpus -- std.nat.Nat (grounded onto Int, carrier i64) and v2.std.nat.Nat
+// (a Peano Zero | Succ coproduct) -- and only the first is a refinement of Int. A consumer that
+// holds a resolved declaration keys on to_declaration; to_type remains the spelling an explicit
+// `as` target is authored with. These std.decl_ref names are named explicitly rather than left to
+// the file's bare channel, because declaring any import switches that channel off.
+type RefinementCastRule {
+  from_type: String
+  to_type: String
+  to_declaration: DeclarationRef
+}
+
+type CastSyntax {
+  template: String
+  cast_rules: List<CastRule>
+}
+
+// The Int->Nat and String->FreeMonoid identities are GROUNDED, not hollow casts (operator Ruling 3,
+// 2026-07-15): a Nat IS an Int (numeric tower grounded construction-side #5428,
+// Zero->Int(0)/Succ->Int(k+1), native form == modeled form) and a String IS a FreeMonoid<Char>
+// (std.string_type: type String = FreeMonoid<Char> — strings over an alphabet are the free monoid).
+// They live in their OWN list, NOT in dag_cast_rules, on purpose: dag_can_cast consults BOTH lists
+// so the wall's kernel_value_declared_type_mismatch stops flagging an Int literal where a Nat is
+// expected (and a String where a FreeMonoid is expected); but is_dag_cast_domain_type reads ONLY
+// dag_cast_rules, so grounding a primitive to a coproduct does NOT drag that coproduct into the
+// explicit-`as`-cast validation domain. Folding them into dag_cast_rules would make Nat/String
+// cast-domain types and newly REJECT pre-existing well-typed casts whose reverse rule is absent
+// (`Nat as Int` in bmc_onboard, `Int as String` in srv3/host_effect were skipped before because
+// their far type was not a domain type) — a regression, not the intent. NON-grounded
+// primitive->coproduct straddles stay red by construction: Bool->FreeMonoid (card_intake),
+// String->Doc (live_deploy), String->AuthScheme (auth) are genuine site bugs with no identity.
+
+// `Bool as Int` IS NOT A ROW. It was, while the seed's eval_cast refused it at runtime, so the
+// checker blessed a cast the evaluator crashed on (gunbc.recurring_failure_mode
+// the_checker_admits_a_cast_the_evaluator_refuses). A Bool is not an Int -- an Iverson bracket is
+// a function the author writes, not a re-typing -- so the row is withdrawn rather than taught to
+// eval. `Bool -> Bool` keeps Bool IN the cast domain, which is what makes validate_cast REFUSE
+// `b as Int` located instead of abstaining on it; and dag_can_cast, read at implicit admission,
+// no longer admits a Bool where an Int is declared.
+data dag_cast_rules: List<CastRule> = [
+  { from_type: "Int",   to_type: "Int" },
+  { from_type: "Int",   to_type: "Float" },
+  { from_type: "Float", to_type: "Int" },
+  { from_type: "Float", to_type: "Float" },
+  { from_type: "Bool",  to_type: "Bool" },
+]
+
+data grounded_primitive_coproduct_identities: List<CastRule> = [
+  { from_type: "Int",    to_type: "Nat" },
+  { from_type: "String", to_type: "FreeMonoid" },
+]
+
+// REFINEMENT CASTS: an explicit `as` whose target is a PROPER SUBSET of its source. The grounded
+// identity above says every Nat IS an Int; it says nothing about the converse, and `n as Nat` over
+// an arbitrary Int asserts the converse without evidence. It has exactly two honest meanings and
+// neither is a re-typing: a checked conversion that refuses a negative (std.checked_arithmetic
+// checked_int_to_nat is the sanctioned crossing), or a clamp -- which that module already names
+// as the section 5 absorbing fallback. So an `as` cast over one of these rows is REFUSED BY THE
+// CHECKER (v1.compiler.infer validate_cast) and is unreachable at eval (the seed interpreter's
+// eval_cast refuses it for the same row, now as the unreachable echo of this refusal rather than a
+// second authority that only fired at runtime). A nonnegative literal needs no cast -- the grounded
+// identity already admits it in a Nat position -- and a value already typed Nat is an identity cast.
+data refinement_cast_rules: List<RefinementCastRule> = [
+  { from_type: "Int", to_type: "Nat", to_declaration: decl_ref(module_path: "std.nat", decl_name: "Nat") },
+]
+
+fn dag_cast_requires_proof(source_type: String, target_type: String) -> Bool {
+  refinement_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
+}
+
+// SUBTRACTION LEAVES A REFINEMENT. A refinement row says every to_type value IS a from_type value
+// and not the converse, so the refinement is closed under whatever its predicate is closed under
+// and no more: a Nat is closed under + and * (it is a commutative semiring) but `a - b` over two
+// Nats is an arbitrary Int. The difference is therefore typed at the row's SOURCE type, read from
+// the same rows that make `n as Nat` a refinement cast -- not a second rule beside them. The
+// operand is matched by its RESOLVED DECLARATION, never by its spelling: v2.std.nat.Nat shares the
+// spelling, is not a refinement of Int, and subtracts through its own typed nat_sub. Absent means
+// the operand's declaration is the target of no refinement row, and the operand's own algebra
+// decides as before.
+// ZERO, ONE OR MANY -- never "the first". Two rows naming one exact declaration with different
+// source types would make the difference's type depend on row ORDER, which is not a fact about
+// the declaration; that is a coherence defect in this table, so it is answered as its own arm and
+// the checker refuses on it (v1.compiler.infer_types subtraction_refinement_of) rather than picking.
+type SubtractionRefinement
+  = SubtractionStaysInOperandAlgebra
+  | SubtractionEscapesTo { from_type: String }
+  | SubtractionRefinementAmbiguous { from_types: List<String> }
+
+fn dag_subtraction_refinement(operand: DeclarationRef) -> SubtractionRefinement {
+  let hits = refinement_cast_rules |> filter(r => declaration_ref_eq(a: r.to_declaration, b: operand))
+  match hits |> first {
+    Absent => SubtractionStaysInOperandAlgebra
+    Present { value: r } =>
+      if (hits |> count) == 1 {
+        SubtractionEscapesTo { from_type: r.from_type }
+      } else {
+        SubtractionRefinementAmbiguous { from_types: hits |> map(h => h.from_type) }
+      }
+  }
+}
+
+fn dag_can_cast(source_type: String, target_type: String) -> Bool {
+  (dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type))
+    || (grounded_primitive_coproduct_identities |> any(r => r.from_type == source_type && r.to_type == target_type))
+}
+
+fn is_dag_cast_domain_type(name: String) -> Bool {
+  dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
+}
+
+// NAMED CONVERSION PLANS (DESIGN section 4, operator ruling 2026-09-26: an author crosses a
+// representation boundary implicit coercion refuses ONLY by selecting a named conversion plan, and
+// every phase of it stays represented). A plan joins the two authorities that already exist rather
+// than minting a third: the explicit-cast surface above (which says a re-typing is legal, keyed on
+// spellings, and names no route) and std.literal_elaboration LiteralUnfolding (the declared routes,
+// until now applied to literals only). Each phase cites a declared route; nothing in a plan is
+// free text, so a realization reads which route to run and never decides whether the crossing is
+// legal. Endpoints are DECLARATIONS, keyed exactly as literal_homomorphism_rows key theirs, so an
+// alias or a foreign caller's re-resolved spelling presents the same key after the peel.
+//
+// The inverse of an unfold is lawful because every LiteralUnfolding is a bijection onto its
+// carrier: the Unicode scalar unfold maps host text to FreeMonoid<std.types.Char> one scalar per
+// element, and std.types Char is branded unicode_scalar, so every sequence folds back to exactly
+// one host text. A future unfold that is not injective must not receive an inverse row.
+//
+// A PLAN HAS EXACTLY ONE PHASE BY CONSTRUCTION. Every row today is one declared route, so a plan
+// with no phase is not a state to refuse but a state with no constructor (DESIGN section 5,
+// construction over validation). A composite plan -- several phases whose consecutive endpoints must
+// meet -- is the trigger for a non-empty phase sequence and the judgment of its chaining; neither
+// exists until a row needs it.
+type ConversionPhase
+  = UnfoldPhase { row: LiteralHomomorphism }
+  | InverseUnfoldPhase { row: LiteralHomomorphism }
+  | SupportToEntriesPhase
+  | EntriesToSupportPhase
+
+// A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
+// String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
+// above), so it has no DeclarationRef to cite; a code-point sequence is the corpus declaration
+// std.algebra FreeMonoid over std.types Char, the post-peel key literal_homomorphism_rows uses. Each
+// endpoint therefore names the carrier the way that carrier is actually identified.
+type ConversionEndpoint
+  = KernelMintedCarrier { minted_name: NonEmptyStr }
+  | DeclaredCarrier { declaration: DeclarationRef, element: DeclarationRef? }
+
+// THE PHASE IS THE ONLY SOURCE OF THE ENDPOINTS, AND THE ROUTE IS THE ONLY NAME (calm-boar-904's
+// #13143 objection, the correlated-field class of #13060). A plan stored route, endpoints and phase
+// independently while the judgment checked only the endpoints, so an unfold route carrying an inverse
+// phase was admitted with every control green. Now a phase carries the full declared literal
+// homomorphism row, the endpoints are DERIVED from it -- the unfold runs from the row's kernel literal
+// carrier to its destination, the inverse reverses exactly those -- and the plan's name is its route
+// function's declared name (O5: the function IS the plan). No field can disagree with another,
+// because there is no second field to disagree.
+type ConversionPlan {
+  route: DeclarationRef
+  phase: ConversionPhase
+}
+
+fn conversion_plan_identity(plan: ConversionPlan) -> NonEmptyStr {
+  plan.route.decl_name
+}
+
+// The kernel carrier a literal of each source kind is minted as -- the unfold's starting side.
+fn kernel_carrier_of_literal_source(kind: LiteralSourceKind) -> ConversionEndpoint {
+  match kind {
+    KernelIntLiteral => KernelMintedCarrier { minted_name: "Int" as NonEmptyStr }
+    KernelStringLiteral => KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+    KernelFloatLiteral => KernelMintedCarrier { minted_name: "Float" as NonEmptyStr }
+    KernelBoolLiteral => KernelMintedCarrier { minted_name: "Bool" as NonEmptyStr }
+    KernelSymbolLiteral => KernelMintedCarrier { minted_name: "Symbol" as NonEmptyStr }
+    KernelNullLiteral => KernelMintedCarrier { minted_name: "Null" as NonEmptyStr }
+  }
+}
+
+fn literal_homomorphism_destination(row: LiteralHomomorphism) -> ConversionEndpoint {
+  DeclaredCarrier { declaration: row.destination, element: row.element }
+}
+
+fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    SupportToEntriesPhase => kernel_map_endpoint()
+    EntriesToSupportPhase => finitely_supported_function_endpoint()
+  }
+}
+
+fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
+  match plan.phase {
+    UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    SupportToEntriesPhase => finitely_supported_function_endpoint()
+    EntriesToSupportPhase => kernel_map_endpoint()
+  }
+}
+
+// THE TWO CARRIERS OF THE MAP CROSSING, DERIVED NOT SPELLED (same rule as the text endpoints above:
+// each side has exactly one carrier, so the endpoint follows from the reading). The kernel Map is a
+// minted container, named the way the kernel Int and String above are named; the declared side is
+// std.algebra's own FinitelySupportedFunction declaration, compared by declaration identity so a
+// user-declared look-alike of the same name is not it (ruling gunbc.design_ruling
+// kernel_map_is_the_host_realization_of_the_finitely_supported_function).
+fn kernel_map_endpoint() -> ConversionEndpoint {
+  KernelMintedCarrier { minted_name: "Map" as NonEmptyStr }
+}
+
+fn finitely_supported_function_endpoint() -> ConversionEndpoint {
+  DeclaredCarrier { declaration: decl_ref(module_path: "std.algebra", decl_name: "FinitelySupportedFunction"), element: Absent }
+}
+
+// HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no
+// grammar change. Each plan row names an ORDINARY DECLARED FUNCTION by its declaration identity
+// (route), the author calls that function, and the call is admitted as the named route BECAUSE a
+// row names the callee. The judgment is therefore keyed on the callee's declaration, never on a
+// spelling the site supplies.
+//
+// What a crossing site that names a plan is answered with. Only ConversionPlanAdmitted admits;
+// every other arm is a located refusal at the site that named the plan. A crossing that names NO
+// plan never reaches this judgment and is refused by the text wall as before.
+type ConversionPlanJudgment
+  = ConversionPlanAdmitted { plan: ConversionPlan }
+  | ConversionPlanAbsent { route: DeclarationRef }
+  | ConversionPlanAmbiguous { route: DeclarationRef, row_count: Int }
+  | ConversionPlanEndpointMismatch { plan: ConversionPlan }
+  | ConversionPlanEndpointNotText { source: TextRepresentation, target: TextRepresentation }
+
+fn conversion_plan_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
+}
+
+fn conversion_endpoint_eq(a: ConversionEndpoint, b: ConversionEndpoint) -> Bool {
+  match a {
+    KernelMintedCarrier { minted_name: an } =>
+      match b {
+        KernelMintedCarrier { minted_name: bn } => an == bn
+        DeclaredCarrier { declaration: _, element: _ } => false
+      }
+    DeclaredCarrier { declaration: ad, element: ae } =>
+      match b {
+        KernelMintedCarrier { minted_name: _ } => false
+        DeclaredCarrier { declaration: bd, element: be } => declaration_ref_eq(a: ad, b: bd) && conversion_plan_element_eq(a: ae, b: be)
+      }
+  }
+}
+
+// The site presents the callee it resolved and the two carriers at its boundary (already peeled,
+// as for literal elaboration). Zero or several rows naming the callee refuse rather than pick; a
+// found plan whose endpoints are not the site's refuses rather than being reread in the other
+// direction (the inverse is its own row).
+fn judge_conversion_plan(
+  rows: List<ConversionPlan>,
+  route: DeclarationRef,
+  source: ConversionEndpoint,
+  target: ConversionEndpoint
+) -> ConversionPlanJudgment {
+  let named = rows |> filter(r => declaration_ref_eq(a: r.route, b: route))
+  let n = named |> count
+  if n == 0 {
+    ConversionPlanAbsent { route: route }
+  } else if n > 1 {
+    ConversionPlanAmbiguous { route: route, row_count: n }
+  } else {
+    match named |> first {
+      Absent => ConversionPlanAbsent { route: route }
+      Present { value: plan } =>
+        if conversion_endpoint_eq(a: conversion_plan_source(plan: plan), b: source) && conversion_endpoint_eq(a: conversion_plan_target(plan: plan), b: target) {
+          ConversionPlanAdmitted { plan: plan }
+        } else {
+          ConversionPlanEndpointMismatch { plan: plan }
+        }
+    }
+  }
+}
+
+// CONSUMER, A DECLARED FRONTIER (DESIGN section 3c). The judgment's consumer is the KERNEL-CROSSING
+// WALL in v1.compiler.infer: a text crossing through the scalar reader or writer (std.host_text chars
+// / text_of_chars, and the kernel chars_to_string text_of_chars alone wraps) is admitted only inside a
+// function whose declaration a conversion_plan_rows row names as its route, judged here against the
+// two text readings at that call; everywhere else it refuses with TextCrossingHasNoImplicitRoute
+// naming the route to call. calm-boar-904 ruled that wall the LAST step of the text-boundary lane, so
+// it lands with no backlog: its trigger is that every chars / chars_to_string caller outside the two
+// route functions and std.host_text has been switched to a route call or rostered with a typed reason.
+// Until then the route functions are admitted by their signatures alone and nothing on the acceptance
+// path runs this judgment.
+//
+// THE CROSSING SITE'S HALF, AS THE CHECKER WILL ASK IT. The checker already classifies each side of a
+// boundary by declaration identity (v1.compiler.infer text_representation_by_identity, the same
+// reading text_crossing_by_identity refuses bare crossings with); a site that names a plan presents
+// those two readings here and is judged against the plan rows. Each text representation has exactly
+// one carrier -- host text is the kernel-minted String, a code-point sequence is std.algebra
+// FreeMonoid over std.types Char -- so the endpoint is derived from the reading rather than re-read
+// from a spelling. A side that is not text, or whose declaration could not be identified, has no
+// endpoint and refuses: a plan is never selected for a crossing the checker could not identify.
+fn host_text_endpoint() -> ConversionEndpoint {
+  KernelMintedCarrier { minted_name: "String" as NonEmptyStr }
+}
+
+fn code_point_sequence_endpoint() -> ConversionEndpoint {
+  DeclaredCarrier { declaration: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"), element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") } }
+}
+
+type TextPlanEndpoint
+  = TextPlanEndpointKeyed { endpoint: ConversionEndpoint }
+  | TextPlanEndpointUnkeyed
+
+fn text_plan_endpoint(rep: TextRepresentation) -> TextPlanEndpoint {
+  match rep {
+    HostText => TextPlanEndpointKeyed { endpoint: host_text_endpoint() }
+    CodePointSequence => TextPlanEndpointKeyed { endpoint: code_point_sequence_endpoint() }
+    NotText => TextPlanEndpointUnkeyed
+    TextRepresentationUnidentified => TextPlanEndpointUnkeyed
+  }
+}
+
+fn judge_text_conversion_plan(
+  rows: List<ConversionPlan>,
+  route: DeclarationRef,
+  source: TextRepresentation,
+  target: TextRepresentation
+) -> ConversionPlanJudgment {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+    TextPlanEndpointKeyed { endpoint: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => ConversionPlanEndpointNotText { source: source, target: target }
+        TextPlanEndpointKeyed { endpoint: te } =>
+          judge_conversion_plan(rows: rows, route: route, source: se, target: te)
+      }
+  }
+}
+
+// THE PLAN FOR A CROSSING THE COMPILER INSERTS, selected by the crossing's two endpoints -- never by a
+// spelling, and never by scanning phases for a producer. A host-text value meeting a code-point-sequence
+// formal names no route of its own, so the route is whichever plan runs between exactly those two
+// carriers; one such plan is then judged by its own route through judge_conversion_plan, the same
+// judgment an authored route call receives. None, or several, refuse at the crossing: the roster, not
+// the crossing, would have to choose, and an absent or ambiguous plan is never resolved by picking one.
+type CrossingPlanSelection
+  = CrossingPlanJudged { judgment: ConversionPlanJudgment }
+  | CrossingPlanNone
+  | CrossingPlanSeveral { routes: List<DeclarationRef> }
+
+fn select_text_crossing_plan(rows: List<ConversionPlan>, source: TextRepresentation, target: TextRepresentation) -> CrossingPlanSelection {
+  match text_plan_endpoint(rep: source) {
+    TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+    TextPlanEndpointKeyed { endpoint: se } =>
+      match text_plan_endpoint(rep: target) {
+        TextPlanEndpointUnkeyed => CrossingPlanJudged { judgment: ConversionPlanEndpointNotText { source: source, target: target } }
+        TextPlanEndpointKeyed { endpoint: te } =>
+          let between = rows |> filter(r => conversion_endpoint_eq(a: conversion_plan_source(plan: r), b: se) && conversion_endpoint_eq(a: conversion_plan_target(plan: r), b: te))
+          if (between |> count) > 1 {
+            CrossingPlanSeveral { routes: between |> map(r => r.route) }
+          } else {
+            match between |> first {
+              Absent => CrossingPlanNone
+              Present { value: plan } =>
+                CrossingPlanJudged { judgment: judge_conversion_plan(rows: rows, route: plan.route, source: se, target: te) }
+            }
+          }
+      }
+  }
+}
+
+// THE TWO DECLARED ROUTE FUNCTIONS the conversion_plan_rows name. Each body is the realization of its
+// row's one phase and nothing else: the unfold reads host text's Unicode scalars through
+// std.host_text chars (the kernel scalar decomposition v1.compiler.infer unfold_scalar_sequence_image
+// also uses for literals), and the fold writes them back as host text through std.host_text
+// text_of_chars, chars' declared inverse. Both crossings are declared in std.host_text, so the kernel
+// slice writer has one text-crossing caller (text_of_chars), not one per route.
+fn unicode_scalar_unfold(s: String) -> FreeMonoid<Char> {
+  chars(s)
+}
+
+fn unicode_scalar_fold(xs: FreeMonoid<Char>) -> String {
+  text_of_chars(scalars: xs)
+}

@@ -1,0 +1,265 @@
+module test.claim.map_annotation_resolves_by_declaration_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.coercion {
+  ConversionPlan,
+  ConversionPhase,
+  KernelMintedCarrier,
+  DeclaredCarrier,
+  conversion_plan_source,
+  conversion_plan_target,
+  conversion_endpoint_eq,
+  kernel_map_endpoint,
+  finitely_supported_function_endpoint,
+  judge_conversion_plan,
+  ConversionPlanAdmitted,
+  ConversionPlanAbsent,
+  ConversionPlanEndpointMismatch
+}
+import gunbc.structural_realization_bindings { conversion_plan_rows }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A `Map<..>` ANNOTATION NAMES THE DECLARATION IT RESOLVES TO, NEVER THE KERNEL CONTAINER
+// BY LEAF NAME (ruling gunbc.design_ruling kernel_map_is_the_host_realization_of_the_finitely_supported_function,
+// the Map instance of text_crossings_go_through_the_unfold). The seed once minted every Map spelling
+// as the kernel container whatever the import said, so std.types Map = FinitelySupportedFunction
+// could not be the one concept.
+//
+// The fixture supplies its own `Map` declaration (a manifest has no corpus roots, so std.types is
+// unavailable, the same reason as undeclared_bare_type_reference_class_witness). The function
+// returns a value of the declaration's target type at a `Map<String, Int>` annotation: it compiles
+// only if the annotation resolved to the declaration; were it the kernel container the return would
+// mismatch.
+
+data mad_definer_source: String = "module mad.definer\n\ntype MadFunction<key, value> {\n  support: List<key>\n  codomain: List<value>\n}\n\ntype Map<key, value> = MadFunction<key, value>\n"
+
+data mad_user_imported_source: String = "module mad.user\n\nimport mad.definer { Map, MadFunction }\n\nfn mad_identity(f: MadFunction<String, Int>) -> Map<String, Int> {\n  f\n}\n"
+
+data mad_user_unimported_source: String = "module mad.user\n\nimport mad.definer { MadFunction }\n\nfn mad_identity(f: MadFunction<String, Int>) -> Map<String, Int> {\n  f\n}\n"
+
+fn mad_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("mad/definer.dag", mad_definer_source),
+      fixture_source("mad/user.dag", user_source)
+    ],
+    entry: "mad/user.dag"
+  })
+}
+
+fn mad_diagnosed_as(o: MultiModuleCompileFixtureOutcome, wanted: String) -> Bool {
+  match o {
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      fixture_has_class(rows: rows, wanted: wanted),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+fn mad_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE POSITIVE CONTROL: the imported Map annotation is the declaration, so the declaration's own
+// target type inhabits it.
+test fn an_imported_map_annotation_resolves_to_its_declaration() -> Bool {
+  mad_completed_clean(mad_run(mad_user_imported_source))
+}
+
+// THE DISCRIMINATING RED: the same bytes minus the import edge. The Map spelling names no
+// declaration, so it refuses as unbound (UnresolvedType); it is not silently the kernel container.
+test fn a_map_annotation_without_an_import_refuses_as_unbound() -> Bool {
+  mad_diagnosed_as(mad_run(mad_user_unimported_source), "UnresolvedType")
+}
+
+// ONE IDENTITY AT A JOIN, KEYED ON THE DECLARATION. A Map whose declaration aliases THE keyed algebra
+// (the std.algebra FinitelySupportedFunction declaration) resolves as the kernel keyed container, the
+// same identity that declaration resolves to, so an `if` joining a `Map<String, Int>` arm with a
+// `FinitelySupportedFunction<String, Int>` arm is one type. Resolving it as a user generic of the
+// alias minted a second identity and refused the joins at v2.std.compilers.lexing
+// lex_rule_set_insert_keyword_class ('Map(...) vs Map(...)'). The fixture names the module std.algebra
+// and std.types so both declaration identities are the real ones.
+data mad_keyed_algebra_source: String = "module std.algebra\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n}\n"
+
+data mad_keyed_types_source: String = "module std.types\n\nimport std.algebra { FinitelySupportedFunction }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n"
+
+data mad_keyed_join_source: String = "module mad.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn mad_join(m: Map<String, Int>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> Map<String, Int> {\n  if c { m } else { n }\n}\n"
+
+test fn a_map_aliasing_the_keyed_algebra_joins_its_declaration_as_one_type() -> Bool {
+  match compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/algebra.dag", mad_keyed_algebra_source),
+      fixture_source("std/types.dag", mad_keyed_types_source),
+      fixture_source("mad/join.dag", mad_keyed_join_source)
+    ],
+    entry: "mad/join.dag"
+  }) {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE IDENTITY RED: a LOCAL record that is merely NAMED FinitelySupportedFunction, aliased as Map, is
+// not the keyed algebra. Its Map resolves through its own declaration, so the record's field is read;
+// were the test keyed on the spelling, the Map would be the kernel container and `m.support` would
+// refuse.
+data mad_lookalike_source: String = "module mad.lookalike\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n}\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n\nfn mad_support(m: Map<String, Int>) -> List<String> {\n  m.support\n}\n"
+
+test fn a_lookalike_record_named_finitely_supported_function_aliased_as_map_is_not_the_kernel_container() -> Bool {
+  match compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("mad/lookalike.dag", mad_lookalike_source)],
+    entry: "mad/lookalike.dag"
+  }) {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE CROSSING PAIR (deliverable 4; ruling gunbc.design_ruling
+// kernel_map_is_the_host_realization_of_the_finitely_supported_function).
+//
+// The ruling makes a kernel Map and std.algebra's FinitelySupportedFunction ONE concept in two
+// carriers, so a Map may be ANNOTATED as the function and joins as one type (the tests above). It
+// does not make the STRUCTURAL crossing free: walking a Map's support out as its entry list, or
+// minting a Map from an entry list, is a named route, not an implicit coercion -- the same shape as
+// the text crossing, where chars and the code-point sequence are one concept in two carriers and
+// only unicode_scalar_unfold / unicode_scalar_fold may cross them. These tests are that rule's two
+// colours, on both channels the rule lives on: the judgment over the carrier rows, and the
+// authored use a compiler accepts or refuses.
+// ---------------------------------------------------------------------------
+
+// THE CARRIER SIDE: the two rows exist, one per direction, and derive the endpoints the ruling
+// states -- the kernel-minted Map on one side, std.algebra's OWN FinitelySupportedFunction
+// declaration on the other. Zero or several rows naming a route refuse rather than pick, so this
+// asserts exactly one each way rather than merely at least one.
+fn crossing_row(route_name: String) -> ConversionPlan? {
+  let rows = conversion_plan_rows |> filter(r => r.route.decl_name as String == route_name)
+  match rows |> first {
+    Present { value: p } => if count(rows) == 1 { Present { value: p } } else { Absent }
+    Absent => Absent
+  }
+}
+
+test fn the_support_to_entries_crossing_row_exists_exactly_once_with_the_rulings_endpoints() -> Bool {
+  match crossing_row(route_name: "map_to_entries") {
+    Absent => false
+    Present { value: p } =>
+      conversion_endpoint_eq(a: conversion_plan_source(plan: p), b: kernel_map_endpoint()) &&
+      conversion_endpoint_eq(a: conversion_plan_target(plan: p), b: finitely_supported_function_endpoint()) &&
+      declaration_ref_eq(a: p.route, b: decl_ref(module_path: "std.algebra", decl_name: "map_to_entries"))
+  }
+}
+
+test fn the_entries_to_support_crossing_row_exists_exactly_once_with_the_rulings_endpoints() -> Bool {
+  match crossing_row(route_name: "map_from_entries") {
+    Absent => false
+    Present { value: p } =>
+      conversion_endpoint_eq(a: conversion_plan_source(plan: p), b: finitely_supported_function_endpoint()) &&
+      conversion_endpoint_eq(a: conversion_plan_target(plan: p), b: kernel_map_endpoint()) &&
+      declaration_ref_eq(a: p.route, b: decl_ref(module_path: "std.algebra", decl_name: "map_from_entries"))
+  }
+}
+
+// THE DECLARED ROUTE IS ADOPTED, THE UNDECLARED ONE REFUSED, AND THE INVERSE IS NOT THE FORWARD.
+// Three colours of the same judgment: the site that names a declared route is admitted against the
+// endpoints the phase derives; a site naming a route no row carries is refused rather than
+// approximated by the nearest row; and a forward row never answers a request travelling the other
+// way (the correlated-field class #13060/#13143 -- endpoints and phase must not be able to disagree).
+test fn the_judgment_adopts_a_declared_crossing_route_and_refuses_an_undeclared_one() -> Bool {
+  let to_entries = decl_ref(module_path: "std.algebra", decl_name: "map_to_entries")
+  let from_entries = decl_ref(module_path: "std.algebra", decl_name: "map_from_entries")
+  let minted = kernel_map_endpoint()
+  let declared = finitely_supported_function_endpoint()
+  // admitted: the route the rows carry, in the direction its phase states.
+  let forward_adopted = match judge_conversion_plan(rows: conversion_plan_rows, route: to_entries, source: minted, target: declared) {
+    ConversionPlanAdmitted { plan: _ } => true
+    _ => false
+  }
+  let backward_adopted = match judge_conversion_plan(rows: conversion_plan_rows, route: from_entries, source: declared, target: minted) {
+    ConversionPlanAdmitted { plan: _ } => true
+    _ => false
+  }
+  // refused: a route no row names -- the kernel map_get, which is a container method, not a crossing.
+  let undeclared_refused = match judge_conversion_plan(rows: conversion_plan_rows, route: decl_ref(module_path: "std.algebra", decl_name: "map_get"), source: minted, target: declared) {
+    ConversionPlanAbsent { route: _ } => true
+    _ => false
+  }
+  // refused: the forward row asked to answer the backward direction.
+  let inverse_refused = match judge_conversion_plan(rows: conversion_plan_rows, route: to_entries, source: declared, target: minted) {
+    ConversionPlanEndpointMismatch { plan: _ } => true
+    _ => false
+  }
+  forward_adopted && backward_adopted && undeclared_refused && inverse_refused
+}
+
+// THE AUTHORED SIDE, POSITIVE CONTROL: a Map walked out to its entry list THROUGH the declared
+// route, and back. Compiles with zero diagnostics and emits.
+data crossing_algebra_source: String = "module std.algebra\n\ntype MapIntroductionEntry<K, V> {\n  key: K\n  value: V\n}\n\ntype FinitelySupportedFunction<K, V> {\n  support: List<K>\n  codomain: List<V>\n}\n\nfn map_to_entries<K, V>(m: FinitelySupportedFunction<K, V>) -> List<MapIntroductionEntry<K, V>> {\n  []\n}\n\nfn map_from_entries<K, V>(entries: List<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {\n  { support: [], codomain: [] }\n}\n"
+
+data crossing_types_source: String = "module std.types\n\nimport std.algebra { FinitelySupportedFunction }\n\ntype Map<key, value> = FinitelySupportedFunction<key, value>\n"
+
+data crossing_route_use_source: String = "module mad.crossing\n\nimport std.algebra { FinitelySupportedFunction, MapIntroductionEntry, map_to_entries, map_from_entries }\nimport std.types { Map }\n\nfn mad_round_trip(m: Map<String, Int>) -> Map<String, Int> {\n  map_from_entries(map_to_entries(m))\n}\n"
+
+test fn the_crossing_through_the_declared_route_pair_compiles() -> Bool {
+  match compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/algebra.dag", crossing_algebra_source),
+      fixture_source("std/types.dag", crossing_types_source),
+      fixture_source("mad/crossing.dag", crossing_route_use_source)
+    ],
+    entry: "mad/crossing.dag"
+  }) {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE AUTHORED SIDE, RED: the SAME crossing performed WITHOUT the route -- a Map returned where its
+// entry list is declared, no route called. It must refuse, and refuse with a typed and located
+// diagnostic naming the two shapes: the ruling merged the carriers as ANNOTATIONS and JOINs, it did
+// not make the structural crossing free. Were the crossing implicit, this fixture would complete and
+// the test would be false -- which is the point: the same module shape, one token apart, differs.
+data crossing_unrouted_source: String = "module mad.crossing\n\nimport std.algebra { FinitelySupportedFunction, MapIntroductionEntry }\nimport std.types { Map }\n\nfn mad_walk_support_out(m: Map<String, Int>) -> List<MapIntroductionEntry<String, Int>> {\n  m\n}\n"
+
+test fn the_crossing_without_the_declared_route_refuses_typed_and_located() -> Bool {
+  let o = compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("std/algebra.dag", crossing_algebra_source),
+      fixture_source("std/types.dag", crossing_types_source),
+      fixture_source("mad/crossing.dag", crossing_unrouted_source)
+    ],
+    entry: "mad/crossing.dag"
+  })
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) > 0 && mad_diagnosed_as(o: o, wanted: "TypeMismatch"),
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}

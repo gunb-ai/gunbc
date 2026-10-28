@@ -1,0 +1,1739 @@
+module std.algebra
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+
+import std.error_primitives { DivError, Result, pure_dag_seam_unreachable_string }
+
+type Magma<T> {
+  op: fn(T, T) -> T
+}
+
+type Semigroup<T> {
+  op: fn(T, T) -> T
+
+}
+
+type Monoid<T> {
+  op: fn(T, T) -> T
+  identity: T
+}
+
+type CommutativeMonoid<T> {
+  op: fn(T, T) -> T
+  identity: T
+
+}
+
+type Group<T> {
+  op: fn(T, T) -> T
+  identity: T
+  inverse: fn(T) -> T
+}
+
+type AbelianGroup<T> {
+  op: fn(T, T) -> T
+  identity: T
+  inverse: fn(T) -> T
+
+}
+
+type GroupCompletion<M> {
+  pos: M
+  neg: M
+}
+
+type FieldOfFractions<R> {
+  num: R
+  denom: R
+}
+
+type Semiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+
+type CommutativeSemiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+
+type Ring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  negate: fn(T) -> T
+  mul: fn(T, T) -> T
+  one: T
+}
+
+// A total order on T: `compare` is total, antisymmetric and transitive, its result the one
+// three-valued carrier `Ordering`. Ordered algebras compose it (OrderedRing.order, Field.order)
+// instead of restating compare beside their operations; lt/le/gt/ge are derived from it.
+type TotalOrder<T> {
+  compare: fn(T, T) -> Ordering
+}
+
+type OrderedRing<T> {
+  add: fn(T, T) -> T
+  sub: fn(T, T) -> T
+  zero: T
+  negate: fn(T) -> T
+  mul: fn(T, T) -> T
+  div: fn(T, T) -> Result<T, DivError>
+  one: T
+  order: TotalOrder<T>
+  eq: fn(T, T) -> Bool
+  ne: fn(T, T) -> Bool
+}
+
+type Field<T> {
+  add: fn(T, T) -> T
+  zero: T
+  negate: fn(T) -> T
+  mul: fn(T, T) -> T
+  one: T
+  reciprocal: fn(T) -> T
+  order: TotalOrder<T>
+}
+
+type Lattice<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+}
+
+type BoundedLattice<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+  top: T
+  bottom: T
+}
+
+type BooleanAlgebra<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+  complement: fn(T) -> T
+  top: T
+  bottom: T
+}
+
+type PointwisePower<T> {
+  member: fn(T) -> Bool
+}
+
+// THE FINITE POWER SET -- Pfin, the set of FINITE subsets -- is the enumerable counterpart of
+// `PointwisePower` above, which presents the full power set as a characteristic function. The two
+// sit on the SUPPORT axis exactly as `PartialFunction` and `FinitelySupportedFunction` do below:
+// one answers membership and nothing else, the other can be walked.
+//
+// AUTHORED HERE BECAUSE THE CONCEPT WAS ALREADY IN TREE UNDER A BORROWED NAME. Every language that
+// carries an algebra inhabitant row files the finite-set realization under `"BooleanAlgebra"`:
+//
+//   rust        BTreeSet<{0}>            go          map[{0}]struct{}
+//   python      set[{0}]                 typescript  Set<{0}>
+//
+// Four independent realizations, four finite-set containers, not one lattice among them -- while
+// the TYPE `BooleanAlgebra<T>` is `{ meet, join, complement, top, bottom }` and its only
+// construction in the corpus is `v2.std.logic` `bool_boolean_algebra`, a genuine Boolean algebra
+// over `Bool`. The realization roster and the type disagreed about what the name meant, and the
+// rust roster carried the tell outright: the `"BooleanAlgebra"` and `"PointwisePower"` rows were
+// BYTE-IDENTICAL, two algebra names resolving to one realization with nothing saying which was
+// which. This declaration takes the finite-set concept out from under the lattice's name; the
+// lattice keeps its name, its type and its one construction site unchanged.
+type FinitePowerSet<T> {
+  member: fn(T) -> Bool
+  union: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  intersect: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  diff: fn(FinitePowerSet<T>) -> FinitePowerSet<T>
+  contains: fn(T) -> Bool
+  count: fn() -> Int
+  length: fn() -> Int
+}
+
+type FreeMonoid<T>
+  = Empty
+  | Cons { head: T, tail: FreeMonoid<T> }
+
+fn freemonoid_empty<T>() -> FreeMonoid<T> {
+  Empty
+}
+
+// THE COST IS CHARGED IN THE RIGHT OPERAND, AND THE RIGHT-FOLD THIS REPLACED CHARGED THE LEFT.
+// `concat` is the primitive two-list append; `std.primitives` `concat_contract` declares its
+// persistent carrier cost as `log(n + m)`. The `fold_list_right` form that stood here walked
+// its LEFT operand instead, one `Cons` per element, so an accumulate-on-the-left fold paid the
+// whole accumulator at every step and came out quadratic in the accumulated length --
+// `list_snoc_item` below is exactly that shape, which is why it inherited the defect, and it is
+// the shape the corpus uses wherever it builds a list by appending. Routing to the primitive
+// makes the singleton case constant and the general case linear in the appended side only.
+// DESIGN section 6 fixes a proven cost-shape defect at the root rather than per callsite.
+fn list_append<T>(left: FreeMonoid<T>, right: FreeMonoid<T>) -> FreeMonoid<T> {
+  left |> concat(right)
+}
+
+// `list_push` is the primitive single-item append (amortized O(log n) on the persistent
+// carrier); routing through list_append paid a full O(n) right-fold per snoc, which made
+// every build-by-appending accumulator quadratic — measured on the first-set union fold in
+// the self-hosted parser (2026-09-09, required-v2-native lane work).
+// `list_push` is FreeMonoid's own snoc: the one declared home of the primitive single-item append.
+// Its template row is `free_monoid_collection_templates` list_push; this fn is the importable
+// callable for it, so a caller reaches it by `import std.algebra { list_push }` and not through the
+// ambient primitive tier; the std.primitives list_push_contract row that admitted the bare name is
+// retired. std.algebra imports neither std.primitives nor std.types (a cycle). Realization:
+// HostRealizedSeam self-call (rt_function_registry list_push), selected by this declaration's
+// projection row.
+fn list_push<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  list_push(xs: xs, item: item)
+}
+
+fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
+  xs |> list_push(item)
+}
+
+type FreeSemigroup<T> {
+  head: T
+  tail: FreeMonoid<T>
+}
+
+// FreeSemigroup is the free SEMIGROUP over T exactly as FreeMonoid is the free MONOID over T.
+// The head field is the construction wall: an empty inhabitant has no representation.
+
+// TWO AXES, THREE INHABITED CORNERS. The family below is a 2x2 space and the corpus lives in
+// three of its corners, so three carriers are authored and the fourth is named rather than
+// silently omitted.
+//
+// TOTALITY -- does the function answer at every point (`fn(K) -> V`) or may it decline
+// (`fn(K) -> V?`) -- is independent of SUPPORT -- does it differ from the absent value at
+// finitely many points, so that it can be enumerated, or at arbitrarily many, so that it cannot.
+//
+//                   arbitrary support           finite support
+//   total           TotalMap                    (uninhabited)
+//   partial         PartialFunction             FinitelySupportedFunction
+//
+// The uninhabited corner is REPRESENTABLE, not impossible: a total function taking a non-default
+// value at finitely many points is a perfectly good object. It is unauthored because no corpus
+// site needs one. The condition that fills it is a site that must both answer everywhere and be
+// enumerated; author it then, and not before.
+//
+// The predicate family sits on the same support axis one row up: `PointwisePower` is the full
+// power set presented as a characteristic function, and its finite counterpart has no carrier
+// yet -- see the `Set` alias in `std.types` for that open half and its trigger.
+type PartialFunction<K, V> {
+  lookup: fn(K) -> V?
+}
+
+// FINITE SUPPORT IS WHAT MAKES THE ENUMERATION SURFACE HONEST. Everything below `lookup` here --
+// keys, values, size, and the insert/merge that must preserve them -- is answerable only because
+// the support is finite. That is exactly why these rows may not sit on `PartialFunction`: an open
+// partial function cannot produce `map_keys` at all, and until this split every one of the 145
+// `Map { lookup: .. }` literals in the corpus named a carrier promising ten operations it
+// supplied one of. Measured before the split: 0 of those 145 supplied any field beyond `lookup`.
+//
+// `lookup` appears on BOTH carriers rather than being inherited, because the substrate has no
+// subtyping: a finite map really does answer lookup, and saying so twice is the honest encoding
+// of "this one can do everything that one can, and more".
+//
+// `lookup` and `get` remain two template spellings of the keyed read. The named fn
+// `collection_map_get_shape` (free-call / import identity) is deleted; `map_lookup` is the
+// surviving free fn. `map_get` remains an inline METHOD template on these carriers so a
+// receiver call binds by inhabitance, not by import. That is the same operation as
+// `map_lookup`, held twice, until v1 method uses migrate or a dedicated rename.
+type FinitelySupportedFunction<K, V> {
+  lookup: fn(K) -> V?
+  empty: FinitelySupportedFunction<K, V>
+  get: fn(K) -> V?
+  insert: fn(K, V) -> FinitelySupportedFunction<K, V>
+  merge: fn(FinitelySupportedFunction<K, V>) -> FinitelySupportedFunction<K, V>
+  map_keys: fn() -> FreeMonoid<K>
+  map_values: fn() -> FreeMonoid<V>
+  map_has: fn(K) -> Bool
+  contains_key: fn(K) -> Bool
+  size: fn() -> Int
+}
+
+// THE MAP-LITERAL INTRODUCTION: the declaration a map literal `{ "k": v, .. }` elaborates to, as
+// `FreeMonoid` is the one a list literal elaborates to (v2.std.map_introduction carries its head
+// path and constructor). It is NOT a second
+// constructor of the carrier: it is the carrier's own insert (the `map_insert` row of
+// `finitely_supported_function_templates`) folded over the kernel empty-collection constructor
+// `empty_map` (not a template row), in
+// authored order. It lives HERE, below `std.types`, because `std.types`' own map literals elaborate
+// to it; a home that imports `std.types` (v2.std.collection) would close an import cycle.
+//
+// The fold's last-write-wins is unobservable on every accepted program: the one writer that builds
+// this call (v2.compiler.resolve, the map arm) refuses a repeated key BEFORE it builds it
+// (v2.std.map_introduction map_introduction_duplicate_key). A caller that bypasses that writer and
+// calls this directly with a repeated key gets insert's semantics, which is what it asked for.
+// The result is spelled `FinitelySupportedFunction<K, V>`, this module's own declaration (std.types
+// Map is an alias of it, and std.algebra cannot import std.types), so no bare kernel Map is named
+// here (gunbc.design_ruling kernel_map_is_the_host_realization_of_the_finitely_supported_function).
+type MapIntroductionEntry<K, V> {
+  key: K
+  value: V
+}
+
+fn map_from_entries<K, V>(entries: FreeMonoid<MapIntroductionEntry<K, V>>) -> FinitelySupportedFunction<K, V> {
+  let entries_seed: FinitelySupportedFunction<K, V> = empty_map()
+  entries |> fold(init: entries_seed, f: map_entry_insert)
+}
+
+fn map_entry_insert<K, V>(acc: FinitelySupportedFunction<K, V>, entry: MapIntroductionEntry<K, V>) -> FinitelySupportedFunction<K, V> {
+  map_insert(acc, entry.key, entry.value)
+}
+
+// THE OTHER HALF OF THE CROSSING ROUTE PAIR (gunbc.structural_realization_bindings
+// conversion_plan_rows, ruling gunbc.design_ruling
+// kernel_map_is_the_host_realization_of_the_finitely_supported_function). A kernel `Map<K, V>` and
+// std.algebra's FinitelySupportedFunction<K, V> are ONE concept with two carriers, and the crossing
+// between them is named by a declared route, never performed implicitly: map_from_entries runs
+// entries -> support (above) and this runs support -> entries. Both are declared HERE, in the module
+// that owns the declaration, because std.algebra imports std.coercion -- a route homed in
+// std.coercion would be an import cycle, and a crossing row naming a route that does not exist is the
+// emit_bridge_without_runtime_body class this ruling exists to refuse.
+//
+// The support is read through the map_keys primitive contract and the values through map_values, the
+// two method surfaces the FinitelySupportedFunction declaration already carries; zipping them is the
+// same `map_support_keys` realization the corpus already uses, so this adds no new host operation and
+// the emitted body stays over the v1_rt map helpers the *_primitive_delegate seams already mint.
+fn map_to_entries<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<MapIntroductionEntry<K, V>> {
+  let keys = m |> map_keys
+  let values = m |> map_values
+  zip_map(a: keys, b: values, f: fn(k, v) { MapIntroductionEntry { key: k, value: v } })
+}
+
+// MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
+// total corner of the family above, and leaving them in a different module from their own axis is
+// where a fork starts. `TotalPolicy` travels with `TotalMap` rather than staying behind: it is the
+// same total lookup carrying a context argument, and splitting a pair across two modules is the
+// thing this change exists to stop doing.
+//
+// Both had ZERO code consumers at the time of the move -- one declaration each and two prose cells
+// in `gunbc.plans.self_applying_lenses`, which marks `table_decision_tree` as an Unrealized
+// scaffold and names these as its target substrate rows. So they are carriers authored ahead of a
+// consumer that a plan does declare, which is weaker than an untracked scaffold and stronger than
+// healthy. The home is the cheap part of the answer; the consumer is that plan's to land.
+type TotalMap<K, V> {
+  lookup: fn(K) -> V
+}
+
+type TotalPolicy<K, Context, RowTemplate> {
+  lookup: fn(K, Context) -> RowTemplate
+}
+
+type Ordering = Less | Equal | Greater
+
+type OrderingFold<R> {
+  less: R
+  equal: R
+  greater: R
+}
+
+fn ordering_fold<R>(o: Ordering, fold: OrderingFold<R>) -> R {
+  match o {
+    Less => fold.less
+    Equal => fold.equal
+    Greater => fold.greater
+  }
+}
+
+fn ordering_is_less(o: Ordering) -> Bool {
+  ordering_fold(
+    o: o,
+    fold: OrderingFold {
+      less: true,
+      equal: false,
+      greater: false,
+    },
+  )
+}
+
+type AlgebraProfile
+  = OrderedRingProfile
+  | OrderedSemiringProfile
+  | ApproximateFieldProfile
+  | BooleanAlgebraProfile
+  | FinitePowerSetProfile
+  | PointwisePowerCollectionProfile
+  | FreeMonoidScalarProfile
+  | FreeMonoidCollectionProfile
+  | PartialFunctionProfile
+  | FinitelySupportedFunctionProfile
+
+type ContainerSource
+  = SameAsReceiver
+  | Named { name: String }
+
+type AlgebraTypeTemplate
+  = ReceiverSelf
+  | ReceiverElement
+  | ReceiverKey
+  | ReceiverValue
+  | NamedTemplate { name: String }
+  | ContainerOf { source: ContainerSource, element: AlgebraTypeTemplate }
+  | OptionalOf { inner: AlgebraTypeTemplate }
+  | WitnessOf { inner: AlgebraTypeTemplate }
+  | TupleOf { first: AlgebraTypeTemplate, second: AlgebraTypeTemplate }
+  | CallableOf { params: FreeMonoid<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
+  | AlgebraTypeVariable { id: String }
+
+type CollectionSizeEffect
+  = ShrinkEffect
+  | ProjectionEffect
+  | IdentityEffect
+
+type CostShape
+  = ShapeConstant
+  | ShapeLinearScan
+  | ShapeIterateBody
+  | ShapeSortBody
+
+// THE STRUCTURED FORM OF THIS FACT IS NOT DECLARED HERE, AND THE FIRST REVISION OF THIS WORK
+// DECLARED IT ANYWAY. CostShape names a growth RANK and nothing else, so it cannot distinguish an
+// operation whose work is linear in BOTH operands from one linear in only the right operand -- both
+// are "linear" -- and that distinction is the whole of the concat specimen in
+// gunbc.recurring_failure_mode lens_prices_the_authority_while_the_lane_runs_the_realization. The
+// repair needs a cost expression over NAMED operands, and this module minted one: a sum-of-products
+// grammar of constant, log, linear and linearithmic factors.
+//
+// THAT WAS A FAILED DECOMPOSITION (DESIGN section 2): std.induction CostBound ALREADY owns exactly
+// that grammar -- AtomicCost PolyCost/LogCost over a named param, ProductBound for a product,
+// SumOfProductsBound for a sum of products -- and owns it more completely, with fractional and
+// log-based exponents this corpus already uses. cost_nlogn IS linearithmic and cost_graph_linear IS
+// the concat specimen, both already written. Minting a second grammar here would have put two names
+// on one concept (section 3) in the same change that argued against exactly that one field over, in
+// the module whose subject is a cost authority disagreeing with itself.
+//
+// So the structured cost of an operation is a std.induction CostBound, and CostShape remains what
+// it always was: a coarse rank for the sites that only need one. The projection between them lives
+// with the growth derivation in std.induction, beside the carrier it reads.
+
+type AlgebraFieldTemplate {
+  name: String
+  param_types: FreeMonoid<AlgebraTypeTemplate>
+  return_type: AlgebraTypeTemplate
+  size_effect: CollectionSizeEffect?
+  cost_shape: CostShape?
+
+  callback_element_position: Int?
+}
+
+// Collection filter is this one template, not a second encoding of its fields and not the
+// spelling of `name`. Roster rows and emission membership both consume it; a rename of the
+// method token must not disarm the wall.
+fn collection_filter_shape() -> AlgebraFieldTemplate {
+  { name: "filter", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+// Collection fold is this one template, declared once for both collection profiles that carry it,
+// and its param_types IS the free-call signature, receiver first, the same convention as `map` and
+// `filter` (and the one v1.compiler.method pair_declared_names reads when it pairs `names: ["xs", ..]`
+// with a row). The receiver slot was missing here while every sibling carried it, so the row did not
+// say where the step sits in `fold(xs, init, step)`; v2.compiler.fold_lowering reads that position
+// from this row through template_step_position rather than from a literal index.
+fn collection_fold_shape() -> AlgebraFieldTemplate {
+  { name: "fold", param_types: [ReceiverSelf, AlgebraTypeVariable { id: "FoldAccumulator" }, CallableOf { params: [AlgebraTypeVariable { id: "FoldAccumulator" }, ReceiverElement], return_type: AlgebraTypeVariable { id: "FoldAccumulator" } }], return_type: AlgebraTypeVariable { id: "FoldAccumulator" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 1 } }
+}
+
+// The collection callback operations, each ONE template declared once and referenced from every profile
+// list that carries it, as filter and fold are. A named row is what a realized call head binds to
+// (v2.compiler.fold_lowering fold_family_realization), and one row per operation removes the copy each
+// list used to hold.
+
+fn collection_map_shape() -> AlgebraFieldTemplate {
+  { name: "map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "MappedElement" } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_flat_map_shape() -> AlgebraFieldTemplate {
+  { name: "flat_map", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } } }], return_type: ContainerOf { source: SameAsReceiver, element: AlgebraTypeVariable { id: "MappedElement" } }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_any_shape() -> AlgebraFieldTemplate {
+  { name: "any", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+fn collection_all_shape() -> AlgebraFieldTemplate {
+  { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
+}
+
+// THE FREE-MONOID CONCATENATION, NAMED so a v2 call head binds to it: v2.compiler.fold_lowering
+// collection_roster_rows carries it as a RosterFreeMonoidPrimitiveCall row, and v2.compiler.infer types the call by
+// this row's param_types/return_type with ReceiverSelf instantiated at the free monoid. The realization is
+// the declared primitive (std.primitives concat_contract), whose persistent-carrier cost log(n + m) is the
+// cost authority; this row's ShapeLinearScan disagrees with it, and that is
+// gunbc.recurring_failure_mode primitive_operation_carries_two_cost_authorities, not resolved here.
+fn collection_concat_shape() -> AlgebraFieldTemplate {
+  { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+}
+
+// THE FREE MONOID'S SIZE, NAMED so a v2 call head binds to it (v2.compiler.fold_lowering collection_roster_rows,
+// a RosterFreeMonoidPrimitiveCall row typed by this row). ITS RESULT IS A STATED Int, A DECLARED DEPARTURE from
+// the Nat the other size rows carry -- the declared drop gunbc.rung_drop
+// collection_count_result_stated_int_until_declared_results_are_judged, which carries its restoration trigger.
+fn collection_count_shape() -> AlgebraFieldTemplate {
+  { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+}
+
+// THE FREE-CALL FIRST ELEMENT, NAMED so a v2 call head can bind to one declaration (the same
+// discipline as collection_concat_shape). Kernel spelling `first` has no separate fn; this row is
+// the home. Import is explicit (operator ruling B, 2026-10-14); the ambient last-tier roster bind
+// is not this declaration.
+fn collection_first_shape() -> AlgebraFieldTemplate {
+  { name: "first", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+}
+
+// THE COLLECTION JOIN WITH A STRING SEPARATOR, NAMED. Distinct from the scalar free-monoid join
+// (separator after a list of self). Kernel spelling `join` binds here when imported.
+fn collection_join_shape() -> AlgebraFieldTemplate {
+  { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+}
+
+fn collection_sort_by_shape() -> AlgebraFieldTemplate {
+  { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } }
+}
+
+type StepPositionScan {
+  next: Int
+  found: Int?
+}
+
+// The position of the first parameter the predicate admits, in the free-call signature the row
+// declares. Absent when no parameter is admitted. Every slot position below is this one scan.
+fn template_param_position(t: AlgebraFieldTemplate, admits: fn(AlgebraTypeTemplate) -> Bool) -> Int? {
+  let scan = fold(t.param_types, init: StepPositionScan { next: 0, found: none }, f: fn(acc, p) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if admits(p) {
+          StepPositionScan { next: acc.next + 1, found: Present { value: acc.next } }
+        } else {
+          StepPositionScan { next: acc.next + 1, found: none }
+        }
+    }
+  })
+  scan.found
+}
+
+// The position of a template's step -- its first callable parameter -- in the free-call signature
+// the row declares. Absent when the row takes no callable.
+fn template_step_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) {
+    match p {
+      CallableOf { params: _, return_type: _ } => true
+      ReceiverSelf => false
+      ReceiverElement => false
+      ReceiverKey => false
+      ReceiverValue => false
+      NamedTemplate { name: _ } => false
+      ContainerOf { source: _, element: _ } => false
+      OptionalOf { inner: _ } => false
+      WitnessOf { inner: _ } => false
+      TupleOf { first: _, second: _ } => false
+      AlgebraTypeVariable { id: _ } => false
+    }
+  })
+}
+
+// The position of the collection a template iterates: its receiver slot.
+fn template_receiver_position(t: AlgebraFieldTemplate) -> Int? {
+  template_param_position(t: t, admits: fn(p) { p == ReceiverSelf })
+}
+
+// The position of a recurrence's initial accumulator: the plain (non-callable) parameter whose type
+// is the type the step returns. A row whose step returns the receiver, or that has no step, has no
+// accumulator slot and answers Absent.
+fn template_accumulator_position(t: AlgebraFieldTemplate) -> Int? {
+  let step_return = fold(t.param_types, init: none, f: fn(acc, p) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match p {
+          CallableOf { params: _, return_type: r } => Present { value: r }
+          ReceiverSelf => none
+          ReceiverElement => none
+          ReceiverKey => none
+          ReceiverValue => none
+          NamedTemplate { name: _ } => none
+          ContainerOf { source: _, element: _ } => none
+          OptionalOf { inner: _ } => none
+          WitnessOf { inner: _ } => none
+          TupleOf { first: _, second: _ } => none
+          AlgebraTypeVariable { id: _ } => none
+        }
+    }
+  })
+  match step_return {
+    Absent => none
+    Present { value: acc_type } =>
+      if acc_type == ReceiverSelf {
+        none
+      } else {
+        template_param_position(t: t, admits: fn(p) {
+          match p {
+            CallableOf { params: _, return_type: _ } => false
+            ReceiverSelf => p == acc_type
+            ReceiverElement => p == acc_type
+            ReceiverKey => p == acc_type
+            ReceiverValue => p == acc_type
+            NamedTemplate { name: _ } => p == acc_type
+            ContainerOf { source: _, element: _ } => p == acc_type
+            OptionalOf { inner: _ } => p == acc_type
+            WitnessOf { inner: _ } => p == acc_type
+            TupleOf { first: _, second: _ } => p == acc_type
+            AlgebraTypeVariable { id: _ } => p == acc_type
+          }
+        })
+      }
+  }
+}
+
+// ONE ROSTER, DECLARED ONCE, AND EVERY SPELLING-KEYED MAP BELOW IS A FOLD OVER IT.
+//
+// What stood here was `kernel_algebra_profile` written out as a nest of ten `map_insert` calls
+// keyed on type-name strings, beside four further hand-authored spelling maps in `std.types`
+// (`container_template_algebra_rows`, `container_template_alias_rows`, `container_type_arity`,
+// `canonical_container_names`). Five maps, one subject: which carrier a spelling names and what
+// that carrier answers for. Nothing joined them, so a carrier existed in a map exactly insofar as
+// an author remembered to write it there -- and the failure mode is not hypothetical, it is what
+// the deleted note above this row recorded: `PartialFunction` had a carrier, a template set and a
+// profile, and no `kernel_algebra_profile` key, so `tree.facts.lookup(node)` refused on a
+// `PartialFunction` receiver while the byte-identical call on `Map` resolved. That repair was
+// three inserted rows. The eleventh carrier forks the same way, in whichever of the five maps its
+// author does not think of.
+//
+// The move is DESIGN section 2-horizontal: model the carrier once, derive every use. `AlgebraCarrier`
+// carries `profile` as a required field, so a carrier row cannot be authored without one --
+// the invalid state (a carrier with no algebra) has no spelling, which is section 4b structural
+// impossibility for that class rather than a check. Each spelling then DECLARES its membership in
+// every derived map, and `RowAbsent` carries a reason, so an omission is an authored answer
+// someone had to write rather than a row nobody wrote. That is the property the five literals
+// could not have: adding a carrier now means answering five questions in one place, and leaving
+// one unanswered is a missing field, not a silent hole.
+//
+// RUNG, honestly: this is *structurally guaranteed* for "a carrier without a profile" and
+// "a carrier absent from a map by oversight", and NOT a wall on the memberships themselves --
+// an author can still declare `RowAbsent` with a bad reason and get exactly the old behaviour.
+// The next-rung trigger is each membership becoming derivable from a property the carrier already
+// has (arity from `algebra_type_param_names`, roster membership from whether the profile is a
+// collection), which needs the two remaining `std.types` literals this change does not reach --
+// `ordered_element_collections` and the non-carrier `Witness` row -- to be grounded first.
+type CarrierRowMembership
+  = RowPresent
+  | RowAbsent { reason: String }
+
+// The five derived maps, one field each. A new membership question means a new field here, and
+// every existing carrier then fails to compile until it answers it -- which is the point.
+type CarrierSpelling {
+  text: String
+
+  method_surface: CarrierRowMembership
+  container_algebra_row: CarrierRowMembership
+  container_alias_row: CarrierRowMembership
+  container_roster_name: CarrierRowMembership
+  container_arity_row: CarrierRowMembership
+}
+
+type AlgebraCarrier {
+  name: String
+  profile: AlgebraProfile
+  spellings: FreeMonoid<CarrierSpelling>
+}
+
+data scalar_carrier_not_container_reason: String = "scalar carrier: names no container, so it holds no container-spelling row"
+
+data snake_case_spelling_not_alias_reason: String = "snake spelling: resolves as an algebra name, not as a declared container alias"
+
+data canonical_spelling_sorts_ahead_of_alias_reason: String = "container_alias_canonical_spelling returns the FIRST sorted key mapping to an algebra, so this key would sort ahead of its own alias and silently become the emitted canonical spelling"
+
+data carrier_name_is_not_a_declaration_spelling_reason: String = "the carrier name is not written in declaration position; its alias carries the profile"
+
+data arity_row_is_alias_spellings_only_reason: String = "container_type_arity is consulted by is_container_type on authored declaration spellings; adding a key here decides containerhood for that spelling"
+
+fn scalar_carrier_spelling(text: String) -> CarrierSpelling {
+  CarrierSpelling {
+    text: text,
+    method_surface: RowPresent,
+    container_algebra_row: RowAbsent { reason: scalar_carrier_not_container_reason },
+    container_alias_row: RowAbsent { reason: scalar_carrier_not_container_reason },
+    container_roster_name: RowAbsent { reason: scalar_carrier_not_container_reason },
+    container_arity_row: RowAbsent { reason: scalar_carrier_not_container_reason },
+  }
+}
+
+fn snake_alias_spelling(text: String) -> CarrierSpelling {
+  CarrierSpelling {
+    text: text,
+    method_surface: RowAbsent { reason: carrier_name_is_not_a_declaration_spelling_reason },
+    container_algebra_row: RowPresent,
+    container_alias_row: RowPresent,
+    container_roster_name: RowAbsent { reason: snake_case_spelling_not_alias_reason },
+    container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+  }
+}
+
+fn snake_algebra_spelling(text: String) -> CarrierSpelling {
+  CarrierSpelling {
+    text: text,
+    method_surface: RowAbsent { reason: carrier_name_is_not_a_declaration_spelling_reason },
+    container_algebra_row: RowPresent,
+    container_alias_row: RowAbsent { reason: snake_case_spelling_not_alias_reason },
+    container_roster_name: RowAbsent { reason: snake_case_spelling_not_alias_reason },
+    container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+  }
+}
+
+// THE ALIAS SPELLING IS THE ONE WRITTEN IN DECLARATION POSITION -- `List`, `Set`, `Map` -- so it
+// is the one that carries every row: the profile that decides whether a receiver has a method
+// surface, the algebra it names, its own alias row, the container roster, and the arity checked
+// against an authored type expression.
+fn pascal_alias_spelling(text: String) -> CarrierSpelling {
+  CarrierSpelling {
+    text: text,
+    method_surface: RowPresent,
+    container_algebra_row: RowPresent,
+    container_alias_row: RowPresent,
+    container_roster_name: RowPresent,
+    container_arity_row: RowPresent,
+  }
+}
+
+// TWO ROWS BELOW ARE NOT MECHANICAL, and both are stated here rather than beside the row because
+// a section 4c annotation attaches to a module-scope declaration, not to a line inside a body.
+//
+// `PartialFunction` carries its own alias row, unlike every other carrier name: no alias competes
+// for that algebra, so the carrier name IS the declaration spelling -- which is why
+// `resolve_method_receiver_type` returns a `PartialFunction` receiver as authored, type arguments
+// intact. Every other canonical name declines the alias row because
+// `container_alias_canonical_spelling` returns the first sorted key for an algebra, so
+// `"FinitelySupportedFunction"` would sort ahead of `"Map"` and silently become the emitted
+// canonical spelling.
+//
+// `PointwisePower` declares `method_surface` ABSENT, and the reason is a measurement not taken
+// rather than a property of the carrier. Its 80 declaration positions predate the carrier split,
+// its templates are a different set from `FinitePowerSet`'s, and `RowPresent` would flip the
+// method-existence wall from UNDECIDED to DECIDED for all 80 at once -- turning any method absent
+// from `pointwise_power_collection_templates` into a hard `MethodNotFound`. Under the five
+// literals this was an omission indistinguishable from forgetting; here it is an authored row
+// with a reason, which is the whole difference this change buys.
+fn algebra_carriers() -> FreeMonoid<AlgebraCarrier> {
+  [
+    AlgebraCarrier {
+      name: "Int",
+      profile: OrderedRingProfile,
+      spellings: [scalar_carrier_spelling(text: "Int")],
+    },
+    AlgebraCarrier {
+      name: "Nat",
+      profile: OrderedSemiringProfile,
+      spellings: [scalar_carrier_spelling(text: "Nat")],
+    },
+    AlgebraCarrier {
+      name: "Float",
+      profile: ApproximateFieldProfile,
+      spellings: [scalar_carrier_spelling(text: "Float")],
+    },
+    AlgebraCarrier {
+      name: "BooleanAlgebra",
+      profile: BooleanAlgebraProfile,
+      spellings: [
+        scalar_carrier_spelling(text: "Bool"),
+        CarrierSpelling {
+          text: "BooleanAlgebra",
+          method_surface: RowAbsent { reason: carrier_name_is_not_a_declaration_spelling_reason },
+          container_algebra_row: RowPresent,
+          container_alias_row: RowAbsent { reason: canonical_spelling_sorts_ahead_of_alias_reason },
+          container_roster_name: RowAbsent { reason: "the lattice is not a container: its container inhabitant row moved to FinitePowerSet" },
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_algebra_spelling(text: "boolean_algebra"),
+      ],
+    },
+    AlgebraCarrier {
+      name: "String",
+      profile: FreeMonoidScalarProfile,
+      spellings: [scalar_carrier_spelling(text: "String")],
+    },
+    AlgebraCarrier {
+      name: "FreeMonoid",
+      profile: FreeMonoidCollectionProfile,
+      spellings: [
+        pascal_alias_spelling(text: "List"),
+        snake_alias_spelling(text: "list"),
+        CarrierSpelling {
+          text: "FreeMonoid",
+          method_surface: RowAbsent { reason: carrier_name_is_not_a_declaration_spelling_reason },
+          container_algebra_row: RowPresent,
+          container_alias_row: RowAbsent { reason: canonical_spelling_sorts_ahead_of_alias_reason },
+          container_roster_name: RowPresent,
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_algebra_spelling(text: "free_monoid"),
+      ],
+    },
+    AlgebraCarrier {
+      name: "FinitePowerSet",
+      profile: FinitePowerSetProfile,
+      spellings: [
+        pascal_alias_spelling(text: "Set"),
+        snake_alias_spelling(text: "set"),
+        CarrierSpelling {
+          text: "FinitePowerSet",
+          method_surface: RowPresent,
+          container_algebra_row: RowPresent,
+          container_alias_row: RowAbsent { reason: canonical_spelling_sorts_ahead_of_alias_reason },
+          container_roster_name: RowPresent,
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_algebra_spelling(text: "finite_power_set"),
+      ],
+    },
+    AlgebraCarrier {
+      name: "FinitelySupportedFunction",
+      profile: FinitelySupportedFunctionProfile,
+      spellings: [
+        pascal_alias_spelling(text: "Map"),
+        snake_alias_spelling(text: "map"),
+        CarrierSpelling {
+          text: "FinitelySupportedFunction",
+          method_surface: RowPresent,
+          container_algebra_row: RowPresent,
+          container_alias_row: RowAbsent { reason: canonical_spelling_sorts_ahead_of_alias_reason },
+          container_roster_name: RowPresent,
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_algebra_spelling(text: "finitely_supported_function"),
+      ],
+    },
+    AlgebraCarrier {
+      name: "PartialFunction",
+      profile: PartialFunctionProfile,
+      spellings: [
+        CarrierSpelling {
+          text: "PartialFunction",
+          method_surface: RowPresent,
+          container_algebra_row: RowPresent,
+          container_alias_row: RowPresent,
+          container_roster_name: RowPresent,
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_alias_spelling(text: "partial_function"),
+      ],
+    },
+    AlgebraCarrier {
+      name: "PointwisePower",
+      profile: PointwisePowerCollectionProfile,
+      spellings: [
+        CarrierSpelling {
+          text: "PointwisePower",
+          method_surface: RowAbsent { reason: "80 declaration positions would flip from MethodExistenceUndecided to a hard MethodNotFound for any method absent from pointwise_power_collection_templates; that measurement is not taken" },
+          container_algebra_row: RowPresent,
+          container_alias_row: RowAbsent { reason: canonical_spelling_sorts_ahead_of_alias_reason },
+          container_roster_name: RowPresent,
+          container_arity_row: RowAbsent { reason: arity_row_is_alias_spellings_only_reason },
+        },
+        snake_algebra_spelling(text: "pointwise_power"),
+      ],
+    },
+  ]
+}
+
+fn carrier_spelling_row_present(m: CarrierRowMembership) -> Bool {
+  match m {
+    RowPresent => true
+    RowAbsent { reason: _ } => false
+  }
+}
+
+fn kernel_algebra_profile_value() -> FinitelySupportedFunction<String, AlgebraProfile> {
+  let carrier_seed: FinitelySupportedFunction<String, AlgebraProfile> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.method_surface) {
+        map_insert(inner, spelling.text, carrier.profile)
+      } else {
+        inner
+      }))
+}
+
+fn carrier_container_algebra_rows() -> FinitelySupportedFunction<String, String> {
+  let carrier_seed: FinitelySupportedFunction<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_algebra_row) {
+        map_insert(inner, spelling.text, carrier.name)
+      } else {
+        inner
+      }))
+}
+
+fn carrier_container_alias_rows() -> FinitelySupportedFunction<String, String> {
+  let carrier_seed: FinitelySupportedFunction<String, String> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_alias_row) {
+        map_insert(inner, spelling.text, carrier.name)
+      } else {
+        inner
+      }))
+}
+
+fn carrier_container_roster_map() -> FinitelySupportedFunction<String, Bool> {
+  let carrier_seed: FinitelySupportedFunction<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_roster_name) {
+        map_insert(inner, spelling.text, true)
+      } else {
+        inner
+      }))
+}
+
+// The arity is DERIVED from the profile's own type parameters rather than restated as a number:
+// `FinitePowerSet` is unary because `algebra_type_param_names` says `["T"]`, so a carrier cannot
+// declare an arity that disagrees with its algebra.
+fn carrier_container_arity_rows() -> FinitelySupportedFunction<String, Int> {
+  let carrier_seed: FinitelySupportedFunction<String, Int> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_arity_row) {
+        map_insert(inner, spelling.text, algebra_type_param_names(profile: carrier.profile) |> fold(init: 0, f: (n, _) => n + 1))
+      } else {
+        inner
+      }))
+}
+
+// EQUALITY ADMISSIBILITY IS A CONSEQUENCE OF THE SUPPORT AXIS, declared beside the profiles it
+// follows from rather than re-derived by any consumer. A carrier with finite support (or a scalar
+// carrier) has decidable extensional equality: two values agree exactly when they agree on the
+// finitely many points that exist, so equality LIFTS over the carrier's type arguments and the
+// admission question recurses into them. An open-support carrier (PartialFunction, the pointwise
+// power) cannot answer extensional equality at all -- the agreement set is not enumerable -- so
+// generic equality on it is refused, never approximated. The rows are per-profile because the
+// support axis is a fact about the algebra, not about any spelling that resolves to it.
+type AlgebraSupportAxis
+  = FiniteSupport
+  | OpenSupport
+
+fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
+  match profile {
+    OrderedRingProfile => FiniteSupport
+    OrderedSemiringProfile => FiniteSupport
+    ApproximateFieldProfile => FiniteSupport
+    BooleanAlgebraProfile => FiniteSupport
+    FinitePowerSetProfile => FiniteSupport
+    PointwisePowerCollectionProfile => OpenSupport
+    FreeMonoidScalarProfile => FiniteSupport
+    FreeMonoidCollectionProfile => FiniteSupport
+    PartialFunctionProfile => OpenSupport
+    FinitelySupportedFunctionProfile => FiniteSupport
+  }
+}
+
+// WHICH CARRIERS A NUMERAL DENOTES AN ELEMENT OF. A numeral names the image of an integer under the
+// unique ring homomorphism out of the integers, so it has a denotation exactly in a profile that
+// carries ring structure: the ordered ring and the (approximate) field. The ordered semiring is the
+// same reading one step down: a non-negative numeral names the image of a natural under the unique
+// semiring homomorphism out of the naturals, so it too has a denotation there. A Boolean algebra, a free
+// monoid and every collection or function profile carry no such map, so a numeral at one of them
+// is a different value, never a spelling of one of theirs (DESIGN section 4: a Bool literal is not
+// an Int literal, and no implicit route exists). Every arm is spelled, so a new profile is a
+// decision here and never a silent admission.
+fn algebra_profile_admits_numeral(profile: AlgebraProfile) -> Bool {
+  match profile {
+    OrderedRingProfile => true
+    OrderedSemiringProfile => true
+    ApproximateFieldProfile => true
+    BooleanAlgebraProfile => false
+    FinitePowerSetProfile => false
+    PointwisePowerCollectionProfile => false
+    FreeMonoidScalarProfile => false
+    FreeMonoidCollectionProfile => false
+    PartialFunctionProfile => false
+    FinitelySupportedFunctionProfile => false
+  }
+}
+
+// The kernel-carrier reading of the same fact: a kernel scalar admits a numeral exactly when the
+// carrier roster assigns it a numeral-admitting profile. A name with no carrier row answers false.
+fn kernel_carrier_admits_numeral(name: String) -> Bool {
+  algebra_carriers() |> any(carrier =>
+    algebra_profile_admits_numeral(profile: carrier.profile)
+      && (carrier.spellings |> any(spelling =>
+        spelling.text == name && carrier_spelling_row_present(m: spelling.method_surface))))
+}
+
+// Whether distinct keys of a finite map are decidably distinct: consumed by the map-literal
+// duplicate-key check. The admission is
+// instantiation-blind at this rung -- an opaque brand or a type parameter admits unjudged -- and its
+// next-rung trigger is instantiation-grain admission (v1 infer equality_admission_wall_note).
+fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
+  match algebra_profile_support(profile: profile) {
+    FiniteSupport => true
+    OpenSupport => false
+  }
+}
+
+fn carrier_container_equality_rows() -> FinitelySupportedFunction<String, Bool> {
+  let carrier_seed: FinitelySupportedFunction<String, Bool> = empty_map()
+  algebra_carriers() |> fold(init: carrier_seed, f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_algebra_row) {
+        map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
+      } else {
+        inner
+      }))
+}
+
+data kernel_algebra_profile: FinitelySupportedFunction<String, AlgebraProfile> = kernel_algebra_profile_value()
+
+// A total order is one law with one row. OrderedRing and ApproximateField COMPOSE it rather than
+// restating `compare`: a ring that is ordered, and a field that is ordered, are each a ring/field
+// operation set PLUS this order -- one compare concept, not one per profile (DESIGN section 3).
+// The canonical content order over value content (kind rank, IEEE 754-2019 totalOrder for floats,
+// spelling then payload for records and variants) inhabits this law, but it is NOT yet a .dag
+// declaration: its only realization is the seed's hand-written comparator, v1_interpreter
+// canonical_content_cmp, seed-retained under gunbc.portable_value_canonical_order_seed_growth,
+// whose trigger is the .dag model that would make it a fold.
+fn total_order_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+// THE NATURALS INHABIT AN ORDERED COMMUTATIVE SEMIRING, AND THIS IS WHERE THAT IS SAID (operator
+// ruling A, 2026-09-30). std.nat Nat used to carry its algebra in its BODY -- `type Nat =
+// CommutativeSemiring<Magnitude>` -- so the structure was the carrier and an opaque Magnitude stood
+// where the naturals' definition should have been. The carrier is now the inductive definition and
+// the algebra is something it inhabits: this row set, reached through the Nat carrier row in
+// algebra_carriers exactly as Int reaches the ordered ring.
+//
+// IT IS THE ORDERED RING'S SURFACE WITHOUT `negate`, and the omission is the content. A semiring
+// has no additive inverse: the naturals are closed under add and mul and not under subtraction
+// (std.coercion dag_subtraction_refinement types a difference of naturals as an Int). So `negate`
+// derives for Int and does not derive for Nat, from the two profiles rather than from a special
+// case -- which is what makes the inhabitance a claim that can be wrong.
+fn ordered_semiring_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  concat([
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ],
+  concat(total_order_templates(), [
+    { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none }
+  ]))
+}
+
+fn ordered_ring_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  concat(
+  [
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ],
+  concat(total_order_templates(), [
+    { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none }
+  ]))
+}
+
+fn approximate_field_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  concat([
+    { name: "add", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "zero", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "negate", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "reciprocal", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ], total_order_templates())
+}
+
+fn boolean_algebra_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "meet", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "join", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "complement", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "top", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "bottom", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+// A CARDINALITY IS A NATURAL, AND IT NAMES ITS DECLARER. count and length (here, in the function
+// profile, and length in the free-monoid profile below) return std.nat.Nat -- EXCEPT the free monoid's
+// count, collection_count_shape, which states Int: a declared departure whose authority is
+// gunbc.rung_drop collection_count_result_stated_int_until_declared_results_are_judged. Nat is
+// qualified rather than spelled
+// "Nat": a bare template name resolves at the CALL SITE, and a src/v2 module resolves it to
+// v2.std.nat.Nat, a Peano Zero | Succ coproduct whose Rust carrier is Rc<Nat>, not the i64 that
+// len() produces. The spelling then decided the emission -- `count(xs) >= 1` lowered to
+// nat_compare over Rc<Nat> -- and the self-host build failed with E0308 in v2_compiler_resolve.
+fn finite_power_set_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "intersect", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "diff", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "member", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    collection_filter_shape(),
+    collection_map_shape(),
+    collection_flat_map_shape(),
+    collection_fold_shape(),
+    collection_any_shape(),
+    collection_all_shape(),
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+  ]
+}
+
+fn pointwise_power_collection_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "member", param_types: [CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+// The size spellings also disagree on TYPE: collection_count_shape states Int, the other count/length rows state Nat,
+// and std.algebra length declares Int. That departure is the declared drop gunbc.rung_drop
+// collection_count_result_stated_int_until_declared_results_are_judged, which carries its rungs, population and trigger.
+data algebra_count_length_name_fork_note: String = "count and length sit on the same template rows as the SAME operation, and that is a section 3 nicknaming fork being RECORDED rather than introduced (review 45499 raised it, correctly, as a smell). The fork's authority is the interpreter, which dispatches length, count and size to one native arm -- three names, one concept, and that arm predates this change. What was inconsistent was the declared surface: the templates listed only length, so a String receiver piped into count resolved at runtime while having no declared row, which the method-existence wall exposed the moment it began proving absence from the template roster. Reconciling the declaration to the runtime is the honest direction, because the runtime is what programs actually meet; inventing a distinct meaning for count to justify two rows would be the fabrication, and dropping the row would have left a working call refused. So the row is added and the fork is named here rather than silently propagated. Dissolve-on: feature:collection-size-single-spelling -- one name for this operation across the interpreter arm, the templates, and the corpus, a corpus-wide rename touching every call site, which belongs on its own lane rather than inside a P0 live-system fix. THE TRIGGER IS NAMED RATHER THAN DESCRIBED because a deferral whose condition is only prose cannot be looked up, counted, or closed by anyone but its author -- the asymmetry review 45759 caught beside unresolved_method_frontier, which cites feature:primitive-realization-single-authority and is therefore findable. The closing condition is decidable and stated: the interpreter's length/count/size arm dispatches one spelling, these two template rows carry that spelling only, and no other spelling resolves. Until then the count is the measure: three accepted spellings in the interpreter arm, two on these rows, one concept."
+
+fn free_monoid_scalar_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "starts_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "ends_with", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "trim", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_lower", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_upper", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "replace", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "substring", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_int", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "to_string", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn free_monoid_collection_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    collection_map_shape(),
+    collection_filter_shape(),
+    collection_flat_map_shape(),
+    collection_fold_shape(),
+    collection_any_shape(),
+    collection_all_shape(),
+    collection_count_shape(),
+    collection_first_shape(),
+    { name: "last", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "get", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: OptionalOf { inner: ReceiverElement }, size_effect: Present { value: ProjectionEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "skip", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: Present { value: ShrinkEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
+    { name: "take", param_types: [ReceiverSelf, NamedTemplate { name: "Int" }], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
+    collection_sort_by_shape(),
+    { name: "append", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeConstant }, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverElement], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
+    { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    collection_join_shape(),
+    collection_concat_shape(),
+    { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+  ]
+}
+
+fn partial_function_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn finitely_supported_function_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  [
+    { name: "get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_get", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "lookup", param_types: [ReceiverSelf, ReceiverKey], return_type: OptionalOf { inner: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_insert", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_merge", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_has", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_contains_key", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_keys", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverKey }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "map_values", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverValue }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "with", param_types: [ReceiverSelf, ReceiverKey, ReceiverValue], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "contains", param_types: [ReceiverSelf, ReceiverKey], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "count", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn algebra_method_template_name(name: String) -> Bool {
+  all_algebra_profiles()
+    |> any(profile => algebra_templates_for_profile(profile: profile) |> any(t => t.name == name))
+}
+
+fn algebra_templates_for_profile(profile: AlgebraProfile) -> FreeMonoid<AlgebraFieldTemplate> {
+  match profile {
+    OrderedRingProfile => ordered_ring_templates()
+    OrderedSemiringProfile => ordered_semiring_templates()
+    ApproximateFieldProfile => approximate_field_templates()
+    BooleanAlgebraProfile => boolean_algebra_templates()
+    FinitePowerSetProfile => finite_power_set_templates()
+    PointwisePowerCollectionProfile => pointwise_power_collection_templates()
+    FreeMonoidScalarProfile => free_monoid_scalar_templates()
+    FreeMonoidCollectionProfile => free_monoid_collection_templates()
+    PartialFunctionProfile => partial_function_templates()
+    FinitelySupportedFunctionProfile => finitely_supported_function_templates()
+  }
+}
+
+fn algebra_type_param_names(profile: AlgebraProfile) -> FreeMonoid<String> {
+  match profile {
+    OrderedRingProfile => []
+    OrderedSemiringProfile => []
+    ApproximateFieldProfile => []
+    BooleanAlgebraProfile => []
+    FinitePowerSetProfile => ["T"]
+    PointwisePowerCollectionProfile => ["T"]
+    FreeMonoidScalarProfile => []
+    FreeMonoidCollectionProfile => ["T"]
+    PartialFunctionProfile => ["K", "V"]
+    FinitelySupportedFunctionProfile => ["K", "V"]
+  }
+}
+
+fn all_algebra_profiles() -> FreeMonoid<AlgebraProfile> {
+  [
+    OrderedRingProfile,
+    OrderedSemiringProfile,
+    ApproximateFieldProfile,
+    BooleanAlgebraProfile,
+    FinitePowerSetProfile,
+    PointwisePowerCollectionProfile,
+    FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile,
+    PartialFunctionProfile,
+    FinitelySupportedFunctionProfile,
+  ]
+}
+
+fn all_algebra_field_templates() -> FreeMonoid<AlgebraFieldTemplate> {
+  all_algebra_profiles()
+    |> flat_map(profile => algebra_templates_for_profile(profile: profile))
+}
+
+fn all_algebra_template_names() -> FreeMonoid<String> {
+  all_algebra_field_templates() |> map(template => template.name)
+}
+
+// trim is the importable free-function authority for whitespace trim on String. The declared
+// substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim
+// (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native
+// std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template
+// row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s)
+// requires explicit import std.algebra { trim } -- bare trim refuses via
+// v1.compiler.infer_env bare_free_call_requires_listed_import registry even when std.algebra is
+// already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
+
+// Host realization routes to free_call.trim / v1_rt::trim. The declared body is the named
+// String seam, so if the host arm is absent the call refuses by that identity rather than
+// self-recursing. `s` is read so wiring-liveness holds.
+fn trim(s: String) -> String {
+  if s == s { pure_dag_seam_unreachable_string() } else { pure_dag_seam_unreachable_string() }
+}
+
+// Substring search on kernel host text (`std.types` String / v1 `&str`), not on
+// `v2.std.text` `String` = `FreeMonoid<Char>`. Both arguments are already host text, so there is
+// no UnicodeScalarSequenceUnfold crossing. Distinct from FreeMonoid collection `contains` (element
+// membership of one Char). The scalar profile already lists this operation as `contains`
+// [ReceiverSelf, ReceiverSelf] beside `trim` / `starts_with`; this free fn is the importable
+// authority for that row, same placement as `trim`. It is not `std.types string_non_empty`: that
+// is a where-predicate for NonEmptyStr inhabitance, not a text operation, and `std.types` already
+// refuses to share `non_empty` with algebra. HostRealizedSeam is not an algebra-only class
+// (`map_insert` lives on `v2.std.collection`). Contract: std.primitives string_contains_contract.
+// Runtime bridge exists (`rt_function_registry` string_contains → v1_rt::string_contains), so this
+// is a HostRealizedSeam self-call. Native emit: rust_host_string_op_fn_emit, selected by this
+// declaration's projection row (not by the bare name `string_contains`). Import
+// std.algebra { string_contains }; bare string_contains is the same Class B pool coincidence as trim.
+fn string_contains(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
+type FreeMonoidUniqueState<T> {
+  seen: FreeMonoid<T>
+  unique: Bool
+}
+
+fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+  }
+}
+fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
+  fold_list(xs: tail, empty: head, cons: cons)
+}
+
+fn join_separated<T>(fields: FreeMonoid<T>, separator: T, combine: fn(T, T) -> T, empty: T) -> T {
+  match fields {
+    Empty => empty
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: first,
+        cons: fn(acc, field) { combine(combine(acc, separator), field) }
+      )
+  }
+}
+
+fn string_concat_join(fields: FreeMonoid<String>, separator: String) -> String {
+  join_separated(
+    fields: fields,
+    separator: separator,
+    combine: fn(acc, field) { concat(acc, field) },
+    empty: ""
+  )
+}
+
+fn fold_list_right<T, A>(xs: FreeMonoid<T>, empty: A, snoc: fn(A, T) -> A) -> A {
+  match xs {
+    Empty => empty
+    Cons { head: h, tail: t } => snoc(fold_list_right(xs: t, empty: empty, snoc: snoc), h)
+  }
+}
+
+fn list_reverse<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    Cons { head: item, tail: acc }
+  })
+}
+
+// LEFT FOLD, ONE PUSH PER ELEMENT. The right fold this replaced rebuilt the accumulator with a
+// head insertion per element and recursed at list depth, a cost-shape defect (DESIGN 6); fold_list
+// emits as a cursor loop and list_push appends in place, so map is one linear pass.
+fn list_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> U) -> FreeMonoid<U> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    list_push(xs: acc, item: f(item))
+  })
+}
+
+fn list_flat_map<T, U>(xs: FreeMonoid<T>, f: fn(T) -> FreeMonoid<U>) -> FreeMonoid<U> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, item) {
+    fold_list(xs: f(item), empty: acc, cons: fn(inner, produced) {
+      list_push(xs: inner, item: produced)
+    })
+  })
+}
+
+fn list_tail<T>(xs: FreeMonoid<T>) -> Optional<FreeMonoid<T>> {
+  match xs {
+    Empty => Absent
+    Cons { head: _, tail: t } => Present { value: t }
+  }
+}
+
+fn list_head<T>(xs: FreeMonoid<T>) -> Optional<T> {
+  match xs {
+    Empty => Absent
+    Cons { head: h, tail: _ } => Present { value: h }
+  }
+}
+
+fn skip<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    xs
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: _, tail: t } => skip(xs: t, n: n - 1)
+    }
+  }
+}
+
+// The first `n` members, in order. The merge sort below splits on it.
+fn take_prefix<T>(xs: FreeMonoid<T>, n: Int) -> FreeMonoid<T> {
+  if n <= 0 {
+    Empty
+  } else {
+    match xs {
+      Empty => Empty
+      Cons { head: h, tail: t } => Cons { head: h, tail: take_prefix(xs: t, n: n - 1) }
+    }
+  }
+}
+
+// An item beside the key computed for it once, so the sort pays key_work n times and not per comparison
+// (std.primitives sort_by_contract: n * (key_work + log n)).
+type SortKeyed<T, K> {
+  key: K
+  item: T
+}
+
+// STABLE: on an equal key the left run's member is emitted first, so equal keys keep input order, as
+// the host sort_by (a stable sort over canonical_content_cmp) does. A TAIL-RECURSIVE merge into an
+// accumulator, one list_push per member and one list_append for the run left over: the head-building
+// recursion it replaced constructed a Cons per member at merge depth, a clone and a head insertion
+// each on the persistent carrier (DESIGN 6, a cost-shape defect fixed regardless of n).
+fn sort_merge_runs<T, K>(
+  left: FreeMonoid<SortKeyed<T, K>>,
+  right: FreeMonoid<SortKeyed<T, K>>,
+  order: TotalOrder<K>
+) -> FreeMonoid<SortKeyed<T, K>> {
+  sort_merge_into(left: left, right: right, order: order, acc: Empty)
+}
+
+fn sort_merge_into<T, K>(
+  left: FreeMonoid<SortKeyed<T, K>>,
+  right: FreeMonoid<SortKeyed<T, K>>,
+  order: TotalOrder<K>,
+  acc: FreeMonoid<SortKeyed<T, K>>
+) -> FreeMonoid<SortKeyed<T, K>> {
+  match left {
+    Empty => list_append(left: acc, right: right)
+    Cons { head: l, tail: lt } => match right {
+      Empty => list_append(left: acc, right: left)
+      Cons { head: r, tail: rt } => match order.compare(l.key, r.key) {
+        Greater => sort_merge_into(left: left, right: rt, order: order, acc: list_push(xs: acc, item: r))
+        Less => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
+        Equal => sort_merge_into(left: lt, right: right, order: order, acc: list_push(xs: acc, item: l))
+      }
+    }
+  }
+}
+
+// Descent: `n` halves toward 1 on both branches (std.induction mergesort_bound, two branches,
+// ProportionalShrink DivideByTwo, work_exponent 1).
+fn sort_keyed_runs<T, K>(xs: FreeMonoid<SortKeyed<T, K>>, n: Int, order: TotalOrder<K>) -> FreeMonoid<SortKeyed<T, K>> {
+  if n <= 1 {
+    xs
+  } else {
+    sort_merge_runs(
+      left: sort_keyed_runs(xs: take_prefix(xs: xs, n: n / 2), n: n / 2, order: order),
+      right: sort_keyed_runs(xs: skip(xs: xs, n: n / 2), n: n - n / 2, order: order),
+      order: order
+    )
+  }
+}
+
+fn int_compare_canonical(a: Int, b: Int) -> Ordering {
+  if a < b { Less } else { if a > b { Greater } else { Equal } }
+}
+
+// The canonical content order on Int keys, the order the host sort_by applies to them.
+fn int_total_order() -> TotalOrder<Int> {
+  TotalOrder { compare: int_compare_canonical }
+}
+
+// std.primitives sort_by_contract inhabited by a MODELED merge sort (named apart from the `sort_by` method
+// spelling, which is a primitive with the host realization): no host seam, so the realization
+// is this body. The key order is the caller's TotalOrder (the host admits String, Int and Bool keys
+// under CanonicalOrdKey; those are the carriers whose TotalOrder is the canonical content order).
+fn list_sort_by_key<T, K>(xs: FreeMonoid<T>, key: fn(T) -> K, order: TotalOrder<K>) -> FreeMonoid<T> {
+  list_map(
+    xs: sort_keyed_runs(
+      xs: list_map(xs: xs, f: fn(item) { SortKeyed { key: key(item), item: item } }),
+      n: length(xs: xs),
+      order: order
+    ),
+    f: fn(k) { k.item }
+  )
+}
+
+fn empty_map_primitive_delegate<K, V>() -> FinitelySupportedFunction<K, V> {
+  empty_map_primitive_delegate()
+}
+fn empty_map<K, V>() -> FinitelySupportedFunction<K, V> {
+  empty_map_primitive_delegate()
+}
+fn map_insert_primitive_delegate<K, V>(m: FinitelySupportedFunction<K, V>, key: K, value: V) -> FinitelySupportedFunction<K, V> {
+  map_insert_primitive_delegate(m: m, key: key, value: value)
+}
+fn map_insert<K, V>(m: FinitelySupportedFunction<K, V>, key: K, value: V) -> FinitelySupportedFunction<K, V> {
+  map_insert_primitive_delegate(m: m, key: key, value: value)
+}
+
+// LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
+// third state in which the map fails to say. So the total form is the primitive and the
+// Outcome-wrapped form below is a projection of it, not the other way round.
+//
+// The direction matters at the consumer. A caller reaching for `map_get_checked` must match a
+// `Rejected` arm that no producer can construct, and the only arms available to it are the
+// caller's own domain answers — so the unreachable arm gets bound to whichever domain answer is
+// nearest, and a substrate failure would report as a domain fact. Exposing the total lookup
+// removes the arm rather than asking every caller to dispose of it honestly.
+fn map_lookup_primitive_delegate<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Optional<V> {
+  map_lookup_primitive_delegate(m: m, key: key)
+}
+fn map_lookup<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Optional<V> {
+  map_lookup_primitive_delegate(m: m, key: key)
+}
+
+// KEY MEMBERSHIP, the one presence predicate over a map: whether `key` has an entry, without its value.
+// Callers that store a marker value (a map used as a set of paths) read membership here rather than
+// each matching map_lookup's Optional to a Bool.
+fn map_contains_key<K, V>(m: FinitelySupportedFunction<K, V>, key: K) -> Bool {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE INDEXED READ IS THE `get` PRIMITIVE, PROJECTED TOTAL. `std.primitives` `get_contract` already
+// declares its cost -- constant work on an ephemeral carrier, `log n` on the persistent one this List
+// is -- so the read inhabits that contract rather than minting a second indexed read. The projection
+// is total in the same way `map_lookup` is: an index outside the list is an answer (`Absent`), never a
+// sentinel. The body was a fold from the head, O(index) per read, so a caller walking positions paid
+// the quadratic the lexer cursor exists to remove.
+fn list_at_primitive_delegate<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
+fn list_at_optional<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  list_at_primitive_delegate(xs: xs, index: index)
+}
+
+// THE MODELED REFERENCE FOR THE NATIVE KERNEL, and its only consumer is the equivalence witness
+// `gunbc.primitive_egress` owes the `get` row: the same fixture through this fold and through the
+// realized `list_at_optional`, equal answers in and out of range. It is not a second indexed read
+// for callers -- it is O(index) and nothing in production reaches it.
+type ListAtLookup<T>
+  = ListAtMissing { remaining: Int }
+  | ListAtFound { value: T }
+
+fn list_at_reference<T>(xs: FreeMonoid<T>, index: Int) -> Optional<T> {
+  match fold_list(
+    xs: xs,
+    empty: ListAtMissing { remaining: index },
+    cons: fn(acc, item) {
+      match acc {
+        ListAtFound { value: _ } => acc
+        ListAtMissing { remaining: r } =>
+          if r == 0 {
+            ListAtFound { value: item }
+          } else {
+            ListAtMissing { remaining: r - 1 }
+          }
+      }
+    }
+  ) {
+    ListAtFound { value: v } => optional_present(value: v)
+    ListAtMissing { remaining: _ } => optional_absent()
+  }
+}
+
+// The key set of a map: the support of its FinitelySupportedFunction. A method call to the `map_keys`
+// primitive (std.primitives map_keys_contract), so the realization is the one the method already has.
+fn map_support_keys<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<K> {
+  m |> map_keys
+}
+
+fn is_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match xs {
+    Empty => true
+    Cons { head: _, tail: _ } => false
+  }
+}
+
+fn non_empty<T>(xs: FreeMonoid<T>) -> Bool {
+  match is_empty(xs: xs) {
+    true => false
+    false => true
+  }
+}
+
+// `count` is the primitive authority for carrier size (O(1) on the persistent-vector
+// realization); the fold this replaced was O(n) per call, and the parse repeat loop calls
+// length on the remaining-token list twice per element — an O(elements x tokens) quadratic
+// measured at 40% of self-hosted parse self-time (2026-09-09, required-v2-native lane work).
+fn length<T>(xs: FreeMonoid<T>) -> Int {
+  xs |> count
+}
+
+fn for_all<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Bool {
+  fold_list(xs: xs, empty: true, cons: fn(acc, item) {
+    match acc {
+      true => predicate(item)
+      false => false
+    }
+  })
+}
+
+fn contains<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Bool {
+  xs.any(candidate => eq(candidate, item))
+}
+
+fn count_where<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(count, item) {
+    match predicate(item) {
+      true => count + 1
+      false => count
+    }
+  })
+}
+
+fn count_equal<T>(xs: FreeMonoid<T>, item: T, eq: fn(T, T) -> Bool) -> Int {
+  count_where(xs: xs, predicate: fn(candidate) { eq(candidate, item) })
+}
+
+fn unique<T>(xs: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = fold_list(xs: xs, empty: FreeMonoidUniqueState { seen: Empty, unique: true }, cons: fn(acc, item) {
+    match acc.unique {
+      true => match count_equal(xs: acc.seen, item: item, eq: eq) {
+        0 => FreeMonoidUniqueState { seen: Cons { head: item, tail: acc.seen }, unique: true }
+        _ => FreeMonoidUniqueState { seen: acc.seen, unique: false }
+      }
+      false => acc
+    }
+  })
+  state.unique
+}
+
+
+
+// FIRST MATCH, WITH THE EARLY EXIT. The closed vocabulary has any/filter/contains -- Bool, or the
+// whole filtered list -- and none of them answers "the first element satisfying p, or nothing"
+// without walking the rest. Expressing that as a fold over Optional is the shape this function
+// exists to stop: the accumulator is already Present and the fold keeps walking, so every hit
+// still pays the full length. Recursion on the cons cell RETURNS at the first hit.
+//
+// PROMOTED HERE FROM v2.workflow.compile_door_cause_ownership (review 64135). It was homed beside
+// its single consumer under the facts-before-abstraction discipline, with the promotion rule
+// written on it: "promote to std.algebra when a second consumer inhabits it, not before". The
+// required-v2-native route's per-module file-refusal lookup is that second consumer, and it had
+// re-expressed the shape as a non-short-circuiting fold -- net concepts growing by re-invention
+// (DESIGN section 2) in a per-module x per-refusal position (section 6, bare minimum cost, which
+// is fixed regardless of the realized n because n is not time-stable).
+fn list_find_first<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool) -> Optional<T> {
+  match xs {
+    Empty => optional_absent()
+    Cons { head: h, tail: t } =>
+      if predicate(h) {
+        optional_present(value: h)
+      } else {
+        list_find_first(xs: t, predicate: predicate)
+      }
+  }
+}
+
+type ListPrefixState<T> {
+  rest: FreeMonoid<T>
+  matched: Bool
+}
+
+fn list_starts_with<T>(xs: FreeMonoid<T>, prefix: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  let state = fold_list(
+    xs: prefix,
+    empty: ListPrefixState { rest: xs, matched: true },
+    cons: fn(acc, item) {
+      match acc.matched {
+        false => acc
+        true => match acc.rest {
+          Empty => ListPrefixState { rest: Empty, matched: false }
+          Cons { head: h, tail: t } => ListPrefixState { rest: t, matched: eq(h, item) }
+        }
+      }
+    }
+  )
+  state.matched
+}
+
+fn non_empty_singleton<T>(item: T) -> FreeSemigroup<T> {
+  FreeSemigroup { head: item, tail: Empty }
+}
+
+fn non_empty_append<T>(left: FreeSemigroup<T>, right: FreeSemigroup<T>) -> FreeSemigroup<T> {
+  FreeSemigroup {
+    head: left.head,
+    tail: list_append(
+      left: list_snoc_item(xs: left.tail, item: right.head),
+      right: right.tail
+    )
+  }
+}
+
+fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
+  Cons { head: xs.head, tail: xs.tail }
+}
+
+fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  match xs {
+    Empty => Empty
+    Cons { head: _, tail: Empty } => Empty
+    Cons { head: h, tail: t } => Cons { head: h, tail: list_init(xs: t) }
+  }
+}
+
+fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
+  if length(xs: xs) != length(xs: ys) {
+    false
+  } else {
+    for_all(xs: xs, predicate: fn(item) {
+      count_equal(xs: xs, item: item, eq: eq) == count_equal(xs: ys, item: item, eq: eq)
+    })
+  }
+}
+
+fn zip_eq<T>(
+  a: FreeMonoid<T>,
+  b: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match a {
+    Empty =>
+      match b {
+        Empty => true
+        Cons { head: _, tail: _ } => false
+      }
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => false
+        Cons { head: hb, tail: tb } =>
+          eq(ha, hb) && zip_eq(a: ta, b: tb, eq: eq)
+      }
+  }
+}
+
+fn zip_map<A, B, C>(
+  a: FreeMonoid<A>,
+  b: FreeMonoid<B>,
+  f: fn(A, B) -> C
+) -> FreeMonoid<C> {
+  match a {
+    Empty => Empty
+    Cons { head: ha, tail: ta } =>
+      match b {
+        Empty => Empty
+        Cons { head: hb, tail: tb } =>
+          Cons { head: f(ha, hb), tail: zip_map(a: ta, b: tb, f: f) }
+      }
+  }
+}
+
+fn reduce_or<T>(xs: FreeMonoid<T>, fallback: T, combine: fn(T, T) -> T) -> T {
+  match xs {
+    Empty => fallback
+    Cons { head: h, tail: t } => fold_non_empty(head: h, tail: t, cons: combine)
+  }
+}
+
+fn is_prefix_of<T>(
+  prefix: FreeMonoid<T>,
+  xs: FreeMonoid<T>,
+  eq: fn(T, T) -> Bool
+) -> Bool {
+  match prefix {
+    Empty => true
+    Cons { head: h_prefix, tail: t_prefix } =>
+      match xs {
+        Empty => false
+        Cons { head: h_xs, tail: t_xs } =>
+          eq(h_prefix, h_xs) && is_prefix_of(prefix: t_prefix, xs: t_xs, eq: eq)
+      }
+  }
+}

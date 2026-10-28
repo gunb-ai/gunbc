@@ -1,6 +1,8 @@
 module test.claim.map_annotation_resolves_by_declaration_witness
 
+import extdeps.filesystem.filesystem_io
 import std.types { String, Bool, Int, List }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
@@ -119,4 +121,54 @@ test fn a_lookalike_record_named_finitely_supported_function_aliased_as_map_is_n
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureInstrumentRefused { cause: c } => false
   }
+}
+
+// THE FAIL-OPEN CONTROL (review 87351 finding 2). The unbound-container refusal in
+// v1.compiler.resolve (src/v1/04_resolve.dag, unbound_container_diagnostics) once read
+// `declaration_resolved_container(name: name) && map_is_empty(m: env.source_visible_names) == false
+// && map_has(m: env.source_visible_names, key: name) == false`. The middle conjunct switched the
+// refusal OFF in exactly the context where NOTHING is visible -- an empty visible set -- which is the
+// strongest case for refusing, not an escape. Absence is now judged by `map_has == false` alone:
+// fail-closed on absence, never 'the set is non-empty and misses it'.
+//
+// WHY THIS IS A SEED-INVARIANT CONTROL AND NOT A FIXTURE. The condition is corpus-unreachable by
+// construction: every TypeEnv the resolve phase is called with comes from build_type_env, which folds
+// kernel_type_set into source_visible_names (v1.compiler.infer, `let svn_kernel = fold(map_keys(
+// kernel_type_set), init: svn_local, ...)`), so no compile_fixture source can produce the empty set the
+// guard read -- which is exactly how the fail-open survived CI. The only lane that could construct one
+// is a direct call into v1.compiler.resolve with a hand-built env, and the witness universe is rooted at
+// dag and src/v2 but never src/v1, so a dag/-rooted claim cannot import v1.compiler.* at all: documented
+// at dag/test/claim/trait_bound_witness.dag:7-18, where an earlier revision of exactly this pattern
+// failed CI with `unresolved import: module 'v1.compiler.trait_bound_witness' not found`. Widening that
+// root is a shared-workflow change outside this PR. So the executable control is the invariant on the
+// judgment itself: if the fail-open conjunct returns, this refuses. (The sibling guard on the UNLISTED
+// IMPORT check, same file, keeps its map_is_empty conjunct legitimately: a name cannot be an unlisted
+// import in a module with no imports at all, so emptiness is disqualifying there and disqualifying
+// nowhere here.)
+fn resolve_seed_path() -> String { "src/v1/04_resolve.dag" }
+
+fn resolve_seed_has(needle: String) -> Bool {
+  let r = filesystem_read(path: resolve_seed_path())
+  string_contains(s: r.content, pattern: needle)
+}
+
+fn resolve_seed_lacks(needle: String) -> Bool {
+  let r = filesystem_read(path: resolve_seed_path())
+  !string_contains(s: r.content, pattern: needle)
+}
+
+// POSITIVE CONTROL: the refusal is still there, and it is keyed on absence alone.
+test fn the_unbound_container_refusal_judges_absence_and_nothing_else() -> Bool {
+  resolve_seed_has("if declaration_resolved_container(name: name) && map_has(m: env.source_visible_names, key: name) == false")
+}
+
+// THE RED: reinstate the empty-set conjunct and this refuses.
+test fn the_unbound_container_refusal_never_switches_off_on_an_empty_visible_set() -> Bool {
+  resolve_seed_lacks("declaration_resolved_container(name: name) && map_is_empty(m: env.source_visible_names)")
+}
+
+// THE RED, SECOND ARM: the same fail-open wearing a hat -- an early return on the empty set inside the
+// same judgment -- is refused too.
+test fn the_unbound_container_refusal_has_no_empty_set_short_circuit() -> Bool {
+  resolve_seed_lacks("if map_is_empty(m: env.source_visible_names) {")
 }

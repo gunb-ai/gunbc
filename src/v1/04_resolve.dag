@@ -506,13 +506,30 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   }
 }
 
+// A KEYED ROSTER, not a classifier, and the one leaf-name key this branch adds. It answers a
+// narrower question than "is this name the kernel Map": is this name one of the built-in container
+// spellings whose bare use, in a module that does not have it visible, must be REFUSED rather than
+// guessed at. Two things make it safe in a way the other leaf-spelling probes are not, and one thing
+// makes keying it by declaration impossible here:
+//  - HARM DIRECTION. Its only consumer is unbound_container_diagnostics, which turns a true answer
+//    into an error. A roster line can refuse a name; it can never RENDER a look-alike as the
+//    built-in. A user-declared type named Map reaching this line is refused, not conflated -- the
+//    opposite direction of harm from the failure this branch's ruling is about.
+//  - NO DECLARATION EXISTS YET. It fires exactly where the name resolves to NOTHING (the
+//    kernel-minting path), so there is no resolved declaration node to hand
+//    container_declaration_aliases_keyed_algebra; and resolve sits BELOW the infer phase that
+//    resolves references and builds TypeEnv. Declaration identity is asked in the phase that has the
+//    resolved reference: container_declaration_aliases_keyed_algebra below, and
+//    node_is_keyed_algebra_spelling in v1.compiler.types -- both declaration_ref_eq comparisons.
 // A container spelling that is bound only through the declaration it names (std.types Map =
-// FinitelySupportedFunction). When that declaration aliases the keyed algebra (below) the use site
-// resolves as the kernel keyed container, the ONE identity the declaration's own spelling FinitelySupportedFunction<K, V> also
-// resolves to, so a `Map<K, V>` and a `FinitelySupportedFunction<K, V>` meet at a join as one type.
-// Resolving it as a user generic of the alias instead minted a second identity (the record
-// expansion) and refused the joins at v2.std.compilers.lexing lex_rule_set_insert_keyword_class.
-// With no declaration in scope it is unbound, never silently the kernel container.
+// FinitelySupportedFunction) resolves, when that declaration aliases the keyed algebra (below), as
+// the kernel keyed container: the ONE identity the declaration's own spelling
+// FinitelySupportedFunction<K, V> resolves to, so a Map<K, V> and a FinitelySupportedFunction<K, V>
+// meet at a join as one type. Resolving it as a user generic of the alias instead minted a second
+// identity (the record expansion) and refused the joins at v2.std.compilers.lexing
+// lex_rule_set_insert_keyword_class. With no declaration in scope it is unbound, never silently the
+// kernel container. Tracked as the sixth probe, with its limits and its next rung named, in
+// gunbc.recurring_failure_mode one_name_two_representations_kernel_map_and_finitely_supported_function.
 fn declaration_resolved_container(name: String) -> Bool {
   name == "Map"
 }
@@ -551,10 +568,12 @@ fn container_declaration_aliases_keyed_algebra(decl: Node, env: TypeEnv) -> Bool
 
 // The refusal is judged by the module's own visible names (env.source_visible_names, its imports
 // and local declarations, the scope the unlisted-import check reads), never by node.ident, which can
-// carry a binding from outside the module's imports. A context with no visible-name set is judged as
-// the unlisted-import check judges it.
+// carry a binding from outside the module's imports. An EMPTY visible set is the strongest case for
+// the refusal, not an escape: absence is judged by map_has alone, never by 'the set is non-empty and
+// misses it' (review 87351: the map_is_empty conjunct here switched the refusal OFF exactly in the
+// context where nothing is visible, a fail-open). Fail-closed on absence.
 fn unbound_container_diagnostics(env: TypeEnv, n: Node, name: String, span: SourceSpan, module_name: String) -> List<ErrorNode> {
-  if declaration_resolved_container(name: name) && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: name) == false {
+  if declaration_resolved_container(name: name) && map_has(m: env.source_visible_names, key: name) == false {
     [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: name, span: span), module_name: module_name)]
   } else { [] }
 }
