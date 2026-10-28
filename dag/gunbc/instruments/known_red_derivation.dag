@@ -1329,7 +1329,7 @@ fn known_red_line_body(line: String, function: String) -> Optional<KnownRedPrint
 fn known_red_terminal_of_body(body: String) -> Optional<ClaimAttemptTerminal> {
   if known_red_body_is_not_bool(body: body) {
     Present {
-      value: Returned { observation: ObservationUnrepresentable { reason: "returned-not-a-bool" } }
+      value: Returned { observation: ObservationUnrepresentable { reason: "returned-not-a-bool" as NonEmptyStr } }
     }
   } else {
     if known_red_body_is_exit_failure(body: body) {
