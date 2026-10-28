@@ -16656,6 +16656,43 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     bk381_shape(&then_rt.clone(), 0),
                                     bk381_shape(&else_rt.clone(), 0),
                                 );
+                            {
+                                let si = scope.type_env.source_indices.clone();
+                                let tj = Rc::new(TextJudgment::TextJudgedIn { env: scope.type_env.clone() });
+                                let col_t = crate::v1_compiler_infer_types::node_is_element_collection(then_rt.clone(), si.clone());
+                                let col_e = crate::v1_compiler_infer_types::node_is_element_collection(else_rt.clone(), si.clone());
+                                let ct_t = crate::v1_compiler_infer_types::canonical_template_name(then_rt.clone(), si.clone());
+                                let ct_e = crate::v1_compiler_infer_types::canonical_template_name(else_rt.clone(), si.clone());
+                                let ai = crate::v1_compiler_infer_types::alias_identity_in_judgment(then_rt.clone(), else_rt.clone(), si.clone(), tj.clone());
+                                let st_t = crate::v1_compiler_infer_env::settled_type(then_rt.clone(), si.clone(), scope.type_env.clone(), 16);
+                                let st_e = crate::v1_compiler_infer_env::settled_type(else_rt.clone(), si.clone(), scope.type_env.clone(), 16);
+                                let st_txt = |x: &Option<Rc<crate::v1_compiler_infer_env::SettledType>>| -> String {
+                                    match x {
+                                        Some(s0) => {
+                                            let args_txt = s0
+                                                .args
+                                                .clone()
+                                                .iter()
+                                                .map(|a| a.name.clone())
+                                                .collect::<Vec<String>>()
+                                                .join("+");
+                                            format!("Settled(head={}.{}:{}", s0.head.module_path.value.clone(), s0.head.decl_name.value.clone(), format!("{:?}", s0.head.field.clone())) + args_txt.as_str() + ")")
+                                        }
+                                        None => "Unsettled".to_string(),
+                                    }
+                                };
+                                let _ = writeln!(
+                                    f,
+                                    "BK381-STAGES col_then={} col_else={} canon_then={} canon_else={} alias_agree={} settled_then={} settled_else={}",
+                                    col_t,
+                                    col_e,
+                                    ct_t,
+                                    ct_e,
+                                    ai,
+                                    st_txt(&st_t),
+                                    st_txt(&st_e),
+                                );
+                            }
                             }
                         }
                         Rc::new(vec![inference_error(
