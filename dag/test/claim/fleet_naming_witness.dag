@@ -30,6 +30,7 @@ import gunbc.hostname_allocation {
   HumanNameDrawn,
   LegacyHostname,
   allocated_canonical_hostname,
+  allocation_selector_forms,
   draw_human_name,
   gunbc_fleet_hostname_allocations,
 }
@@ -105,6 +106,8 @@ import gunbc.fleet.fleet_naming {
   ProviderEndpoint,
   fleet_member_label,
   fleet_member_selector_form_is_accepted,
+  fleet_member_selector_forms,
+  fleet_slot_is_allocated,
   linux_hostname,
   provider_endpoint,
   provider_endpoint_text,
@@ -191,10 +194,38 @@ test fn witness_all_five_p2_rows_carry_a_draw() -> Bool {
 }
 
 // THE ROSTER GREW BY EXACTLY FIVE. A roster that gained rows nobody claimed would let a name enter the
-// fleet outside the plan; a roster that lost one would silently retire a member.
+// fleet outside the plan; a roster that lost one would silently retire a member. The two predicates on
+// the RIGHT are the roster's own, asked of the roster: the allocation reader answers for the five slots
+// the plan claims and for none of the members the plan did not touch, and the selector surface reads its
+// forms from the policy row rather than authoring them -- a selector list nobody can type, or one that a
+// row the fleet never allocated also has, is caught here.
 test fn witness_roster_grew_by_exactly_the_five_claimed_rows() -> Bool {
   p2_drawn_slots.all(slot => count_matching(rows: gunbc_fleet_hostname_allocations, slot: slot) == 1)
     && gunbc_fleet_hostname_allocations.count() == 16
+    // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of the count above.
+    && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: gunbc_fleet_hostname_allocations))
+    // THE NEGATIVE ANSWER IS SAYABLE. A census that reports unmanaged members has to be able to ask "is
+    // this slot allocated?" of a roster and hear no, rather than matching on a refusal -- so the same
+    // identity the roster answers for answers AGAINST a roster that holds nothing.
+    && (match row_for(slot: operator_host_183527) {
+      Absent => false
+      Present { value: unmanaged } =>
+        fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: gunbc_fleet_hostname_allocations)
+          && !fleet_slot_is_allocated(slot: unmanaged.fleet_slot, roster: [])
+    })
+    // THE SELECTOR SURFACE IS READ FROM THE ROW, not authored here: srv9's forms begin with its own slot
+    // and are exactly the forms the allocation module issues for it -- a selector list this module invented
+    // itself, or one whose first entry is not the member's own name, fails here.
+    && (match row_for(slot: operator_host_srv9) {
+      Absent => false
+      Present { value: row } => match fleet_member_selector_forms(allocation: row).first() {
+        Absent => false
+        Present { value: first_form } =>
+          (first_form as String) == (row.fleet_slot as String)
+            && fleet_member_selector_forms(allocation: row).count()
+              == allocation_selector_forms(allocation: row).count()
+      }
+    })
 }
 
 // NO TWO MEMBERS ANSWER TO THE SAME CANONICAL NAME, and no drawn name collides with a legacy spelling. The
