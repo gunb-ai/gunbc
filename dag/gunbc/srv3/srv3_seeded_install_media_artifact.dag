@@ -18,7 +18,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   ubuntu_seeded_install_media_default_nocloud_dir,
   ubuntu_seeded_install_media_grub_kernel_cmdline,
 }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import gunbc.provisioning.seeded_install_media_publish {
@@ -33,8 +33,12 @@ import gunbc.provisioning.seeded_install_media_publish {
 }
 import std.types { List, NonEmptyStr, String }
 
+// THE HOSTNAME IS THE IDENTITY'S, AND THIS IMAGE ROUTE REQUIRES ONE: srv3's payload is a seeded-handle
+// autoinstall, which takes the WithIdentity arm, so the read yields a hostname. It is read through
+// autoinstall_identity_of so the route is asked rather than assumed — a key-only payload would yield Absent
+// here rather than silently producing a directory name out of nothing.
 data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
-  hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
+  hostname: srv3_autoinstall_identity.hostname,
 )
 
 data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(

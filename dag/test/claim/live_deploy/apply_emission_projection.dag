@@ -9,7 +9,7 @@ import gunbc.host.host_axis_caps { CapConvergeWithheld }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_test_console_readback_observed_at_epoch }
 import gunbc.membership_reconcile { MemberEffect, EffectAdd, EffectReplace, EffectRemove }
 import v2.std.orchestration {
-  Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let, Call,
+  Do, Run, PipelineStep, Comment, Exit, If, For, While, Retry, Let,
   Pipeline, Predicate, ExitZero, LogMatches, StrEq, StrEmpty, StrNonempty, IntNe, Not, And, Or,
   ValueSource, CmdSubstLines, Glob, ModeledList, Expr, ExprLit, ExprVarRef, ExprCmdSubst,
 }
@@ -116,7 +116,6 @@ fn pipeline_step_text(st: PipelineStep) -> String {
     Comment { text: t } => t
     Exit { status: st2 } => st2
     Let { name: n, value: v } => concat(n, expr_text(e: v))
-    Call { callee: c, args: a } => concat(c, fold(a, init: "", f: (acc, x) => concat(acc, x)))
     If { cond: c, then_: t, else_: e } => concat(
       predicate_text(p: c),
       concat(

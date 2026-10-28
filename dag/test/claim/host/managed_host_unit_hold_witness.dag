@@ -16,7 +16,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host
 import gunbc.host.managed_host { ManagedHost, managed_host_fixture, managed_hosts }
 import gunbc.host.host_maintenance_hold_reason { ResetNoUnitHold, ResetUnitHoldRequired, unit_hold_decision }
 import gunbc.host.managed_host_unit_hold {
-  UnitHoldOwner, OperatorMaintenance, BootRun, HostResetReturn, KvmObserverProbe, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
+  UnitHoldOwner, OperatorMaintenance, ProcessHeldRun, BootRunKind, KvmObserverProbeKind, QualificationRunKind, HostResetReturn, UnitHoldOwnerDecoded, UnitHoldOwnerUnrecognized,
   unit_hold_owner_ref, decode_unit_hold_owner, unit_hold_owner_label,
   unit_hold_refusal, operator_maintenance_owner, boot_run_owner, host_reset_owner,
   ProbeHoldReleaseDecision, ProbeHoldReleaseAt, ProbeHoldFreeNoop, ProbeHoldForeignNoop, ProbeHoldUnobservable,
@@ -376,9 +376,10 @@ fn round_trips(o: UnitHoldOwner, label: String) -> Bool {
 
 test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
   round_trips(o: OperatorMaintenance { reason: "reseating DIMMs" as NonEmptyStr }, label: "operator maintenance: reseating DIMMs")
-    && round_trips(o: BootRun { run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the boot run 41 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
+    && round_trips(o: ProcessHeldRun { kind: BootRunKind, run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the boot run 41 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
     && round_trips(o: HostResetReturn { attempt: "srv1-mtcollins1" as NonEmptyStr }, label: "host reset-return attempt srv1-mtcollins1")
-    && round_trips(o: KvmObserverProbe { run_id: "36800000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the KVM observer probe run 36800000000 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
+    && round_trips(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: "36800000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the KVM observer probe run 36800000000 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
+    && round_trips(o: ProcessHeldRun { kind: QualificationRunKind, run_id: "40500000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }, label: "the qualification run 40500000000 (process 3975 on boot 73c8153e-0e0e-4480-a36c-bc7560c50e8b)")
     && match decode_unit_hold_owner(owner: "someone-else:x" as DurableHoldOwnerRef) {
       UnitHoldOwnerUnrecognized { raw: _ } => true
       UnitHoldOwnerDecoded { owner: _ } => false
@@ -393,7 +394,7 @@ test fn every_holder_kind_round_trips_and_a_foreign_owner_is_refused() -> Bool {
 // Supplied observations into the PURE decision fold (the live release plan is minted only from a live
 // read of the slot, so a supplied observation can never free a real hold).
 fn probe_owner(run_id: NonEmptyStr) -> DurableHoldOwnerRef {
-  unit_hold_owner_ref(o: KvmObserverProbe { run_id: run_id, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr })
+  unit_hold_owner_ref(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: run_id, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr })
 }
 
 test fn the_release_targets_only_this_runs_probe_hold_at_its_observed_generation() -> Bool {
@@ -418,6 +419,15 @@ test fn a_foreign_holder_is_never_released() -> Bool {
     && foreign(observed_owner: host_reset_owner(attempt: "srv1-mtcollins1"), pattern: "reset-return")
     && foreign(observed_owner: operator_maintenance_owner(reason: "reseating DIMMs"), pattern: "reseating DIMMs")
     && foreign(observed_owner: "someone-else:36800000000" as DurableHoldOwnerRef, pattern: "someone-else")
+    && foreign(observed_owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: "36800000000" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }), pattern: "qualification run 36800000000")
+}
+
+// THE TAGS ARE THE STORE'S, NOT THIS MODULE'S TO RENAME: an owner already written by a boot or a probe before the
+// kinds were one arm must still decode to the same holder, so each kind's rendered owner keeps its prefix.
+test fn each_process_held_kind_keeps_its_store_tag() -> Bool {
+  starts_with(s: unit_hold_owner_ref(o: ProcessHeldRun { kind: BootRunKind, run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }) as String, prefix: "boot-run:41")
+    && starts_with(s: unit_hold_owner_ref(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }) as String, prefix: "kvm-observer:41")
+    && starts_with(s: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: "41" as NonEmptyStr, process: holder_process, pid_namespace: "pid:[4026531836]" as NonEmptyStr }) as String, prefix: "qualification-run:41")
 }
 
 // A FREE OR UNREADABLE SLOT IS A REPORTED NO-OP.

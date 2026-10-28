@@ -23,7 +23,7 @@ import gunbc.live_deploy.operations {
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name, gunbc_service_uid }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label }
+import std.operation_argv { OperationRef, operation_argv_bind_text, operation_argv_tokens_or_refusal_label, shell_materialize_operation_argv }
 import v2.workflow.effect_plan_bash_materialize { bash_bind_operation_invocation }
 import extdeps.posix.shell_command_language { posix_single_quote }
 

@@ -1,8 +1,9 @@
 module extdeps.strata.serve_flags
 
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, Mebibyte, PositiveSlotCount }
+import std.measure { TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count_value }
+import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -89,4 +90,52 @@ type StrataServeFlags {
   experts: StrataExpertResidency
   // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
+}
+
+// ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
+
+fn strata_kv_format_word(f: StrataKvFormat) -> String {
+  match f {
+    StrataKvQ4_0 => "q4_0"
+    StrataKvInt8 => "int8"
+    StrataKvK8v4 => "k8v4"
+  }
+}
+
+fn strata_optional_words(present: Bool, words: List<String>) -> List<String> {
+  if present { words } else { [] as List<String> }
+}
+
+fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
+  let kv_resident = match flags.kv_residency {
+    StrataKvResidentWindow { tokens: t } => ["--kv-resident", to_string(token_count_value(t: t))]
+    StrataKvFullyResident => [] as List<String>
+  }
+  let batch_groups = match flags.batch_groups {
+    Absent => [] as List<String>
+    Present { value: StrataBatchGroupsAuto } => ["--batch-groups", "auto"]
+    Present { value: StrataBatchGroupsCount { groups: g } } => ["--batch-groups", to_string(positive_slot_count_value(slots: g))]
+  }
+  let pool = match flags.pool_workers { Absent => [] as List<String>, Present { value: n } => ["--pool-workers", to_string(n)] }
+  let stages = match flags.stages {
+    StrataSingleStage => [] as List<String>
+    StrataSplitStages { split: s, trim_stage_weights: trim } => concat(
+      match s {
+        StrataLayerSplitAuto => ["--layer-split", "auto"]
+        StrataLayerSplitAt { boundaries: bs } => ["--layer-split", join(map(bs, b => to_string(b)), ",")]
+      },
+      strata_optional_words(present: trim, words: ["--trim-stage-weights"]),
+    )
+  }
+  let experts = match flags.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
+  let reserve = match flags.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
+  concat(concat(concat(concat(concat(concat(concat(
+    ["--kv", strata_kv_format_word(f: flags.kv_format)],
+    kv_resident),
+    ["--max-context", to_string(token_count_value(t: flags.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
+    batch_groups),
+    pool),
+    stages),
+    experts),
+    reserve)
 }

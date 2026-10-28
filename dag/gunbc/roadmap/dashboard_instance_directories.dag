@@ -25,7 +25,7 @@ import gunbc.dispatch_credential_acquisition { credential_acquisition_slots_dire
 //
 // THIS IS STILL A CONSUMER LIST, AND THAT IS ITS DECLARED LIMIT. A consumer that writes a directory
 // and is not listed here gets no creator; the composition cannot see it. D14 step 4
-// (docs/plans/ensure-closure-design.md section 12) is what derives the demand from the code that
+// (`gunbc.plans.ensure_closure_design` section 12) is what derives the demand from the code that
 // writes, at which point this list stops being authored. Until then, adding a directory writer means
 // declaring its demand in its own module and adding one row here.
 //

@@ -55,7 +55,8 @@ import gunbc.runner.runner_browser_toolchain {
 import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path }
 import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { MtCollins1EndMedia, EndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, run_record_text, MtCollins1BootRunRecord }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { MegaRacEndMedia, MegaRacEndMediaObserved, EndReleaseKeptHostOn, EndReleaseRan, megarac_run_record_text, MegaRacRunRecord }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
 import gunbc.machine_intake.megarac_media_attach { MegaRacOwnSessionEnded, OwnSessionStopped, SessionReleased }
 import gunbc.machine_intake.post_power_fan_gate_outcome { PostPowerFanGatePowered, PostPowerFanGateAbandoned, PostPowerFanGateReached, PostPowerFanGateNotReached, PostPowerFanEstablished, PostPowerFanRefused }
 
@@ -972,15 +973,15 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
         && teardown_within(route: route, bound: 60)
         && end_release_stopped(end: value.end_media)
         && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.SolDeactivate") < first_ordinal(route: route, name: "megarac.Media.StopMedia")
-        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "end_media=")
-        && string_contains(s: run_record_text(r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "end_media=")
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "this attempt's own session stopped and read back as gone")
         && match state { Present { value: end } => sol_drop_fired_in(w: end) Absent => false }
     _ => false
   }
 }
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
-fn attempt_run_record(a: MtCollins1BootAttempt) -> MtCollins1BootRunRecord {
+fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
   mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
@@ -1340,16 +1341,16 @@ test fn a_foreign_presented_image_is_not_stopped() -> Bool {
 // THE TYPED ARM, not only the route: the stop count alone cannot tell the gate keeping the session from
 // the release running and being refused one layer down (megarac_detach_admission), which writes no stop
 // either.
-fn end_release_kept(end: MtCollins1EndMedia) -> Bool {
+fn end_release_kept(end: MegaRacEndMedia) -> Bool {
   match end {
-    EndMediaObserved { look: _, end_release: EndReleaseKeptHostOn } => true
+    MegaRacEndMediaObserved { look: _, end_release: EndReleaseKeptHostOn } => true
     _ => false
   }
 }
 
-fn end_release_stopped(end: MtCollins1EndMedia) -> Bool {
+fn end_release_stopped(end: MegaRacEndMedia) -> Bool {
   match end {
-    EndMediaObserved { look: _, end_release: EndReleaseRan { result: r } } =>
+    MegaRacEndMediaObserved { look: _, end_release: EndReleaseRan { result: r } } =>
       match r.outcome {
         MegaRacOwnSessionEnded { end: OwnSessionStopped { detach: _ } } => match r.session_release { SessionReleased => true  _ => false }
         _ => false

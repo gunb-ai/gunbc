@@ -7,6 +7,7 @@ import std.list { distinct_by_key }
 import std.content_hash { ContentHash, content_hash_of_value, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.durable_compare_and_set { CasAttempt, cas_attempt, CasOutcome, CasCommitted, CasPreconditionFailed, CasStoreRefused, CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasGeneration, CasSlotVersion, CasReadableAbsent, CasReadablePresent, CasSlotObservation, CasObservedReadable, CasObservedUnreadable, CasUnreadableMalformed, CasUnreadableReadRefused, CasUnreadableObservationBoundExceeded, CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, cas_generation_exhausted, cas_generation, cas_generation_first, cas_generation_count, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
 import std.checked_arithmetic { int_inclusive_max }
+import std.integer { int_to_decimal_string }
 import extdeps.access.posix { FileMode, file_mode_bits }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -224,7 +225,7 @@ fn admit_cas_attempt_for_derived_payload(
 // is what lets an exclusive create serve as the conditional write: two
 // generations of one slot are two different files, so the OS decides the race.
 fn cas_file_slot_name(key: NonEmptyStr, generation: CasGeneration) -> String {
-  concat(concat(key as String, "."), cas_generation_count(g: generation) as String)
+  concat(concat(key as String, "."), int_to_decimal_string(value: cas_generation_count(g: generation)))
 }
 
 fn cas_file_slot_path(root: NonEmptyStr, key: NonEmptyStr, generation: CasGeneration) -> String {
@@ -617,7 +618,7 @@ fn cas_head_as_readable(generation: CasGeneration, value: NonEmptyStr) -> CasRea
 fn cas_generation_unreadable(generation: CasGeneration, kind: FilesystemFailureKind) -> CasUnreadableSlot {
   CasUnreadableReadRefused {
     detail: concat(
-      concat("generation ", cas_generation_count(g: generation) as String),
+      concat("generation ", int_to_decimal_string(value: cas_generation_count(g: generation))),
       concat(" unreadable:", filesystem_failure_kind_name(kind: kind)),
     ) as NonEmptyStr
   }
@@ -626,7 +627,7 @@ fn cas_generation_unreadable(generation: CasGeneration, kind: FilesystemFailureK
 fn cas_generation_read_kind_unrecognized(generation: CasGeneration, observed: String) -> CasUnreadableSlot {
   CasUnreadableMalformed {
     detail: concat(
-      concat("generation ", cas_generation_count(g: generation) as String),
+      concat("generation ", int_to_decimal_string(value: cas_generation_count(g: generation))),
       concat(" read failure kind unrecognized: ", observed),
     ) as NonEmptyStr
   }
@@ -1221,7 +1222,7 @@ fn cas_slot_keys(root: NonEmptyStr) -> CasSlotKeys {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => CasSlotKeysSubjectRefused { root: root, cause: c }
     FilesystemDirectoryListingRefused { directory: _, error: e } => CasSlotKeysListingRefused { root: root, detail: e }
     FilesystemDirectoryListed(listed) => {
-      let keys = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
+      let keys: List<NonEmptyStr> = fold(filesystem_listing_entry_names(listing: listed), init: [], f: (acc, n) => match cas_key_of_slot_name(name: trim(s: n)) {
         Absent => acc
         Present { value: k } => acc |> list_push(k)
       })
