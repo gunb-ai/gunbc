@@ -149,7 +149,7 @@ data mtcollins1_runner_image_receipt_path: String = "target/mtcollins1-runner-im
 // yet, so the publish refuses here with that cause rather than deriving an image without its release. It lands in
 // the same PR before review (the PR is a draft until it does).
 type BakedReleaseBuild
-  = BakedReleaseBuilt { release: RunnerHostBakedRelease }
+  = BakedReleaseBuilt { baked: RunnerHostBakedRelease }
   | BakedReleaseNotBuilt { reason: String }
 
 fn mtcollins1_baked_release_build() -> BakedReleaseBuild {
@@ -167,10 +167,10 @@ fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
     FleetSshContextReady { context: context, receipt: _ } =>
       match mtcollins1_baked_release_build() {
         BakedReleaseNotBuilt { reason: r } => RunnerImageNotDerived { reason: concat("the baked release was not built: ", r) }
-        BakedReleaseBuilt { release: release } =>
+        BakedReleaseBuilt { baked: baked } =>
           runner_image_publication_on(
             host: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context },
-            image: runner_host_medium_image(host: mtcollins1_runner_host, release: release),
+            image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked),
           )
       }
   }

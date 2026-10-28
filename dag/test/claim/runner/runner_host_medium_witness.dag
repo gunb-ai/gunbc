@@ -118,7 +118,7 @@ fn readback(capture: String) -> RunnerHostUpReadback? {
 // nothing), a seed program that verifies it off the medium and RETURNS
 // (no power-off, nothing written to a disk), and the medium's own volume id.
 test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_halts() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: runner } => {
       let program = fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String))
       (runner.binary_release.version as String) == (actions_runner_release_2_337_0.version as String)
@@ -250,7 +250,7 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 // pre-artifact key: the census build key claim in test.claim.host.boot_medium_served_readback_witness
 // pins c001ac127d718e72.)
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: SeedArtifactFetchedFrom { url: "https://mirror.invalid/runner.tar.gz" }, digest: a.digest })
       let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: actions_runner_release_2_337_0.digest_x86_64 })
@@ -285,7 +285,7 @@ fn artifact_named(n: String) -> NoCloudSeedArtifact {
 }
 
 test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let own = map(input.seed_artifacts, a => a.name as String)
       (match seeded_install_media_seed_artifact_admission(input: input) {
@@ -362,7 +362,7 @@ test fn an_unrecognized_machine_spelling_refuses_as_unrecognized() -> Bool {
 // THE PIN CARRIES ITS ALGORITHM: the same hex under Sha512 is another artifact (another build key) and
 // can never satisfy the sha256sum readback, while a Sha256 pin holds only on its own hex.
 test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> Bool {
-  match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
       let hex = actions_runner_release_2_337_0.digest_aarch64.hex
       let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source: a.source, digest: sha512_digest(hex: hex) })
@@ -381,7 +381,7 @@ test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> B
 // failed (useradd exits 9 on a name already in use, 1 when it cannot update the password file) is refused naming
 // that section, never reported up with an account the slots would then fail to find.
 test fn the_image_creates_its_runner_account_and_a_boot_without_it_is_refused() -> Bool {
-  let created = match runner_host_medium_image(host: mtcollins1_runner_host, release: fixture_baked_release()) {
+  let created = match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
     RunnerHostMediumImageDerived { input: input, runner: _ } =>
       string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: "useradd")
         && string_contains(s: fold(input.seed_files, init: "", f: (acc, f) => concat(acc, f.content as String)), pattern: runner_host_medium_runner_account as String)
