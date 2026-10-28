@@ -685,8 +685,10 @@ fn node_occurrence_eq(a: NodeOccurrence, b: NodeOccurrence) -> Bool {
 // seed checker, which computes the equality plan (v1.compiler.infer equality_route_for,
 // equality_root_refused_leaf_names, read by equality_operand_walk); DESIGN section 3 will not admit a
 // second copy here next to a table with one reader, and DESIGN section 3c will not admit a declaration
-// with no consumer at all. The seed cannot import a v2 module (section 6b keeps the seed below v2), so
-// until the consumer moves the table sits with the consumer. TRIGGER: the v2 checker computes the
+// with no consumer at all. So the table sits with its consumer: no module of the seed imports v2 today,
+// and a crossing would be admitted only by v2.std.cross_tree.import_model cross_tree_import_admitted, which
+// needs a row for both namespaces in gunbc.source_layout (DESIGN section 3's only structural law is
+// acyclicity -- it is not a ban on the direction, and nothing here claims one). TRIGGER: the v2 checker computes the
 // equality plan; at that point this region gains the data declaration beside the carriers it routes and
 // v1.compiler.infer deletes its, in one change -- the table never exists in both trees. The gap that
 // keeps the v2 checker from computing a plan today is gunbc.rung_drop
