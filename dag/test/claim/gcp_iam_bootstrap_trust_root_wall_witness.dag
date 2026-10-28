@@ -245,3 +245,14 @@ test fn a_binding_row_under_the_project_number_spelling_is_established() -> Bool
     _ => false
   }
 }
+
+// The wall as GCP answered it on 2026-10-28 (gcloud iam policies get, after receipt
+// iam-ceremony-20261028T142632Z refused "created deny policy differs").
+test fn the_wall_as_gcp_answered_it_matches_the_declared_rule() -> Bool {
+  let observed = GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule {
+    denied_principals: ["principal://iam.googleapis.com/projects/-/serviceAccounts/iam-bootstrap@gunbai-secrets.iam.gserviceaccount.com"],
+    denied_permissions: ["iam.googleapis.com/serviceAccounts.setIamPolicy", "iam.googleapis.com/serviceAccounts.update", "iam.googleapis.com/serviceAccounts.delete", "iam.googleapis.com/serviceAccounts.disable", "iam.googleapis.com/serviceAccounts.enable", "iam.googleapis.com/serviceAccounts.undelete"],
+    exception_principals: none, exception_permissions: none,
+    denial_condition: Present { value: IamCondition { title: "gunbc trust-root wall", expression: "resource.matchTag('gunbai-secrets/gunbc-trust-root', 'root')", description: Present { value: "iam-bootstrap may not rewrite, alter or remove a gunbc trust-root account" } } } } } }
+  iam_bootstrap_deny_rules_match(observed: Present { value: [observed] }, declared: [iam_bootstrap_trust_root_wall_rule()])
+}

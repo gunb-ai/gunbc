@@ -1355,8 +1355,17 @@ fn iam_bootstrap_current_authority_live() -> Bool {
 // An accepted asynchronous create is followed only by bounded reads, never another create.
 fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
+    // CreatePolicy is a long-running operation: a read just after it can answer the policy before its
+    // rules are visible (2026-10-28, receipt iam-ceremony-20261028T142632Z refused "differs" on a
+    // policy that read back exactly minutes later), so a rule-less answer is pending, not a mismatch.
     RestAnswered { answer: check } =>
-      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
+      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" }
+      else if remaining > 0 && match check.rules { Absent => true  Present { value: rs } => count(rs) == 0 } {
+        if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
+          iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: remaining - 1)
+        } else { "deny creation readback wait failed" }
+      }
+      else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
     RestRefused { refusal: check_refusal } =>
       if outcome_is_not_found(o: check_refusal) && remaining > 0 {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
