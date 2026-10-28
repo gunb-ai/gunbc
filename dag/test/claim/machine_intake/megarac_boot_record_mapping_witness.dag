@@ -83,6 +83,9 @@ import gunbc.host.boot_console_observation {
   ConsoleUnread,
   ConsoleExceedsBound,
   NotRetained,
+  boot_console_observation_debt_refs,
+  boot_console_observation_debt_status,
+  boot_console_observation_debt_outstanding,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_run_record, MegaRacRunRecord, BootParam5Reading, BootParam5NotTaken,
@@ -1054,6 +1057,35 @@ test fn the_console_debt_fold_reads_the_real_corpus_and_reads_discharged() -> Bo
   }
   let nothing_outstanding = length(xs: boot_attempt_console_debt_outstanding(present_decls: census)) == 0
   retired_all_absent && controls_live && fold_over_corpus && nothing_outstanding
+}
+
+// THE NEUTRAL HOME'S OWN CARRIER, READ OUT OF THE REAL CORPUS (review 87173). The home admits two
+// debts on boot_console_observation_debt_refs -- its non-neutral ConsoleReading and the BMC-closure
+// leak through the FirmwareConsoleReport family in gunbc.machine_intake.pre_os_bringup_verdict.
+// A carrier naming declarations that do not exist is a fold pre-discharged by fiction (std.dissolution's
+// header bars it); so EVERY item must resolve to at least one row in the corpus read through the
+// declaration index -- which also mechanically proves the leak's premise (the firmware family really
+// is declared in the ipmi_sel-importing module). Given a census that holds all four, the fold must
+// read PENDING with all four outstanding (a fold that read Fired today would be discharging splits
+// nobody performed), and the empty census reads Fired -- so the Pending is the census's verdict, not
+// the fold's default.
+test fn the_neutral_home_admits_its_debts_on_declarations_the_corpus_holds() -> Bool {
+  let refs = boot_console_observation_debt_refs
+  let facts = decl_facts_at(
+    pool_roots: ["dag"],
+    qualified_names: map(refs, r => console_debt_qualified_name(ref: r)),
+    type_names: [],
+  )
+  let every_item_is_real = all(refs, r =>
+    length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: r), facts: facts)) > 0)
+  let fold_on_their_presence = match boot_console_observation_debt_status(present_decls: refs) {
+    DissolutionPending => true
+    _ => false
+  }
+  every_item_is_real
+    && fold_on_their_presence
+    && length(xs: boot_console_observation_debt_outstanding(present_decls: refs)) == 4
+    && length(xs: boot_console_observation_debt_outstanding(present_decls: [])) == 0
 }
 
 // ── THE DERIVED FINDINGS, READ OUT OF THE FIELDS THE MAPPING FILLS ────────────────────────────────

@@ -57,33 +57,71 @@ module gunbc.host.boot_console_observation
 // grammar's machine markers -- BIOS Setup Utility, the UEFI shell, the firmware summary's rc line --
 // are what a captured console of THAT firmware looks like; the observation stands for any capture
 // that shows them and says nothing about which machine printed them). It is also not the core:
-// nothing here may name a controller protocol, and a consumer that needs the MegaRAC-shaped bundle
-// still gets it from gunbc.machine_intake.megarac_boot_diagnostic_bundle, which depends on this
-// module, never the reverse (imports point toward the core, never the core on an adapter; this
-// module's closure is the console readers plus std/extdeps -- no bmc, no megarac_*, no ipmi_*, no
-// redfish_* name).
+// nothing here DECLARES a controller-protocol name, and a consumer that needs the MegaRAC-shaped
+// bundle still gets it from gunbc.machine_intake.megarac_boot_diagnostic_bundle, which depends on
+// this module, never the reverse (imports point toward the core, never the core on an adapter).
 //
-// THE CARRIED DEBT OF THIS MODULE (DESIGN §5: debt is admitted on a carrier a program can read,
-// not in prose alone). ConsoleReading is NOT console-neutral: it carries the dram, nvparam, socket,
-// kernel-version and checkpoint arms -- one platform's console grammar -- and it therefore imports
-// the gunbc.machine_intake console observation modules, exactly as the core's WHAT-THIS-BLOCK-IS-NOT
-// paragraph stated when the block sat there. Moving it out of the core is the core's fix; the type
-// itself still owes its platform-neutral split, and that split is NOT this module's to make. So the
-// debt travels with the type, on a carrier: boot_console_observation_debt_refs below names what was
-// declared in THIS module's machine-named homes, and boot_console_observation_debt_status folds it
-// the same way the core's does -- DissolutionStatus read over a declaration census, Fired only when
-// the census lacks the item. The core's own fold (boot_attempt_console_debt_status) is what this
-// re-home fires; this module's fold is the rung BELOW it -- the ConsoleReading split, whose trigger
-// is that type no longer declared HERE, which is verifiable the moment it is written.
+// WHAT THE CLOSURE ACTUALLY IS -- AND THE LEAK, ADMITTED (review 87173; DESIGN §4d: "do not assert
+// as deduced what is only inferred"). An earlier draft of this header claimed the closure was "the
+// console readers plus std/extdeps -- no bmc, no megarac_*, no ipmi_*, no redfish_* name". That claim
+// was false the day it was written: a header advertising a property the imports contradict is exactly
+// the closure-leak failure mode this cut exists to close, and repeating it HERE -- in the module meant
+// to fix the core's leak -- is worse than never having claimed it. THE TRUE CLOSURE, read off the
+// imports: this module classifies ConsoleReading's FIRMWARE arm through FirmwareConsoleReport and its
+// readers (firmware_console_report, is_firmware_error_line, is_firmware_err_code_line, the report's
+// arms), and those are declared in gunbc.machine_intake.pre_os_bringup_verdict, which imports
+// extdeps.bmc.ipmi_sel -- and, through gunbc.machine_intake.pre_os_observation_capabilities,
+// extdeps.bmc.capability. So a consumer that reaches console_reading today drags the BMC protocol
+// modules in with it. THE SPLIT THAT REMOVES IT IS NOT THIS MODULE'S TO MAKE: FirmwareConsoleReport
+// classifies firmware ANSWERS (terminal trained? refused? codes undecoded?), which belongs with the
+// bring-up/firmware-answer split the boot-run work owns (cut 3), the same reason this module did not
+// perform ConsoleReading's platform split. So the leak travels on the typed carrier below, the way the
+// core's six borrowings did -- and unlike the prose above, the core's GAIN is measured rather than
+// claimed: gunbc.host.boot_attempt's transitive closure now contains no console-named module at all,
+// and its six-item carrier folds Fired on the real corpus (megarac_boot_record_mapping_witness's
+// console-debt claims read BOTH carriers out of the corpus through the declaration index).
 //
-// THE MEASURED GRAMMAR IS A RECEIPT, NOT A SPEC. The milestone fold's marker sets were written from
-// the mtcollins1 SOL captures (docs/measurements/) and are only claimed to recognize what those
-// captures show: a capture from other firmware is read with the arms it matches and its unexplained
-// bytes stand unexplained (the milestone module's own header, kept with the code). A machine whose
-// firmware prints a different banner adds its OWN markers beside these (the row's business, per
-// §4a) -- nothing here asserts that these markers are the whole of the firmware world.
+// THE CARRIED DEBTS OF THIS MODULE (DESIGN §5: debt is admitted on a carrier a program can read, not
+// in prose alone). TWO debts, ONE population, both on boot_console_observation_debt_refs below --
+// because a carrier whose fold reads only part of the population is the same fact with two answers
+// (review 85810, the rule that made the core's carrier six items):
+// (1) ConsoleReading is NOT console-neutral. It carries the dram, nvparam, socket, kernel-version and
+// checkpoint arms -- one platform's console grammar -- and therefore imports the gunbc.machine_intake
+// console observation modules, exactly as the core's WHAT-THIS-BLOCK-IS-NOT paragraph stated when the
+// block sat there. Moving it out of the core discharged the CORE's debt; the type still owes its
+// platform-neutral split here, and this module is not the authority to perform it. Carrier item: this
+// module's own ConsoleReading, retired when the split lifts it out of the neutral home.
+// (2) THE BMC-CLOSURE LEAK (review 87173), the firmware-arm path above. Carrier items: the
+// FirmwareConsoleReport family as declared TODAY in gunbc.machine_intake.pre_os_bringup_verdict. When
+// that family is re-homed onto the firmware-answer split, every read of ConsoleReading stops dragging
+// extdeps.bmc.* in, this header may say "no protocol closure" truthfully, and the fold reads Fired.
+// Every item is a retirement trigger on a declaration that EXISTS TODAY where the carrier says (the
+// witness reads them out of the real corpus; std.dissolution allows no other kind). The fold is the
+// core's shape exactly, and the falsifiable half lives where claims live:
+// megarac_boot_record_mapping_witness's the_neutral_home_admits_its_debts_on_declarations_the_corpus_holds
+// reads every item out of the corpus through the declaration index (a carrier naming declarations
+// that do not exist is a fold pre-discharged by fiction), demands the fold read PENDING with all
+// items outstanding on a census that holds them, and demands Fired on the empty census -- so the
+// Pending is the census's verdict, not the fold's default. A fold that reported Fired before either
+// split landed would be answering about a corpus nobody wrote.
+//
+// THE MEASURED GRAMMAR IS A RECEIPT, NOT A SPEC -- NAME INCLUDED. The milestone fold's marker sets
+// were written from the mtcollins1 SOL captures (docs/measurements/) and are only claimed to recognize
+// what those captures show: a capture from other firmware is read with the arms it matches and its
+// unexplained bytes stand unexplained (the milestone module's own header, kept with the code). A
+// machine whose firmware prints a different banner adds its OWN markers beside these (the row's
+// business, per §4a) -- nothing here asserts that these markers are the whole of the firmware world.
+// THE NAME IS DELIBERATE: mtcollins1_console_milestones stays mtcollins1_console_milestones (4d-ii
+// brief, design (b)) because it is a RECEIPT OF WHAT WAS MEASURED, on mtcollins1, and a receipt that
+// gets renamed reads like a spec some anonymous corpus established. The console() call site below
+// consumes it the same way: every console reading carries the milestones IT matched, and matching
+// zero mtcollins1 markers is a normal, unpenalized answer for a foreign board (the required RED in
+// megarac_boot_row_witness puts a srv9 capture through this exact path and prints it without
+// mtcollins1 in the rendering).
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, DissolutionFired, DissolutionPending, DissolutionStatus, DissolutionUnbound, dissolution_status, retires_dissolution }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.optional { Absent, Present }
@@ -569,4 +607,60 @@ fn console_milestone_name(m: ConsoleMilestone) -> String {
 
 fn console_milestone_sighting_text(s: ConsoleMilestoneSighting) -> String {
   concat(console_milestone_name(m: s.milestone), " at line ", to_string(s.line_index), " (span ", to_string(s.span), "): ", s.line as String)
+}
+
+// ── THE CARRIED DEBTS, AS DATA (DESIGN §5; review 87173) ────────────────────────────
+// ONE population for BOTH debts of this module -- the non-neutral ConsoleReading and the
+// BMC-closure leak -- because a carrier whose fold reads only part of the population is the
+// same fact with two answers (the rule that made boot_attempt's carrier six items, review
+// 85810). Every item is a retirement trigger on a declaration that EXISTS TODAY at the named
+// path (std.dissolution admits no other kind; the mapping witness claim reads all four out of
+// the real corpus), and the fold discharges only when a census lacks EVERY item -- which today
+// it does not, so the fold reads Pending. The witness proves it against the corpus, not against a
+// hand-written census.
+data boot_console_observation_console_reading_decl_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.host.boot_console_observation",
+  decl_name: "ConsoleReading",
+)
+
+data boot_console_observation_debt_refs: List<DeclarationRef> = [
+  // (1) The platform split this module owes: ConsoleReading's dram/nvparam/socket/kernel/checkpoint
+  // arms are one platform's grammar; when the split lifts the type out of this home, it stops being
+  // declared here and this item retires.
+  boot_console_observation_console_reading_decl_ref,
+  // (2) The BMC-closure leak (review 87173): this module's FIRMWARE-arm classification is these
+  // three declarations, declared in gunbc.machine_intake.pre_os_bringup_verdict -- a module that
+  // imports extdeps.bmc.ipmi_sel (and extdeps.bmc.capability through
+  // pre_os_observation_capabilities). Re-homing the family onto the firmware-answer split (the
+  // boot-run work's, not this module's to perform) is what lets this header say "no protocol
+  // closure" truthfully; until then the fold must not read Fired.
+  decl_ref(module_path: "gunbc.machine_intake.pre_os_bringup_verdict", decl_name: "FirmwareConsoleReport"),
+  decl_ref(module_path: "gunbc.machine_intake.pre_os_bringup_verdict", decl_name: "firmware_console_report"),
+  decl_ref(module_path: "gunbc.machine_intake.pre_os_bringup_verdict", decl_name: "is_firmware_err_code_line"),
+]
+
+fn boot_console_observation_debt_condition(ref: DeclarationRef) -> DissolutionCondition {
+  retires_dissolution(ref: ref)
+}
+
+fn boot_console_observation_debt_outstanding(present_decls: List<DeclarationRef>) -> List<DeclarationRef> {
+  filter(boot_console_observation_debt_refs, ref => match dissolution_status(
+    condition: boot_console_observation_debt_condition(ref: ref),
+    present_decls: present_decls,
+  ) {
+    DissolutionPending => true
+    DissolutionFired => false
+    // Unbound (only reachable for an UnboundDissolution condition, which none of these are) counts
+    // as OUTSTANDING: a condition nobody wired up is not evidence the debt is gone (§5, a failure
+    // arm refuses, never widens).
+    DissolutionUnbound => true
+  })
+}
+
+fn boot_console_observation_debt_status(present_decls: List<DeclarationRef>) -> DissolutionStatus {
+  if length(xs: boot_console_observation_debt_outstanding(present_decls: present_decls)) == 0 {
+    DissolutionFired
+  } else {
+    DissolutionPending
+  }
 }
