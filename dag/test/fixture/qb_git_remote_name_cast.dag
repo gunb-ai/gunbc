@@ -1,0 +1,8 @@
+module test.fixture.qb_git_remote_name_cast
+
+import std.types { String }
+import extdeps.git { GitRemoteName, git_remote_url_config_key }
+
+fn remote_text(name: GitRemoteName) -> String {
+  name as String
+}

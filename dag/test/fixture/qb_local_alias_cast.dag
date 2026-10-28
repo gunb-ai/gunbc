@@ -1,0 +1,9 @@
+module test.fixture.qb_local_alias_cast
+
+import std.types { NonEmptyStr, String }
+
+type QbLocalName = NonEmptyStr
+
+fn local_text(name: QbLocalName) -> String {
+  name as String
+}

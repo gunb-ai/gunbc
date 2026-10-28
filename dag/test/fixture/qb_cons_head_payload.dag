@@ -1,0 +1,19 @@
+module test.fixture.qb_cons_head_payload
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { Cons, Empty }
+
+type QbWords
+  = QbGot { words: List<String> }
+  | QbNone
+
+fn first_payload_word(w: QbWords) -> NonEmptyStr {
+  match w {
+    QbGot { words: ws } =>
+      match ws {
+        Cons { head: h, tail: _ } => h as NonEmptyStr
+        Empty => "none" as NonEmptyStr
+      }
+    QbNone => "none" as NonEmptyStr
+  }
+}

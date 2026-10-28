@@ -1,0 +1,7 @@
+module test.fixture.qb_unsupported_cast
+
+import std.types { Int, String }
+
+fn coerce(raw: String) -> Int {
+  raw as Int
+}

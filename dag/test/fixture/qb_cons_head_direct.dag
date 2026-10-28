@@ -1,0 +1,11 @@
+module test.fixture.qb_cons_head_direct
+
+import std.types { List, NonEmptyStr, String }
+import std.algebra { Cons, Empty }
+
+fn first_word(xs: List<String>) -> NonEmptyStr {
+  match xs {
+    Cons { head: h, tail: _ } => h as NonEmptyStr
+    Empty => "none" as NonEmptyStr
+  }
+}
