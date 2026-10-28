@@ -517,31 +517,6 @@ fn nominal_type_ref(name: String) -> Node {
 // (gunbc.recurring_failure_mode unapplied_generic_accumulator_types_element_as_container). The
 // repair is upstream at the dropping link; this seam stays advisory, with its ceiling row in
 // gunbc.compile_clean_diagnostic_policy advisory_class_ceilings.
-// ABSENCE OF A CHILD IS ABSENCE OF EVIDENCE — THE POSITION STAYS UNSOLVED.
-// THE PLACEHOLDER NAMED FOR THE CALLEE'S TYPE PARAMETER WAS MANUFACTURED EVIDENCE. When a
-// collection carrier arrives with no element child, the template used to mint
-// type_variable_node(id: <the template parameter's own name>) — a node whose name and variable id
-// both spell the CALLEE's binder. Nothing in the call said that name means the element; the name
-// was copied from the callee's declaration. Downstream, the unifier's first-wins binding then
-// credits T := T (the variable matches its own name) and the fold accumulator proceeds with an
-// element type nothing ever typed — measured at the store's cas_slot_keys witness: the accumulator
-// arrives as `List` with zero children, the key lambda's parameter is read through that accumulator
-// as the fabricated variable, and the cast `k as String` renders as a runtime panic because no
-// source type was ever established. The old comment's claim that "the evidence needed to answer
-// correctly does not exist anywhere the caller can reach" is exactly right — and a stand-in named
-// after the callee's binder does not answer the question, it only hides that nobody did.
-//
-// WHY THE DIAGNOSTIC STILL FIRES ONLY ON A CONNECTIVE BASE, AND WHERE THE REST OF THE RULE
-// BELONGS. A bare `List` with no element child is the NoConnective shape, and promoting it to the
-// same located diagnostic HERE would diagnose construction, not judgment: this seam runs for every
-// template instantiation, most of which never have their element read as evidence, and the advisory
-// ceiling row records that an author cannot discharge this diagnostic at this seam. The place the
-// missing evidence is actually REQUIRED is where the placeholder is consumed as a typed obligation
-// — the cast obligation and the generic-formal slot — which is exactly where the fabrication fix in
-// v1.compiler.infer (record-literal field_expected) now stops a node named after the callee's own
-// binder from being credited. Census of this seam's callers: three, all in instantiate_algebra_type
-// (ReceiverElement, ReceiverKey, ReceiverValue).
-// The repair for a carrier whose element was DROPPED upstream stays upstream.
 fn algebra_child_or_placeholder(base: Node, child_index: Int, placeholder: String) -> KernelTypeBuild {
   let evidence_diags = if base.connective != NoConnective {
     [make_error_node(
