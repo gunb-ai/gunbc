@@ -22,7 +22,7 @@ import gunbc.compute.attempt_lifecycle {
   recovery_trigger, recovery_trigger_wire,
 }
 import gunbc.compute.host_capacity {
-  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
+  HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject, host_capacity_pool_slots,
   ReviewerSessionPool, host_capacity_reserve_reviewer, kibibyte_from_byte_size_ceiling,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
@@ -1465,8 +1465,13 @@ fn session_reviewer_slots_root(instance: HostDashboardInstance) -> NonEmptyStr {
   join([session_placement_records_dir(instance: instance), "/reviewer-attempts"], "") as NonEmptyStr
 }
 
-fn session_reviewer_placement_stores(instance: HostDashboardInstance, reviewer_slots: Nat) -> SessionStoresResolution {
-  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: reviewer_slots }, request: kibibyte(count: 0)) {
+// THE REVIEWER'S LEDGER STORE AND CAS ROOT. The partition name is host-scoped and carries no slot
+// count (gunbc.compute.host_capacity), so the settlement pass and the spawn resolve the SAME store
+// without sharing a plan: how many reviewers a head may run is a property of the reservation
+// request (session_reviewer_placement_acquire's reviewer_slots), not of the identity. The zero here
+// says so -- no caller may read a seat limit out of it.
+fn session_reviewer_placement_stores(instance: HostDashboardInstance) -> SessionStoresResolution {
+  match host_capacity_subject(instance: instance, pool: ReviewerSessionPool { slots: 0 }, request: kibibyte(count: 0)) {
     ComputeSubjectHostUnresolved { host } => SessionStoresUnresolved { detail: join(["no dashboard instance is declared for host ", host as String, ", so it has no reviewer ledger"], "") }
     ComputeSubjectResolved { subject } =>
       SessionStoresResolved { stores: SessionPlacementStores {
@@ -1701,13 +1706,19 @@ fn session_reviewer_placement_acquire(
   attempt_key: String,
   criterion_key: String,
   reviewer_slots: Nat,
-  agent_slots: Nat,
 ) -> SessionReviewerAcquisition {
   match session_reviewer_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key) {
     SystemdUnitNameAdmitted { name: _ } =>
       match now_epoch_seconds() {
         Absent => SessionReviewerPlacementRefused { detail: "the host clock could not be read as epoch seconds, and a reviewer's slot carries a launch deadline" }
-        Present { value: now } => {
+        Present { value: now } =>
+      match session_placement_pool() {
+        // THE WORKERS' SEAT COUNT IS NEEDED TO CHARGE THE SHARED PARENT: the slice leg bills the
+        // sum of the partitions that land in the work slice, and the agent partition is one of them.
+        // No pool size means no honest sum, and an honest sum is what a refusal or a grant rests on.
+        Absent => SessionReviewerPlacementRefused { detail: "the session pool has no size, so the workers sharing the slice with the reviewers cannot be charged" }
+        Present { value: agent_pool } => {
+          let agent_slots = host_capacity_pool_slots(pool: agent_pool)
           let class_grant = work_class_grant(class: WorkClassReviewerSession, rows: work_class_grant_rows, ceiling: compute_memory_ceiling(instance: instance))
           let record = session_reviewer_attempt_record(
             node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key,
@@ -1735,6 +1746,7 @@ fn session_reviewer_placement_acquire(
               }
           }
         }
+      }
       }
     SystemdUnitNameStemEmpty => SessionReviewerPlacementRefused { detail: join(["the review unit name for ", node_id, ":", attempt_key, ":", criterion_key, " is empty"], "") }
     SystemdUnitNameDisallowedCharacter { stem: _, character: ch } => SessionReviewerPlacementRefused { detail: join(["the review unit name carries ", ch, ", which systemd refuses, so no unit could have run this review"], "") }

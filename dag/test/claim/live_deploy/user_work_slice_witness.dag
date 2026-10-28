@@ -161,7 +161,7 @@ test fn the_grant_launch_binds_the_declared_slice_once() -> Bool {
 
 test fn the_reviewer_launch_binds_the_declared_slice_once() -> Bool {
   let inst = srv2_deploy_dashboard_instance()
-  let props = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
+  let props = dispatch_review_unit_properties(instance: inst, granted: inst.dispatch_worker_memory_max, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
   !has_property(props: props, needle: slice_needle())
     && match gunbc_user_work_transient_command(unit: "gunbc-review-t.service" as NonEmptyStr, properties: props, setenv_bindings: [], command_argv: ["true"]) {
       SystemdRunCommandRefused { cause: _ } => false

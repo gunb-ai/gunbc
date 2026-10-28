@@ -1937,15 +1937,21 @@ fn dispatch_review_unit_name(node_id: String, attempt_key: String, criterion_key
 // `active (exited)` unit outlived its verdict and every next dispatch of its lineage refused
 // stale_session until someone stopped it by hand (srv1 lab, 2026-10-11), so its convene gate reads the
 // record through belt_launch_process like the reviewer's, and no caller is left for RemainAfterExit.
+// THE UNIT PROPERTIES EVERY GUN-BC REVIEW-ROLE UNIT CARRIES. MemoryMax is the figure the CALLER
+// brings, spelled from one value: a leased reviewer passes the amount host_capacity granted it (the
+// same figure the ledger charged -- one figure for reservation and cap, gunbc.roadmap.roadmap_session_placement),
+// while the auditor and supervisor callers still pass the instance ceiling, the arms the placement
+// module's DECLARED FRONTIER still names. No caller may widen the figure to get past a refusal.
 fn dispatch_review_unit_properties(
   instance: HostDashboardInstance,
+  granted: ByteSize,
   working_directory: String,
   log_path: String,
   review_dir: String,
   exit_hook: NonEmptyStr,
 ) -> List<SystemdRunProperty> {
   concat(worker_root_equivalent_socket_denial_properties(), concat(dispatch_user_manager_privilege_confinement_properties(), concat([
-    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(instance.dispatch_worker_memory_max)) as NonEmptyStr },
+    NamedUnitSetting { property: MemoryMax, value: to_string(value: byte_size_count(b: granted)) as NonEmptyStr },
     NamedUnitSetting { property: WorkingDirectoryProperty, value: working_directory as NonEmptyStr },
     NamedUnitSetting { property: StandardOutputProperty, value: join(["append:", log_path], "") as NonEmptyStr },
     NamedUnitSetting { property: StandardErrorProperty, value: join(["append:", log_path], "") as NonEmptyStr },
@@ -2054,12 +2060,14 @@ fn dispatch_review_unit_command(
   brief: String,
   head_sha: String,
   criterion_key: String,
+  granted: ByteSize,
   exit_hook: NonEmptyStr,
 ) -> SystemdRunCommandReading {
   gunbc_user_work_transient_command(
     unit: dispatch_review_unit_name(node_id: node_id as String, attempt_key: attempt_key, criterion_key: criterion_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
+      granted: granted,
       working_directory: instance.repo_root as String,
       log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
       review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
@@ -2121,6 +2129,10 @@ fn dispatch_audit_unit_command(
     unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
     properties: dispatch_review_unit_properties(
       instance: instance,
+      // THE AUDITOR STILL STARTS AT THE CEILING (DECLARED FRONTIER, gunbc.roadmap.roadmap_session_placement):
+      // it joins the ledger as its own class once measured peak rows size it; the reviewer's producer
+      // is the pattern. Passing the ceiling here is that frontier spelled at the call site, not a default.
+      granted: instance.dispatch_worker_memory_max,
       working_directory: instance.repo_root as String,
       log_path: join([dir, "/auditor-stdout.log"], ""),
       review_dir: dir,
