@@ -302,16 +302,16 @@ data forge_resolvable_name_hole_source: String = "module probe_forge_resolvable_
 
 data forge_single_label_row_hole_source: String = "module probe_forge_single_label_row\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\ntype ShareRow { server: ResolvableName }\nfn forged_row() -> Optional<ShareRow> {\n  match parse_host_name(raw: \"srv2\") {\n    Ok { value: h } => Present { value: ShareRow { server: ResolvableName { name: h } } }\n    Err { value: e } => Absent\n  }\n}\n"
 
-data forge_zone_hole_source: String = "module probe_forge_zone\nimport gunbc.host.host_name_resolution { Zone }\nimport extdeps.dns.domain_name { DnsLabel }\ndata bad_zone: Zone = Zone { labels: [] }\n"
+data forge_zone_hole_source: String = "module probe_forge_zone\nimport gunbc.host.host_name_resolution { Zone }\ndata bad_zone: Zone = Zone { labels: [] }\n"
 
 // THE EMPTY RESOLVER. `[]` is a FreeMonoid and cannot be a FreeSemigroup, so the forgery is refused by the
 // field's cardinality as well as by the seal — which is the difference between a check that can be
 // forgotten and a state that cannot be written.
-data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolver\nimport gunbc.host.host_name_resolution { Resolver }\ndata bad_resolver: Resolver = Resolver { servers: [] }\n"
+data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolver\nimport extdeps.dns.resolver { Resolver }\ndata bad_resolver: Resolver = Resolver { servers: [] }\n"
 
 // THE CONTROL: the identical intentions, built through the admissions. It must be CLEAN of every class the
 // holes are refused for, or the holes are refusing something unrelated to forging.
-data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _ } => Absent\n  }\n}\n"
+data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _ } => Absent\n  }\n}\n"
 
 test fn a_host_row_forging_a_sealed_name_is_refused_at_compile_time() -> ProcessExit {
   census_verdict_all(
