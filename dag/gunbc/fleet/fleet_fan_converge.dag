@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import product.fan_policy_standing { ConvergeRouteBound, ConvergeRouteUnbound }
 import gunbc.fleet.fleet_fan_converge_routes { fan_converge_route_for_family }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import extdeps.bmc.megarac_fan_policy { MegaRacFanPwmAllAdmitted, MegaRacFanPwmAllRefused, megarac_fan_pwm_all_of }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.machine_intake.fan_observe { FanObserveHost }
@@ -128,6 +128,8 @@ fn fleet_fan_family_refusal(family: BmcFirmwareFamily, control: FleetFanControl)
       }
       OpenBmc =>
         Present { value: "read obligation: whether phosphor-fan zone config expresses a held duty floor on this board is unread" as NonEmptyStr }
+      SupermicroAten =>
+        Present { value: "read obligation: what duty a Supermicro zone holds when no host writes after the mode is set is unread (extdeps.bmc.supermicro_oem_fan supermicro_unwritten_duty_standing), so a held floor is not expressible yet" as NonEmptyStr }
     }
   }
 }

@@ -10,7 +10,7 @@ import gunbc.namespace_cut.ambient_name_home { AmbientNameHome, AmbientNameKitPr
 
 // HOW `gunbc test //gunbc/instruments:ambient-name-census` READS ITS RUNS. The census is native: the
 // emitted v2 compiler's census walk prints one `binding` line per module-level reference occurrence,
-// read off resolve's one binding record (v2.compiler.occurrence_binding_census), and one
+// read off resolve's one binding record (v2.compiler.occurrence_resolution_census), and one
 // `binding_module` line per module that resolved, or one `binding_unreached` line per module that did
 // not. This module is the host-side reader the instrument row hands its runs to, and it decides:
 //
@@ -271,8 +271,8 @@ fn census_observation_text(tree_stdout: String) -> String {
     + (distinct_lines(lines: partial_lines(stdout: tree_stdout)) |> join(separator: "\n")) + "\n"
 }
 
-// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_binding_census
-// occurrence_binding_partial_lines), forwarded as printed. They never count as observation of the module:
+// A REFUSED MODULE'S PARTIAL ROWS AND ITS binding_partial_module VALIDITY LINE (v2.compiler.occurrence_resolution_census
+// occurrence_resolution_partial_lines), forwarded as printed. They never count as observation of the module:
 // observed_modules reads only binding_module, and the module's binding_unreached line still stands. The
 // validity line travels with the rows, so a later reader sees a conflicting count (rows withheld) and an
 // unreadable count beside them rather than a silently shortened row set.
@@ -318,7 +318,7 @@ fn ambient_name_census_standing(
   let rewritten_lines = split(s: rewritten, delimiter: "\n") |> filter(l => l != "")
     |> map(l => "rewritten\t" + l + "\t" + module_subjects_text(attribution: attribution, module: field_at(line: l, index: 0)))
   let subject_lines = map_keys(observed) |> map(m => "module_subjects\t" + m + "\t" + module_subjects_text(attribution: attribution, module: m))
-  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_binding_census UnrecordedSplit): declared-order
+  // THE ONE SET-ASIDE CATEGORY (v2.compiler.occurrence_resolution_census UnrecordedSplit): declared-order
   // heads no one resolves, printed by module and path and counted, never refused and never hidden.
   let unanswered = distinct_lines(lines: split(s: tree_stdout, delimiter: "\n") |> filter(l => starts_with(s: l, prefix: "binding_unanswered\t")))
   let bytes = census_observation_text(tree_stdout: tree_stdout)
@@ -445,13 +445,30 @@ fn ambient_name_census_standing_with_kit(
   tree_stdout: String,
   tree_runs: String,
   rewritten: String,
-  kit_stdout: String
+  kit_stdout: String,
+  kit_root: String
 ) -> CliWireResponse {
   let base = ambient_name_census_standing(fixture_stdout: fixture_stdout, fixture_status: fixture_status, unindexed_status: unindexed_status, tree_stdout: tree_stdout, tree_runs: tree_runs, rewritten: rewritten)
+  ambient_census_kit_standing(base: base, kit_stdout: kit_stdout, kit_root: kit_root)
+}
+
+// THE KIT'S JUDGMENT OVER AN ALREADY-READ BASE STANDING, apart from the runs that feed it so a claim can supply both
+// (test.claim.ambient_name_census_kit_unobserved).
+fn ambient_census_kit_standing(base: CliWireResponse, kit_stdout: String, kit_root: String) -> CliWireResponse {
   let kit_lines = split(s: kit_stdout, delimiter: "\n")
     |> filter(l => starts_with(s: l, prefix: "binding\t") || starts_with(s: l, prefix: "binding_unbound\t") || starts_with(s: l, prefix: "binding_unreached\t") || starts_with(s: l, prefix: "binding_module\t"))
     |> map(l => "kit_fixture\t" + l)
+  // A DECLARED KIT THE CENSUS DID NOT OBSERVE IS NO OBSERVATION, NEVER A HELD ONE (DESIGN section 5): a kit run
+  // that refused (a source root the native lane would not bind, an unreadable kit tree) prints no binding row, and
+  // holding exit 0 over it would hide the kit controls. It refuses 2 naming the kit root; a reading the base already
+  // refused keeps its own, earlier cause.
   match base {
+    CliWirePrintable { bytes: b, exit: ExitSuccess } =>
+      if count(kit_lines) == 0 {
+        CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: "kit_unobserved: the kit run over kit root " + kit_root + " printed no binding row for any of " + to_string(count(ambient_census_kit_subjects())) + " kit subject(s), so the kit fixtures were not observed" } }
+      } else {
+        CliWirePrintable { bytes: b + (kit_lines |> join(separator: "\n")) + "\n", exit: ExitSuccess }
+      }
     CliWirePrintable { bytes: b, exit: e } => CliWirePrintable { bytes: b + (kit_lines |> join(separator: "\n")) + "\n", exit: e }
     other => other
   }

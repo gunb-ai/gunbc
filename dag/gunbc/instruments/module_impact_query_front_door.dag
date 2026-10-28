@@ -1,5 +1,6 @@
 module gunbc.instruments.module_impact_query_front_door
 
+import std.integer { int_to_decimal_string }
 import std.types { List }
 import std.algebra { Cons, fold_list, list_reverse }
 import v2.std.text { String }
@@ -283,7 +284,7 @@ fn render_modules_paths(paths: List<String>) -> String {
 }
 
 fn count_text<T>(xs: List<T>) -> String {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, _) { acc + 1 }) as String
+  int_to_decimal_string(value: fold_list(xs: xs, empty: 0, cons: fn(acc, _) { acc + 1 }))
 }
 
 data front_door_default_subject: String = "v2.lens.module_graph"

@@ -8,7 +8,7 @@ import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
-import extdeps.bmc.access_profile { BmcAccessObservation }
+import extdeps.bmc.access_profile { BmcAccessObservation, bmc_observation_ipmi_cipher_suite }
 import product.host_identity { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
@@ -236,6 +236,7 @@ fn fan_observe_with(host: FanObserveHost, password_file: NonEmptyStr, policy: Fa
       password_file: password_file,
       rounds: policy.rounds,
       interval: policy.interval,
+      cipher_suite: bmc_observation_ipmi_cipher_suite(observation: host.observation),
     ),
   )
 }
@@ -297,6 +298,7 @@ fn fan_observe_boot_phase_with(host: FanObserveHost, password_file: NonEmptyStr,
       password_file: password_file,
       rounds: policy.rounds,
       interval: policy.interval,
+      cipher_suite: bmc_observation_ipmi_cipher_suite(observation: host.observation),
     ),
   )
 }

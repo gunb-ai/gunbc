@@ -38,6 +38,7 @@ import gunbc.rust_item_scan {
 import std.algebra { trim, list_append, list_snoc_item, fold_list, length, list_head, list_map }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, Set, String }
+import std.integer { int_to_decimal_string }
 
 // TWO POPULATIONS, TWO FUNCTIONS, AND THEY MAY NOT BE COLLAPSED.
 //
@@ -597,7 +598,7 @@ fn rust_line_refusal_detail(side: String, refusal: RustLineRefusal) -> String {
     LineBeyondTheFile { line: _, line_count: n } =>
       concat(
         "changed line at ",
-        concat(side, concat(" lies beyond the file's ", concat(n as String, " scanned lines")))
+        concat(side, concat(" lies beyond the file's ", concat(int_to_decimal_string(value: n), " scanned lines")))
       )
   }
 }

@@ -677,7 +677,7 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
         _ => false
       }
     Absent =>
-      let is_declaration_structure = (n.module_item_kind == ModuleItemTypeDeclaration || n.connective == Disj) && n.ident_span != none
+      let is_declaration_structure = type_node_is_declaration_structure(n: n) && n.ident_span != none
       let declared = if is_declaration_structure { declaration_ref_of_declaration_node(decl: n, source_indices: source_indices, env: env) } else { none }
       match declared {
         Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
@@ -2286,14 +2286,54 @@ fn type_leaf_is_unbound_in_closure_scope(name: String, generic_param_names: List
   }
 }
 
+// A DECLARATION'S STRUCTURE IS NOT A TYPE ARGUMENT. A call whose result is a record carries the
+// record's DECLARATION item as its type (infer answers Resolved with the item), and a reference to an
+// Optional or a Bool resolves to the coproduct body declaring it. The renderer spells either by name
+// and type arguments (closed_alias_peel_verdict reads the declaration's parameter count), never by
+// fields or variant arms. The walks below read a node's children as its type arguments, so on a
+// declaration they descended into its members and onward into the declarations those members name,
+// and answered for leaves the rendered spelling never writes. Measured on the self-host closure:
+// every `fold(.., init: child_walk_init(), ..)` in v2.compiler.resolve rendered `|acc: _, ..|` for
+// the non-generic ChildWalk, through the closure walk on its fields and then, with that gated, through
+// the parametric-head walk on the same fields; elsewhere an Option<Rc<Node>> accumulator reached
+// Optional's `Absent` arm and a bool-valued one reached Bool's `True`, each an environment miss read
+// as "a generic this fn does not bind" (gunbc.recurring_failure_mode
+// a_type_walk_reads_declaration_structure_as_type_arguments). Resolve already stops at a declaration
+// for the same reason (v1.compiler.infer_resolve reference_tree_with_declaration), and
+// is_host_optional_carrier_type reads the same pair as declaration structure.
+fn type_node_is_declaration_structure(n: Node) -> Bool {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => true
+    _ => n.connective == Disj
+  }
+}
+
+fn type_node_is_declaration_item(n: Node) -> Bool {
+  match n.module_item_kind {
+    ModuleItemTypeDeclaration => true
+    _ => false
+  }
+}
+
 // A DECLARATION'S OWN FORMALS ARE UNBOUND ATOMS TOO. A fold whose init is a bare constructor
 // (`init: Ok { value: .. }`) carries the parametric DECLARATION as its accumulator type, and its
 // renderer spells the declaration's formals as arguments: `Rc<Result<ok, err>>` on
-// extdeps.dns.domain_name parse_dns_label_list, two E0425s. The walk below read children and an
-// applied binding but never `params`, so a declaration node with no applied binding answered
-// "bound" and the closure annotation was written. With no applied binding, a formal outside the
-// fn's generic scope is as unbound as any other atom, and the annotation defers to `_`.
+// extdeps.dns.domain_name parse_dns_label_list, two E0425s. With no applied binding, a formal outside
+// the fn's generic scope is as unbound as any other atom, and the annotation defers to `_`. Formals
+// count only on an item spelled in its own right: a declaration reached through a reference's
+// `inferred` is spelled by that reference's own arguments, which the walk reads instead.
+fn type_node_applied_or_formal_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
+  }
+}
+
 fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List<String>, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_declaration_structure(n: n) {
+    let spelled_by_itself = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none || type_node_is_declaration_item(n: n)
+    return spelled_by_itself && type_node_applied_or_formal_has_closure_unbound_generic_atom(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
+  }
   let leaf_name = authored_name_at(source_indices: source_indices, node: n)
   if n.children |> count == 0 && leaf_name != "" {
     if type_leaf_is_unbound_in_closure_scope(name: leaf_name, generic_param_names: generic_param_names, env: env) { return true }
@@ -2303,38 +2343,36 @@ fn type_node_has_closure_unbound_generic_atom(n: Node, generic_param_names: List
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
+        if !type_node_is_declaration_structure(n: rt) && type_node_has_closure_unbound_generic_atom(n: rt, generic_param_names: generic_param_names, env: env, source_indices: source_indices) { return true }
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices)) {
-    true
-  } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_closure_unbound_generic_atom(n: c, generic_param_names: generic_param_names, env: env, source_indices: source_indices))
-      Absent => n.params |> any(p => !type_var_in_fn_generic_scope(id: generic_param_name_at(n: p, source_indices: source_indices), generic_param_names: generic_param_names))
-    }
+  n.children |> any(c => type_node_has_closure_unbound_generic_atom(n: child_type_node(ch: c), generic_param_names: generic_param_names, env: env, source_indices: source_indices))
+    || type_node_applied_or_formal_has_closure_unbound_generic_atom(n: n, generic_param_names: generic_param_names, env: env, source_indices: source_indices)
+}
+
+fn type_node_applied_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+    Present { value: applied } => applied.children |> any(c => type_node_has_unbound_type_variable(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
+    Absent => false
   }
 }
 
 fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if type_node_is_declaration_structure(n: n) {
+    return type_node_applied_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices)
+  }
   if n.inferred != none {
     match n.inferred.value {
       TypeVariable { id: tv } =>
         if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
       Resolved { node: rt } =>
-        if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
+        if !type_node_is_declaration_structure(n: rt) && type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
       _ => ()
     }
   }
-  if n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
-    true
-  } else {
-    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
-      Present { value: applied } => applied.children |> any(c => type_node_has_unbound_type_variable(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
-      Absent => false
-    }
-  }
+  n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices))
+    || type_node_applied_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices)
 }
 
 fn is_rust_value_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -12278,7 +12316,7 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 // nothing to infer from. A bare head is a type REFERENCE (a Map argument, a field), never an arm; the arms'
 // own children are still searched. Dissolution: adhoc-65526d74-43f, with the rest of this compensation.
 fn type_node_carries_applicationless_parametric_head(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
-  n.children |> any(c =>
+  !type_node_is_declaration_structure(n: n) && n.children |> any(c =>
     let t = child_type_node(ch: c)
     (n.connective != Disj && rust_type_renders_bare_parametric_head(t: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
       || type_node_carries_applicationless_parametric_head(n: t, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
@@ -18273,17 +18311,21 @@ fn emit_rest_auth_line(transport: Node, service_item: Node, http_method: String,
   }
 }
 
+// ONE `.query` CALL PER PARAMETER. reqwest's RequestBuilder::query takes `&T: Serialize` and APPENDS,
+// and a Rust array literal is homogeneous, so rendering every parameter into one
+// `&[("k", &v), ..]` slice compiled only while every value had the same type. extdeps.github.pulls
+// List declares `query: { state: state, per_page: per_page }` (a PullRequestState and an Int), and
+// the single slice was rustc E0308, expected `&PullRequestState`, found `&i64` (class 7 of
+// stern-bat-401's emitter-debt list). One call per parameter lets each value serialize as its own
+// type -- a coproduct through its wire contract, an integer as a number -- in declaration order.
 fn emit_rest_query_line(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match transport_query(t: transport, source_indices: source_indices) {
     Present { value: q } => {
-      let pairs = q.children |> map(fi =>
-        concat("(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
+      q.children |> map(fi =>
+        concat("let request = request.query(&[(\"", field_init_node_name_at(n: fi, source_indices: source_indices), "\", &",
           emit_rust_dag_string_to_host_via_seam(dag_expr: emit_simple_expr(expr: field_init_node_value(n: fi), target: Rust, source_indices: source_indices)),
-          ")")
-      )
-      if pairs |> count > 0 {
-        concat("let request = request.query(&[", pairs |> join(separator: ", "), "]);")
-      } else { "" }
+          ")]);")
+      ) |> join(separator: "\n")
     }
     Absent => ""
   }
@@ -21616,7 +21658,7 @@ fn emit_source_root_eval_driver_main_rs(crate_name: String, pipeline_module: Str
       "                obligation_rows.push(row.clone());", "\n",
       "            \}", "\n",
       "        \}", "\n",
-      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_binding_census), one line each, in", "\n",
+      "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_resolution_census), one line each, in", "\n",
       "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.", "\n",
       "        for line in native_census_infer_binding_lines(context.positions.clone(), entry.clone(), step.outcome.clone()).iter() \{", "\n",
       "            println!(\"\{\}\", line);", "\n",

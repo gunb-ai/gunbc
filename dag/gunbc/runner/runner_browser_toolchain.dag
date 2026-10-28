@@ -75,6 +75,12 @@ import gunbc.runner.runner_microvm_host_ready {
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import v2.std.node { Node }
 import gunbc.runner.runner_unit { runner_unit_dropin_path }
+// THE DROP-IN PATH IS IMPORTED, NOT DECLARED HERE. It is the capability table's, because the same path is
+// the EVIDENCE a sibling converge reads to decide whether to restate gunbc-browser-ready (see
+// gunbc.runner.runner_capability_labels). A write target and an evidence target spelled twice drift apart
+// eventually, and the drift is invisible: this converge writes capability bytes to one file while the
+// restating converge reads another, so the capability is withheld forever and nothing is red.
+import gunbc.runner.runner_capability_labels { browser_ready_labels_dropin_path }
 import gunbc.runner.runner_unit_file { runner_host_browser_ready_labels_dropin_text, RunnerUnitText, RunnerUnitTextRefused }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
@@ -1236,7 +1242,11 @@ fn superseded_trees_text(r: SupersededTrees) -> String {
 // host in the floor's pool reads ready, the floor's runs-on names it (a separate change, ordered
 // after the converge, because a runs-on naming a label no runner carries queues every floor), and a
 // runner whose toolchain is absent can no longer take the floor's real-Chromium wet claims.
-data browser_ready_labels_dropin_path: NonEmptyStr = runner_unit_dropin_path(file_name: "85-browser-ready-labels.conf" as NonEmptyStr)
+// THE DROP-IN PATH IS IMPORTED, NOT DECLARED HERE. It is the capability table's, because the same path is
+// the EVIDENCE a sibling converge reads to decide whether to restate gunbc-browser-ready (see
+// gunbc.runner.runner_capability_labels). A write target and an evidence target spelled twice drift apart
+// eventually, and the drift is invisible: this converge writes capability bytes to one file while the
+// restating converge reads another, so the capability is withheld forever and nothing is red.
 
 // THE ELEVATION POSTURE IS A PARAMETER, NOT A GLOBAL: SudoElevated is the production posture --
 // the legs wrap in sudo -n through sudo_elevate_command, the carrier the deleted privileged
