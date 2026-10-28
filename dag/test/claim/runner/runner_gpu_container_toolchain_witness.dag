@@ -29,7 +29,7 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 // against the exact range pair srv3 shipped with (two accounts both at 100000+65536).
 
 import std.logic { Bool }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.algebra { trim, string_contains }
 
 import product.host_identity { HostIdentity }
@@ -53,6 +53,19 @@ import gunbc.runner.runner_gpu_container_toolchain {
   gpu_container_provision_plan_check_count,
   gpu_container_provision_step_names_include,
   GpuContainerProvisionCheck,
+  GpuContainerProvisionAction,
+  ProvisionOwnedDirectory,
+  ProvisionRootOwnedFile,
+  ProvisionSubordinateRangesFile,
+  ProvisionLegs,
+  ProvisionVerify,
+  ProvisionRefusal,
+  gpu_container_provision_subordinate_write,
+  GpuContainerProvisionMapScan,
+  GpuContainerProvisionMapClear,
+  GpuContainerProvisionMapMappedFromRange,
+  GpuContainerProvisionMapUnreadableRow,
+  gpu_container_provision_map_scan,
   VerifyKeyringFingerprint,
   gpu_container_provision_check_verdict,
   GpuContainerProvisionStep,
@@ -79,9 +92,13 @@ import gunbc.runner.runner_registration_labels {
 import extdeps.shadow.subordinate_ids {
   SubordinateRange,
   SubordinateFileRead, SubordinateFileUnreadable,
-  SubordinatePlanSteps, SubordinatePlanRefused,
+  SubordinatePlan, SubordinatePlanSteps, SubordinatePlanRefused,
   subordinate_collisions,
   plan_subordinate_file,
+  render_subordinate_file,
+  subordinate_rows_after_plan,
+  subordinate_file_bytes,
+  subordinate_range_text,
 }
 
 import extdeps.exec.command { ArgvCommand, argv_words }
@@ -248,19 +265,28 @@ test fn disjoint_ranges_do_not_collide() -> Bool {
   length(subordinate_collisions(rs: [a, b])) == 0
 }
 
+
+// A READING AS AN ACTUAL FILE READING WOULD PRODUCE: the rows, and the bytes those rows render to. The
+// bytes are NOT hand-written here -- a witness that typed its own bytes could make them disagree with the
+// rows, and the plan would then be tested against a file no reader could ever have produced. That is the
+// round-trip invariant the planner now enforces (a row whose text does not render back byte-identically is
+// a refusal), so the witnesses have to earn their readings the same way the host does.
+fn subordinate_read_of_rows(path: String, rs: List<SubordinateRange>) -> SubordinateFileRead {
+  SubordinateFileRead { path: path, bytes: render_subordinate_file(rs: rs), ranges: rs }
+}
+
 // THE PLAN REFUSES TO MOVE THE JOB USER ONTO A RANGE HELD BY AN ACCOUNT THE MODEL DID NOT NAME AS
 // DISPLACEABLE. The job user is asked for 100000+65536, which the undeclared admin account "gunbc-fleet"
 // already holds; the model only permits moving "briansrls". The plan must refuse rather than evict an
 // account whose container store nobody has checked — moving it is the exact silent downgrade the manager's
 // constraint forbids.
 test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
-  let reading = SubordinateFileRead {
+  let reading = subordinate_read_of_rows(
     path: "/etc/subuid",
-    ranges: [
+    rs: [
       SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
       SubordinateRange { account: "gunbc-fleet" as NonEmptyStr, first: 100000, count: 65536 },
-    ],
-  }
+    ],)
   match plan_subordinate_file(
     path: "/etc/subuid",
     reading: reading,
@@ -272,7 +298,7 @@ test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
     displacee_regrant_first: 400000,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -280,14 +306,13 @@ test fn a_plan_refuses_to_displace_an_undeclared_account() -> Bool {
 // that overlaps a surviving account must refuse, not create a fresh collision behind the job user's
 // back. Here briansrls would be re-granted onto 165536, which gunbc-worker already holds.
 test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
-  let reading = SubordinateFileRead {
+  let reading = subordinate_read_of_rows(
     path: "/etc/subuid",
-    ranges: [
+    rs: [
       SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
       SubordinateRange { account: "briansrls" as NonEmptyStr, first: 100000, count: 65536 },
       SubordinateRange { account: "gunbc-worker" as NonEmptyStr, first: 165536, count: 65536 },
-    ],
-  }
+    ],)
   match plan_subordinate_file(
     path: "/etc/subuid",
     reading: reading,
@@ -299,7 +324,7 @@ test fn a_plan_refuses_when_the_regrant_would_collide() -> Bool {
     displacee_regrant_first: 165536,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -317,7 +342,7 @@ test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
     displacee_regrant_first: 231072,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -328,14 +353,13 @@ test fn an_unreadable_subordinate_file_refuses_the_plan() -> Bool {
 test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> Bool {
   match plan_subordinate_file(
     path: "/etc/subuid",
-    reading: SubordinateFileRead {
+    reading: subordinate_read_of_rows(
       path: "/etc/subuid",
-      ranges: [
+      rs: [
         SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
         SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
         SubordinateRange { account: "briansrls" as NonEmptyStr, first: 165536, count: 65536 },
-      ],
-    },
+      ],),
     account: "ghrunner" as NonEmptyStr,
     want_first: 100000,
     want_count: 65536,
@@ -343,7 +367,7 @@ test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> B
     displaceable_store_free: true,
     displacee_regrant_first: 231072,
   ) {
-    SubordinatePlanSteps { steps: _ } => true
+    SubordinatePlanSteps { steps: _, rows: _ } => true
     SubordinatePlanRefused { reason: _ } => false
   }
 }
@@ -355,13 +379,12 @@ test fn the_srv3_collision_resolves_to_steps_when_the_named_account_moves() -> B
 test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
   match plan_subordinate_file(
     path: "/etc/subuid",
-    reading: SubordinateFileRead {
+    reading: subordinate_read_of_rows(
       path: "/etc/subuid",
-      ranges: [
+      rs: [
         SubordinateRange { account: "ghrunner" as NonEmptyStr, first: 100000, count: 65536 },
         SubordinateRange { account: "ubuntu" as NonEmptyStr, first: 100000, count: 65536 },
-      ],
-    },
+      ],),
     account: "ghrunner" as NonEmptyStr,
     want_first: 100000,
     want_count: 65536,
@@ -370,7 +393,7 @@ test fn the_plan_refuses_when_the_displaceable_account_has_a_store() -> Bool {
     displacee_regrant_first: 231072,
   ) {
     SubordinatePlanRefused { reason: _ } => true
-    SubordinatePlanSteps { steps: _ } => false
+    SubordinatePlanSteps { steps: _, rows: _ } => false
   }
 }
 
@@ -930,4 +953,221 @@ test fn the_gpu_container_probe_is_elevated_inside_its_environment() -> Bool {
     && word_at(words: words, n: 5) == "DOCKER_HOST=unix:///run/user/999/docker.sock"
     && words.any(w => w == nvidia_cdi_all_gpu_device as String)
     && !words.any(w => w == "--gpus")
+}
+
+// ── DEFECT 3: THE SUBORDINATE FILES ARE WRITTEN WHOLE ──────────────────────────────────────────────
+// usermod CANNOT DO THIS AT ALL. It exits 8 with "user X is currently used by process N" for any account
+// that has a running process, and both accounts this converge ever touches are logged in -- the displaced
+// account holds a systemd --user, the job account holds lingering sessions. So the route is a typed
+// whole-file write, and everything shadow's own writer was providing has to become an explicit refusal
+// here. Each witness below is one of those refusals, or the one shape the render is allowed to have.
+// A witness that only counted steps would pass with any of them missing.
+
+// THE srv3 FILE, AS THE FIRST CONVERGE FOUND IT (measured, 65 bytes, 0644 root:root): the job account and
+// the displaced account BOTH claim 100000-165535, and a third row sits above them. This collision is the
+// defect the converge exists to fix, so it is the input every witness below starts from.
+fn srv3_subuid_rows() -> List<SubordinateRange> {
+  [
+    SubordinateRange { account: "ghrunner", first: 100000, count: 65536 },
+    SubordinateRange { account: "ubuntu", first: 100000, count: 65536 },
+    SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+  ]
+}
+
+fn srv3_plan() -> SubordinatePlan {
+  plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_rows(path: "/etc/subuid", rs: srv3_subuid_rows()),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  )
+}
+
+// THE RENDER IS THE WHOLE FILE, IN THE ORDER IT WAS READ, with the displaced row re-granted in place at
+// the new first and the third row untouched. This is the byte-level contract: an untouched row that is
+// reordered, reformatted, or dropped is a corrupted file, and the writer's re-read compare would only
+// notice that something ELSE had touched it.
+test fn the_rendered_file_moves_the_displacee_and_keeps_every_other_row_byte_identical() -> Bool {
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: _, rows: rows } =>
+      render_subordinate_file(rs: rows)
+        == "ghrunner:100000:65536\nubuntu:231072:65536\nbriansrls:165536:65536"
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// THE srv1 ANSWER: a file that already holds the declared rows produces NO WRITE AT ALL, and the render
+// round-trips exactly. ghrunner there holds a running rootless store; a converge that rewrote the file "to
+// be sure" would take the fleet lock and dirty the mtime of a file it was only asked to inspect, and a
+// converge that moved that row would orphan 149 MB of images.
+test fn a_file_that_already_holds_the_declared_rows_produces_no_write_and_renders_itself_back() -> Bool {
+  let rs = [
+    SubordinateRange { account: "ghrunner", first: 100000, count: 65536 },
+    SubordinateRange { account: "ubuntu", first: 231072, count: 65536 },
+    SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+  ]
+  let reading = subordinate_read_of_rows(path: "/etc/subuid", rs: rs)
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: reading,
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: false,
+    displacee_regrant_first: 296608,
+  ) {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      length(steps) == 0
+        && length(gpu_container_provision_subordinate_write(
+             step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading)) == 0
+        && render_subordinate_file(rs: rows) == subordinate_file_bytes(reading: reading)
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// A ROW THAT DOES NOT RENDER BACK BYTE-IDENTICALLY IS A REFUSAL, NOT A REWRITE. Here the live file carries
+// a trailing space on one row: the parse recovered the row, so a plan that rendered from the ROWS ALONE
+// would silently drop the space and publish a file that is not the one it read. "I parsed 2 of your 2
+// rows" is not the invariant -- the invariant is that the text and the rows agree.
+test fn a_row_that_does_not_render_back_byte_identically_refuses_the_write() -> Bool {
+  let rs = [
+    SubordinateRange { account: "ghrunner", first: 100000, count: 65536 },
+    SubordinateRange { account: "ubuntu", first: 100000, count: 65536 },
+  ]
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: SubordinateFileRead {
+      path: "/etc/subuid",
+      bytes: "ghrunner:100000:65536\nubuntu:100000:65536 ",
+      ranges: rs,
+    },
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "byte-identically")
+  }
+}
+
+// THE RENDERED RANGES MUST BE PAIRWISE DISJOINT, OR NOTHING IS WRITTEN. shadow itself permits two rows for
+// one account, and a plan that re-grants BOTH of them to the same new first would render a file where the
+// displaced account holds the same range twice -- which is not a collision shadow would refuse to read, it
+// is a collision that reads as one wider range than anyone granted.
+test fn rows_that_would_render_over_each_other_refuse_the_write() -> Bool {
+  let rs = [
+    SubordinateRange { account: "ubuntu", first: 100000, count: 65536 },
+    SubordinateRange { account: "ubuntu", first: 100000, count: 65536 },
+    SubordinateRange { account: "briansrls", first: 165536, count: 65536 },
+  ]
+  match plan_subordinate_file(
+    path: "/etc/subuid",
+    reading: subordinate_read_of_rows(path: "/etc/subuid", rs: rs),
+    account: "ghrunner",
+    want_first: 100000,
+    want_count: 65536,
+    displaceable: "ubuntu",
+    displaceable_store_free: true,
+    displacee_regrant_first: 231072,
+  ) {
+    SubordinatePlanSteps { steps: _, rows: _ } => false
+    SubordinatePlanRefused { reason: r } => string_contains(s: r, pattern: "pairwise disjoint")
+  }
+}
+
+// THE WRITE CARRIES TWO KINDS OF BYTES, AND THEY ARE NOT THE SAME FACT: what this converge rendered, and
+// what the file held when the rows were read. Collapsing them (writing `expected` as the content, or
+// comparing against a re-read) is how a stale lock holder overwrites a file it never parsed.
+fn subordinate_write_fields_match(
+  action: GpuContainerProvisionAction,
+  step: String,
+  path: String,
+  content: String,
+  expected: String,
+) -> Bool {
+  match action {
+    ProvisionOwnedDirectory { step: _, argv: _ } => false
+    ProvisionRootOwnedFile { step: _, path: _, content: _, scope: _ } => false
+    ProvisionSubordinateRangesFile { step: s, path: p, content: c, expected: e } =>
+      s == step && p == path && c == content && e == expected && c != e
+    ProvisionLegs { legs: _ } => false
+    ProvisionVerify { step: _, check: _ } => false
+    ProvisionRefusal { step: _, cause: _ } => false
+  }
+}
+
+test fn the_subordinate_write_carries_the_render_and_the_bytes_it_was_made_against() -> Bool {
+  let reading = subordinate_read_of_rows(path: "/etc/subuid", rs: srv3_subuid_rows())
+  match srv3_plan() {
+    SubordinatePlanSteps { steps: steps, rows: rows } =>
+      fold(
+        gpu_container_provision_subordinate_write(
+          step: "subuid", path: "/etc/subuid", steps: steps, rows: rows, reading: reading),
+        init: false,
+        f: (found, a) =>
+          found || subordinate_write_fields_match(
+            action: a,
+            step: "subuid",
+            path: "/etc/subuid",
+            content: render_subordinate_file(rs: rows),
+            expected: subordinate_file_bytes(reading: reading)))
+    SubordinatePlanRefused { reason: _ } => false
+  }
+}
+
+// ── THE NAMESPACE PRECHECK: WHAT usermod WAS NEVER ABLE TO ASK ──────────────────────────────────────
+// usermod refuses every account with a process, which is why it could not be used here AND why it never
+// answered the question that matters: not "does this account run" but "does any process of it hold a user
+// namespace mapped out of the range being moved". These rows are /proc/<pid>/uid_map as the kernel writes
+// them -- right-aligned columns, which is why the reader tokenizes instead of splitting on one space.
+
+test fn a_namespace_mapped_from_the_range_being_moved_is_caught() -> Bool {
+  match gpu_container_provision_map_scan(text: "         0     100000      65536", first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => false
+    GpuContainerProvisionMapMappedFromRange { row: _ } => true
+    GpuContainerProvisionMapUnreadableRow { row: _ } => false
+  }
+}
+
+// ADJACENCY IS NOT OVERLAP: a namespace on the range ABOVE (165536+) shares no id with the range being
+// moved (100000..165535). A check that refused this would refuse every real host, because /etc/subuid on
+// these machines stacks its rows contiguously.
+test fn an_adjacent_namespace_range_is_clear() -> Bool {
+  match gpu_container_provision_map_scan(text: "         0     165536      65536", first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => true
+    GpuContainerProvisionMapMappedFromRange { row: _ } => false
+    GpuContainerProvisionMapUnreadableRow { row: _ } => false
+  }
+}
+
+// EVERY ROW IS READ, not the first. The overlapping mapping is the third line here: a scan that stopped at
+// the first clear row -- or read only line 1, where the root's own mapping always sits -- would certify a
+// container that is live on the range being moved.
+test fn every_row_of_a_map_is_read_and_not_just_the_first() -> Bool {
+  match gpu_container_provision_map_scan(
+    text: "         0          0          1\n         1     165536      65536\n         0     100000      65536",
+    first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => false
+    GpuContainerProvisionMapMappedFromRange { row: _ } => true
+    GpuContainerProvisionMapUnreadableRow { row: _ } => false
+  }
+}
+
+// A ROW THIS MODEL CANNOT READ IS A REFUSAL, NOT A SKIP. /proc/<pid>/uid_map is written by the kernel; a
+// row whose columns are not integers is a kernel this model does not describe, and "I could not read it"
+// must never be reported as "nothing is mapped from that range".
+test fn an_unreadable_map_row_is_refused_rather_than_skipped() -> Bool {
+  match gpu_container_provision_map_scan(text: "         0     100000    notanumber", first: 100000, count: 65536) {
+    GpuContainerProvisionMapClear => false
+    GpuContainerProvisionMapMappedFromRange { row: _ } => false
+    GpuContainerProvisionMapUnreadableRow { row: _ } => true
+  }
 }

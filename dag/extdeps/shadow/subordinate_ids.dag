@@ -1,22 +1,28 @@
-// SUBORDINATE IDS: THE FILE ROOTLESS CONTAINERS ACTUALLY REST ON. `usermod`, shadow's suite, owns
-// /etc/subuid and /etc/subgid; nothing in this repository had modelled them, because nothing had
-// needed to start a rootless daemon as another user until now. Rootless Docker cannot start without a
-// subordinate range of its own: dockerd-rootless.sh hands the range to RootlessKit, which builds the
-// user namespace that maps the daemon's 0 to the range's first uid. Two accounts sharing one range
-// therefore do not merely compete for ids — the kernel refuses the second namespace, and the failure
-// surfaces as a rootless daemon that will not start, which reads like a Docker bug and is not one.
+// SUBORDINATE IDS: THE FILE ROOTLESS CONTAINERS ACTUALLY REST ON. /etc/subuid and /etc/subgid are the
+// files rootless containers actually rest on; nothing in this repository had modelled them, because
+// nothing had needed to start a rootless daemon as another user until now. Rootless Docker cannot start
+// without a subordinate range of its own: dockerd-rootless.sh hands the range to RootlessKit, which
+// builds the user namespace that maps the daemon's 0 to the range's first uid. Two accounts sharing one
+// range therefore do not merely compete for ids — the kernel refuses the second namespace, and the
+// failure surfaces as a rootless daemon that will not start, which reads like a Docker bug and is not
+// one.
+//
+// THE EDITOR IS A TYPED WHOLE-FILE WRITE, NOT `usermod`. MEASURED on the fleet hosts: `usermod -r -u`
+// exits 8 ("user is currently used by process N") for any account with a running process, and every
+// candidate account here is permanently logged in (lingering enabled; a systemd --user at pid 4116).
+// The route this module now offers renders the whole file from parsed rows and hands the bytes to the
+// typed writer (gunbc.typed_remote_file_write) under the fleet host lock, with a re-read compare
+// immediately before the rename: if the file differs from what the render was made against, the write
+// REFUSES and never overwrites.
 //
 // THE SHAPE IS name:first:count, one account per line, and BOTH numbers are decimal integers. A line
 // that does not parse is refused rather than skipped: a file half-written by a concurrent
-// `usermod`, or an entry someone added with a stray space, is exactly the situation where silently
-// ignoring one line makes a collision look absent. Skipping is the fail-open this module exists to
-// prevent, so parsing answers Read or Unreadable and the caller converges only on Read.
+// `useradd`/`usermod`, or an entry someone added with a stray space, is exactly the situation where
+// silently ignoring one line makes a collision look absent. Skipping is the fail-open this module exists
+// to prevent, so parsing answers Read or Unreadable and the caller converges only on Read.
 module extdeps.shadow.subordinate_ids
 
-import extdeps.sudo.elevation { sudo_elevate_argv }
-import gunbc.fleet.fleet_posix_accounts { fleet_usermod_binary_path }
-
-import std.types { NonEmptyStr, String, List, Int }
+import std.types { NonEmptyStr, String, List, Int, Bool }
 import std.algebra { trim }
 import std.optional { Absent, Present }
 
@@ -45,7 +51,7 @@ type SubordinateRange {
 // one: an empty file means nobody has a range, which is a fact converge can act on, while an unreadable
 // file means nobody knows, which it must not.
 type SubordinateFileReading
-  = SubordinateFileRead { path: String, ranges: List<SubordinateRange> }
+  = SubordinateFileRead { path: String, bytes: String, ranges: List<SubordinateRange> }
   | SubordinateFileUnreadable { path: String, cause: String }
 
 fn parse_subordinate_line(line: String) -> SubordinateRange? {
@@ -90,6 +96,7 @@ fn parse_subordinate_file(path: String, exit_code: Int, stdout: String, stderr: 
     } else {
       SubordinateFileRead {
         path: path,
+        bytes: stdout,
         ranges: map(filter(parsed, p => match p { Absent => false Present { value: _ } => true }),
                     p => match p { Absent => SubordinateRange { account: "unparsed" as NonEmptyStr, first: 0, count: 0 } Present { value: r } => r }),
       }
@@ -99,6 +106,30 @@ fn parse_subordinate_file(path: String, exit_code: Int, stdout: String, stderr: 
 
 fn subordinate_ranges_for(rs: List<SubordinateRange>, account: NonEmptyStr) -> List<SubordinateRange> {
   filter(rs, r => (r.account as String) == (account as String))
+}
+
+// THE BYTES THE PARSE WAS MADE AGAINST. The whole-file route renders a new file from what it PARSED, and
+// the writer will not rename unless the destination still equals what the render was made against -- so
+// the caller has to be able to hand over those exact bytes, and only this module may say what they were.
+// Asking the caller to re-read the file for that comparison would recreate the race: it would be
+// comparing against a reading taken after the render, which is the interval the check exists to close.
+fn subordinate_file_bytes(reading: SubordinateFileReading) -> String {
+  match reading {
+    SubordinateFileRead { bytes: b, ranges: _ } => b
+    SubordinateFileUnreadable { path: _, cause: _ } => ""
+  }
+}
+
+// THE ROWS THAT WERE ACTUALLY READ. An unreadable file yields NO rows, and the caller must already have
+// refused on the unreadable reading before asking -- which plan_subordinate_file does, and which is why
+// the precheck below can trust that a non-empty answer here is a reading that happened. Returning the
+// empty list is the fail-closed direction: an empty list asks about no range, and the planner that would
+// have granted over an unparsed file is the refusal above, not this function.
+fn subordinate_file_ranges(reading: SubordinateFileReading) -> List<SubordinateRange> {
+  match reading {
+    SubordinateFileRead { bytes: _, ranges: rs } => rs
+    SubordinateFileUnreadable { path: _, cause: _ } => []
+  }
 }
 
 // DO TWO RANGES OVERLAP. The arithmetic is the whole point: first < other_first + other_count AND
@@ -222,7 +253,7 @@ fn reconcile_subordinate_range(
   match reading {
     SubordinateFileUnreadable { path: p, cause: c } =>
       SubordinateReconcileBlocked { reason: join(["cannot reconcile ", p, ": ", c], "") }
-    SubordinateFileRead { path: _, ranges: rs } =>
+    SubordinateFileRead { path: _, bytes: _, ranges: rs } =>
       match reconcile_grant(rs: rs, account: account, want_first: want_first, want_count: want_count, movable_accounts: movable_accounts) {
         Present { value: r } => r
         Absent =>
@@ -259,55 +290,6 @@ fn reconcile_grant(
   } else {
     Present { value: SubordinateReconcileGrant { account: account, first: want_first, count: want_count } }
   }
-}
-
-// THE WRITER: shadow's usermod, which is the ONLY sanctioned way to edit these files — a hand-written
-// line can duplicate an account or race another usermod, and usermod rewrites both files as a pair.
-// The four flags are four named rows rather than one row with a flag parameter because the flag pairs
-// are easy to transpose and the two mistakes fail differently: -v/-V are add/remove for UIDS and -w/-W
-// are add/remove for GIDS. A single row taking a flag string would let an add for uids be paired with
-// a remove for gids and still render, and the damage would only show up when a namespace failed to
-// build. THE RANGE IS INCLUSIVE (FIRST-LAST) on the command line while the FILE is (first:count), so
-// last is first + count - 1; that off-by-one is the caller's to get right, which is why it lives in
-// these builders and not at the call sites.
-data usermod_add_subuids_flag: NonEmptyStr = "-v"
-data usermod_del_subuids_flag: NonEmptyStr = "-V"
-data usermod_add_subgids_flag: NonEmptyStr = "-w"
-data usermod_del_subgids_flag: NonEmptyStr = "-W"
-
-fn subordinate_range_last(first: Int, count: Int) -> Int {
-  first + count - 1
-}
-
-// ELEVATED AS ROOT, not as the account being changed: usermod on another account is a system
-// administration act, and running it as the account it edits would let the job user widen its own
-// subordinate reach.
-//
-// THE BINARY IS ADDRESSED BY ABSOLUTE PATH, which is what sudo actually needs rather than what is
-// merely tidy. sudoers matches a Cmnd_Spec on the absolute path, so a rule written for
-// /usr/sbin/usermod never matches an argv that says bare `usermod`, and the run fails with a
-// permission refusal that reads as a missing grant rather than as a spelling mistake. The path is
-// imported from the row gunbc.fleet.fleet_posix_accounts already owns for this binary — the same one
-// the KVM grant renders — because re-declaring the literal here would create two spellings of where
-// usermod lives, and the sudoers line and the argv could then drift apart while both still rendered.
-fn usermod_subordinate_argv(user: NonEmptyStr, flag: NonEmptyStr, first: Int, last: Int) -> List<String> {
-  sudo_elevate_argv(command: [fleet_usermod_binary_path as String, flag as String, join([to_string(first), "-", to_string(last)], ""), user as String])
-}
-
-fn usermod_add_subuids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
-  usermod_subordinate_argv(user: user, flag: usermod_add_subuids_flag, first: first, last: subordinate_range_last(first: first, count: count))
-}
-
-fn usermod_add_subgids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
-  usermod_subordinate_argv(user: user, flag: usermod_add_subgids_flag, first: first, last: subordinate_range_last(first: first, count: count))
-}
-
-fn usermod_del_subuids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
-  usermod_subordinate_argv(user: user, flag: usermod_del_subuids_flag, first: first, last: subordinate_range_last(first: first, count: count))
-}
-
-fn usermod_del_subgids_argv(user: NonEmptyStr, first: Int, count: Int) -> List<String> {
-  usermod_subordinate_argv(user: user, flag: usermod_del_subgids_flag, first: first, last: subordinate_range_last(first: first, count: count))
 }
 
 // THE COLLISION REPORT IS FOR THE RECEIPT, and it is a string fold rather than a structured value
@@ -348,8 +330,13 @@ type SubordinateStep
 // unlike a Blocked arm it is terminal in the strong sense: the caller must fail the converge, because
 // proceeding without subordinate ids produces a daemon that will not start, and "installed everything
 // else" is not a partial success here — it is a host that looks configured and cannot run a container.
+// rows is the file AS IT WILL BE RENDERED: the as-read rows in read order, minus every row the plan
+// deletes, with a displaced row re-granted IN PLACE (same position, new first, same width), plus the
+// declared row appended when the account does not already hold exactly it. The writer writes render(rows);
+// the receipts read steps. Keeping both is what lets a witness pin that the rendered file and the
+// described delta cannot disagree.
 type SubordinatePlan
-  = SubordinatePlanSteps { steps: List<SubordinateStep> }
+  = SubordinatePlanSteps { steps: List<SubordinateStep>, rows: List<SubordinateRange> }
   | SubordinatePlanRefused { reason: String }
 
 // THE DISPLACEABLE ACCOUNT IS DECLARED, NOT INVENTED AT RUN TIME, and the pairing is the whole safety
@@ -387,6 +374,37 @@ fn overlaps_survivors(
     .any(s => subordinate_ranges_overlap(a: proposed, b: s))
 }
 
+// THE FILE AS IT WILL BE RENDERED. Survivors keep their READ ORDER (an unrelated account's rows must
+// come back byte-identically and in place, so a diff against a hand-check stays readable and a tool
+// that reads first-match wins sees the same winner it saw before); a displaced row is RE-GRANTED IN
+// PLACE at the declared first with its ORIGINAL width; the declared row is appended when the account
+// does not already hold exactly it.
+fn subordinate_rows_after_plan(
+  rs: List<SubordinateRange>,
+  account: NonEmptyStr,
+  want_first: Int,
+  want_count: Int,
+  displaceable: NonEmptyStr,
+  stale: List<SubordinateRange>,
+  movable: List<SubordinateRange>,
+  displacee_regrant_first: Int,
+  holds_exactly: Bool,
+) -> List<SubordinateRange> {
+  let base = fold(
+    rs,
+    init: [] as List<SubordinateRange>,
+    f: (acc, r) =>
+      if (r.account as String) == (account as String) && stale.any(s => s.first == r.first && s.count == r.count) {
+        acc
+      } else if (r.account as String) == (displaceable as String) && movable.any(m => m.first == r.first && m.count == r.count) {
+        append(acc, items: [SubordinateRange { account: r.account, first: displacee_regrant_first, count: r.count }])
+      } else {
+        append(acc, items: [r])
+      },
+  )
+  if holds_exactly { base } else { append(base, items: [SubordinateRange { account: account, first: want_first, count: want_count }]) }
+}
+
 fn plan_subordinate_file(
   path: String,
   reading: SubordinateFileReading,
@@ -400,7 +418,7 @@ fn plan_subordinate_file(
   match reading {
     SubordinateFileUnreadable { path: p, cause: c } =>
       SubordinatePlanRefused { reason: join(["cannot read ", p, ": ", c], "") }
-    SubordinateFileRead { path: p, ranges: rs } => {
+    SubordinateFileRead { path: p, bytes: b, ranges: rs } => {
       let mine = subordinate_ranges_for(rs: rs, account: account)
       let stale = filter(mine, r => !(r.first == want_first && r.count == want_count))
       let others = filter(rs, r => (r.account as String) != (account as String))
@@ -450,48 +468,34 @@ fn plan_subordinate_file(
         let regrant = map(movable, o => SubordinateStepAdd { account: o.account, first: displacee_regrant_first, count: o.count })
         let holds_exactly = length(mine) == 1 && length(stale) == 0
         let additions = if holds_exactly { [] } else { [SubordinateStepAdd { account: account, first: want_first, count: want_count }] }
-        SubordinatePlanSteps { steps: append(append(append(removals, items: drops), items: regrant), items: additions) }
+        let rows = subordinate_rows_after_plan(
+          rs: rs, account: account, want_first: want_first, want_count: want_count,
+          displaceable: displaceable, stale: stale, movable: movable,
+          displacee_regrant_first: displacee_regrant_first, holds_exactly: holds_exactly)
+        // A ROW THAT DOES NOT RENDER BACK TO ITS OWN TEXT MEANS THE FILE HOLDS BYTES THE MODEL CANNOT
+        // REPRODUCE (stray spacing, CR from a hand edit). Rewriting it would SILENTLY NORMALISE bytes the
+        // operator or another tool put there, which is the same fail-open as skipping an unparseable line
+        // wearing better clothes. The whole file is refused.
+        if length(subordinate_unread_rows(
+              lines: filter(split(s: b, delimiter: "\n"), l => trim(s: l) != ""), rs: rs)) > 0 {
+          SubordinatePlanRefused {
+            reason: join([p, " holds a row whose text does not render back byte-identically; refusing to rewrite a file the model cannot reproduce"], ""),
+          }
+        // THE RENDERED RANGES MUST BE PAIRWISE DISJOINT. The guards above compare proposed-vs-as-read;
+        // this one compares the RENDERED FILE to itself, which additionally catches a duplicated row,
+        // two displacees collapsing onto one another's re-grant, and an addition that survived the
+        // earlier checks only because its collision partner is deleted by the same plan on the OTHER
+        // file. Position-based, so two rows with identical coordinates are caught as an overlap.
+        } else if !subordinate_rows_pairwise_disjoint(rs: rows) {
+          SubordinatePlanRefused {
+            reason: join(["the file ", p, " as it would be rendered is not pairwise disjoint; refusing to write it"], ""),
+          }
+        } else {
+          SubordinatePlanSteps { steps: append(append(append(removals, items: drops), items: regrant), items: additions), rows: rows }
+        }
       }
     }
   }
-}
-
-// THE WORDS OF ONE STEP, WITHOUT ELEVATION. The caller elevates these via
-// extdeps.sudo.elevation sudo_elevate_command — and they must be the INNER words, not the
-// sudo_elevate_argv form the four builders above return: sudo_elevate_command wraps whatever it is
-// given, so handing it an argv that already begins with sudo produces `sudo usermod sudo usermod …`,
-// where the second sudo is a usermod ARGUMENT. That runs, exits nonzero, and reads as a malformed
-// range rather than as double elevation. The four elevated builders stay for callers that want the
-// whole thing; this is the one for callers that do their own elevation, which the converge does
-// because its admin edge is what sudo runs under. Routed by which file is being reconciled in ONE
-// place because the uid/gid mix-up is this file's most likely mistake and its least visible one: -V
-// on a gid file removes a uid range, exits 0, and quietly leaves the intended collision in place.
-fn usermod_step_words(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
-  let range_text = match step {
-    SubordinateStepRemove { first: x, count: c } => join([to_string(x), "-", to_string(subordinate_range_last(first: x, count: c))], "")
-    SubordinateStepAdd { first: x, count: c } => join([to_string(x), "-", to_string(subordinate_range_last(first: x, count: c))], "")
-  }
-  let flag = match step {
-    SubordinateStepRemove { account: _ } =>
-      match f {
-        SubordinateUids => usermod_del_subuids_flag
-        SubordinateGids => usermod_del_subgids_flag
-      }
-    SubordinateStepAdd { account: _ } =>
-      match f {
-        SubordinateUids => usermod_add_subuids_flag
-        SubordinateGids => usermod_add_subgids_flag
-      }
-  }
-  let account = match step {
-    SubordinateStepRemove { account: a, first: _, count: _ } => a
-    SubordinateStepAdd { account: a, first: _, count: _ } => a
-  }
-  [fleet_usermod_binary_path as String, flag as String, range_text, account as String]
-}
-
-fn subordinate_step_argv(f: SubordinateIdFile, step: SubordinateStep) -> List<String> {
-  sudo_elevate_argv(command: usermod_step_words(f: f, step: step))
 }
 
 // WHAT THE RECEIPT SHOULD SAY ABOUT THE PLAN, as text: a no-op needs to be distinguishable from an
@@ -508,7 +512,7 @@ fn subordinate_step_text(step: SubordinateStep) -> String {
 fn subordinate_plan_text(plan: SubordinatePlan) -> String {
   match plan {
     SubordinatePlanRefused { reason: r } => join(["refused: ", r], "")
-    SubordinatePlanSteps { steps: ss } =>
+    SubordinatePlanSteps { steps: ss, rows: _ } =>
       if length(ss) == 0 {
         "already declared; nothing to write"
       } else {
