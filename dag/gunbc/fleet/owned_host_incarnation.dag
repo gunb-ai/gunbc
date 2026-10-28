@@ -261,6 +261,10 @@ fn incarnation_boundary_arm(origin: IncarnationOrigin) -> Optional<PriorLifeBoun
     // the refusal at the mint said. Absent here means "no boundary exists", the same answer a
     // pre-existing member gets, and the two are distinguished by `origin` itself.
     FleetIntakeAdmitted { receipt: Absent } => Absent
+    // READABLE FROM OUTSIDE THIS MODULE, and checked from the witness by an INDEPENDENT call to the
+    // boundary module's own accessor: two readings of the same receipt must agree, because if this module
+    // could show a different archive to its consumers than the one it stores, the fleet would be trusting
+    // its own re-spelling of a fact owned by machine intake.
     FleetIntakeAdmitted { receipt: Present { value: receipt } } =>
       Present { value: prior_life_receipt_boundary(r: receipt) }
     PreexistingFleetMember => Absent
