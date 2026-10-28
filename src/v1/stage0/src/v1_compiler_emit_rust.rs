@@ -41721,47 +41721,35 @@ pub fn emit_rest_query_line(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match crate::v1_std_core::transport_query(transport, source_indices.clone()) {
-        Some(q) => {
-            let pairs = Rc::new({
-                let mut __result = Vec::new();
-                for fi in q.children.clone().iter().cloned() {
-                    __result.push(v1_rt::concat(
+        Some(q) => Rc::new({
+            let mut __result = Vec::new();
+            for fi in q.children.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    "(\"".to_string(),
-                                    crate::v1_std_core::field_init_node_name_at(
-                                        fi.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                ),
-                                "\", &".to_string(),
-                            ),
-                            emit_rust_dag_string_to_host_via_seam(
-                                crate::v1_compiler_emit::emit_simple_expr(
-                                    crate::v1_std_core::field_init_node_value(fi.clone()),
-                                    RenderTarget::Rust,
+                                "let request = request.query(&[(\"".to_string(),
+                                crate::v1_std_core::field_init_node_name_at(
+                                    fi.clone(),
                                     source_indices.clone(),
                                 ),
                             ),
+                            "\", &".to_string(),
                         ),
-                        ")".to_string(),
-                    ));
-                }
-                __result
-            });
-            if ((pairs.clone().len() as i64) > 0) {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let request = request.query(&[".to_string(),
-                        pairs.clone().join(&", ".to_string()),
+                        emit_rust_dag_string_to_host_via_seam(
+                            crate::v1_compiler_emit::emit_simple_expr(
+                                crate::v1_std_core::field_init_node_value(fi.clone()),
+                                RenderTarget::Rust,
+                                source_indices.clone(),
+                            ),
+                        ),
                     ),
-                    "]);".to_string(),
-                )
-            } else {
-                "".to_string()
+                    ")]);".to_string(),
+                ));
             }
-        }
+            __result
+        })
+        .join(&"\n".to_string()),
         std::option::Option::None => "".to_string(),
     }
 }
