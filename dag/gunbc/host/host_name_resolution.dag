@@ -53,10 +53,12 @@ module gunbc.host.host_name_resolution
 // match on the space, so a second consumer adds a row instead of a branch (§6b, "a new ordinary case is
 // data, not control flow").
 
-import std.types { String, Bool, List, Int, NonEmptyStr, Present, Absent, list_length, concat }
+import std.types { String, Bool, List, Int, NonEmptyStr, Present, Absent, list_length }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_singleton, take_prefix, list_reverse, skip, zip_eq }
 import std.error_primitives { Ok, Err }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
+import std.dissolution { DissolutionCondition, bound_dissolution }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.dns.domain_name {
   DnsLabel,
   HostName,
@@ -74,17 +76,10 @@ import extdeps.dns.resolver {
   Addresses,
   Resolved,
   Unresolved,
-  ServerUnreachable,
-  NameUnknown,
-  AnswerEmpty,
   resolvable_name_admit,
   ResolvableNameAdmitted,
   ResolvableNameRefused,
   ResolvableNameRefusal,
-  NotANameIsIpv4Literal,
-  NotANameIsIpv6Literal,
-  NameMalformed,
-  resolvable_name_wire,
   resolvable_name_labels,
   resolvable_name_qualification,
   resolvable_name_label_count,
@@ -129,6 +124,18 @@ fn zone_admit(raw: String) -> ZoneAdmission {
 // instrument.dag:198).
 fn dns_label_eq(a: DnsLabel, b: DnsLabel) -> Bool {
   (a as String) == (b as String)
+}
+
+// DO TWO ADMITTED NAMES MEAN THE SAME HOST? Compared label-by-label, never by rendering both sides and
+// comparing strings at a call site: that idiom re-derives structure the parser already settled, and it
+// makes the boundary between "srv2.example" and "srv2example" a character rule nobody wrote down. Used by
+// the share gate to decide whether the row vouches for the spelling the boot would write.
+fn names_agree(a: ResolvableName, b: ResolvableName) -> Bool {
+  zip_eq(
+    a: resolvable_name_labels(name: a),
+    b: resolvable_name_labels(name: b),
+    eq: fn(x, y) { dns_label_eq(a: x, b: y) },
+  )
 }
 
 // THE LABELS THAT BELONG TO THE HOST, given a name and a zone: the name's labels with the zone's labels
@@ -265,9 +272,51 @@ type HostNameResolution {
   grounded: ResolutionObservation
 }
 
+// WHY THE REFUSAL IS A COPRODUCT AND NOT A `cause: String` (review 87156, DESIGN §5 "every path succeeds
+// fully or fails with a typed, located diagnostic"; §4c "a dissolution condition belongs in a typed
+// carrier"). An earlier draft carried `cause: String` and filled it with prose — including a
+// `cause_text(cause: ResolutionCause)` that took the typed causes the resolver module had just built and
+// flattened them back into text. That contradicted this change's own resolver.dag, which keeps four causes
+// apart precisely because "a blended 'failed' would push the reader to re-derive which applies". A String
+// arm also makes the refusals unmatchable: a caller cannot dispatch on "is this my fault or the network's"
+// without substring-matching somebody's sentence, and a reworded sentence silently changes behaviour.
+//
+// Each arm below carries the LOCATION of the defect and nothing else; where a cause already exists as a
+// type (`ResolutionCause`, `ResolvableNameRefusal`, `NameQualification`) the arm carries that type rather
+// than a description of it. The three "which remedy applies" questions the old prose answered are now
+// three different arms, so they are answered by a match.
 type HostNameResolutionAdmission
   = HostNameResolutionAdmitted { resolution: HostNameResolution }
-  | HostNameResolutionRefused { host: HostIdentity, cause: String }
+  | HostNameResolutionRefused { host: HostIdentity, refusal: HostNameResolutionRefusal }
+
+// THE FOUR WAYS FILING A ROW FAILS, plus the two ways this module's own configuration can fail (arms 5-6,
+// which are never the name's fault). Arms 1-3 are the ones a boot hits.
+type HostNameResolutionRefusal
+  // 1. The name does not sit under the space's own zone. Carries BOTH zones, because the remedy is "either
+  //    file it under the space that answers for it, or stop claiming this space": a reader needs to see
+  //    which two things disagree to choose. Carries the labels rather than a rendering — a rendering would
+  //    re-introduce the string comparison this module deleted.
+  = NameOffZone { name: ResolvableName, filed_under: NameSpace }
+  // 2. The name is not fully qualified, so whether it resolves depends on a search list this row does not
+  //    own. Carries the qualification itself, which is the fact that made it unusable, and which the
+  //    consumer may already have a search-domain answer for.
+  | NameNotFullyQualified { name: ResolvableName, qualification: NameQualification }
+  // 3. The cited reply does not give addresses. Carries the resolver module's OWN cause type: whether the
+  //    server was silent, the name is absent from the zone, or the name is live with no address record
+  //    decides between "fix the server", "fix the name" and "fix the record", and that decision must be a
+  //    match rather than a reading comprehension test.
+  | ReplyDoesNotResolve { cause: ResolutionCause }
+  // 4. No reader can be named for the space, so no reply can be cited at all. Distinct from arm 3: there
+  //    the question was asked and answered "no"; here nobody can ask it. Its remedy is a probe, not an
+  //    edit. Carrying the space means a consumer can tell the operator which network to attach to.
+  | NoReaderForSpace { space: NameSpace }
+  // 5. The space's own zone spelling does not parse. A defect in THIS module's configuration — a name that
+  //    is perfectly good cannot be filed, and the author must not be sent looking at the name.
+  | ZoneUnconfigured { zone_spelling: String }
+  // 6. The spelling this module was configured to file is not a name at all. Carries the resolver module's
+  //    refusal, so "you wrote an address where a name belongs" is distinguishable from "this label has a
+  //    bad character" — different fixes, and the earlier prose version blended them.
+  | ConfiguredSpellingIsNotAName { refusal: ResolvableNameRefusal }
 
 // THE ONE ADMISSION. It takes the REPLY, not a conclusion: the conclusion is derived from the reply here, so
 // there is no path by which a row asserts resolvability its own cited reply does not support. Three
@@ -295,13 +344,13 @@ fn host_name_resolution_admit(
   match host_part_of(name: name, zone: zone) {
     Absent => HostNameResolutionRefused {
       host: host,
-      cause: "the name does not belong to the name space it is filed under: it is not the zone's labels at its tail, or it carries no label of its own beyond the zone",
+      refusal: NameOffZone { name: name, filed_under: space },
     }
     Present { value: _ } =>
       match resolvable_name_qualification(name: name) {
         PartiallyQualified => HostNameResolutionRefused {
           host: host,
-          cause: "the name is not fully qualified, so its resolution depends on a search list this row does not own; state the answer you expect instead of a suffix that may be appended",
+          refusal: NameNotFullyQualified { name: name, qualification: PartiallyQualified },
         }
         FullyQualified =>
           match conclusion {
@@ -320,36 +369,17 @@ fn host_name_resolution_admit(
             }
             Unresolved { name: _, cause: c } => HostNameResolutionRefused {
               host: host,
-              cause: cause_text(cause: c),
+              refusal: ReplyDoesNotResolve { cause: c },
             }
           }
       }
   }
 }
 
-// THE CAUSE AS A READER READS IT, one arm per reply shape, each naming its own remedy (§5: a failure mode
-// names its own remedy; a blended "failed" would push the reader to re-derive which applies). The server is
-// rendered into the text because every remedy is about a particular machine, and a cause that cannot name it
-// sends the reader to guess.
-fn cause_text(cause: ResolutionCause) -> String {
-  match cause {
-    ServerUnreachable { server: s } =>
-      concat(
-        "the cited resolver gave no reply at ",
-        concat(render_ipv4_address(addr: s) as String, "; the name may be right and the server wrong — check the server before rewriting the name"),
-      )
-    NameUnknown { server: s } =>
-      concat(
-        "the cited resolver answered authoritatively that this name is not in its zone (from ",
-        concat(render_ipv4_address(addr: s) as String, "); this is the only cause that licenses changing the spelling"),
-      )
-    AnswerEmpty { server: s } =>
-      concat(
-        "the cited resolver said the name exists but carries no address record (from ",
-        concat(render_ipv4_address(addr: s) as String, "); the name is live and its address data is missing — do not treat this as a wrong name"),
-      )
-  }
-}
+// The old `cause_text` helper, which rendered a `ResolutionCause` into a sentence, is DELETED rather than
+// kept for display: with the refusal arms above, a caller that needs the remedy matches the arm, and a
+// caller that needs prose is a caller that has decided to stop checking. The remedy for each reply shape
+// lives as a comment on its arm in extdeps.dns.resolver, which is where the shapes are defined.
 
 // ── WHAT A CONSUMER CAN RESOLVE, AS DATA ─────────────────────────────────────────────────────
 
@@ -475,10 +505,18 @@ fn asked_name(outcome: NameResolution) -> ResolvableName {
 //   Usable                 the name is a name, is this consumer's to ask, satisfies this consumer's own
 //                          field rule, agrees with the row, and was observed to give addresses.
 type MediaShareAddressStanding
-  = AddressIsNotAName { raw: NonEmptyStr, cause: String }
+  // Carries the resolver module's OWN refusal type rather than a sentence about it (same §5 rule review
+  // 87139/87156 applied to the row admission): an IPv4 literal, an IPv6 literal and a malformed label have
+  // three different fixes, and a caller must be able to match them instead of reading prose. `raw` stays
+  // because the remedy quotes the offending spelling back to whoever edits the row.
+  = AddressIsNotAName { raw: NonEmptyStr, refusal: ResolvableNameRefusal }
   | NeedsLanNameSpace { host: HostIdentity, space: NameSpace }
   | RefusedByConsumerFirmware { host: HostIdentity, name: ResolvableName, minimum_labels: Int }
-  | NamesAnotherHost { host: HostIdentity, share: String, row: String }
+  // The two spellings that disagree, carried as the VALUES rather than as renderings of them: the share's
+  // own authored spelling, and the row's admitted name. Rendering both to compare or to display is the
+  // string-comparison mistake this module deleted elsewhere; a consumer that must show the mismatch renders
+  // it at that moment, through the resolver module's one renderer.
+  | NamesAnotherHost { host: HostIdentity, share: NonEmptyStr, row: ResolvableName }
   | ShareNameUnresolved { host: HostIdentity, cause: ResolutionCause }
   | Usable { host: HostIdentity, name: ResolvableName, address: Ipv4Address }
 
@@ -512,16 +550,15 @@ fn media_share_address_gate(
   rule: MediaShareConsumerRule,
   ask: fn(Ipv4Address, ResolvableName) -> ResolverAnswer,
 ) -> MediaShareAddressStanding {
-  let share_wire = share_server as String
-  match resolvable_name_admit(spelling: share_wire) {
-    ResolvableNameRefused { refusal: r } => not_a_name_standing(host: row.host, raw: share_server, refusal: r)
+  match resolvable_name_admit(spelling: share_server as String) {
+    ResolvableNameRefused { refusal: r } => not_a_name_standing(raw: share_server, refusal: r)
     ResolvableNameAdmitted { name: share_name } =>
       // FIRST the consumer's own field rule, then the row's agreement, then resolvability: the two cheap
       // refusals before the one that needs an answer.
       if resolvable_name_label_count(name: share_name) < rule.minimum_labels {
         RefusedByConsumerFirmware { host: row.host, name: share_name, minimum_labels: rule.minimum_labels }
-      } else if share_wire != resolvable_name_wire(name: row.name) {
-        NamesAnotherHost { host: row.host, share: share_wire, row: resolvable_name_wire(name: row.name) }
+      } else if !names_agree(a: share_name, b: row.name) {
+        NamesAnotherHost { host: row.host, share: share_server, row: row.name }
       } else {
         match reachable_space_for(reach: reach, space: row.space) {
           Absent => NeedsLanNameSpace { host: row.host, space: row.space }
@@ -541,21 +578,13 @@ fn media_share_address_gate(
 // THE LITERAL REFUSAL, rendered per arm so the remedy is the one that fits. Three sub-shapes because
 // "typo in a name", "you wrote an IPv4 literal" and "you wrote an IPv6 literal" have different fixes, and a
 // single blended string would have the reader fix the wrong thing (§5).
-fn not_a_name_standing(host: HostIdentity, raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> MediaShareAddressStanding {
-  match refusal {
-    NotANameIsIpv4Literal { raw: r, address: _ } => AddressIsNotAName {
-      raw: raw,
-      cause: concat("the share names an IPv4 address (", concat(r, ") where a host name belongs; an address cannot be looked up, cannot be checked before attach, and cannot follow a host that moved — which is what broke boot 40140037654")),
-    }
-    NotANameIsIpv6Literal { raw: r } => AddressIsNotAName {
-      raw: raw,
-      cause: concat("the share names an IPv6 literal (", concat(r, ") where a host name belongs; no NFS client in this fleet is reachable over IPv6, so this is a typo rather than a route")),
-    }
-    NameMalformed { raw: r, error: _ } => AddressIsNotAName {
-      raw: raw,
-      cause: concat("the share's server field is not a name the DNS grammar accepts (", concat(r, ")); check for an empty label, a leading or trailing hyphen, or a character outside LDH")),
-    }
-  }
+// THE LITERAL REFUSAL AS AN ARM, carrying the resolver module's refusal unchanged. The three sub-shapes
+// stay three: an IPv4 literal ("author a name, not an address"), an IPv6 literal ("no NFS client here is
+// reachable over IPv6 — this is a typo, not a route") and a malformed label ("fix the character") have
+// different remedies, and the earlier draft rendered all three into near-identical sentences, which is
+// precisely the §5 blending the review flagged on the sibling type.
+fn not_a_name_standing(raw: NonEmptyStr, refusal: ResolvableNameRefusal) -> MediaShareAddressStanding {
+  AddressIsNotAName { raw: raw, refusal: refusal }
 }
 
 // ── THE ONE FILED ROW THIS LANE CAN CITE, AND THE ONE IT CANNOT ──────────────────────────────
@@ -595,43 +624,85 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
         )
         Absent => HostNameResolutionRefused {
           host: "srv2" as HostIdentity,
-          cause: "the LAN zone's own spelling does not parse, so no Lan row can be filed; this is a configuration defect in this module, not a defect in the name",
+          // Arm 5: this module's own configuration failed. The name is fine; the zone is not.
+          refusal: ZoneUnconfigured { zone_spelling: lan_zone_wire },
         }
       }
     ResolvableNameRefused { refusal: r } => HostNameResolutionRefused {
       host: "srv2" as HostIdentity,
-      cause: match r {
-        NotANameIsIpv4Literal { raw: _, address: _ } => "the configured LAN spelling is an IPv4 literal, so the row cannot be filed"
-        NotANameIsIpv6Literal { raw: _ } => "the configured LAN spelling is an IPv6 literal, so the row cannot be filed"
-        NameMalformed { raw: _, error: _ } => "the configured LAN spelling does not parse, so the row cannot be filed"
-      },
+      // Arm 6: carries the resolver module's refusal unchanged, so an IPv4 literal stays distinguishable
+      // from a malformed label. The earlier draft flattened all three into sentences that read alike.
+      refusal: ConfiguredSpellingIsNotAName { refusal: r },
     }
   }
 }
 
-// THE PRODUCTION CUT-OVER, DECLARED AS A FRONTIER WITH ITS TRIGGER (DESIGN §3c: "consumed by a named later
-// change (a declared frontier, with its trigger)"). The share row at
-// gunbc.machine_intake.mtcollins1_boot_run.mtcollins1_media_share still spells its NFS server by address —
-// `render_ipv4_address(addr: srv2_lan_ipv4)` — and this module's gate REFUSES that spelling, which the
-// witness asserts against the real row rather than against a fabricated string. The row is not cut over in
-// this change, and the reason is not inertia: the row is the EXPECTED value of a read-compare the boot
-// already performs (megarac_media_attach's ShareMismatch gate), so flipping it before the BMC's own
-// `cd_remote_server_address` is repointed turns a gate that passes today into a refusal mid-critical-path.
-// The cut-over therefore lands PAIRED with the firmware write, never before it.
+// THE PRODUCTION CUT-OVER, AS A TYPED FRONTIER WITH A MACHINE-READABLE TRIGGER.
 //
-// TRIGGER — all three, in this order:
-//   (1) the boot that must not be disturbed has run (boot 7, at time of writing), so no gate is being
-//       changed under a live attach;
-//   (2) the BMC's network settings have been READ and its DNS server CITED — the BMC is not on the tailnet,
-//       so a LAN name is only as good as the resolver it was told to ask, and writing a name while its
-//       resolver is unknown is how a share that resolves from a laptop fails on the controller (§4d: an
-//       unobserved resolution is an obligation, not a value);
-//   (3) the operator has given the go for the one-time media/general PUT, and THIS session owns pairing
-//       that PUT with the row change, so the two cannot land apart.
-// WHAT DOES NOT SATISFY THE TRIGGER: the witness going green (it already does, and it is refusing the row);
-// the row being changed without the paired firmware write; or the tailnet name being written into the share,
-// which the NeedsLanNameSpace arm exists to refuse.
-data media_share_name_cutover_frontier: String = "gunbc.machine_intake.mtcollins1_boot_run.mtcollins1_media_share.server_address: cut from render_ipv4_address(addr: srv2_lan_ipv4) to the LAN name srv2.mynetworksettings.com, admitted through resolvable_name_admit and grounded by srv2_lan_name(), in the same change as the one-time media/general PUT that repoints the controller. Lands after boot 7 runs, after the BMC's DNS server is read and cited, and on the operator's go."
+// WHY THIS IS NOT A STRING ROW (review 87156, DESIGN §4c: "an invariant, receipt, ... ruling, citation,
+// status, count or dissolution condition belongs in a typed carrier, and a `String` declaration whose only
+// purpose is commentary is misplaced or dead data"). An earlier draft of this row was a sentence holding the
+// plan, its trigger, and the operator condition. Nothing could read it: `dissolution_status` cannot see a
+// description, so the debt's retirement condition was something no mechanism in the corpus can answer a
+// question about. The rationale now lives in the comments below, where comments belong; the TRIGGER lives in
+// `std.dissolution`, which is the carrier the corpus already folds.
+//
+// WHAT THE GATE'S LACK OF A PRODUCTION CALLER ACTUALLY MEANS, and why it is a frontier rather than a defect
+// to fix in this PR (§3c permits exactly this: "consumed by a named later change (a declared frontier, with
+// its trigger)"). `mtcollins1_media_share.server_address` is still `render_ipv4_address(addr: srv2_lan_ipv4)`,
+// and this module's gate REFUSES that spelling — which the witness asserts against the real row, imported
+// from its own module, not against a string authored here. The row is not cut over in this change for a
+// specific and current reason, not inertia: the row is the EXPECTED value of a read-compare the boot already
+// performs (`share_binding_standing`'s ShareMismatch), so flipping it before the BMC's own
+// `cd_remote_server_address` is repointed would turn a gate that passes today into a refusal mid-boot — the
+// exact failure this lane exists to close, reintroduced by the fix. The cut-over therefore lands PAIRED with
+// the firmware write and never before it.
+//
+// TRIGGER, in order — the three conditions are named below as fields, not as prose:
+//   (1) the boot that must not be disturbed has run, so no gate is being changed under a live attach;
+//   (2) the BMC's network settings have been READ and its DNS server CITED. The BMC is not on the tailnet,
+//       so a LAN name is only as good as the resolver it was told to ask; writing a name while its resolver
+//       is unknown is how a share that resolves from a laptop fails on the controller (§4d);
+//   (3) the operator has given the go for the one-time media/general PUT, and this session owns pairing that
+//       PUT with the row change, so the two cannot land apart.
+// WHAT DOES *NOT* SATISFY IT: the witness going green (it already does, and it is refusing the row); the row
+// moving without the paired firmware write; or the tailnet name being written into the share, which the
+// NeedsLanNameSpace arm exists to refuse.
+type MediaShareNameCutover {
+  // THE ROW THAT STILL SPELLS AN ADDRESS, located rather than described: a real DeclarationRef into the
+  // module that owns it, so a tool can resolve it and a reader cannot drift it away from the row.
+  row: DeclarationRef
+  // THE FIRMWARE WRITE IT MUST LAND WITH. Naming the operation declaration rather than a sentence about it
+  // is what makes "paired" checkable: the two refs are comparable, and a cutover merged without a write to
+  // this operation is visible as such.
+  paired_write: DeclarationRef
+  // THE TRIGGER, in the carrier the corpus already folds. `DeclarationAppears` is the FORWARD shape — the
+  // obligation is discharged by a declaration that does not exist yet being built, which is precisely a
+  // name-typed share row. Bound, not `UnboundDissolution { description: ... }`: a description would be the
+  // same unreadable sentence wearing a type.
+  fires_when: DissolutionCondition
+}
+
+data media_share_name_cutover: MediaShareNameCutover = MediaShareNameCutover {
+  row: decl_field_ref(
+    module_path: "gunbc.machine_intake.mtcollins1_boot_run",
+    decl_name: "mtcollins1_media_share",
+    field_name: "server_address",
+  ),
+  paired_write: decl_ref(module_path: "extdeps.bmc.megarac", decl_name: "megarac_op_media_config"),
+  // The declaration whose APPEARANCE is the cutover: a name-typed share row in the boot module, admitted
+  // through `resolvable_name_admit`, which does not exist yet. This is the FORWARD trigger shape and it is
+  // the honest one here — the obligation is discharged by BUILDING something new, not by deleting anything.
+  // Naming `mtcollins1_media_share.server_address` itself would be a lie: that declaration exists TODAY, so
+  // `DeclarationAppears` would report the frontier FIRED while the row still spells an address. Pending
+  // until the name-typed row lands is the state this PR declares rather than hides.
+  fires_when: bound_dissolution(
+    decl_ref(
+      module_path: "gunbc.machine_intake.mtcollins1_boot_run",
+      decl_name: "mtcollins1_media_share_named",
+    ),
+  ),
+}
 
 // srv2's TAILNET NAME IS NOT FILED, and the absence is the point. This container has no tailnet daemon and
 // no `tailscale` binary, so nothing could have been asked about the tailnet spelling and no observation
@@ -645,8 +716,18 @@ data media_share_name_cutover_frontier: String = "gunbc.machine_intake.mtcollins
 // is not a tailnet member), while we cannot yet prove fleet operations resolve it. The first is a fact with
 // an observation behind it; the second is an obligation. Only the first is allowed to gate a boot.
 fn srv2_tailnet_name_refused() -> HostNameResolutionAdmission {
-  HostNameResolutionRefused {
-    host: "srv2" as HostIdentity,
-    cause: "no resolver reachable from here can answer for the tailnet space, so no observation can be cited for srv2.tailecbe08.ts.net; the row stays unfiled. Remedy: run the query through a tailnet member and carry its answer (ResolutionObservation), then admit through host_name_resolution_admit",
+  match tailnet_name_space() {
+    Present { value: space } => HostNameResolutionRefused {
+      host: "srv2" as HostIdentity,
+      // Arm 4: nobody can ask. The remedy is a probe on a tailnet member, not an edit to the spelling —
+      // and a consumer that can match this arm will not be tempted to "fix" a name that may be perfect.
+      refusal: NoReaderForSpace { space: space },
+    }
+    Absent => HostNameResolutionRefused {
+      host: "srv2" as HostIdentity,
+      // Arm 5: the fleet has no tailnet domain configured at all, which is a different fact from "the
+      // domain is configured and nobody probed it".
+      refusal: ZoneUnconfigured { zone_spelling: "the fleet tailnet domain is not configured" },
+    }
   }
 }

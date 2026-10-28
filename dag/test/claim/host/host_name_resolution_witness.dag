@@ -25,7 +25,7 @@ module test.claim.host.host_name_resolution_witness
 // same diagnostic class — otherwise the probe is refusing something unrelated to forging and would stay
 // green even if the seal were removed.
 
-import std.types { String, Bool, List, NonEmptyStr, Present, Absent, list_length, string_contains }
+import std.types { String, Bool, List, NonEmptyStr, Present, Absent, list_length }
 import std.process { ProcessExit }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_singleton, non_empty_append }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
@@ -48,6 +48,7 @@ import extdeps.dns.resolver {
   resolver_first_server,
   resolvable_name_admit,
   resolvable_name_wire,
+  NotANameIsIpv4Literal,
   resolvable_name_label_count,
   resolve_name,
   resolution_from_answer,
@@ -70,7 +71,9 @@ import gunbc.host.host_name_resolution {
   HostNameResolutionAdmitted,
   HostNameResolutionRefused,
   host_name_resolution_admit,
-  cause_text,
+  NameOffZone,
+  ReplyDoesNotResolve,
+  NoReaderForSpace,
   ConsumerReach,
   same_space,
   observed_for,
@@ -83,7 +86,7 @@ import gunbc.host.host_name_resolution {
   Usable,
   megarac_media_address_rule,
   media_share_address_gate,
-  media_share_name_cutover_frontier,
+  media_share_name_cutover,
   router_address,
   srv2_lan_name,
   srv2_tailnet_name_refused,
@@ -94,6 +97,8 @@ import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
 import extdeps.network.ipv4 { render_ipv4_address }
 import product.host_identity { host_identity_eq }
 import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_eq }
+import std.dissolution { DissolutionPending, DissolutionFired, DissolutionUnbound, dissolution_status, dissolution_is_bound }
 
 // ── THE SPELLINGS THE CLAIMS ASK ABOUT ───────────────────────────────────────────────────────
 
@@ -180,7 +185,7 @@ fn filed_row(name: ResolvableName, space: NameSpace, answer: ResolverAnswer) -> 
     reader: "witness: the reply this claim supplies itself",
   ) {
     HostNameResolutionAdmitted { resolution: r } => Present { value: r }
-    HostNameResolutionRefused { host: _, cause: _ } => Absent
+    HostNameResolutionRefused { host: _, refusal: _ } => Absent
   }
 }
 
@@ -406,7 +411,11 @@ test fn a_share_naming_the_abandoned_address_refuses_even_though_the_ask_would_a
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
-                AddressIsNotAName { raw: _, cause: c } => string_contains(s: c, pattern: "192.168.1.188")
+                // The refusal names WHICH literal it was: an IPv4 literal is its own arm, so a reader
+                // knows to author a name rather than to fix a character inside one. The earlier draft
+                // substring-matched the address out of prose, so rewording the prose could silently
+                // change what the gate was checking.
+                AddressIsNotAName { raw: _, refusal: NotANameIsIpv4Literal { raw: lit, address: _ } } => lit == "192.168.1.188"
                 _ => false
               }
           }
@@ -475,8 +484,11 @@ test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() ->
                 // An ask that would admit anything: the refusal must come from the row's own spelling.
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
-                AddressIsNotAName { raw: r, cause: _ } =>
-                  (r as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
+                // The real row's spelling, and the arm that refuses it as an IPv4 literal rather than as a
+                // malformed name — the distinction that decides whether the author fixes a character or
+                // replaces the whole field with a name.
+                AddressIsNotAName { raw: r, refusal: NotANameIsIpv4Literal { raw: lit, address: _ } } =>
+                  (r as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String) && lit == (r as String)
                 _ => false
               }
           }
@@ -484,18 +496,42 @@ test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() ->
   }
 }
 
-// THE FRONTIER IS A ROW WITH A TRIGGER, AND THIS CLAIM READS IT AS ONE (§3c: a declaration consumed by a
-// named later change is a declared frontier, not dangling — but only if the trigger is actually stated).
-// The assertions are on the words that make it a trigger rather than a wish: the row it names, the paired
-// firmware write, and each of the three conditions. Delete the trigger and this goes red; that is the
-// difference between a frontier and a TODO nobody owns.
-test fn the_media_share_cutover_frontier_states_its_row_and_its_trigger() -> Bool {
-  string_contains(s: media_share_name_cutover_frontier, pattern: "mtcollins1_media_share")
-    && string_contains(s: media_share_name_cutover_frontier, pattern: "media/general PUT")
-    && string_contains(s: media_share_name_cutover_frontier, pattern: "boot 7")
-    && string_contains(s: media_share_name_cutover_frontier, pattern: "DNS server")
-    && string_contains(s: media_share_name_cutover_frontier, pattern: "operator")
+// THE FRONTIER IS A TYPED ROW WITH A MACHINE-READABLE TRIGGER (§3c: a declaration consumed by a named
+// later change is a declared frontier, not dangling — but only if the trigger exists as something a
+// mechanism can answer a question about). An earlier draft held the whole plan, trigger and operator
+// condition in one `String`; nothing could read it, so the debt's retirement condition was prose. These
+// assertions are on FIELDS: compare references by `declaration_ref_eq`, not by searching someone's
+// sentence. If the row ref, the paired-write ref, or the bound trigger is deleted or drifted, this refuses
+// — and unlike substring checks on commentary, it refuses on the facts rather than on their description.
+test fn the_media_share_cutover_frontier_names_its_row_its_write_and_its_trigger() -> Bool {
+  declaration_ref_eq(a: media_share_name_cutover.row, b: expected_share_row_ref)
+    && declaration_ref_eq(a: media_share_name_cutover.paired_write, b: expected_paired_write_ref)
+    && dissolution_is_bound(condition: media_share_name_cutover.fires_when)
 }
+
+// THE TRIGGER MUST NOT ALREADY HAVE FIRED, and this claim is why the trigger names the NEW name-typed row
+// rather than the share row itself. The share row EXISTS today, so a trigger bound to it would report
+// Fired and declare the debt paid while the row still spells an address. Against the real present-declaration
+// list (which contains the address-typed row and not the name-typed one) the frontier must read Pending: a
+// debt that is honestly outstanding.
+test fn the_cutover_frontier_is_pending_rather_than_falsely_fired() -> Bool {
+  match dissolution_status(condition: media_share_name_cutover.fires_when, present_decls: [expected_share_row_ref]) {
+    DissolutionPending => true
+    DissolutionFired => false
+    DissolutionUnbound => false
+  }
+}
+
+data expected_share_row_ref: DeclarationRef = decl_field_ref(
+  module_path: "gunbc.machine_intake.mtcollins1_boot_run",
+  decl_name: "mtcollins1_media_share",
+  field_name: "server_address",
+)
+
+data expected_paired_write_ref: DeclarationRef = decl_ref(
+  module_path: "extdeps.bmc.megarac",
+  decl_name: "megarac_op_media_config",
+)
 
 // A SHARE THAT DISAGREES WITH ITS OWN ROW REFUSES. The share says the tailnet name while the row vouches
 // for the LAN name — both are names, both may resolve, and the pair is still a lie about one host. This is
@@ -517,7 +553,11 @@ test fn a_share_naming_a_different_host_than_its_row_grounds_refuses() -> Bool {
                 rule: megarac_media_address_rule,
                 ask: fn(_s, _nm) { answered(addrs: one_address()) },
               ) {
-                NamesAnotherHost { host: _, share: s, row: r } => string_contains(s: s, pattern: "tailecbe08") && string_contains(s: r, pattern: "mynetworksettings")
+                // Both sides come back as VALUES now (the share's spelling, the row's admitted name), so
+                // the claim compares them by what they are — the share's own text, and the row's labels —
+                // rather than substring-matching two renderings that the gate once produced for it.
+                NamesAnotherHost { host: _, share: s, row: r } =>
+                  (s as String) == srv2_tailnet_fqdn && resolvable_name_wire(name: r) == srv2_lan_fqdn
                 _ => false
               }
           }
@@ -752,7 +792,11 @@ test fn a_row_cannot_be_filed_against_a_refused_reply() -> Bool {
             observed_on: "2026-10-27",
             reader: "witness",
           ) {
-            HostNameResolutionRefused { host: _, cause: c } => string_contains(s: c, pattern: "authoritatively")
+            // The ARM, not a sentence: an NXDOMAIN reply must produce the reply-does-not-resolve arm
+            // carrying NameUnknown specifically. The earlier draft substring-matched the word
+            // "authoritatively" out of prose, so rewording the prose could silently change behaviour.
+            HostNameResolutionRefused { host: _, refusal: ReplyDoesNotResolve { cause: NameUnknown { server: _ } } } => true
+            HostNameResolutionRefused { host: _, refusal: _ } => false
             HostNameResolutionAdmitted { resolution: _ } => false
           }
       }
@@ -778,7 +822,7 @@ test fn a_row_is_filed_when_its_reply_carries_an_address() -> Bool {
           ) {
             HostNameResolutionAdmitted { resolution: r } =>
               (r.grounded.reader as String) == "read-only probe, direct UDP to 192.168.1.1:53" && (r.grounded.observed_on as String) == "2026-10-27"
-            HostNameResolutionRefused { host: _, cause: _ } => false
+            HostNameResolutionRefused { host: _, refusal: _ } => false
           }
       }
   }
@@ -801,8 +845,8 @@ test fn a_name_cannot_be_filed_under_a_space_it_does_not_belong_to() -> Bool {
             observed_on: "2026-10-27",
             reader: "witness",
           ) {
-            HostNameResolutionRefused { host: _, cause: _ } => true
-            HostNameResolutionAdmitted { resolution: _ } => false
+            HostNameResolutionRefused { host: _, refusal: NameOffZone { name: _, filed_under: _ } } => true
+            HostNameResolutionRefused { host: _, refusal: _ } => false
           }
       }
   }
@@ -943,7 +987,7 @@ test fn srv2_has_an_admitted_grounded_lan_name() -> Bool {
       host_identity_eq(a: r.host, b: "srv2")
         && resolvable_name_wire(name: r.name) == srv2_lan_fqdn
         && resolvable_name_label_count(name: r.name) == 3
-    HostNameResolutionRefused { host: _, cause: _ } => false
+    HostNameResolutionRefused { host: _, refusal: _ } => false
   }
 }
 
@@ -953,7 +997,10 @@ test fn srv2_has_an_admitted_grounded_lan_name() -> Bool {
 // new observation.
 test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bool {
   match srv2_tailnet_name_refused() {
-    HostNameResolutionRefused { host: h, cause: c } => host_identity_eq(a: h, b: "srv2") && string_contains(s: c, pattern: "no observation can be cited")
+    // NoReaderForSpace, MATCHED rather than read: "nobody can ask" is a different fact from "we asked and
+    // were told no such name" (ReplyDoesNotResolve), and the remedies differ — a probe versus an edit.
+    // Substring-matching prose blurred exactly that line.
+    HostNameResolutionRefused { host: h, refusal: NoReaderForSpace { space: _ } } => host_identity_eq(a: h, b: "srv2")
     HostNameResolutionAdmitted { resolution: _ } => false
   }
 }
@@ -1018,7 +1065,7 @@ test fn the_lan_row_is_grounded_by_the_fleet_reach_address() -> Bool {
         Resolved { name: _, addresses: addrs } => ipv4_address_eq(a: addrs.head, b: srv2_lan_ipv4)
         Unresolved { name: _, cause: _ } => false
       }
-    HostNameResolutionRefused { host: _, cause: _ } => false
+    HostNameResolutionRefused { host: _, refusal: _ } => false
   }
 }
 
@@ -1048,10 +1095,42 @@ test fn the_first_server_reported_is_the_one_configured_first() -> Bool {
   ipv4_address_eq(a: resolver_first_server(resolver: two_server_resolver()), b: router_address)
 }
 
-// A CAUSE NAMES ITS OWN REMEDY, and the three that must not be confused say different things. The witness
-// reads the sentences because the whole value of three arms over one string is that the sentences differ.
-test fn the_three_causes_each_name_their_own_remedy() -> Bool {
-  string_contains(s: cause_text(cause: ServerUnreachable { server: router_address }), pattern: "check the server")
-    && string_contains(s: cause_text(cause: NameUnknown { server: router_address }), pattern: "licenses changing the spelling")
-    && string_contains(s: cause_text(cause: AnswerEmpty { server: router_address }), pattern: "do not treat this as a wrong name")
+// THE THREE CAUSES ARE STILL THREE DISTINCT ARMS, told by matching them — the way the whole change now
+// insists causes be consumed. The earlier version of this claim called `cause_text` and substring-matched
+// the sentences, which is exactly the §5 blending the review flagged: prose is not a carrier, and matching
+// it lets a rewording change behaviour. Distinctness of ARMS is the property that matters: silence, negative,
+// and nodata are three different remedies, and if any two are ever merged upstream, one of these matches
+// stops being the arm the claim named and this refuses.
+test fn the_three_reply_causes_stay_three_distinct_arms() -> Bool {
+  is_server_unreachable(cause: ServerUnreachable { server: router_address })
+    && is_name_unknown(cause: NameUnknown { server: router_address })
+    && is_answer_empty(cause: AnswerEmpty { server: router_address })
+    // ...and each is not the others, so no two arms can be collapsed without this going red.
+    && !is_name_unknown(cause: ServerUnreachable { server: router_address })
+    && !is_answer_empty(cause: NameUnknown { server: router_address })
+    && !is_name_unknown(cause: AnswerEmpty { server: router_address })
+}
+
+fn is_server_unreachable(cause: ResolutionCause) -> Bool {
+  match cause {
+    ServerUnreachable { server: _ } => true
+    NameUnknown { server: _ } => false
+    AnswerEmpty { server: _ } => false
+  }
+}
+
+fn is_name_unknown(cause: ResolutionCause) -> Bool {
+  match cause {
+    ServerUnreachable { server: _ } => false
+    NameUnknown { server: _ } => true
+    AnswerEmpty { server: _ } => false
+  }
+}
+
+fn is_answer_empty(cause: ResolutionCause) -> Bool {
+  match cause {
+    ServerUnreachable { server: _ } => false
+    NameUnknown { server: _ } => false
+    AnswerEmpty { server: _ } => true
+  }
 }
