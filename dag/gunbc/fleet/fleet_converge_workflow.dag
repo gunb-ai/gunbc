@@ -145,7 +145,7 @@ import gunbc.auth.ci_app_key_rotation {
 import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_boot_artifact_glob, mtcollins1_boot_step_timeout_minutes }
 import gunbc.host.host_boot_attempt_admission { boot_attempt_receipt_env_name, boot_attempt_nonce_env_name }
 import gunbc.runner.runner_group_restriction_ensure_run { microvm_runner_group_ensure_artifact_glob, microvm_runner_group_step_timeout_minutes }
-import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id }
+import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_job, qualification_floor_job_id, qualification_attempt_subject_env_name, qualification_attempt_artifact_glob }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_emit_build_timeout_minutes }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_artifact_glob, srv1_root_mutation_approval_step_timeout_minutes, srv1_root_mutation_select_name_env, srv1_root_mutation_select_value_env }
 import gunbc.runner.runner_lost_boot_sweep_run { lost_boot_sweep_artifact_glob, lost_boot_sweep_step_timeout_minutes, lost_boot_sweep_capture_path_env_name, lost_boot_sweep_host_env_name }
@@ -197,6 +197,7 @@ import gunbc.ci.ci_spec {
   gunbc_ci_microvm_runner_group_ensure_invoke,
   gunbc_ci_srv1_root_mutation_approval_invoke,
   gunbc_ci_service_runner_lost_boot_sweep_invoke,
+  gunbc_ci_qualification_attempt_invoke,
   gunbc_ci_mtcollins1_boot_admit_invoke,
   gunbc_ci_gcp_iam_converge_request_invoke,
   gunbc_ci_gcp_iam_converge_apply_invoke,
@@ -384,6 +385,7 @@ type FleetConvergeWorkflowMode
   | FlexTemplateEnsure
   | BranchRunGrant
   | QualificationFloor
+  | QualificationAttempt
   | R2CacheObjectWriteMint
   | R2ConditionalPutRaceProbe
   | WorkspaceSourcePack
@@ -470,6 +472,7 @@ fn fleet_converge_workflow_mode_wire(mode: FleetConvergeWorkflowMode) -> String 
     FlexTemplateEnsure => "flex_template_ensure"
     BranchRunGrant => "branch_run_grant"
     QualificationFloor => "qualification_floor"
+    QualificationAttempt => "qualification_attempt"
     R2CacheObjectWriteMint => "r2_cache_object_write_mint"
     R2ConditionalPutRaceProbe => "r2_conditional_put_race_probe"
     WorkspaceSourcePack => "workspace_source_pack"
@@ -518,7 +521,7 @@ fn fleet_converge_spark_target_description() -> String {
   ], "")
 }
 
-data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor]
+data fleet_converge_workflow_modes: List<FleetConvergeWorkflowMode> = [FullHostPlan, LaunchEnvironmentPlan, AllocationStorePlan, WorkspaceCommissioningPlan, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild, FleetApply, OrgActionsObserve, AppControlPlaneObserve, MicrovmHostConverge, MicrovmNetworkObserve, MicrovmNetworkApply, GuestImageObserve, GuestImageConverge, MicrovmBootProbe, SparkGrants, SparkBootstrap, SparkServingApply, SparkNativeServingApply, SparkRuntimeImageProbe, SparkWirelessLinkConverge, SparkGrantsObserve, DashboardDeploy, ApprovalBrokerDarkInstall, MicrovmControllerInstall, MicrovmSlotReserve, MicrovmSlotStart, RlmLaunchDeploymentReceipt, HostResetReturn, RunnerHostFileObserve, HostMemoryObserve, RunnerHostFileConverge, HostPrimaryNetworkObserve, HostPrimaryNetworkConverge, RunnerHostWithdraw, RunnerHostRestore, SitePxeEdgeObserve, SitePxeEdgeConverge, RunnerPasswordSessionToolConverge, RunnerBrowserToolchainConverge, RunnerUserSessionConverge, RunnerGpuContainerToolchainConverge, R2MintPreflight, R2ObjectWriteMint, OrgRunnerRosterObserve, ApprovalKeyringConverge, MtCollins1Boot, MtCollins1FanObserve, MtCollins1KvmObserverObserve, MtCollins1CensusImagePublish, MtCollins1RunnerImagePublish, MtCollins1CensusMemberReadback, MtCollins1CensusQemuHostObserve, MtCollins1CensusQemuToolchainConverge, HostCredentialCustodyConverge, AppKeyVersionVerify, R2BucketEnsure, R2BucketAdminMint, R2WorkspaceObjectReadMint, R2WorkspaceObjectWriteMint, R2CacheObjectReadMint, R2CacheObjectWriteMint, R2ConditionalPutRaceProbe, WorkspaceSourcePack, WorkspaceCheckpointMeasure, WorkspaceCheckpointRestore, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve, MicrovmRunnerGroupEnsure, ServiceRunnerLostBootSweep, GcpIamConverge, NamecheapObserve, ReviewSheetConverge, PrinterWorkflow, ArrivalConverge, HetznerCloudServerRead, ExportHostReaderConverge, BootMediumReaderKeyMint, FlexPass, FlexTemplateEnsure, BranchRunGrant, QualificationFloor, QualificationAttempt]
 // WHICH RELEASE PRODUCT A MODE'S JOB RUNS, NAMED PER MODE WITH NO WILDCARD (as the scope and fleet-key
 // matches above name theirs). A mode whose steps run only gunbc and claim_executor declares the
 // compiler pair (gunbc.fleet.fleet_release_bins_key compiler_pair_release_product): its build job then
@@ -584,6 +587,7 @@ fn fleet_converge_mode_release_product(mode: FleetConvergeWorkflowMode) -> Fleet
     FlexTemplateEnsure => SixteenBinaryPack
     BranchRunGrant => SixteenBinaryPack
     QualificationFloor => SixteenBinaryPack
+    QualificationAttempt => SixteenBinaryPack
     R2CacheObjectWriteMint => SixteenBinaryPack
     R2ConditionalPutRaceProbe => SixteenBinaryPack
     WorkspaceSourcePack => CompilerPairOnly
@@ -706,6 +710,7 @@ fn fleet_converge_mode_scope(mode: FleetConvergeWorkflowMode) -> FleetConvergeSc
     FlexTemplateEnsure => none
     BranchRunGrant => none
     QualificationFloor => none
+    QualificationAttempt => none
     R2CacheObjectWriteMint => none
     R2ConditionalPutRaceProbe => none
     WorkspaceSourcePack => none
@@ -857,6 +862,7 @@ fn fleet_converge_mode_fleet_ssh_key_demand(mode: FleetConvergeWorkflowMode) -> 
     FlexTemplateEnsure => FleetSshKeyNotConsumed
     BranchRunGrant => FleetSshKeyNotConsumed
     QualificationFloor => FleetSshKeyNotConsumed
+    QualificationAttempt => FleetSshKeyConsumed
     R2CacheObjectWriteMint => FleetSshKeyNotConsumed
     R2ConditionalPutRaceProbe => FleetSshKeyNotConsumed
     WorkspaceSourcePack => FleetSshKeyNotConsumed
@@ -1779,6 +1785,7 @@ fn fleet_converge_mode_mutation_domain(mode: FleetConvergeWorkflowMode) -> Fleet
     FlexTemplateEnsure => SubjectDomain { group: fleet_converge_flex_vast_account_group }
     BranchRunGrant => ExecutorDomain
     QualificationFloor => OwnRunConfined
+    QualificationAttempt => ExecutorDomain
     R2CacheObjectWriteMint => ExecutorDomain
     R2ConditionalPutRaceProbe => SubjectDomain { group: "r2-conditional-put-race-probe" }
     WorkspaceSourcePack => ExecutorDomain
@@ -3629,6 +3636,48 @@ fn fleet_converge_service_runner_lost_boot_sweep_step() -> Step {
   }
 }
 
+// THE QUALIFICATION ATTEMPT (gunbc.runner.runner_qualification_attempt_run; gunbc.plans.mtcollins1_ci_service_legs G1b): the
+// driver that binds the real effects to the G2 pass. It qualifies the subject_host input under that host's unit hold, so
+// the executor must be the hold store's host; it reaches the subject over the anchored fleet SSH transport (hence
+// FleetSshKeyConsumed) and signs from the gunbai-ci App key it stages over this run's federated identity. The workflow
+// is transport only (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster).
+data fleet_converge_qualification_attempt_step_if: String = fleet_converge_mode_step_if(mode: QualificationAttempt)
+
+fn fleet_converge_qualification_attempt_step() -> Step {
+  RunStep {
+    name: Present { value: "qualification attempt: pin, mint, dispatch the floor to the attempt's runner, collect, deregister, unpin" },
+    id: Present { value: "qualification_attempt" },
+    run: gunbc_ci_qualification_attempt_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
+      kv(key: qualification_attempt_subject_env_name as String, value: yaml_string(s: join(["${{ github.event.inputs.", fleet_converge_subject_host_input.name, " }}"], ""))),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_qualification_attempt_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes + 30 }
+  }
+}
+
+fn fleet_converge_qualification_attempt_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the qualification attempt receipt" },
+    id: Present { value: "qualification_attempt_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "qualification-attempt-receipts")),
+      kv(key: "path", value: yaml_string(s: qualification_attempt_artifact_glob)),
+      kv(key: "if-no-files-found", value: yaml_string(s: "warn")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: join(["always() && ", fleet_converge_qualification_attempt_step_if], "") },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step() -> Step {
   UsesStep {
     name: Present { value: "Upload the service runner lost-boot sweep receipt" },
@@ -5137,6 +5186,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_microvm_runner_group_ensure_step(),
         fleet_converge_microvm_runner_group_ensure_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_step(),
+        fleet_converge_qualification_attempt_step(),
+        fleet_converge_qualification_attempt_receipt_upload_step(),
         fleet_converge_service_runner_lost_boot_sweep_receipt_upload_step(),
         fleet_converge_guest_image_observe_step(),
         fleet_converge_guest_image_converge_step(),
@@ -5427,6 +5478,7 @@ fn fleet_converge_mode_job_id(mode: FleetConvergeWorkflowMode) -> NonEmptyStr {
     FlexTemplateEnsure => fleet_converge_shared_job_id
     BranchRunGrant => "gcp-iam-converge" as NonEmptyStr
     QualificationFloor => qualification_floor_job_id
+    QualificationAttempt => fleet_converge_shared_job_id
     R2CacheObjectWriteMint => fleet_converge_shared_job_id
     R2ConditionalPutRaceProbe => fleet_converge_shared_job_id
     WorkspaceSourcePack => fleet_converge_shared_job_id
@@ -6370,6 +6422,14 @@ data fleet_converge_host_input: DispatchInput = DispatchInput {
     type: InputChoice { options: fleet_converge_enrolled_host_options },
   }
 
+data fleet_converge_subject_host_input: DispatchInput = DispatchInput {
+    name: "subject_host",
+    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge, qualification_attempt). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
+    required: false,
+    default: none,
+    type: InputChoice { options: fleet_converge_enrolled_host_options },
+  }
+
 data fleet_converge_mode_input: DispatchInput = DispatchInput {
     name: "mode",
     description: Present { value: "Closed choice of fleet-converge modes. Contracts: gunbc.fleet.fleet_converge_workflow." },
@@ -6405,13 +6465,7 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
   DispatchInput { name: "workspace_image_run_id", description: Present { value: "Image build run to download for controller install; installed bytes must match the reviewed image pin" }, required: false, default: none, type: InputString },
 
   fleet_converge_host_input,
-  DispatchInput {
-    name: "subject_host",
-    description: Present { value: "The host this run ACTS ON (runner_host_file_converge / withdraw / restore, host_primary_network_observe / converge). It must NOT equal host: the bracket drains every slot of its subject, and when the executor slot lives on the subject that drain waits for the job's own executor forever (refused run 40085967610, srv3-13); and a primary network readback taken from the subject itself never crosses the uplink it judges. The split is enforced as a precondition refusal before any drain, mask or netplan leg." },
-    required: false,
-    default: none,
-    type: InputChoice { options: fleet_converge_enrolled_host_options },
-  },
+  fleet_converge_subject_host_input,
   DispatchInput {
     name: "arrival_subject",
     description: Present { value: "arrival_converge only: the arrival-population unit (not executor host, not managed_host). Options are gunbc.machine_intake.arrival_subject arrival_converge_subject_options. Names signed off msg_f03558d1" },

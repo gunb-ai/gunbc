@@ -15,10 +15,6 @@ import gunbc.runner.runner_unit_file { RunnerJobUserUidReading, JobUserUidObserv
 import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.linux.kernel_random { kernel_boot_id_path }
 import extdeps.auth.jws { JwsSigningKeyRef }
-import extdeps.systemd { User, DelegateProperty, MemoryMax }
-import extdeps.systemd.systemd_run { NamedUnitSetting, SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_transient_wait_pipe_unit_command }
-import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_properties }
 import gunbc.runner.runner_host_deploy { runner_host_spec_for, RunnerHostSpecFound, RunnerHostSpecAbsent }
 import gunbc.fleet.host_credential_custody_converge {
   host_credential_custody_row, HostCredentialCustodyRow, ServiceSlotAppKey, custody_row_readable_by, custody_row_placement, CustodyPlaced, CustodyPlacementRefused,
@@ -26,9 +22,6 @@ import gunbc.fleet.host_credential_custody_converge {
   custody_path_metadata_of_reads, FindAnswer, FindUnobservable, classify_find_answer, custody_owner_clause, custody_perm_clause, custody_mount_table_path,
 }
 import extdeps.github.actions_jit_runner { EncodedJitConfig }
-import extdeps.github.actions_runner { actions_runner_jitconfig_env_name }
-import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
-import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
 import product.host_identity { HostIdentity }
 import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused, hostname_short_read }
 import gunbc.host.host_effect { LocalShell }
@@ -40,7 +33,7 @@ import gunbc.github_effect_perform {
   JitMintPerformance, JitMintReceived, service_slot_app_key,
 }
 import gunbc.runner.runner_host_unit_slot {
-  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, ServiceBootId, service_boot_id_of, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
+  HostUnitSlot, HostUnitSlotPurpose, ServiceSlot, host_unit_listener_wait, HostUnitListenerReady, HostUnitListenerUnbuilt, ServiceBootId, service_boot_id_of, HostUnitSlotBound, HostUnitSlotRefused, HostUnitSlotRefusal,
   host_unit_slot_for, host_unit_slot_pass_root, host_unit_slot_listener_argv, service_slot_name_parse, service_slot_selected_workflow,
   CurrentServicePopulation, CurrentServicePopulationStanding, CurrentServicePopulationDerived, CurrentServicePopulationRefused,
   current_service_population, current_population_has_unit,
@@ -49,7 +42,7 @@ import gunbc.machine_intake.host_capture_envelope { KernelBootId }
 import extdeps.uuid { uuid_of }
 import gunbc.runner.jit_registration_subject { host_unit_registration_subject }
 import gunbc.runner.runner_jit_deregistration {
-  JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, JitRegistration, JitDeregistration, JitRunnerDeregistered,
+  JitSlotExit, SlotListenerExitedClean, SlotListenerExitedNonzero, SlotNeverLaunched, SlotListenerOutcomeUnobserved, JitRegistration, JitDeregistration, JitRunnerDeregistered,
   JitDeregistrationRefused, JitDeregistrationSubject,
 }
 import gunbc.runner.runner_jit_perform {
@@ -132,15 +125,22 @@ fn service_slot_rebuild(host: HostControlStanding, identity: HostIdentity, boot:
 
 // ── the exit, as the deregistration's vocabulary ────────────────────────────────────────────────
 
+// A REMOTE LAUNCH READS ITS END FROM THE MANAGER'S OWN SUMMARY (gunbc.runner.runner_qualification_attempt_run), which
+// names the unit's Result rather than a status number: a result other than success is ListenerEndedUnclean with
+// that result, never an invented exit code.
 type ListenerRun
   = ListenerNotLaunched { cause: NonEmptyStr }
   | ListenerExited { exit_code: Int }
+  | ListenerEndedUnclean { result: NonEmptyStr }
+  | ListenerOutcomeUnobserved { cause: NonEmptyStr }
 
 // EVERY ARM MAPS TO AN EXIT, SO EVERY ARM DEREGISTERS: a listener that never started leaves a
 // registration exactly as one that ran a job does.
 fn service_slot_exit_of(run: ListenerRun) -> JitSlotExit {
   match run {
     ListenerNotLaunched { cause: c } => SlotNeverLaunched { cause: c }
+    ListenerEndedUnclean { result: r } => SlotListenerExitedNonzero { cause: join(["the listener's unit ended with result ", r as String], "") as NonEmptyStr }
+    ListenerOutcomeUnobserved { cause: c } => SlotListenerOutcomeUnobserved { cause: c }
     ListenerExited { exit_code: code } =>
       if code == 0 {
         SlotListenerExitedClean
@@ -419,15 +419,6 @@ fn service_slot_isolate_listener(identity: HostIdentity, row: HostCredentialCust
   }
 }
 
-fn service_slot_listener_properties(isolated: ServiceSlotListenerIsolated) -> List<SystemdRunProperty> {
-  concat(
-    ephemeral_slot_properties(desired: gunbc_runner_slot_desired()),
-    [
-      NamedUnitSetting { property: User, value: isolated.user },
-      NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
-    ],
-  )
-}
 
 // ── delivering the credential ───────────────────────────────────────────────────────────────────
 
@@ -471,20 +462,12 @@ fn service_slot_pass_id_of(raw: String?) -> ServiceSlotPassIdReading
 
 // ONE TRANSIENT UNIT PER SLOT AND PASS (--collect removes it at exit, passes are sequential), run as the
 // isolated user in its own cgroup, with stdin piped through to the export wrapper. The listener's root is the
-// slot's own (host_unit_slot_pass_root), never the shared binary tree.
+// slot's own (host_unit_slot_pass_root), never the shared binary tree. The launch is the one host-unit listener
+// builder (gunbc.runner.runner_host_unit_slot host_unit_listener_wait), shared with the qualification attempt.
 fn service_slot_listener_command(slot: HostUnitSlot, isolated: ServiceSlotListenerIsolated, pass: ServiceSlotPassId) -> ServiceSlotListenerCommand {
-  match admit_posix_shell_name(spelling: actions_runner_jitconfig_env_name()) {
-    PosixShellNameRefused { spelling: s } =>
-      ServiceSlotListenerUnbuilt { cause: join(["the listener's JIT environment name is not a shell name: ", s], "") as NonEmptyStr }
-    PosixShellNameAdmitted { name: n } =>
-      match posix_sh_export_from_stdin_then_exec_command(name: n, command: host_unit_slot_listener_argv(root: host_unit_slot_pass_root(unit: slot.unit, pass: pass.invocation))) {
-        PosixShExportExecEmitRefused { name: _ } => ServiceSlotListenerUnbuilt { cause: "the stdin export wrapper did not emit" as NonEmptyStr }
-        PosixShExportExecReady { command: wrapper } =>
-          match systemd_run_transient_wait_pipe_unit_command(unit: service_slot_listener_unit(slot: slot), properties: service_slot_listener_properties(isolated: isolated), command_argv: argv_words(command: wrapper)) {
-            SystemdRunCommandRefused { cause: _ } => ServiceSlotListenerUnbuilt { cause: "systemd-run refused the listener unit" as NonEmptyStr }
-            SystemdRunCommandReady { command: c } => ServiceSlotListenerReady { command: c }
-          }
-      }
+  match host_unit_listener_wait(listener_unit: service_slot_listener_unit(slot: slot), user: isolated.user, root: host_unit_slot_pass_root(unit: slot.unit, pass: pass.invocation)) {
+    HostUnitListenerUnbuilt { cause: c } => ServiceSlotListenerUnbuilt { cause: c }
+    HostUnitListenerReady { wait: w } => ServiceSlotListenerReady { command: w.command }
   }
 }
 
