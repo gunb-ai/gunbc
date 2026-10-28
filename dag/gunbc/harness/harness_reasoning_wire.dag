@@ -21,7 +21,8 @@ import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import std.nat { Nat }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
-import extdeps.pool.pool_card { pool_card_qwen38_flash_next_model_id }
+import extdeps.strata.strata_server { strata_srv4_daily_model_id, strata_thinking_end_token }
+import gunbc.harness.srv4_strata_wire_qualification { srv4_strata_wire_qualification_receipt, srv4_strata_observed_reasoning_field, srv4_strata_observed_max_context_tokens }
 import extdeps.pool.pool_front { pool_front_any_card_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
@@ -65,7 +66,7 @@ type HarnessServingUnit
   | NemotronUltraFreeOnOpenRouter
   | Qwen3_8_27bOnNinfer
   | Qwen38FlashNextOnPoolFront
-  | Qwen38FlashNextOnSrv1Card
+  | Qwen38FlashNextIq3sOnSrv4Strata
 
 // Compatibility is a catalog fact beside the unit, not model-id equality.
 // A pair is fungible only when it is the same unit or an explicit row that
@@ -87,17 +88,17 @@ type HarnessServingUnitCompatibility
 fn harness_serving_unit_eq(left: HarnessServingUnit, right: HarnessServingUnit) -> Bool {
   match left {
     DeepseekV4FlashOnVllm =>
-      match right { DeepseekV4FlashOnVllm => true  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextOnSrv1Card => false }
+      match right { DeepseekV4FlashOnVllm => true  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextIq3sOnSrv4Strata => false }
     Glm53FlashOnVllm =>
-      match right { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextOnSrv1Card => false }
+      match right { Glm53FlashOnVllm => true  DeepseekV4FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextIq3sOnSrv4Strata => false }
     NemotronUltraFreeOnOpenRouter =>
-      match right { NemotronUltraFreeOnOpenRouter => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextOnSrv1Card => false }
+      match right { NemotronUltraFreeOnOpenRouter => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextIq3sOnSrv4Strata => false }
     Qwen3_8_27bOnNinfer =>
-      match right { Qwen3_8_27bOnNinfer => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextOnSrv1Card => false }
+      match right { Qwen3_8_27bOnNinfer => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen38FlashNextOnPoolFront => false  Qwen38FlashNextIq3sOnSrv4Strata => false }
     Qwen38FlashNextOnPoolFront =>
-      match right { Qwen38FlashNextOnPoolFront => true  Qwen38FlashNextOnSrv1Card => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false }
-    Qwen38FlashNextOnSrv1Card =>
-      match right { Qwen38FlashNextOnSrv1Card => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false }
+      match right { Qwen38FlashNextOnPoolFront => true  Qwen38FlashNextIq3sOnSrv4Strata => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false }
+    Qwen38FlashNextIq3sOnSrv4Strata =>
+      match right { Qwen38FlashNextIq3sOnSrv4Strata => true  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false  Qwen38FlashNextOnPoolFront => false }
   }
 }
 
@@ -136,7 +137,7 @@ fn harness_serving_unit_wire(unit: HarnessServingUnit) -> NonEmptyStr {
     NemotronUltraFreeOnOpenRouter => "nemotron-3-ultra:free on openrouter" as NonEmptyStr
     Qwen3_8_27bOnNinfer => "qwen3.8-27b on ninfer" as NonEmptyStr
     Qwen38FlashNextOnPoolFront => "qwen3.8-flash-next on pool front" as NonEmptyStr
-    Qwen38FlashNextOnSrv1Card => "qwen3.8-flash-next on the srv1 card" as NonEmptyStr
+    Qwen38FlashNextIq3sOnSrv4Strata => "qwen3.8-flash-next-iq3_s on the srv4 strata engine" as NonEmptyStr
   }
 }
 
@@ -157,7 +158,7 @@ fn harness_unit_placement(unit: HarnessServingUnit) -> HarnessUnitPlacement {
     NemotronUltraFreeOnOpenRouter => LeasedFromHostedQuota
     Qwen3_8_27bOnNinfer => RunOnOperatorEndpoint
     Qwen38FlashNextOnPoolFront => RunOnOperatorEndpoint
-    Qwen38FlashNextOnSrv1Card => RunOnOperatorEndpoint
+    Qwen38FlashNextIq3sOnSrv4Strata => RunOnOperatorEndpoint
   }
 }
 
@@ -327,6 +328,18 @@ fn harness_pool_front_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
   }
 }
 
+// THE SRV4 STRATA ARM, read live (gunbc.harness.srv4_strata_wire_qualification): a top-level reasoning_effort
+// member, where "none" is a real off (enable_thinking=False). Standard sends "medium" and maximum sends "max", both
+// words the engine accepted; which accepted word means "ordinarily" is the lab's choice, sent explicitly so the
+// engine's own default never decides it.
+fn harness_strata_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
+  match level {
+    ReasoningOff => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: srv4_strata_wire_qualification_receipt.reasoning_off_effort as String))] }
+    ReasoningStandard => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: "medium"))] }
+    ReasoningMaximum => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: "max"))] }
+  }
+}
+
 // A BUDGET THE LAB CHOOSES, NOT A FACT THE UPSTREAM PROVED (DESIGN 4d). The pool operator's limits are its
 // word (extdeps.pool.pool_front CitedFigure<Nat>, TranscribedUncited), so what the harness enforces is this
 // policy: a declared value with the reason it was chosen. Once the upstream's own limit is read (cited or
@@ -352,12 +365,17 @@ data pool_context_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
   reason: "the pool operator's stated maximum context (ctrl #2375); the lab adopts it as its own ceiling before any live reading, so a turn over it refuses locally instead of being sent" as NonEmptyStr,
 }
 
+data strata_context_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 229376,
+  reason: "the srv4 engine operator's stated maximum context (eager-lynx-183, 2026-10-28); the lab adopts it as its own ceiling before any live reading, so a turn over it refuses locally instead of being sent" as NonEmptyStr,
+}
+
 // THE LARGEST OUTPUT BUDGET A REQUEST MAY ASK. Absent where no upstream states one; the pool unit is capped by
 // pool_output_budget_policy, so a request budget above it is capped by harness_capped_max_tokens, never sent.
 fn harness_unit_output_cap(unit: HarnessServingUnit) -> Int? {
   match unit {
     Qwen38FlashNextOnPoolFront => Present { value: pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) as Int }
-    Qwen38FlashNextOnSrv1Card => Present { value: pool_budget_enforced(policy: pool_output_budget_policy, upstream: pool_front_max_output_tokens) as Int }
+    Qwen38FlashNextIq3sOnSrv4Strata => none
     DeepseekV4FlashOnVllm => none
     Glm53FlashOnVllm => none
     NemotronUltraFreeOnOpenRouter => none
@@ -380,7 +398,7 @@ fn harness_reasoning_kwargs_for(unit: HarnessServingUnit, level: HarnessReasonin
       harness_openrouter_reasoning_kwargs(unit: unit, level: level, supported: nemotron_ultra_free_supported_efforts, mandatory: nemotron_ultra_free_reasoning_mandatory)
     Qwen3_8_27bOnNinfer => harness_ninfer_reasoning_kwargs(unit: unit, level: level)
     Qwen38FlashNextOnPoolFront => harness_pool_front_reasoning_kwargs(unit: unit, level: level)
-    Qwen38FlashNextOnSrv1Card => harness_pool_front_reasoning_kwargs(unit: unit, level: level)
+    Qwen38FlashNextIq3sOnSrv4Strata => harness_strata_reasoning_kwargs(unit: unit, level: level)
   }
 }
 
@@ -416,7 +434,7 @@ fn harness_unit_thinking_requested(unit: HarnessServingUnit, level: HarnessReaso
         ReasoningStandard => true
         ReasoningMaximum => true
       }
-    Qwen38FlashNextOnSrv1Card =>
+    Qwen38FlashNextIq3sOnSrv4Strata =>
       match level {
         ReasoningOff => false
         ReasoningStandard => true
@@ -439,7 +457,7 @@ fn harness_unit_model_id(unit: HarnessServingUnit) -> NonEmptyStr {
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_model_id
     Qwen3_8_27bOnNinfer => operator_pod_ninfer_launch.model_id
     Qwen38FlashNextOnPoolFront => pool_front_any_card_model_id
-    Qwen38FlashNextOnSrv1Card => pool_card_qwen38_flash_next_model_id
+    Qwen38FlashNextIq3sOnSrv4Strata => strata_srv4_daily_model_id
   }
 }
 
@@ -456,7 +474,7 @@ fn harness_unit_tool_call_parser(unit: HarnessServingUnit) -> NonEmptyStr? {
     NemotronUltraFreeOnOpenRouter => none
     Qwen3_8_27bOnNinfer => none
     Qwen38FlashNextOnPoolFront => none
-    Qwen38FlashNextOnSrv1Card => none
+    Qwen38FlashNextIq3sOnSrv4Strata => none
   }
 }
 
@@ -497,8 +515,8 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
         Present { value: f } => Present { value: ParsedReasoningField { field: f } }
         Absent => none
       }
-    Qwen38FlashNextOnSrv1Card =>
-      match cited_figure_read(figure: pool_front_message_reasoning_field) {
+    Qwen38FlashNextIq3sOnSrv4Strata =>
+      match cited_figure_read(figure: srv4_strata_observed_reasoning_field()) {
         Present { value: f } => Present { value: ParsedReasoningField { field: f } }
         Absent => none
       }
@@ -533,7 +551,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? 
     NemotronUltraFreeOnOpenRouter => Present { value: openrouter_message_reasoning_field }
     Qwen3_8_27bOnNinfer => Present { value: ninfer_message_reasoning_field }
     Qwen38FlashNextOnPoolFront => cited_figure_read(figure: pool_front_message_reasoning_field)
-    Qwen38FlashNextOnSrv1Card => cited_figure_read(figure: pool_front_message_reasoning_field)
+    Qwen38FlashNextIq3sOnSrv4Strata => cited_figure_read(figure: srv4_strata_observed_reasoning_field())
   }
 }
 
@@ -616,7 +634,9 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
     Qwen3_8_27bOnNinfer => true
     // Not read from the front (the reasoning figures are uncited), so no parse is claimed.
     Qwen38FlashNextOnPoolFront => false
-    Qwen38FlashNextOnSrv1Card => false
+    // Read live (gunbc.harness.srv4_strata_wire_qualification): the engine's OutputParser splits the think block
+    // into reasoning_content and no think block reaches content.
+    Qwen38FlashNextIq3sOnSrv4Strata => true
   }
 }
 
@@ -630,7 +650,7 @@ fn harness_unit_thinking_end_token(unit: HarnessServingUnit) -> NonEmptyStr? {
     NemotronUltraFreeOnOpenRouter => Present { value: nemotron_ultra_thinking_end_token }
     Qwen3_8_27bOnNinfer => Present { value: ninfer_inline_think_end_token.token }
     Qwen38FlashNextOnPoolFront => cited_figure_read(figure: pool_front_thinking_end_token)
-    Qwen38FlashNextOnSrv1Card => cited_figure_read(figure: pool_front_thinking_end_token)
+    Qwen38FlashNextIq3sOnSrv4Strata => cited_figure_read(figure: strata_thinking_end_token)
   }
 }
 
@@ -643,6 +663,6 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
     Qwen3_8_27bOnNinfer => qwen3_8_27b_nvfp4_row.context_tokens
     Qwen38FlashNextOnPoolFront => token_count(count: pool_budget_enforced(policy: pool_context_budget_policy, upstream: pool_front_max_context_tokens))
-    Qwen38FlashNextOnSrv1Card => token_count(count: pool_budget_enforced(policy: pool_context_budget_policy, upstream: pool_front_max_context_tokens))
+    Qwen38FlashNextIq3sOnSrv4Strata => token_count(count: pool_budget_enforced(policy: strata_context_budget_policy, upstream: srv4_strata_observed_max_context_tokens()))
   }
 }
