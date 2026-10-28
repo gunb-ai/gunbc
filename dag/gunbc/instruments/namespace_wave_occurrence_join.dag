@@ -374,7 +374,7 @@ fn join_rename_target(renames: List<RosterHeadRow>, from: String, to: String) ->
       Absent =>
         match r.head {
           KeepHead => Absent
-          RenameHead { to: t, positional: _ } => if (r.call == from) && (t == to) { Present { value: roster_qn_text(qn: r.home) + "." + t } } else { Absent }
+          RenameHead { to: t, positional: _, supplied: _, sites: _ } => if (r.call == from) && (t == to) { Present { value: roster_qn_text(qn: r.home) + "." + t } } else { Absent }
         }
     }
   })
@@ -712,7 +712,7 @@ fn generated_controls() -> String {
 // roster_rename_call_edits, whose own controls are the inhabitance claim that the generator emits these steps), and
 // every head text is that proof applied to the base text, so each locus is read off a text, never typed.
 fn rename_control_rows() -> List<RosterHeadRow> {
-  [RosterHeadRow { call: "map_get", import_name: "map_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"] } }]
+  [RosterHeadRow { call: "map_get", import_name: "map_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "map_lookup", positional: ["m", "key"], supplied: [], sites: [] } }]
 }
 
 fn rename_unruled_rows() -> List<RosterHeadRow> {
