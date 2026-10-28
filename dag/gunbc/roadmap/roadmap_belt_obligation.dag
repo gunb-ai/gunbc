@@ -9,7 +9,7 @@ import gunbc.roadmap.roadmap_workflow_stage {
 }
 import gunbc.roadmap.roadmap_provider_events {
   ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderAwaitingAcceptance, ProviderRunning,
-  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
+  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused, ProviderRequestPending,
 }
 
 // THE BELT'S WORK AS OBLIGATIONS, NOT PHASES (dogfood interventions #6 and #4, gunbc#13124; the
@@ -164,14 +164,18 @@ fn belt_segment_complete(segments: List<WorkflowSegment>, kind: WorkflowSegmentK
   }
 }
 
-// THE WORKER HAS ENDED when the provider's own evidence says so -- the same three arms
+// THE WORKER HAS ENDED when the provider's own evidence says so -- the arms
 // gunbc.roadmap.roadmap_belt_commit belt_commit_decision treats as terminal, so capture is outstanding
-// exactly when the capture core would act.
+// exactly when the capture core would act. A REQUEST-PENDING worker HAS ENDED too: it recorded the
+// durable turn.request_pending and exited, and the belt owes it the capture step that records the
+// yield (CaptureAbsent) -- so that the continuation can read a settled capture and reach its
+// request-pending branch, rather than being refused for a capture the projection never owed.
 fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
   match provider {
     ProviderCompleted { activity: _ } => true
     ProviderFailed { activity: _, detail: _ } => true
     ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderRequestPending { activity: _, detail: _ } => true
     ProviderNotStarted => false
     ProviderStarting { activity: _ } => false
     ProviderAwaitingSeat { detail: _ } => false
@@ -195,14 +199,41 @@ fn belt_provider_handed_in(provider: ProviderExecutionState) -> String {
     ProviderStarting { activity: _ } => ""
     ProviderAwaitingSeat { detail: _ } => ""
     ProviderRunning { activity: _ } => ""
+    ProviderRequestPending { activity: _, detail: _ } => ""
     ProviderEventsRefused { activity: _, detail: _ } => ""
   }
 }
 
-fn belt_provider_candidate_ready(provider: ProviderExecutionState) -> Bool {
+// THE ONE FACT BOTH SIDES READ: "the worker's own evidence says it has ENDED, so the belt owes the
+// commit step that records how the attempt ended." The arms are belt_provider_terminal (the ended
+// states, which INCLUDES a request-pending worker) plus the hand-in awaiting acceptance. This is
+// the capture gate ONLY -- it deliberately does NOT answer "is there a candidate to verify"; that is
+// belt_provider_candidate_ready below, which reads the SAME projection and answers it differently for
+// a pending request. One projection, read once per question; no second copy of "ended" anywhere.
+fn belt_capture_recording_owed(provider: ProviderExecutionState) -> Bool {
   belt_provider_terminal(provider: provider) || match provider {
     ProviderAwaitingAcceptance { handin: _ } => true
     _ => false
+  }
+}
+
+// IS THERE A CANDIDATE TO ACT ON (verify, publish). This is NOT the capture gate -- a pending request
+// is owed a capture (belt_capture_recording_owed) but has NO candidate yet: the round drew no answer
+// and awaits re-delivery, so there is nothing to verify. Reading these as one predicate is exactly
+// the conflation the pending state exposes: capture-owed and candidate-ready coincide on the other
+// ended states but DIVERGE here, so they are two named predicates over the one projection.
+fn belt_provider_candidate_ready(provider: ProviderExecutionState) -> Bool {
+  match provider {
+    ProviderCompleted { activity: _ } => true
+    ProviderFailed { activity: _, detail: _ } => true
+    ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderAwaitingAcceptance { handin: _ } => true
+    ProviderRequestPending { activity: _, detail: _ } => false
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderEventsRefused { activity: _, detail: _ } => false
   }
 }
 
@@ -216,7 +247,7 @@ fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<Wor
 
 fn belt_attempt_obligation_outstanding(kind: BeltAttemptObligationKind, provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> Bool {
   match kind {
-    CaptureObligation => belt_provider_candidate_ready(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
+    CaptureObligation => belt_capture_recording_owed(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
     VerifyObligation => belt_segment_complete(segments: segments, kind: SubmissionWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: VerificationWorkflowSegment)
     ReviewObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: ReviewWorkflowSegment)
     AuditObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: GoalAuditWorkflowSegment)

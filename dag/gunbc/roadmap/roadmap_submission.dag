@@ -32,6 +32,7 @@ import gunbc.roadmap.roadmap_provider_events {
   ProviderFailed,
   ProviderBudgetSpent,
   ProviderEventsRefused,
+  ProviderRequestPending,
 }
 import gunbc.roadmap.roadmap_publish { publication_receipt_member, publication_receipt_int_member, ReceiptMemberRead, ReceiptMemberUnreadable }
 import gunbc.scm.ancestry { RepositoryCommitRef }
@@ -609,6 +610,12 @@ fn candidate_handoff_state(
       candidate_handoff_state_for_handin(handin: handin, capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderRunning { activity: _ } => HandoffAwaitingWorker
     ProviderEventsRefused { activity: _, detail: _ } => HandoffAwaitingWorker
+    // A PENDING REQUEST IS AN ENDED WORKER WAITING TO BE RE-DELIVERED, so its capture is read the
+    // same way a yield is: the commit step records it (CaptureAbsent), which lands here as
+    // HandoffYielded -- the attempt holds no candidate and never waits on one it cannot produce, and
+    // the settled capture clears the capture obligation so the belt does not re-run the step forever.
+    ProviderRequestPending { activity: _, detail: _ } =>
+      candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderCompleted { activity: _ } =>
       candidate_handoff_state_for_terminal(capture: capture, verification: verification, integration: integration, publication: publication)
     ProviderFailed { activity: _, detail: _ } =>

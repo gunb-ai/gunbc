@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_belt_commit
 
 import std.types { String, NonEmptyStr, List }
-import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused }
+import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused, ProviderRequestPending }
 import gunbc.roadmap.roadmap_submission {
   SubmissionObservation,
   SubmissionCapture,
@@ -113,6 +113,16 @@ fn belt_commit_decision(provider: ProviderExecutionState, node_id: String, attem
     ProviderFailed { activity: _, detail: _ } =>
       belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
     ProviderBudgetSpent { activity: _, detail: _ } =>
+      belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
+    // A PENDING REQUEST RUNS THE COMMIT STEP. The worker drew no answer, recorded the durable
+    // turn.request_pending, and exited; there is NO candidate to declare, so the commit settles as a
+    // yield -- a clean worktree is CommitNotNeeded, a dirty one is CheckpointCommitNeeded (the partial
+    // round is preserved so the re-delivery resumes from the same head) -- and either way the step
+    // RECORDS its settlement, so the capture reads CaptureAbsent. That settled record is the very fact
+    // the continuation reads to reach its request-pending branch (roadmap_attempt_continuation
+    // continuation_from_request_pending); without running the step here the capture stays
+    // CaptureNotAttempted and the continuation refuses the attempt for a capture it was never owed.
+    ProviderRequestPending { activity: _, detail: _ } =>
       belt_commit_decision_for_terminal(node_id: node_id, attempt_key: attempt_key, entries_nul: entries_nul, submission: submission, captures: captures, handin: none)
     ProviderEventsRefused { activity: _, detail: _ } => CommitNotNeeded { reason: "provider not completed" }
   }
