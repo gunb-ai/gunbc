@@ -1392,6 +1392,7 @@ pub fn emit_go_transport_body(
             crate::v1_compiler_emit::emit_unrealized_rest_result_refusal(n, RenderTarget::Go)
         },
         |n, t, d, si| emit_go_shell_call(n, t, d, si),
+        |n, d| emit_go_local_call(n, d),
     )
 }
 
@@ -1550,6 +1551,25 @@ pub fn emit_go_shell_call(
             Rc::new(vec![run_lines.clone()]),
         );
         all_lines.clone().join(&"\n".to_string())
+    }
+}
+
+pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
+    {
+        let prefix = crate::v1_compiler_emit_core_support::make_indent(depth);
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        prefix.clone(),
+                        "// Local binding -- direct function call\n".to_string(),
+                    ),
+                    "return ".to_string(),
+                ),
+                go_export_ident(op_name),
+            ),
+            "(), nil".to_string(),
+        )
     }
 }
 
