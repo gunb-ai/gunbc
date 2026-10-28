@@ -870,7 +870,7 @@ fn explicit_witness_admission_cadence_executes(cadence: WitnessConsumerCadence) 
 // BOUNDED TRANSITIONAL EXCEPTIONS for admission rows on cadences whose scheduled route was
 // deleted at #8283. Each row identity is named explicitly — a new row on those cadences is
 // refused (DESIGN §4b(3): the exception is bounded by identity, not cadence).
-// See docs/design-rung-drops.md gunbc.rung_drop.transitional_admission_exception.
+// See module `gunbc.rung_drop.transitional_admission_exception`, symbol `transitional_admission_exception`.
 // TRIGGER: each named identity carries a cadence with a live scheduled route.
 // Remove an identity from this list when its row migrates to a scheduled-route cadence.
 // The population list is owned by gunbc.rung_drop.transitional_admission_exception

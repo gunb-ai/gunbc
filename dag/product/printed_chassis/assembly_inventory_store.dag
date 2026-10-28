@@ -7,6 +7,7 @@ import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_
 import std.durable_compare_and_set { CasExpectation, CasGeneration, cas_generation_count, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }
 import extdeps.languages.json.emit { serialize_json }
+import std.integer { int_to_decimal_string }
 
 // The prototype has one inventory slot in the existing printer control-plane store.
 // A caller cannot reset reservations by choosing a different output directory.
@@ -52,5 +53,5 @@ fn observe_stored_inventory() -> ObservationAttempt<InventoryObservation,Invento
 // Fence with the store generation, not a caller-authored receipt name. Reusing a receipt
 // label can never resurrect an old baseline after intervening publications (ABA).
 fn capture_at_generation(capture:InventoryObservation,generation:CasGeneration) -> InventoryObservation {
- match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e,retired_rejections:r}=>InventoryCaptured {snapshot:concat("generation:",cas_generation_count(g:generation) as String),covered_slots:c,entries:e,retired_rejections:r}}
+ match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e,retired_rejections:r}=>InventoryCaptured {snapshot:concat("generation:",int_to_decimal_string(value: cas_generation_count(g:generation))),covered_slots:c,entries:e,retired_rejections:r}}
 }

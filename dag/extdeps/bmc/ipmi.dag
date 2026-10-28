@@ -2,7 +2,7 @@ module extdeps.bmc.ipmi
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { Bool, Int, NonEmptyStr, Unit }
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.resources { Network }
@@ -95,10 +95,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // SelListAuthenticated IS SelList WITH A CREDENTIAL, FOR THE SAME REASON SdrTypeList IS SdrList
 // WITH ONE: every controller in this fleet refuses an unauthenticated session, and changing what
 // SelList means would silently change its existing readers. It binds stderr and exit_code because
-// its consumer (gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle) records WHY a read failed,
+// its consumer (gunbc.machine_intake.megarac_boot_diagnostic_bundle) records WHY a read failed,
 // and it runs under coreutils `timeout` (extdeps.tools.gnu_coreutils timeout_command's argv shape,
 // --kill-after included; exit 124 on expiry) with the caller's bound, so a controller that does not
 // answer is a bounded reading, not a hung step, whatever ipmitool's own retry schedule is.
+//
+// FruPrint RUNS UNDER coreutils `timeout` LIKE ITS BOUNDED SIBLINGS, since the boot's read-only
+// pre-power phase now gates on it (#15193, review 86419): an unbounded `fru print` against a
+// controller that does not answer would outlive the phase it belongs to, and the bound is caller
+// policy (deadline + kill_after, exit 124 on expiry), one operation per command.
 //
 // SdrDumpAuthenticated AND SelListAuthenticatedCached ARE ONE READ SPLIT AT THE SDR. ipmitool(1)
 // (ipmitool 1.8.19, OPTIONS and SEL COMMANDS): `sel elist` "cross-references event records with
@@ -193,13 +198,98 @@ fn ipmitool_sol_activate_refusal_text(refusal: IpmitoolSolActivateRefusal) -> St
   }
 }
 
+// THE CIPHER SUITE IS THE ROUTE'S, AND EVERY LANPLUS OPERATION TAKES IT. ipmitool(1): "-C <ciphersuite>  The
+// remote server authentication, integrity, and encryption algorithms to use for IPMIv2.0 lanplus connections",
+// with ipmitool's own default when the option is absent. Which suite a BMC admits at ADMINISTRATOR is that BMC's
+// fact (its lan print's cipher-suite privilege levels, extdeps.bmc.ipmitool_print_read
+// ipmi_cipher_suites_admitting_admin), so this module holds NO default suite: each route supplies its own,
+// Absent renders no -C at all and the argv is exactly what it was before the option existed, and Present renders
+// "-C" and the suite. The input is required on every operation, so a call site cannot leave it to a default.
+// THE CIPHER SUITE IDS, as the IPMI v2.0 specification assigns them (extdeps_intel_ipmi_spec_citation, its Cipher Suite
+// IDs table: Table 22-20 in the rev 1.1 numbering the operator cites). Each ID names one authentication algorithm
+// (RAKP), one integrity algorithm and one confidentiality algorithm, and the spec's ID is kept as the suite's id,
+// never renumbered. The rows are transcribed from ipmitool's implementation of that table
+// (github.com/ipmitool/ipmitool src/plugins/lanplus/lanplus.c, lanplus_get_requested_ciphers), whose comment
+// cites "table 22-19": the numbering differs between revisions of the spec, and the spec PDF could not be read as
+// text here to settle which. Only IDs 0 to 17 are transcribed, because that is what the read source confirms; the
+// spec's later rows and its OEM range are not, so an ID outside this table has no IpmiCipherSuite and a reader
+// carries it as unlisted rather than as a guessed row.
+type IpmiAuthenticationAlgorithm
+  = RakpNone
+  | RakpHmacSha1
+  | RakpHmacMd5
+  | RakpHmacSha256
+
+type IpmiIntegrityAlgorithm
+  = IntegrityNone
+  | HmacSha1_96
+  | HmacMd5_128
+  | Md5_128
+  | HmacSha256_128
+
+type IpmiConfidentialityAlgorithm
+  = ConfidentialityNone
+  | AesCbc128
+  | Xrc4_128
+  | Xrc4_40
+
+type IpmiCipherSuite sole_constructor {
+  id: Int
+  authentication: IpmiAuthenticationAlgorithm
+  integrity: IpmiIntegrityAlgorithm
+  confidentiality: IpmiConfidentialityAlgorithm
+}
+
+data ipmi_cipher_suite_table: List<IpmiCipherSuite> = [
+  IpmiCipherSuite { id: 0, authentication: RakpNone, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 1, authentication: RakpHmacSha1, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 2, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 3, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 4, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 5, authentication: RakpHmacSha1, integrity: HmacSha1_96, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 6, authentication: RakpHmacMd5, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 7, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 8, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 9, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 10, authentication: RakpHmacMd5, integrity: HmacMd5_128, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 11, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 12, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: AesCbc128 },
+  IpmiCipherSuite { id: 13, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: Xrc4_128 },
+  IpmiCipherSuite { id: 14, authentication: RakpHmacMd5, integrity: Md5_128, confidentiality: Xrc4_40 },
+  IpmiCipherSuite { id: 15, authentication: RakpHmacSha256, integrity: IntegrityNone, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 16, authentication: RakpHmacSha256, integrity: HmacSha256_128, confidentiality: ConfidentialityNone },
+  IpmiCipherSuite { id: 17, authentication: RakpHmacSha256, integrity: HmacSha256_128, confidentiality: AesCbc128 },
+]
+
+// The suite the spec assigns to an ID, or Absent for an ID this table does not list.
+fn ipmi_cipher_suite_of_id(id: Int) -> IpmiCipherSuite? {
+  first(filter(ipmi_cipher_suite_table, s => s.id == id))
+}
+
+// THE OPERATIONS TAKE THE SUITE AS WORDS, NOT AS THE TYPE: a stated divergence (DESIGN 3b). The typed suite is
+// rendered here, by this one function, and each diagnostic.ipmi.Tool operation receives the words as
+// cipher_suite_argv: List<String>, because (1) std.operation_argv shell_materialize_operation_argv refuses a call in
+// an argv element as ArgvExpressionUnsupported (its own declared residue, operation_argv_expression_residue_note),
+// and the byte-equality control over mtcollins1's argv (test.claim.bmc.ipmi_cipher_suite_argv_witness) materializes
+// through it; and (2) a sealed record input does not splice at execution: the seed splices only a native List or a
+// std.compilers.cli_surface ProcessArgvExpansion into an argv and renders any other record as one Debug-text word
+// (gunbc.recurring_failure_mode a_record_in_an_argv_position_becomes_its_debug_text). The operations switch to
+// cipher_suite: IpmiCipherSuite? when argv element evaluation lands in std.operation_argv, or when the seed splices
+// a declared sealed role type.
+fn ipmi_cipher_suite_argv(suite: IpmiCipherSuite?) -> List<String> {
+  match suite {
+    Absent => []
+    Present { value: s } => ["-C", to_string(s.id)]
+  }
+}
+
 service diagnostic.ipmi.Tool {
   operation SensorList {
     requires Network
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sensor"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "sensor"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool sensor failed"
@@ -208,10 +298,10 @@ service diagnostic.ipmi.Tool {
 
   operation SdrList {
     requires Network
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sdr", "elist"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "sdr", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool sdr failed"
@@ -220,10 +310,10 @@ service diagnostic.ipmi.Tool {
 
   operation SdrTypeList {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sensor_type: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "type", "{sensor_type}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sdr", "type", "{sensor_type}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool sdr type failed"
@@ -232,10 +322,10 @@ service diagnostic.ipmi.Tool {
 
   operation SelList {
     requires Network
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sel", "elist"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "sel", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool sel failed"
@@ -244,7 +334,7 @@ service diagnostic.ipmi.Tool {
 
   operation SelListAuthenticated {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -252,7 +342,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sel", "elist"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sel", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated sel elist failed"
@@ -261,14 +351,14 @@ service diagnostic.ipmi.Tool {
 
   operation SdrDumpAuthenticated {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
       exit_code: Int from "exit_code",
       success: Bool from "exit_success",
     }
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sdr", "dump", "{sdr_cache_file}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sdr", "dump", "{sdr_cache_file}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated sdr dump failed"
@@ -277,7 +367,7 @@ service diagnostic.ipmi.Tool {
 
   operation SelListAuthenticatedCached {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -285,7 +375,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sel", "elist"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sel", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated cached sel elist failed"
@@ -294,7 +384,7 @@ service diagnostic.ipmi.Tool {
 
   operation SdrElistAuthenticatedCached {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, sdr_cache_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -302,7 +392,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sdr", "elist"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "-S", "{sdr_cache_file}", "sdr", "elist"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool authenticated cached sdr elist failed"
@@ -311,14 +401,14 @@ service diagnostic.ipmi.Tool {
 
   operation MasterWriteReadAuthenticated {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, bus: NonEmptyStr, slave_address: NonEmptyStr, read_count: NonEmptyStr, write_first: NonEmptyStr, write_second: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, bus: NonEmptyStr, slave_address: NonEmptyStr, read_count: NonEmptyStr, write_first: NonEmptyStr, write_second: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
       exit_code: Int from "exit_code",
       success: Bool from "exit_success",
     }
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "raw", "0x06", "0x52", "{bus}", "{slave_address}", "{read_count}", "{write_first}", "{write_second}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "raw", "0x06", "0x52", "{bus}", "{slave_address}", "{read_count}", "{write_first}", "{write_second}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool raw master write-read failed"
@@ -327,9 +417,9 @@ service diagnostic.ipmi.Tool {
 
   operation ChassisBootDev {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis bootdev failed"
@@ -338,9 +428,9 @@ service diagnostic.ipmi.Tool {
 
   operation ChassisBootDevWithOptions {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, options: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, device: NonEmptyStr, options: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}", "options={options}"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "bootdev", "{device}", "options={options}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis bootdev with options failed"
@@ -349,9 +439,9 @@ service diagnostic.ipmi.Tool {
 
   operation SolDeactivate {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, cipher_suite_argv: List<String> }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "sol", "deactivate"] }
+    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "sol", "deactivate"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool sol deactivate failed"
@@ -360,7 +450,7 @@ service diagnostic.ipmi.Tool {
 
   operation ChassisBootParamGet {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, parameter: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -368,7 +458,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "bootparam", "get", "{parameter}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis bootparam get failed"
@@ -377,14 +467,14 @@ service diagnostic.ipmi.Tool {
 
   operation ChassisPowerControl {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, action: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, action: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout"
       success: Bool from "exit_success"
       transport_stderr: String from "stderr"
       exit_code: Int from "exit_code"
     }
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "power", "{action}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "power", "{action}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis power failed"
@@ -393,7 +483,7 @@ service diagnostic.ipmi.Tool {
 
   operation ChassisStatus {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -401,7 +491,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "chassis", "status"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool chassis status failed"
@@ -410,10 +500,10 @@ service diagnostic.ipmi.Tool {
 
   operation FruPrint {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr }
-    output { stdout: String from "stdout", success: Bool from "exit_success" }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, fru_id: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
+    output { stdout: String from "stdout", transport_stderr: String from "stderr", exit_code: Int from "exit_code", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "fru", "print", "{fru_id}"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "fru", "print", "{fru_id}"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool fru print failed"
@@ -422,7 +512,7 @@ service diagnostic.ipmi.Tool {
 
   operation HpmCheck {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -430,7 +520,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "hpm", "check"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "hpm", "check"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool hpm check failed"
@@ -439,7 +529,7 @@ service diagnostic.ipmi.Tool {
 
   operation McInfo {
     requires Network
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr, cipher_suite_argv: List<String> }
     output {
       stdout: String from "stdout",
       transport_stderr: String from "stderr",
@@ -447,7 +537,7 @@ service diagnostic.ipmi.Tool {
       success: Bool from "exit_success",
     }
     readonly
-    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", cipher_suite_argv, "-U", "{username}", "-f", "{password_file}", "mc", "info"] }
     exit {
       0 => Unit
       nonzero => String "ipmitool mc info failed"

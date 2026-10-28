@@ -4863,7 +4863,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // A SPELLING ROW IS A SEPARATE FACT FROM BEING A KERNEL ATOM. `spelling` and `declarations` say that
 // v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
 // to nothing, to the kernel type. Int and Bool carry them. Int's two declarations stand until its
-// de-fork lane consolidates them (docs/plans/dag-v2-defork-audit.md), and its row follows that lane
+// de-fork lane consolidates them (`gunbc.plans.dag_v2_defork_audit`), and its row follows that lane
 // rather than choosing. Bool's lane has landed: std.types Bool is its one declaration, and its row
 // names that declaration as what the v2 carrier bool_node carries, keyed by identity rather than by
 // bool_node's module.
