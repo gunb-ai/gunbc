@@ -1,0 +1,130 @@
+module test.claim.durable_handoff_request_witness
+
+import std.types { String, NonEmptyStr, Bool }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.json.emit { json_string, serialize_json }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import gunbc.durable_handoff_rest { host_request_rest }
+import gunbc.durable_handoff_host {
+  host_request_submit, host_request_observe, host_request_publish_reply, host_request_result,
+  host_request_path, host_request_reply_path,
+  HostRequestAccepted, HostRequestPresent, HostRequestReplyPublished, HostRequestReplyConflict,
+  HostRequestResultReady, HostRequestResultUnknown, HostRequestNotObserved,
+}
+
+fn payload(text: String) -> Result<NonEmptyStr, String> {
+  if text == "" { Err { value: "empty payload" } } else { Ok { value: text as NonEmptyStr } }
+}
+
+fn identity(principal: NonEmptyStr) -> FabricIdentity<NonEmptyStr, DemandKey> {
+  FabricIdentity { principal: principal, key: "request-1" as DemandKey }
+}
+
+// Same handler and same durable primitives as the service: no mock storage.
+test fn acceptance_is_idempotent_conflicts_refuse_and_principals_do_not_alias() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  let first = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let duplicate = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let conflict = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "two", admit_payload: payload)
+  let other = host_request_rest(root: root, principal: "bob", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let readback = match host_request_observe(root: root, identity: identity(principal: "alice")) {
+    HostRequestPresent { request: r } => (r.payload as String) == "one"
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  first.status == 202 && duplicate.status == 202 && conflict.status == 409 && other.status == 404 && readback && removed.success
+}
+
+test fn get_does_not_enqueue_and_rejection_is_distinct_from_storage_uncertainty() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  let absent = host_request_rest(root: root, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let untouched = match host_request_observe(root: root, identity: identity(principal: "alice")) { HostRequestNotObserved => true _ => false }
+  let invalid = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "", admit_payload: payload)
+  let blocked = Filesystem.Write(path: concat(root as String, "/file"), content: "not a directory")
+  let unavailable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "PUT", path: "/requests/request-1", body: "one", admit_payload: payload)
+  let unreadable = host_request_rest(root: concat(root as String, "/file") as NonEmptyStr, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  absent.status == 404 && untouched && invalid.status == 400 && blocked.success && unavailable.status == 503 && unreadable.status == 503 && removed.success
+}
+
+test fn results_are_bound_to_the_accepted_request_and_never_overwritten() -> Bool {
+  let root = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-request.XXXXXX").path as NonEmptyStr
+  let ok = match host_request_submit(root: root, identity: identity(principal: "alice"), payload: "one") {
+    HostRequestAccepted { request: request } => {
+      let published = match host_request_publish_reply(request: request, result: json_string(s: "failed")) { HostRequestReplyPublished => true _ => false }
+      let duplicate = match host_request_publish_reply(request: request, result: json_string(s: "failed")) { HostRequestReplyPublished => true _ => false }
+      let conflict = match host_request_publish_reply(request: request, result: json_string(s: "passed")) { HostRequestReplyConflict => true _ => false }
+      let observed = host_request_rest(root: root, principal: "alice", method: "GET", path: "/requests/request-1", body: "", admit_payload: payload)
+      let kept = match host_request_result(request: request) { HostRequestResultReady { result: r } => serialize_json(v: r) == serialize_json(v: json_string(s: "failed")) _ => false }
+      // A malformed/corrupted result must not become pending or a passing result.
+      let corrupt = Filesystem.Write(path: host_request_reply_path(request: request), content: "not JSON")
+      let refused = match host_request_result(request: request) { HostRequestResultUnknown { detail: _ } => true _ => false }
+      published && duplicate && conflict && observed.status == 200 && kept && corrupt.success && refused
+    }
+    _ => false
+  }
+  let removed = shell.Remove.RecursiveForce(path: root as String)
+  ok && removed.success
+}
+
+// Served only by the process-restart acceptance harness on a loopback listener.
+// This supplies the test principal/codec; production authenticates at the door.
+fn request_fixture_root() -> NonEmptyStr? {
+  match shell.Env.Get(name: "GUNBC_HANDOFF_TEST_ROOT").value {
+    Present { value: r } => if r == "" { none } else { Present { value: r as NonEmptyStr } }
+    Absent => none
+  }
+}
+
+fn request_fixture_handle(method: String, path: String, body: String) -> extdeps.http.server.ServeWireResponse {
+  match request_fixture_root() {
+    Absent => gunbc.durable_handoff_rest.host_request_response(status: 503, request_id: "", standing: "unknown", detail: "test root unset", result: extdeps.languages.json.emit.JsonNull)
+    Present { value: root } => host_request_rest(root: root, principal: "alice", method: method, path: path, body: body, admit_payload: payload)
+  }
+}
+
+// A different process publishes a fixture result after the first server dies.
+// Its accepted token must come from disk, not from the former server's memory.
+fn request_fixture_publish_after_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => match host_request_observe(root: root, identity: identity(principal: "alice")) {
+      HostRequestPresent { request: r } => match host_request_publish_reply(request: r, result: json_string(s: "fixture-result")) {
+        HostRequestReplyPublished => true
+        _ => false
+      }
+      _ => false
+    }
+  }
+}
+
+fn request_fixture_submit_before_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => {
+      let reply = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "first-payload", admit_payload: payload)
+      reply.status == 202
+    }
+  }
+}
+
+fn request_fixture_read_after_restart() -> Bool {
+  match request_fixture_root() {
+    Absent => false
+    Present { value: root } => {
+      let duplicate = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "first-payload", admit_payload: payload)
+      let conflict = host_request_rest(root: root, principal: "alice", method: "PUT", path: "/requests/request-1", body: "changed-payload", admit_payload: payload)
+      let result = match host_request_observe(root: root, identity: identity(principal: "alice")) {
+        HostRequestPresent { request: r } => match host_request_result(request: r) {
+          HostRequestResultReady { result: value } => serialize_json(v: value) == serialize_json(v: json_string(s: "fixture-result"))
+          _ => false
+        }
+        _ => false
+      }
+      duplicate.status == 202 && conflict.status == 409 && result
+    }
+  }
+}

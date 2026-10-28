@@ -1,10 +1,24 @@
 module gunbc.durable_handoff_host
 
-import std.types { String, Bool, List }
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.content_hash { content_hash_atom }
+import std.state_durability { StateDurabilityIntent, DurableAcross, StateDurabilityBoundaryRequirements, ServiceRestartBoundary }
+import product.fabric.identity { FabricIdentity, DemandKey }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_field_string, FieldRead, json_object_unique_member, JsonMemberFound,
+}
 import std.measure { Second, second_count }
 import std.optional { Present, Absent }
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied,
+  FilesystemCreateRefused, FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read,
+}
 
 // ONE HOST SPOOL, over an entry codec. The belt exit spool
 // (gunbc.roadmap.roadmap_attempt_exit_spool) is the first instance: its stage names are kept
@@ -52,6 +66,28 @@ fn host_spool_enqueue_assess(name: String, observed: HostSpoolCreateObservation)
     HostSpoolNamePresent => HostSpoolEntryAlreadyPresent { name: name }
     HostSpoolNameUnreadable { detail: d } => HostSpoolEnqueueRefused { name: name, detail: d }
   }
+}
+
+// Acceptance is shared by every file-backed request, independently of its codec.
+// Publish the complete payload create-only before acknowledging responsibility.
+// Occupancy is an existing entry, never permission to replace its payload, and
+// acceptance says nothing about execution or the caller's continued observation.
+fn host_spool_enqueue_from_create(created: FilesystemCreateNew) -> HostSpoolEnqueue {
+  match created {
+    FilesystemCreated { path: p } => HostSpoolEntryCreated { name: p }
+    FilesystemCreateTargetOccupied { path: p } => HostSpoolEntryAlreadyPresent { name: p }
+    FilesystemCreateRefused { path: p, kind: _, error: e } =>
+      HostSpoolEnqueueRefused { name: p, detail: e }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      HostSpoolEnqueueRefused { name: p, detail: join([o, ": ", e], "") }
+  }
+}
+
+fn host_spool_enqueue(path: String, content: String) -> HostSpoolEnqueue {
+  let write = Filesystem.WriteCreateNew(path: path, content: content)
+  host_spool_enqueue_from_create(created: filesystem_create_new(
+    path: write.path, success: write.success, error: write.error, error_kind: write.error_kind,
+  ))
 }
 
 fn host_spool_create_only_command(path: String) -> ArgvCommand {
@@ -121,6 +157,172 @@ fn host_spool_health_judge(entries: List<HostSpoolHealthEntry>, bounds: List<Hos
       depth_inbox: count(filter(entries, e => e.stage == AttemptExitInbox)),
       depth_queued: count(filter(entries, e => e.stage == AttemptExitQueued)),
       depth_running: count(filter(entries, e => e.stage == AttemptExitRunning)),
+    }
+  }
+}
+
+// Durable request acceptance and reply storage share the spool's atomic publication.
+// The caller owns its payload codec, admission and identity. This realization does
+// not choose work, grant execution, retry effects or treat a live process as a queue.
+// The root is private to the service; accepted requests and replies are immutable.
+// An accepted token can be obtained only from publication or a verified readback.
+// Qualify the boundary actually exercised by the first consumer. Filesystem
+// residence alone is not evidence of power-loss or host-replacement durability.
+data host_request_durability: StateDurabilityIntent = DurableAcross {
+  boundaries: StateDurabilityBoundaryRequirements { first: ServiceRestartBoundary, additional_unique: [] },
+}
+
+type HostAcceptedRequest sole_constructor {
+  root: NonEmptyStr
+  identity: FabricIdentity<NonEmptyStr, DemandKey>
+  payload: NonEmptyStr
+}
+
+type HostRequestObservation
+  = HostRequestPresent { request: HostAcceptedRequest }
+  | HostRequestNotObserved
+  | HostRequestObservationUnknown { detail: String }
+
+type HostRequestSubmission
+  = HostRequestAccepted { request: HostAcceptedRequest }
+  | HostRequestRejected { reason: String }
+  | HostRequestAcceptanceUnknown { detail: String }
+
+type HostRequestResult
+  = HostRequestResultPending
+  | HostRequestResultReady { result: JsonValue }
+  | HostRequestResultUnknown { detail: String }
+
+type HostRequestReplyPublication
+  = HostRequestReplyPublished
+  | HostRequestReplyConflict
+  | HostRequestReplyUnknown { detail: String }
+
+fn host_request_identity_wire(identity: FabricIdentity<NonEmptyStr, DemandKey>) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "principal", value: json_string(s: identity.principal as String)),
+    json_kv(key: "request_id", value: json_string(s: identity.key as String)),
+  ]))
+}
+
+fn host_request_wire(identity: FabricIdentity<NonEmptyStr, DemandKey>, payload: NonEmptyStr) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "identity", value: json_string(s: host_request_identity_wire(identity: identity))),
+    json_kv(key: "payload", value: json_string(s: payload as String)),
+  ]))
+}
+
+// The structural digest is an address hint, never identity evidence: every read
+// checks the full identity and canonical record. A collision refuses; it cannot
+// attach a caller to another principal's work. No caller text becomes a path.
+fn host_request_path(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>) -> String {
+  let address = content_hash_atom(value: host_request_identity_wire(identity: identity) as NonEmptyStr)
+  join([root as String, "/request-", address.digest as String], "")
+}
+
+fn host_request_exact_read(path: String) -> FilesystemExactRead {
+  let read = Filesystem.Read(path: path)
+  filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind)
+}
+
+fn host_request_decode(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, content: String) -> HostRequestObservation {
+  match parse_json_document(s: content) {
+    JsonDocumentParsed { value: doc } => match json_field_string(obj: doc, key: "identity") {
+      FieldRead { value: stored_identity } => if stored_identity != host_request_identity_wire(identity: identity) {
+        HostRequestObservationUnknown { detail: "request address contains another identity" }
+      } else { match json_field_string(obj: doc, key: "payload") {
+        FieldRead { value: payload } => if payload == "" {
+          HostRequestObservationUnknown { detail: "stored request payload is empty" }
+        } else if content != host_request_wire(identity: identity, payload: payload as NonEmptyStr) {
+          HostRequestObservationUnknown { detail: "stored request is not its canonical record" }
+        } else {
+          HostRequestPresent { request: HostAcceptedRequest { root: root, identity: identity, payload: payload as NonEmptyStr } }
+        }
+        _ => HostRequestObservationUnknown { detail: "stored request payload is malformed" }
+      } }
+      _ => HostRequestObservationUnknown { detail: "stored request identity is malformed" }
+    }
+    JsonDocumentUnreadable { gap: _ } => HostRequestObservationUnknown { detail: "stored request is not JSON" }
+  }
+}
+
+fn host_request_observe(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>) -> HostRequestObservation {
+  match host_request_exact_read(path: host_request_path(root: root, identity: identity)) {
+    FilesystemExactPathRead { path: _, content: c } => host_request_decode(root: root, identity: identity, content: c)
+    FilesystemExactPathAbsent { path: _ } => HostRequestNotObserved
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => HostRequestObservationUnknown { detail: e }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => HostRequestObservationUnknown { detail: join([o, ": ", e], "") }
+  }
+}
+
+fn host_request_reconcile(observed: HostRequestObservation, payload: NonEmptyStr) -> HostRequestSubmission {
+  match observed {
+    HostRequestPresent { request: r } => if (r.payload as String) == (payload as String) {
+      HostRequestAccepted { request: r }
+    } else { HostRequestRejected { reason: "request identity already accepted with a different payload" } }
+    HostRequestNotObserved => HostRequestAcceptanceUnknown { detail: "request acceptance was not observed" }
+    HostRequestObservationUnknown { detail: d } => HostRequestAcceptanceUnknown { detail: d }
+  }
+}
+
+fn host_request_submit(root: NonEmptyStr, identity: FabricIdentity<NonEmptyStr, DemandKey>, payload: NonEmptyStr) -> HostRequestSubmission {
+  // The exclusive publication is the transaction, not a preceding existence probe.
+  if (payload as String) == "" { return HostRequestRejected { reason: "request payload is empty" } }
+  match host_spool_enqueue(path: host_request_path(root: root, identity: identity), content: host_request_wire(identity: identity, payload: payload)) {
+    HostSpoolEntryCreated { name: _ } => HostRequestAccepted {
+      request: HostAcceptedRequest { root: root, identity: identity, payload: payload },
+    }
+    HostSpoolEntryAlreadyPresent { name: _ } => host_request_reconcile(observed: host_request_observe(root: root, identity: identity), payload: payload)
+    HostSpoolEnqueueRefused { name: _, detail: d } => HostRequestAcceptanceUnknown { detail: d }
+  }
+}
+
+fn host_request_reply_path(request: HostAcceptedRequest) -> String {
+  concat(host_request_path(root: request.root, identity: request.identity), ".reply")
+}
+
+fn host_request_reply_wire(request: HostAcceptedRequest, result: JsonValue) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "request", value: json_string(s: host_request_wire(identity: request.identity, payload: request.payload))),
+    json_kv(key: "result", value: result),
+  ]))
+}
+
+fn host_request_result(request: HostAcceptedRequest) -> HostRequestResult {
+  match host_request_exact_read(path: host_request_reply_path(request: request)) {
+    FilesystemExactPathAbsent { path: _ } => HostRequestResultPending
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } => HostRequestResultUnknown { detail: e }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } => HostRequestResultUnknown { detail: join([o, ": ", e], "") }
+    FilesystemExactPathRead { path: _, content: c } => match parse_json_document(s: c) {
+      JsonDocumentUnreadable { gap: _ } => HostRequestResultUnknown { detail: "stored reply is not JSON" }
+      JsonDocumentParsed { value: doc } => match json_field_string(obj: doc, key: "request") {
+        FieldRead { value: accepted } => if accepted != host_request_wire(identity: request.identity, payload: request.payload) {
+          HostRequestResultUnknown { detail: "stored reply belongs to another request" }
+        } else { match json_object_unique_member(v: doc, key: "result") {
+          JsonMemberFound { value: result } => if c == host_request_reply_wire(request: request, result: result) {
+            HostRequestResultReady { result: result }
+          } else { HostRequestResultUnknown { detail: "stored reply is not its canonical record" } }
+          _ => HostRequestResultUnknown { detail: "stored reply has no unique result" }
+        } }
+        _ => HostRequestResultUnknown { detail: "stored reply has no request binding" }
+      }
+    }
+  }
+}
+
+// Called by the admitted consumer after execution, never exposed as a public
+// REST write. Execution/grant authority stays with that consumer. Publication
+// retains the first reply; an incompatible second answer is not a last-writer win.
+fn host_request_publish_reply(request: HostAcceptedRequest, result: JsonValue) -> HostRequestReplyPublication {
+  match host_spool_enqueue(path: host_request_reply_path(request: request), content: host_request_reply_wire(request: request, result: result)) {
+    HostSpoolEntryCreated { name: _ } => HostRequestReplyPublished
+    HostSpoolEnqueueRefused { name: _, detail: d } => HostRequestReplyUnknown { detail: d }
+    HostSpoolEntryAlreadyPresent { name: _ } => match host_request_result(request: request) {
+      HostRequestResultReady { result: stored } => if serialize_json(v: stored) == serialize_json(v: result) {
+        HostRequestReplyPublished
+      } else { HostRequestReplyConflict }
+      HostRequestResultPending => HostRequestReplyUnknown { detail: "reply publication was not observed" }
+      HostRequestResultUnknown { detail: d } => HostRequestReplyUnknown { detail: d }
     }
   }
 }

@@ -1,0 +1,34 @@
+module gunbc.runner.runner_revision_job_request
+
+import std.types { String, NonEmptyStr, CommitSha }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.http.server { ServeWireResponse }
+import extdeps.languages.json.emit { JsonNull }
+import gunbc.durable_handoff_rest { host_request_rest, host_request_response }
+import gunbc.runner.runner_revision_job_spec { decode_revision_job_spec, RevisionJobSpecDecoded, RevisionJobSpecRefused }
+import gunbc.runner.runner_revision_job_unit { revision_job_request_root }
+import gunbc.fabric.fabric_writer_roster {
+  fabric_door_principal_of, fabric_door_writer_admission_over, fabric_served_writer_roster, fabric_door_local_roster,
+  FabricDoorWriterAdmitted, FabricDoorWriterRefused,
+}
+
+// First consumer of the shared REST contract. Admission validates a revision-job
+// specification; request storage is not authority to execute it. The worker still
+// owes the image, source, root approval and fabric grant checks before any launch.
+// The existing attested fabric door supplies the principal, never a JSON field.
+fn revision_job_request_payload(text: String) -> Result<NonEmptyStr, String> {
+  match decode_revision_job_spec(text: text) {
+    RevisionJobSpecDecoded { spec: _ } => Ok { value: text as NonEmptyStr }
+    RevisionJobSpecRefused { refusal: _ } => Err { value: "revision-job specification was not admitted" }
+  }
+}
+
+fn revision_job_request_handle(method: String, path: String, body: String, tailscale_identity: String, peer_user: String, release_revision: CommitSha) -> ServeWireResponse {
+  let principal = fabric_door_principal_of(tailscale_identity: tailscale_identity, peer_user: peer_user)
+  match fabric_door_writer_admission_over(logins: fabric_served_writer_roster(), locals: fabric_door_local_roster(), principal: principal) {
+    FabricDoorWriterRefused { refusal: _ } => host_request_response(status: 403, request_id: "", standing: "rejected", detail: "request principal is not admitted", result: JsonNull)
+    FabricDoorWriterAdmitted { principal: p } => host_request_rest(
+      root: revision_job_request_root, principal: p, method: method, path: path, body: body, admit_payload: revision_job_request_payload,
+    )
+  }
+}
