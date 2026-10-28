@@ -134,7 +134,6 @@ fn carrier_line(text: String, carrier: String) -> String {
     }
   )
 }
-}
 
 // Root standing is carried per carrier, and the seed agrees: the number of rows admitted at the operand root
 // and the number refused are both read off the same lines the rows occupy. A retention row that dropped the
