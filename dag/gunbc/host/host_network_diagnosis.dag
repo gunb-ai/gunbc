@@ -19,6 +19,7 @@ import extdeps.cloud_init.cloud_init {
 import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
 import product.host_identity { HostIdentity, host_identity_eq }
+import std.optional { Optional }
 import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import extdeps.netplan.netplan {
   NetplanConfigFile,
