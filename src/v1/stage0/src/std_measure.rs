@@ -2018,7 +2018,7 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestHundredths = Rc<Measure<Dimensionless, One, Nat>>;
+pub type ConcurrentRequestHundredths = Rc<Measure<Count, One, Nat>>;
 
 pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
     Rc::new(Measure {
@@ -2098,7 +2098,7 @@ pub fn permille_count(p: Permille) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestThousandths = Rc<Measure<Dimensionless, Milli, Nat>>;
+pub type ConcurrentRequestThousandths = Rc<Measure<Count, Milli, Nat>>;
 
 pub fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
     Rc::new(Measure {
