@@ -89,9 +89,24 @@ fn pas_join_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
+// RED (review 87307): agreeing declaration, DISAGREEING ARGUMENTS. The cross-spelling arm of
+// node_type_compatible settles Map<String, Bool> against FinitelySupportedFunction<String, Int> by the
+// declarations both settle to -- so the arguments are the ONLY thing left deciding, and they must
+// decide. An earlier draft of that arm ended `|| type_name_compatible(...) ||
+// alias_identity_in_judgment(...)`, which let a pair whose arguments refused admit by the spelling
+// comparison the arguments were supposed to gate: this join completed. DESIGN 5 -- validation that can
+// be satisfied by the declaration while the realization lies. The positive control above and this RED
+// are one pair: identical shape, and the argument types are the only difference between them.
+data pas_argument_mismatch_join_source: String = "module pas.join\n\nimport std.algebra { FinitelySupportedFunction }\nimport std.types { Map }\n\nfn pas_join(m: Map<String, Bool>, n: FinitelySupportedFunction<String, Int>, c: Bool) -> FinitelySupportedFunction<String, Int> {\n  if c { m } else { n }\n}\n"
+
 // THE POSITIVE CONTROL: Map settles to std.algebra FinitelySupportedFunction, so both arms are one declaration.
 test fn a_parameterized_alias_joins_the_declaration_it_settles_to() -> Bool {
   pas_completed_clean(pas_run(pas_join_source))
+}
+
+// RED (review 87307): one declaration, two different argument lists -- the arguments must refuse the join.
+test fn the_same_declaration_with_mismatched_argument_types_refuses_at_the_join() -> Bool {
+  pas_join_refused(pas_run(pas_argument_mismatch_join_source))
 }
 
 // RED: an alias whose right-hand side is a different declaration still refuses at the join.
