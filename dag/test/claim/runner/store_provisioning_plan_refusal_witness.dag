@@ -104,7 +104,7 @@ fn admitted_plan() -> ExecutorPrivilegedProvisioningPlan {
 
 // 1. THE POSITIVE CONTROL. The projection cannot pass by refusing everything: an admitted target still
 // yields exactly one directory row over the declared path, owned as declared, with no refusal.
-fn the_admitted_target_contributes_one_directory_row() -> Bool {
+test fn the_admitted_target_contributes_one_directory_row() -> Bool {
   let plan = admitted_plan()
   count(executor_privileged_plan_rows(plan: plan)) == 1
     && length(xs: plan.refusals) == 0
@@ -122,7 +122,7 @@ fn the_admitted_target_contributes_one_directory_row() -> Bool {
 // 2. THE RED THE FIX ANSWERS. A target whose mode cannot be resolved contributes EXACTLY ONE refusal,
 // located by path and caused by the stray writer managed_directory_admit named -- and NO rows. Under the
 // deleted `=> []` arms this is red twice over: no refusal existed, and the type to carry it did not.
-fn the_refused_target_contributes_a_located_refusal_and_no_rows() -> Bool {
+test fn the_refused_target_contributes_a_located_refusal_and_no_rows() -> Bool {
   let plan = refused_plan()
   count(executor_privileged_plan_rows(plan: plan)) == 0
     && length(xs: plan.refusals) == 1
@@ -139,7 +139,7 @@ fn the_refused_target_contributes_a_located_refusal_and_no_rows() -> Bool {
 // is empty text, never a grant line, never an argv. (The rejected design stored the refusal inside
 // ExecutorPrivilegedOperation and needed a placeholder principal, an empty argv and a census exclusion;
 // this is the witness that would not exist in that shape.)
-fn a_refusal_can_never_be_rendered_as_a_grant() -> Bool {
+test fn a_refusal_can_never_be_rendered_as_a_grant() -> Bool {
   let body = executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: executor_privileged_plan_rows(plan: refused_plan()))
   !string_contains(s: body, pattern: "NOPASSWD")
     && !string_contains(s: body, pattern: "/synthetic/store-root")
@@ -157,7 +157,7 @@ fn a_refusal_can_never_be_rendered_as_a_grant() -> Bool {
 // 4. A REFUSAL IS NEVER LOST BEHIND LATER ROWS. A refused plan merged with an admitted one stays a
 // refused plan -- the rows of the admitted plan do not overwrite the refusal, which is how the fold in
 // executor_privileged_owned_directory_plans keeps one located cause per host plan.
-fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
+test fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
   let merged = executor_privileged_plan_merge(a: refused_plan(), b: admitted_plan())
   length(xs: merged.refusals) == 1
     && match merged.refusals.first() {
@@ -176,7 +176,7 @@ fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
 // learned about missing directories one per run and the census undercounted. Pins all three places the
 // population is combined: the fold over targets, the merge of site plans, and the census rows derived
 // from either. Under the first-refusal fold/merge this conjunct is red: each produced one.
-fn every_refused_target_is_counted() -> Bool {
+test fn every_refused_target_is_counted() -> Bool {
   // the fold over two refused targets and one admitted target: two refusals, located by both paths, and
   // the admitted target's row is still there to be provisioned if the host is fixed.
   let folded = executor_privileged_owned_directory_plans(targets: [
@@ -211,7 +211,7 @@ fn every_refused_target_is_counted() -> Bool {
 // would have been installed is not installed, and the refusal names the directory and its cause. Without
 // one, the same gate installs the content unchanged (the control that keeps the gate from being "refuse
 // everything").
-fn the_sudoers_gate_withholds_the_artifact_on_a_refusal() -> Bool {
+test fn the_sudoers_gate_withholds_the_artifact_on_a_refusal() -> Bool {
   match runner_host_sudoers_body_guard(refusals: refused_plan().refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
     RunnerHostSudoersBodyProduced { content: _ } => false
     RunnerHostSudoersBodyRefused { reason: why } =>
@@ -229,7 +229,7 @@ fn the_sudoers_gate_withholds_the_artifact_on_a_refusal() -> Bool {
 // whose text names the directory, so host_grant_awaiting_capability refuses the apply as
 // ApplyAwaitingCapability -- the same channel a missing sudoers rule uses, so the host never converges
 // with the directory silently absent. Countable: exactly one blocking text, one plan line.
-fn the_census_blocks_the_apply_on_a_refused_target() -> Bool {
+test fn the_census_blocks_the_apply_on_a_refused_target() -> Bool {
   let rows = host_grant_provisioning_target_rows_of(refusals: refused_plan().refusals, lease_owner: "lease")
   let texts = host_grant_blocking_texts(rows: rows)
   count(texts) == 1
@@ -251,7 +251,7 @@ fn the_census_blocks_the_apply_on_a_refused_target() -> Bool {
 
 // 6b. THE CONTROL FOR THE CENSUS. An admitted target produces NO blocking row and NO capability, so the
 // blocking above is caused by the refusal and not by the row shape.
-fn an_admitted_target_blocks_nothing() -> Bool {
+test fn an_admitted_target_blocks_nothing() -> Bool {
   let rows = host_grant_provisioning_target_rows_of(refusals: admitted_plan().refusals, lease_owner: "lease")
   count(rows) == 0
     && count(host_grant_blocking_texts(rows: rows)) == 0
