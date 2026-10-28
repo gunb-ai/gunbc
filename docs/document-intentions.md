@@ -2,7 +2,9 @@
 
 Review snapshot of [gunbc at d919d662ddf5](https://github.com/gunb-ai/gunbc/tree/d919d662ddf59813f9dab24ca3b25ed5b54ec236), surveyed 2026-10-28.
 
-One inferred purpose per file, for deciding what to delete, prune/consolidate, or leave. Intent does not establish implementation status.
+The operator requested this worksheet to review one inferred purpose per file and decide what to delete, prune/consolidate, or leave. Intent does not establish implementation status.
+
+The review consumes this snapshot. Remove it when the operator's cleanup dispositions have been recorded at the surviving sources or in the cleanup PRs.
 
 Scope: tracked Markdown, documentation HTML, modeled plans and substantive text notes. Supporting files are listed separately; unrelated raw logs, test fixtures and license texts are outside this review.
 
@@ -10,7 +12,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### Repository root
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [CLAUDE.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/CLAUDE.md) | Expose the governing gunbc design document through the agent instruction entrypoint without maintaining a separate policy text. |
 | [DESIGN.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/DESIGN.md) | Establish gunbc's governing design principles, semantic authorities and proof obligations so authors build consistently toward the substrate model. |
@@ -19,19 +21,19 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### apps/approve-ios
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/apps/approve-ios/README.md) | Guide building and configuring the iOS approval app while keeping its wire protocol and generated Swift tied to modeled authorities. |
 
 ### apps/approve-ios/Approve/Assets.xcassets/AppIcon.appiconset
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/apps/approve-ios/Approve/Assets.xcassets/AppIcon.appiconset/README.md) | Identify the approval app icon's geometry, colors and generation provenance so the raster remains traceable to the brand mark. |
 
 ### artifacts/bmc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [mtcollins1-bmc-user3-route-2026-09-13.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt) | Explain the replacement-admin credential sequence, ordering failure and channel coverage needed to distinguish restricted factory access from true credential retirement. |
 | [mtcollins1-topology-control-known-good-socket0-2026-09-12.CORRECTION.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-topology-control-known-good-socket0-2026-09-12.CORRECTION.txt) | Retract the topology-control success claim and explain why quiet event logs cannot establish memory training or a successful boot. |
@@ -39,82 +41,82 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [00_README.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/00_README.txt) | Distinguish captured evidence from unsaved session observations in ALTRAD8UD BMC recovery so later models cite each claim at its actual strength. |
 | [01_summary.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/01_summary.txt) | Explain the in-band IPMI credential-recovery route, factory-reset behavior and readback needed to return an inaccessible ALTRAD8UD BMC to onboarding. |
 
 ### artifacts/bmc/mtcollins1-32dimm
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [operator-scripts.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-32dimm/operator-scripts.txt) | Preserve the operator scripts used to stimulate boots and collect console, power-cycle and event-log observations during the 32-DIMM investigation. |
 
 ### artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T005424Z
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [ARGV.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T005424Z/ARGV.txt) | Document the anonymous virtual-media surface probe, its exact requests and authority limits so observations can be reproduced without controller mutations. |
 | [META.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T005424Z/META.txt) | Bound the first virtual-media surface reading by its observer, timing, transient-network retry and concurrent-state caveats rather than implying settled media readiness. |
 
 ### artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T040012Z
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [ARGV.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T040012Z/ARGV.txt) | Explain the instrumented virtual-media probe's corrected requests, separate server responses and redaction procedure so its evidence remains reproducible and attributable. |
 | [META.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtcollins1-virtual-media-readonly-probe-192.168.1.228-20261027T040012Z/META.txt) | Interpret the instrumented BMC surface reading using separate clocks and corroborated unit identity while preserving uncertainty about authenticated Redfish access. |
 
 ### artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [SEQUENCE.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/mtjade1-j3-media-attempt-192.168.1.246-20261006T185027Z/SEQUENCE.txt) | Reconstruct the Mt. Jade virtual-media incident, separating authorized actions, stop-condition violations and restoration readbacks without claiming a verified attachment. |
 
 ### artifacts/bmc/srv13-first-contact-2026-10-07
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [FINDINGS.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/bmc/srv13-first-contact-2026-10-07/FINDINGS.txt) | Explain srv13 intake findings across firmware, boot configuration and thermal failures, linking each interpretation to captures that constrain the next investigation. |
 
 ### artifacts/printing/process-observation-2026-10-05
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/printing/process-observation-2026-10-05/README.md) | Compare failed and recovery fan-print archive commands while distinguishing process observations from geometric explanations and physical acceptance. |
 
 ### artifacts/printing/rear-posts-2026-10-05
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [INCIDENT.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/printing/rear-posts-2026-10-05/INCIDENT.md) | Document the upright fan-print failure and its evidence so telemetry completion cannot be mistaken for a successful physical assembly. |
 
 ### artifacts/spark/glm-group-b-2026-09-16
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/spark/glm-group-b-2026-09-16/README.md) | Identify raw GLM container and NCCL captures used to compare socket and RoCE transport configurations on Group B hosts. |
 
 ### artifacts/spark/glm-group-b-2026-09-16/narrow
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/artifacts/spark/glm-group-b-2026-09-16/narrow/README.md) | Explain narrowed GLM container observations and distinguish fresh daemon responses from fields projected out of archived RoCE captures. |
 
 ### dag/examples/blackjack
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/examples/blackjack/README.md) | Teach Dag modeling through deterministic Blackjack rounds, seeded simulation, explicit refusals and replayable test evidence. |
 
 ### dag/examples/weather
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/examples/weather/README.md) | Demonstrate Dag types, pattern matching and collection pipelines by compiling a self-contained weather model into type-checked Rust. |
 
 ### dag/gunbc/plans
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [boot_origin_bmc_media.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/gunbc/plans/boot_origin_bmc_media.dag) | Deliver content-addressed boot images from R2 through HTTPS or a segment-local NFS relay so different BMCs consume one image authority. |
 | [cardinality_refinement.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/gunbc/plans/cardinality_refinement.dag) | Make cardinality constraints refuse invalid construction rather than rely on call-site convention. |
@@ -169,43 +171,43 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### dag/std/runtime/bin_shims
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/std/runtime/bin_shims/README.md) | Define where binary-shim declarations live, how they are named, and how each references its modeled process entrypoint. |
 
 ### dag/test/fixture/codex_device_login
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/test/fixture/codex_device_login/README.md) | Ground headless device-login prompt parsing in captured Codex output, including ANSI wrapping, expiry text and capture provenance. |
 
 ### dag/test/fixture/codex_provider_events
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/test/fixture/codex_provider_events/README.md) | Ground Codex provider-event parsing in an actual JSON stream so message text and usage fields are modeled from emitted bytes. |
 
 ### docs/extdeps/lotes_azifa072
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/extdeps/lotes_azifa072/README.md) | Identify the LGA4926 socket body and document drawing provenance, extracted pad geometry and unresolved manufacturing assumptions. |
 
 ### docs/measurements/roster_import_sweep_native
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/roster_import_sweep_native/README.md) | Explain how to compare native roster-import sweep output and cost against fixed interpreter results, including path-refusal controls. |
 
 ### docs/measurements/value_position_block_nests
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/README.md) | Explain fixtures and timing controls that detect repeated lowering of nested value-position blocks and its exponential cost. |
 
 ### docs/plans
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [altra-cross-channel-rank-mixing-survey.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/altra-cross-channel-rank-mixing-survey.md) | Distinguish documented Altra DIMM mixing constraints from unanswered cross-channel questions so hardware selection does not treat missing guidance as prohibition. |
 | [cassette-assembly-requirements.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/cassette-assembly-requirements.md) | Define what makes a cassette assembly safe and acceptable and what remains to qualify. |
@@ -252,7 +254,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/probes
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [leading_minus_continuation_silently_truncates_2026-08-23.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/leading_minus_continuation_silently_truncates_2026-08-23.md) | Demonstrate how a leading-minus continuation silently changes expression meaning and identify the regression behavior that must be refused. |
 | [mtcollins1_2drx4_group_test_prediction_2026-09-12.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins1_2drx4_group_test_prediction_2026-09-12.md) | Preregister the expected result and falsifiers for isolating four 2DRx4 spare DIMMs within a known Mt. Collins population. |
@@ -273,26 +275,26 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/probes/realization_census_1dd3eda5_2026-10-24
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/realization_census_1dd3eda5_2026-10-24/README.md) | Explain a pinned census of where modules choose storage, caching, access, authorization and placement instead of receiving owned decisions. |
 | [method.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/realization_census_1dd3eda5_2026-10-24/method.md) | Describe the census sampling, classification and reconciliation rules so its counts, comparisons and uncertainty can be audited. |
 
 ### docs/probes/srv1_nvfp4_serving_2026-10-25
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [srv1_nvfp4_serving_verification_2026-10-25.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/srv1_nvfp4_serving_2026-10-25/srv1_nvfp4_serving_verification_2026-10-25.md) | Verify srv1's loaded NVFP4 weights and FP8 KV configuration while measuring correctness, latency, throughput and context limits against observed engine identity. |
 
 ### docs/recovered/mtcollins-host-image-source
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/README.md) | Explain the provenance and behavior of recovered Mt. Collins host-image tooling so its modeled replacement can be checked against actual source. |
 
 ### docs/runbooks
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/runbooks/README.md) | Provide a single entrypoint for finding infrastructure procedures covering BMC access, host boot, credentials and privileged setup. |
 | [bmc-assimilator-wif-setup.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/runbooks/bmc-assimilator-wif-setup.md) | Guide configuring GCP workload identity so unattended BMC assimilation obtains scoped tokens without manually pasted credentials. |
@@ -304,55 +306,55 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### fixtures/census_scoped_acquisition
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/fixtures/census_scoped_acquisition/README.md) | Explain acquisition fixtures that distinguish missing and malformed modules, shared dependencies and requester-specific permissions without falsely completing a closure. |
 
 ### provider-runtime/codex
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/provider-runtime/codex/README.md) | Explain regenerating the pinned Codex package lock and verifying downloaded archives before provider-runtime materialization trusts their contents. |
 
 ### sites
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/sites/README.md) | Orient maintainers to the existing chassis review site and its generated meshes so browser interactions never become mechanical geometry authority. |
 
 ### src/v2
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [LAYOUT.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/src/v2/LAYOUT.md) | Specify how v2 module identities map to source directories, filenames and test locations for authors and tooling. |
 
 ### src/v2/lens/testdata
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/src/v2/lens/testdata/README.md) | Explain the anemia-lens judgment corpus, its labeled inputs and how to score decisions without confusing examples with live findings. |
 
 ### test/compiler_gate_contract_stamp/fixtures
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/test/compiler_gate_contract_stamp/fixtures/README.md) | Explain a captured silent-green workflow fixture used to detect evidence instructions and compiler subjects resolved from different revisions. |
 
 ### test/namecheap
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/test/namecheap/README.md) | Guide fixture-only checks that verify Namecheap query transport keeps credentials out of argv and emitted workflows consume the declared receipt. |
 
 ### test/native_filesystem
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/test/native_filesystem/README.md) | Explain native source-root acquisition controls for filesystem refusals, complete traversal and effectful tail-call lowering through emitted services. |
 
 ### test/primitive_runtime_body
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [README.md](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/test/primitive_runtime_body/README.md) | Explain how the primitive-runtime-body control checks runtime registry names against emitted bodies and detects missing implementations with a negative specimen. |
 
@@ -361,33 +363,33 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### dag/gunbc/plans
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [demand_restatement_follow_up.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/gunbc/plans/demand_restatement_follow_up.dag) | Enumerate retained authored service-demand rows by exact identity and the condition that permits each redundant declaration to disappear. |
 | [md_helpers.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/dag/gunbc/plans/md_helpers.dag) | Provide reusable Markdown constructors so plan modules can render headings, paragraphs, lists, quotations and tables consistently. |
 
 ### docs/extdeps/asrock_rack
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [ALTRAD8UD_standoff_grid.png](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/extdeps/asrock_rack/ALTRAD8UD_standoff_grid.png) | Show the ALTRAD8UD motherboard standoff arrangement as a mechanical reference for locating chassis supports. |
 
 ### docs/extdeps/lotes_azifa072
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [lga4926_pad_array.svg](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/extdeps/lotes_azifa072/lga4926_pad_array.svg) | Visualize the 4,926 extracted LGA4926 pad centers so a reader can inspect the array's shape and spacing. |
 | [lga4926_pcb_pads.csv](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/extdeps/lotes_azifa072/lga4926_pcb_pads.csv) | Store normalized LGA4926 PCB pad-center coordinates extracted from the cited socket drawing for geometric checks and modeling. |
 
 ### docs/measurements/roster_import_sweep_native
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [manifest.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/roster_import_sweep_native/manifest.txt) | Enumerate native roster-sweep test cases and source paths so the isolated child receives a fixed, reproducible subject set. |
 
 ### docs/measurements/roster_import_sweep_native/expected
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [lexical_scope_sweep.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/roster_import_sweep_native/expected/lexical_scope_sweep.txt) | Specify the exact import edit expected when the roster sweep processes the lexical-scope fixture. |
 | [node_dag_sweep.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/roster_import_sweep_native/expected/node_dag_sweep.txt) | Specify the empty edit output expected when the roster sweep processes the node module. |
@@ -395,49 +397,49 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/measurements/value_position_block_nests/multi_d10/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/multi_d10/dag/gunbc/t.dag) | Provide a depth-10 nested-match fixture with multi-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/measurements/value_position_block_nests/multi_d14/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/multi_d14/dag/gunbc/t.dag) | Provide a depth-14 nested-match fixture with multi-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/measurements/value_position_block_nests/multi_d20/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/multi_d20/dag/gunbc/t.dag) | Provide a depth-20 nested-match fixture with multi-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/measurements/value_position_block_nests/single_d10/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/single_d10/dag/gunbc/t.dag) | Provide a depth-10 nested-match fixture with single-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/measurements/value_position_block_nests/single_d14/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/single_d14/dag/gunbc/t.dag) | Provide a depth-14 nested-match fixture with single-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/measurements/value_position_block_nests/single_d20/dag/gunbc
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [t.dag](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/measurements/value_position_block_nests/single_d20/dag/gunbc/t.dag) | Provide a depth-20 nested-match fixture with single-statement value blocks to measure repeated-lowering cost in the native compiler. |
 
 ### docs/plans
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [milk-crate-topology.svg](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/plans/milk-crate-topology.svg) | Illustrate the milk-crate frame, cassette arrangement and service access as a conceptual topology rather than manufacturing geometry. |
 
 ### docs/probes
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [mtcollins_bound_attempt_host_capture_2026-09-07.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins_bound_attempt_host_capture_2026-09-07.txt) | Record host serial evidence whose unique runner registration binds one physical boot attempt to its GitHub job. |
 | [mtcollins_checkout_and_js_action_2026-09-07.txt](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/mtcollins_checkout_and_js_action_2026-09-07.txt) | Capture checkout and JavaScript-action execution inside a filtered microVM, including actual network traffic and idle-attempt metering. |
@@ -448,7 +450,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/probes/realization_census_1dd3eda5_2026-10-24
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [classes.tsv](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/realization_census_1dd3eda5_2026-10-24/classes.tsv) | Group realization-decision findings by recurring class, linking each class to its owning authority, enforcement gap and next proof. |
 | [findings.tsv](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/realization_census_1dd3eda5_2026-10-24/findings.tsv) | Locate individual realization decisions by module and symbol, retaining concrete specimens and the shared authority each decision duplicates or lacks. |
@@ -458,7 +460,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/probes/srv1_nvfp4_serving_2026-10-25
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [raw_arm_fp8_kv_flash_attn.json](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/srv1_nvfp4_serving_2026-10-25/raw_arm_fp8_kv_flash_attn.json) | Record initial srv1 serving-task outputs and latency measurements under the FP8 KV attention test arm. |
 | [raw_cold.json](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/probes/srv1_nvfp4_serving_2026-10-25/raw_cold.json) | Record cold-prefill throughput and context-limit refusal responses for large prompts sent to the srv1 NVFP4 endpoint. |
@@ -469,7 +471,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/recovered/mtcollins-host-image-source
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [build.sh.bak.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/build.sh.bak.recovered) | Preserve the backup host-image build script as evidence of how the initramfs and kernel build were assembled. |
 | [build.sh.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/build.sh.recovered) | Preserve the host-image build script that assembles initramfs contents and builds the kernel used for Mt. Collins runner boots. |
@@ -480,20 +482,20 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/recovered/mtcollins-host-image-source/cp
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [cp-signing.pub](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/cp/cp-signing.pub) | Preserve the control-plane public key used by recovered host-image tooling to verify signed runner launch envelopes. |
 
 ### docs/recovered/mtcollins-host-image-source/guest
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [gunbc-probe.sh.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/guest/gunbc-probe.sh.recovered) | Preserve the guest PID-1 network probe used to isolate filtered-egress observations from unrelated operating-system traffic. |
 | [gunbc-runner-init.sh.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/guest/gunbc-runner-init.sh.recovered) | Preserve guest PID-1 initialization that mounts filesystems, configures networking and starts the CI runner from supplied job credentials. |
 
 ### docs/recovered/mtcollins-host-image-source/initramfs
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [init.pre-supervisor.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/initramfs/init.pre-supervisor.recovered) | Preserve the host-init generation before supervision so jailer launch behavior can be compared with later attempt lifecycle handling. |
 | [init.pre-verify.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/initramfs/init.pre-verify.recovered) | Preserve the host-init generation before artifact verification so the introduction of boot and guest integrity checks remains inspectable. |
@@ -502,7 +504,7 @@ Scope: tracked Markdown, documentation HTML, modeled plans and substantive text 
 
 ### docs/recovered/mtcollins-host-image-source/irfs
 
-| File | Intention |
+| File | Inferred intention |
 | --- | --- |
 | [init.recovered](https://github.com/gunb-ai/gunbc/blob/d919d662ddf59813f9dab24ca3b25ed5b54ec236/docs/recovered/mtcollins-host-image-source/irfs/init.recovered) | Preserve the checkout-2 instantiation of the host-init template so deployed build-identity substitutions can be compared with their source. |
 
