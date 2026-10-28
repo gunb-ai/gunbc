@@ -4,14 +4,23 @@ import std.types {Bool, NonEmptyStr, String}
 import std.measure {micrometer}
 import product.printed_chassis.card_cooling_route {
   PlaneOnEnd, PlaneAcrossRowStanding, OverTheRow, BesideTheRow,
-  RouteAdmission, RouteAdmitted, RouteProposalOnly, RouteRefusedByChassis, RouteHomeUnmeasured,
-  admit_home, plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back,
+  RouteAdmission, RouteAdmitted, RouteAdmittedOnOperatorBound, RouteProposalOnly, RouteRefusedByChassis, RouteHomeUnmeasured,
+  RouteDemand, ShapeExtent,
+  admit_home, admit_plane_on_end, admit_home_over, ask,
+  plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back, plane_on_end_overhang_per_side,
+  plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout_um, plane_on_end_keepout_crossing_um, plane_on_end_housing_clears_keepout,
+  beside_the_row_demand, over_the_row_height, a16_slot_pitch_um, smaller_i,
+  shape_um, shape_max_for_home, extent_display, flat_on_end_pair_need, flat_on_end_pair_span, flat_on_end_twin_verdict,
+  scroll_run_back, scroll_max_wheel_diameter, scroll_intake_facing, scroll_fit_report, scroll_fit_report_at,
+  required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
 import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room_um, remeasure_before_print}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
-import std.measure {watt_count, measure_count}
+import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
+import extdeps.fans.types {RadialBlowerEnvelope}
+import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, millilitre_per_second, millilitre_per_second_count, micrometer, micrometer_count, percent, percent_count, watt, watt_count, measure_count}
 import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field_obligation}
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 
@@ -352,12 +361,12 @@ test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_exten
 
 test fn w_the_end_cap_scroll_is_capped_by_the_space_between_two_ducted_cards() -> Bool {
   let d = a16_wall_design()
-  let at_40 = scroll_max_wheel_diameter_um(wheel_width_over_diameter: 40, d: d)
+  let at_40 = scroll_max_wheel_diameter(wheel_width_over_diameter: percent(count: 40), d: d)
   // At a wheel 40% as wide as it is tall, the wheel would need 70 mm of rear room only at a 165 mm
   // diameter, and the card's own height caps it at 97.84 -- so neither of those binds; the 81.64 mm the two
   // ducted cards leave across the slot does.
   measure_count(m: at_40.at_most) == 81640 && string_contains(s: at_40.capped_by, pattern: "between the two cards")
-    && scroll_run_back_um(wheel_diameter_um: 81640, wheel_width_over_diameter: 40, d: d) == 36656
+    && micrometer_count(m: scroll_run_back(wheel_diameter: micrometer(count: 81640), wheel_width_over_diameter: percent(count: 40), d: d)) == 36656
 }
 
 test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_declared_rear_bound() -> Bool {
@@ -368,9 +377,9 @@ test fn w_a_fatter_wheel_shifts_the_cap_off_the_span_and_onto_the_declared_rear_
   // first: (70000 - 2*2000) * 100 / 90 = 73333, below the span's 81640. The card's own height never binds
   // while the twin-card span caps below it -- the report must name the cap that actually binds, not the
   // flattering one.
-  let at_90 = scroll_max_wheel_diameter_um(wheel_width_over_diameter: 90, d: d)
+  let at_90 = scroll_max_wheel_diameter(wheel_width_over_diameter: percent(count: 90), d: d)
   measure_count(m: at_90.at_most) == 73333 && string_contains(s: at_90.capped_by, pattern: "behind the plug end")
-    && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: 90), "\n"), pattern: "ratio: 90 percent")
+    && string_contains(s: join(scroll_fit_report_at(wheel_width_over_diameter: percent(count: 90)), "\n"), pattern: "ratio: 90 percent")
 }
 
 test fn w_both_cards_intakes_face_each_other_across_the_inter_card_gap() -> Bool {
@@ -386,9 +395,10 @@ test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_
   // The datasheet carries no airflow requirement, so this is the only honest form: the flow that carries the
   // board's cited maximum power at a rise somebody allows, verified by exhaust_thermal's own forward run.
   let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
-  watts == 250 && required_flow_rise_check(heat_watts: watts, rise_k: 15) && required_flow_rise_check(heat_watts: 195, rise_k: 20)
-    // A smaller allowed rise must need more air, never less.
-    && required_flow_ml_per_s(heat_watts: watts, rise_k: 10) > required_flow_ml_per_s(heat_watts: watts, rise_k: 20)
+  watts == 250 && required_flow_rise_check(heat: watt(count: 250), rise: celsius_delta(count: 15))
+    && required_flow_rise_check(heat: watt(count: 195), rise: celsius_delta(count: 20))
+    // A smaller allowed rise must need more air, never less -- compared through the carrier, not a scalar.
+    && flow_count(heat: watt(count: 250), rise: celsius_delta(count: 10)) > flow_count(heat: watt(count: 250), rise: celsius_delta(count: 20))
 }
 
 test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() -> Bool {
@@ -397,11 +407,13 @@ test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() 
   // honest reading is that the rise would have to be nearer 19-20 K, which is the number the operator gets
   // to decide. Both figures stay in the report, and the report does not pretend the rating was measured: it
   // is a transcribed listing figure at zero static pressure.
-  let flow = required_flow_ml_per_s(heat_watts: 250, rise_k: 15)
   // Pinned to the arithmetic the corpus's own cited properties give: 250 W at 15 K over rho = 1.204 g/m3
-  // and cp = 1005 J/kg K is 13775 mL/s, and the conversion reproduces the BFB1012M listing's own pair
-  // (10666 mL/s is printed there as 22.60 CFM), which is the conversion's best available check.
-  flow == 13775 && ml_per_s_to_cfm(ml: flow) == 2919 && ml_per_s_to_cfm(ml: 10666) == 2260
+  // and cp = 1005 J/kg K is 13775 mL/s. The CFM rendering is checked against the one published pair the
+  // corpus has -- the BFB1012M listing prints 22.60 CFM beside 10666 mL/s -- because a rendering nobody
+  // checks against a published figure is exactly where a factor of 100 hides.
+  let flow = flow_count(heat: watt(count: 250), rise: celsius_delta(count: 15))
+  flow == 13775 && free_air_cfm_text(flow: millilitre_per_second(count: flow)) == "29.19 CFM"
+    && free_air_cfm_text(flow: delta_bfb1012m_rating.free_air_flow) == "22.60 CFM"
     && flow > 10666 && string_contains(s: bfb1012m_flow_context(), pattern: "10666 mL/s free air")
     && string_contains(s: bfb1012m_flow_context(), pattern: "TranscribedUncited")
 }

@@ -1,5 +1,6 @@
 module product.printed_chassis.card_cooling_route
 
+import std.checked_arithmetic {checked_int_to_nat}
 import std.types {Bool, Int, List, NonEmptyStr, String}
 import std.measure {Micrometer, micrometer}
 import std.optional {Present, Absent}
@@ -8,7 +9,7 @@ import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
-import std.measure {Watt, watt, watt_count, millilitre_per_second, millilitre_per_second_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, celsius_delta_count}
+import std.measure {CelsiusDelta, MillilitrePerSecond, Percent, Watt, celsius_delta, celsius_delta_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, micrometer_count, millilitre_per_second, millilitre_per_second_count, percent, percent_count, watt, watt_count}
 import extdeps.physics.dry_air {dry_air_at_20c}
 import product.printed_chassis.exhaust_thermal {exhaust_rise}
 
@@ -550,20 +551,22 @@ fn largest_planform_per_home() -> List<String> {
 // temperature it is allowed to reach is NOT in the corpus -- it is an obligation on the operator, so the
 // derivation is given as a function of that delta rather than as a number dressed up as settled.
 
-// The scroll's own wall allowance, in micrometres: printed PLA, one wall thick, on both faces of the scroll
-// and one wall between the intake and the card's end face. It is the same 2 mm the duct design already
-// carries (a16_duct_design wall), reused rather than invented: one authority for "how thick a wall is".
-fn scroll_wall(d: GpuDuctDesign) -> Int { um(m: d.wall) }
+// The scroll's own wall allowance: printed PLA, one wall thick, on both faces of the scroll and one wall
+// between the intake and the card's end face. It is the same 2 mm the duct design already carries
+// (a16_duct_design wall), reused rather than invented: one authority for "how thick a wall is".
+fn scroll_wall(d: GpuDuctDesign) -> Micrometer { um(m: d.wall) }
 
-// How far behind the end the scroll reaches, for a given wheel diameter: the wheel's width (which the scroll
-// housing must wrap, plus a wall each side of it) plus the curved turn. This repository does NOT know the
-// wheel's width-to-diameter ratio -- no datasheet behind the shape -- so it is a declared design parameter
-// with a name, and the fit answer is given as a function of it. `wheel_width_over_diameter` is the honest
-// place to put the assumption, so the witness can vary it instead of hiding it.
-fn scroll_run_back_um(wheel_diameter_um: Int, wheel_width_over_diameter: Int, d: GpuDuctDesign) -> Int {
-  // wheel_width_over_diameter is a percent, so the arithmetic stays in Int without a division by zero risk.
-  let wheel_width = wheel_diameter_um * wheel_width_over_diameter / 100
-  wheel_width + 2 * scroll_wall(d: d)
+// How far behind the end the scroll reaches for a given wheel: the wheel's width (which the scroll housing
+// must wrap, plus a wall each side of it). A wheel diameter goes in and a depth comes out, both as
+// Micrometer -- the carrier this module already declares and the one the gap rows are measured in. The
+// width-to-diameter ratio is a Percent, because that is what it is, and because this repository does NOT
+// know the ratio for a shape with no datasheet behind it: it is a declared placeholder the witness sweeps,
+// not a transcribed figure. The one bare-Int step is the integer division the ratio requires; it is local,
+// and the answer is re-wrapped before it leaves.
+fn scroll_run_back(wheel_diameter: Micrometer, wheel_width_over_diameter: Percent, d: GpuDuctDesign) -> Micrometer {
+  let width = um(m: micrometer_count(m: wheel_diameter) * percent_count(p: wheel_width_over_diameter) / 100)
+  let walls = um(m: 2 * micrometer_count(m: scroll_wall(d: d)))
+  micrometer(count: micrometer_count(m: width) + micrometer_count(m: walls))
 }
 
 // THE LARGEST WHEEL THAT FITS, in each direction, given the readings of 2026-10-27. Three caps, and the
@@ -576,7 +579,7 @@ fn scroll_run_back_um(wheel_diameter_um: Int, wheel_width_over_diameter: Int, d:
 //                           housing may: pitch + 2 * the declared side lane, or the pair span for two ducted
 //                           cards, whichever is less (the same cap flat_on_end_housing_length_cap derives);
 //   the declared rear bound the scroll's depth behind the end must fit the operator's 70 mm, which through
-//                           scroll_run_back_um caps the wheel's WIDTH, and so its diameter.
+//                           scroll_run_back caps the wheel's WIDTH, and so its diameter.
 //
 // Each is reported with its origin, and the wheel is capped by the LEAST of them. `wheel_width_over_diameter`
 // is the assumption that moves the third cap, so it is a parameter and the witness sweeps it. Under the
@@ -584,14 +587,13 @@ fn scroll_run_back_um(wheel_diameter_um: Int, wheel_width_over_diameter: Int, d:
 // span (81.64 mm) caps below the card's height (97.84), so the span binds at any sane wheel proportions and
 // the card height binds only for a single card in the row; past roughly an 80% width ratio the declared rear
 // bound takes over from the span. The witness pins both regimes.
-fn scroll_max_wheel_diameter_um(wheel_width_over_diameter: Int, d: GpuDuctDesign) -> ShapeExtent {
-  let by_height = um(m: a16_end_face.face_length)
-  let by_span = flat_on_end_housing_length_cap()
+fn scroll_max_wheel_diameter(wheel_width_over_diameter: Percent, d: GpuDuctDesign) -> ShapeExtent {
   let rear_room = gap_room_um(g: card_end_rear_fan_clearance)
-  let wall = scroll_wall(d: d)
+  let walls = 2 * micrometer_count(m: scroll_wall(d: d))
+  let ratio = percent_count(p: wheel_width_over_diameter)
   // depth behind the end <= rear room, so wheel width <= rear room - 2 walls, so D <= that * 100 / ratio.
-  let by_depth_um = if wheel_width_over_diameter <= 0 { 0 } else { (rear_room - 2 * wall) * 100 / wheel_width_over_diameter }
-  let cap = smaller_i(a: smaller_i(a: by_height, b: by_span), b: by_depth_um)
+  let by_depth = if ratio <= 0 { 0 } else { (rear_room - walls) * 100 / ratio }
+  let cap = smaller_i(a: smaller_i(a: micrometer_count(m: um(m: a16_end_face.face_length)), b: flat_on_end_housing_length_cap()), b: by_depth)
   let which = if cap == by_height {
     "the card's own 97.84 mm end-face height; nothing was read above the row, so a wheel may not overhang into the slot above"
   } else if cap == by_span {
@@ -649,31 +651,55 @@ fn scroll_intake_facing(card_index: Int, card_count: Int) -> String {
 // the flow the scroll will actually deliver against the scroll's own pressure drop. Both push the required
 // free-air figure UP, never down, so reading these numbers as a minimum is the safe direction to read them.
 
-// Volume flow in mL/s needed to carry `heat_watts` away at a rise of `rise_k` kelvin, using only cited
-// properties: rho [g/m3] * V [mL/s] / 1000 = m_dot [mg/s], and Q [W] = m_dot [mg/s] * 1e-6 [kg/mg] * cp * dT.
-// Rounded UP, because a flow rounded down under-delivers.
-fn required_flow_ml_per_s(heat_watts: Int, rise_k: Int) -> Int {
+// Volume flow needed to carry `heat` away at a rise of `rise`, using only cited properties:
+// rho [g/m3] * V [mL/s] / 1000 = m_dot [mg/s], and Q [W] = m_dot [mg/s] * 1e-6 [kg/mg] * cp * dT. Inverted
+// for V and rounded UP, because a flow rounded down under-delivers. Heat arrives as a Watt and the rise as a
+// CelsiusDelta, and the answer is a MillilitrePerSecond -- the same carriers exhaust_thermal takes in and the
+// fan rows carry, so nothing here unwraps a typed fact into a bare number only to wrap it again. The one
+// place a bare Int is crossed is the Nat the carrier wants, and that crossing is made through
+// std.checked_arithmetic.checked_int_to_nat, which refuses an impossible count rather than fabricating one:
+// Absent here means the inputs asked for a flow that cannot be named.
+// feature:missing-volume-flow-carrier-in-imperial -- dissolve-on: std.measure gains a cubic-foot-per-minute
+// volume-flow carrier; until then mL/s is the corpus's only volumetric-flow authority (extdeps.gpu
+// nvidia_passive_rows says so in as many words: convert CFM to mL/s when transcribing, never store the raw
+// number under the field's name), and CFM exists below only as a rendering of it.
+fn required_flow(heat: Watt, rise: CelsiusDelta) -> MillilitrePerSecond? {
   let rho = gram_per_cubic_metre_count(d: dry_air_at_20c.density)
   let cp = joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp)
-  let denom = rho * cp * rise_k / 1000
-  if denom <= 0 { 0 } else { (heat_watts * 1000000 + denom - 1) / denom }
+  let denom = rho * cp * celsius_delta_count(delta: rise) / 1000
+  if denom <= 0 { Absent } else {
+    match checked_int_to_nat(n: (watt_count(w: heat) * 1000000 + denom - 1) / denom) {
+      Absent => Absent
+      Present { value: n } => Present { value: millilitre_per_second(count: n) }
+    }
+  }
 }
 
-// mL/s to CFM, rounded to the nearest whole cubic foot per minute. 1 CFM = 471.9474 mL/s, so the factor is
-// 1e6/471.9474; the rounding is stated rather than hidden because these figures get compared with a fan's
-// free-air rating, and a CFM rounded down flatters a fan. Checked by the witness against the BFB1012M's own
-// listing, which prints 22.60 CFM next to 10666 mL/s.
-fn ml_per_s_to_cfm(ml: Int) -> Int { (ml * 1000000 + 4719474 / 2) / 4719474 }
-
-// The same, checked back through the corpus's own forward function: exhaust_rise at the flow this returns
-// must give a rise no greater than asked. That is the witness, and it is why the derivation above is allowed
-// to exist next to exhaust_thermal instead of duplicating it.
-fn required_flow_rise_check(heat_watts: Int, rise_k: Int) -> Bool {
-  let flow = millilitre_per_second(count: required_flow_ml_per_s(heat_watts: heat_watts, rise_k: rise_k))
-  match exhaust_rise(heat: watt(count: heat_watts), flow: flow) {
-    Present { value: d } => celsius_delta_count(delta: d) <= rise_k
+// The same, checked back through the corpus's own forward function: exhaust_rise at the flow required_flow
+// returns must give a rise no greater than asked. Carriers pass straight through -- the check cannot compare
+// a number against a unit it silently dropped, which is the whole reason this is written as a round trip
+// rather than as arithmetic on both sides.
+fn required_flow_rise_check(heat: Watt, rise: CelsiusDelta) -> Bool {
+  match required_flow(heat: heat, rise: rise) {
     Absent => false
+    Present { value: flow } => match exhaust_rise(heat: heat, flow: flow) {
+      Present { value: d } => celsius_delta_count(delta: d) <= celsius_delta_count(delta: rise)
+      Absent => false
+    }
   }
+}
+
+// CFM as a RENDERING of a volumetric-flow carrier, never as a second storage of the same fact. 1 CFM =
+// 471.9474 mL/s. Two decimal places, computed in integers: the count is carried in hundredths of a cubic
+// foot per minute and split into digits here, so a reader gets "29.19 CFM" and nothing else in the corpus
+// holds a CFM figure that could disagree with the mL/s it came from. The witness checks this rendering
+// against the BFB1012M listing, which prints 22.60 CFM beside 10666 mL/s -- the one place the corpus has a
+// published pair to check the conversion against.
+fn free_air_cfm_text(flow: MillilitrePerSecond) -> String {
+  let hundredths = (millilitre_per_second_count(f: flow) * 1000000 + 4719474 / 2) / 4719474
+  let whole = hundredths / 100
+  let cents = hundredths - whole * 100
+  join([to_string(value: whole), ".", if cents < 10 { join(["0", to_string(value: cents)], "") } else { to_string(value: cents) }, " CFM"], "")
 }
 
 // The A16's own power rows, read rather than quoted: the default and the maximum are what the duct must be
@@ -693,18 +719,21 @@ fn a16_power_points_w() -> List<String> {
 fn airflow_required_at_rises() -> List<String> {
   let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
   let rises = [5, 10, 15, 20, 30]
-  map(rises, k => join(["at ", to_string(value: k), " K of rise across the whole air path, one A16 at its maximum ",
-                        to_string(value: watts), " W needs at least ", to_string(value: required_flow_ml_per_s(heat_watts: watts, rise_k: k)),
-                        " mL/s of free air (", to_string(value: ml_per_s_to_cfm(ml: required_flow_ml_per_s(heat_watts: watts, rise_k: k))),
-                        " CFM) -- the rise is an operator allowance, not a reading"], ""))
+  map(rises, k => match required_flow(heat: watt(count: watts), rise: celsius_delta(count: k)) {
+    Absent => join(["at ", to_string(value: k), " K of rise across the whole air path: no such flow can be named -- the inputs asked for something the arithmetic cannot carry"], "")
+    Present { value: flow } => join(["at ", to_string(value: k), " K of rise across the whole air path, one A16 at its maximum ",
+                                     to_string(value: watts), " W needs at least ", to_string(value: millilitre_per_second_count(f: flow)),
+                                     " mL/s of free air (", free_air_cfm_text(flow: flow),
+                                     ") -- the rise is an operator allowance, not a reading"], "")
+  })
 }
 
 // WHAT THE BFB1012M ACTUALLY MOVES, for comparison, and the standing of that figure: a transcribed free-air
 // rating from the listing, at zero static pressure, which is not the flow it will deliver in a scroll.
 fn bfb1012m_flow_context() -> String {
-  let flow = millilitre_per_second_count(f: delta_bfb1012m_rating.free_air_flow)
-  join(["the BFB1012M is rated at ", to_string(value: flow), " mL/s free air -- ", to_string(value: ml_per_s_to_cfm(ml: flow)),
-        " CFM, at zero static pressure and with the listing's standing (TranscribedUncited, not an instrument reading). Against the curve above it says whether a scroll of the size the chassis accepts could move the heat at all"], "")
+  let flow = delta_bfb1012m_rating.free_air_flow
+  join(["the BFB1012M is rated at ", to_string(value: millilitre_per_second_count(f: flow)), " mL/s free air -- ", free_air_cfm_text(flow: flow),
+        ", at zero static pressure and with the listing's standing (TranscribedUncited, not an instrument reading). Against the curve above it says whether a scroll of the size the chassis accepts could move the heat at all"], "")
 }
 
 // The report at a stated wheel-width ratio, and the ratio this repository reports at by default. The ratio
@@ -712,19 +741,19 @@ fn bfb1012m_flow_context() -> String {
 // the middle of the range such a wheel occupies, so that the fit answer can be read without the reader
 // having to supply a parameter. scroll_fit_report at other ratios is the honest way to read the answer as a
 // range, and the witnesses sweep it rather than trusting the default.
-fn scroll_fit_report() -> List<String> { scroll_fit_report_at(wheel_width_over_diameter: 40) }
+fn scroll_fit_report() -> List<String> { scroll_fit_report_at(wheel_width_over_diameter: percent(count: 40)) }
 
-fn scroll_fit_report_at(wheel_width_over_diameter: Int) -> List<String> {
-  concat([join(["wheel width/diameter ratio: ", to_string(value: wheel_width_over_diameter),
+fn scroll_fit_report_at(wheel_width_over_diameter: Percent) -> List<String> {
+  concat([join(["wheel width/diameter ratio: ", to_string(value: percent_count(p: wheel_width_over_diameter)),
                 " percent -- a named placeholder for a shape with no datasheet behind it, not a transcribed figure"], "")],
          scroll_fit_report_body(wheel_width_over_diameter: wheel_width_over_diameter))
 }
 
-fn scroll_fit_report_body(wheel_width_over_diameter: Int) -> List<String> {
+fn scroll_fit_report_body(wheel_width_over_diameter: Percent) -> List<String> {
   let d = a16_wall_design()
-  let widest = scroll_max_wheel_diameter_um(wheel_width_over_diameter: wheel_width_over_diameter, d: d)
+  let widest = scroll_max_wheel_diameter(wheel_width_over_diameter: wheel_width_over_diameter, d: d)
   [join(["the operator's end-cap scroll fits a wheel ", extent_display(e: widest)], ""),
-   join(["  at that diameter it reaches ", to_string(value: scroll_run_back_um(wheel_diameter_um: measure_count(m: widest.at_most), wheel_width_over_diameter: wheel_width_over_diameter, d: d) / 1000),
+   join(["  at that diameter it reaches ", to_string(value: micrometer_count(m: scroll_run_back(wheel_diameter: widest.at_most, wheel_width_over_diameter: wheel_width_over_diameter, d: d)) / 1000),
          " mm behind the end, against the 70 mm the operator declared"], ""),
    join(["  card 0 (nearest the wall): ", scroll_intake_facing(card_index: 0, card_count: 2)], ""),
    join(["  card 1 (the heatsink side): ", scroll_intake_facing(card_index: 1, card_count: 2)], ""),
