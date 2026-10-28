@@ -59,7 +59,7 @@ import v1.std.core { Unmarked, expr_literal_int_optional,
   PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics, MatchPattern,
   field_binding_pattern, TextFile, ErrorNode, make_error_node, InternalError,
   is_error_diagnostic,
-  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Neg, unaryop_operand, StringPart, Text,
+  UnlistedImportUse, ReferenceDerivedImportProviderUnknown, ReferenceDerivedImportExportUnproven, NativeEffectRealizationRefused, AmbiguousAnonymousRecordLiteral, EffectfulSelfRecursionUnrealized, AmbiguousReference, SourceSpan, resource_use_resource, UnaryOpKind, Not, Neg, unaryop_operand, StringPart, Text,
   Interpolation, transport_base_url, transport_has_auth, transport_auth_token,
   transport_auth_header_name, transport_headers, transport_env, transport_method,
   transport_path_template, transport_query, transport_request_body, transport_stdin,
@@ -16614,7 +16614,7 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
     // function itself (v1.compiler.infer equality_derived_target). It goes through the same call
     // lowering as any other call -- emit_typed_call_expr with a SourceDeclarationCall identity --
     // so argument handling, module spelling, and effect suffixes come from the ordinary rules, not
-    // from a second call-emission path. `!=` is the call's result under `not`, one operator out.
+    // from a second call-emission path.
     let eq_fn = derived.value
     let eq_target = SourceDeclarationCall {
       owner_module_path: eq_fn.module_path as String,
@@ -16634,7 +16634,13 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
       shared_types: shared_types,
       emit_info: emit_info
     )
-    if op == Ne { concat("!", eq_call) } else { eq_call }
+    // `!=` is that call's result under `not`, one operator out: the negation is the TARGET
+    // LANGUAGE'S DECLARED `not` keyword row (extdeps.languages.rust emit, key "not"), applied by
+    // the shared unary-operator emitter -- the same route a `!x` written in source takes. No `!`
+    // is spliced as a string literal here: a spliced one would be a second spelling of the
+    // operator beside the declared row, and the seed parser misreads a `"!"` literal in this
+    // position anyway (minimal repro in this PR's description).
+    if op == Ne { emit_unary_op(op: Not, operand_str: eq_call, target: Rust) } else { eq_call }
   } else {
     match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
