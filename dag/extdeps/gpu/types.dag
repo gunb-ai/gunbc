@@ -237,11 +237,21 @@ type PcieCardSideOutline {
 // none. An SXM module on an HGX baseboard is SxmModule: its GPU-to-GPU fabric is NVLink, and a rental
 // listing's "PCIe Gen5" is an observed host link of that system, never a board fact. The two stay
 // separate so P4 feasibility can refuse to treat a B200 as a purchasable dual-slot card. A GPU inside an
-// SoC or superchip has no board at all: extdeps.systems.types nests its device row directly. MXM, OAM and
-// soldered mobile attachments are arms that land with the rows that inhabit them.
+// SoC or superchip has no board at all: extdeps.systems.types nests its device row directly.
+// MOBILE ATTACHMENTS. MxmModule is a removable module to the MXM specification, at the revision and type
+// the vendor states (Tesla P6: "MXM 3.1 Type B"), with the PCIe link it presents where stated; it is
+// bought bare and needs a carrier. SolderedBga is a GPU soldered to a laptop's or system's mainboard: it is
+// never bought alone, so its "board" is the marketed laptop GPU and the purchase unit is the whole system.
+// OAM, proprietary mobile modules (DGFF and the like) and conversion boards are arms that land with the
+// rows that inhabit them.
 type GpuAttachmentForm
   = PcieAddInBoard { link: PcieLink? }
   | SxmModule
+  | MxmModule { variant: MxmVariant, link: PcieLink? }
+  | SolderedBga
+
+// The MXM revision and module type exactly as the vendor states them ("3.1", "Type B").
+type MxmVariant { revision: NonEmptyStr, module_type: NonEmptyStr }
 
 // Thermal solution is a board fact, and the one the fan-zone policy needs: a passive card depends on the
 // chassis zone that reaches it.
@@ -252,11 +262,15 @@ type GpuThermalSolution = PassiveThermalSolution | ActiveThermalSolution
 // calls configurable without stating the range); ConfigurableBoardPower is a stated range with its
 // published default where the page states one (the A2's page states "40–60W (configurable)" and no
 // default) and any named operating point (NVIDIA's MaxQ on the A16). A range is a configurable span,
-// distinct from a rating. A board whose page states no power figure, or only a ceiling ("up to
-// 1 kW"), carries no specification at all (GpuBoardCatalogFacts.board_power is Absent).
+// distinct from a rating. SystemDependentTgp is a laptop GPU's total graphics power range: the vendor
+// states the span (the RTX 5000 Ada Laptop GPU's "80-175W") and the laptop maker sets where in it a given
+// system runs, so one marketed GPU is many power points and no one of them is the GPU's. A board whose
+// page states no power figure, or only a ceiling ("up to 1 kW"), carries no specification at all
+// (GpuBoardCatalogFacts.board_power is Absent).
 type GpuBoardPowerSpecification
   = RatedBoardPower { rated: Watt }
   | ConfigurableBoardPower { default: Watt?, minimum: Watt, maximum: Watt, named_points: List<GpuNamedPowerPoint> }
+  | SystemDependentTgp { minimum: Watt, maximum: Watt }
 
 type GpuNamedPowerPoint { name: NonEmptyStr, power: Watt }
 
@@ -266,6 +280,7 @@ fn gpu_board_power_ceiling(spec: GpuBoardPowerSpecification) -> Watt {
   match spec {
     RatedBoardPower { rated: r } => r
     ConfigurableBoardPower { default: _, minimum: _, maximum: m, named_points: _ } => m
+    SystemDependentTgp { minimum: _, maximum: m } => m
   }
 }
 
@@ -318,6 +333,7 @@ fn gpu_board_power_within(minimum: Watt, maximum: Watt, w: Watt) -> Bool {
 fn gpu_board_power_refusal(spec: GpuBoardPowerSpecification) -> GpuBoardRefusal? {
   match spec {
     RatedBoardPower { rated: _ } => none
+    SystemDependentTgp { minimum: lo, maximum: hi } => if watt_count(lo) > watt_count(hi) { Present { value: BoardPowerRangeInverted } } else { none }
     ConfigurableBoardPower { default: d, minimum: lo, maximum: hi, named_points: points } =>
       if watt_count(lo) > watt_count(hi) { Present { value: BoardPowerRangeInverted } }
       else if (match d { Present { value: dv } => !gpu_board_power_within(minimum: lo, maximum: hi, w: dv)  Absent => false }) { Present { value: BoardPowerDefaultOutsideRange } }

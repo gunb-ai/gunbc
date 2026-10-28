@@ -104,9 +104,9 @@ data census_coverage: List<CensusCoverage> = [
 // The pages list mobile, integrated, console and embedded parts beside discrete cards. They are GPUs, so
 // they are not excluded; they are bought, powered and benchmarked at another grain (a laptop or other
 // whole system, a removable module, an embedded module), so they are not cards of this census either.
-// Each is named with the census it belongs to. Those censuses do not exist yet: the mobile and module
-// censuses are step 5 of the GPU catalogue program, and each claims its rows from this partition rather
-// than re-reading the pages.
+// Each is named with the census it belongs to, which claims its rows from this partition rather than
+// re-reading the pages: gunbc.gpu_market.mobile_census claims MobileGpuCensus and MobileModuleCensus. The
+// whole-system and embedded censuses do not exist yet; their rows wait here, named, until they do.
 type GpuCensusPartition
   = MobileGpuCensus
   | MobileModuleCensus

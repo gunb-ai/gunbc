@@ -24,6 +24,9 @@ import extdeps.gpu.nvidia_cmp { nvidia_cmp_board_catalogs }
 import extdeps.gpu.nvidia_k80 { nvidia_k80_board_catalogs }
 import extdeps.gpu.nvidia_m60 { nvidia_m60_board_catalogs }
 import extdeps.gpu.nvidia_m10 { nvidia_m10_board_catalogs }
+import extdeps.gpu.nvidia_rtx_pro_laptop { nvidia_rtx_pro_laptop_board_catalogs }
+import extdeps.gpu.nvidia_geforce_rtx_50_laptop { nvidia_geforce_rtx_50_laptop_board_catalogs }
+import extdeps.gpu.nvidia_tesla_p6 { nvidia_tesla_p6_board_catalogs }
 
 // EVERY BOARD THE GPU CATALOGUE CARRIES, as one list a market consumer reads. Each extdeps.gpu module
 // owns its own boards (one upstream document per module); which of them this repository's market work
@@ -58,5 +61,8 @@ data gpu_catalog_board_admissions: List<GpuBoardAdmission> = concat(
     nvidia_k80_board_catalogs,
     nvidia_m60_board_catalogs,
     nvidia_m10_board_catalogs,
+    nvidia_rtx_pro_laptop_board_catalogs,
+    nvidia_geforce_rtx_50_laptop_board_catalogs,
+    nvidia_tesla_p6_board_catalogs,
   ] |> flat_map(xs => xs),
 )
