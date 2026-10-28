@@ -35,6 +35,7 @@ import gunbc.host.virtual_media_boot_selection {
 }
 import gunbc.fleet.fleet_runner_connectivity { fleet_hosts }
 import gunbc.host.host_reset_return { host_roster_contains }
+import gunbc.host.managed_host_unit_hold { UnitHoldAdmission, UnitHoldUndecided, UnitHoldNotRequired, UnitHoldSubjectAdmitted, admit_unit_hold_subject }
 
 // WHICH HOSTS THIS FLEET MAY DRIVE BACK TO A KNOWN STATE THROUGH THEIR CONTROLLERS, and it is a
 // DERIVED SUBSET of gunbc.host.managed_host managed_hosts() rather than a list anyone maintains.
@@ -70,6 +71,15 @@ type AdmittedResetSubject sole_constructor {
   // the reflash-staleness defect (the side-chat finding: boot admitted on 0.45.3, handoff reading the
   // historical 0.32 row), and it cannot be re-opened from here without deliberately discarding this.
   capability_row: BmcFirmwareReleaseCapabilityRow
+  // THE UNIT-HOLD ADMISSION THIS SUBJECT WAS ADMITTED UNDER, minted once by
+  // gunbc.host.managed_host_unit_hold admit_unit_hold_subject (that module's single mint of
+  // AdmittedUnitHoldSubject) in admit_reset_subject, and nowhere else. The run takes its hold and judges its
+  // proof from THIS value (gunbc.host.host_reset_return_run reset_unit_hold_gate and host_reset_return_wet),
+  // never by asking the policy again from candidate.host. Before this field, the reset admission minted a
+  // subject without ever consulting the hold, and the run's gate held the only reading, so a gate that skipped
+  // the hold still type-checked against a fully admitted subject. Now a subject cannot be admitted without its
+  // hold decision, and a host with none is ResetSubjectHoldUndecided, never a subject.
+  hold: UnitHoldAdmission
 }
 
 type ResetSubjectAdmission
@@ -77,6 +87,9 @@ type ResetSubjectAdmission
   | ResetSubjectUnbound { standing: BmcControlStanding }
   | ResetSubjectNoSelection { host: HostIdentity, cause: VirtualMediaBootSelectionRefusal }
   | ResetSubjectControllerNotAdmitted { admission: OobBootHandoffAdmission }
+  // No unit hold decision exists for the host (gunbc.host.managed_host_unit_hold UnitHoldUndecided): it is
+  // not a reset subject, rather than a subject driven as if it needed no hold.
+  | ResetSubjectHoldUndecided { host: HostIdentity }
 
 fn admit_reset_subject(evidence: MegaRacOperationEvidence, host: ManagedHost) -> ResetSubjectAdmission {
   match bmc_control_binding(observed: host.access, secured: host.secure) {
@@ -89,7 +102,14 @@ fn admit_reset_subject(evidence: MegaRacOperationEvidence, host: ManagedHost) ->
           let admission = oob_boot_handoff_admission_for_row(
             observation: bmc_control_route_observation(route: route), capability_row: row)
           if oob_handoff_is_admitted(admission: admission) {
-            ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row } }
+            let hold = admit_unit_hold_subject(host: host)
+            match hold {
+              UnitHoldUndecided { host: x } => ResetSubjectHoldUndecided { host: x }
+              UnitHoldNotRequired { host: _ } =>
+                ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row, hold: hold } }
+              UnitHoldSubjectAdmitted { subject: _ } =>
+                ResetSubjectAdmitted { subject: AdmittedResetSubject { host: host, route: route, boot_selection: selection, capability_row: row, hold: hold } }
+            }
           } else {
             ResetSubjectControllerNotAdmitted { admission: admission }
           }
@@ -113,6 +133,7 @@ fn admitted_reset_subjects(evidence: MegaRacOperationEvidence, hosts: List<Manag
       ResetSubjectUnbound { standing: _ } => acc
       ResetSubjectNoSelection { host: _, cause: _ } => acc
       ResetSubjectControllerNotAdmitted { admission: _ } => acc
+      ResetSubjectHoldUndecided { host: _ } => acc
     },
   )
 }

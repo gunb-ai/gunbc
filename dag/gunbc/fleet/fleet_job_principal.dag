@@ -1,0 +1,39 @@
+module gunbc.fleet.fleet_job_principal
+
+import std.types { List, String, NonEmptyStr, Int }
+import std.optional { Present, Absent }
+import gunbc.fleet.fleet_root_equivalent_groups { fleet_root_equivalent_group_names }
+import extdeps.linux.procfs { procfs_status_effective_uid, procfs_status_supplementary_gids }
+import extdeps.linux.etc_group { etc_group_entries, etc_group_name_of }
+
+// A JOB'S OWN PRINCIPAL, read from inside the job: its /proc/self/status and the host's /etc/group. The
+// fleet model's closed list of root-equivalent groups (gunbc.fleet.fleet_root_equivalent_groups
+// fleet_root_equivalent_group_names) decides: a principal in any of them is refused, and so is one with a
+// supplementary GID /etc/group cannot name, since an unnamed group could be one of them. This judges
+// group membership only. Whether a home another account can reach makes a principal root-equivalent has
+// no closed rule in the model, so a consumer records those facts and does not judge them here.
+type JobPrincipalReading
+  = JobPrincipalAdmitted { effective_uid: Int, gids: List<Int>, groups: List<NonEmptyStr> }
+  | JobPrincipalRefused { reason: String }
+
+fn job_principal_reading(status: String, group_file: String) -> JobPrincipalReading {
+  match procfs_status_supplementary_gids(content: status) {
+    Absent => JobPrincipalRefused { reason: "the Groups: line of /proc/self/status is unreadable" }
+    Present { value: gids } => match procfs_status_effective_uid(content: status) {
+      Absent => JobPrincipalRefused { reason: "the Uid: line of /proc/self/status is unreadable" }
+      Present { value: uid } => {
+        let entries = etc_group_entries(text: group_file)
+        let unresolved = gids |> filter(g => match etc_group_name_of(entries: entries, gid: g) { Absent => true, Present { value: _ } => false })
+        let names = flat_map(gids, g => match etc_group_name_of(entries: entries, gid: g) { Absent => [] as List<NonEmptyStr>, Present { value: n } => [n] })
+        let root_equivalent = names |> filter(n => any(fleet_root_equivalent_group_names, r => (r as String) == (n as String)))
+        if count(unresolved) > 0 {
+          JobPrincipalRefused { reason: concat("a supplementary group /etc/group cannot name: gid ", join(map(unresolved, g => to_string(g)), ",")) }
+        } else if count(root_equivalent) > 0 {
+          JobPrincipalRefused { reason: concat("the job principal is in root-equivalent group(s): ", join(map(root_equivalent, n => n as String), ",")) }
+        } else {
+          JobPrincipalAdmitted { effective_uid: uid, gids: gids, groups: names }
+        }
+      }
+    }
+  }
+}

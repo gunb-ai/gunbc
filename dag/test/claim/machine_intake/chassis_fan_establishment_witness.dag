@@ -41,7 +41,7 @@ fn spinning_rows() -> List<SdrTypeLine> {
   [row(name: "FAN1" as NonEmptyStr, reading: "5700 RPM" as NonEmptyStr), row(name: "FAN2" as NonEmptyStr, reading: "5600 RPM" as NonEmptyStr), row(name: "FAN3" as NonEmptyStr, reading: "5500 RPM" as NonEmptyStr)]
 }
 
-fn read(rows: List<SdrTypeLine>) -> FanSensorObservation { FanSensorsRead { lines: rows, undecoded_lines: [] } }
+fn read(rows: List<SdrTypeLine>) -> FanSensorObservation { FanSensorsRead { lines: rows, undecoded_lines: [], failure_rows: [] } }
 
 fn on() -> ChassisPowerObservation { ChassisPowerRead { power_on: true } }
 
@@ -110,7 +110,7 @@ test fn an_unreadable_fan_read_refuses_as_fan_read_unreadable_not_missing_rows()
 }
 
 test fn undecoded_fan_rows_refuse_even_when_every_fitted_fan_spins() -> Bool {
-  match verdict(set: assumed_set(), chassis: on(), fans: FanSensorsRead { lines: spinning_rows(), undecoded_lines: ["a | 1h | ns | 29.0 | x", "b | 2h | ns | 29.0 | y"] }) {
+  match verdict(set: assumed_set(), chassis: on(), fans: FanSensorsRead { lines: spinning_rows(), undecoded_lines: ["a | 1h | ns | 29.0 | x", "b | 2h | ns | 29.0 | y"], failure_rows: [] }) {
     PostPowerFanVerdictRefused { cause: FanRowsUndecoded { texts: t } } => t == ["a | 1h | ns | 29.0 | x", "b | 2h | ns | 29.0 | y"]
     _ => false
   }

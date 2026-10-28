@@ -1,0 +1,21 @@
+module gunbc.recurring_failure_mode.a_route_refusal_collapses_to_a_false_verdict
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data a_route_refusal_collapses_to_a_false_verdict: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_route_refusal_collapses_to_a_false_verdict" as NonEmptyStr,
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "**a run that was never given a route able to realize a witness frame reports the claim as FALSE, and the same claim is PASS under the other execution mode** (INVALID STATE: evaluate_in_witness_frame turned the mode refusal 'a modeled operation realization is admitted only under Hermetic execution' into a WitnessRefused VALUE; the claim's own match mapped WitnessRefused to false, so a refusal of the ROUTE read as a verdict about the SUBJECT.) SPECIMEN: test.claim.host.managed_host_boot_witness, claims w_the_executed_boot_route_consumes_the_current_release_identity, w_the_identity_the_executed_route_reported_came_from_writing_the_controller, w_the_fan_gate_admits_the_executed_boot_route_on_a_healthy_reading and w_a_refused_fan_reading_stops_the_executed_boot_route_at_the_gate: gunbc run --claim-run (Wet by default) printed 'FAIL <name>' with no cause for 4 of 26 while claim_batch --functions (Hermetic by default) printed PASS for all 26.",
+    "HARM: a harness disagreement with no named cause sends every reader to look for a defect in a witness that was never executed. Neither harness lied about what it ran; the Wet harness reported a non-observation as an observation. DESIGN 'Building & checks' fixes the reading: exit 0 held, 1 did not hold, 2 no observation.",
+    "REPAIR AT THE EARLIEST UNJUSTIFIED BOUNDARY (DESIGN 6b): the collapse point, not the four claims and not claim-run's default mode. The frame builtin now returns the interpreter's typed route-gap error (InterpError::HostEffectRefused with ground FrameNotRealizableUnderMode) for the mode refusal, and for any route gap raised inside the frame's subject, so it reaches ClaimOutcome::HostEffectRefused (claim_batch UNOBSERVED) and a non-Bool error (claim-run status 2 with the cause text). The other WitnessRefused arms are authored fixture verdicts and are left alone.",
+    "RUNG FOUND AT: mitigatable (a located cause exists only after the repair). NEXT-RUNG TRIGGER, A CAPABILITY: a witness match over WitnessEvaluation that maps a refusal arm to false must be refused unless the refusal's cause is a fixture-authored one, SUFFICIENT FOR making a mode-level refusal unwritable as a verdict in every claim, not only the four.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.host.managed_host_boot_witness", decl_name: "w_the_executed_boot_route_consumes_the_current_release_identity", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.machine_intake.mtcollins1_boot_acceptance_matrix", decl_name: "run_boot_route", field: WholeDeclaration },
+  ],
+}

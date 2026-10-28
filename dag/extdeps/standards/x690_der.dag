@@ -4,6 +4,7 @@ import std.types { Int, String, List }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.algebra { collection_count_shape, collection_map_shape, collection_join_shape, list_push }
 
 // ITU-T X.690 (02/2021), ASN.1 encoding rules: BER (§8) and the DER restrictions (§10). Every
 // element is identifier octets (§8.1.2), length octets (§8.1.3) and contents octets. This module

@@ -24,6 +24,15 @@ import gunbc.plans.physical_machine_boot_program { physical_machine_boot_program
 import gunbc.plans.gunb_ai_projection { gunb_ai_projection_plan }
 import gunbc.plans.p4_home_serving_power_semantics { p4_home_serving_power_semantics_plan }
 import gunbc.plans.ntfy_deployment_gate_approval { ntfy_deployment_gate_approval_plan }
+import gunbc.plans.serving_fleet_program { serving_fleet_program_plan }
+import gunbc.plans.fabric_serving_router { fabric_serving_router_plan }
+import gunbc.plans.network_install_architecture_rows { network_install_architecture_rows_plan }
+import gunbc.plans.fleet_naming_reach_access { fleet_naming_reach_access_plan }
+import gunbc.plans.site_segment_anchor_bmc_reach { site_segment_anchor_bmc_reach_plan }
+import gunbc.plans.boot_origin_bmc_media { boot_origin_bmc_media_plan }
+import gunbc.plans.gpu_card_host_program { gpu_card_host_program_plan }
+import gunbc.plans.logical_work_realization { logical_work_realization_plan }
+import gunbc.plans.mtcollins1_ci_service_legs { mtcollins1_ci_service_legs_plan }
 
 data batch_g_plans: List<Plan> = [
   resolver_type_name_collision_wall_plan,
@@ -48,5 +57,14 @@ data batch_g_plans: List<Plan> = [
   physical_machine_boot_program_plan,
   gunb_ai_projection_plan,
   p4_home_serving_power_semantics_plan,
-  ntfy_deployment_gate_approval_plan
+  ntfy_deployment_gate_approval_plan,
+  fabric_serving_router_plan,
+  network_install_architecture_rows_plan,
+  serving_fleet_program_plan,
+  fleet_naming_reach_access_plan,
+  site_segment_anchor_bmc_reach_plan,
+  boot_origin_bmc_media_plan,
+  gpu_card_host_program_plan,
+  logical_work_realization_plan,
+  mtcollins1_ci_service_legs_plan
 ]

@@ -59,6 +59,7 @@ type TargetProducer
   | BareReferenceChannelOutcomeProducer
   | SelfHostBehavioralEquivalenceProducer
   | NativeCensusVerbProducer { verb: NativeCensusVerbWord }
+  | SelfHostFrontierProducer
   | GenericIdentityCensusProducer
   | InterpolationHoleCensusProducer
   | SharedTypeLeafCollisionCensusProducer
@@ -101,6 +102,7 @@ fn native_claim_deadline_if_entry(producer: TargetProducer, want: String) -> Opt
     BareReferenceChannelOutcomeProducer {} => optional_absent()
     SelfHostBehavioralEquivalenceProducer {} => optional_absent()
     NativeCensusVerbProducer { verb: _ } => optional_absent()
+    SelfHostFrontierProducer {} => optional_absent()
     GenericIdentityCensusProducer {} => optional_absent()
     InterpolationHoleCensusProducer {} => optional_absent()
     SharedTypeLeafCollisionCensusProducer {} => optional_absent()
@@ -137,8 +139,8 @@ fn native_serve_probe_if_entry(producer: TargetProducer, want: String) -> Option
 //   TypeDeclarationUseReading: `census-infer` with the type-declaration census's fixture and
 //     unindexed controls (the nominal-type plan's M0), read by
 //     gunbc.instruments.type_declaration_use_census_reading.
-//   OccurrenceBindingReading: `census-infer` again, its occurrence-binding lines (resolve's one
-//     binding record, v2.compiler.occurrence_binding_census) with that census's fixture and unindexed
+//   OccurrenceResolutionReading: `census-infer` again, its occurrence-binding lines (resolve's one
+//     binding record, v2.compiler.occurrence_resolution_census) with that census's fixture and unindexed
 //     controls, read by gunbc.instruments.ambient_name_census_reading.
 //   AmbientOperationDispositionReading: that same run, read by
 //     gunbc.instruments.ambient_operation_disposition_reading for each ambient primitive spelling's
@@ -153,7 +155,7 @@ type V2NativeCensusReading
   = RefusalCensusReading
   | ScopedRefusalCensusReading { subject: PackageName }
   | TypeDeclarationUseReading
-  | OccurrenceBindingReading
+  | OccurrenceResolutionReading
   | AmbientOperationDispositionReading
   | BindingDiffReading
   | NativeProcessMemoryReading { workload: NativeMeasuredWorkload }

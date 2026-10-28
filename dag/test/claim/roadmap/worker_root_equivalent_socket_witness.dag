@@ -1,5 +1,6 @@
 module test.claim.roadmap.worker_root_equivalent_socket_witness
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import std.types { Bool, String, List, NonEmptyStr }
 import extdeps.exec.command { argv_words }
 import extdeps.systemd.systemd_run {
@@ -14,7 +15,6 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_worker_unit_properties, dispatch_review_unit_properties,
 }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import std.measure { kibibyte }
 
 // WORKER-ROOT-EQUIVALENT-1, INTERIM RUNG (gunbc.rung_drop.worker_root_equivalent_socket_denylist).

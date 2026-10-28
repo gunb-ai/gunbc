@@ -69,6 +69,7 @@ type Quantity =
   | VolumeFlow
   | Density
   | SpecificHeatCapacity
+  | Velocity
   | Acceleration
   | ResistancePerLength
 
@@ -81,8 +82,10 @@ type Scale =
   | Nano
   | Micro
   | Milli
+  | Centi
   | One
   | Sixty
+  | ThirtySixHundred
   | RackUnitHeight
   | SquareFootArea
 
@@ -109,11 +112,13 @@ fn scale_exponent(s: Scale) -> Int? {
     Nano  =>  Present { value:  -9 }
     Micro =>  Present { value:  -6 }
     Milli =>  Present { value:  -3 }
+    Centi =>  Present { value:  -2 }
     One   =>  Present { value:   0 }
     ArcsecondAngle => none
     DegreeAngle    => none
     TurnAngle      => none
     Sixty =>  none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  =>  Present { value:   3 }
@@ -185,6 +190,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     DegreeAngle => none
     TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
+    ThirtySixHundred => Present { value: minutes_per_hour() * seconds_per_minute() }
     RackUnitHeight => none
     SquareFootArea => none
     Atto  => none
@@ -193,6 +199,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Centi => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -219,10 +226,12 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Centi => none
     ArcsecondAngle => none
     DegreeAngle => none
     TurnAngle => none
     Sixty => none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  => none
@@ -346,6 +355,14 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
   byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }
 
+// Print-scale conversion for figures quoted in hundredths of a Gibibyte: the capacity
+// screenshots print GiB to two decimals (73.39 GiB logs as 7339), and review 84973 moved
+// those receipt fields onto ByteSize, so the hundredths arithmetic belongs here beside
+// gibibyte_to_byte_size -- a product module must not re-derive a std.measure scale.
+fn centi_gibibyte_to_byte_size(centi: Nat) -> ByteSize {
+  byte_size(count: centi * gibibyte_scale_factor_bytes() / 100)
+}
+
 fn kibibyte(count: Nat) -> Kibibyte {
   Measure { count: count }
 }
@@ -406,6 +423,20 @@ type HardwareThreadMinute = Measure<HardwareThreadTime, Sixty, FieldOfFractions<
 type PhysicalCoreCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
+
+// A count of display pixels: the unit a spreadsheet column's width is set and read in (Google
+// Sheets DimensionProperties.pixelSize, extdeps.google.sheets SetColumnWidth). It is a NOMINAL
+// record, not a Measure alias, because an alias of Measure<Count, One, Nat> is the same type as
+// CharacterCount and every other count, and a distinct phantom quantity argument is not judged at
+// a generic application today (gunbc.recurring_failure_mode
+// direct_generic_application_admits_a_distinct_phantom_argument). A distinct record and an unaliased
+// Measure are refused at a DisplayPixelCount formal; an alias-typed count (CharacterCount) is still
+// admitted, which is gunbc.recurring_failure_mode
+// an_aliased_generic_application_is_admitted_at_a_distinct_record_formal, enrolled as an
+// expecting-red tripwire in test.claim.display_pixel_count_refusal_witness.
+type DisplayPixelCount {
+  pixels: Nat
+}
 
 type TokenCount = Measure<Count, One, Nat>
 
@@ -743,6 +774,17 @@ fn positive_measure_count_value(
   }
 }
 
+// The same count as a natural, for a consumer whose arithmetic is over Nat (a divisor, a multiplier of
+// byte counts): the successor of a natural is a natural, so no Int crossing is needed to read it.
+fn positive_measure_count_nat(
+  count: PositiveMeasureCount,
+) -> Nat {
+  match count {
+    PositiveMeasureSuccessor { predecessor: predecessor } =>
+      predecessor + 1
+  }
+}
+
 type PositiveCelsiusDelta
   = PositiveCelsiusDeltaValue { count: PositiveMeasureCount }
 
@@ -772,6 +814,21 @@ fn events_per_minute(count: Nat) -> EventsPerMinute {
 }
 
 fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+  measure_count(r)
+}
+
+// A per-hour count of discrete events, the hourly sibling of EventsPerMinute at the ISO 8601
+// seconds-per-hour scale (minutes_per_hour x seconds_per_minute). A per-minute and a per-hour figure
+// cannot be compared or assigned across without a modeled conversion, so an hourly completion rate
+// never rides in a per-minute carrier scaled by hand. First consumer: the completed-turns-per-hour
+// quantity of gunbc.serving.serving_benchmark_run_receipt.
+type EventsPerHour = Measure<Frequency, ThirtySixHundred, Nat>
+
+fn events_per_hour(count: Nat) -> EventsPerHour {
+  Measure { count: count }
+}
+
+fn events_per_hour_count(r: EventsPerHour) -> Nat {
   measure_count(r)
 }
 
@@ -1574,6 +1631,24 @@ fn milli_tokens_per_second_count(r: MilliTokensPerSecond) -> Nat {
   measure_count(r)
 }
 
+// GIGA OPERATIONS PER SECOND — a per-second rate of arithmetic OPERATIONS on the Frequency axis at
+// Giga, the sibling of TokensPerSecond and MilliRequestsPerSecond and for the same reason those
+// exist: a count answers "how many", a rate answers "how fast", and minting the rate alias inside a
+// vendor module mints a unit nobody else can see. An operation is ONE multiply or one add, so a
+// fused multiply-add counts as two, which is how NVIDIA's "FLOPS" headlines count. Giga scale, not
+// Tera, because Tera would floor a published 835.5 TFLOPS to 835 and lose the figure.
+// First consumer: extdeps.gpu.types.DenseTensorThroughput, whose per-datatype dense tensor-core
+// rate this replaced when review 84774 caught the alias minted outside this module.
+type GigaTensorOperationsPerSecond = Measure<Frequency, Giga, Nat>
+
+fn giga_tensor_operations_per_second(count: Nat) -> GigaTensorOperationsPerSecond {
+  Measure { count: count }
+}
+
+fn giga_tensor_operations_per_second_count(r: GigaTensorOperationsPerSecond) -> Nat {
+  measure_count(r)
+}
+
 // An offered REQUEST arrival rate at Milli (vllm bench serve `--request-rate`). Frequency axis like
 // its token sibling, a different thing counted: a request is not a token. First consumer:
 // extdeps.vllm.bench_serve PoissonProcess.
@@ -1813,10 +1888,22 @@ fn percent_count(p: Percent) -> Nat {
 }
 
 // Concurrent max-length requests the engine prints as Nx (vLLM "Maximum concurrency for … tokens
-// per request: 11.22x"). Stored as hundredths (11.22x = 1122) on the same Dimensionless axis as
-// Percent, which this repository already uses for GPU utilization. A block is not a token; 11.22
-// concurrent requests is not 1122% utilization.
-type ConcurrentRequestHundredths = Measure<Dimensionless, One, Nat>
+// per request: 11.22x"), stored as hundredths (11.22x = 1122). THE AXIS IS Count, NOT Dimensionless:
+// 11.22 here means 11.22 REQUESTS resident, a number of things, the same quantity TokenCount and
+// CpuCoreCount carry — at the CENTI scale, where a hundredth of a request is nameable and a raw
+// printed hundredth count (11.22x = 1122) needs no rescaling. It was aliased on the
+// Dimensionless axis beside Percent, which made a concurrency reading and a utilization ratio ONE
+// STRUCTURAL TYPE: 1122 concurrent requests passed for 1122% utilization at every formal and at
+// measure_add, which is nicknaming (DESIGN 3), not a unit. Nor is it Dimensionless-at-One or
+// -at-Milli: at One the count 1122 reads as 1122 REQUESTS (wrong magnitude), and at Milli it is
+// structurally identical to ConcurrentRequestThousandths — the same fork twice. Scale.Centi is the
+// existing SI hundredths row (scale_exponent answers Centi => -2), minted alongside the other
+// decimal SI arms; consumers keep their printed hundredths integers unchanged. The printed Nx is a mean concurrency
+// only where the reading aggregates over a window — that is a property of the observation carrying
+// it (extdeps.vllm.log_lines, gunbc.serving.flash_next_recipe_throughput_evidence), not of the
+// unit, so the aggregation is NOT spelled here. Converting a count of requests to a percentage of
+// some capacity is a division by a count of capacity, at the call site, and is not an alias.
+type ConcurrentRequestHundredths = Measure<Count, Centi, Nat>
 
 fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
   Measure { count: count }
@@ -1869,6 +1956,39 @@ fn parts_per_million_count(m: PartsPerMillion) -> Nat {
 
 fn parts_per_million_scale_million() -> Nat {
   parts_per_million_unity_count()
+}
+
+// Per-mille (1/1000 of unity) — the fourth scale of the Percent/BasisPoint/PartsPerMillion
+// dimensionless-ratio authority, minted beside them (review 84774 family, review 84973 sweep:
+// the serving modules carried printed permille figures as bare Nat; Percent's whole points and
+// PartsPerMillion's Micro cannot hold a per-thousand print figure without rescaling it).
+// count 1000 is parity; count 2680 is 2.68x.
+type Permille = Measure<Dimensionless, Milli, Nat>
+
+fn permille(count: Nat) -> Permille {
+  Measure { count: count }
+}
+
+fn permille_count(p: Permille) -> Nat {
+  measure_count(p)
+}
+
+// Mean concurrent requests at milli resolution (Little's-law means: count 15860 is 15.86
+// requests resident). ConcurrentRequestHundredths holds whole hundredths at Centi; the milli
+// resolution is the sibling this family lacked (review 84973: mean_decode_concurrency_milli
+// and pool_ratio_milli printed milli figures on bare Nat). Count axis, not Dimensionless: see
+// ConcurrentRequestHundredths — a number of resident requests is a COUNT, and sharing
+// Measure<Dimensionless, .., Nat> with Permille/Percent made a mean concurrency and a ratio one
+// structural type. The "mean" is how the reading was aggregated (Little's law over an uptime
+// window) and belongs on the observation carrying it, not on the unit.
+type ConcurrentRequestThousandths = Measure<Count, Milli, Nat>
+
+fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
+  Measure { count: count }
+}
+
+fn concurrent_request_thousandths_count(c: ConcurrentRequestThousandths) -> Nat {
+  measure_count(c)
 }
 
 // One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same
@@ -2088,6 +2208,11 @@ fn kilogram_per_cubic_metre_count(d: KilogramPerCubicMetre) -> Nat { measure_cou
 type JoulePerKilogramKelvin = Measure<SpecificHeatCapacity, One, Nat>
 fn joule_per_kilogram_kelvin(count: Nat) -> JoulePerKilogramKelvin { Measure { count: count } }
 fn joule_per_kilogram_kelvin_count(c: JoulePerKilogramKelvin) -> Nat { measure_count(c) }
+
+// VELOCITY at micrometres per second, so a slicer's mm/s speeds are exact counts.
+type MicrometrePerSecond = Measure<Velocity, Micro, Nat>
+fn micrometre_per_second(count: Nat) -> MicrometrePerSecond { Measure { count: count } }
+fn micrometre_per_second_count(v: MicrometrePerSecond) -> Nat { measure_count(v) }
 
 // ACCELERATION at micrometres per second squared, so standard gravity 9.80665 m/s^2 is exact.
 type MicrometrePerSecondSquared = Measure<Acceleration, Micro, Nat>

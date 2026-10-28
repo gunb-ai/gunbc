@@ -34,10 +34,13 @@ import gunbc.secret_provision_actuator {
   create_secret_container,
   observe_secret_container,
 }
-import gunbc.auth.netrc_binding {
-  NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused, NetrcBindingRefusedResidueRemains,
-  place_netrc_binding,
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
+import gunbc.auth.netrc_binding { netrc_binding_path, with_private_netrc_binding }
 import extdeps.bmc.redfish {
   redfish_password_change_verdict, RedfishPasswordChangeRequired, RedfishPasswordChangeNotIndicated,
   RedfishResponseBodyUnreadable,
@@ -79,25 +82,13 @@ import std.algebra { trim }
 import std.logic { Bool }
 import std.bytes { utf8_encode_bytes }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.json.emit {
   serialize_json,
   json_object,
   json_kv,
   json_string,
-}
-
-data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
-data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
-
-data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "extdeps.filesystem.filesystem_io",
-    decl_name: "Filesystem",
-    field: WholeDeclaration
-  }
 }
 
 
@@ -112,10 +103,12 @@ data bmc_credential_length_chars_unit_debt: Disposition = Scaffold {
 
 data bmc_credential_length_chars: Int = 16
 
-fn account_password_body(new_password: String) -> String {
+// THE BODY IS A SECRET BECAUSE IT CONTAINS ONE, and it goes to SetAccountPassword on stdin, so it
+// is never written to a path.
+fn account_password_body(new_password: Secret) -> Secret {
   serialize_json(v: json_object(members: [
-    json_kv(key: "Password", value: json_string(s: new_password)),
-  ]))
+    json_kv(key: "Password", value: json_string(s: new_password as String)),
+  ])) as Secret
 }
 
 fn boot_override_body(target: String, enabled: String, mode: String) -> String {
@@ -146,109 +139,123 @@ fn mint_bmc_credential() -> Secret {
   Urandom.ReadPassword(count: bmc_credential_length_chars).password as Secret
 }
 
-// THE NETRC FILE IS THE CREDENTIAL'S ONLY CARRIER, since the argv-borne `-u {username}:{password}`
-// arms were deleted from extdeps.bmc.http. WHY THE MECHANICS ARE NO LONGER SPELLED HERE: the printer
-// FTPS channel needed the identical bracket, and a second copy would have given the mode, the O_EXCL
-// creation and the shred order two homes -- so hardening one would silently leave the other behind.
-// They now live once, in gunbc.auth.netrc_binding, and this function is the adapter that keeps this
-// tool's six call sites unchanged while consuming that authority.
+// ONE AUTHENTICATED REDFISH CALL, MADE INSIDE A PER-CALL PRIVATE NETRC THAT IS GONE WHEN IT RETURNS.
 //
-// The binding is placed and immediately projected back to a path because the Redfish operations in
-// extdeps.bmc.http take `netrc_file` as a path; threading the sealed NetrcBinding through them is the
-// next step of the same climb, and is what would make the path unforgeable at those call sites too.
-// THE RESIDUE FACT SURVIVES THIS ADAPTER. A first version of this match sent both refusal arms to
-// `false`, which erased the distinction in the same change that introduced it: the caller learned
-// "the netrc was not written" and could not learn "credential material may still be on disk",
-// which is a different remedy -- retry versus go clean it up. Collapsing here would have been the
-// exact defect the new variant exists to prevent, committed one function away from the fix.
+// WHAT THIS REPLACES. Every caller here used to write one fixed path, /tmp/bmc_onboard_netrc, and
+// none removed it, so after a run that file held whichever BMC credential the run used last, which
+// after a rotation is the NEW password. The rotation body sat beside it at
+// /tmp/bmc_onboard_pwbody.json, written with the ambient umask. The body now goes to curl on stdin
+// (extdeps.bmc.http SetAccountPassword). The netrc still has to be a file, because curl --netrc-file
+// reads a path, so it is placed through gunbc.auth.netrc_binding with_private_netrc_binding: a fresh
+// 0700 directory, a 0600 O_EXCL file, and a checked removal of both on every arm out.
 //
-// No locator crosses this adapter, because the placement outcome does not carry one at all -- an
-// earlier repair sealed the path instead, and the seal did not hold. What crosses is the FACT, so a
-// caller can refuse loudly instead of retrying over a credential it did not clean.
-type NetrcWriteOutcome
-  = NetrcWritten
-  | NetrcNotWritten
-  | NetrcNotWrittenResidueRemains { cause: NonEmptyStr }
+// THE CALLS ARE A CLOSED SET rather than a callback, so the bracket's body cannot be anything but one
+// Redfish request: nothing else can run while the credential is on disk.
+type BmcRedfishCall
+  = BmcGetSystem
+  | BmcSetAccountPassword { account_id: NonEmptyStr, request_body: Secret }
 
-fn write_netrc_outcome(host: String, account: String, password: String) -> NetrcWriteOutcome {
-  match place_netrc_binding(
-    path: bmc_onboard_netrc_path as FilePath,
-    machine: host as NonEmptyStr,
-    login: account as NonEmptyStr,
-    password: password as Secret
+type BmcRedfishReply {
+  success: Bool
+  body: String
+}
+
+fn bmc_redfish_call(host: NonEmptyStr, netrc: NonEmptyStr, call: BmcRedfishCall) -> BmcRedfishReply
+{
+  match call {
+    BmcGetSystem => {
+      r = redfish.Http.GetSystem(bmc_host: host, netrc_file: netrc)
+      return BmcRedfishReply { success: r.success, body: r.body }
+    }
+    BmcSetAccountPassword { account_id: a, request_body: b } => {
+      r = redfish.Http.SetAccountPassword(bmc_host: host, netrc_file: netrc, account_id: a, request_body: b)
+      return BmcRedfishReply { success: r.success, body: r.body }
+    }
+  }
+}
+
+// A CALL THAT NEVER REACHED THE BMC IS NOT A BMC ANSWER, and a credential left on disk is a refusal
+// even when the BMC said yes. CallRefused carries a located reason that says which happened, so an
+// operator is sent to this host's disk rather than to the BMC. When the shred fails after the BMC
+// answered, the reason states that answer, because a PATCH that succeeded has already changed the
+// password, and saying only "refused" would hide that.
+type BmcAuthenticatedCall
+  = BmcCallAnswered { reply: BmcRedfishReply }
+  | BmcCallRefused { reason: String }
+
+fn bmc_answer_word(reply: BmcRedfishReply) -> String {
+  if reply.success { "succeeded" } else { "failed" }
+}
+
+fn bmc_authenticated_call(
+  stage: NonEmptyStr,
+  host: NonEmptyStr,
+  account: NonEmptyStr,
+  password: Secret,
+  call: BmcRedfishCall,
+) -> BmcAuthenticatedCall
+{
+  match with_private_netrc_binding(
+    machine: host,
+    login: account,
+    password: password,
+    use: fn(binding) { bmc_redfish_call(host: host, netrc: netrc_binding_path(binding: binding) as NonEmptyStr, call: call) },
   ) {
-    NetrcBindingRefused { cause: _ } => NetrcNotWritten
-    NetrcBindingRefusedResidueRemains { cause: cause } =>
-      NetrcNotWrittenResidueRemains { cause: cause }
-    NetrcBindingPlaced { binding: _ } => NetrcWritten
+    PrivateSecretFileCompleted { value: reply } => BmcCallAnswered { reply: reply }
+    PrivateSecretFileCompletedResidueRemains { value: reply } =>
+      BmcCallRefused {
+        reason: join([stage as String, ": the BMC call ", bmc_answer_word(reply: reply), " but the per-run netrc could not be removed, so credential material may remain on disk and requires cleanup before retry"], ""),
+      }
+    PrivateSecretFileNotEntered { cause: c } =>
+      BmcCallRefused { reason: join([stage as String, ": the per-run netrc could not be placed, so the BMC was not called: ", c as String], "") }
+    PrivateSecretFileNotEnteredResidueRemains { cause: c } =>
+      BmcCallRefused { reason: join([stage as String, ": the per-run netrc could not be placed AND credential material may remain on disk, requiring cleanup before retry: ", c as String], "") }
   }
 }
 
-fn netrc_write_succeeded(outcome: NetrcWriteOutcome) -> Bool {
+fn bmc_call_succeeded(outcome: BmcAuthenticatedCall) -> Bool {
   match outcome {
-    NetrcWritten => true
-    NetrcNotWritten => false
-    NetrcNotWrittenResidueRemains { cause: _ } => false
+    BmcCallAnswered { reply: r } => r.success
+    BmcCallRefused { reason: _ } => false
   }
 }
 
-// THE REFUSAL REASON IS WHERE THE FACT REACHES A HUMAN, so it is derived from the outcome rather
-// than written per call site. Five sites each had a literal "netrc write failed"; had the residue
-// distinction been threaded by hand it would have been preserved at some of them and dropped at the
-// rest, which is how a distinction dies quietly. One derivation, five sites, no site-local wording.
-fn netrc_failure_reason(outcome: NetrcWriteOutcome, stage: NonEmptyStr) -> String {
+fn bmc_call_failure_reason(outcome: BmcAuthenticatedCall, rejected_prefix: String) -> String {
   match outcome {
-    NetrcWritten => concat(stage as String, ": netrc write did not fail")
-    NetrcNotWritten => concat(stage as String, ": netrc write failed")
-    NetrcNotWrittenResidueRemains { cause: cause } =>
-      concat(
-        concat(stage as String, ": netrc write failed AND credential material may remain on disk, requiring cleanup before retry: "),
-        cause as String)
+    BmcCallAnswered { reply: r } => concat(rejected_prefix, r.body)
+    BmcCallRefused { reason: reason } => reason
   }
 }
 
-// THE POST-ROTATION REAUTH RE-WRITES THE NETRC, because the credential the BMC now expects is the
-// one this func just installed. That write is CHECKED rather than assumed: a silently-failed netrc
-// would leave the PREVIOUS credential's file in place, and the reauth would then appear to succeed
-// while proving nothing about the rotation it exists to confirm -- a green that means the opposite
-// of what it reads as.
-fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: String, new_credential: Secret) -> ProcessExit
+// THE POST-ROTATION REAUTH AUTHENTICATES WITH THE NEW CREDENTIAL in its own private netrc, so it
+// cannot pass by reading the previous credential's file: each call places its own and removes it.
+fn bmc_rotate_credential(plan: BmcOnboardingPlan, current_password: Secret, new_credential: Secret) -> ProcessExit
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let rotate_w = write_netrc_outcome(host: host, account: account, password: current_password)
-  if netrc_write_succeeded(outcome: rotate_w) == false {
-    return exit_failure(reason: netrc_failure_reason(outcome: rotate_w, stage: "rotate"))
-  }
-
-  let body = Filesystem.Write(
-    path: bmc_onboard_pwbody_path,
-    content: account_password_body(new_password: new_credential as String)
+  let rot = bmc_authenticated_call(
+    stage: "rotate",
+    host: host,
+    account: account,
+    password: current_password,
+    call: BmcSetAccountPassword { account_id: account, request_body: account_password_body(new_password: new_credential) },
   )
-  if body.success == false {
-    return exit_failure(reason: concat("rotate: password body write failed: ", body.error))
+  if bmc_call_succeeded(outcome: rot) == false {
+    return exit_failure(reason: bmc_call_failure_reason(outcome: rot, rejected_prefix: "rotate: password PATCH refused: "))
   }
 
-  rot = redfish.Http.SetAccountPassword(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
-    account_id: account,
-    request_body_file: bmc_onboard_pwbody_path as NonEmptyStr
+  let verify = bmc_authenticated_call(
+    stage: "rotate post-rotation reauth",
+    host: host,
+    account: account,
+    password: new_credential,
+    call: BmcGetSystem,
   )
-  if rot.success == false {
-    return exit_failure(reason: rot.body)
-  }
-
-  let reauth_w = write_netrc_outcome(host: host, account: account, password: new_credential as String)
-  if netrc_write_succeeded(outcome: reauth_w) == false {
-    return exit_failure(reason: netrc_failure_reason(outcome: reauth_w, stage: "rotate post-rotation reauth"))
-  }
-  verify = redfish.Http.GetSystem(bmc_host: host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  return if verify.success {
+  return if bmc_call_succeeded(outcome: verify) {
     ExitSuccess
   } else {
-    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+    exit_failure(reason: bmc_call_failure_reason(outcome: verify, rejected_prefix: "rotate: reauth with new credential rejected: "))
   }
 }
 
@@ -411,7 +418,7 @@ fn bmc_store_credential_verified(secret_id: NonEmptyStr, token: Secret, credenti
   }
 }
 
-fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret, current_password: String) -> ProcessExit
+fn bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret, current_password: Secret) -> ProcessExit
 {
   match ensure_access_token(source: token_source) {
     AccessTokenUpsertRequired { plan: upsert_plan } =>
@@ -438,19 +445,12 @@ fn bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   if root_resp.success == false {
     return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
   }
-  let acquire_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
-  if netrc_write_succeeded(outcome: acquire_w) == false {
-    return exit_failure(reason: netrc_failure_reason(outcome: acquire_w, stage: "acquire"))
-  }
-  acq = redfish.Http.GetSystem(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
-  )
-  if factory_login_accepted(succeeded: acq.success, body: acq.body) == false {
-    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  let acq = bmc_authenticated_call(stage: "acquire", host: host, account: account, password: plan.factory_login.published_password as Secret, call: BmcGetSystem)
+  if bmc_factory_login_accepted(outcome: acq) == false {
+    return exit_failure(reason: bmc_call_failure_reason(outcome: acq, rejected_prefix: "acquire: factory login failed: "))
   }
 
-  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password)
+  return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password as Secret)
 }
 
 // A NETRC THAT COULD NOT BE WRITTEN IS NOT EVIDENCE ABOUT THE CREDENTIAL, and this probe keeps those
@@ -480,20 +480,25 @@ fn factory_login_accepted(succeeded: Bool, body: String) -> Bool {
   })
 }
 
+// A refused call is never an accepted login: the local fault it names is not evidence about the BMC.
+fn bmc_factory_login_accepted(outcome: BmcAuthenticatedCall) -> Bool {
+  match outcome {
+    BmcCallAnswered { reply: r } => factory_login_accepted(succeeded: r.success, body: r.body)
+    BmcCallRefused { reason: _ } => false
+  }
+}
+
 fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
 {
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
-  let probe_w = write_netrc_outcome(host: host, account: account, password: plan.factory_login.published_password)
-  if netrc_write_succeeded(outcome: probe_w) == false {
-    return CredentialStateUnknown { reason: netrc_failure_reason(outcome: probe_w, stage: "factory credential probe") }
+  let factory_check = bmc_authenticated_call(stage: "factory credential probe", host: host, account: account, password: plan.factory_login.published_password as Secret, call: BmcGetSystem)
+  match factory_check {
+    BmcCallRefused { reason: r } => return CredentialStateUnknown { reason: r }
+    BmcCallAnswered { reply: _ } => {}
   }
-  factory_check = redfish.Http.GetSystem(
-    bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr
-  )
-  if factory_login_accepted(succeeded: factory_check.success, body: factory_check.body) {
+  if bmc_factory_login_accepted(outcome: factory_check) {
     return FactoryCredentialActive
   }
 
@@ -509,18 +514,14 @@ fn bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessToken
         CustodyCredentialUnreadable { cause: c } =>
           return CredentialStateUnknown { reason: concat("the factory credential was refused and the stored credential could not be read from custody: ", c) }
         CustodyCredentialHeld { password: password } => {
-          let stored_w = write_netrc_outcome(host: host, account: account, password: password)
-          if netrc_write_succeeded(outcome: stored_w) == false {
-            return CredentialStateUnknown { reason: netrc_failure_reason(outcome: stored_w, stage: "stored credential probe") }
-          }
-          rotated_verify = redfish.Http.GetSystem(
-            bmc_host: host,
-            netrc_file: bmc_onboard_netrc_path as NonEmptyStr
-          )
-          return if rotated_verify.success {
-            RotatedCredentialActive
-          } else {
-            CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+          return match bmc_authenticated_call(stage: "stored credential probe", host: host, account: account, password: password as Secret, call: BmcGetSystem) {
+            BmcCallRefused { reason: r } => CredentialStateUnknown { reason: r }
+            BmcCallAnswered { reply: rotated_verify } =>
+              if rotated_verify.success {
+                RotatedCredentialActive
+              } else {
+                CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+              }
           }
         }
       }
@@ -537,7 +538,7 @@ fn bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSou
 
   probe = bmc_probe_credential_phase(plan: plan, token_source: token_source)
   match probe {
-    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password)
+    FactoryCredentialActive => return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential(), current_password: plan.factory_login.published_password as Secret)
     RotatedCredentialActive => return ExitSuccess
     CredentialAccessUpsertRequired { plan: upsert_plan } =>
       return exit_failure(
@@ -609,18 +610,14 @@ fn bmc_takeover_credential(plan: BmcOnboardingPlan) -> ProcessExit
   if current == "" {
     return exit_failure(reason: "takeover: the current-password file is empty")
   }
-  let current_w = write_netrc_outcome(host: plan.bmc.host, account: plan.factory_login.username, password: current)
-  if netrc_write_succeeded(outcome: current_w) == false {
-    return exit_failure(reason: netrc_failure_reason(outcome: current_w, stage: "takeover current credential"))
-  }
-  proof = redfish.Http.GetSystem(bmc_host: plan.bmc.host, netrc_file: bmc_onboard_netrc_path as NonEmptyStr)
-  if proof.success == false {
-    return exit_failure(reason: concat("takeover: the supplied current password was refused; nothing was written: ", proof.body))
+  let proof = bmc_authenticated_call(stage: "takeover current credential", host: plan.bmc.host, account: plan.factory_login.username, password: current as Secret, call: BmcGetSystem)
+  if bmc_call_succeeded(outcome: proof) == false {
+    return exit_failure(reason: bmc_call_failure_reason(outcome: proof, rejected_prefix: "takeover: the supplied current password was refused; nothing was written: "))
   }
   match select_access_token_source() {
     AccessTokenSourceUnavailable { cause: c } => return exit_failure(reason: c as String)
     AccessTokenSourceSelected { source: s } =>
-      return bmc_store_and_rotate(plan: plan, token_source: s, credential: mint_bmc_credential(), current_password: current)
+      return bmc_store_and_rotate(plan: plan, token_source: s, credential: mint_bmc_credential(), current_password: current as Secret)
   }
 }
 

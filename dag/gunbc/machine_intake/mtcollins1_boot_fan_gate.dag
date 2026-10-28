@@ -8,16 +8,18 @@ import std.measure { Second, second, second_count }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import extdeps.bmc.ipmi_chassis_control { chassis_power_off_poll_settled, ChassisPowerObservation, IpmiChassisPowerDown, ipmi_chassis_control_verb }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.machine_intake.chassis_fan_establishment { FittedFanSet, FittedFanSetOperatorAssumed, PostPowerFanVerdictEstablished, PostPowerFanVerdictRefused, PostPowerFanRefusal, post_power_fan_verdict }
 import gunbc.machine_intake.bmc_fan_observation { FanObservationRound, observe_fan_round, fan_round_ipmi_read_deadline, fan_round_ipmi_kill_after }
-import gunbc.machine_intake.post_power_fan_gate_outcome { any_readback_off, FanGatePowerDownAttempt, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWrite, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_pre_stop_text, post_power_fan_gate_stop_section, post_power_fan_gate_text, PostPowerFanGateReading, PostPowerFanGateReached }
-import gunbc.machine_intake.mtcollins1_fan_observe { mtcollins1_fan_transition_window }
+import gunbc.machine_intake.post_power_fan_gate_outcome { PoweredFanGate, PostPowerFanGateAbandoned, any_readback_off, FanGatePowerDownAttempt, FanManagerReadStanding, FanManagerUnread, FanGateSafeStopReceipt, FanGateRepeatNotNeeded, FanGateRepeated, FanGateWrite, FanGateWritten, FanGateWriteFailed, FanGateEvidence, PostPowerFanGateOutcome, PostPowerFanEstablished, PostPowerFanRefused, post_power_fan_gate_pre_stop_text, post_power_fan_gate_stop_section, post_power_fan_gate_text, PostPowerFanGateReached }
 import gunbc.machine_intake.megarac_boot_media_attach { megarac_stale_power_off_samples, megarac_stale_power_off_interval }
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_chassis_power }
+import gunbc.machine_intake.megarac_boot_diagnostic_bundle { megarac_boot_chassis_power }
+import gunbc.machine_intake.mtcollins1_boot_row { mtcollins1_boot_row_value }
+import gunbc.host.managed_host_boot_handoff { BootHandoffPoweredOn }
 
 // THE FITTED CHASSIS FANS OF mtcollins1: AN OPERATOR-ASSUMED SET, informed by one committed observation and an explicitly
 // uncertain operator account; it is not established by observation. The observation is the committed
@@ -48,7 +50,7 @@ fn boot_fan_gate_power_off_poll(username: NonEmptyStr, password_file: NonEmptySt
   ]
 {
   let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_stale_power_off_interval)
-  let sample = mtcollins1_boot_chassis_power(username: username, password_file: password_file)
+  let sample = megarac_boot_chassis_power(row: mtcollins1_boot_row_value, username: username, password_file: password_file)
   if chassis_power_off_poll_settled(sample: sample, remaining: remaining) { [sample] } else { append([sample], boot_fan_gate_power_off_poll(username: username, password_file: password_file, remaining: remaining - 1)) }
 }
 
@@ -64,6 +66,7 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
     action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
     deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
     kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: mtcollins1_boot_row_value.ipmi_cipher_suite),
   )
   FanGatePowerDownAttempt {
     command_success: down.success,
@@ -74,21 +77,24 @@ fn boot_fan_gate_power_down(username: NonEmptyStr, password_file: NonEmptyStr) -
   }
 }
 
-// WHAT THE GATE MAY SPEND, DERIVED, not asserted: the settle window; the round's three IPMI reads (chassis status, temperature,
+// WHAT THE GATE MAY SPEND, DERIVED, not asserted: the round's three IPMI reads (chassis status, temperature,
 // fan) at the round's read ceiling; and a refusal's safe stop, at most two PowerDown attempts, each the bounded PowerDown command
 // (ChassisPowerControl runs under coreutils timeout at the boot read ceiling) and every read-back sample with its pacing interval.
-// The step budget (mtcollins1_boot_run mtcollins1_boot_step_timeout_minutes) adds this; the two file writes are local.
+// An abandonment's safe stop is the same stop and excludes the read and the refusal, so this bounds it too.
+// The step budget (mtcollins1_boot_run mtcollins1_boot_step_timeout_minutes) adds this and, separately, the settle window
+// its caller spends watched; the two file writes are local.
 fn mtcollins1_boot_fan_gate_allowance() -> Second {
   let boot_read = (second_count(s: mtcollins1_boot_ipmi_read_deadline) + second_count(s: mtcollins1_boot_ipmi_kill_after)) as Int
   let round_read = (second_count(s: fan_round_ipmi_read_deadline) + second_count(s: fan_round_ipmi_kill_after)) as Int
   let attempt = boot_read + megarac_stale_power_off_samples * (boot_read + (second_count(s: megarac_stale_power_off_interval) as Int))
-  second(count: (second_count(s: mtcollins1_fan_transition_window) as Int) + 3 * round_read + 2 * attempt)
+  second(count: 3 * round_read + 2 * attempt)
 }
 
 // ONE PowerDown + readback; if never read off, ONE repeated PowerDown + readback; never a loop. Both attempts' readbacks are kept.
 fn boot_fan_gate_safe_stop(username: NonEmptyStr, password_file: NonEmptyStr) -> FanGateSafeStopReceipt
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "finish_refusal"),
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_fan_gate", decl_name: "mtcollins1_boot_fan_gate_abandon"),
   ]
 {
   let first = boot_fan_gate_power_down(username: username, password_file: password_file)
@@ -152,18 +158,34 @@ fn finish_refusal(fitted: FittedFanSet, cause: PostPowerFanRefusal, observation:
   PostPowerFanRefused { cause: cause, observation: observation, stop: stop, manager: manager, evidence: FanGateEvidence { observation_file: file_write, step_summary: summary } }
 }
 
-// THE GATING POST-POWER-ON READ. The settle window is the fan observation's own transition window. A refusal is
+// THE GATING POST-POWER-ON READ, over a SETTLED chassis, with the account that powered the host on (BootHandoffPoweredOn
+// exists only for an issued power control), so there is no powered host this gate cannot read or safe-stop. The settle is the fan observation's own transition window,
+// and it is spent by the one admitted caller BEFORE this read, under the SOL watch (mtcollins1_boot_run
+// mtcollins1_boot_watched_fan_settle), not slept here, where nothing would observe a channel loss for a minute. A refusal is
 // decided by the typed post_power_fan_verdict over the round that is KEPT in the outcome.
-fn mtcollins1_boot_fan_gate(username: NonEmptyStr, password_file: NonEmptyStr) -> PostPowerFanGateReading
+fn mtcollins1_boot_fan_gate(powered: BootHandoffPoweredOn, password_file: NonEmptyStr) -> PoweredFanGate
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
-  let _settled = sleep_delay_seconds_second_carrier_projection(duration: mtcollins1_fan_transition_window)
-  let round = observe_fan_round(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, round_index: 0)
+  let username = powered.account
+  let round = observe_fan_round(bmc_host: mtcollins1_endpoint.host, username: username, password_file: password_file, round_index: 0, cipher_suite: mtcollins1_boot_row_value.ipmi_cipher_suite)
   let fitted = mtcollins1_fitted_fan_set
   match post_power_fan_verdict(fitted: fitted, chassis: round.chassis, thermal: round.thermal, fans: round.fans) {
     PostPowerFanVerdictEstablished => PostPowerFanGateReached { fitted: fitted, outcome: PostPowerFanEstablished { observation: round } }
     PostPowerFanVerdictRefused { cause: cause } => PostPowerFanGateReached { fitted: fitted, outcome: fan_gate_refuse(fitted: fitted, cause: cause, observation: round, username: username, password_file: password_file) }
   }
+}
+
+// THE GATE ABANDONED BEFORE IT PASSED (merry-fox-82's safety ruling, 2026-10-24). The boot run's watched settle stopped
+// the boot while the host was powered on and its chassis fans unread; socket 1 is broken, only the socket-0 fans are fitted,
+// and nothing watches the host after the stop. So the host is safe-stopped by the gate's own bounded stop, at once and WITHOUT
+// a fan read: waiting out the settle to read would hold the host on unwatched for the rest of the window. The caller has
+// already frozen the incident, so the evidence precedes the PowerDown here as it does on a refusal.
+fn mtcollins1_boot_fan_gate_abandon(powered: BootHandoffPoweredOn, password_file: NonEmptyStr, reason: NonEmptyStr) -> PoweredFanGate
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  PostPowerFanGateAbandoned { reason: reason, stop: boot_fan_gate_safe_stop(username: powered.account, password_file: password_file) }
 }

@@ -5,7 +5,7 @@ import gunbc.fleet.fleet_intent { compute_host_primary_cpu }
 import product.host_identity { HostIdentity }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_fit_count_floor, measure_le, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.realization_width { hardware_thread_count_saturating_sub }
-import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow, integer_overflow_text }
 import std.types { Int, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 import extdeps.github.actions { RunnerSpec }
@@ -189,7 +189,7 @@ fn host_cpu_allocation(threads: HardwareThreadCount, reserve: HardwareThreadCoun
     let sessions_cpu_cap = measure_scale_fraction_floor(m: threads, num: byte_size_count(b: session_pool), den: byte_size_count(b: host_ram))
     let runner_threads = hardware_thread_count_saturating_sub(a: hardware_thread_count_saturating_sub(a: threads, b: reserve), b: sessions_cpu_cap)
     match checked_int_magnitude(a: slots) {
-      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", c) }
+      CheckedNatOverflow { cause: c } => HostCpuAllocationRefused { reason: concat("the committed width has no natural-number magnitude: ", integer_overflow_text(cause: c)) }
       CheckedNatReady { value: slot_count } => {
         let per_slot = hardware_thread_count(count: measure_fit_count_floor(capacity: runner_threads, each: hardware_thread_count(count: slot_count)))
         if hardware_thread_count_value(t: per_slot) == 0 {

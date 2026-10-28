@@ -1,6 +1,6 @@
 module v2.test.claim.compiler.infer_application_argument_inhabitance_witness
 
-import v2.test.lens_common.infer_fixture { claim_resolved_tree_without_declarations }
+import v2.test.lens_common.infer_fixture { claim_minted_atom, claim_resolved_tree_without_declarations }
 import v2.std.text { String }
 import v2.compiler.infer { infer }
 import v2.compiler.resolve { ResolvedTree }
@@ -45,8 +45,9 @@ import std.algebra { list_snoc_item }
 import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.optional { Absent, Optional, Present }
 import v2.std.node_query { binder_edge }
-import v2.std.arrow_signature { declared_signature_arrow }
+import v2.std.arrow_signature { declared_signature, declared_signature_arrow }
 import v2.std.node {
+  Arrow,
   ComputationNode,
   Conj,
   Edge,
@@ -58,9 +59,12 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  core_edge_label,
+  ArrowBodyEdge,
   node_synthetic,
   NotADeclaration
 }
+import std.occurrence_identity { OccurrenceSynthetic }
 
 fn inhabitance_named_conj_domain(parameter: Symbol, declared: Node) -> Node {
   node_synthetic(
@@ -106,6 +110,18 @@ fn inhabitance_call_tree(arg: Node) -> Node {
 // parameter list (v2.std.type_binder type_params_edge), so the relation holds no instance for it and
 // the obligation is counted UndecidableGenericFormal. An Instantiation that mentions no declared type
 // variable is decided structurally instead (inhabitance_ground_instantiation_* below).
+//
+// EVERY T POSITION IS MINTED, NOT SYNTHETIC. v2.test.lens_common.infer_fixture (its claim_callable_arrow
+// header): each authored position carries its OWN minted occurrence, because raw node equality compares
+// occurrence and two synthetic atoms of one spelling are ONE key -- an atom structurally equal to the
+// type infer derives for it is refused as grounding_evidence_is_source by
+// v2.std.constraints.canonical_grounding_from_derived_type. Since #14749 (c5d5b2025e4e) an in-scope type
+// variable HAS a derived type (the infer_atom_is_rigid_binder_in_scope leaf rule derives
+// v2.compiler.infer.infer_open_type_param_atom, an OccurrenceSynthetic atom), so a T position still
+// built with dag_type_atom_node now collides with the node it grounds and the tree refuses for
+// self-evidence before its inhabitance verdict is reached. Pre-#14749 nothing derived a type for an
+// in-scope T at these positions, so the shared synthetic key was latent. The assertions below stay the
+// behavior assertions (refuses non-inhabiting / counted frontier); the FIXTURES carry the discipline.
 fn inhabitance_generic_formal_tree() -> Node {
   inhabitance_generic_formal_tree_over(
     declared: node_synthetic(
@@ -113,7 +129,7 @@ fn inhabitance_generic_formal_tree() -> Node {
       children: [
         Edge {
           label: Positional,
-          target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3001),
           declaration: NotADeclaration
         }
       ]
@@ -145,10 +161,10 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
                 children: type_binder_set_children(binders: [
                   Edge {
                     label: Authored { name: ^inhabitance_type_param_t },
-                    target: dag_type_atom_node(identity: ^inhabitance_type_param_t),
+                    target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3002),
                     declaration: NotADeclaration
                   }
-                ], source: dag_type_atom_node(identity: ^inhabitance_type_param_t))
+                ], source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3003))
               )
             )
           )
@@ -158,6 +174,42 @@ fn inhabitance_generic_formal_tree_over(declared: Node) -> Node {
       Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
     ]
   )
+}
+
+// THE ARROW FORMAL `(Int) -> T`, codomain MINTED. Byte-faithful to v2.extdeps.languages.dag
+// dag_arrow_with_body_node EXCEPT the two codomain T atoms: each position carries its OWN minted
+// occurrence, for the reason recorded on inhabitance_generic_formal_tree -- the arrow's codomain is an
+// in-scope T position, and dag_arrow_with_body_node builds it with the shared synthetic spelling key,
+// which collides with the open atom #14749's leaf rule derives for it (grounding_evidence_is_source).
+fn inhabitance_arrow_formal_tree_minted_codomain() -> Node {
+  let domain = inhabitance_named_conj_domain(
+    parameter: ^inhabitance_param_x,
+    declared: dag_type_atom_node(identity: ^dag_binding_type_int)
+  )
+  let signature = declared_signature(params: domain.children, source: domain)
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      signature.domain,
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3004),
+        declaration: NotADeclaration
+      },
+      Edge {
+        label: Positional,
+        target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3005),
+        declaration: NotADeclaration
+      },
+      signature.order,
+      Edge {
+        label: core_edge_label(marker: ArrowBodyEdge),
+        target: dag_int_literal_fixture_one(),
+        declaration: NotADeclaration
+      }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
 }
 
 fn inhabitance_optional_formal_tree() -> Node {
@@ -271,24 +323,107 @@ test fn infer_generic_formal_instantiation_refuses_a_non_inhabiting_argument_hol
 // THE DISCRIMINATING HALF THAT STAYS COUNTED: a type variable inside an ARROW formal (`(Int) -> T`) is
 // still the generic formal the judge holds no instance for; only a first-order Instantiation is matched.
 // (A bare variable formal binds its first instance and is decided, so it is not the counted shape.)
-test fn infer_type_variable_inside_an_arrow_formal_is_counted_frontier_holds() -> Bool {
+// THE CLAIMED BEHAVIOR, RE-TARGETED TO THE SHAPE THAT STILL EXHIBITS IT AFTER #14749. This claim
+// asserts: an inhabitance obligation whose type mentions an in-scope type variable is COUNTED at the
+// frontier (ACCEPTED with the counted reason), not refused. Pre-#14749 (c5d5b2025e4e) the fixture put
+// the arrow INSIDE a formal (g<T>(t: (Int) -> T)) and its obligation counted, because nothing could
+// decide an in-scope T. The rigid-binder leaf rule made exactly that obligation decidable -- an
+// in-scope T now compares as itself -- so the counted reason for a T-headed FORMAL is gone by design
+// (the row gunbc.recurring_failure_mode witness_module_absent_from_the_executed_set records the
+// claim's old assertion as that rule's documented symptom). The counted frontier for an in-scope type
+// variable SURVIVES where the obligation cannot collapse to a self-comparison: applying a GENERIC
+// ARROW itself whose signature mentions T. This fixture pins THAT shape -- byte-faithful to the
+// arrow above (minted codomain positions 3004/3005), with the type-parameter binder minted (3006/3007,
+// distinct ids per position as v2.test.lens_common.infer_fixture requires) and the arrow applied
+// directly to the argument. claim_batch on this module re-derives the verdict; the assertion is
+// unchanged from the pre-#14749 claim (Accepted + counted reason present).
+fn inhabitance_arrow_formal_generic_application_tree() -> Node {
+  let arrow = inhabitance_arrow_formal_tree_minted_codomain()
+  let binder_conj = Node {
+    kind: TypeNode { connective: Conj },
+    children: type_binder_set_children(
+      binders: [
+        Edge {
+          label: Authored { name: ^inhabitance_type_param_t },
+          target: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3006),
+          declaration: NotADeclaration
+        }
+      ],
+      source: claim_minted_atom(identity: ^inhabitance_type_param_t, n: 3007)
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: arrow.kind,
+          children: list_snoc_item(
+            xs: arrow.children,
+            item: type_params_edge(conj: binder_conj)
+          ),
+          occurrence_id: OccurrenceSynthetic
+        },
+        declaration: NotADeclaration
+      },
+      Edge { label: Positional, target: dag_int_literal_fixture_one(), declaration: NotADeclaration }
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+test fn infer_applied_generic_arrow_type_variable_is_counted_frontier_holds() -> Bool {
   match infer(
     tree: claim_resolved_tree_without_declarations(
-      root: inhabitance_generic_formal_tree_over(
-        declared: dag_arrow_with_body_node(
-          domain: inhabitance_named_conj_domain(
-            parameter: ^inhabitance_param_x,
-            declared: dag_type_atom_node(identity: ^dag_binding_type_int)
-          ),
-          return_type_binding: ^inhabitance_type_param_t,
-          body: dag_int_literal_fixture_one()
-        )
-      )
+      root: inhabitance_arrow_formal_generic_application_tree()
     )
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
       diagnostics_has_reason(d: d, reason: ^inhabitance_undecidable_generic_formal)
+  }
+}
+
+// POSITIVE CONTROL FOR THE SUPERSEDED SHAPE. The ORIGINAL subject of the counted-frontier claim was
+// the arrow NESTED inside a generic callable's formal -- (<T>(t: (Int) -> T))(1), i.e.
+// inhabitance_generic_formal_tree_over(declared: <the minted-codomain arrow>) -- the same fixture
+// repair (minted T positions) applied to it. Its verdict was measured, not assumed: scratch probes
+// on the never-merge witness branch split the conjunction and named the fatal by bucket sweep then
+// exact round, all on this fixture's own exported builders.
+// THE MEASURED VERDICT: REJECTED at the inner arrow's OWN declared-return obligation. The walk
+// settles the inner Arrow as a node, and v2.compiler.infer infer_arrow_declared_return_check judges
+// its body at the declared return -- here the minted in-scope T atom. The body is the literal Int;
+// Int inhabits no rigid T, the witness search finds no candidate, and v2.std.inhabitance mints the
+// exact refusal for that position (inhabitance_no_candidate_return_reason, reached through
+// inhabitance_application_refusal_reason at the position_declared_return position).
+// CHAIN RE-DERIVATION (§6b), decided NOT a #14749 regression: #14749 made the obligation DECIDABLE,
+// and a decidable door that RUNS may decide REFUSED. Here the refusal is correct -- a function
+// literal whose body is Int at declared return T is malformed (no value of a rigid T is
+// constructible), so no well-formed body-bearing arrow with a rigid T codomain exists; the
+// pre-#14749 counted-accept was the fail-open artifact (T undecidable meant the door was skipped).
+// This claim PINS that decided-and-refused verdict: Rejected, the fatal is the declared-return door
+// label, and the counted generic-formal reason is NOT what refused it. A future change that flips
+// this verdict -- accepts the malformed literal, counts it, or refuses it elsewhere -- goes red
+// HERE instead of silently unwatching the shape the re-target abandoned. Measured by claim_batch on
+// this module; the counterpart, not a duplicate, of the claim above: same obligation, two positions,
+// two pinned verdicts.
+test fn infer_nested_body_bearing_arrow_formal_is_decided_and_refused_holds() -> Bool {
+  match infer(
+    tree: claim_resolved_tree_without_declarations(
+      root: inhabitance_generic_formal_tree_over(
+        declared: inhabitance_arrow_formal_tree_minted_codomain()
+      )
+    )
+  ) {
+    Rejected { diagnostics: nds } =>
+      (diagnostics_fatal_reason(d: nds) == ^arrow_body_does_not_inhabit_declared_return)
+        && !diagnostics_has_reason(
+          d: Some { diagnostics: nds },
+          reason: ^inhabitance_undecidable_generic_formal
+        )
+    Accepted { value: _, diagnostics: _ } => false
   }
 }
 
@@ -314,7 +449,7 @@ fn iaai_resolved_with_optional(root: Node) -> Outcome<ResolvedTree> {
       ).resolved {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: t, diagnostics: ds } =>
-          Accepted { value: ResolvedTree { root: root, symbol_index: t.symbol_index, resolved_declarations: t.resolved_declarations, occurrence_bindings: t.occurrence_bindings, duplicate_binding_records: t.duplicate_binding_records, module_outcomes: t.module_outcomes, outcome_index: t.outcome_index, member_kinds: t.member_kinds, type_declaration_modifiers: t.type_declaration_modifiers, constructing_module: t.constructing_module }, diagnostics: ds }
+          Accepted { value: ResolvedTree { root: root, symbol_index: t.symbol_index, resolved_declarations: t.resolved_declarations, occurrence_resolutions: t.occurrence_resolutions, duplicate_binding_records: t.duplicate_binding_records, module_outcomes: t.module_outcomes, outcome_index: t.outcome_index, member_kinds: t.member_kinds, type_declaration_modifiers: t.type_declaration_modifiers, constructing_module: t.constructing_module }, diagnostics: ds }
       }
   }
 }
@@ -339,13 +474,20 @@ test fn infer_optional_formal_owes_no_descent_holds() -> Bool {
 // formal is an Int at an Instantiation of Optional, which does not inhabit it (the authoring policy
 // is explicit Present, gunbc.design_ruling explicit_present_is_the_authoring_policy). The old
 // Occupancy connective admitted it with the OptionalCarrier advisory; that admission is what the cut retires.
+// REASON UPDATED to the typed 'no implicit lift' reason #14644 (the Optional stack, Rule A part 3)
+// introduced: the refusal is unchanged -- still Rejected, still no accept -- but the chain's reason
+// is now infer_literal_at_optional_is_not_present, minted by v2.compiler.infer's
+// InferLiteralElaborationRefused cause, the same reason the landed source-route witnesses
+// v2.test.claim.compiler.infer_arm_close_witness (rb_x1/rb_x3/rc8) pin green for the identical
+// ruling. This claim, re-derived by claim_batch on this module, is the instrument; the formerly
+// asserted label was the pre-#14644 spelling the typed reason replaced.
 test fn infer_bare_int_at_an_optional_formal_refuses_holds() -> Bool {
   match iaai_resolved_with_optional(root: inhabitance_optional_formal_tree()) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
       match infer(tree: tree) {
         Rejected { diagnostics: nds } =>
-          diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^application_argument_does_not_inhabit)
+          diagnostics_has_reason(d: Some { diagnostics: nds }, reason: ^infer_literal_at_optional_is_not_present)
         Accepted { value: _, diagnostics: _ } => false
       }
   }

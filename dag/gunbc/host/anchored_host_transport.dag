@@ -1,0 +1,797 @@
+module gunbc.host.anchored_host_transport
+
+import std.types { String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import v2.std.node { Node }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_command_with_words, bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
+  bash_build_command_from_lits, bash_build_word_cmdsubst, bash_build_assign,
+  bash_build_test_bracket, bash_build_if_from_stmts, bash_build_and_then,
+  bash_build_pipe, bash_build_with_redir, bash_build_exit,
+}
+import std.decl_ref { decl_ref }
+import std.roster_frontier { FrontierRow, frontier_row_decl }
+import std.dissolution { unbound_dissolution }
+import product.host_identity { HostIdentity, host_identity_eq }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_words, shell_command_render }
+import extdeps.tools.gcloud { gcloud_secrets_create_command, gcloud_secrets_versions_add_stdin_command }
+import extdeps.tools.gnu_coreutils { mkdir_create_only_with_mode_command, cat_file_command, rm_force_command, rmdir_command }
+import extdeps.tools.util_linux_findmnt { findmnt_fstype_for_path_command }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.shell
+import extdeps.network.endpoint { SocketAddress, render_network_host }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.ssh.openssh_client_commands { ssh_keyscan_command, ssh_keygen_generate_command, ssh_keygen_ed25519_type }
+import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret, fleet_automation_ssh_key, fleet_automation_ssh_key_fingerprint }
+import gunbc.fleet.fleet_host_key_enrollment {
+  KnownHostKeyRow, ScannedFirstContact, known_hosts_line, fleet_name_at_ssh_port,
+}
+import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
+import gunbc.host.host_bound_transport {
+  HostBoundTransport, HostBoundTransportResolved, HostBoundTransportRefused, host_bound_transport_of,
+}
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.fleet.fleet_ssh_locus { prepare_ssh_agent_context, fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, HumanSurfaceOnly, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, MintsResourceScopedCredential,
+  ReversibleByReapply, IrreversibleEffect, NoBillingConsequence, NoWitnessDischarge,
+  PatternSelected, ManualStepRequired, NoAdmissiblePattern,
+  PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
+  select_authorization_pattern,
+}
+import gunbc.auth.access_token_source {
+  AccessTokenSourceSelected, AccessTokenSourceUnavailable,
+  select_access_token_source,
+}
+import std.human_intervention {
+  HumanIntervention, HumanInterventionIdentity, HumanInterventionFrequency, FleetOnce, NoDischargeSiteModeled,
+}
+
+// A HOST-AUTHENTICATED TRANSPORT: a transport already bound (by gunbc.host.host_bound_transport) to the
+// managed host its ADDRESS reaches, checked additionally against a TRUSTED STATEMENT of the key that host
+// presents. The binding is GENERIC -- host plus anchor gives a binding -- and each anchored machine lives
+// in a ROW below, never in a module or a branch of its own (§3: one place for the mechanism, rows for
+// the machines).
+//
+// WHY IT EXISTS. host_bound_transport_of binds a transport to the managed host its address reaches --
+// read through the same route a FleetSsh target is built by, so a transport to one machine can never be
+// labelled another. What it does not do is verify the SERVER: a target resolved for a host completes a
+// TCP session with whatever answers at that address. A host-authenticated transport adds the check that
+// notices -- the key the host PRESENTS must equal a trusted statement about this machine, written in the
+// enrollment registry's own carrier (gunbc.fleet.fleet_host_key_enrollment KnownHostKeyRow; inhabited,
+// no parallel row type).
+//
+// THE ONE ANCHORED MACHINE TODAY IS mtcollins1, and it is a ROW (mtcollins1_anchored_host_row). Its
+// operator ruling (2026-10-22, option A): mtcollins1 is diskless -- a gunbc.runner.runner_host_medium
+// RAM image -- and its SSH host key is a STABLE key delivered on every boot. The private half is a Secret
+// in the fleet secret store beside the gunbai-ci App key (gunbc.auth.gcp_secret_access
+// fleet_secrets_gcp_project; the ref is gunbc.fleet.fleet_ssh_access mtcollins1_ssh_host_key_secret), and
+// under rule Q1 it lives in memory on the host only: never on disk across boot, never committed, never in
+// argv, never logged. Its delivery route is the ONE route that already pushes the App credential per boot
+// (gunbc.design_ruling mtcollins1_in_memory_app_credential_per_boot): the credential arm
+// gunbc.fleet.host_credential_custody_converge Mtcollins1SshHostKey -- a new ARM on the existing custody
+// route, keyed on the ROW, carrying the key to a tmpfs path at owner-read mode under the same custody.
+// NOT a fork of the route. Booting mtcollins1 is ruled not sensitive.
+
+// ── 1. The rows: one per anchored machine, the machine's name lives HERE and nowhere else ─────────
+
+// WHAT IS ANCHORED: a managed host, the trusted statement about the key it presents (Absent until that
+// statement is authored -- see mtcollins1's row), the read obligation the statement carries as a VALUE,
+// the Secret holding the private half (so the scan's argv check can assert the name never renders), and
+// the address the statement is stated at, built by the registry's own constructor so the anchor, the scan
+// and the registry cannot spell one endpoint twice (§3).
+type AnchoredHostRow {
+  host: HostIdentity
+  anchor: KnownHostKeyRow?
+  read_obligation: NonEmptyStr
+  host_key_secret: SecretRef
+  address: SocketAddress
+}
+
+// THE ANCHORED HOSTS. mtcollins1's row is the only entry today; adding a second anchored machine adds a
+// ROW here, not a module and not a branch.
+data anchored_hosts: List<AnchoredHostRow> = [mtcollins1_anchored_host_row]
+
+// THE READ OBLIGATION mtcollins1's anchor carries as a value. The anchor is authored by transcribing the
+// PUBLIC half of a private key held on the far side of Secret Manager -- a figure copied across a
+// boundary nothing in the DAG can read back -- so its standing is TranscribedUncited, and the obligation
+// names the read that discharges it: a live boot's PRESENTED key, scanned at sshd's standard port and
+// matched line for line. Until that match executes, the anchor grounds refusals; no transport seated on
+// an un-matched anchor may carry real traffic. The scan also inherits the pairing obligation #14738 left
+// open (gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier): a boot is not
+// a boot until the minted evidence is recorded through the real dispatch. The live boot and the scan are
+// GATED on merry-fox-82's go relayed by snappy-koi-83; nothing here runs live on its own.
+data mtcollins1_host_key_read_obligation: NonEmptyStr = concat("scan mtcollins1 at sshd's standard port on a live boot (this module's anchored_host_key_scan_wet, GATED) and match the presented key against the anchor row; the private half lives in Secret Manager (secret name ", concat(mtcollins1_ssh_host_key_secret.secret as String, ") and only the public half is transcribed, so an un-matched row is a figure nobody read back. Discharging this also discharges the scan's share of gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier: the minted evidence must be recorded through the real dispatch. The live boot and scan wait on merry-fox-82's go, relayed by snappy-koi-83.")) as NonEmptyStr
+
+// MTCOLLINS1'S ROW. THE ANCHOR IS ABSENT AND THAT IS THE HONEST STATE, not an omission: the stable key
+// has not been generated, and generating it plus writing it into Secret Manager is a PRIVILEGED EFFECT
+// (secretmanager create + addVersion on the fleet store) belonging to the operator or merry-fox-82 --
+// this module prepares the command and refuses to invent the result. Fabricating a public half (DESIGN
+// 4d: no value without an observation behind it) would mint an anchor able to accept a wrong key forever,
+// the exact defect an anchor exists to close. So production reads an absent anchor today, and every
+// transport ROUTED through anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent (the
+// witness pins that). Production folds do not route through it yet -- that gap is carried by
+// anchored_host_transport_frontier_rows with its trigger, not hidden here. When the key exists, the
+// transcription lands here as Present { value: anchored_host_trusted_row(...) } -- through the admitted
+// mint below, which is the only door and makes the standing unskippable.
+data mtcollins1_anchored_host_row: AnchoredHostRow = AnchoredHostRow {
+  host: operator_host_mtcollins1,
+  anchor: mtcollins1_host_key_anchor(),
+  read_obligation: mtcollins1_host_key_read_obligation,
+  host_key_secret: mtcollins1_ssh_host_key_secret,
+  address: fleet_name_at_ssh_port(labels: ["mtcollins1" as DnsLabel]),
+}
+
+// mtcollins1's anchor. THE VALUE IS ABSENT AND THAT IS THE HONEST STATE (the note above the row): the
+// stable key is not minted yet; when it is, the transcription lands here as
+// Present { value: anchored_host_trusted_row(...) } with the public half and fingerprint read off the
+// minted key -- through the admitted mint below, which is the only door and makes the standing
+// unskippable. (The mint takes the row's COMPONENTS, not the row itself, precisely so this call can
+// exist without the row referring to itself.)
+fn mtcollins1_host_key_anchor() -> KnownHostKeyRow? {
+  none
+}
+
+// The row a host is anchored by, if any. Absent for a host that is not anchored at all -- which is a
+// refusal below, not a fallback: matching against nothing is accepting anything.
+fn anchored_host_row_for(host: HostIdentity) -> AnchoredHostRow? {
+  fold(anchored_hosts, init: none, f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if host_identity_eq(a: row.host, b: host) { Present { value: row } } else { none }
+    }
+  })
+}
+
+// THE ONE MINT OF A TRUSTED STATEMENT. Admitted to the row's anchor above and to this module's witness:
+// a row built beside this call carries no standing, and a row built here cannot drop one. It takes the
+// row's COMPONENTS, not the row itself, so a row's anchor can be built from its own host/address/
+// secret without a value cycle.
+//
+// THE ARM IS ScannedFirstContact, DELIBERATELY -- and the registry itself sets that rule. Its comment
+// (gunbc.fleet.fleet_host_key_enrollment, the srv5/srv6 note) says a row whose external corroboration
+// EXISTS BUT WHOSE JOIN HAS NOT BEEN PERFORMED stays ScannedFirstContact, because IndependentlyAnchored
+// "would be a claim about work that has not happened -- the same over-claim in a different place" (and
+// DESIGN §4d forbids asserting as deduced what is only inferred). This anchor's join -- matching the
+// transcribed public half against a live boot's PRESENTED key -- has not executed, so the row carries the
+// measured, honest arm: scanned_from records the method (transcription of the minted public half, never
+// read back) and the TranscribedUncited standing beside its read obligation, so both are visible to any
+// reader of the row. The flip to IndependentlyAnchored { authority } belongs to whoever EXECUTES the
+// readback match and cites the receipt -- the same un-widened flip the registry leaves ready for the
+// Spark units. The row still anchors refusals today; what it may not do is claim a corroboration that
+// has not happened.
+fn anchored_host_trusted_row(
+  host: HostIdentity,
+  address: SocketAddress,
+  host_key_secret: SecretRef,
+  read_obligation: NonEmptyStr,
+  public_key_base64: String,
+  sha256_fingerprint: String,
+) -> KnownHostKeyRow
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "mtcollins1_host_key_anchor"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "anchored_fixture_row"),
+  ]
+  = KnownHostKeyRow {
+    host: host,
+    address: address,
+    key_type: "ssh-ed25519",
+    public_key_base64: public_key_base64,
+    sha256_fingerprint: sha256_fingerprint,
+    provenance: ScannedFirstContact {
+      scanned_from: join([
+        "transcription (never read back) of the public half of the Secret Manager stable host key ",
+        host_key_secret.secret as String,
+        " (project ", host_key_secret.project as String,
+        "); standing TranscribedUncited until the readback match executes; read obligation: ",
+        read_obligation as String,
+      ], ""),
+    },
+  }
+
+// ── 2. The binding: host_bound_transport_of first, then the host's own trust tests ────────────────
+
+// §3c: the anchored binding and the gated readback are CONSUMED BY A NAMED LATER CHANGE, not dangling and
+// not consumed-in-this-change (review 85051, correctly): no production fold yet routes a FleetSsh transport
+// to mtcollins1 through anchored_host_transport_of, and nothing starts sshd pointing at the delivered key --
+// the RAM image has no sshd in this slice at all (gunbc.runner.runner_host_first_boot_receipt
+// unobserved_after_first_boot: "no network or sshd exists in this slice"). These rows state that honestly
+// with the trigger that retires each, and they stand in the census-closure registry
+// (gunbc.census_closure_frontier); this module's witness pins they are well-formed and registered (the
+// network_boot_manifest_broker pattern). Until they dissolve, production transports to mtcollins1 do NOT
+// pass through this module, and the honest claim is only: any transport ROUTED through
+// anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent today -- not that every production
+// transport does.
+data anchored_host_transport_frontier_rows: List<FrontierRow> = [
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_of"),
+    reason: "anchored_host_transport_of is called only by this module's witness and by anchored_host_transport_against; no production fold routes a FleetSsh transport to an anchored host through it, so no live transport is host-authenticated yet and unanchored binding through host_bound_transport_of remains the only production path",
+    dissolution: unbound_dissolution(
+      description: "dissolves when a production fold that sends traffic to an anchored host calls anchored_host_transport_of with that host's FleetSsh transport and the presented line from a live readback, and refuses the leg on any non-Bound arm; a witness claim does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_scan_wet"),
+    reason: "the gated readback is prepared and GATED: it is called only by the witness (wet arms never execute) and no workflow dispatches it, so no presented key has ever been read back and every production anchor stays Absent",
+    dissolution: unbound_dissolution(
+      description: "dissolves when, on a live boot of mtcollins1 with merry-fox-82's relayed go, this wet arm executes its Present branch over the real transport and the printed presented line is recorded through the real dispatch (lost_boot_sweep_effect_pairing_frontier) and transcribed into the anchor through anchored_host_trusted_row; a simulated Present does not fire this"
+    )
+  ),
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_row"),
+    reason: "the Mtcollins1SshHostKey arm delivers /run/gunbc-ssh/ssh_host_ed25519_key under custody, but nothing in this diff consumes the placed file: the RAM image has no sshd in this slice (gunbc.runner.runner_host_first_boot_receipt unobserved_after_first_boot), so the delivery is the precondition of a consumer, not its proof",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
+    )
+  ),
+  // THE MINT SHELL'S TRAP BODY, registered as a declared residual (review 85232/85396/85414 finding 2).
+  // WHY ONLY THIS AND NOT THE WHOLE SCRIPT: the mint is EMITTED -- anchored_host_key_mint_shell builds
+  // every leg as a v2.extdeps.languages.bash_build node and runs them through v2.workflow.bash_emit
+  // bash_emit_stmts (manager decision msg_ad22e358, option A): set -e via the emitter's set_e flag, the
+  // tmpfs guard as bash_build_if_from_stmts over bash_build_test_bracket + bash_build_word_cmdsubst +
+  // bash_build_with_redir + bash_build_exit (the old brace-group { echo ...; exit 1; } was NOT required
+  // -- the fold grammar has an if/then production), the cat|gcloud leg as bash_build_pipe, and every
+  // argv leg as bash_build_command_from_lits over the argv builder's own words. The ONE arm that cannot
+  // be a node is the trap BODY: trap on EXIT, INT and TERM is load-bearing for rule Q1 (set -e does not
+  // run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the private half in the
+  // tmpfs dir), and the body is a compound statement list the fold grammar has no node production that
+  // renders bare ("; "-separated commands inside the trap's single quotes). It follows the shipped lane
+  // gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms, the body
+  // passed as ONE word the emitter quotes -- and its words are the render of this module's own cleanup
+  // ArgvCommands. THE
+  // TRIGGER NAMES THE CAPABILITY, NOT A CARRIER (§4b obligation 3; review 85396): when the fold grammar
+  // gains a compound-body arm for trap, anchored_host_key_mint_trap is EMITTED (bash_build with a node
+  // list for the body) and the single string literal is deleted byte-identically. Wiring an execution
+  // route that merely carries the bytes does NOT fire this.
+  frontier_row_decl(
+    ref: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
+    reason: "gunbc.host.anchored_host_transport|anchored_host_key_mint_shell:the trap body is a single string literal (the '; '-joined cleanup commands passed as the trap's one quoted word); every other leg is a bash_build node emitted through bash_emit_stmts",
+    dissolution: unbound_dissolution(
+      description: "dissolves when the bash fold grammar gains a compound-body arm for the trap statement (a node list rendered bare inside the trap's single quotes); anchored_host_key_mint_trap is then EMITTED over that arm and the single cleanup-body string literal is deleted byte-identically. Wiring an execution route that only carries the hand-assembled bytes does NOT fire this"
+    )
+  ),
+]
+
+type AnchoredHostBinding
+  = AnchoredBindingBound { bound: HostBoundTransport }
+  | AnchoredBindingNotTheAnchoredHost { cause: String }
+  | AnchoredBindingAnchorNotForRow { cause: String }
+  | AnchoredBindingAnchorAbsent { cause: String }
+  | AnchoredBindingPresentedKeyMismatch { expected_line: String, observed_line: String }
+  | AnchoredBindingRefused { cause: String }
+
+// THE BOUNDING, generic over the anchored machine; every refusal a typed, located state (§5). The host
+// is NOT an input: it is read from the transport by host_bound_transport_of -- the same route a FleetSsh
+// target is built by -- so no caller can pair a transport to one machine with the trust of another (the
+// wrong-host guarantee the re-land made structural). The checks happen in this order:
+//   1. host_bound_transport_of does the HOST binding. Its refusals pass through whole -- LocalShell,
+//      SshShell, EmitArtifactThenThinRun, an unmanaged address, an ambiguous address all refuse there.
+//      This module adds no second host list and no second spelling of an address (§3).
+//   2. The bound host MUST have a row. A machine with no row is not anchored -- a refusal that says so;
+//      there is no fallback path that proceeds unanchored.
+//   3. A row whose anchor is absent (the honest production state today) refuses carrying the read
+//      obligation: matching against nothing is accepting anything.
+//   4. The ANCHOR MUST STAND FOR THE ROW IT IS COMPARED AGAINST: the anchor carries its own host and
+//      address (KnownHostKeyRow), and if either disagrees with the row's, a trust statement about one
+//      machine has been paired with the row of another -- the wrong-pairing defect the re-land closed at
+//      the host layer, now one layer lower. It is checked INSIDE the sealed comparison, so identity is
+//      structural, not convention: no caller, admitted or not, can hand an anchor for machine A into a
+//      comparison under row B. The production wrapper passes the row's own anchor (consistent by
+//      construction); the witness is admitted to hand in one, which is exactly where a mismatch is
+//      writable -- pinned by its own RED.
+//   5. The presented line must equal the anchor's known_hosts line exactly -- a key differing in any
+//      position is a different key. The presented line is a SUPPLIED VALUE at this boundary (the
+//      readback mints it on a live boot); the production route is the gated scan below, and the witness
+//      boundary is admitted to the comparison directly, as in the re-land's witness precedent.
+fn anchored_host_transport_of(transport: HostEffectTransport, presented_key_line: String) -> AnchoredHostBinding {
+  match host_bound_transport_of(transport: transport) {
+    HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
+    HostBoundTransportResolved { bound: bound } => match anchored_host_row_for(host: bound.host) {
+      Absent => AnchoredBindingAnchorAbsent {
+        cause: join(["no anchored row exists for ", bound.host as String, "; a transport is only host-authenticated against a trusted statement of its host's key"], ""),
+      }
+      Present { value: row } => match row.anchor {
+        Absent => AnchoredBindingAnchorAbsent {
+          cause: join([
+            "no trusted statement about ", bound.host as String, "'s host key exists: the stable key (secret name ",
+            row.host_key_secret.secret as String,
+            ") has not been minted and its public half transcribed. Read obligation: ",
+            row.read_obligation as String,
+          ], ""),
+        }
+        Present { value: anchor } => anchored_host_transport_against(row: row, anchor: anchor, transport: transport, presented_key_line: presented_key_line)
+      }
+    }
+  }
+}
+
+// The comparison against a GIVEN anchor, sealed to one constructor for the family: the production wrapper
+// above supplies the production row and anchor, and the witness is admitted to supply fixture ones -- the
+// same boundary shape the re-land's witness uses (hand in the read, call the join).
+fn anchored_host_transport_against(
+  row: AnchoredHostRow,
+  anchor: KnownHostKeyRow,
+  transport: HostEffectTransport,
+  presented_key_line: String,
+) -> AnchoredHostBinding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_transport_of"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_wrong_presented_key_refuses_the_transport"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "matching_presented_key_binds_the_anchored_host"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_transport_to_another_machine_never_binds_the_anchored_host"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "a_local_shell_refuses_before_any_key_is_read"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_empty_presented_line_never_binds"),
+    decl_ref(module_path: "test.claim.host.anchored_host_transport_witness", decl_name: "an_anchor_for_another_machine_refuses_the_row"),
+  ] {
+  match host_bound_transport_of(transport: transport) {
+    HostBoundTransportRefused { cause: cause } => AnchoredBindingRefused { cause: cause }
+    HostBoundTransportResolved { bound: bound } =>
+      if host_identity_eq(a: bound.host, b: row.host) {
+        if !host_identity_eq(a: anchor.host, b: row.host) || anchor.address != row.address {
+          // The trust statement names a different machine (or a different endpoint) than the row it is
+          // being compared under. Compared anyway, it would let an anchor authored for A vouch for B's
+          // row -- the wrong-pairing defect, one layer below the host binding the re-land closed.
+          AnchoredBindingAnchorNotForRow {
+            cause: join([
+              "the anchor statement names ", anchor.host as String, " at ",
+              render_network_host(host: anchor.address.host) as String,
+              "; the row is the trust record of ", row.host as String,
+              "; an anchor is admitted only for the machine and endpoint its row names, and pairing them is refused"], ""),
+          }
+        } else {
+          let expected = known_hosts_line(k: anchor)
+          if expected == presented_key_line {
+            AnchoredBindingBound { bound: bound }
+          } else {
+            AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: presented_key_line }
+          }
+        }
+      } else {
+        AnchoredBindingNotTheAnchoredHost {
+          cause: join(["the transport bound to ", bound.host as String, ", not to ", row.host as String, "; an anchored binding binds its anchored host and nothing else"], ""),
+        }
+      }
+  }
+}
+
+// The refusal text, kept beside the coproduct so no consumer invents wording for a state the model names
+// (the fleet_ssh_credential_verify refusal-reason pattern). A bound transport is not a refusal and says
+// so; no arm's text can carry key material, because no arm carries any field that could hold one beyond
+// the PRESENTED and EXPECTED PUBLIC lines OpenSSH would print anyway.
+fn anchored_host_binding_refusal_reason(b: AnchoredHostBinding) -> String {
+  match b {
+    AnchoredBindingBound { bound: _ } => "bound; not a refusal"
+    AnchoredBindingNotTheAnchoredHost { cause: cause } => cause
+    AnchoredBindingAnchorNotForRow { cause: cause } => cause
+    AnchoredBindingAnchorAbsent { cause: cause } => cause
+    AnchoredBindingPresentedKeyMismatch { expected_line: expected, observed_line: observed } =>
+      join(["AnchoredBindingPresentedKeyMismatch: got `", observed as String, "`, not the anchored key `", expected as String, "`; contacting NO host"], "")
+    AnchoredBindingRefused { cause: cause } => cause
+  }
+}
+
+// ── 3. The scan's credential: EXECUTED out of the selectors; typed outputs cited, never hand-picked ─
+
+// THE OPERATOR GO IS A HUMAN INTERVENTION, not a flag read. The scan reaches a live host's sshd and reads
+// the run's access token source to authorize itself; what stands behind it is the named human decision
+// (for mtcollins1: merry-fox-82's go, relayed by snappy-koi-83), carried as a value the way every other
+// irreversible or gated effect in the fleet carries its human (the AC power cycle row, the WIF binding
+// row). The environment variable below is the DISPATCH SURFACE of that decision, never a substitute for
+// it: no workflow or dispatch supplies the variable, and the wet arm says out loud that a Present value
+// without the relayed go is out-of-model.
+fn anchored_host_key_readback_go_step(host: HostIdentity) -> HumanIntervention {
+  HumanIntervention {
+    identity: concat("anchored_host_key_readback_go_", host as String) as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "the one readback scan that discharges the anchor's read obligation on a live boot of this host" as NonEmptyStr,
+    instruction: "on the booted host: run this module's anchored_host_key_scan_wet with GUNBC_HOST_KEY_READBACK_GO present (the operator go for mtcollins1 comes from merry-fox-82, relayed by snappy-koi-83), and record the presented key through the real dispatch (gunbc.runner.runner_lost_boot_sweep_plan lost_boot_sweep_effect_pairing_frontier)" as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+// THE SCAN'S CENSUS-CLASSIFIED EFFECT, one per anchored row. Read by gunbc.auth.privileged_effect_census
+// and classified there at site gunbc.host.anchored_host_transport::anchored_host_key_scan_wet. It is
+// built exactly as the census's own manual_no_api_effect builds one -- the direction of the import is
+// census into the feature module (the AC power-cycle row's shape), so the effect is spelled from
+// gunbc.auth.authorization_pattern_selection's own arms here. It is a manual step with no API surface --
+// which is what the gated readback is: it runs when a human, holding the go, runs it -- so the fold
+// selects HumanOnlyStep and the row realizes RealizedHumanStep, and conforms.
+fn anchored_host_key_scan_effect(host: HostIdentity) -> PrivilegedEffect {
+  let row_opt = anchored_host_row_for(host: host)
+  let go = anchored_host_key_readback_go_step(host: host)
+  match row_opt {
+    Absent => PrivilegedEffect {
+      subject: "run the gated host-key readback scan for a host that is not anchored: it contacts a live host's sshd at the standard port with ssh-keyscan (an anonymous read that offers no credential) and resolves the run's access token source to authorize the leg; the named human go is the human step, and no workflow dispatches this" as NonEmptyStr,
+      frequency: go.frequency,
+      reversibility: ReversibleByReapply,
+      surface: HumanSurfaceOnly { step: go },
+      workload_identity: WorkloadIdentityUnbindable { cause: "the leg is authorized by the named human go, not by a workload identity bound to a token exchange; ssh-keyscan itself authenticates nothing about the caller" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    }
+    Present { value: row } => PrivilegedEffect {
+      subject: join([
+        "run the gated ", row.host as String, " host-key readback scan: contact ", row.host as String,
+        "'s sshd at the standard port with ssh-keyscan (an anonymous read that offers no credential) and resolve the run's access token source to authorize the leg; the named human go (",
+        row.host_key_secret.secret as String, " backs the anchor) is the human step, and no workflow dispatches this",
+      ], "") as NonEmptyStr,
+      frequency: go.frequency,
+      reversibility: ReversibleByReapply,
+      surface: HumanSurfaceOnly { step: go },
+      workload_identity: WorkloadIdentityUnbindable { cause: "the leg is authorized by the named human go, not by a workload identity bound to a token exchange; ssh-keyscan itself authenticates nothing about the caller" as NonEmptyStr },
+      minted_reach: MintsNoCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    }
+  }
+}
+
+// THE PATTERN CITATION. select_authorization_pattern runs over the census-classified effect; its TYPED
+// output -- pattern plus receipt, or the named refusal/need -- is carried into the scan's text verbatim,
+// so what authorized (or refused) a leg is readable from the leg. Nothing here hand-picks a credential
+// path; the pattern named by the fold, not chosen by this module, is what authorizes the scan leg.
+fn anchored_host_pattern_citation(host: HostIdentity) -> String {
+  match select_authorization_pattern(e: anchored_host_key_scan_effect(host: host)) {
+    PatternSelected { pattern: _, receipt: _ } => "select_authorization_pattern: PatternSelected (the admissible pattern, with its selection receipt)"
+    ManualStepRequired { step: _, receipt: _ } => "select_authorization_pattern: ManualStepRequired (authorization selected the human-only candidate: the relayed go is what stands behind this leg, with its receipt)"
+    NoAdmissiblePattern { causes: causes, scope: _ } => join(["select_authorization_pattern: NoAdmissiblePattern causes=", join(map(causes, c => c as String), "; ")], "")
+    PatternSelectionNeedsEvidence { needs: _ } => "select_authorization_pattern: PatternSelectionNeedsEvidence"
+    PatternSelectionNeedsPolicy { survivors: _ } => "select_authorization_pattern: PatternSelectionNeedsPolicy"
+    PatternSelectionRefused { defects: _ } => "select_authorization_pattern: PatternSelectionRefused"
+  }
+}
+
+// THE TOKEN-SOURCE CITATION. select_access_token_source resolves the credential the leg would run under
+// from the run's environment; its typed output is cited whole, never flattened to a bool.
+fn anchored_host_token_source_citation() -> String {
+  match select_access_token_source() {
+    AccessTokenSourceSelected { source: _ } => "select_access_token_source: AccessTokenSourceSelected"
+    AccessTokenSourceUnavailable { cause: cause } => join(["select_access_token_source: AccessTokenSourceUnavailable -- ", cause as String], "")
+  }
+}
+
+// ── 4. The readback scan: PREPARED, GATED, and honest about what has not run ──────────────────────
+
+// THE SCAN COMMAND, built by the SSH command route the enrollment registry itself uses (ssh_keyscan_command
+// at ed25519), against the address the anchor is stated at -- one scanning route, one endpoint spelling.
+// argv carries the HOST STRING ONLY: no secret, no key material, nothing that could carry the private
+// half (rule Q1; the class in dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_
+// plain_string.dag -- argv is rendered wherever it runs, so what lands in argv is what gets read).
+fn anchored_host_key_scan_command(row: AnchoredHostRow) -> ArgvCommand {
+  ssh_keyscan_command(
+    host: render_network_host(host: row.address.host) as String,
+    key_type: "ed25519",
+    timeout_seconds: 5,
+  )
+}
+
+// argv AS TEXT, for the claim that pins it: program plus operands, the way it would cross to the
+// runner. The witness asserts no rendered leg carries private material (the secret-crossing-argv class).
+fn anchored_host_key_scan_argv_text(row: AnchoredHostRow) -> String {
+  let cmd = anchored_host_key_scan_command(row: row)
+  join(concat([cmd.program.invocation as String], cmd.arguments), " ")
+}
+
+// THE PREPARED, GATED READBACK -- the dry run the brief orders prepared and NOT run. It refuses unless
+// the operator go variable GUNBC_HOST_KEY_READBACK_GO is present in the environment, and no workflow or
+// dispatch supplies that variable: the live boot and this scan wait on merry-fox-82's go relayed by
+// snappy-koi-83 (the lost-boot mode stays GATED the same way). When the go lands, the printed evidence is
+// what discharges the anchor's read obligation, and recording it must go through the real dispatch
+// (lost_boot_sweep_effect_pairing_frontier -- the pairing obligation #14738 left open). THE FRONTIER IS
+// SAID, NOT HIDDEN: until a live boot runs, no executed evidence stands behind the anchor, and any
+// transport routed through anchored_host_transport_of refuses at AnchoredBindingAnchorAbsent. Production
+// does not route through it yet -- anchored_host_transport_frontier_rows carries that with its trigger.
+fn anchored_host_key_scan_wet(host: HostIdentity) -> String {
+  match anchored_host_row_for(host: host) {
+    Absent => join(["scan refused: ", anchored_host_binding_refusal_reason(b: AnchoredBindingAnchorAbsent { cause: join(["no anchored row exists for ", host as String], "") }), "\n"], "")
+    Present { value: row } => match shell.Env.Get(name: "GUNBC_HOST_KEY_READBACK_GO").value {
+      Absent => join([
+        "GATED: the ", row.host as String, " host-key readback does not run without GUNBC_HOST_KEY_READBACK_GO in the environment ",
+        "(the operator go for the live boot and scan comes from merry-fox-82, relayed by snappy-koi-83); nothing contacted, nothing minted.\n",
+        "prepared argv: ", anchored_host_key_scan_argv_text(row: row), "\n",
+        "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+      ], "")
+      Present { value: _ } =>
+        match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
+          ProcessOutputPresent { text: key_text } => join([
+            "scan host=", row.host as String, " outcome=observed\n",
+            "presented ", trim(s: key_text), "\n",
+            "record this presented line through the REAL dispatch (lost_boot_sweep_effect_pairing_frontier); ",
+            "selectors cited -- ", anchored_host_pattern_citation(host: host), " | ", anchored_host_token_source_citation(), "\n",
+          ], "")
+          ProcessOutputAbsent => join(["scan host=", row.host as String, " outcome=no-key-offered; nothing to anchor-match\n"], "")
+          ProcessRefused { exit_code: _, stderr: e } => join(["scan host=", row.host as String, " outcome=refused cause=", trim(s: e), "\n"], "")
+        }
+    }
+  }
+}
+
+// ── THE LIVE ANCHORED TRANSPORT, ONE COMPOSITION FOR EVERY CALLER ───────────────────────────────
+//
+// A production fold that sends traffic to an anchored host gets its transport here and nowhere else
+// (gunbc.plans.mtcollins1_ci_service_legs: the qualification driver G1b and the lost-boot sweep's dry run F4):
+// the host's row; its anchor, with no network contact when there is none; the operator's go, the same gate
+// anchored_host_key_scan_wet reads; the fleet SSH context prepared with THIS host's anchor as its only
+// known-hosts row, so every SSH leg enforces the key; the presented key scanned; and anchored_host_transport_of
+// over that FleetSsh transport and that line. Every refusal is a typed AnchoredHostBinding arm before any
+// effect on the host, and only AnchoredBindingBound carries a transport.
+fn anchored_host_transport_live(host: HostIdentity, attempt_raw: String) -> AnchoredHostBinding {
+  match anchored_host_row_for(host: host) {
+    Absent => AnchoredBindingAnchorAbsent { cause: join(["no anchored row exists for ", host as String], "") }
+    Present { value: row } => match row.anchor {
+      Absent => AnchoredBindingAnchorAbsent {
+        cause: join(["no trusted statement about ", host as String, "'s host key exists; nothing contacted. Read obligation: ", row.read_obligation as String], ""),
+      }
+      Present { value: anchor } => match shell.Env.Get(name: "GUNBC_HOST_KEY_READBACK_GO").value {
+        Absent => AnchoredBindingRefused {
+          cause: join(["GATED: no live transport to ", host as String, " without GUNBC_HOST_KEY_READBACK_GO (the operator go relayed by merry-fox-82); nothing contacted"], ""),
+        }
+        Present { value: _ } => match prepare_ssh_agent_context(attempt_raw: attempt_raw, key: fleet_automation_ssh_key, fingerprint: fleet_automation_ssh_key_fingerprint as NonEmptyStr, rows: [anchor]) {
+          FleetSshContextRefused { cause: c } => AnchoredBindingRefused { cause: c }
+          FleetSshContextReady { context: context, receipt: _ } => match fleet_locus_ssh_target(host: host) {
+            SshTargetRefused { endpoint: e, refusal: _ } => AnchoredBindingRefused { cause: join(["the fleet endpoint ", e, " for ", host as String, " is not an SSH target"], "") }
+            SshTargetResolved { target: target } =>
+              match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
+                ProcessOutputPresent { text: key_text } => anchored_host_transport_of(transport: FleetSsh { target: target, context: context }, presented_key_line: trim(s: key_text))
+                ProcessOutputAbsent => AnchoredBindingRefused { cause: join([host as String, " offered no host key to the scan"], "") }
+                ProcessRefused { exit_code: _, stderr: e } => AnchoredBindingRefused { cause: join(["the host-key scan of ", host as String, " was refused: ", trim(s: e)], "") }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ── THE MINT ───────────────────────────────────────────────────────────────────────────────────
+//
+// The one step that CREATES the private host key existed only as hand-written shell in
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md (review 85232, DESIGN §6 scaffold tells: "a
+// hand-authored workflow ... out-of-band actuation" and "raw shell implementing semantics
+// expressible in .dag"). The mint is expressible in .dag -- every leg is an argv command on an
+// admitted extdeps builder -- so the shell is now a RENDERING of this model, and the runbook cites
+// these symbols instead of re-spelling them. The literals the runbook retyped (the secret name and
+// the GCP project) are read from their single authorities here: mtcollins1_ssh_host_key_secret's
+// SecretRef fields and fleet_secrets_gcp_project; a drift between them and the render is impossible
+// because there is no second spelling left to drift from (§3, "each fact lives in exactly one place").
+
+// THE MINT SHELL'S LAYOUT, as data. The working dir is created mode 0700 (never world- or
+// group-readable, and never under $HOME -- an SSD with no TRIM guarantee leaves deleted blocks
+// recoverable, which is why Step 1 verifies the dir is tmpfs-backed before any key is minted
+// there; see the runbook's honest-limits note). The cleanup is a trap on EXIT, INT and TERM, so
+// every failure path removes the key; plain rm is used, not shred, because shred's overwrite is
+// a no-op on SSD/CoW filesystems and pretending otherwise would be a false comfort.
+fn anchored_host_key_mint_directory_command(mint_dir: String) -> ArgvCommand {
+  mkdir_create_only_with_mode_command(path: mint_dir, octal_mode: "0700" as NonEmptyStr)
+}
+
+fn anchored_host_key_mint_tmpfs_check_command(mint_dir: String) -> ArgvCommand {
+  findmnt_fstype_for_path_command(path: mint_dir)
+}
+
+fn anchored_host_key_mint_keygen_command(mint_dir: String) -> ArgvCommand {
+  ssh_keygen_generate_command(
+    key_type: ssh_keygen_ed25519_type,
+    key_file: concat(mint_dir, "/mc_host"),
+    comment: "mtcollins1",
+  )
+}
+
+// The two Secret Manager legs, read from the SecretRef's own fields -- the secret NAME and the
+// PROJECT are never retyped here (review 85232, "duplicated literals"). The create leg carries no
+// --data-file at all (an empty version 1 would be a lie the server happily serves); the add leg is
+// the stdin form.
+fn anchored_host_key_mint_create_command() -> ArgvCommand {
+  gcloud_secrets_create_command(
+    project: mtcollins1_ssh_host_key_secret.project,
+    secret: mtcollins1_ssh_host_key_secret.secret,
+  )
+}
+
+fn anchored_host_key_mint_upload_command() -> ArgvCommand {
+  gcloud_secrets_versions_add_stdin_command(
+    project: mtcollins1_ssh_host_key_secret.project,
+    secret: mtcollins1_ssh_host_key_secret.secret,
+  )
+}
+
+fn anchored_host_key_mint_cleanup_commands(mint_dir: String) -> List<ArgvCommand> {
+  [
+    rm_force_command(path: concat(mint_dir, "/mc_host")),
+    rm_force_command(path: concat(mint_dir, "/mc_host.pub")),
+    rmdir_command(path: mint_dir),
+  ]
+}
+
+// THE MINT, RENDERED -- the runbook's Step 1 block is a CHECKED projection of this function's output:
+// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
+// this render byte for byte (the fence carries the render minus its trailing newline).
+// The mint dir is a fixed path created with mkdir -m 0700 CREATE-ONLY: it refuses outright when the
+// dir already exists, which means a previous minting session died mid-run. The trap then removes any
+// key found there -- removing a stale private half is the Q1-CORRECT action, not evidence loss (the
+// exposure is the fact the dir existed, which is why the runbook's rotation note says: a minting
+// session killed hard means the key is exposed, rotate the secret). The cat leg carries the private
+// half to gcloud's stdin; the word
+// naming the key PATH is the only place the private file is named, and a path is not key material
+// -- the private key material crosses into the shell as file content on stdin, never as a plain
+// string in any argv word, rendered line, or log line (the class in
+// dag/gunbc/recurring_failure_mode/a_secret_crosses_into_shell_stdin_as_a_plain_string.dag).
+// The trap body joins the cleanup builders' argv WORDS directly rather than through
+// shell_command_render: they sit inside the trap's double quotes here, and every word is a model
+// literal (the fixed mint dir + a fixed file name) with no shell metacharacters -- re-quoting them
+// would nest quotes and corrupt the very cleanup that protects the key.
+fn anchored_host_key_mint_dir() -> String {
+  "/dev/shm/mc-hostkey"
+}
+
+// THE MINT, EMITTED -- every leg is a v2.extdeps.languages.bash_build NODE, serialized by
+// v2.workflow.bash_emit bash_emit_stmts (manager decision msg_ad22e358, option A; review 85414
+// finding 2, medium-as-string). set -e comes from the emitter's set_e flag (not a string), the
+// tmpfs guard is a bash_build_if_from_stmts over a test_bracket with a command substitution and a
+// >&2-redirection refusal (NOT the brace group { ...; exit 1; } the hand-spelled version used --
+// the grammar has an if/then production, so the brace group was never required), the cat|gcloud leg
+// is a bash_build_pipe, and every argv leg is bash_build_command_from_lits over the argv builder's
+// OWN words. The ONE residual string is the trap BODY (see the frontier row): trap on EXIT, INT and
+// TERM is load-bearing for rule Q1 -- set -e does NOT run a trailing cleanup leg on SIGINT or
+// SIGTERM, so a control-C mid-mint would leave the private half in the tmpfs dir -- and the fold
+// grammar has no trap-with-a-signal-list production. The body is a compound statement list, the one
+// form the emitter cannot yet build; it is named, with its trigger, on this module's census-closure
+// frontier row (anchored_host_key_mint_shell). A REJECTED EMISSION IS A TYPED REFUSAL: this returns
+// v2.std.diagnostic Outcome<String> and passes the emitter's Rejected arm through untouched -- no
+// sentinel string smuggles the failure inside the success type (DESIGN §5: every path succeeds fully
+// or fails with a typed, located diagnostic; refuse, never widen). Consumers pattern-match; the
+// runbook's byte-for-byte claim refuses on Rejected rather than comparing against a marker.
+
+fn anchored_host_key_mint_cleanup_body(mint_dir: String) -> String {
+  join(map(anchored_host_key_mint_cleanup_commands(mint_dir: mint_dir), c => join(argv_words(command: c), " ")), "; ")
+}
+
+fn anchored_host_key_mint_tmpfs_guard(mint_dir: String) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_test_bracket(words: [
+      bash_build_word_cmdsubst(body: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_tmpfs_check_command(mint_dir: mint_dir)))),
+      bash_build_word_lit(text: "!="),
+      bash_build_word_lit(text: "tmpfs"),
+    ]),
+    then_stmts: [
+      bash_build_with_redir(
+        inner: bash_build_command_from_lits(lits: ["echo", "mint dir is not tmpfs-backed; refusing to mint"]),
+        redir: ^bash_production_fold_redir_stdout_to_stderr,
+      ),
+      bash_build_exit(code: "1"),
+    ],
+  )
+}
+
+fn anchored_host_key_mint_upload_leg(mint_dir: String) -> Node {
+  bash_build_pipe(
+    left: bash_build_command_from_lits(lits: argv_words(command: cat_file_command(path: concat(mint_dir, "/mc_host")))),
+    right: bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_upload_command())),
+  )
+}
+
+// THE ONE RESIDUAL STRING: the trap body. Trap on EXIT, INT and TERM is load-bearing for rule Q1 --
+// set -e does NOT run a trailing cleanup leg on a signal, so a control-C mid-mint would leave the
+// private half in the tmpfs dir -- and the fold grammar has no trap-with-a-signal-list statement
+// production: the emit-lane's own authority row, gunbc.ci.ci_spec
+// gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger, lists the arms that ARE ordinary commands
+// on that route ("set -euo pipefail, umask, export and trap are ordinary commands on that route, and
+// the trap body is itself built from nodes and passed as one grammar-quoted word") -- the body word is
+// built, but a SIGNAL LIST after it has no grammar arm, so a multi-signal trap cannot be emitted.
+// So this is the ONE arm that cannot be a node. It follows the SHIPPED lane
+// gunbc.ci.ci_spec gunbc_ci_submission_key_trap_body -- trap as a command of word_lit arms (the "trap"
+// name, the body passed as ONE word for the emitter to quote ONCE, and the signal list) -- and the body
+// is the render of the model's OWN cleanup ArgvCommands (each word a model literal: the fixed mint dir +
+// a fixed file name, no shell metacharacters), joined with "; " as the Q1-correct cleanup. Everything
+// else in the script is a node.
+fn anchored_host_key_mint_trap(mint_dir: String) -> Node {
+  bash_build_command_with_words(words: [
+    bash_build_word_lit(text: "trap"),
+    bash_build_word_lit(text: anchored_host_key_mint_cleanup_body(mint_dir: mint_dir)),
+    bash_build_word_lit(text: "EXIT"),
+    bash_build_word_lit(text: "INT"),
+    bash_build_word_lit(text: "TERM"),
+  ])
+}
+
+fn anchored_host_key_mint_statements(mint_dir: String) -> List<Node> {
+  [
+    anchored_host_key_mint_trap(mint_dir: mint_dir),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_directory_command(mint_dir: mint_dir))),
+    anchored_host_key_mint_tmpfs_guard(mint_dir: mint_dir),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_keygen_command(mint_dir: mint_dir))),
+    bash_build_command_from_lits(lits: argv_words(command: anchored_host_key_mint_create_command())),
+    anchored_host_key_mint_upload_leg(mint_dir: mint_dir),
+  ]
+}
+
+fn anchored_host_key_mint_shell() -> Outcome<String> {
+  bash_emit_stmts(statements: anchored_host_key_mint_statements(mint_dir: anchored_host_key_mint_dir()), set_e: true)
+}
+
+// THE MINT IS AN OUT-OF-BAND HUMAN ACT, and its scaffold status is a typed carrier, not a comment
+// (DESIGN §4c; review 85232's hand-shell gate). The bash above dissolves to a real dispatch once
+// the CAPABILITY THAT RETIRES IT lands -- orchestration-to-shell bash EMISSION (v2.workflow.bash_emit
+// bash_emit_stmts over v2.extdeps.languages.bash_build nodes), NOT merely an execution route that
+// can carry hand-assembled bytes (§4b obligation 3: "the trigger names the CAPABILITY restored";
+// review 85396). The ONE control form this string still spells as a literal -- the trap body -- is
+// named, with its conversion, on this module's fourth census-closure frontier row
+// (anchored_host_key_mint_shell); set -e, the tmpfs guard's if/test/cmdsubst/>&2/exit arms, the
+// cat|gcloud pipe and every argv leg are already nodes, emitted. Until the grammar gains a compound-body
+// arm for the trap, the runbook renders it for a human, and the gate is human actuation: this module's
+// authoring session ran NOTHING; the operator or merry-fox-82 executes what Step 1 renders.
+data anchored_host_key_mint_shell_bash_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: decl_ref(module_path: "gunbc.host.anchored_host_transport", decl_name: "anchored_host_key_mint_shell"),
+}
+
+// THE MINTER'S STEP, typed (review 85232, "model it the same way as the neighbouring mint rows
+// (for example approval_ntfy_publisher_token_mint_intervention)"). The instruction NAMES the model
+// symbol the operator renders rather than transcribing shell -- inside the model there is no second
+// shell text to disagree with the render, exactly as the ntfy mint instruction points at its broker.
+// The runbook's Step 1 block is a CHECKED projection, not an untested copy:
+// test.claim.host.anchored_host_transport_witness the_runbook_mint_block_is_the_model_render reads
+// docs/runbooks/mtcollins1-ssh-host-key-mint.md off disk and refuses if its fenced block differs from
+// anchored_host_key_mint_shell(). The mint is FleetOnce: the
+// stable key is minted once per fleet, not per boot (per boot is the DELIVERY, and delivery is the
+// custody arm's job, not this step's).
+fn anchored_host_key_mint_intervention() -> HumanIntervention {
+  HumanIntervention {
+    identity: "mtcollins1_ssh_host_key_mint" as HumanInterventionIdentity,
+    frequency: FleetOnce,
+    subject: "mint the stable ed25519 host keypair in a verified tmpfs directory and publish the private half as one new Secret Manager version of the row's host_key_secret" as NonEmptyStr,
+    instruction: join([
+      "run Step 1 of docs/runbooks/mtcollins1-ssh-host-key-mint.md, which renders this module's anchored_host_key_mint_shell() -- the tmpfs-backed 0700 dir, ssh-keygen, gcloud secrets create WITHOUT a data file, then the key over stdin into versions add; nothing here puts the private half in any argv word, and the trap removes the key on every path",
+      " -- and read the public half back with ", ssh_keygen_public_key_command_label(),
+      " for the anchor transcription in Step 3",
+    ], "") as NonEmptyStr,
+    completion_evidence: NoDischargeSiteModeled,
+  }
+}
+
+fn ssh_keygen_public_key_command_label() -> String {
+  "ssh-keygen -y -f <mint-dir>/mc_host (extdeps.ssh.openssh_client_commands.ssh_keygen_public_key_command)"
+}
+
+// THE MINT'S PRIVILEGED EFFECT (review 85232: "no PrivilegedEffect ... and no PrivilegedEffectSite.
+// That is the kind of gap the census exists to close"). It is built exactly as the census's
+// manual_operator_api_effect builds the ntfy mint row -- ApiSurface, because gcloud IS the
+// (human-driven) API; the frequency is read FROM the intervention, not restated; and
+// IRREVERSIBLE with the loss named, which is the difference from the scan's ReversibleByReapply:
+// the version-destroy/rotation route cannot undo losing the private half while the RAM image
+// holds it and no copy exists -- a destroyed version is gone, and the fleet's anchor and every
+// transport seated on it go with it. MintsResourceScopedCredential: what the mint mints is a key
+// PAIR scoped to one host -- its private half is a credential in the sense that matters (theft
+// impersonates mtcollins1's sshd), and that is why the fold treats the mint like the token mints
+// rather than like a no-reach edit.
+// The irreversibility ACTIVATES the witness gate (an irreversible effect with no witness discharge
+// demands a human who consented to THIS effect), which excludes the patterns with no human behind
+// them; the unbindable workload identity excludes the federated grant. What is left standing when
+// the fold runs -- anchored_host_key_mint_effect through select_authorization_pattern, never
+// hand-picked -- is OperatorApprovedCapability, so the row diverges for exactly the stated reason
+// the ntfy mint row diverges for; nothing is claimed that the fold does not compute.
+fn anchored_host_key_mint_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "create the mtcollins1 stable SSH host keypair and publish its private half as a new Secret Manager version" as NonEmptyStr,
+    frequency: anchored_host_key_mint_intervention().frequency,
+    reversibility: IrreversibleEffect {
+      what_is_lost: "the private half: the mint dir is RAM-backed and trap-deleted, the sole durable copy is the Secret Manager version, and version destroy (or rotation) removes it unrecoverably -- with it the anchor this key grounds and every transport seated on that anchor" as NonEmptyStr,
+    },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable {
+      cause: "no fleet principal holds Secret Manager create/addVersion for this secret; the mint runs under the operator's own human authority, and no workload identity on any host can be bound to it" as NonEmptyStr,
+    },
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}

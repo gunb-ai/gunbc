@@ -9,12 +9,19 @@ import extdeps.bazel.label { Label, render_label }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import extdeps.github.expressions {
+  ExpressionTemplate, LiteralText, Interpolation, ContextAccess, Github, Inputs,
+  Expression, FunctionCall, FromJSON, StringLiteral, Equals, LogicalAnd, LogicalOr,
+  serialize_template, interpolate, runner_temp,
+}
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.github.actions {
-  Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes,
+  Workflow, Job, Step, RunStep, UsesStep, Bash, max_job_timeout_minutes, WorkflowTrigger,
   WorkflowDispatch, DispatchInput, InputChoice,
   WorkflowPermissions, PermRead, ConcurrencySpec, ConcurrencyMappingQueueMax, QueueMaxCancelInProgressFalse,
+  RunnerSpec, SelfHosted, RunsOnExpression,
 }
+import extdeps.languages.json.emit { json_str_list }
 import gunbc.action_use_admission {
   upload_artifact_action,
   admit_workflow_checkout_refs, WorkflowCheckoutRefsAdmitted, WorkflowCheckoutRefsRefused, workflow_checkout_refs_refusal_reason,
@@ -31,10 +38,14 @@ import gunbc.witness.compiler_gate_workflow { compiler_gate_hosted_build_prelude
 import gunbc.witness.witness_floor_workflow { witness_toolchain_homes_isolated_guard_step }
 import gunbc.instrument_targets {
   dag_emit_real_grammar_round_trips_label, self_host_behavioral_equivalence_label,
-  type_declaration_use_census_label, dependency_demand_census_label, decl_ref_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
-  known_red_derivation_label, roster_reach_inhabitance_label, traversal_order_census_label,
+  type_declaration_use_census_label, dependency_demand_census_label, self_host_frontier_label, decl_ref_census_label, effect_pair_census_label, v2_native_census_label, regen_round_cost_label, compute_run_unit_cold_label, compute_run_unit_sccache_probe_label, compute_run_unit_cold_same_path_label, compute_wrong_capture_label, compute_dependency_wrong_capture_label, instrument_targets,
+  known_red_derivation_label, roster_reach_inhabitance_label, router_proxy_falsifier_label, serving_benchmark_run_label, traversal_order_census_label,
+  ambient_name_census_label, roster_import_sweep_controls_label, credential_acquisition_systemd_rows_label,
 }
 import gunbc.instruments.compute_run_unit_cold { compute_run_unit_cold_job_memory_demand }
+import gunbc.instruments.serving_benchmark_run { serving_benchmark_run_plan }
+import gunbc.runner.runner_registration_labels { gunbc_gpu_docker_label }
+import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set_union }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes,
@@ -75,16 +86,29 @@ import extdeps.rust.cargo { cargo_default_release_dir_rel }
 
 data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 
-// ONE RUN AT A TIME ON THE SHARED POOL, AND NO DISPATCH DROPPED. The group used to be the bare
-// scalar form. Under it GitHub keeps ONE pending run per group and cancels the one already waiting
-// when another arrives, with no signal to the lane that dispatched it: on 2026-10-03 a queued
-// behavioral-equivalence run (37114501769) was cancelled before it started because another lane
-// dispatched a different instrument ninety minutes later, and its owner learned of it only by
-// reading the run list. A dispatched run is a receipt someone is waiting on, so losing one silently
-// is a fail-open. The queue-max form keeps every pending run and still serializes them, which is
-// the operator's condition held without the loss. One group for every label, not one per label:
-// per-label groups would let two instruments run on the pool at once, which is the stacking the
-// condition forbids.
+// ONE RUN AT A TIME PER MEASUREMENT, AND NO DISPATCH DROPPED. Two superseded conditions live in this
+// paragraph and neither is deleted, because both are load-bearing history for the shape chosen here.
+// (1) The group used to be the BARE SCALAR form. Under it GitHub keeps ONE pending run per group and
+// cancels the one already waiting when another arrives, with no signal to the lane that dispatched it:
+// on 2026-10-03 a queued behavioral-equivalence run (37114501769) was cancelled before it started
+// because another lane dispatched a different instrument ninety minutes later, and its owner learned of
+// it only by reading the run list. A dispatched run is a receipt someone is waiting on, so losing one
+// silently is a fail-open. queue: max with cancel-in-progress: false keeps every pending run and still
+// serializes -- that part of the operator's condition is held unchanged.
+// (2) The group then became ONE NAME FOR EVERY LABEL ('instrument-dispatch-queued'), on the reading
+// that any instrument running on the pool at the same time as another is the stacking the condition
+// forbids. The operator superseded that reading on 2026-10-20 for the Charter 4 measurement queues:
+// instruments are independent measurements, and putting every one of them behind one global slot made
+// a lane wait behind an unrelated instrument's 4-hour timeout. The group is now keyed PER DISPATCH --
+// ref plus label -- so one label on one ref still cannot run twice while unrelated measurements
+// proceed. The bound that replaces the global one is per-(ref,label), which is what the witness holds.
+// THE MIGRATION OVERLAP, DECLARED RATHER THAN HIDDEN. Concurrency is read from the workflow AT THE
+// DISPATCHING REF (the finding recorded below, from the 2026-10-03 triple cancellation), so an old ref
+// still dispatching the pre-fix global group can neither be cancelled by nor cancel a per-dispatch
+// group, and during the transition one run of each form can overlap. The bound is the same one the
+// cancellation fix carried: main carries the new form, and refs cut before this commit keep the old
+// group until they are rebased. That overlap is bounded in TIME (stale refs age out) and is strictly
+// narrower than what it replaces, which was permanent global serialization.
 //
 // THE GROUP IS NOT THE WORKFLOW'S NAME, AND THAT IS THE SECOND HALF OF THE REPAIR. Concurrency is read
 // from the workflow at the DISPATCHING ref, and one scalar-form dispatch cancels every pending run in
@@ -95,11 +119,51 @@ data instrument_dispatch_workflow_name: String = "instrument-dispatch"
 // every branch cut before this change still names the old group. Naming a group no pre-fix ref names
 // puts those dispatches out of reach of this queue.
 //
-// WHAT THAT COSTS, BOUNDED: a pre-fix ref's dispatch runs in the OLD group, so while such refs still
-// dispatch, one old-form run may execute alongside one run from this queue -- a relaxation of the
-// queue-do-not-stack condition by at most one extra concurrent run. It dissolves when no pre-fix ref
-// dispatches, which follows from the default branch carrying this form.
-data instrument_dispatch_concurrency_group: String = "instrument-dispatch-queued"
+// WHAT THAT COSTS, BOUNDED. A pre-fix ref's dispatch runs in the OLD global group, so it cannot be
+// cancelled by this queue and cannot cancel it. Under the single global group that overlap was at most
+// ONE extra concurrent run; keying per dispatch widens the bound to one old-form run per (ref, label)
+// still dispatching from a pre-fix ref, because the old group no longer contains those runs together.
+// It dissolves when no pre-fix ref dispatches, which follows from the default branch carrying this form
+// and from stale refs ageing out. The relaxation is therefore bounded in TIME and in the number of
+// stale refs, not permanent. WHAT THE OLD GROUP NEVER DID, AND SO LOSING IT COSTS NOTHING: it did not
+// isolate one run from another. Isolation on the shared self-hosted pool is the SLOT's job --
+// gunbc.runner.runner_slot_desired declares the per-slot shape and gunbc.host.memory_envelope enforces
+// it (memory.high throttles early, memory.max refuses late, MemorySwapMax 0 refuses an overrun instead
+// of paging it) -- which is the operator's ruling on this change, recorded verbatim in the provenance
+// of gunbc.design_ruling instrument_measurement_queues_run_in_parallel. No row here claims to bound how
+// many instrument runs occupy the pool at once, and none is owed: the guarantee that protects the
+// required lane is the cgroup, and the guard step above reads exactly that.
+
+// THE DISPATCH KEY. The label input name is defined here, ABOVE the group expression that reads it,
+// so this file keeps its existing property of containing no forward reference.
+data instrument_dispatch_label_input: String = "label"
+
+// The group's fixed head. Kept separate from the key parts so the witness can assert the head, the
+// ref part and the label part independently, and so no consumer has to re-derive the prefix.
+data instrument_dispatch_group_prefix: String = "instrument-dispatch"
+
+// ONE GROUP PER (REF, LABEL), TYPED THROUGH THE GITHUB-EXPRESSION MODEL. Both dynamic parts are
+// ContextAccess interpolations over the contexts GitHub allows at workflow level (github, inputs,
+// vars -- extdeps.github.actions documents the restriction), and the separator is a LiteralText
+// hyphen. The ${{ }} medium is produced only by extdeps.github.expressions serialize_template, so
+// no expression syntax exists as string fragments in this model (the typed-template rule). The
+// sibling string-fragment sites this replaced -- the label display/if values, the runner.temp
+// upload path, and the heal_workflow group/env reads -- are converted through the same carrier in
+// this PR (review 85263, DESIGN section 6b: the same rule at sibling sites). Fragment sites in
+// other models (fleet_*, runner_*, witness_floor, compiler_gate, heal_publisher) are pre-existing
+// main-side debt of the same kind, untouched here and named for routing, not permission to repeat.
+data instrument_dispatch_concurrency_group_template: ExpressionTemplate = {
+  segments: [
+    LiteralText { text: instrument_dispatch_group_prefix },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Github, path: ["ref"] } },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] } }
+  ]
+}
+
+data instrument_dispatch_concurrency_group: String =
+  serialize_template(template: instrument_dispatch_concurrency_group_template)
 
 data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueMax {
   group: instrument_dispatch_concurrency_group,
@@ -108,7 +172,6 @@ data instrument_dispatch_concurrency: ConcurrencySpec = ConcurrencyMappingQueueM
 
 data instrument_dispatch_job_id: String = "instrument"
 
-data instrument_dispatch_label_input: String = "label"
 
 data instrument_dispatch_directory: String = "instrument-dispatch"
 
@@ -142,7 +205,7 @@ data instrument_dispatch_timeout_interim_dissolve_on: DissolutionCondition = unb
 // adds no job to any per-change workflow.
 fn instrument_dispatch_labels() -> List<Label> {
   [
-    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(),
+    dag_emit_real_grammar_round_trips_label(), self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(),
     v2_native_census_label(), type_declaration_use_census_label(), regen_round_cost_label(),
     compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
@@ -158,6 +221,22 @@ fn instrument_dispatch_labels() -> List<Label> {
     // native route prepares only the stage roots' import closure, but whether resolve holds on that closure alone is
     // not yet measured (the whole-pool run was cancelled at the 360-minute ceiling), so the row keeps the whole-tree memory demand.
     traversal_order_census_label(),
+    // The router proxy falsifier needs a docker daemon, which no per-change lane declares; it is run on
+    // the fleet at the head of the change that cites it (plan gunbc.plans.fabric_serving_router, S1b).
+    router_proxy_falsifier_label(),
+    // One serving-benchmark run needs the cell's GPUs and a GPU-capable docker daemon, which no per-change
+    // lane declares; it is dispatched on the fleet when the cell's operator books the window.
+    serving_benchmark_run_label(),
+    // The ambient-name census is the whole-tree binding census the NAMESPACE-XL waves and the generated import sweep
+    // read (v2.compiler.occurrence_resolution_census): the emitted compiler's census-infer over dag + src/v2, which outlives
+    // the free remote runner's cap, so it is run on purpose here and never as a merge gate.
+    ambient_name_census_label(),
+    // The import sweep's controls (v2.workflow.roster_import_sweep roster_controls_report) run the sweep's fixture controls
+    // in the interpreter, past the free remote runner's cap; a fixture run, so it carries no memory row.
+    roster_import_sweep_controls_label(),
+    // The credential acquisition rows that start transient units through `systemd-run --user`: no session container or
+    // remote build runner has a user manager, so they run on a fleet runner on purpose; a fixture run, no memory row.
+    credential_acquisition_systemd_rows_label(),
   ]
 }
 
@@ -217,7 +296,11 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     // whole-tree row (DESIGN §3 meaning fork).
     InstrumentDispatchMemoryDemand { label: compute_dependency_wrong_capture_label(), demand: instrument_dispatch_compute_run_unit_cold_memory_demand },
     InstrumentDispatchMemoryDemand { label: dependency_demand_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    InstrumentDispatchMemoryDemand { label: self_host_frontier_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: decl_ref_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    // The effect-pair census walks the same whole corpus through the same shared D13 walk, so it is the
+    // same subject at the same price as dependency-demand-census (a row of its own, not a shared one).
+    InstrumentDispatchMemoryDemand { label: effect_pair_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // The known-red derivation's subject is the whole corpus resolved claim by claim: the same price
     // class as the whole-tree censuses, and it shares their row rather than inventing a number of its
@@ -229,6 +312,8 @@ fn instrument_dispatch_memory_demands() -> List<InstrumentDispatchMemoryDemand> 
     InstrumentDispatchMemoryDemand { label: roster_reach_inhabitance_label(), demand: instrument_dispatch_whole_tree_memory_demand },
     // Same native whole-pool prepare as the whole-tree censuses: their row, not a number of its own (DESIGN §3).
     InstrumentDispatchMemoryDemand { label: traversal_order_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
+    // census-infer over the whole tree: the same price class as the v2-native census it shares a driver with.
+    InstrumentDispatchMemoryDemand { label: ambient_name_census_label(), demand: instrument_dispatch_whole_tree_memory_demand },
   ]
 }
 
@@ -241,18 +326,102 @@ fn instrument_dispatch_memory_demands_fit_selected_target() -> Bool {
 }
 
 fn instrument_dispatch_memory_demands_are_dispatchable() -> Bool {
+  instrument_dispatch_labels_are_dispatchable(labels: list_map(xs: instrument_dispatch_memory_demands(), f: fn(d) { d.label }))
+}
+
+// A ROW KEYED BY A LABEL THE WORKFLOW CANNOT DISPATCH is a requirement nothing reads, so every per-label
+// row family (the memory demands above, the runner requirements below) is held to the dispatch options
+// through this one check.
+fn instrument_dispatch_labels_are_dispatchable(labels: List<Label>) -> Bool {
   let options = instrument_dispatch_label_options()
-  length(xs: filter(xs: instrument_dispatch_memory_demands(), predicate: fn(d) {
-    length(xs: filter(xs: options, predicate: fn(o) { o == render_label(l: d.label) })) == 0
+  length(xs: filter(xs: labels, predicate: fn(l) {
+    length(xs: filter(xs: options, predicate: fn(o) { o == render_label(l: l) })) == 0
   })) == 0
+}
+
+// THE RUNNER A DISPATCHED SUBJECT NEEDS BEYOND THE POOL'S LABELS IS A DECLARED FACT OF ITS LABEL, like its
+// memory. Most instruments run on any slot of the pool; a few need a capability only some slots carry, and
+// dispatching one of them onto a slot without it answers exit 2 (no observation) after the run has queued,
+// built and spent the slot. The row narrows the selector instead, so such a run waits for a slot that
+// carries every label it names. GitHub admits a runner holding ALL the labels runs-on names (the AND
+// semantics cited at extdeps.github.actions RunnerSpec), so a row's labels are added to the pool's, never
+// substituted for them, and a slot lacking the capability is never selected. A label with no row runs on
+// the pool as before.
+type InstrumentDispatchRunnerRequirement {
+  label: Label
+  runner_labels: List<String>
+}
+
+// The serving benchmark needs a GPU-capable docker daemon the job user owns (gunbc.runner.runner_registration_labels
+// gunbc_gpu_docker_label, granted only where gunbc.runner.runner_gpu_container_toolchain reads all four arms back)
+// on the host its cell plan names. The host is read from the instrument's own plan, so moving the benchmark to
+// another cell moves the dispatch with it.
+fn instrument_dispatch_runner_requirements() -> List<InstrumentDispatchRunnerRequirement> {
+  [
+    InstrumentDispatchRunnerRequirement {
+      label: serving_benchmark_run_label(),
+      runner_labels: [gunbc_gpu_docker_label, runner_host_label(host: serving_benchmark_run_plan.host)],
+    },
+  ]
+}
+
+fn instrument_dispatch_runner_requirements_are_dispatchable() -> Bool {
+  instrument_dispatch_labels_are_dispatchable(labels: list_map(xs: instrument_dispatch_runner_requirements(), f: fn(r) { r.label }))
+}
+
+// A requirement narrows a SELF-HOSTED label set. Under a hosted runner target there are no labels to add a
+// capability to, so a requirement row cannot be honored and the workflow is refused rather than emitted
+// with the requirement silently dropped.
+fn instrument_dispatch_runner_requirements_are_realizable() -> Bool {
+  match gunbc_ci_selected_runner_spec() {
+    SelfHosted { labels: _ } => true
+    _ => length(xs: instrument_dispatch_runner_requirements()) == 0
+  }
+}
+
+fn instrument_dispatch_runner_labels_json(labels: List<String>) -> Expression {
+  FunctionCall { function: FromJSON, args: [StringLiteral { value: json_str_list(items: labels) }] }
+}
+
+// THE JOB'S RUNNER: the pool's spec when no row exists; otherwise one runs-on expression that selects, for
+// the dispatched label, the pool's labels joined with that row's, and the pool's labels for every other
+// label. The selector is built as a typed expression (extdeps.github.expressions), not spelled as text.
+fn instrument_dispatch_runner() -> RunnerSpec {
+  let pool = gunbc_ci_selected_runner_spec()
+  match pool {
+    SelfHosted { labels: base } =>
+      if length(xs: instrument_dispatch_runner_requirements()) == 0 { pool } else {
+        RunsOnExpression {
+          expression: interpolate(expression: fold(reverse(instrument_dispatch_runner_requirements()), init: instrument_dispatch_runner_labels_json(labels: base), f: (acc, r) =>
+            LogicalOr {
+              left: LogicalAnd {
+                left: Equals {
+                  left: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] },
+                  right: StringLiteral { value: render_label(l: r.label) },
+                },
+                right: instrument_dispatch_runner_labels_json(labels: runner_label_set_union(a: base, b: r.runner_labels)),
+              },
+              right: acc,
+            })),
+        }
+      }
+    _ => pool
+  }
 }
 
 // THE GUARD IS ONE SCRIPT, EMITTED THROUGH v2.workflow.bash_emit LIKE ITS SIBLINGS; each declared row
 // binds it to a label and hands it the row's byte count through the step environment, so the number has
 // one home (the row) and the script one emission. It refuses when the machine's memory (free -b) or a
-// numeric memory.high / memory.max on the job's own cgroup is below the requirement. A bound set only on
-// an ANCESTOR cgroup of the step is not read: bash_emit carries no loop to walk the path, and the
-// runner's bound sits on the runner unit's own cgroup, which its steps inherit.
+// numeric memory.high / memory.max on the job's own cgroup is below the requirement, and it PRINTS the
+// job's memory.swap.max next to the bounds it already prints. The swap bound is printed before the
+// refusal leg that will use it is armed, because the leg changes what every dispatch does and must be
+// written against the live slot, not against the declared one: with the fleet's declared shape
+// memory_swap_max = 0 (gunbc.runner.runner_slot_desired, realized as MemorySwapMax=0 by
+// gunbc.runner.runner_revision_job_launch) an overrun is an OOM refusal, while a drifted drop-in that
+// permits swap turns the same overrun into silent memory.high throttling inside a green run -- the
+// failure class the envelope exists to make loud. A bound set only on an ANCESTOR cgroup of the step
+// is not read: bash_emit carries no loop to walk the path, and the runner's bound sits on the runner
+// unit's own cgroup, which its steps inherit.
 fn instrument_dispatch_memory_refusal(source: String) -> List<Node> {
   [
     bash_build_with_redir(
@@ -317,6 +486,7 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
     ))),
     bash_build_assign(name: "memory_high", value: instrument_dispatch_cgroup_read(file: "memory.high")),
     bash_build_assign(name: "memory_max", value: instrument_dispatch_cgroup_read(file: "memory.max")),
+    bash_build_assign(name: "memory_swap_max", value: instrument_dispatch_cgroup_read(file: "memory.swap.max")),
     bash_build_command_with_words(words: [
       bash_build_word_lit(text: "echo"),
       bash_build_word_concat_from_nodes(parts: [
@@ -328,6 +498,8 @@ fn instrument_dispatch_memory_guard_statements() -> List<Node> {
         bash_build_word_var(name: "memory_high"),
         bash_build_word_lit(text: " memory.max="),
         bash_build_word_var(name: "memory_max"),
+        bash_build_word_lit(text: " memory.swap.max="),
+        bash_build_word_var(name: "memory_swap_max"),
         bash_build_word_lit(text: " required="),
         bash_build_word_var(name: "REQUIRED_MEMORY_BYTES"),
       ]),
@@ -361,8 +533,12 @@ fn instrument_dispatch_memory_guard_step(d: InstrumentDispatchMemoryDemand, guar
   }
 }
 
+// THE LABEL READ AS AN EXPRESSION, NOT AS MEDIUM TEXT. Where the emitted step carries this value it
+// is a read of the dispatch's own label input; the ${{ }} spelling exists only in the carrier that
+// types it (extdeps.github.expressions interpolate). The witness asserts the input NAME, never the
+// fixed text of the medium.
 fn instrument_dispatch_label_expression() -> String {
-  join(["${{ inputs.", instrument_dispatch_label_input, " }}"], "")
+  interpolate(expression: ContextAccess { context: Inputs, path: [instrument_dispatch_label_input] })
 }
 
 // THE RECEIPT LIVES UNDER RUNNER_TEMP, NOT THE CHECKOUT, so it exists before the checkout does: the
@@ -376,8 +552,18 @@ fn instrument_dispatch_path_word(file: String) -> Node {
   bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: join(["/", instrument_dispatch_directory, "/", file], ""))])
 }
 
+// THE UPLOAD PATH IS A TYPED TEMPLATE: the runner.temp read is a ContextAccess over the runner
+// context, the receipt directory a LiteralText, and only serialize_template spells the ${{ }}
+// medium (the same carrier as the dispatch group above; review 85263).
+data instrument_dispatch_upload_path_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: join(["/", instrument_dispatch_directory], "") }
+  ]
+}
+
 fn instrument_dispatch_upload_path() -> String {
-  join(["${{ runner.temp }}/", instrument_dispatch_directory], "")
+  serialize_template(template: instrument_dispatch_upload_path_template)
 }
 
 fn instrument_dispatch_echo_to(words: List<Node>, file: String) -> Node {
@@ -522,7 +708,7 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   Job {
     id: instrument_dispatch_job_id,
     name: none,
-    runner: gunbc_ci_selected_runner_spec(),
+    runner: instrument_dispatch_runner(),
     environment: none,
     steps: instrument_dispatch_steps(seed: seed, guard: guard, script: script),
     needs: [],
@@ -544,23 +730,32 @@ fn instrument_dispatch_job(seed: String, guard: String, script: String) -> Job {
   }
 }
 
+// THE TRIGGER SET IS A MODULE-LEVEL CONSTANT that the Workflow constructor reads for its 'on'
+// field, so it cannot depend on the dispatched (seed, guard, script): "workflow_dispatch-only" — the
+// reason gunbc.runner.runner_fleet_job_timeout_census omits this workflow from the drain-bound
+// population — is then a property of this constant, read directly by the census discharge and its
+// witness, not a sampling over built workflows.
+fn instrument_dispatch_workflow_triggers() -> List<WorkflowTrigger> {
+  [
+    WorkflowDispatch {
+      inputs: [
+        DispatchInput {
+          name: instrument_dispatch_label_input,
+          description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
+          required: true,
+          default: none,
+          type: InputChoice { options: instrument_dispatch_label_options() },
+        },
+      ]
+    }
+  ]
+}
+
 fn instrument_dispatch_workflow(seed: String, guard: String, script: String) -> Workflow {
   Workflow {
     name: instrument_dispatch_workflow_name,
     run_name: Present { value: join(["instrument-dispatch ", instrument_dispatch_label_expression()], "") },
-    on: [
-      WorkflowDispatch {
-        inputs: [
-          DispatchInput {
-            name: instrument_dispatch_label_input,
-            description: Present { value: "The rostered instrument to run (gunbc.instrument_targets); the run executes `gunbc test <label>` at the dispatched ref." },
-            required: true,
-            default: none,
-            type: InputChoice { options: instrument_dispatch_label_options() },
-          },
-        ]
-      }
-    ],
+    on: instrument_dispatch_workflow_triggers(),
     concurrency: Present { value: instrument_dispatch_concurrency },
     env: none,
     permissions: Present {
@@ -585,6 +780,10 @@ fn expected_instrument_dispatch_yml() -> InstrumentDispatchWorkflowGenerationOut
     InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a memory demand names a label that is not dispatchable" }
   } else if !instrument_dispatch_memory_demands_fit_selected_target() {
     InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a dispatchable label's declared memory demand exceeds the selected runner target's budget (gunbc.ci.ci_runner_target ci_runner_target_ram_speed_budget), so no runner this workflow targets can hold it" }
+  } else if !instrument_dispatch_runner_requirements_are_dispatchable() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a runner requirement names a label that is not dispatchable" }
+  } else if !instrument_dispatch_runner_requirements_are_realizable() {
+    InstrumentDispatchWorkflowGenerationRefused { reason: "gunbc.instruments.instrument_dispatch_workflow: a runner requirement adds labels to the self-hosted pool's selector, and the selected runner target (gunbc.ci.ci_runner_target selected_ci_runner_target) is not self-hosted, so the requirement cannot be honored" }
   } else if instrument_dispatch_labels_are_rostered() {
     match instrument_dispatch_seed_script() {
       Rejected { diagnostics: _ } =>

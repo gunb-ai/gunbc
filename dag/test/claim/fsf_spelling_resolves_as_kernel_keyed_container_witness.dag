@@ -1,0 +1,53 @@
+module test.claim.fsf_spelling_resolves_as_kernel_keyed_container_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE CLASS: A DIRECTLY SPELLED FinitelySupportedFunction<K, V> ANNOTATION IS THE SAME KEYED
+// CONTAINER AS Map, NOT THE ALGEBRA STRUCT NODE. The resolver once sent that spelling down the
+// user-generic path (is_container_type has no arity row for it), so a receiver annotated with it
+// was a struct and the map_keys method dispatched as a struct field call (seen in heal on the Map cutover).
+//
+// The fixture supplies its own FinitelySupportedFunction declaration (a manifest has no corpus
+// roots). The function dispatches the map_keys method on a parameter annotated with the spelling:
+// it compiles only if the annotation resolved as the keyed container.
+
+data fsk_definer_source: String = "module fsk.definer\n\ntype FinitelySupportedFunction<key, value> {\n  support: List<key>\n  codomain: List<value>\n}\n"
+
+data fsk_user_source: String = "module fsk.user\n\nimport fsk.definer { FinitelySupportedFunction }\n\nfn fsk_keys(m: FinitelySupportedFunction<String, Int>) -> List<String> {\n  m |> map_keys\n}\n"
+
+fn fsk_run() -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [
+      fixture_source("fsk/definer.dag", fsk_definer_source),
+      fixture_source("fsk/user.dag", fsk_user_source)
+    ],
+    entry: "fsk/user.dag"
+  })
+}
+
+fn fsk_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
+  match o {
+    FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
+      count(rows) == 0 && count(files) > 0 && n > 0,
+    FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
+    FixtureInstrumentRefused { cause: c } => false
+  }
+}
+
+// THE DISCRIMINATING RED/GREEN: without the resolver rule the receiver is a struct and map_keys
+// does not dispatch (refused); with it the compile is clean.
+test fn a_directly_spelled_finitely_supported_function_receiver_dispatches_map_keys() -> Bool {
+  fsk_completed_clean(fsk_run())
+}

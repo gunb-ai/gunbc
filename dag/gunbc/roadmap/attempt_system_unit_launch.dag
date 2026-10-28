@@ -30,8 +30,14 @@ module gunbc.roadmap.attempt_system_unit_launch
 // world-writable, sha-addressed, with the service ExecStart pinned to that path. The requester can
 // edit instance.serve_binary and the checkout; those paths are not what root runs.
 
+import gunbc.roadmap.dispatch_worker_unit_confinement { DispatchWorkerUnitPlan, GunbcHarnessProvider, dispatch_attempt_unit_stem, dispatch_attempt_worker_log_path_for_instance, dispatch_pane_working_directory, dispatch_worker_unit_properties_for_plan, dispatch_worktree_path_for_instance, session_process_bounds, dispatch_worker_git_trust_environment }
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath, CommitSha, path_segment_is_safe }
 import std.optional { Present, Absent }
+import extdeps.languages.json.emit { JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_array, json_string, serialize_json }
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  JsonStringListAcc, json_string_list_step,
+}
 import std.algebra { trim }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
@@ -59,7 +65,7 @@ import gunbc.host.host_layout {
   attempt_unit_spool_claimed_dir, attempt_unit_spool_answer_dir,
   attempt_unit_spool_stalled_dir, attempt_unit_spool_stall_record_path,
 }
-import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
+import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
   User, MemorySwapMax, SliceProperty,
@@ -76,6 +82,7 @@ import extdeps.systemd.systemd_run {
   systemd_run_command_of, systemd_run_property_options_short,
   systemd_run_command_argument_words, systemd_run_option_words_refused_cause_detail,
   RunUnit, Wait, Quiet, Collect, EndOfOptions,
+  SystemdSetenvBinding, systemd_run_setenv_options,
 }
 import extdeps.systemd.systemctl
 import gunbc.cli_invoke {
@@ -91,18 +98,11 @@ import gunbc.roadmap.roadmap_dashboard_instance {
   DashboardInstanceForInstanceRoot, DashboardInstanceInstanceRootUnknown,
 }
 import extdeps.exec.command { ArgvCommand }
-import gunbc.roadmap.roadmap_dispatch_actuator {
-  DispatchWorkerUnitPlan, dispatch_attempt_unit_stem,
-  dispatch_worker_unit_properties_for_plan,
-  dispatch_worktree_path_for_instance, dispatch_attempt_worker_log_path_for_instance,
-  dispatch_pane_working_directory, GunbcHarnessProvider,
-}
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused, AttemptWorkerRole,
   attempt_exit_entry_separator,
 }
-import gunbc.roadmap.roadmap_session_placement { session_process_bounds }
 import gunbc.live_deploy.slice_bounds {
   live_deploy_slice_memory_swap_max, attempt_worker_slice_unit_name,
 }
@@ -124,7 +124,7 @@ fn attempt_system_unit_launcher_dir(instance: HostDashboardInstance, revision: R
 }
 
 fn attempt_system_unit_privileged_effect_subject() -> NonEmptyStr {
-  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance service user, with the typed confinement property set and no other unit, user, property, or program" as NonEmptyStr
+  "start one dashboard attempt worker as a systemd system-manager transient named gunbc-attempt-<node>-<key>.service, User= the instance worker user, with the typed confinement property set -- for a dedicated worker, that set includes the instance's root-owned credstore file the manager loads as the unit's credential, and its environment carries git's safe.directory grant for the attempt's own worktree -- and no other unit, user, property, credential, environment, or program" as NonEmptyStr
 }
 
 fn attempt_system_unit_privileged_effect() -> PrivilegedEffect {
@@ -225,7 +225,7 @@ fn attempt_system_unit_start_facts_for_request(instance: HostDashboardInstance, 
     let node = request.node_id as RoadmapNodeId
     let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
     let log = dispatch_attempt_worker_log_path_for_instance(instance: instance, node_id: node, attempt_key: request.attempt_key)
-    match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole) {
+    match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: request.node_id, attempt_key: request.attempt_key, role: AttemptWorkerRole, record_owner: instance.directory_owner) {
       AttemptExitHookRefused { reason } => AttemptSystemUnitStartUnderivable { reason: reason as String }
       AttemptExitHookRendered { exec_line } =>
         AttemptSystemUnitStartDerived {
@@ -328,14 +328,23 @@ fn attempt_system_unit_systemd_run_command(instance: HostDashboardInstance, plan
   attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: granted, user: user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: false,
   )
 }
 
+// THE WORKER'S ENVIRONMENT, derived here like every other privileged fact: its git trust in its own worktree
+// (gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_git_trust_environment). Each setting is one
+// --setenv.
+fn attempt_system_unit_worker_environment(instance: HostDashboardInstance, plan: DispatchWorkerUnitPlan) -> List<SystemdSetenvBinding> {
+  map(dispatch_worker_git_trust_environment(instance: instance, attempt_worktree: plan.attempt_worktree), g => SystemdSetenvBinding { name: g.name, value: g.value })
+}
+
 fn attempt_system_unit_systemd_run_command_of(
   unit: NonEmptyStr,
   properties: List<SystemdRunProperty>,
+  environment: List<SystemdSetenvBinding>,
   command_argv: List<String>,
   wait: Bool,
 ) -> SystemdRunCommandReading {
@@ -345,7 +354,7 @@ fn attempt_system_unit_systemd_run_command_of(
     [RunUnit { unit: unit }]
   }
   systemd_run_command_of(
-    options: concat(head, concat(systemd_run_property_options_short(properties: properties), [EndOfOptions])),
+    options: concat(head, concat(systemd_run_setenv_options(bindings: environment), concat(systemd_run_property_options_short(properties: properties), [EndOfOptions]))),
     command_argv: command_argv,
   )
 }
@@ -383,8 +392,6 @@ fn attempt_system_unit_start_verb_parse(tag: String) -> AttemptSystemUnitStartVe
 
 type AttemptSystemUnitStartUnencodableCause
   = AttemptSystemUnitArgvEmpty
-  | AttemptSystemUnitArgvWordContainsUnitSeparator
-  | AttemptSystemUnitArgvWordContainsNewline
   | AttemptSystemUnitNonceUnsafe
 
 type AttemptSystemUnitStartEncode
@@ -394,8 +401,6 @@ type AttemptSystemUnitStartEncode
 fn attempt_system_unit_start_unencodable_detail(cause: AttemptSystemUnitStartUnencodableCause) -> String {
   match cause {
     AttemptSystemUnitArgvEmpty => "start request argv is empty"
-    AttemptSystemUnitArgvWordContainsUnitSeparator => "start request argv word contains U+001F"
-    AttemptSystemUnitArgvWordContainsNewline => "start request argv word contains a newline"
     AttemptSystemUnitNonceUnsafe => "start request nonce is not one safe path segment"
   }
 }
@@ -403,14 +408,49 @@ fn attempt_system_unit_start_unencodable_detail(cause: AttemptSystemUnitStartUne
 fn attempt_system_unit_argv_unencodable(argv: List<String>) -> AttemptSystemUnitStartUnencodableCause? {
   match argv.first() {
     Absent => Present { value: AttemptSystemUnitArgvEmpty }
-    Present { value: _ } =>
-      if any(argv, w => string_contains(s: w, pattern: "\u{1f}")) {
-        Present { value: AttemptSystemUnitArgvWordContainsUnitSeparator }
-      } else if any(argv, w => string_contains(s: w, pattern: "\n")) {
-        Present { value: AttemptSystemUnitArgvWordContainsNewline }
-      } else {
-        none
+    Present { value: _ } => none
+  }
+}
+
+// THE ARGV FIELD IS ONE LINE OF JSON: an array of strings. The body is one field per line, so a word may not
+// carry a raw newline; JSON escapes every control character, so any word (a multi-line brief included) survives
+// encode then decode exactly, and no word is a refusal.
+fn attempt_system_unit_argv_field_encode(argv: List<String>) -> String {
+  serialize_json(v: json_array(elements: map(argv, w => json_string(s: w))))
+}
+
+type AttemptSystemUnitArgvFieldDecode
+  = AttemptSystemUnitArgvFieldDecoded { argv: List<String> }
+  | AttemptSystemUnitArgvFieldMalformed { reason: String }
+
+fn attempt_system_unit_argv_field_decode(field: String) -> AttemptSystemUnitArgvFieldDecode {
+  if field == "" {
+    AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is empty" }
+  } else {
+  match parse_json_document(s: field) {
+    JsonDocumentUnreadable { gap: gap } =>
+      AttemptSystemUnitArgvFieldMalformed { reason: join(["start request argv is not JSON: ", json_document_gap_text(gap: gap)], "") }
+    JsonDocumentParsed { value: v } =>
+      match v {
+        JsonArray { elements: es } => {
+          let acc = fold(es, init: JsonStringListAcc { values: [], cause: Absent }, f: (a, e) => json_string_list_step(acc: a, key: "start request argv", v: e))
+          match acc.cause {
+            Present { value: c } => AttemptSystemUnitArgvFieldMalformed { reason: c }
+            Absent =>
+              if count(acc.values) == 0 {
+                AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is empty" }
+              } else {
+                AttemptSystemUnitArgvFieldDecoded { argv: acc.values }
+              }
+          }
+        }
+        JsonNull => AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is not a JSON array" }
+        JsonBool { value: _ } => AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is not a JSON array" }
+        JsonNumber { lexeme: _ } => AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is not a JSON array" }
+        JsonString { value: _ } => AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is not a JSON array" }
+        JsonObject { members: _ } => AttemptSystemUnitArgvFieldMalformed { reason: "start request argv is not a JSON array" }
       }
+  }
   }
 }
 
@@ -427,7 +467,7 @@ fn attempt_system_unit_encode_start(verb: AttemptSystemUnitStartVerb, request: A
           request.node_id,
           request.attempt_key,
           to_string(value: kibibyte_count(k: request.granted)),
-          join(request.inner_argv, "\u{1f}"),
+          attempt_system_unit_argv_field_encode(argv: request.inner_argv),
           request.nonce,
         ], "\n"),
       }
@@ -481,20 +521,22 @@ fn attempt_system_unit_start_request_fields(verb: AttemptSystemUnitStartVerb, li
                       match lines[5] {
                         Absent => AttemptSystemUnitStartRequestMalformed { reason: "start request is truncated" }
                         Present { value: nonce } =>
-                          if inner_joined == "" {
-                            AttemptSystemUnitStartRequestMalformed { reason: "start request argv is empty" }
-                          } else if nonce == "" {
+                          if nonce == "" {
                             AttemptSystemUnitStartRequestMalformed { reason: "start request nonce is empty" }
                           } else {
-                            AttemptSystemUnitStartRequestDecoded {
-                              verb: verb,
-                              request: AttemptSystemUnitStartRequest {
-                                node_id: node_id,
-                                attempt_key: attempt_key,
-                                granted: kibibyte(count: granted_n),
-                                inner_argv: split(s: inner_joined, delimiter: "\u{1f}"),
-                                nonce: nonce,
-                              },
+                            match attempt_system_unit_argv_field_decode(field: inner_joined) {
+                              AttemptSystemUnitArgvFieldMalformed { reason: why } => AttemptSystemUnitStartRequestMalformed { reason: why }
+                              AttemptSystemUnitArgvFieldDecoded { argv: words } =>
+                                AttemptSystemUnitStartRequestDecoded {
+                                  verb: verb,
+                                  request: AttemptSystemUnitStartRequest {
+                                    node_id: node_id,
+                                    attempt_key: attempt_key,
+                                    granted: kibibyte(count: granted_n),
+                                    inner_argv: words,
+                                    nonce: nonce,
+                                  },
+                                }
                             }
                           }
                       }
@@ -891,6 +933,7 @@ fn attempt_system_unit_run_admitted_start(
   match attempt_system_unit_systemd_run_command_of(
     unit: plan.unit,
     properties: attempt_system_unit_properties(instance: instance, plan: plan, granted: facts.granted, user: facts.user),
+    environment: attempt_system_unit_worker_environment(instance: instance, plan: plan),
     command_argv: plan.inner_argv,
     wait: wait,
   ) {
@@ -1000,7 +1043,7 @@ fn attempt_unit_stall_verdict(pass: AttemptUnitDrainPass) -> AttemptUnitStallVer
 type AttemptUnitEntryOutcome
   = AttemptUnitEntrySkipped
   | AttemptUnitEntryHandled { handled: AttemptUnitHandled }
-  | AttemptUnitEntryUnmovable { entry: String, step: String, cause: String }
+  | AttemptUnitEntryUnmovable { entry: String, step: SpoolStallStep, cause: String }
 
 fn attempt_unit_handled_failure(handled: AttemptUnitHandled) -> List<ProcessExit> {
   match handled {
@@ -1024,7 +1067,7 @@ fn attempt_unit_outcome_failure(outcome: AttemptUnitEntryOutcome) -> List<Proces
   match outcome {
     AttemptUnitEntryHandled { handled: h } => attempt_unit_handled_failure(handled: h)
     AttemptUnitEntryUnmovable { entry: entry, step: step, cause: cause } =>
-      [exit_failure(reason: join([entry, ": unmovable at ", step, " (stays in requests/): ", cause], ""))]
+      [exit_failure(reason: join([entry, ": unmovable at ", spool_stall_step_text(step: step), " (stays in requests/): ", cause], ""))]
     AttemptUnitEntrySkipped => [] as List<ProcessExit>
   }
 }
@@ -1074,7 +1117,7 @@ fn attempt_unit_pass_of(outcomes: List<AttemptUnitEntryOutcome>) -> AttemptUnitD
 fn attempt_unit_entry_outcome(instance_root: String, instance: HostDashboardInstance?, entry: String) -> AttemptUnitEntryOutcome {
   match attempt_system_unit_claim_entry(instance_root: instance_root, entry: entry) {
     AttemptSystemUnitAlreadyClaimed { entry: _ } => AttemptUnitEntrySkipped
-    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: "claim", cause: c }
+    AttemptSystemUnitClaimUnmovable { entry: e, cause: c } => AttemptUnitEntryUnmovable { entry: e, step: SpoolStallClaim, cause: c }
     AttemptSystemUnitClaimSymlink { entry: e } =>
       AttemptUnitEntryHandled { handled: attempt_system_unit_refuse_request(instance_root: instance_root, entry: e, body: "", why: "request entry is a symlink") }
     AttemptSystemUnitClaimRefused { entry: e, reason: why } =>
@@ -1090,7 +1133,7 @@ fn attempt_system_unit_drain_pass(instance_root: String) -> AttemptUnitDrainPass
   let instance = attempt_system_unit_instance_for_root(instance_root: instance_root)
   match attempt_system_unit_list_request_entries(instance_root: instance_root) {
     AttemptSystemUnitRequestListRefused { reason } =>
-      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: "list-requests", cause: reason }])
+      attempt_unit_pass_of(outcomes: [AttemptUnitEntryUnmovable { entry: "requests", step: SpoolStallListRequests, cause: reason }])
     AttemptSystemUnitRequestNames { names: entries } =>
       attempt_unit_pass_of(outcomes: map(entries, entry => attempt_unit_entry_outcome(instance_root: instance_root, instance: instance, entry: entry)))
   }

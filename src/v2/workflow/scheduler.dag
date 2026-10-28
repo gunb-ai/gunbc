@@ -12,7 +12,7 @@ import v2.std.dependency {
   dependency_view_relations,
   topological_layers
 }
-import v2.std.node { Node }
+import v2.std.node { node_same_occurrence, Node }
 import v2.std.witness { Holds, Violates, Witness, optional_present_witness }
 
 // THE SCHEDULING CARRIERS ARE PARAMETRIC IN THEIR SUBJECT.
@@ -387,7 +387,7 @@ fn scheduler_plan(graph_node: Node) -> SchedulerPlan<Node> {
 // schedule `Node` and supply structural identity, so the binding of `S = Node` with `node_eq`
 // lives here once rather than at each call site.
 fn scheduler_node_eq(left: Node, right: Node) -> Bool {
-  left == right
+  node_same_occurrence(a: left, b: right)
 }
 
 fn runnable_frontier_from_dependencies(

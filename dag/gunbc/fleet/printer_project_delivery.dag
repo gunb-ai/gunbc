@@ -1,5 +1,8 @@
 module gunbc.fleet.printer_project_delivery
 
+import extdeps.crypto.sha2 { sha256_hex }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.decl_ref { decl_ref }
 import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer,session_credential,session_resolved_version}
 import std.types { NonEmptyStr, String, Bool, Secret, FilePath }
 import std.nat { Nat }
@@ -22,9 +25,13 @@ import gunbc.auth.materialized_secret {
   ensure_gunbc_private_materialization_dir,
 }
 import gunbc.auth.netrc_binding {
-  NetrcBinding, NetrcPlacement, NetrcBindingPlaced, NetrcBindingRefused,
-  NetrcBindingRefusedResidueRemains,
-  place_netrc_binding_privately, shred_netrc_binding, netrc_binding_path,
+  NetrcBinding, with_private_netrc_binding, netrc_binding_path,
+}
+import gunbc.auth.private_secret_file {
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
 }
 import extdeps.exec.command { CommandTransport }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -64,8 +71,14 @@ import gunbc.fleet.fleet_printer_access {
 // tree establishes the .3mf project format: there is no BambuProject type, and naming one here
 // would mint a format claim out of a filename. What IS known is that the machine consumes a file
 // and that this repository can identify the bytes it is sending. That is what the type says.
+// HOW THE FILE IS NAMED ON THE PRINTER. A start names it by its attempt, so two physical copies of
+// one prepared artifact are two printer-visible jobs and one copy's FINISH can never be read as the
+// other's; a transfer-only credential check names it by content alone.
+type PrintFileNaming = NamedByContent | NamedByAttempt { attempt: NonEmptyStr }
+
 type PrinterProjectPayload {
   local_path: NonEmptyStr
+  naming: PrintFileNaming
 }
 
 // THE CONTENT IDENTITY IS TAKEN FROM THE BYTES, NEVER ACCEPTED FROM THE CALLER.
@@ -108,6 +121,7 @@ type OwnedProjectRealization sole_constructor {
 type IdentifiedProjectPayload sole_constructor {
   realization: OwnedProjectRealization
   content: Digest
+  naming: PrintFileNaming
 }
 
 // IDENTIFICATION FAILS AFTER IT HAS ALREADY MATERIALIZED SOMETHING, which is why refusal here needs
@@ -189,6 +203,7 @@ fn identify_project_payload(payload: PrinterProjectPayload) -> PayloadIdentifica
                 payload: IdentifiedProjectPayload {
                   realization: OwnedProjectRealization { path: destination },
                   content: digest,
+                  naming: payload.naming,
                 },
               }
           }
@@ -207,8 +222,16 @@ fn remote_name_for_digest(content: Digest) -> NonEmptyStr {
   concat(concat("gunbc-", content.hex as String), ".3mf") as NonEmptyStr
 }
 
+fn remote_name_for_attempt(content: Digest, attempt: NonEmptyStr) -> NonEmptyStr {
+  concat(concat("gunbc-", sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: join([attempt as String, "/", content.hex as String], ""))))), ".3mf") as NonEmptyStr
+}
+
+fn remote_name_for(content: Digest, naming: PrintFileNaming) -> NonEmptyStr {
+  match naming { NamedByContent => remote_name_for_digest(content: content) NamedByAttempt { attempt: a } => remote_name_for_attempt(content: content, attempt: a) }
+}
+
 fn project_remote_name(payload: IdentifiedProjectPayload) -> NonEmptyStr {
-  remote_name_for_digest(content: payload.content)
+  remote_name_for(content: payload.content, naming: payload.naming)
 }
 
 // WHAT AN UPLOAD ESTABLISHED, STATED AT THE STRENGTH FTPS ACTUALLY OBSERVES.
@@ -636,12 +659,19 @@ fn refused_delivery(printer: PhysicalAssetIdentity, stderr: String, cleaned: Boo
   }
 }
 
+// TRANSFER-ONLY UPLOAD, a bounded exception to the actuation boundary: it proves a credential by an
+// authenticated FTPS transfer and never starts a job (a Bambu printer in LAN mode does not start on
+// upload). Its callers are the two credential runs named below and no other.
 fn deliver_project_to_printer(
   printer: PhysicalAssetIdentity,
   payload: IdentifiedProjectPayload,
   token_source: AccessTokenSource,
   materializations: List<VerifiedVersionForAttempt>,
 ) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_credential_migration_run", decl_name: "deliver_after_provisioning"),
+    decl_ref(module_path: "gunbc.fleet.printer_delivery_wet_run", decl_name: "run"),
+  ]
 {
   match printer_endpoint_address(printer: printer) {
     PrinterAddressUnknown { printer: p } =>
@@ -704,53 +734,80 @@ fn deliver_project_to_printer(
   }
 }
 
-fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery {
+// Upload ahead of a start: confined to gunbc.fleet.printer_actuation print_claimed_project.
+fn deliver_project_with_session(session:PrinterCredentialSession,payload:IdentifiedProjectPayload) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_actuation", decl_name: "print_claimed_project"),
+  ]
+{
  let printer=session_printer(s:session)
  match printer_endpoint_address(printer:printer) {
   PrinterAddressFound {address:a}=>transfer_with_credential(printer:printer,payload:payload,lan_address:a,credential:session_credential(s:session),credential_version:session_resolved_version(s:session))
   PrinterAddressUnknown {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressAmbiguous {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous") PrinterAddressWrongClass {printer:_}=>refuse_and_drop(printer:printer,payload:payload,cause:"Printer endpoint absent or ambiguous")
  }
 }
-fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery {
+fn transfer_with_credential(printer:PhysicalAssetIdentity,payload:IdentifiedProjectPayload,lan_address:NonEmptyStr,credential:Secret,credential_version:SmResolvedVersionIdentity) -> ProjectDelivery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.fleet.printer_project_delivery", decl_name: "deliver_project_to_printer"),
+    decl_ref(module_path: "gunbc.fleet.printer_project_delivery", decl_name: "deliver_project_with_session"),
+  ]
+{
           endpoint = bambu_lan_endpoint(host: lan_address)
-          match place_netrc_binding_privately(
+          match with_private_netrc_binding(
             machine: endpoint.host,
             login: bambu_lan_ftps_user,
-            password: credential
+            password: credential,
+            use: fn(binding) {
+              run_shell_command_capture(
+                command: project_upload_command(
+                  endpoint: endpoint,
+                  payload: payload,
+                  binding: binding
+                ),
+                transport: LocalExec
+              )
+            },
           ) {
-            NetrcBindingRefused { cause: cause } =>
+            PrivateSecretFileNotEntered { cause: cause } =>
               refuse_and_drop(printer: printer, payload: payload, cause: cause)
-            NetrcBindingRefusedResidueRemains { cause: cause } =>
+            PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
               refuse_and_drop_carrying(
                 printer: printer, payload: payload, cause: cause, residue_already: true)
-            NetrcBindingPlaced { binding: binding } => {
-            outcome = run_shell_command_capture(
-              command: project_upload_command(
-                endpoint: endpoint,
-                payload: payload,
-                binding: binding
-              ),
-              transport: LocalExec
-            )
-            let credential_shredded = shred_netrc_binding(binding: binding)
-            let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
-            let cleaned = credential_shredded && realization_removed
-            match outcome {
-              ProcessRefused { exit_code: _, stderr: stderr } =>
-                refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
-              ProcessOutputAbsent =>
-                delivered_receipt(
-                  printer: printer, payload: payload, endpoint: endpoint,
-                  credential_version: credential_version, cleaned: cleaned
-                )
-              ProcessOutputPresent { text: _ } =>
-                delivered_receipt(
-                  printer: printer, payload: payload, endpoint: endpoint,
-                  credential_version: credential_version, cleaned: cleaned
-                )
-            }
+            PrivateSecretFileCompleted { value: outcome } =>
+              settle_transfer(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version, outcome: outcome, credential_removed: true)
+            PrivateSecretFileCompletedResidueRemains { value: outcome } =>
+              settle_transfer(printer: printer, payload: payload, endpoint: endpoint, credential_version: credential_version, outcome: outcome, credential_removed: false)
           }
 }
+
+// THE TRANSFER'S OUTCOME, AFTER THE CREDENTIAL'S BRACKET HAS CLOSED. The netrc's removal is a fact the
+// bracket reports (credential_removed); the payload realization is removed here, and `cleaned` is
+// both, so a delivery that left either on disk is not reported clean.
+fn settle_transfer(
+  printer: PhysicalAssetIdentity,
+  payload: IdentifiedProjectPayload,
+  endpoint: FtpsEndpoint<PrinterUnverifiablePeerClass>,
+  credential_version: SmResolvedVersionIdentity,
+  outcome: ProcessOutcome,
+  credential_removed: Bool,
+) -> ProjectDelivery
+{
+  let realization_removed = shell.Remove.FileForce(path: payload.realization.path).success
+  let cleaned = credential_removed && realization_removed
+  match outcome {
+    ProcessRefused { exit_code: _, stderr: stderr } =>
+      refused_delivery(printer: printer, stderr: stderr, cleaned: cleaned)
+    ProcessOutputAbsent =>
+      delivered_receipt(
+        printer: printer, payload: payload, endpoint: endpoint,
+        credential_version: credential_version, cleaned: cleaned
+      )
+    ProcessOutputPresent { text: _ } =>
+      delivered_receipt(
+        printer: printer, payload: payload, endpoint: endpoint,
+        credential_version: credential_version, cleaned: cleaned
+      )
+  }
 }
 
 fn project_payload_digest(payload:IdentifiedProjectPayload) -> Digest {payload.content}

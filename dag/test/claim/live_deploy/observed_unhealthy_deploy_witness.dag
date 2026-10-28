@@ -36,11 +36,7 @@ module test.claim.live_deploy.observed_unhealthy_deploy_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, List, CommitSha, HttpStatus, http_status_of }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
-import std.operation_argv {
-  ArgvMaterialized,
-  ArgvMaterializationRefused,
-  operation_argv_bind_text,
-}
+import std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused, operation_argv_bind_text, shell_materialize_operation_argv }
 import extdeps.crypto.hash { Digest, sha256_digest }
 import std.optional { Present, Absent }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
@@ -148,6 +144,10 @@ fn desired_for(m: ConvergedMember) -> MemberIdentity {
     ServiceProcess => desired_process()
     DirectoryRoot { path: _ } => desired_executable()
     OidcConfigFile => desired_executable()
+    // WORKER-ROOT-EQUIVALENT-3: dedicated-worker members, never in this witness's release roster --
+    // total-and-unreached, beside the DirectoryRoot/OidcConfigFile rows.
+    GitWorkerSubtree { path: _, child: _ } => desired_executable()
+    RepositorySharedPosture { path: _ } => desired_executable()
   }
 }
 
@@ -164,6 +164,8 @@ fn incident_observed(m: ConvergedMember) -> ObservedMember {
     ServiceProcess => unhealthy_process_observed()
     DirectoryRoot { path: _ } => MemberObserved { identity: desired_for(m: m) }
     OidcConfigFile => MemberObserved { identity: desired_for(m: m) }
+    GitWorkerSubtree { path: _, child: _ } => MemberObserved { identity: desired_for(m: m) }
+    RepositorySharedPosture { path: _ } => MemberObserved { identity: desired_for(m: m) }
   }
 }
 
