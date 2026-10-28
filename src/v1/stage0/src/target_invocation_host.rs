@@ -423,13 +423,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("v2-native-census-scoped"),
             TargetProducer::V2NativeCensus {
                 reading: V2NativeCensusReading::ScopedRefusalCensus {
-                    subject: &[
-                        "v2",
-                        "test",
-                        "claim",
-                        "parse",
-                        "expression_bodied_fn_decl_parse",
-                    ],
+                    subject: &["v2", "workflow", "roster_import_sweep"],
                 },
             },
         ),
