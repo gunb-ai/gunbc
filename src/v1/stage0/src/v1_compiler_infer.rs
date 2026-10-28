@@ -16908,6 +16908,302 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                         )) {
                         Rc::new(vec![])
                     } else {
+                        {
+                            // BK381 r10 (rm-diag3, NOT FOR MERGE): decision-chain dump at the ONE
+                            // join-refusal site, purely additive. Derives the route from the join
+                            // entry down (node_type_compatible's branch order), each stage computed
+                            // from this head's own pub helpers.
+                            fn bk381_shape(n: &Rc<Node>, d: usize) -> String {
+                                if d > 3 {
+                                    return "...".to_string();
+                                }
+                                let kids = n
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .map(|c| bk381_shape(c, d + 1))
+                                    .collect::<Vec<String>>()
+                                    .join(",");
+                                let inf = match n.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: r, .. }) => {
+                                        format!("R({})", r.name.clone())
+                                    }
+                                    Some(InferredNode::TypeVariable { id: id, .. }) => {
+                                        format!("TV({})", id)
+                                    }
+                                    _ => "-".to_string(),
+                                };
+                                format!(
+                                    "{}[c={:?} sp={}:{}..{} inf={} kids={}]",
+                                    n.name.clone(),
+                                    n.connective.clone(),
+                                    n.span.file.clone(),
+                                    n.span.start,
+                                    n.span.end,
+                                    inf,
+                                    kids
+                                )
+                            }
+                            let path = std::env::var("BK381_LOG")
+                                .unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(
+                                    f,
+                                    "BK381-JOIN then={} | ELSE={}",
+                                    bk381_shape(&then_rt.clone(), 0),
+                                    bk381_shape(&else_rt.clone(), 0),
+                                );
+                                let si = scope.type_env.source_indices.clone();
+                                let tj = Rc::new(TextJudgedIn {
+                                    env: scope.type_env.clone(),
+                                });
+                                // Branch order of node_type_compatible at THIS head, evaluated
+                                // for the refused pair; 'hit' names the branch that decides.
+                                let is_err = |n: &Rc<Node>| -> bool {
+                                    match n.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::CompilerError { .. }) => true,
+                                        _ => false,
+                                    }
+                                };
+                                let is_tv = |n: &Rc<Node>| -> bool {
+                                    match n.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::TypeVariable { .. }) => true,
+                                        _ => false,
+                                    }
+                                };
+                                let lerr = is_err(&then_rt);
+                                let rerr = is_err(&else_rt);
+                                let ltv = is_tv(&then_rt);
+                                let rtv = is_tv(&else_rt);
+                                let lopt = then_rt.return_cardinality.clone()
+                                    == crate::v1_std_core::Cardinality::CardOptional;
+                                let ropt = else_rt.return_cardinality.clone()
+                                    == crate::v1_std_core::Cardinality::CardOptional;
+                                let lu =
+                                    crate::v1_compiler_infer_types::is_unit_like(then_rt.clone());
+                                let ru =
+                                    crate::v1_compiler_infer_types::is_unit_like(else_rt.clone());
+                                let crossing =
+                                    crate::v1_compiler_infer_types::text_crossing_in_judgment(
+                                        then_rt.clone(),
+                                        else_rt.clone(),
+                                        tj.clone(),
+                                    );
+                                let larrow = then_rt.connective.clone()
+                                    == crate::v1_std_core::Connective::Arrow;
+                                let rarrow = else_rt.connective.clone()
+                                    == crate::v1_std_core::Connective::Arrow;
+                                let col_t =
+                                    crate::v1_compiler_infer_types::node_is_element_collection(
+                                        then_rt.clone(),
+                                        si.clone(),
+                                    );
+                                let col_e =
+                                    crate::v1_compiler_infer_types::node_is_element_collection(
+                                        else_rt.clone(),
+                                        si.clone(),
+                                    );
+                                let canon_t =
+                                    crate::v1_compiler_infer_types::canonical_template_name(
+                                        then_rt.clone(),
+                                        si.clone(),
+                                    );
+                                let canon_e =
+                                    crate::v1_compiler_infer_types::canonical_template_name(
+                                        else_rt.clone(),
+                                        si.clone(),
+                                    );
+                                let an_t = crate::v1_std_core::authored_name_at(
+                                    si.clone(),
+                                    then_rt.clone(),
+                                );
+                                let an_e = crate::v1_std_core::authored_name_at(
+                                    si.clone(),
+                                    else_rt.clone(),
+                                );
+                                let alias_spel_t = crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
+                                    an_t.clone(),
+                                );
+                                let alias_spel_e = crate::v1_compiler_infer_types::is_declared_container_alias_spelling(
+                                    an_e.clone(),
+                                );
+                                let ai = crate::v1_compiler_infer_types::alias_identity_in_judgment(
+                                    then_rt.clone(),
+                                    else_rt.clone(),
+                                    si.clone(),
+                                    tj.clone(),
+                                );
+                                let st_t = crate::v1_compiler_infer_env::settled_type(
+                                    then_rt.clone(),
+                                    si.clone(),
+                                    scope.type_env.clone(),
+                                    16,
+                                );
+                                let st_e = crate::v1_compiler_infer_env::settled_type(
+                                    else_rt.clone(),
+                                    si.clone(),
+                                    scope.type_env.clone(),
+                                    16,
+                                );
+                                let st_txt = |x: &Option<
+                                    Rc<crate::v1_compiler_infer_env::SettledType>,
+                                >|
+                                 -> String {
+                                    match x {
+                                        Some(s0) => {
+                                            let args_txt = s0
+                                                .args
+                                                .clone()
+                                                .iter()
+                                                .map(|a| {
+                                                    crate::v1_std_core::authored_name_at(
+                                                        si.clone(),
+                                                        a.clone(),
+                                                    )
+                                                })
+                                                .collect::<Vec<String>>()
+                                                .join("+");
+                                            format!(
+                                                "Settled(head={}.{} field={:?} args=[{}])",
+                                                s0.head.module_path.clone(),
+                                                s0.head.decl_name.clone(),
+                                                s0.head.field.clone(),
+                                                args_txt
+                                            )
+                                        }
+                                        None => "Unsettled".to_string(),
+                                    }
+                                };
+                                // Which branch of node_type_compatible decides false, in ITS order.
+                                let hit = if lerr || rerr {
+                                    "err-true"
+                                } else if ltv || rtv {
+                                    "tv-true"
+                                } else if crossing {
+                                    "crossing-false"
+                                } else if lopt && ru {
+                                    "opt-unit-true"
+                                } else if lu && ropt {
+                                    "unit-opt-true"
+                                } else if larrow && rarrow {
+                                    "arrow"
+                                } else if col_t && col_e {
+                                    if canon_t.clone() != canon_e.clone() {
+                                        "canon-differ-false"
+                                    } else {
+                                        "container-descend"
+                                    }
+                                } else if (canon_t.clone() == canon_e.clone())
+                                    && (an_t.clone() != an_e.clone())
+                                    && ((then_rt.children.clone().len() as i64) == 1)
+                                    && ((else_rt.children.clone().len() as i64) == 1)
+                                    && (alias_spel_t || alias_spel_e)
+                                {
+                                    "container-alias-descend"
+                                } else if lopt && ropt {
+                                    "both-opt-descend"
+                                } else if (lopt
+                                    && crate::v1_compiler_infer_types::optional_instance_at_payload_of(
+                                        then_rt.clone(),
+                                        else_rt.clone(),
+                                        si.clone(),
+                                    ))
+                                    || (ropt
+                                        && crate::v1_compiler_infer_types::optional_instance_at_payload_of(
+                                            else_rt.clone(),
+                                            then_rt.clone(),
+                                            si.clone(),
+                                        ))
+                                {
+                                    "opt-instance-true"
+                                } else if lopt || ropt {
+                                    "one-opt-false"
+                                } else if crate::v1_std_core::type_name_compatible(
+                                    an_t.clone(),
+                                    an_e.clone(),
+                                ) {
+                                    "name-true"
+                                } else if ai {
+                                    "alias-identity-true"
+                                } else {
+                                    "name+alias-FALSE"
+                                };
+                                let _ = writeln!(
+                                    f,
+                                    "BK381-STAGES hit={} lerr={} rerr={} ltv={} rtv={} crossing={} lopt={} ropt={} larrow={} rarrow={} col_then={} col_else={} canon_then={} canon_else={} alias_spel_then={} alias_spel_else={} alias_agree={} settled_then={} settled_else={}",
+                                    hit,
+                                    lerr,
+                                    rerr,
+                                    ltv,
+                                    rtv,
+                                    crossing,
+                                    lopt,
+                                    ropt,
+                                    larrow,
+                                    rarrow,
+                                    col_t,
+                                    col_e,
+                                    canon_t,
+                                    canon_e,
+                                    alias_spel_t,
+                                    alias_spel_e,
+                                    ai,
+                                    st_txt(&st_t),
+                                    st_txt(&st_e),
+                                );
+                                // The container pair's ELEMENT read at the descending branch:
+                                // child_type_node of each first child, and its settled form.
+                                if (col_t && col_e)
+                                    || ((col_t != col_e) && (alias_spel_t || alias_spel_e))
+                                {
+                                    let then_elem = then_rt
+                                        .children
+                                        .clone()
+                                        .first()
+                                        .cloned()
+                                        .unwrap_or_else(|| then_rt.clone());
+                                    let else_elem = else_rt
+                                        .children
+                                        .clone()
+                                        .first()
+                                        .cloned()
+                                        .unwrap_or_else(|| else_rt.clone());
+                                    let ce_t = crate::v1_compiler_infer_types::child_type_node(
+                                        then_elem.clone(),
+                                    );
+                                    let ce_e = crate::v1_compiler_infer_types::child_type_node(
+                                        else_elem.clone(),
+                                    );
+                                    let st_ce_t = crate::v1_compiler_infer_env::settled_type(
+                                        ce_t.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let st_ce_e = crate::v1_compiler_infer_env::settled_type(
+                                        ce_e.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let _ = writeln!(
+                                        f,
+                                        "BK381-ELEMENT then_ch={} child_node={} st={} | else_ch={} child_node={} st={}",
+                                        bk381_shape(&then_elem, 1),
+                                        bk381_shape(&ce_t, 1),
+                                        st_txt(&st_ce_t),
+                                        bk381_shape(&else_elem, 1),
+                                        bk381_shape(&ce_e, 1),
+                                        st_txt(&st_ce_e),
+                                    );
+                                }
+                            }
+                        }
                         Rc::new(vec![inference_error(
                             v1_rt::concat(
                                 v1_rt::concat(
