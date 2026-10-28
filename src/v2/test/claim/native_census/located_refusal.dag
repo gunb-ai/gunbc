@@ -94,7 +94,13 @@ data planted_ingest: SourceRootIngest = Cons {
       head: planted_read(source: resolve_miss_source, unit: ^cl_resolve_miss_cu, path: "fixtures/census_located_refusal/v2/cl/resolve_miss.dag"),
       tail: Cons {
         head: planted_read(source: infer_miss_source, unit: ^cl_infer_miss_cu, path: "fixtures/census_located_refusal/v2/cl/infer_miss.dag"),
-        tail: Empty
+        tail: Cons {
+          head: planted_read(source: two_unbound_source, unit: ^cl_two_unbound_cu, path: "fixtures/census_located_refusal/v2/cl/two_unbound.dag"),
+          tail: Cons {
+            head: planted_read(source: accepted_source, unit: ^cl_accepted_cu, path: "fixtures/census_located_refusal/v2/cl/accepted.dag"),
+            tail: Empty
+          }
+        }
       }
     }
   }
@@ -287,7 +293,7 @@ test fn census_resolve_refused_row_carries_its_first_refusal_holds() -> Bool {
     LocatedCensusReported {
       resolve_at: _, infer_at: _, collide_b_at: _,
       two_unbound_first_refusal: refusal, two_unbound_unreached_row: row,
-      accepted_first_refusal: _, accepted_inferred: _, accepted_unreached_row: _
+      accepted_first_refusal: _, accepted_inferred: _, accepted_rows: _
     } =>
       match refusal {
         Absent => false
