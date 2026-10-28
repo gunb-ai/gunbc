@@ -9,9 +9,9 @@ The brief's premises were checked rather than assumed, and two of them did not s
 
 | Claim | Verdict | Evidence |
 |---|---|---|
-| The BMC's NFS server is `192.168.1.188` | **already false in the corpus** | `mtcollins1_media_share.server_address` renders `srv2_lan_ipv4`, and that row is `192.168.1.201` (gunbc/fleet/fleet_reach.dag:20-42). `.188` survives only as a historical note (fleet_intent_network.dag:250). |
-| "no image available to attach" is the firmware's refusal | **false — it is our own string** | Appears nowhere in the firmware bundle and nowhere in the BMC's served assets. It is our diagnostic at gunbc/machine_intake/megarac_media_attach.dag:887-891 ("the image is not presented AND the controller offers no image available to attach"). So the refusal at that boot was produced by OUR gate; "the share points at a dead IP" is a hypothesis, not a reading of that string. |
-| The boot converges `media/general` from `mtcollins1_media_share` | **false — it only READS it** | `megarac_op_media_config` (PUT /api/settings/media/general, extdeps/bmc/megarac.dag:93-97) has ZERO users outside its own module; `megarac_media_general_put_body` and `megarac_media_general_document` have zero producers. The share row is consumed only as the EXPECTED value of a read-compare (megarac_media_attach.dag:398-410) whose disagreement yields `ShareMismatch` and a refusal before attach (:2255, :2291). Editing the row changes what we REQUIRE the controller to already say — it writes nothing. |
+| The BMC's NFS server is `192.168.1.188` | **already false in the corpus** | `mtcollins1_media_share` (gunbc/machine_intake/mtcollins1_boot_run.dag) renders `srv2_lan_ipv4` (gunbc/fleet/fleet_reach.dag), and that row is `192.168.1.201`. The `.188` spelling survives only as a captured receipt: `share_as_of_2026_09_27` (test/claim/machine_intake/megarac_media_convergence_witness.dag), a `MegaRacShareBinding` recording what the controller said on 2026-09-27. |
+| "no image available to attach" is the firmware's refusal | **false — it is our own string** | Appears nowhere in the firmware bundle and nowhere in the BMC's served assets. It is our diagnostic, produced by `media_attach_outcome_reason` (gunbc/machine_intake/megarac_boot_diagnostic_bundle.dag) — "the image is not presented AND the controller offers no image available to attach". So the refusal at that boot was produced by OUR gate; "the share points at a dead IP" is a hypothesis, not a reading of that string. |
+| The boot converges `media/general` from `mtcollins1_media_share` | **false — it only READS it** | `megarac_op_media_config` (PUT /api/settings/media/general, extdeps/bmc/megarac.dag) has ZERO users outside its own module; `megarac_media_general_put_body` and `megarac_media_general_document` have zero producers. The share row is consumed only as the EXPECTED value of the read-compare in `share_binding_standing` (gunbc/machine_intake/megarac_media_attach.dag), whose disagreement yields `ShareMismatch`, consumed by `presentation_still_served` (same module) to refuse before attach. Editing the row changes what we REQUIRE the controller to already say — it writes nothing. |
 | The LAN name resolves | **true, read at the authority** | Direct UDP query to 192.168.1.1:53, not a cache: `srv2.mynetworksettings.com` → rcode 0, one A record `192.168.1.201`. |
 | MegaRAC accepts a hostname in `cd_remote_server_address` | **true, FQDN only — and this is the load-bearing finding** | See below. |
 
@@ -45,7 +45,8 @@ fully-qualified name. Three consequences, all modelled in gunbc/host/host_name_r
 1. A hostname **is** accepted, so the operator ruling (no IP reliance) is achievable without a DHCP
    reservation — the fallback in the brief is not needed.
 2. A **single label is refused**. `srv2` is not a usable value for this field, only the FQDN. Any
-   migration that "simplifies" the share to the short name breaks the boot.
+   migration that "simplifies" the share to the short name breaks the boot. Carried in the corpus as
+   `megarac_media_address_rule` and its `minimum_labels`, which the share gate consults.
 3. The firmware accepts IPs too, so firmware behaviour cannot enforce the ruling. Enforcement belongs
    on the authorable side — which is what `ResolvableName` is.
 
@@ -56,38 +57,48 @@ The controller's network settings do have a DNS surface (bundle identifiers: `dn
 `settings/network/dns` DnsSettings surface), so DNS is configurable — consistent with the brief's
 premise that a resolver must be named.
 
-**What it is currently set to is unverified, and that blocks the cutover.** `extdeps/bmc/megarac.dag`
+**What it is currently set to is unverified, and that blocks the cutover.** `extdeps.bmc.megarac`
 models only `/api/session`, `/api/settings/media/*`, `/api/fan_control/*` — there is no modelled
 network/DNS read. And this container holds no BMC credentials (no BMC/mtcollins/srv/nfs/password
 environment variables, no credential artifact under artifacts/bmc/, and the credential store is itself
-refused-as-of-today at dispatch_credential_acquisition.dag:98). So the DNS server list could not be
+refused-as-of-today — see `credential_acquisition_slots_path`, gunbc/dispatch_credential_acquisition.dag).
+So the DNS server list could not be
 read, and per DESIGN §4d it is not assumed to be 192.168.1.1. **If it is empty, an FQDN in the share
 field cannot resolve and attach fails again** — a name the controller cannot resolve is the
 controller's dependency, not ours.
 
 ## The other reads
 
-* `srv3.mynetworksettings.com` → **NXDOMAIN**, while srv3 holds a standing lease at 192.168.1.192
-  (fleet_reach). An address exists and a name does not — the state that made this failure possible.
-  No LAN name row for srv3 is filed, because there is no observation to cite.
+* `srv3.mynetworksettings.com` → **NXDOMAIN**, while srv3 has a LAN address row, `srv3_lan_ipv4`
+  (gunbc/fleet/fleet_reach.dag). An address exists and a name does not — the state that made this
+  failure possible, in a second host. No LAN name row for srv3 is filed, because there is no
+  observation to cite. (Its BMC at `192.168.1.192` is a different interface — see
+  `srv3_baseboard.bmc` in gunbc/fleet/fleet_intent.dag — and is not this host's LAN address.)
 * `srv2.tailecbe08.ts.net` → **NXDOMAIN at the router**. The tailnet name is not LAN-resolvable, which
   is why "Tailscale names are acceptable for now" cannot be applied to the BMC leg: the mtcollins1
-  controller is not a tailnet member. Fleet SSH and ops may use it; the BMC may not.
-* BMC 192.168.1.228 is up and answering (200 on `/`). srv2 at 192.168.1.201 answers nothing on 80/tcp
-  from here (connection refused/timeout) — expected, and not a name question.
+  controller is not a tailnet member — carried as `megarac_bmc_tailnet_membership`
+  (`NotOnTailnet`, gunbc/host/host_name_resolution.dag), so the claim has a carrier and a date rather
+  than living only in this sentence. Fleet SSH and ops may use the tailnet name; the BMC may not.
+* BMC 192.168.1.228 is up and answering (200 on `/`). srv2 at `srv2_lan_ipv4` answers nothing on
+  80/tcp from here (connection refused/timeout) — expected, and not a name question.
 
 ## What was built as a result, and what deliberately was not
 
 Built (gunbc/host/host_name_resolution.dag, extdeps/dns/resolver.dag, and their witnesses): the
-name-vs-address boundary (`ResolvableName` refuses an IP literal), the two typed name spaces with
-cited observations, and the pre-attach share gate that refuses an unresolvable name — the check whose
-absence is why this was discovered at attach instead of at authoring.
+name-vs-address boundary (`ResolvableName` refuses an IP literal), the two typed name spaces
+(`NameSpace.Lan` / `NameSpace.Tailnet`, each carrying a parsed `Zone` rather than a domain string),
+the cited observation rows (`ResolutionObservation`, `TailnetMembership`), and the pre-attach share
+gate `media_share_address_gate` that refuses an unresolvable name — the check whose absence is why
+this was discovered at attach instead of at authoring. Why each space exists is recorded as comments
+on its arms, not as a field: review 87164 (DESIGN §4c) ruled out the earlier `why: String`.
 
 Deliberately **not** done, per manager ruling msg_10f4c58a:
 * The share row is **not** changed to the FQDN, and the gate is **not** wired into
   `megarac_observe_boot_presentation`. Wiring it while the controller still holds the address would
   turn a passing share check into a refusal mid-boot-series. The row change and the one-time
-  `media/general` PUT land together, after the BMC's DNS server setting is read.
+  `media/general` PUT (`megarac_op_media_config`, extdeps/bmc/megarac.dag) land together, after the
+  BMC's DNS server setting is read. Declared as `media_share_name_cutover` with a bound
+  `DissolutionCondition` trigger rather than as prose.
 * No BMC or host write of any kind.
 
 ## The IP-literal audit (work item step 2)
@@ -102,32 +113,32 @@ identity, several typed resolutions, no nicknames.
 
 | Row | Value | Why an address is the right type here |
 |---|---|---|
-| fleet_intent_network.dag:57 | cidr `192.168.1.0/24` | A prefix is not a host. `NetworkSegment` in the replacement cut (gunbc/endpoint_authority_replacement_cut.dag:96) models it as `CidrAddress`, correctly. |
-| fleet_intent_network.dag:58 | gateway `192.168.1.1` | A next-hop, consumed by netplan. Identity would be wrong: the gateway is whatever the router is, and the route needs the number. |
-| roadmap_dashboard_instance.dag | listen_host `127.0.0.1`, `0.0.0.0` | A bind address. `0.0.0.0` means "every interface"; no name means that. |
-| fleet_intent_network.dag:64-70 | docker bridge `172.17.0.0/16`, `172.18.0.0/16` | Prefixes on an ephemeral bridge. |
+| `operator_lan_segment.cidr` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.0/24` | A prefix is not a host. `NetworkSegment` (gunbc/product/network_topology.dag) models `cidr` as `NonEmptyStr`; the replacement cut (gunbc/endpoint_authority_replacement_cut.dag) models it as `CidrAddress`, correctly. |
+| `operator_lan_segment.gateway` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.1` | A next-hop, consumed by netplan. Identity would be wrong: the gateway is whatever the router is, and the route needs the number. |
+| `operator_docker_bridge_default_segment` (gunbc/fleet/fleet_intent_network.dag) | `172.17.0.0/16`, `172.18.0.0/16` | Prefixes on an ephemeral bridge. |
+| `router_address` (gunbc/host/host_name_resolution.dag) | `192.168.1.1` | Declared here because it is a wire value — the resolver a cited probe queried and the server every `ResolutionCause` names — and nothing else in the corpus carries it. |
 
-### Debt: a literal naming a host, by the consumer's leg
+### Host identity by IP: the debt, by consumer leg
 
-| Row | Value | Consumer leg | Name space it needs |
+Each entry states the NAME SPACE its consumer must resolve in, and why that space and not another.
+Two rules decide it: an operator or fleet tool that reaches a host over the VPN should resolve the
+TAILNET space; a BMC-side leg resolves the LAN space, because the BMC is not a tailnet member.
+
+| Row | Value today | Consumer's leg | Should be |
 |---|---|---|---|
-| **mtcollins1_boot_run.dag:216** `mtcollins1_media_share.server_address` | renders `srv2_lan_ipv4` | **BMC dials NFS** | **LAN** — the controller is not a tailnet member; needs `srv2.mynetworksettings.com` and the controller's DNS server read. This is the row the work item turns on. |
-| mtcollins1_access_observation.dag:50 `mtcollins1_endpoint.host` | `192.168.1.228` | operator/fleet dials the BMC | LAN (the BMC *is* the LAN device; its own name would come from the router, and today the router has no name for it — unverified, so unfiled) |
-| mtjade1_access_observation.dag:611; supermicro_h11ssl_unit_observation.dag:129,179; supermicro_h11ssl_first_contact.dag:137 | `192.168.1.246`, `.254`, `.252` | fleet dials BMCs | LAN, same shape as above |
-| fleet_intent.dag:275-295 `BmcEndpoint.host` | `.183 .184 .192 .195 .247` | fleet dials BMCs via Redfish | LAN |
-| fleet_intent_network.dag:77-261 `NetworkEndpoint.address` | 14 LAN literals + 2 `100.x` | topology/inventory | LAN for the `192.168.x` rows; the `100.69.18.126`/`100.73.169.40` rows are tailnet addresses and belong to the tailnet space |
-| boot_medium.dag:30 `bmc_boot_image_export.target` | **already a name** (`host_by_name`, srv2) | fleet SSHes to srv2 | The name space is **unverified here** — the spelling is the bare host, resolved by whatever stub the calling host runs (tailnet in practice, but not measured from this container, so this row does not claim which). What it establishes is the shape: a name where the share row has a number, which is the precedent the share should follow. It is `PartiallyQualified`, which the resolution admission refuses for a *resolution row* — correct there (an SSH target may ride the local search list; a resolution row must state the answer it expects). |
+| `srv2_host_lan_endpoint.address`, `srv2_bmc_endpoint.address`, `srv2_tailscale_endpoint.address` (gunbc/fleet/fleet_intent_network.dag) | `192.168.1.201`, `192.168.1.195`, `100.73.169.40` | one host, three typed resolutions | The pattern DESIGN §3 wants is already here: ONE `subject` (an `EndpointHost` over a `HostIdentity`) and three typed resolutions over three paths, with no nickname. Same shape is wanted for the LAN address — a LAN resolution row, not an address in a field called address. Note `srv2_tailscale_endpoint.address` carries a CGNAT address while its label says tailscale: the label is a nickname, which §3 rules out. |
+| `srv3_baseboard.bmc`, and the four sibling baseboards (gunbc/fleet/fleet_intent.dag) | `BmcEndpoint.host`: `192.168.1.183`, `.184`, `.192`, `.195`, `.247` | a BMC reachable from the LAN | A LAN FQDN, paired with a DNS server on each BMC. This is the fleet-wide version of the mtcollins1 defect: the BMC is already told to reach hosts by number. `BmcEndpoint` (gunbc/fleet/fleet_intent.dag) carries `host: NonEmptyStr` — a string, with no name-vs-address boundary. |
+| `srv2_lan_reach_host` (gunbc/fleet/fleet_reach.dag) | via `srv2_lan_ipv4` = `192.168.1.201` | SSH jump through srv2 to srv3 | A LAN name: SSH re-resolves, so the row survives a DHCP move. `Reach` today can name only an address, which is why "the jump works" and "the jump will work tomorrow" are different facts here. Fleet ops should prefer the tailnet path, which `srv3_reach_fabric_intended` models as a tunnel (no address at all). |
+| `supermicro_h11ssl_unit_readings[].bmc_address` (gunbc/machine_intake/supermicro_h11ssl_unit_observation.dag), `supermicro_h11ssl_first_contact_receipt.bmc_address` (gunbc/machine_intake/supermicro_h11ssl_first_contact.dag) | `192.168.1.254`, `192.168.1.252` | Redfish read from the LAN | A LAN FQDN, with the BMC's DNS server cited. Same consumer leg as mtcollins1's media share. The 254.254.254.0 entry in fleet_intent_network's docker-bridge rows is a MASK, not a host, and stays a number. |
+| `mtjade1_firmware_family_standing()` capture path (gunbc/machine_intake/mtjade1_access_observation.dag) | `.246` inside a captured-JSON path | an observation's provenance | Leave it, and say why: a capture path is a receipt naming the address the observation was taken FROM. Rewriting history to a name would make the receipt unverifiable, which is the opposite of §4d. |
+| `bmc-mtcollins1` endpoint row (gunbc/machine_intake/mtcollins1_access_observation.dag) | `192.168.1.228` | the BMC this item exists for | A LAN FQDN. The row is also the only place the BMC's own name is spelled, so its name belongs in a `HostNameResolution` row and the observation should reference the host, not the number. |
+| `mtcollins1_media_share.server_address` (gunbc/machine_intake/mtcollins1_boot_run.dag) | `render_ipv4_address(addr: srv2_lan_ipv4)` | the BMC's NFS mount | `srv2.mynetworksettings.com`, gated by `media_share_address_gate`, with readback. The ONLY row on this list that blocks a boot today. Lands paired with the one-time `media/general` PUT (`megarac_op_media_config`, extdeps/bmc/megarac.dag) — declared in `media_share_name_cutover`, not done here. |
 
-`fleet_reach` already holds srv2's three resolutions side by side (`srv2_lan_ipv4`, `srv2_tailscale_ipv4`,
-`srv2_tailscale_fqdn`), which is the shape DESIGN §3 wants; what it lacks is a **LAN name** beside the LAN
-address, and that absence is exactly why the share could only be authored as a number.
+Not debt, and deliberately left: `apps/dashboard/.env` (127.0.0.1, 0.0.0.0 — bind addresses); the
+docker bridge prefixes above; the 255.255.255.0/255.255.0.0 netmasks; the two capture paths; and the
+`192.168.1.192` BMC row, which is a second interface on a host whose LAN name is the thing missing.
 
-### What this audit is NOT
-
-No row above is changed by this PR. Re-typing `NetworkEndpoint.address` to `IpAddress` and
-`NetworkSegment` to `CidrAddress` is already planned and owned elsewhere
-(gunbc/plans/fleet_naming_reach_access.dag:85-97, whose `replacement_cut` names the root
-`gunbc.endpoint_authority_replacement_cut`); the two `fleet_reach_endpoint.dag` literals are an
-external provider's public addresses, not host identities, and the tailscale/acl and rfc_5280 literals are
-protocol fixtures. Restating those as debt here would be a second authority over a debt already tracked
-(DESIGN §2), so they are named once and left alone.
+Already done elsewhere, and not restated here: the router-endpoint authority replacement is tracked by
+`endpoint_authority_cut_identity` (gunbc/endpoint_authority_replacement_cut.dag), and the reach/naming
+ruling by `ruling_names` (gunbc/plans/fleet_naming_reach_access.dag). This document adds only the BMC
+and media-share rows those do not cover.

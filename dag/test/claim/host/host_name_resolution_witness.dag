@@ -27,7 +27,7 @@ module test.claim.host.host_name_resolution_witness
 
 import std.types { String, Bool, List, NonEmptyStr, Present, Absent, list_length }
 import std.process { ProcessExit }
-import std.algebra { Cons, Empty, FreeSemigroup, non_empty_singleton, non_empty_append }
+import std.algebra { Cons, Empty, FreeSemigroup, non_empty_singleton, non_empty_append, string_contains }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 import extdeps.dns.resolver {
   Resolver,
@@ -87,6 +87,10 @@ import gunbc.host.host_name_resolution {
   megarac_media_address_rule,
   media_share_address_gate,
   media_share_name_cutover,
+  NotOnTailnet,
+  TailnetMember,
+  megarac_bmc_tailnet_membership,
+  is_not_on_tailnet,
   router_address,
   srv2_lan_name,
   srv2_tailnet_name_refused,
@@ -932,7 +936,7 @@ test fn two_lan_rows_with_different_zones_are_not_the_same_space() -> Bool {
 
 fn other_lan_space() -> NameSpace? {
   match zone_admit(raw: "otherlab.example") {
-    ZoneAdmitted { zone: z } => Present { value: Lan { why: "witness: a second LAN row, to show the zone is the fact that decides", zone: z } }
+    ZoneAdmitted { zone: z } => Present { value: Lan { zone: z } }
     ZoneRefused { raw: _ } => Absent
   }
 }
@@ -1003,6 +1007,27 @@ test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bo
     HostNameResolutionRefused { host: h, refusal: NoReaderForSpace { space: _ } } => host_identity_eq(a: h, b: "srv2")
     HostNameResolutionAdmitted { resolution: _ } => false
   }
+}
+
+// THE BMC'S TAILNET MEMBERSHIP IS A READ RECEIPT, NOT A SENTENCE (review 87164, §4c). The old `why` field
+// carried "is not a tailnet member" as prose that nothing read, so it could rot unnoticed. It is now a
+// two-arm receipt with a date and a reader, and THIS claim reads the row: if the observation stops being the
+// not-on-tailnet arm, or its citation is edited away, the claim goes red — which is the difference between a
+// fact that can decay and one a reader can trust. The other arm is read separately to show the row is not
+// claiming it: the arms are different facts, not two spellings of one, so there is no Bool behind them.
+test fn the_bmc_membership_row_records_the_observed_not_on_tailnet_receipt() -> Bool {
+  match megarac_bmc_tailnet_membership {
+    // The arm that licenses refusing a tailnet-filed share: not-on-tailnet, WITH its citation attached.
+    NotOnTailnet { observed_on: d, reader: r } =>
+      (d as String) == "2026-10-27" && string_contains(s: r as String, pattern: "192.168.1.1")
+    TailnetMember { observed_on: _, reader: _ } => false
+  }
+    // The other arm read on its own, to show this row does not silently mean both: it is a constructible
+    // fact with its own fields, and nothing here derives it from the row above.
+    && (match TailnetMember { observed_on: "2026-10-27", reader: "hypothetical" as NonEmptyStr } {
+      TailnetMember { observed_on: d, reader: r2 } => (d as String) == "2026-10-27" && (r2 as String) == "hypothetical"
+      NotOnTailnet { observed_on: _, reader: _ } => false
+    })
 }
 
 // THE CONFIGURED ZONES PARSE. A space whose zone string did not parse would silently have no rows at all —

@@ -201,49 +201,71 @@ fn tailnet_zone() -> Zone? {
 
 // ── THE NAME SPACE ───────────────────────────────────────────────────────────────────────────
 
-// WHICH RESOLUTION A SPELLING BELONGS TO. Every consumer names one, and every arm carries the reason it is
-// legal for the field that names it (`why`), so the row states its authority rather than leaving a reader
-// to infer it from a domain suffix they cannot see. The `zone` is DATA in the arm, not a constant behind a
-// function: which suffix a space answers for is configuration, and §6b says a new ordinary case is a row,
-// not a branch — a third space is added by adding an arm with its own zone and its own reason, not by
-// editing a match somewhere else.
+// WHICH RESOLUTION A SPELLING BELONGS TO, as a closed set of arms carrying the CONFIGURATION that decides
+// the question. There is no `why` field. An earlier draft carried one English sentence per arm, and nothing
+// read it — `space_zone` and every other match bound `why: _`. That is §4c's "a `String` declaration whose
+// only purpose is commentary": the sentence sat in the program, could not be checked, could not be kept
+// honest, and aged into something a reader trusted without anyone having to prove it. `//` is the quarantine
+// boundary, so the rationale lives here and the arms carry only what a consumer can match.
+//
+// WHY THERE ARE EXACTLY TWO, and why a consumer may not add one by editing this type: the fleet has two
+// paths, and the `zone` is the fact that makes them different — which suffix a space answers for is
+// configuration carried IN the arm (§6b: a new ordinary case is data). A third space, the out-of-band lab
+// net reached via `srv2-asoc`, is deliberately absent: the BMC's OOB interface is disabled, the router
+// answers rcode 3 for that hostname, and the primary-network lane owns the NIC. Modelling it would claim a
+// zone no citation shows exists (§4d).
 type NameSpace
-  = Lan { why: String, zone: Zone }
-  | Tailnet { why: String, zone: Zone }
+  // THE ROUTER'S ZONE. RATIONALE (comment, not data): the BMC is not on the tailnet, so it has no daemon to
+  // ask and no route to the tailnet resolver; the router at `router_address` below is the server it was given,
+  // so the router's answers are what its stub resolver will see. Measured 2026-10-27 by direct UDP query to
+  // that address, bypassing this container's cache.
+  = Lan { zone: Zone }
+  // MAGICDNS, over the VPN path. RATIONALE (comment, not data): fleet SSH and operations ride the tunnel,
+  // where MagicDNS answers; a LAN address there would pin a row to a switch and a netplan file, which is
+  // exactly how srv2's old 10G address was deleted under a BMC row that named it.
+  | Tailnet { zone: Zone }
 
 // THE ZONE OF A SPACE, read from the row rather than from a table this module keeps.
 fn space_zone(space: NameSpace) -> Zone {
   match space {
-    Lan { why: _, zone: z } => z
-    Tailnet { why: _, zone: z } => z
+    Lan { zone: z } => z
+    Tailnet { zone: z } => z
   }
 }
 
-// THE TWO SPACES THE FLEET HAS, built here because `Zone` is sealed and a consumer may not write its
-// labels by hand. The `why` strings are the fleet's actual reasons, and they travel into every row filed
-// under the space — so "why may this field name a LAN host?" is answered by the row, not by a comment.
+// THE TWO SPACES THE FLEET HAS, built here because `Zone` is sealed and a consumer may not write its labels
+// by hand. Each reads its zone from the ONE place the fleet records that domain — nothing is spelled here.
 fn lan_name_space() -> NameSpace? {
   match lan_zone() {
-    Present { value: z } => Present {
-      value: Lan {
-        why: "the BMC is handed the router (192.168.1.1) as its DNS server and is not a tailnet member, so the router's zone is the only one its stub resolver can be asked about",
-        zone: z,
-      },
-    }
+    Present { value: z } => Present { value: Lan { zone: z } }
     Absent => Absent
   }
 }
 
 fn tailnet_name_space() -> NameSpace? {
   match tailnet_zone() {
-    Present { value: z } => Present {
-      value: Tailnet {
-        why: "fleet SSH and operations ride the VPN path, where MagicDNS answers and a LAN address would pin the row to a switch and a netplan file",
-        zone: z,
-      },
-    }
+    Present { value: z } => Present { value: Tailnet { zone: z } }
     Absent => Absent
   }
+}
+
+// IS THIS CONSUMER ON THE TAILNET? A typed receipt, not a sentence — §4c puts a citation and a status in a
+// carrier, and the two arms have different consequences that a consumer must match rather than infer from
+// prose. It is NOT the gate's authority for what a consumer may ask about (that is `ConsumerReach.reaches`,
+// so nothing gets a second source for the same fact); it is the OBSERVATION that makes a one-entry `reaches`
+// honest instead of arbitrary, which is why the witness reads it: delete the observation and its claim goes
+// red, while a sentence in a field could rot unread.
+//
+// THE CITATION: observed 2026-10-27 on the controller at 192.168.1.228 — the BMC answers the tailnet zone
+// with rcode 3 (NXDOMAIN) and runs no tailnet client, while a tailnet member on the same LAN resolves that
+// zone. Both were read over the LAN, from the same machine, minutes apart.
+type TailnetMembership
+  = NotOnTailnet { observed_on: NonEmptyStr, reader: NonEmptyStr }
+  | TailnetMember { observed_on: NonEmptyStr, reader: NonEmptyStr }
+
+data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet {
+  observed_on: "2026-10-27",
+  reader: "read-only probe, direct UDP to 192.168.1.1:53 from a tailnet member (docs/probes/bmc_media_share_naming_2026-10-27.md)",
 }
 
 // ── A RESOLUTION THAT CAN BE CITED ───────────────────────────────────────────────────────────
