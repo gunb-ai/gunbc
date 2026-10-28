@@ -2,7 +2,7 @@ module v2.compiler.lexical_scope
 
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import std.algebra { list_snoc_item, list_map, collection_concat_shape }
+import std.algebra { length, list_snoc_item, list_map, collection_concat_shape }
 import v2.std.integer { Int }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node {
@@ -42,7 +42,7 @@ import v2.std.node {
 import v2.std.node_query { construct_field_edges, construct_tag_optional, find_core_child, is_wildcard_pattern }
 import v2.std.type_binder { edge_is_cast_target, edge_is_type_annotation, edge_is_type_params }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
-import v2.extdeps.languages.dag { namespace_graft_node_is_module_body }
+import v2.extdeps.languages.dag { dag_pattern_atom_is_literal, namespace_graft_node_is_module_body }
 
 // WHERE A NAME IS BOUND LEXICALLY, AS ONE FACT. Resolution decides what a name means at a site by the
 // frames that enclose the site; module acquisition decides whether a dotted spelling at a site can name
@@ -240,38 +240,67 @@ fn bind_slot_sees_binder(slot: BindSlot) -> Bool {
 
 // ---- Match arm -----------------------------------------------------------------------------------------
 
-// A PATTERN'S CANDIDATE BINDERS, as one producer. An atom in a field position of a constructor pattern is
-// either a binder or the name of a payload constructor (a nested pattern), and a wildcard is neither
-// (v2.std.node_query is_wildcard_pattern). The binder-versus-constructor decision reads the symbol index
-// (v2.compiler.resolve resolve_pattern_atom_names_constructor), and that index does not exist until the
-// modules a program names have been acquired, so this producer decides what the pattern's own syntax decides
-// and stops there: it lists every atom that MAY bind, in the pre-order resolution binds them. Resolution
-// keeps the candidates the index does not name a constructor (v2.compiler.resolve pattern_binder_name_list,
-// resolve_pattern_binders), each with the construct and field edge that declare its type; module
-// acquisition runs before any index exists and can only say these names are undecided. Both read this one
-// traversal, so neither restates the other's.
+// A PATTERN'S CANDIDATE BINDERS, as one producer. An atom in pattern position -- the whole pattern, or a
+// field position of a constructor pattern -- is a binder or the name of a constructor (a nullary variant
+// at the top, a nested pattern in a field), and a wildcard or a literal is neither (v2.std.node_query
+// is_wildcard_pattern, v2.extdeps.languages.dag dag_pattern_atom_is_literal). ONE RULE AT EVERY
+// POSITION: the grammar gives a bare name one form (dag_grammar_constructor_pattern_expr, a qualified
+// name with no suffix) whether it is `Absent` or `other`, and spelling decides nothing. The
+// binder-versus-constructor decision reads the symbol index (v2.compiler.resolve
+// resolve_pattern_atom_names_constructor), and that index does not exist until the modules a program
+// names have been acquired, so this producer decides what the pattern's own syntax decides and stops
+// there: it lists every atom that MAY bind, in the pre-order resolution binds them. Resolution keeps the
+// candidates the index does not name a constructor (v2.compiler.resolve pattern_binder_name_list,
+// resolve_pattern_binders); module acquisition runs before any index exists and can only say these names
+// are undecided. Both read this one traversal, so neither restates the other's.
+//
+// A top-level atom was once no candidate at all, so a catch-all `other => other` bound nothing and both
+// occurrences refused unbound (the ambient-name census rows at
+// gunbc.instruments.ambient_name_census_reading); the field rule now covers it.
 type PatternBinderCandidate {
   name: Symbol
-  pattern: Node
-  field: Edge
+  atom: Node
+  site: PatternBinderSite
 }
+
+// WHERE A CANDIDATE STANDS. A field binder's declared type is the variant field it captures, so it
+// carries the construct and the field edge; a binder that is the whole arm pattern captures the
+// scrutinee itself and has no field.
+type PatternBinderSite
+  = FieldBinderSite { pattern: Node, field: Edge }
+  | ArmPatternBinderSite
 
 fn pattern_binder_candidates(pat: Node) -> List<PatternBinderCandidate> {
   match construct_tag_optional(n: pat) {
-    Absent => []
+    Absent => pattern_atom_binder_candidates(atom: pat, site: ArmPatternBinderSite)
     Present { value: _ } =>
       fold(construct_field_edges(n: pat), init: [], f: fn(acc, e) {
         match e.target.kind {
-          TypeNode { connective: Atom { identity: id } } =>
-            if is_wildcard_pattern(pattern: e.target) {
-              acc
-            } else {
-              list_snoc_item(xs: acc, item: PatternBinderCandidate { name: id, pattern: pat, field: e })
-            }
+          TypeNode { connective: Atom { identity: _ } } =>
+            concat(acc, pattern_atom_binder_candidates(atom: e.target, site: FieldBinderSite { pattern: pat, field: e }))
           TypeNode { connective: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
           ComputationNode { behavior: _ } => concat(acc, pattern_binder_candidates(pat: e.target))
         }
       })
+  }
+}
+
+// The one rule, applied to one atom at either site. A node that is not a childless atom (a qualified
+// constructor path, a literal with a payload) offers nothing.
+fn pattern_atom_binder_candidates(atom: Node, site: PatternBinderSite) -> List<PatternBinderCandidate> {
+  if is_wildcard_pattern(pattern: atom) || dag_pattern_atom_is_literal(node: atom) {
+    []
+  } else {
+    match atom.kind {
+      TypeNode { connective: Atom { identity: id } } =>
+        if length(xs: atom.children) == 0 {
+          [PatternBinderCandidate { name: id, atom: atom, site: site }]
+        } else {
+          []
+        }
+      TypeNode { connective: _ } => []
+      ComputationNode { behavior: _ } => []
+    }
   }
 }
 
