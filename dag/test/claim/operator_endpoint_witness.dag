@@ -220,7 +220,7 @@ test fn the_selected_route_is_the_srv4_strata_engine_at_its_own_paths() -> Bool 
     && (match operator_chat_completions_url() { Present { value: u } => (u as String) == "https://192.168.1.196:18443/v1/chat/completions"  Absent => false })
     && (match harness_operator_route.unit { Qwen38FlashNextIq3sOnSrv4Strata => true  Qwen38FlashNextOnPoolFront => false  DeepseekV4FlashOnVllm => false  Glm53FlashOnVllm => false  NemotronUltraFreeOnOpenRouter => false  Qwen3_8_27bOnNinfer => false })
     && (harness_operator_route.credential_identifier as String) == "gunbc-srv4-strata-api-key"
-    && harness_operator_route.concurrency_ceiling == 2
+    && harness_operator_route.concurrency_ceiling == 1
 }
 
 // The engine's list admits its own IQ3_S model id; the srv1 card's id and the front's alias do not.

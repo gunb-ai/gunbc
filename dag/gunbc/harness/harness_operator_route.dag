@@ -12,7 +12,8 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
 import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
-import extdeps.strata.strata_server { strata_models_path, strata_chat_completions_path, strata_srv4_daily_active_turns }
+import extdeps.strata.strata_server { strata_models_path, strata_chat_completions_path }
+import gunbc.harness.srv4_strata_wire_qualification { srv4_strata_observed_active_turns }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
@@ -76,10 +77,10 @@ data operator_srv4_strata_certificate: PoolFrontCertificate = PoolFrontCertifica
   not_after: "2028-10-27" as NonEmptyStr,
 }
 
-// The srv4 engine is dedicated to the daily workspace and holds two open turns; the lab takes both.
+// The srv4 engine is dedicated to the daily workspace and holds one open turn; the lab takes it.
 data strata_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
-  value: 2,
-  reason: "the srv4 engine operator states two active turns, the third refused with 429 (eager-lynx-183, 2026-10-28); the lab bounds its own fan-out there before any measured burst" as NonEmptyStr,
+  value: 1,
+  reason: "the srv4 engine runs one active turn for the checkpoint build, the second refused with 429 (operator via eager-lynx-183, 2026-10-28); a second lab turn would only be refused" as NonEmptyStr,
 }
 
 // The certificate the selected route pins.
@@ -169,7 +170,7 @@ data harness_srv4_strata_operator_route: HarnessOperatorRoute = HarnessOperatorR
   certificate_relative_path: ".config/gunbc-srv4-strata/server.pem" as NonEmptyStr,
   credential_identifier: "gunbc-srv4-strata-api-key" as NonEmptyStr,
   certificate_identifier: "gunbc-srv4-strata-server-pem" as NonEmptyStr,
-  concurrency_ceiling: pool_budget_enforced(policy: strata_concurrency_budget_policy, upstream: strata_srv4_daily_active_turns),
+  concurrency_ceiling: pool_budget_enforced(policy: strata_concurrency_budget_policy, upstream: srv4_strata_observed_active_turns()),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
     consequence: "the operator route serves Qwen3.8-Flash-Next at IQ3_S with a q4_0 KV cache (the srv4 strata engine, reached without the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,

@@ -8,9 +8,11 @@ import extdeps.external_authority { CitedFigure, CitedFigureStanding, ObservedBy
 // THE OBSERVING LAYER'S RECEIPT for the srv4 daily Strata engine (DESIGN 3: an observation is a receipt downstream,
 // never a property inside extdeps.strata.strata_server). Session eager-lynx-183 ran the live wire qualification on
 // 2026-10-28 at 02:30 UTC against the deployed engine; the raw credential-free requests and responses are kept on
-// srv4 under record_directory.
+// srv4 under record_directory. Re-qualified on the swapped engine (checkpoint build: native 406c9de18cef, upstream
+// layer-split persistence; Python frontend unchanged), whose one-slot admission receipt is under checkpoint-qualification/wire.
 type Srv4StrataWireQualification {
   engine_source_commit: NonEmptyStr
+  engine_native_commit: NonEmptyStr
   engine_binary_sha256: NonEmptyStr
   record_directory: NonEmptyStr
   // Every value of the top-level reasoning_effort member the engine accepted; an unknown word answered 400.
@@ -23,12 +25,15 @@ type Srv4StrataWireQualification {
   // max_tokens 1000000 with a 16-token prompt was clamped to 229352 (229376 - 8 - 16): the window bounds output,
   // and there is no separate fixed output cap.
   max_context_tokens: Nat
+  // One request processed, a concurrent second answered 429, both slots idle again after (no leaked capacity).
+  active_turns: Nat
 }
 
 data srv4_strata_wire_qualification_receipt: Srv4StrataWireQualification = Srv4StrataWireQualification {
   engine_source_commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" as NonEmptyStr,
+  engine_native_commit: "406c9de18cef885946be0e42a3b01c46531272ac" as NonEmptyStr,
   engine_binary_sha256: "ca21007168a32e04075f5df222a841391a14491ae3e54ac6ff921c3769df2dff" as NonEmptyStr,
-  record_directory: "/opt/gunbc-serving/srv4-daily/state/qualification" as NonEmptyStr,
+  record_directory: "/opt/gunbc-serving/srv4-daily/state/checkpoint-qualification" as NonEmptyStr,
   accepted_reasoning_efforts: [
     "none" as NonEmptyStr, "off" as NonEmptyStr, "minimal" as NonEmptyStr, "disabled" as NonEmptyStr, "false" as NonEmptyStr,
     "low" as NonEmptyStr, "medium" as NonEmptyStr, "high" as NonEmptyStr, "xhigh" as NonEmptyStr, "max" as NonEmptyStr, "maximum" as NonEmptyStr,
@@ -36,6 +41,7 @@ data srv4_strata_wire_qualification_receipt: Srv4StrataWireQualification = Srv4S
   reasoning_off_effort: "none" as NonEmptyStr,
   message_reasoning_field: "reasoning_content" as NonEmptyStr,
   max_context_tokens: 229376,
+  active_turns: 1,
 }
 
 fn srv4_strata_wire_qualification_ground() -> CitedFigureStanding {
@@ -51,6 +57,10 @@ fn srv4_strata_wire_qualification_ground() -> CitedFigureStanding {
 // statement in extdeps.strata.strata_server, which stays a transcription.
 fn srv4_strata_observed_reasoning_field() -> CitedFigure<NonEmptyStr> {
   CitedFigure { value: srv4_strata_wire_qualification_receipt.message_reasoning_field, standing: srv4_strata_wire_qualification_ground() }
+}
+
+fn srv4_strata_observed_active_turns() -> CitedFigure<Nat> {
+  CitedFigure { value: srv4_strata_wire_qualification_receipt.active_turns, standing: srv4_strata_wire_qualification_ground() }
 }
 
 fn srv4_strata_observed_max_context_tokens() -> CitedFigure<Nat> {

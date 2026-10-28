@@ -21,10 +21,11 @@ data strata_srv4_daily_max_context_tokens: CitedFigure<Nat> = CitedFigure {
   standing: TranscribedUncited { read_obligation: "read the maximum context from the srv4 engine's GET /v1/models, or its refusal of an oversized request" as NonEmptyStr },
 }
 
-// The engine admits two open turns and answers the third with 429 (max_queue=0, no queue of its own).
+// The engine admits one open turn and answers the second with 429 (max_queue=0, no queue of its own); the operator
+// set one active turn for the checkpoint build on 2026-10-28, replacing the earlier two.
 data strata_srv4_daily_active_turns: CitedFigure<Nat> = CitedFigure {
-  value: 2,
-  standing: TranscribedUncited { read_obligation: "read the admission limit from a measured burst of three concurrent requests (the third answered 429)" as NonEmptyStr },
+  value: 1,
+  standing: TranscribedUncited { read_obligation: "read the admission limit from a measured burst of two concurrent requests (the second answered 429)" as NonEmptyStr },
 }
 
 // Neither statement names where a reply carries reasoning nor how inline thinking closes; these are the
