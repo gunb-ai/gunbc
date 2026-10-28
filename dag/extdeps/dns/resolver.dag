@@ -37,7 +37,8 @@ module extdeps.dns.resolver
 // nonemptiness is constructed or proved), which deleted both that check and the invented cause the
 // iteration needed for the case the check was supposed to make unreachable.
 
-import std.types { String, List, Int, Present, Absent, Optional }
+import std.types { String, List, Int }
+import std.optional { Optional, Present, Absent }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.network.address { IpAddress, IpV4, IpV6 }
@@ -57,6 +58,7 @@ import extdeps.dns.domain_name {
   NameQualification,
   DomainNameParseError,
   domain_name_wire,
+  host_name_label_count,
 }
 
 // ── THE SERVERS ──────────────────────────────────────────────────────────────────────────────
@@ -320,13 +322,15 @@ fn ask_in_order(
       Unresolved { name: name, cause: ServerUnreachable { server: first } }
     Cons { head: server, tail: rest } =>
       match ask(server, name) {
+        // The only arm this function reads for itself: silence means "ask the next server", which is this
+        // function's own business and nobody else's.
         ServerGaveNoReply { server: _ } => ask_in_order(name: name, remaining: rest, first: first, ask: ask)
-        NameDoesNotExist { server: answering } =>
-          Unresolved { name: name, cause: NameUnknown { server: answering } }
-        NoAnswerOfThisType { server: answering } =>
-          Unresolved { name: name, cause: AnswerEmpty { server: answering } }
-        Addresses { server: _, addresses: addrs } =>
-          Resolved { name: name, addresses: addrs }
+        // EVERY OTHER REPLY is turned into a resolution by the one function that owns that mapping. It used
+        // to be re-matched here, arm for arm — two places reading one reply, which drift the moment a fifth
+        // reply shape is added to `ResolverAnswer` (§3 "each fact lives in exactly one place"; §6b "a
+        // generalization beside surviving leaves is a second path"). `resolution_from_answer` declares
+        // itself the only place a reply is read; this is the only caller that was ignoring that.
+        answer => resolution_from_answer(name: name, answer: answer)
       }
   }
 }

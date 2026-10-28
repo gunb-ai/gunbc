@@ -55,7 +55,8 @@ module gunbc.host.host_name_resolution
 // those two fields now names the code that reads it; an earlier draft named `observed` here and read it
 // nowhere, which is the §3c red rather than a modelling choice.
 
-import std.types { String, Bool, List, Int, NonEmptyStr, Present, Absent, list_length }
+import std.types { String, Bool, List, Int, NonEmptyStr, list_length }
+import std.optional { Present, Absent }
 import std.algebra {
   Cons,
   Empty,
@@ -173,21 +174,28 @@ fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
   let zone_labels = zone.suffix.labels
   let name_count = list_length(items: name_labels)
   let zone_count = list_length(items: zone_labels)
+  // Hoisted rather than bound inside the else-branch: a `let` as the first statement of a branch makes that
+  // branch a statement block, and the two branches then fail to unify (`Container(List,DnsLabel)` against
+  // `Optional(...)`), which is what the checker reported here. Guarded to zero on the short-name path so no
+  // caller ever sees a negative count, even though the value is unused there.
+  let host_count =
+    if zone_count >= name_count {
+      0
+    } else {
+      name_count - zone_count
+    }
   if zone_count >= name_count {
     Absent
-  } else {
-    let host_count = name_count - zone_count
+  } else if zip_eq(
     // `dns_label_eq` is the grammar module's own (extdeps.dns.domain_name), not one written here: what two
     // labels being equal means is settled where `DnsLabel` is branded, and this is a consumer of that rule.
-    if zip_eq(
-      a: list_reverse(xs: skip(xs: name_labels, n: host_count)),
-      b: list_reverse(xs: zone_labels),
-      eq: dns_label_eq,
-    ) {
-      Present { value: take_prefix(name_labels, host_count) }
-    } else {
-      Absent
-    }
+    a: list_reverse(xs: skip(xs: name_labels, n: host_count)),
+    b: list_reverse(xs: zone_labels),
+    eq: dns_label_eq,
+  ) {
+    Present { value: take_prefix(name_labels, host_count) }
+  } else {
+    Absent
   }
 }
 
@@ -641,7 +649,7 @@ fn media_share_address_gate(
       // refusals before the one that needs an answer.
       if resolvable_name_label_count(name: share_name) < rule.minimum_labels {
         RefusedByConsumerFirmware { host: row.host, name: share_name, minimum_labels: rule.minimum_labels }
-      } else if !names_agree(a: share_name, b: row.name) {
+      } else if !names_are_the_same_name(a: share_name, b: row.name) {
         NamesAnotherHost { host: row.host, share: share_server, row: row.name }
       } else {
         match reachable_space_for(reach: reach, space: row.space) {

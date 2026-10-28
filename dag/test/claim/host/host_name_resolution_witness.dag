@@ -25,7 +25,8 @@ module test.claim.host.host_name_resolution_witness
 // same diagnostic class — otherwise the probe is refusing something unrelated to forging and would stay
 // green even if the seal were removed.
 
-import std.types { String, Bool, List, NonEmptyStr, Present, Absent, list_length }
+import std.types { String, Bool, List, NonEmptyStr, list_length }
+import std.optional { Present, Absent }
 import std.process { ProcessExit }
 import std.algebra {
   Cons,
@@ -886,6 +887,7 @@ test fn a_name_cannot_be_filed_under_a_space_it_does_not_belong_to() -> Bool {
           ) {
             HostNameResolutionRefused { host: _, refusal: NameOffZone { name: _, filed_under: _ } } => true
             HostNameResolutionRefused { host: _, refusal: _ } => false
+            HostNameResolutionAdmitted { resolution: _ } => false
           }
       }
   }
@@ -1175,6 +1177,10 @@ test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bo
     // were told no such name" (ReplyDoesNotResolve), and the remedies differ — a probe versus an edit.
     // Substring-matching prose blurred exactly that line.
     HostNameResolutionRefused { host: h, refusal: NoReaderForSpace { space: _ } } => host_identity_eq(a: h, b: "srv2")
+    // Every other refusal means the row did not fail for the reason this claim is about. A wildcard arm is
+    // honest here precisely BECAUSE the arm it sits under is the one this claim names: the claim is not
+    // "some refusal happened", it is "this refusal happened", and everything else is a different fact.
+    HostNameResolutionRefused { host: _, refusal: _ } => false
     HostNameResolutionAdmitted { resolution: _ } => false
   }
 }
@@ -1197,6 +1203,9 @@ test fn a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed(
       host_identity_eq(a: h, b: "srv2")
         // The refused spelling, verbatim: a consumer can render it, or re-admit it after fixing it.
         && s == "srv2_local.example"
+    // The other refusals are different facts, and this claim is about this one: a row that came back
+    // NameOffZone, or was admitted outright, is not "the zone spelling was refused by the grammar".
+    HostNameResolutionRefused { host: _, refusal: _ } => false
     HostNameResolutionAdmitted { resolution: _ } => false
   }
     // THE CONTROL, from the same function one line later: with the zone the fleet actually records, the row
@@ -1226,6 +1235,7 @@ test fn an_unconfigured_tailnet_domain_refuses_with_no_spelling_to_misread() -> 
     // as a zone. The remedy this arm licenses — edit `fleet_tailnet_domain` — is not the remedy arm 4
     // licenses (run a probe) nor arm 3's (fix the spelling).
     HostNameResolutionRefused { host: h, refusal: TailnetDomainUnconfigured } => host_identity_eq(a: h, b: "srv2")
+    HostNameResolutionRefused { host: _, refusal: _ } => false
     HostNameResolutionAdmitted { resolution: _ } => false
   }
     // A CONFIGURED BUT UNPARSEABLE domain under the same function takes the OTHER arm and carries the
