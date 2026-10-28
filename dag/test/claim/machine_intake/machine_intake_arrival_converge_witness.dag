@@ -527,21 +527,21 @@ fn mtcollins1_not_qualified() -> RunnerThroughputAssessment<HostIdentity> {
   assess_unobserved(selection: selection(), runs: [good_run(id: GitHubWorkflowRunId { value: 35447067113 })])
 }
 
-fn mtjade1_bmc_inputs_released_by(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?, release: RunnerThroughputAssessment<HostIdentity>?) -> BmcSecureInputs {
+fn mtjade1_bmc_inputs_released_by(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?, qualification: RunnerThroughputAssessment<HostIdentity>?) -> BmcSecureInputs {
   BmcSecureInputs {
     goal: mtjade1_bmc_goal(),
     reading: reading,
     grant: grant,
     capability: capability,
     apply: apply,
-    hold_release: release,
+    hold_release: qualification,
   }
 }
 
 // Every claim but the hold's own reads mtjade1 with its hold released, so it refuses (or converges) for
 // its own cause and not for the hold.
 fn mtjade1_bmc_inputs(reading: BmcAccountStateObservation, grant: StandingOperatorGrant?, apply: BmcSecureApplyInputs?, capability: ScopedAuthorization<BmcAccountWriteApproval>?) -> BmcSecureInputs {
-  mtjade1_bmc_inputs_released_by(reading: reading, grant: grant, apply: apply, capability: capability, release: Present { value: mtcollins1_qualified() })
+  mtjade1_bmc_inputs_released_by(reading: reading, grant: grant, apply: apply, capability: capability, qualification: Present { value: mtcollins1_qualified() })
 }
 
 fn bmc_secure_applied_established(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
@@ -1697,7 +1697,7 @@ test fn w_a_manager_get_alone_cannot_construct_an_account_write_route_at_the_cur
 
 // ── the hold on mtjade1 (merry-fox-82, 2026-10-28) ────────────────────────────────────────────────────
 
-fn mtjade1_discharge_released_by(release: RunnerThroughputAssessment<HostIdentity>?, grant: StandingOperatorGrant?, with_capability: Bool) -> Bool {
+fn mtjade1_discharge_released_by(qualification: RunnerThroughputAssessment<HostIdentity>?, grant: StandingOperatorGrant?, with_capability: Bool) -> Bool {
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
     Present { value: apply } => {
@@ -1711,7 +1711,7 @@ fn mtjade1_discharge_released_by(release: RunnerThroughputAssessment<HostIdentit
       match discharge_bmc_secure_apply(
         key: bmc_secure_apply_key(),
         identity_subject: mtjade1_intake_subject(),
-        inputs: mtjade1_bmc_inputs_released_by(reading: apply.application.plan.diverged, grant: grant, apply: Present { value: apply }, capability: capability, release: release),
+        inputs: mtjade1_bmc_inputs_released_by(reading: apply.application.plan.diverged, grant: grant, apply: Present { value: apply }, capability: capability, qualification: qualification),
         standing: standing,
         request: request,
       ) {
@@ -1727,15 +1727,15 @@ fn mtjade1_discharge_released_by(release: RunnerThroughputAssessment<HostIdentit
 // qualification supplied discharge.
 test fn w_mtjade1_is_held_for_both_routes_until_mtcollins1_qualifies() -> Bool {
   let no_release: RunnerThroughputAssessment<HostIdentity>? = none
-  !mtjade1_discharge_released_by(release: no_release, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
-    && !mtjade1_discharge_released_by(release: no_release, grant: none, with_capability: true)
-    && mtjade1_discharge_released_by(release: Present { value: mtcollins1_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
-    && mtjade1_discharge_released_by(release: Present { value: mtcollins1_qualified() }, grant: none, with_capability: true)
+  !mtjade1_discharge_released_by(qualification: no_release, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
+    && !mtjade1_discharge_released_by(qualification: no_release, grant: none, with_capability: true)
+    && mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: false)
+    && mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_qualified() }, grant: none, with_capability: true)
 }
 
 // An assessment of mtcollins1 that refused (here: no concurrent cohort observed) releases nothing.
 test fn w_an_assessment_that_does_not_hold_releases_nothing() -> Bool {
-  !mtjade1_discharge_released_by(release: Present { value: mtcollins1_not_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: true)
+  !mtjade1_discharge_released_by(qualification: Present { value: mtcollins1_not_qualified() }, grant: Present { value: mtjade1_live_standing_grant }, with_capability: true)
 }
 
 // THE HOLD ON THE CONVERGE PATH. The run that converges with the release supplied
@@ -1757,7 +1757,7 @@ test fn w_a_held_mtjade1_does_not_converge_through_bmc_secure_apply() -> Bool {
           grant: Present { value: mtjade1_live_standing_grant },
           apply: Present { value: apply },
           capability: none,
-          release: no_release,
+          qualification: no_release,
         ),
         locked: none,
       ) {

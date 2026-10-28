@@ -101,8 +101,8 @@ fn bmc_write_controller_row(host: HostIdentity) -> BmcWriteControllerRow? {
 }
 
 // Whether `release` releases `until`: an assessment for the named host that recorded no refusal.
-fn hold_released(until: BmcWriteHoldRelease, release: RunnerThroughputAssessment<HostIdentity>?) -> Bool {
-  match release {
+fn hold_released(until: BmcWriteHoldRelease, qualification: RunnerThroughputAssessment<HostIdentity>?) -> Bool {
+  match qualification {
     Absent => false
     Present { value: a } =>
       match until {
@@ -122,7 +122,7 @@ fn discharge_admits(discharge: BmcWriteDischarge, route: BmcWriteRoute) -> Bool 
   }
 }
 
-fn admitted_by(row: BmcWriteControllerRow, route: BmcWriteRoute, release: RunnerThroughputAssessment<HostIdentity>?) -> BmcWriteControllerSelection {
+fn admitted_by(row: BmcWriteControllerRow, route: BmcWriteRoute, qualification: RunnerThroughputAssessment<HostIdentity>?) -> BmcWriteControllerSelection {
   match row.admission {
     WritesAdmitted { discharge: d } =>
       if discharge_admits(discharge: d, route: route) {
@@ -131,7 +131,7 @@ fn admitted_by(row: BmcWriteControllerRow, route: BmcWriteRoute, release: Runner
         BmcWriteControllerRefused { cause: StandingGrantNotAdmittedForController { host: row.host } }
       }
     WritesHeld { reason: r, until: u, discharge_on_release: d } =>
-      if !hold_released(until: u, release: release) {
+      if !hold_released(until: u, qualification: qualification) {
         BmcWriteControllerRefused { cause: ControllerWritesHeld { host: row.host, reason: r, until: u } }
       } else {
         if discharge_admits(discharge: d, route: route) {
@@ -149,7 +149,7 @@ fn select_bmc_write_controller(
   host: HostIdentity,
   target: BmcControllerEndpoint,
   route: BmcWriteRoute,
-  release: RunnerThroughputAssessment<HostIdentity>?,
+  qualification: RunnerThroughputAssessment<HostIdentity>?,
 ) -> BmcWriteControllerSelection {
   match bmc_write_controller_row(host: host) {
     Absent => BmcWriteControllerRefused { cause: NoControllerRowForHost { host: host } }
@@ -157,7 +157,7 @@ fn select_bmc_write_controller(
       if (row.endpoint.host as String) != (target.host as String) {
         BmcWriteControllerRefused { cause: ControllerRowIsAnotherEndpoint { host: host, row_endpoint: row.endpoint, target: target } }
       } else {
-        admitted_by(row: row, route: route, release: release)
+        admitted_by(row: row, route: route, qualification: qualification)
       }
   }
 }

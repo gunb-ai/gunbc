@@ -35,8 +35,8 @@ fn no_release() -> RunnerThroughputAssessment<HostIdentity>? {
   none
 }
 
-fn verdict(host: HostIdentity, target: BmcControllerEndpoint, route: BmcWriteRoute, release: RunnerThroughputAssessment<HostIdentity>?) -> String {
-  match select_bmc_write_controller(host: host, target: target, route: route, release: release) {
+fn verdict(host: HostIdentity, target: BmcControllerEndpoint, route: BmcWriteRoute, qualification: RunnerThroughputAssessment<HostIdentity>?) -> String {
+  match select_bmc_write_controller(host: host, target: target, route: route, qualification: qualification) {
     BmcWriteControllerSelected { row: _ } => "selected"
     BmcWriteControllerRefused { cause: c } =>
       match c {
@@ -60,29 +60,29 @@ fn srv13() -> BmcControllerEndpoint {
 // assessment does not, and with a holding one both routes are selected (its row admits the standing grant
 // once released).
 test fn mtjade1_is_held_until_mtcollins1_qualifies() -> Bool {
-  verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, release: no_release()) == "held"
-    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, release: no_release()) == "held"
-    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, release: not_qualified()) == "held"
-    && verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, release: qualified()) == "selected"
-    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, release: qualified()) == "selected"
+  verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, qualification: no_release()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: no_release()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: not_qualified()) == "held"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByStandingGrant, qualification: qualified()) == "selected"
+    && verdict(host: operator_host_mtjade1, target: jade(), route: ByPerWriteApproval, qualification: qualified()) == "selected"
 }
 
 // A HOLD NAMES ITS HOST. mtcollins1's holding assessment does not release a hold that waits on another host.
 test fn an_assessment_for_another_host_releases_nothing() -> Bool {
-  hold_released(until: UntilRunnerQualified { host: operator_host_srv2 }, release: qualified()) == false
-    && hold_released(until: UntilRunnerQualified { host: operator_host_mtcollins1 }, release: qualified())
+  hold_released(until: UntilRunnerQualified { host: operator_host_srv2 }, qualification: qualified()) == false
+    && hold_released(until: UntilRunnerQualified { host: operator_host_mtcollins1 }, qualification: qualified())
 }
 
 // srv13 ADMITS ONLY A PER-WRITE APPROVAL (merry-fox-82, 2026-10-28). The standing-grant route is refused for
 // srv13 by its row. This is the RED that discriminates the row: on the arrival discharge the only standing
 // grant (mtjade1's) is scoped to mtjade1 and would refuse srv13 before the row is read.
 test fn srv13_admits_a_per_write_approval_and_refuses_the_standing_grant() -> Bool {
-  verdict(host: operator_host_srv13, target: srv13(), route: ByPerWriteApproval, release: no_release()) == "selected"
-    && verdict(host: operator_host_srv13, target: srv13(), route: ByStandingGrant, release: no_release()) == "standing-grant-not-admitted"
+  verdict(host: operator_host_srv13, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "selected"
+    && verdict(host: operator_host_srv13, target: srv13(), route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
 }
 
 // A HOST WITH NO ROW ADMITS NO WRITE, and a row admits writes only at its own controller's endpoint.
 test fn no_row_and_another_endpoint_refuse() -> Bool {
-  verdict(host: operator_host_srv2, target: srv13(), route: ByPerWriteApproval, release: no_release()) == "no-row"
-    && verdict(host: operator_host_srv13, target: jade(), route: ByPerWriteApproval, release: no_release()) == "another-endpoint"
+  verdict(host: operator_host_srv2, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "no-row"
+    && verdict(host: operator_host_srv13, target: jade(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
 }
