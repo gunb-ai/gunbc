@@ -38,9 +38,19 @@ import gunbc.machine_intake.mtcollins1_boot_row {
 import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_endpoint }
 import gunbc.machine_intake.mtcollins1_memory_census_observation { mtcollins1_slots }
 import gunbc.host.boot_attempt {
-  AttemptRunId, ConsoleNotConfigured, ConsoleReading, CaptureContents, CaptureContentsRead,
-  console_reading,
+  AttemptRunId,
 }
+import gunbc.host.boot_console_observation {
+  ConsoleNotConfigured,
+  ConsoleReading,
+  CaptureContents,
+  CaptureContentsRead,
+  console_reading,
+  mtcollins1_console_milestones,
+  DramFirmwareBannerObserved,
+  span_console_readings,
+}
+import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_console_span_lines }
 import gunbc.machine_intake.mtcollins1_power_on_account { AttemptConfigurationReceipt }
 import gunbc.host.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import gunbc.machine_intake.megarac_kvm_still { kvm_observer_record_not_started }
@@ -191,6 +201,66 @@ test fn two_rows_produce_two_different_bundles_from_one_attempt() -> Bool {
     }
     BootRowEndpointMismatch { expected: _, observed: _ } => false
   }
+}
+
+// THE CONSOLE OBSERVATIONS ARE CONSUMED THROUGH THE NEUTRAL HOME (4d-ii). The console readers moved
+// out of the mtcollins1-named modules into gunbc.host.boot_console_observation, and a row of ANY board
+// feeds them: the same milestone reader and the same span reader that parse mtcollins1's corpus parse
+// this srv9 capture -- lines no mtcollins1 receipt has ever carried -- and the bundle rendered under
+// the srv9 row prints the srv9 milestone while naming no mtcollins1. Red before the move: the only
+// readers lived behind mtcollins1 module paths, so a foreign row reaching them meant importing a
+// board-specific home into the host-generic path.
+data srv9_console_capture_text: String = "NOTICE:  DRAM FW version 999999\nCP: 0ff00900\n"
+
+fn srv9_console_capture() -> CaptureContents {
+  CaptureContentsRead {
+    text: srv9_console_capture_text,
+    digest: Sha256FileDigestUnavailable { path: "witness", reason: "not digested in this claim" },
+  }
+}
+
+// The srv9 capture read as the row's console: under the srv9 row's own retained-artifact root, against
+// the srv9 row's own reference scopes -- nothing here is mtcollins1's.
+fn srv9_console_of(row: MegaRacBootRow) -> ConsoleReading {
+  console_reading(
+    path: concat(row.retained_artifact_prefix as String, "90000000001-sol.capture"),
+    size: byte_size(count: 4096),
+    capture: srv9_console_capture(),
+    reference: srv9_console_capture(),
+    retained_prefix: row.retained_artifact_prefix,
+    census_sol_reference_path: row.console_reference.census_sol_artifact_path,
+    reference_firmware_scope: row.console_reference.reference_firmware_scope,
+    reference_configuration_scope: row.console_reference.reference_configuration_scope,
+  )
+}
+
+fn bundle_with_console(row: MegaRacBootRow, c: ConsoleReading) -> BootDiagnosticBundle {
+  let empty = empty_bundle()
+  BootDiagnosticBundle {
+    configuration: empty.configuration, attempt: empty.attempt, outcome: empty.outcome,
+    sel_before: empty.sel_before, sel_after: empty.sel_after,
+    sdr_cache: empty.sdr_cache, sensors: empty.sensors, smpro: empty.smpro,
+    inventory: empty.inventory, console: c,
+    run: empty.run, screen: empty.screen,
+  }
+}
+
+test fn a_foreign_row_consumes_console_observations_through_the_neutral_home() -> Bool {
+  let row = another_board_row()
+  let lines = ["NOTICE:  DRAM FW version 999999", "CP: 0ff00900"]
+  let milestones = mtcollins1_console_milestones(lines: lines)
+  let spans = span_console_readings(spans: ampere_console_span_lines(lines: lines))
+  let rendered = megarac_boot_bundle_text(
+    row: row, bundle: bundle_with_console(row: row, c: srv9_console_of(row)), account: no_account())
+  count(milestones.sightings) == 1
+    && count(filter(milestones.sightings, s =>
+      s.milestone == DramFirmwareBannerObserved
+        && s.line == "NOTICE:  DRAM FW version 999999" as NonEmptyStr)) == 1
+    && count(spans) == 1
+    && count(filter(spans, s => s.span == 0)) == 1
+    && string_contains(s: rendered, pattern: "DRAM firmware banner")
+    && string_contains(s: rendered, pattern: "artifacts/srv9-boot-")
+    && !string_contains(s: rendered, pattern: "mtcollins1")
 }
 
 // ── RED 2: A MISMATCHED BINDING REFUSES ─────────────────────────────────────────────

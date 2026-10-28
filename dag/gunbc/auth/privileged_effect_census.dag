@@ -471,8 +471,9 @@ fn mtcollins1_host_reset_effect() -> PrivilegedEffect {
 // opens is not undone by a reapply (artifacts/bmc/mtcollins1-bmc-user3-route-2026-09-13.txt, steps
 // b1 and b1r). It applies a credential to one controller account, so its reach is one resource. No
 // dispatched run carries it: in this cut it is modeled, with a dry realization only. The realization
-// takes an operator-approved capability (gunbc.auth.approval_broker Redemption) bound to the exact
-// controller, build and request, which is what the selection is expected to return.
+// takes the operator's go through gunbc.auth.approval_gate, a std.scoped_authorization grant whose
+// subject (gunbc.machine_intake.bmc_rotation_route BmcAccountWriteApproval) is the exact controller,
+// build, request and purpose, which is what the selection is expected to return.
 fn route_qualification_effect() -> PrivilegedEffect {
   PrivilegedEffect {
     subject: "qualify a BMC account-write route: execute one account-write request on one controller at one firmware build and read it back" as NonEmptyStr,

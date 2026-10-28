@@ -69,6 +69,23 @@ data ipmitool_mc_info_standing: CitedFigureStanding = TranscribedUncited {
 
 data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIPMI Version              : 2.0\n"
 
+// `ipmitool fru print 0` against the Mt. Collins BMC: the board inventory the boot's pre-power
+// retention keeps (gunbc.machine_intake.megarac_boot_diagnostic_bundle mtcollins1_boot_fru_print_retain)
+// and the identity rows are read from (gunbc.machine_intake.mtcollins1_access_observation
+// mtcollins1_current_build_identity). Output SHAPE: vendor (AMI MegaRAC) `fru print` key/value rendering,
+// keyed here to the firmware this answer was READ ON -- MegaRAC 0.32, per run 40264233543's own receipt
+// (artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-diagnostics.txt: the attempt reports
+// `firmware 0.32` throughout). The next machine on 0.32 gets this shape for free; a machine on another
+// release must bring its own capture before its print is answered. Source:
+// artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt
+// (sha256 e3db166444d26c8a1a6ec44a398adc229f3b88b50e21c016aa8f5daf80dc3031), verbatim -- byte-for-byte
+// stdout of boot run 40264233543, 894 bytes, 22 newlines, NO trailing newline: the capture's last byte
+// is the last `X` of the final `Product Extra` line. The literal is that file's bytes with each newline
+// written as \n; the witness (test.claim.operation_realization_witness the_fru_fixture_*) re-reads
+// the artifact and demands equality, so a transcription drift reds there rather than silently
+// diverging from the capture.
+data ipmitool_fru_print_0_mt_collins: String = " Chassis Type          : Rack Mount Chassis\n Chassis Part Number   : 1A624RA00-600-G\n Chassis Serial        : NULL\n Chassis Extra         : XXXXXXXXXXXX\n Chassis Extra         : YYYYYYYYYYYY\n Chassis Extra         : ZZZZZZZZZZZZ\n Board Mfg Date        : Mon 18 Oct 2021 06:36:00 PM UTC UTC\n Board Mfg             : FOXCONN\n Board Product         : Mt. Collins\n Board Serial          : 02030A800TEXFT02L\n Board Part Number     : 02030A800-600-G\n Board Extra           : 28C13C8AD64C\n Board Extra           : PCBAVer:EX\n Board Extra           : XXXXXXXXXXXX\n Product Manufacturer  : FOXCONN\n Product Name          : Mt. Collins\n Product Part Number   : 1A62AT100-600-G\n Product Version       : Ver 0.01\n Product Serial        : MXX2080619\n Product Asset Tag     : XXXXXXXXXXXXXXXXXX\n Product Extra         : XXQQQQQQQQQQ\n Product Extra         : XXXXXXXXXXXX\n Product Extra         : XXXXXXXXXXXX"
+
 // `ipmitool hpm check` on BMC 0.32, BEFORE the 2026-10-02 reflash: the component-properties table's
 // layout, not the controller's current state. Source: artifacts/bmc/mtcollins1-ipmitool-hpm-check-bmc0.32-2026-10-02.txt
 // (sha256 689624b261a32784a3a7d0373b1f05cfd7a46c1cff63e1ff761736cd9184a590), verbatim.
