@@ -889,10 +889,10 @@ data gunbc_ci_export_host_reader_converge_target: GunbcRunStepTarget = GunbcRunS
 
 // THE MINT RUNS THE ENTRY ITS SUBJECT NAMES, not one entry per key. One policy with a row per keypair
 // (gunbc.host.fleet_keypair_mint) means one dispatch mode, and a dispatch mode whose step ran a fixed entry
-// would defeat it: the subject selected by the operator's `keypair_subject` input could disagree with the
-// module that actually ran, which is exactly the shape of "I minted the host key" printed by a run that
-// minted the reader key. So the entry and function are taken FROM the subject row, and
-// gunbc.fleet.fleet_converge_workflow builds the step from the same row it gates on.
+// would defeat it: the row a step was built from could disagree with the module that actually ran, which is
+// exactly the shape of "I minted the host key" printed by a run that minted the reader key. So the entry and
+// function are taken FROM the subject row, and
+// gunbc.fleet.fleet_converge_workflow builds each step from the row whose receipt it also uploads.
 fn gunbc_ci_fleet_keypair_mint_target(subject: FleetKeypairMintSubject) -> GunbcRunStepTarget {
   GunbcRunStepTarget {
     entry: subject.mint_entry,

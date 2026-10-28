@@ -58,7 +58,8 @@ data fleet_automation_ssh_privkey_secret: SecretRef = SecretRef {
 // is gunbc.host.mtcollins1_ssh_host_key_mint, one of the two rows of the single keypair-mint policy
 // gunbc.host.fleet_keypair_mint (the other is the boot medium reader key), censused at
 // gunbc.auth.privileged_effect_census as a federated grant, and dispatched as the fleet-converge mode
-// FleetKeypairMint with keypair_subject naming this lane. It replaces the scaffold that used to sit beside it
+// FleetKeypairMint (one dispatch walks the roster; each row's own pin decides whether an effect is reached).
+// It replaces the scaffold that used to sit beside it
 // (anchored_host_key_mint_shell / anchored_host_key_mint_intervention / anchored_host_key_mint_effect,
 // gunbc.host.anchored_host_transport) and the runbook's human Step 1, on the operator's ruling
 // gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation -- "i don't see why a human needs to

@@ -587,7 +587,7 @@ test fn the_runbook_mints_nothing_and_still_installs_the_anchor() -> Bool {
     // go, and installing a trust anchor is a source change that is reviewed in a commit. Deleting the whole
     // runbook would not pass either -- these are load-bearing prose.
     && string_contains(s: doc, pattern: "FleetKeypairMint")
-    && string_contains(s: doc, pattern: "keypair_subject")
+    && string_contains(s: doc, pattern: "fleet_keypair_mint_subject_rows")
     && string_contains(s: doc, pattern: "mtcollins1-ssh-host-key")
     && string_contains(s: doc, pattern: "fingerprint")
     && string_contains(s: doc, pattern: "known_hosts")

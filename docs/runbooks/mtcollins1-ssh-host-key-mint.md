@@ -17,7 +17,7 @@ The `.dag` side is the authority and ships in the same PR as this runbook:
 | Accessor IAM | `dag/gunbc/auth/fleet_secret_accessor_roster.dag` `mtcollins1_ssh_host_key_accessor_row` (read, for custody) and `mtcollins1_host_key_version_adder_row` (`secretVersionAdder`, for the mint) — a converge grant-set cell (`gunbc.auth.gcp_iam_converge`). **Do not run `gcloud secrets add-iam-policy-binding`**: the roster is the single authority and converge binds it. |
 | The trust anchor + its standing | `dag/gunbc/host/anchored_host_transport.dag` `mtcollins1_host_key_anchor`, the ONE mint `anchored_host_trusted_row` |
 | The gated readback scan | `dag/gunbc/host/anchored_host_transport.dag` `anchored_host_key_scan_wet` (refuses without `GUNBC_HOST_KEY_READBACK_GO`; the go is a `HumanIntervention` — merry-fox-82, relayed by snappy-koi-83) |
-| The mint | `dag/gunbc/host/mtcollins1_ssh_host_key_mint.dag` — **a workflow dispatch, not a shell step** (operator ruling 2026-10-28, `gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation`). One keypair-mint policy, `dag/gunbc/host/fleet_keypair_mint.dag`, parameterized by the secret row; this key and the boot medium reader key are its two rows. Dispatch it as fleet-converge mode `FleetKeypairMint` with `keypair_subject` naming this lane. Censused at `dag/gunbc/auth/privileged_effect_census.dag` as a federated grant. The scaffold it retired (`anchored_host_key_mint_shell` / `_intervention` / `_effect`, and the human Step 1 that used to sit below) is recorded at the foot of `dag/gunbc/host/anchored_host_transport.dag`. |
+| The mint | `dag/gunbc/host/mtcollins1_ssh_host_key_mint.dag` — **a workflow dispatch, not a shell step** (operator ruling 2026-10-28, `gunbc.design_ruling the_mint_of_a_fleet_ssh_keypair_is_account_creation`). One keypair-mint policy, `dag/gunbc/host/fleet_keypair_mint.dag`, parameterized by the secret row; this key and the boot medium reader key are its two rows. Dispatch it as fleet-converge mode `FleetKeypairMint`; one dispatch walks the roster and each row's own pin decides whether an effect is reached. Censused at `dag/gunbc/auth/privileged_effect_census.dag` as a federated grant. The scaffold it retired (`anchored_host_key_mint_shell` / `_intervention` / `_effect`, and the human Step 1 that used to sit below) is recorded at the foot of `dag/gunbc/host/anchored_host_transport.dag`. |
 | Evidence | `dag/test/claim/host/anchored_host_transport_witness.dag` (the anchor, the retirement, the runbook RED) + `dag/test/claim/host/fleet_keypair_mint_witness.dag` (the mint policy: the Q1 argv RED, the tmpfs RED, the census row) |
 
 ## Rule Q1 (non-negotiable)
@@ -71,11 +71,15 @@ operator's ruling (2026-10-28, relayed by merry-fox-82) is recorded verbatim as 
 do this - this seems just like normal account creation". The step that retired is the one the retired
 scaffold's own `anchored_host_key_mint_shell_bash_emit_dissolution_trigger` named.
 
-Dispatch the **fleet-converge** workflow with mode `FleetKeypairMint` and input `keypair_subject` set to
-`mtcollins1 ssh host key` — the lane string of `mtcollins1_host_keypair_mint_subject`
-(`dag/gunbc/host/fleet_keypair_mint.dag`). The boot medium reader key is the other row of the same mode
-(`boot medium reader key`); one policy, two rows, which is what the root ruling 6b requires — a second
+Dispatch the **fleet-converge** workflow with mode `FleetKeypairMint`. There is no per-key input to set: one
+dispatch walks the keypair roster (`fleet_keypair_mint_subject_rows` in
+`dag/gunbc/host/fleet_keypair_mint.dag`), and each row's step asks its own secret container whether the public
+key is pinned — an unpinned row mints, a pinned row reports `host_key=already pinned` and exits zero without
+reaching an effect. So this key's mint runs beside the boot medium reader key's (the other row), and neither is
+disturbed by the other's state. One policy, two rows, is what the root ruling 6b requires — a second
 implementation of "the private half never leaves tmpfs" is the copy that quietly drops the `findmnt` read.
+(There is deliberately no `keypair_subject` dispatch input: the workflow's input roster already sits at
+GitHub's hard limit of 25, and the pin decides what a dispatch does better than a free-text choice can.)
 
 What the run does, and what it refuses to do:
 

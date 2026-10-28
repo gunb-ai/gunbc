@@ -971,13 +971,6 @@ fn fleet_converge_dispatchable_modes() -> List<FleetConvergeWorkflowMode> {
 
 data fleet_converge_mode_options: List<String> = map(fleet_converge_dispatchable_modes(), m => fleet_converge_workflow_mode_wire(mode: m))
 
-// THE KEYPAIR SUBJECTS THE DISPATCH MAY NAME, DERIVED FROM THE POLICY'S OWN ROSTER
-// (gunbc.host.fleet_keypair_mint fleet_keypair_mint_subject_rows). Derived rather than spelled, because the
-// thing this input selects is a row: a list written out here could name a key that has no mint, or omit a key
-// somebody added -- and an omitted row would be a fleet key with no dispatch path, which is how the host key
-// ended up with a human runbook in the first place. The lane STRING is the row's identity, and the step gate
-// compares against that same field, so the operator's choice and the step that runs are read from one source.
-data fleet_converge_fleet_keypair_lane_options: List<String> = map(fleet_keypair_mint_subject_rows(), s => s.lane as String)
 
 
 // ── the host reset-return mode ─────────────────────────────────────────────────────────────────
@@ -6120,15 +6113,19 @@ fn fleet_converge_export_host_reader_converge_receipt_upload_step() -> Step {
 // judgment that says a mint is an ordinary account-creation operation: ordinary things do not each get their
 // own workflow arm.
 //
-// HOW THE OPERATOR PICKS WHICH KEY, AND WHY IT IS NOT A SECOND MODE. The dispatch input `keypair_subject`
-// names a LANE ("boot medium reader key" / "mtcollins1 ssh host key"), and its options are DERIVED from the
-// subject roster -- a lane nobody declared cannot be chosen, and a mint added to the policy becomes
-// dispatchable by adding its row. The gate is `inputs.mode == 'fleet_keypair_mint' &&
-// inputs.keypair_subject == '<lane>'`, and the step that runs is BUILT FROM THE SAME ROW that gate names
-// (its entry, its function, its receipt path), so the input cannot disagree with what executed. That is why
-// those three are fields of the subject and not a lookup table in gunbc.ci.ci_spec: with a fixed entry and a
-// free-text subject input, a run can print "I minted the host key" while having minted the reader key -- and
-// the whole point of a receipt is that it is evidence.
+// HOW THE OPERATOR PICKS WHICH KEY, AND WHY IT IS NOT A SECOND MODE -- OR A DISPATCH INPUT. There is no
+// `keypair_subject` input, and there cannot be one: this workflow's dispatch-input roster sits EXACTLY at
+// GitHub's hard limit of workflow_dispatch_max_inputs (25), so the twenty-sixth input would make the
+// emitter refuse to emit at all (fleet_converge_yml_after_run_scoped_admission), which is how this was found.
+// The selection is the fact that actually matters -- the PIN. One dispatch of mode fleet_keypair_mint walks
+// the roster, and each step's mint asks its own secret container whether the public key is pinned: an
+// unpinned row mints, a pinned row refuses with a holds-verdict and exits zero without reaching an effect
+// (fleet_keypair_mint_verdict_holds over the "pinned" word). A dispatch therefore cannot mint a key the
+// fleet already has, and cannot leave a key the fleet needs un-minted. Each step is BUILT FROM ITS OWN ROW
+// (entry, function, receipt path are fields of the subject), so a log line naming one key cannot have
+// executed the other's entry -- the same evidence property a lane input was meant to buy, held by the row
+// instead of by a free-text input. That is also why entry and function are fields of the subject and not a
+// lookup table in gunbc.ci.ci_spec.
 //
 // ONE JOB, NOT ONE JOB PER KEY, AND WHY THAT IS SAFE. The mint holds no fleet SSH key and touches no host; it
 // federates as the fleet identity and its only API reach is AddVersion on its own row, granted by its own
@@ -6146,22 +6143,12 @@ data fleet_converge_fleet_keypair_mint_job_id: NonEmptyStr = "fleet_keypair_mint
 // and the per-key selection happens one level down, at the step.
 data fleet_converge_fleet_keypair_mint_step_if: String = fleet_converge_mode_step_if(mode: FleetKeypairMint)
 
-// THE PER-KEY GATE. Both halves are needed and neither is enough:
-//   - without the MODE test, a dispatch of another mode with an empty `keypair_subject` would leave the mint's
-//     steps gated on a comparison against "" and the wrong lane's mint could be selected by an unrelated
-//     dispatch;
-//   - without the SUBJECT test, a single dispatch would mint EVERY fleet key in the roster -- which is exactly
-//     the thing a mint must not do unasked, since each mint is a live credential being brought into existence.
-// An unknown lane name selects nothing, because it matches no row and so emits no step.
-fn fleet_converge_fleet_keypair_subject_step_if(subject: FleetKeypairMintSubject) -> String {
-  serialize_expression(expression: LogicalAnd {
-    left: fleet_converge_dispatch_mode_is(mode: FleetKeypairMint),
-    right: Equals {
-      left: ContextAccess { context: Github, path: ["event", "inputs", "keypair_subject"] },
-      right: StringLiteral { value: subject.lane as String },
-    },
-  })
-}
+// THE PER-STEP GATE IS THE MODE, and the roster walk is what the mode means: every row of
+// fleet_keypair_mint_subject_rows() gets its step, and each step's own pin check decides whether an effect is
+// reached. The old shape gated each step on a `keypair_subject` dispatch input matching its lane; that died on
+// the input cap above, and it bought nothing the pin does not buy better -- a gate keyed on an INPUT could
+// still mint an already-pinned key (adding a live version unasked), while the pin gate cannot. An empty roster
+// mints nothing: the fold below emits no steps, and GitHub accepts a job whose steps are only the prelude.
 
 // THE STEPS, BUILT FROM THE ROW: the run invokes the entry the subject names, and the upload reads the receipt
 // path the subject names. Neither can point at the other key.
@@ -6175,7 +6162,7 @@ fn fleet_converge_fleet_keypair_mint_step(subject: FleetKeypairMintSubject) -> S
       kv(key: "WIF_ACCESS_TOKEN", value: yaml_string(s: "${{ steps.wif_auth.outputs.access_token }}")),
     ] },
     working_directory: none,
-    if_condition: Present { value: fleet_converge_fleet_keypair_subject_step_if(subject: subject) },
+    if_condition: Present { value: fleet_converge_fleet_keypair_mint_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -6210,7 +6197,7 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: join(["always() && ", fleet_converge_fleet_keypair_subject_step_if(subject: subject), " && failure()"], "") },
+    if_condition: Present { value: join(["always() && ", fleet_converge_fleet_keypair_mint_step_if, " && failure()"], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -6618,20 +6605,6 @@ data fleet_converge_dispatch_input_rows: List<DispatchInput> = [
     type: InputChoice { options: arrival_converge_subject_options() },
   },
   fleet_converge_mode_input,
-  // WHICH FLEET KEYPAIR A `fleet_keypair_mint` DISPATCH MINTS. DERIVED FROM THE SUBJECT ROSTER, so the
-  // choices the operator can pick are the mints that exist -- a lane nobody declared cannot be selected, and a
-  // new keypair becomes dispatchable by adding its row to gunbc.host.fleet_keypair_mint rather than by
-  // editing this form and the job in two places. It is NOT required, because it means nothing to the other
-  // ninety modes: GitHub would then demand an answer on every dispatch of every mode. The step gate tests
-  // BOTH mode and subject, so an empty subject on an unrelated dispatch selects no mint -- a mint is never
-  // brought into existence by proximity, and a dispatch never mints the whole roster by accident.
-  DispatchInput {
-    name: "keypair_subject",
-    description: Present { value: "For mode fleet_keypair_mint: which fleet keypair to mint. Its lane names a row of gunbc.host.fleet_keypair_mint, whose mint_entry the step runs -- ignored by every other mode." },
-    required: false,
-    default: none,
-    type: InputChoice { options: fleet_converge_fleet_keypair_lane_options },
-  },
   DispatchInput {
     name: "target",
     description: Present { value: fleet_converge_spark_target_description() },

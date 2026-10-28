@@ -46,12 +46,17 @@ silently, because a trap runs no code on `SIGKILL`.
 
 ## What the generalization did to the committed workflow
 
-The mode `BootMediumReaderKeyMint` became `FleetKeypairMint` with a `keypair_subject` dispatch input whose
-options are derived from `fleet_keypair_mint_subject_rows()`, and one job emits one mint step plus one receipt
-upload **per row**, each gated on `mode == 'fleet_keypair_mint' && keypair_subject == '<lane>'`. The step's
-entry, function and receipt path are read off the same row the gate names, so the operator's choice and the
-module that executes cannot disagree — which is why those three are subject fields and not a lookup table in
-`gunbc.ci.ci_spec`.
+The mode `BootMediumReaderKeyMint` became `FleetKeypairMint`, and one job emits one mint step plus one receipt
+upload **per row** of `fleet_keypair_mint_subject_rows()`, each gated on `mode == 'fleet_keypair_mint'` alone.
+There is deliberately **no `keypair_subject` dispatch input**: this workflow's input roster sits exactly at
+GitHub's hard limit of 25 (`workflow_dispatch_max_inputs`), and the emitter refuses to emit an over-cap roster
+— which is how the input-gated first draft was caught, since the claim witnesses passed while
+`expected_fleet_converge_yml` refused. The selection is instead the PIN: each row's mint asks its own secret
+container whether the public key is pinned; a pinned row reports a holds-verdict and exits zero without
+reaching an effect, so one dispatch cannot mint a key the fleet already has and cannot leave one un-minted.
+The step's entry, function and receipt path are read off the row the step is built from, so a log line naming
+one key cannot have executed the other's entry — which is why those three are subject fields and not a lookup
+table in `gunbc.ci.ci_spec`.
 
 ## Regenerating the committed workflow
 

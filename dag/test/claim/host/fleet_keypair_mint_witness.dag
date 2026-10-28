@@ -1,7 +1,7 @@
 module test.claim.host.fleet_keypair_mint_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, NonEmptyStr, Secret, String }
+import std.types { Bool, List, NonEmptyStr, Secret, String }
 import std.optional { Present, Absent }
 import gunbc.host_command_binding { HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched }
 import gunbc.host.fleet_keypair_mint {
@@ -17,6 +17,11 @@ import gunbc.host.fleet_keypair_mint {
   fleet_keypair_mint_key_file, fleet_keypair_mint_public_file, fleet_keypair_privkey_resource,
   fleet_keypair_unknown_outcome_guidance, fleet_keypair_pin_commit_rule,
   fleet_keypair_mint_ruling_words, fleet_keypair_mint_ruling_date,
+}
+import extdeps.github.actions { Step, RunStep, UsesStep, workflow_dispatch_max_inputs }
+import gunbc.fleet.fleet_converge_workflow {
+  fleet_converge_fleet_keypair_mint_job, fleet_converge_fleet_keypair_mint_step_if,
+  fleet_converge_fleet_keypair_mint_step_id, fleet_converge_dispatch_inputs,
 }
 import gunbc.host.mtcollins1_ssh_host_key_mint {
   HostKeypair, HostKeypairGeneration, HostKeypairGenerated, HostKeypairRefused,
@@ -393,4 +398,78 @@ test fn only_an_ed25519_public_line_and_a_sha256_fingerprint_are_admitted() -> B
     && match fleet_keypair_fingerprint_admitted(text: fingerprint_line) { Present { value: f } => (f as String) == "SHA256:8Xk2pQ0vN7mR4tY1wZ9cB3dE6fH0jK2lM5nO8pQ1rSs"  Absent => false }
     && match fleet_keypair_fingerprint_admitted(text: "256 MD5:aa:bb fleet-key (ED25519)") { Absent => true  _ => false }
     && match fleet_keypair_fingerprint_admitted(text: "") { Absent => true  _ => false }
+}
+
+// ── THE DISPATCH IS A ROSTER WALK WITH NO PER-KEY INPUT, AND THE INPUT ROSTER IS AT ITS HARD LIMIT ────────
+//
+// WHY THIS ROW EXISTS AT ALL (it is the shape this PR almost shipped wrong). The first version selected the
+// key with a `keypair_subject` dispatch input, gated each step on the input matching the row's lane. That is
+// the obvious design, and the generator REFUSED TO EMIT IT: this workflow's dispatch-input roster sits exactly
+// at GitHub's hard limit (`workflow_dispatch_max_inputs` = 25 -- the committed workflow declares 25 and the
+// emitter checks the count before writing, so the twenty-sixth input means no workflow file at all). The claim
+// witnesses passed while `expected_fleet_converge_yml` refused; only running the generator caught it, which is
+// why the committed `.github/workflows/fleet-converge.yml` belongs in this PR. So:
+//   1. `fleet_converge_dispatch_inputs` must stay within the cap (this test would trip on the next input, and
+//      the fix must be a merge or a removal, never a silent over-cap roster);
+//   2. selection is the PIN, not an input: every row gets a step, every step is gated on the mode alone, and
+//      each mint asks its own secret container whether it is pinned. An input-gated design could mint an
+//      already-pinned key -- adding a live version unasked; the pin gate cannot.
+//   3. each step is BUILT FROM ITS OWN ROW: its run names the row's `mint_entry`, and no step names the other
+//      row's. A fold that wired both steps to one subject -- the exact bug a lookup table beside the fold
+//      invites, and the reason entry/function are fields of the subject -- is caught here, not by comparing a
+//      run to the builder that made it.
+
+fn mint_step_id_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: i, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: i, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn mint_step_if_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: i, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: i, continue_on_error: _, timeout_minutes: _ } => match i { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn mint_step_run_of(st: Step) -> String {
+  match st {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+fn mint_job_steps() -> List<Step> { fleet_converge_fleet_keypair_mint_job().steps }
+
+fn step_with_id(id: String) -> Step? { filter(mint_job_steps(), st => mint_step_id_of(st: st) == id).first() }
+
+test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built_from_its_row() -> Bool {
+  // The cap, as the GENERATOR enforces it -- not a number copied from a comment.
+  count(fleet_converge_dispatch_inputs) <= workflow_dispatch_max_inputs
+    // No per-key input survived the cap: the selection is the pin, so nothing may name it.
+    && !any(fleet_converge_dispatch_inputs, i => i.name == "keypair_subject")
+    // Every row is walked: its mint step and its receipt upload are in the job, under the row-derived ids.
+    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: fleet_converge_fleet_keypair_mint_step_id(subject: s)) {
+         Present { value: st } => mint_step_run_of(st: st).contains(s.mint_entry)
+           && !mint_step_run_of(st: st).contains(fleet_keypair_mint_other_entry(subject: s))
+           && mint_step_if_of(st: st) == fleet_converge_fleet_keypair_mint_step_if
+           && mint_step_if_of(st: st).contains("fleet_keypair_mint")
+           && !mint_step_if_of(st: st).contains("keypair_subject")
+         Absent => false
+       })
+    && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: concat(fleet_converge_fleet_keypair_mint_step_id(subject: s), "_receipt_upload")) {
+         Present { value: st } => mint_step_if_of(st: st).contains("always()") && mint_step_if_of(st: st).contains("failure()")
+         Absent => false
+       })
+    // Distinct steps per row: one step id cannot serve two keys.
+    && count(fleet_keypair_mint_subject_rows()) == 2
+    && fleet_converge_fleet_keypair_mint_step_id(subject: boot_medium_reader_keypair_mint_subject)
+       != fleet_converge_fleet_keypair_mint_step_id(subject: mtcollins1_host_keypair_mint_subject)
+}
+
+// THE OTHER ROW'S ENTRY, read from the roster rather than spelled, so the cross-wiring check above cannot
+// silently stop checking anything when a third key is added.
+fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> String {
+  match filter(fleet_keypair_mint_subject_rows(), s => s.mint_entry != subject.mint_entry).first() { Present { value: other } => other.mint_entry  Absent => "" }
 }
