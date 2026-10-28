@@ -1,6 +1,6 @@
 module test.claim.fleet.site_pxe_edge_converge_witness
 
-import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data }
+import gunbc.provisioning.public_nocloud_seed { admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, public_nocloud_seed_user_data, public_nocloud_seed_client_mac, PublicSeedFinding, SeedCredentialField, SeedUserData }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool, kv }
 import extdeps.provisioning.ubuntu_seeded_install_media { ubuntu_seeded_install_media_grub_kernel_cmdline_net }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet, nocloud_net_ds_kernel_arg }
@@ -21,7 +21,7 @@ import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_h
 import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
-import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
   SitePxeEdgeChainloaderPinned,
@@ -142,7 +142,18 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpListenUnobservable,
   HttpLegNotNeeded,
   HttpLegActivation,
-  site_pxe_edge_install_bindings,
+  site_pxe_edge_install_requests,
+  SitePxeEdgeInstallRequest,
+  SitePxeEdgeRequestAdmission,
+  RequestBound,
+  RequestWithheld,
+  RequestClientUnparseable,
+  site_pxe_edge_request_admission,
+  site_pxe_edge_request_bindings,
+  site_pxe_edge_request_withheld,
+  site_pxe_edge_request_gate_causes,
+  InstallSeedRefused,
+  InstallRequestClientUnparseable,
   site_pxe_edge_seed_origin_resolution,
   PlacementNotNeeded,
   PlacementRefused,
@@ -958,9 +969,63 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD SERVES NO INSTALL: no binding is handed over and the name resolution is unobserved.
+// THE PRODUCTION HEAD SERVES NO INSTALL: no install is requested and the name resolution is unobserved.
 test fn the_landed_edge_has_no_install_binding() -> Bool {
-  length(site_pxe_edge_install_bindings) == 0 && site_pxe_edge_seed_origin_resolution == BootNetworkProbeUnobserved
+  length(site_pxe_edge_install_requests) == 0 && site_pxe_edge_seed_origin_resolution == BootNetworkProbeUnobserved
+}
+
+// ── Install requests: admission is the only route to a binding ──────────────────────────────────
+
+fn password_user_data() -> YamlValue {
+  yaml_mapping(entries: [kv(key: "autoinstall", value: yaml_mapping(entries: [
+    kv(key: "version", value: yaml_int(n: 1)),
+    kv(key: "identity", value: yaml_mapping(entries: [
+      kv(key: "username", value: yaml_string(s: "ubuntu")),
+      kv(key: "password", value: yaml_string(s: "$6$x$y")),
+    ])),
+  ]))])
+}
+
+fn request(client: MacParseResult, user_data: YamlValue) -> SitePxeEdgeInstallRequest {
+  SitePxeEdgeInstallRequest { client: client, user_data: user_data, architecture: Aarch64 }
+}
+
+// An admitted request becomes a binding for the same client and architecture, and nothing is withheld or gated.
+test fn an_admitted_request_binds_its_client_and_architecture() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: fixture_user_data()))]
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_bindings(admissions: admissions)) == 1
+    && (match site_pxe_edge_request_bindings(admissions: admissions).first() {
+      Present { value: b } => public_nocloud_seed_client_mac(seed: b.seed) == x86_mac && b.architecture == Aarch64
+      Absent => false
+    })
+}
+
+// RED: a seed carrying a password is not dropped. It withholds that one host's install, naming the field.
+test fn a_refused_seed_withholds_that_host_by_name() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParsed { address: x86_mac }, user_data: password_user_data()))]
+  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 1
+    && (match site_pxe_edge_request_withheld(admissions: admissions).first() {
+      Absent => false
+      Present { value: st } => match st {
+        InstallAdmitted { mac: _ } => false
+        InstallWithheld { mac: m, refusals: rs } => m == x86_mac && length(non_empty_to_list(xs: rs)) == 1 && (match rs.head {
+          InstallSeedRefused { findings: fs } => any(non_empty_to_list(xs: fs), f => f == SeedCredentialField { document: SeedUserData, path: "autoinstall.identity.password" })
+          _ => false
+        })
+      }
+    })
+}
+
+// RED: a request whose client MAC does not parse names no host to withhold, so it closes the edge's gate.
+test fn an_unparseable_request_client_closes_the_gate() -> Bool {
+  let admissions = [site_pxe_edge_request_admission(request: request(client: MacParseFailed { error: MacWrongOctetCount { observed_count: 5 } }, user_data: fixture_user_data()))]
+  length(site_pxe_edge_request_bindings(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && site_pxe_edge_request_gate_causes(admissions: admissions) == [InstallRequestClientUnparseable { error: MacWrongOctetCount { observed_count: 5 } }]
 }
 
 // THE HTTP UNIT BINDS THE ONBOARDING ADDRESS, never every interface.

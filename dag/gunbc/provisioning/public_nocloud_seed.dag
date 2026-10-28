@@ -320,7 +320,7 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
 }
 
 // THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. Today the admission's only callers are witnesses, and the
-// edge ships with no install binding (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_bindings is empty).
+// edge ships with no install request (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_requests is empty).
 data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
