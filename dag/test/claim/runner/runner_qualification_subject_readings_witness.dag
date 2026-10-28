@@ -215,18 +215,51 @@ test fn a_receipt_is_joined_to_its_step_by_instant_not_position() -> Bool {
   }
 }
 
-// RED: ONE STEP WITH TWO RECEIPTS WHILE ANOTHER HAS NONE has the right count and still refuses, naming the step; a
-// receipt in no subject's window, a receipt in the one second two windows share, and a receipt line with no instant each
-// refuse with the line.
-test fn a_receipt_that_cannot_be_placed_exactly_once_refuses() -> Bool {
-  let outside = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z", to: "2026-10-27T12:00:00.0000000Z")
-  let shared = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z", to: "2026-10-27T13:25:13.5000000Z")
-  let untimed = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z ", to: "")
-  (match read_log(log: concat(concat(first_receipt_line(), "\n"), first_receipt_line())) {
+fn receipt_at(instant: String) -> String {
+  replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z", to: instant)
+}
+
+// RED, DUPLICATE: ONE STEP WITH TWO RECEIPTS WHILE ANOTHER HAS NONE has the right count and still refuses, naming the
+// step that holds two.
+test fn a_step_holding_two_receipts_refuses_as_repeated() -> Bool {
+  match read_log(log: concat(concat(first_receipt_line(), "\n"), first_receipt_line())) {
     SubjectReadingsRefused { refusal: SubjectReceiptRepeated { step: st, count: 2 } } => st == "emit and build //gunbc/instruments:self-host"
     _ => false
-  })
-    && (match read_log(log: concat(concat(outside, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptOutsideEveryStep { line: _ } } => true _ => false })
-    && (match read_log(log: concat(concat(shared, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptInTwoSteps { line: _, first: _, second: _ } } => true _ => false })
-    && (match read_log(log: concat(concat(untimed, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptUntimed { line: _ } } => true _ => false })
+  }
+}
+
+// RED, MISATTRIBUTED: the first line of the log, stamped inside the second step's window, is never credited to the first
+// step by its position: the first step's window holds no receipt and the reading refuses naming it (a positional pairing
+// would have read this log as two held subjects).
+test fn a_receipt_stamped_in_another_steps_window_is_never_the_first_steps() -> Bool {
+  match read_log(log: concat(concat(receipt_at(instant: "2026-10-27T13:30:00.0000000Z"), "\n"), second_receipt_line())) {
+    SubjectReadingsRefused { refusal: SubjectReceiptMissing { step: st } } => st == "emit and build //gunbc/instruments:self-host"
+    _ => false
+  }
+}
+
+// RED, UNPLACED: a receipt in no subject step's window refuses with its line.
+test fn a_receipt_in_no_steps_window_refuses() -> Bool {
+  match read_log(log: concat(concat(receipt_at(instant: "2026-10-27T12:00:00.0000000Z"), "\n"), second_receipt_line())) {
+    SubjectReadingsRefused { refusal: SubjectReceiptOutsideEveryStep { line: _ } } => true
+    _ => false
+  }
+}
+
+// RED, AMBIGUOUS: a receipt in the one second two step windows share refuses, naming both steps.
+test fn a_receipt_in_two_steps_windows_refuses_as_ambiguous() -> Bool {
+  match read_log(log: concat(concat(receipt_at(instant: "2026-10-27T13:25:13.5000000Z"), "\n"), second_receipt_line())) {
+    SubjectReadingsRefused { refusal: SubjectReceiptInTwoSteps { line: _, first: f, second: s } } =>
+      f == "emit and build //gunbc/instruments:self-host" && s == "emit and build //gunbc/instruments:v2-native-cli"
+    _ => false
+  }
+}
+
+// RED, UNTIMED: a receipt line with no instant cannot be placed and refuses with its line.
+test fn an_untimed_receipt_refuses() -> Bool {
+  let untimed = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z ", to: "")
+  match read_log(log: concat(concat(untimed, "\n"), second_receipt_line())) {
+    SubjectReadingsRefused { refusal: SubjectReceiptUntimed { line: _ } } => true
+    _ => false
+  }
 }
