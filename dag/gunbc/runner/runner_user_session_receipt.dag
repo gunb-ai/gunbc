@@ -67,13 +67,6 @@ fn user_session_answer_text(a: UserSessionAnswer) -> String {
   }
 }
 
-fn user_session_linger_enable_text(r: UserSessionLingerEnable) -> String {
-  match r {
-    UserSessionLingerEnableOk => "enable_linger=ok"
-    UserSessionLingerEnableFailed { cause: c } => concat("enable_linger=", c)
-  }
-}
-
 fn user_session_linger_enable_holds(r: UserSessionLingerEnable) -> Bool {
   match r {
     UserSessionLingerEnableOk => true
@@ -120,8 +113,11 @@ fn runner_user_session_converge_receipt_for(host: HostIdentity) -> Optional<Runn
   first_where(runner_user_session_converge_receipt_rows, r => (r.host as String) == (host as String))
 }
 
-// EVERY READING IN THE ROW HOLDS. A row whose readings did not all hold records a failed converge -- it
-// says what happened but grants nothing.
+// EVERY READING IN THE ROW HOLDS. A row whose reading did not all hold records a failed converge -- it
+// says what happened but grants nothing. The grant itself is the only reader that decides what a row
+// MEANS (runner_registration_labels.RunnerUserSessionGrant); there is deliberately no boolean
+// "receipt holds for host" helper next to it, because a bool cannot tell rostered-but-unconverged from
+// never-rostered and would become the second source the review cut.
 fn runner_user_session_converge_receipt_row_holds(row: RunnerUserSessionConvergeReceiptRow) -> Bool {
   user_session_linger_enable_holds(r: row.enable_linger)
     && match row.linger {
@@ -130,13 +126,4 @@ fn runner_user_session_converge_receipt_row_holds(row: RunnerUserSessionConverge
       LoginctlLingerUnread { cause: _ } => false
     }
     && user_session_answer_holds(a: row.bus)
-}
-
-// THE GATE THE LABEL READS. Present-and-holding is the only admitted shape: no row, a row with a failed
-// reading, or a row whose linger is unread all answer false.
-fn runner_user_session_converge_receipt_holds(host: HostIdentity) -> Bool {
-  match runner_user_session_converge_receipt_for(host: host) {
-    Present { value: row } => runner_user_session_converge_receipt_row_holds(row: row)
-    Absent => false
-  }
 }

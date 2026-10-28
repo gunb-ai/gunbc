@@ -10,7 +10,10 @@ import gunbc.runner.runner_slot_allocation { runner_host_label, runner_label_set
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
-import gunbc.runner.runner_user_session_receipt { runner_user_session_converge_receipt_holds }
+import gunbc.runner.runner_user_session_receipt {
+  RunnerUserSessionConvergeReceiptRow, runner_user_session_converge_receipt_for,
+  runner_user_session_converge_receipt_row_holds,
+}
 import gunbc.runner.runner_slot_job_role { RunnerSlotJobRole, CiJobSlot, DeployJobSlot, runner_slot_job_role }
 import gunbc.ci.deploy_slot_tenancy { deploy_slot_runner_group_name }
 
@@ -97,25 +100,65 @@ fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrati
 // reads ready.
 data gunbc_user_session_label: String = "gunbc-user-session"
 
-// THE ROW AND ITS RECEIPT, NOT AN ARGUMENT. The labels a JOB runner registers with, gated by the roster
-// AND by the per-host converge receipt (gunbc.runner.runner_user_session_receipt
-// runner_user_session_converge_receipt_holds): a host on the roster whose converge never reported its
-// three readings gets nothing. The roster is a PARAMETER with the fleet list as its only argument at
-// every real call site, exactly the class_labels discipline above -- a control can pass a forged roster
-// and prove the receipt, not the list, is what grants. It is added at the job entry, not inside
+// THE ROW AND ITS RECEIPT, NOT AN ARGUMENT. The labels a JOB runner registers with. The grant is a TYPED
+// STATE (RunnerUserSessionGrant), not a silent list: a host on the roster whose converge never reported
+// its three readings is RosteredUnconverged -- label off AND named -- never a bare [] that hides the
+// difference between "not in the population" and "rostered but unconverged" (review 87126; DESIGN 3 "each
+// fact lives in exactly one place" plus DESIGN 5 "every path succeeds fully or fails with a typed,
+// located diagnostic"). ReceiptedUnrostered is the other mismatch, in the other direction: a receipt row
+// whose host left the roster (retired, or a stray row) names itself instead of being silently ignored,
+// and the ordinary outsider is Unadmitted. The roster keeps its own job -- it is the converge's INPUT list
+// (runner_job_user_session_on says which hosts to converge), while the receipt rows are the EVIDENCE that
+// a converge run reported; reading both, and typing what they disagree about, is why a host needs both to
+// hold the label. The roster is a PARAMETER with the fleet list as its only argument at every real call
+// site, exactly the class_labels discipline above -- a control can pass a forged roster and prove the
+// receipt, not the list, is what grants. It is added at the job entry, not inside
 // runner_registration_labels_of_class: the row is about the job account's user manager, and the deploy
 // slot runs the separate deploy principal (whose own labels the role drop-in sets) -- gating inside
 // _of_class would hand a capability the deploy principal never earned. Every producer reads the job
 // entry (unit fragment, JIT mint, the replace postcondition, the roster readback, and the conformance
 // check's desired set), so the grant, the registration and the observed-vs-desired comparison cannot
 // disagree about it.
-fn runner_user_session_labels_of_roster(host: HostIdentity, roster: List<HostIdentity>) -> List<String> {
-  if any(roster, h => (h as String) == (host as String))
-    && runner_user_session_converge_receipt_holds(host: host) {
-    [gunbc_user_session_label]
-  } else {
-    []
+type RunnerUserSessionGrant
+  = RunnerUserSessionGranted { row: RunnerUserSessionConvergeReceiptRow }
+  | RunnerUserSessionRosteredUnconverged { host: HostIdentity }
+  | RunnerUserSessionReceiptedUnrostered { host: HostIdentity }
+  | RunnerUserSessionUnadmitted { host: HostIdentity }
+
+fn runner_user_session_grant_of_roster(host: HostIdentity, roster: List<HostIdentity>) -> RunnerUserSessionGrant {
+  let rostered = any(roster, h => (h as String) == (host as String))
+  match runner_user_session_converge_receipt_for(host: host) {
+    Present { value: row } =>
+      if !rostered {
+        RunnerUserSessionReceiptedUnrostered { host: host }
+      } else if runner_user_session_converge_receipt_row_holds(row: row) {
+        RunnerUserSessionGranted { row: row }
+      } else {
+        RunnerUserSessionRosteredUnconverged { host: host }
+      }
+    Absent =>
+      if rostered {
+        RunnerUserSessionRosteredUnconverged { host: host }
+      } else {
+        RunnerUserSessionUnadmitted { host: host }
+      }
   }
+}
+
+// THE RENDERER. Only a Granted state contributes the label; every other state renders no label -- but
+// callers and controls read the GRANT, so the reason is visible and assertable, not inferred from a
+// length.
+fn runner_user_session_grant_labels(grant: RunnerUserSessionGrant) -> List<String> {
+  match grant {
+    RunnerUserSessionGranted { row: _ } => [gunbc_user_session_label]
+    RunnerUserSessionRosteredUnconverged { host: _ } => []
+    RunnerUserSessionReceiptedUnrostered { host: _ } => []
+    RunnerUserSessionUnadmitted { host: _ } => []
+  }
+}
+
+fn runner_user_session_labels_of_roster(host: HostIdentity, roster: List<HostIdentity>) -> List<String> {
+  runner_user_session_grant_labels(grant: runner_user_session_grant_of_roster(host: host, roster: roster))
 }
 
 fn runner_user_session_labels_for(host: HostIdentity) -> List<String> {

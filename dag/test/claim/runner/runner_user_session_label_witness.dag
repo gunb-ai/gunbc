@@ -43,6 +43,9 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.runner.runner_registration_labels {
   RunnerRegistrationLabelsResolution, RegistrationLabelsResolved, RegistrationLabelsRefused,
+  RunnerUserSessionGrant, RunnerUserSessionGranted, RunnerUserSessionRosteredUnconverged,
+  RunnerUserSessionReceiptedUnrostered, RunnerUserSessionUnadmitted,
+  runner_user_session_grant_of_roster,
   gunbc_user_session_label, runner_registration_labels, runner_registration_labels_of_class,
   runner_slot_registration_labels, runner_user_session_labels_for, runner_user_session_labels_of_roster,
   runner_user_session_label_stripped,
@@ -50,7 +53,6 @@ import gunbc.runner.runner_registration_labels {
 import gunbc.runner.runner_host_deploy { runner_job_user_session_hosts }
 import gunbc.runner.runner_user_session_receipt {
   runner_user_session_converge_receipt_for, runner_user_session_converge_receipt_row_holds,
-  runner_user_session_converge_receipt_holds,
 }
 import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
@@ -76,20 +78,44 @@ fn srv4_ci_slot() -> RunnerSlotIdentity {
   RunnerSlotIdentity { host: operator_host_srv4, slot_index: 1 }
 }
 
-// THE GATE, FROM BOTH SIDES. srv4 is rostered AND receipted, and registers with the label. The forged
-// roster is the control that makes the receipt load-bearing: srv1 forged INTO the roster (the list a
-// second host would join) still gets nothing, because no converge run ever read its user manager back.
-// If the grant ever goes back to reading the list alone -- the shape review 87054 cut -- the forged arm
-// goes red. The positive arm is no decoration: a gate that always refused would fail it.
-test fn the_roster_grants_nothing_without_a_receipt_row() -> Bool {
-  match runner_registration_labels(host: operator_host_srv4) {
-    RegistrationLabelsResolved { labels: ls } => has_label(labels: ls)
-    RegistrationLabelsRefused { host: _, cause: _ } => false
+// THE GATE, FROM EVERY SIDE, AS TYPED STATE. srv4 is rostered AND receipted: Granted. The two mismatch
+// states are asserted BY NAME, not inferred from an empty list (review 87126): srv1 forged INTO the roster
+// (the list a second host would join) is RosteredUnconverged -- no label, and the reason carried; srv4
+// dropped FROM the roster but keeping its evidence is ReceiptedUnrostered; srv1 on the real roster is
+// Unadmitted. If the grant ever goes back to reading the list alone, or to a bare [], these arms go red.
+// The Granted arm is no decoration: a gate that always refused would fail it.
+test fn the_grant_states_who_holds_the_label_and_why_the_others_do_not() -> Bool {
+  match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts) {
+    RunnerUserSessionGranted { row: _ } =>
+      match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) {
+        RunnerUserSessionRosteredUnconverged { host: forged } =>
+          match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: []) {
+            RunnerUserSessionReceiptedUnrostered { host: stranded } =>
+              match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: runner_job_user_session_hosts) {
+                RunnerUserSessionUnadmitted { host: outsider } =>
+                  (forged as String) == (operator_host_srv1 as String)
+                    && (stranded as String) == (operator_host_srv4 as String)
+                    && (outsider as String) == (operator_host_srv1 as String)
+                    && runner_user_session_labels_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts)
+                      == [gunbc_user_session_label]
+                    && runner_user_session_labels_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) == []
+                    && !has_label(labels: runner_user_session_labels_for(host: operator_host_srv1))
+                RunnerUserSessionGranted { row: _ } => false
+                RunnerUserSessionRosteredUnconverged { host: _ } => false
+                RunnerUserSessionReceiptedUnrostered { host: _ } => false
+              }
+            RunnerUserSessionGranted { row: _ } => false
+            RunnerUserSessionRosteredUnconverged { host: _ } => false
+            RunnerUserSessionUnadmitted { host: _ } => false
+          }
+        RunnerUserSessionGranted { row: _ } => false
+        RunnerUserSessionReceiptedUnrostered { host: _ } => false
+        RunnerUserSessionUnadmitted { host: _ } => false
+      }
+    RunnerUserSessionRosteredUnconverged { host: _ } => false
+    RunnerUserSessionReceiptedUnrostered { host: _ } => false
+    RunnerUserSessionUnadmitted { host: _ } => false
   }
-    && runner_user_session_labels_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts)
-      == [gunbc_user_session_label]
-    && runner_user_session_labels_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) == []
-    && !has_label(labels: runner_user_session_labels_for(host: operator_host_srv1))
 }
 
 // THE NEGATIVE CONTROLS: a host that is neither rostered nor receipted gains nothing, and the absence is
@@ -111,11 +137,12 @@ test fn an_unconverged_host_never_gains_the_label() -> Bool {
 }
 
 // THE GATE READS THE RECEIPT, NOT A SENTENCE ABOUT IT (DESIGN 4c). srv4's row exists, every reading in
-// it holds, and the run it cites is a real positive run id -- that run is fleet-converge 40270496735,
-// the evidence the PR body cites. Emptying the row does not just make this control red: the gate then
-// refuses srv4 and control 1 goes red with it, which is the difference between a gate and a caption
-// (review 87051: two String rows compared to literals showed the strings existed, not that srv4 is
-// eligible).
+// it holds, and the run it cites is a real positive run id -- that run is fleet-converge 40270496735, the
+// evidence the PR body cites. Deleting the row does not just make this control red: the grant then answers
+// RosteredUnconverged for srv4 and control 1 goes red with it, which is the difference between a gate and
+// a caption (review 87051: two String rows compared to literals showed the strings existed, not that srv4
+// is eligible). A row with a failed reading would fail here too -- the readings, not their presence, are
+// what holds.
 test fn srv4_receipt_row_holds_and_cites_a_positive_run() -> Bool {
   match runner_user_session_converge_receipt_for(host: operator_host_srv4) {
     Present { value: row } =>
@@ -123,8 +150,6 @@ test fn srv4_receipt_row_holds_and_cites_a_positive_run() -> Bool {
         && github_workflow_run_id_is_positive(id: row.run_id)
     Absent => false
   }
-    && runner_user_session_converge_receipt_holds(host: operator_host_srv4)
-    && !runner_user_session_converge_receipt_holds(host: operator_host_srv1)
 }
 
 // THE GRANT IS EXACTLY ONCE, NOT ACCUMULATED: srv4's set carries the label one time, so the composition
@@ -230,7 +255,7 @@ test fn the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else() -> 
 // (extdeps.apple.app_attest records that around gunbc#11989), and this witness must emit as cleanly as it
 // runs.
 type WitnessControl
-  = GateFromBothSidesStep
+  = GrantTypedStateStep
   | UnconvergedHostStep
   | ReceiptRowHoldsStep
   | ExactlyOnceStep
@@ -242,7 +267,7 @@ type WitnessControl
 
 fn witness_control_order() -> List<WitnessControl> {
   [
-    GateFromBothSidesStep,
+    GrantTypedStateStep,
     UnconvergedHostStep,
     ReceiptRowHoldsStep,
     ExactlyOnceStep,
@@ -256,7 +281,7 @@ fn witness_control_order() -> List<WitnessControl> {
 
 fn witness_control_name(step: WitnessControl) -> String {
   match step {
-    GateFromBothSidesStep => "the_roster_grants_nothing_without_a_receipt_row"
+    GrantTypedStateStep => "the_grant_states_who_holds_the_label_and_why_the_others_do_not"
     UnconvergedHostStep => "an_unconverged_host_never_gains_the_label"
     ReceiptRowHoldsStep => "srv4_receipt_row_holds_and_cites_a_positive_run"
     ExactlyOnceStep => "the_grant_adds_the_label_exactly_once"
@@ -270,7 +295,7 @@ fn witness_control_name(step: WitnessControl) -> String {
 
 fn witness_control_holds(step: WitnessControl) -> Bool {
   match step {
-    GateFromBothSidesStep => the_roster_grants_nothing_without_a_receipt_row()
+    GrantTypedStateStep => the_grant_states_who_holds_the_label_and_why_the_others_do_not()
     UnconvergedHostStep => an_unconverged_host_never_gains_the_label()
     ReceiptRowHoldsStep => srv4_receipt_row_holds_and_cites_a_positive_run()
     ExactlyOnceStep => the_grant_adds_the_label_exactly_once()
