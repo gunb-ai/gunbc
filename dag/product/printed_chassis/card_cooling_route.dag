@@ -368,6 +368,9 @@ fn outlet_alignment_obligation() -> NonEmptyStr {
 // pattern: a real fan row needs vendor, model, and the page the figures were read from).
 data hypothetical_blower_shape: NonEmptyStr = "hypothetical planform; no vendor, no datasheet, nothing to buy"
 
+// A micrometre figure for a demand or an extent, from the raw Int the derivations work in.
+fn shape_um(m: Int) -> Micrometer { micrometer(count: m) }
+
 // One extent of such a shape, and what produced it. `cap` is the gap that capped it; where no reading
 // reaches that far, the extent is reported as unmeasured rather than as a number nobody took.
 type ShapeExtent { at_most: Micrometer, capped_by: NonEmptyStr, measured: Bool }
