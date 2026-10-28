@@ -687,6 +687,7 @@ fn file_hold_nonholder_release_assess<Observation>(
 ) -> FileHoldNonHolderReleaseAssessment<Observation>
   admit_callers: [
     decl_ref(module_path: "test.claim.durable_exclusive_hold_nonholder_release_wet_witness", decl_name: "nr_assess_at"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_nonholder_assess"),
   ]
 {
   match durable_hold_nonholder_release_assess(hold: file_hold_ref(root: root, slot_key: slot_key), observed: observe_file_hold(root: root, key: slot_key), request: request) {
