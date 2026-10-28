@@ -3,8 +3,8 @@ module test.claim.supermicro_h11ssl_witness
 import std.types { Bool, List }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import extdeps.bmc.types { RedfishServiceRootMember, ServiceRootCertificateService }
-import extdeps.bmc.supermicro { supermicro_licence_activation_accepted_standing, supermicro_service_root_of_release }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.bmc.supermicro { supermicro_licence_activation_accepted_basis, supermicro_service_root_of_release, SupermicroRowBasis, SupermicroSeenOnOneUnit, SupermicroServiceRootReading, ServiceRootSeenOnOneUnit, ServiceRootStatedForRelease, SupermicroServiceRootFigures, SupermicroObservationScope }
+import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
   OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
   operator_inventory_attests, FactoryLoginCredential, OobLicenceKey,
@@ -98,7 +98,7 @@ test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
 
 fn transition_observed(r: H11sslFirstContactReceipt) -> Bool {
   match supermicro_h11ssl_redfish_root_answered_after_activation(r: r) {
-    ActivationTransitionObserved { check_standing: _ } => true
+    ActivationTransitionObserved { check_basis: _ } => true
     ActivationTransitionNotObserved => false
   }
 }
@@ -174,22 +174,22 @@ fn on_firmware(r: H11sslFirstContactReceipt, firmware: FirmwareSemanticVersion) 
   }
 }
 
-fn has_reading(s: CitedFigureStanding?) -> Bool {
+fn has_reading(s: SupermicroRowBasis?) -> Bool {
   match s { Absent => false  Present { value: _ } => true }
 }
 
 // What CHECK=1 means is the release's row in extdeps.bmc.supermicro, not a literal in this receipt:
 // the same observations read on 01.52.25, which has no activation row, are not an activation, so
 // the transition is not observed. A CHECK with no row on its own release has no reading, and the
-// transition on the receipt comes back carrying the row's TranscribedUncited standing, never as settled.
+// transition on the receipt comes back carrying the row's one-unit scope (this BMC, this receipt), never as a firmware rule.
 test fn w_activation_check_is_read_through_the_releases_row() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
-  has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1))
-    && !has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 0))
-    && !has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25), check: 1))
+  has_reading(s: supermicro_licence_activation_accepted_basis(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1))
+    && !has_reading(s: supermicro_licence_activation_accepted_basis(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 0))
+    && !has_reading(s: supermicro_licence_activation_accepted_basis(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25), check: 1))
     && match supermicro_h11ssl_redfish_root_answered_after_activation(r: r) {
-      ActivationTransitionObserved { check_standing: TranscribedUncited { read_obligation: _ } } => true
-      ActivationTransitionObserved { check_standing: _ } => false
+      ActivationTransitionObserved { check_basis: SupermicroSeenOnOneUnit { scope: sc, read_obligation: _ } } => mac_addresses_are_equal(left: sc.unit_bmc_mac, right: r.bmc_mac) && sc.receipt.decl_name == "supermicro_h11ssl_first_contact_receipt"
+      ActivationTransitionObserved { check_basis: _ } => false
       ActivationTransitionNotObserved => false
     }
     && !transition_observed(r: on_firmware(r: r, firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)))
@@ -202,13 +202,23 @@ fn answered_members(r: H11sslFirstContactReceipt) -> List<RedfishServiceRootMemb
   })
 }
 
-// The ServiceRoot each release served is a per-release row: 01.52.00's row is exactly what the
-// first-contact receipt observed answered, and 01.52.25 serves a different member set (it adds
-// CertificateService and JsonSchemas), so no family-wide member set exists to read.
+// The ServiceRoot each release served is a per-release row seen on one unit: 01.52.00's figures are
+// exactly what the first-contact receipt observed answered, 01.52.25 serves a different member set (it
+// adds CertificateService and JsonSchemas), and neither lookup answers release-wide -- each reading
+// names the unit and receipt it was seen on, so no consumer can take it as a firmware rule.
+fn seen_on_unit1(x: SupermicroServiceRootReading?) -> SupermicroServiceRootFigures? {
+  match x {
+    Absent => none
+    Present { value: ServiceRootSeenOnOneUnit { figures: f, scope: sc, read_obligation: _ } } =>
+      if mac_addresses_are_equal(left: sc.unit_bmc_mac, right: supermicro_h11ssl_first_contact_receipt.bmc_mac) { Present { value: f } } else { none }
+    Present { value: ServiceRootStatedForRelease { figures: _, authority: _ } } => none
+  }
+}
+
 test fn w_service_root_members_are_per_release() -> Bool {
-  match supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0)) {
+  match seen_on_unit1(x: supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0))) {
     Absent => false
-    Present { value: old } => match supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)) {
+    Present { value: old } => match seen_on_unit1(x: supermicro_service_root_of_release(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25))) {
       Absent => false
       Present { value: new } =>
         old.members == answered_members(r: supermicro_h11ssl_first_contact_receipt)
