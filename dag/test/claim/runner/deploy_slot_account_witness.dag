@@ -1,0 +1,98 @@
+module test.claim.runner.deploy_slot_account_witness
+
+import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { string_contains }
+import gunbc.runner.runner_host_file_converge {
+  DeploySlotAccountRead, DeploySlotAccountReadPresent, DeploySlotAccountReadAbsent, DeploySlotAccountReadUnreadable,
+  DeploySlotAccountStep, DeploySlotAccountSettled, DeploySlotAccountCreate,
+  DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
+  classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot_account,
+  FleetHostFileDesired, RunnerHostFileWithheld,
+  FleetHostFilesApply, FleetHostFilesObserveOnly,
+  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+}
+import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
+import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE DEPLOY SLOT'S ACCOUNT (gunbc.runner.runner_host_file_converge converge_deploy_slot_account),
+// witnessed at its pure decisions with SUPPLIED getent answers. The converge creates the account only
+// when getent says the key is absent, the run applies and the administrator holds privilege; anything
+// else reports the account missing, and a missing account withholds the role drop-in by name.
+
+fn fixture_passwd_line() -> String { "ghdeploy:x:996:996::/home/ghdeploy:/usr/sbin/nologin\n" }
+
+fn is_absent(r: DeploySlotAccountRead) -> Bool {
+  match r {
+    DeploySlotAccountReadAbsent => true
+    _ => false
+  }
+}
+
+fn is_unreadable(r: DeploySlotAccountRead) -> Bool {
+  match r {
+    DeploySlotAccountReadUnreadable { cause: _ } => true
+    _ => false
+  }
+}
+
+// ABSENCE IS getent's KEY-NOT-FOUND STATUS ONLY: exit 2 is absent, an entry is present, and any other
+// failure is unreadable -- the RED for reading every non-zero exit as absence (which would create an
+// account over an unreadable passwd database).
+test fn only_key_not_found_reads_as_absent() -> Bool {
+  is_absent(r: classify_deploy_slot_account_read(exit_code: 2, stdout: "", stderr: ""))
+    && is_unreadable(r: classify_deploy_slot_account_read(exit_code: 1, stdout: "", stderr: "getent: bad"))
+    && match classify_deploy_slot_account_read(exit_code: 0, stdout: fixture_passwd_line(), stderr: "") {
+      DeploySlotAccountReadPresent { uid: u, passwd_line: _ } => u == 996
+      _ => false
+    }
+    && is_unreadable(r: classify_deploy_slot_account_read(exit_code: 0, stdout: "ghrunner:x:1001:1001::/home/ghrunner:/bin/bash\n", stderr: ""))
+}
+
+fn creates(s: DeploySlotAccountStep) -> Bool {
+  match s {
+    DeploySlotAccountCreate => true
+    DeploySlotAccountSettled { standing: _ } => false
+  }
+}
+
+// ONLY AN ABSENT ACCOUNT IN AN APPLY RUN WITH PRIVILEGE IS CREATED (positive control), and observe mode,
+// a refused privilege or an unreadable read never create (the reds).
+test fn only_an_absent_account_in_a_privileged_apply_is_created() -> Bool {
+  creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadAbsent, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadUnreadable { cause: "fixture" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !creates(s: deploy_slot_account_step(read: DeploySlotAccountReadPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+}
+
+fn fixture_file(subject: String) -> FleetHostFileDesired {
+  FleetHostFileDesired {
+    subject: subject as NonEmptyStr,
+    path: "/etc/fixture" as FilePath,
+    content: "x",
+    mode: RemoteFileModeOwnerReadWriteWorldRead,
+    validation: NoValidation,
+  }
+}
+
+// A MISSING ACCOUNT WITHHOLDS THE ROLE DROP-IN AND ONLY IT, naming the account; a held account admits
+// every file.
+test fn a_missing_account_withholds_only_the_role_dropin() -> Bool {
+  let files = [fixture_file(subject: "runner-slot-role-dropin"), fixture_file(subject: "runner-depriv-dropin")]
+  let missing = admit_files_for_deploy_slot_account(files: files, withheld: [], standing: DeploySlotAccountMissing { cause: "fixture" as NonEmptyStr })
+  let held = admit_files_for_deploy_slot_account(files: files, withheld: [], standing: DeploySlotAccountPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr })
+  map(missing.files, f => f.subject as String) == ["runner-depriv-dropin"]
+    && map(missing.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
+    && all(missing.withheld, w => string_contains(s: w.cause as String, pattern: "ghdeploy"))
+    && length(held.files) == 2 && length(held.withheld) == 0
+}
+
+// THE ACCOUNT IS A SYSTEM ACCOUNT WITH A HOME AND NO LOGIN SHELL, the argv the administrator runs.
+test fn the_deploy_account_is_created_with_a_home_and_no_login() -> Bool {
+  map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String)
+    == ["/usr/sbin/useradd", "--system", "--create-home", "--home-dir", "/home/ghdeploy", "--shell", "/usr/sbin/nologin", "ghdeploy"]
+}

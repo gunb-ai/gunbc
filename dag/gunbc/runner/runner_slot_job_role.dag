@@ -1,6 +1,8 @@
 module gunbc.runner.runner_slot_job_role
 
 import std.types { NonEmptyStr, List, Bool, Int }
+import gunbc.executor_privileged_operation { ExecutorPrivilegedOperation, EnsureJobAccount }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_nologin_shell_path, fleet_posix_home_directory }
 import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
@@ -143,5 +145,16 @@ fn srv1_modeled_deploy_slot_reading() -> DeploySlotReading {
         map(host_committed_ci_job_members(host: operator_host_srv1, committed: n), id => runner_slot_job_user(role: runner_slot_job_role(slot: id), ci_job_user: ci_user))
       RunnerWidthUnresolved { cause: _ } => [ci_user]
     },
+  }
+}
+
+// THE DEPLOY SLOT'S ACCOUNT, AS THE ONE OPERATION THAT CREATES IT. A runner job's account has a home
+// (the listener sets HOME from it) and a nologin shell (nothing logs in as it; the listener execs the
+// runner under setpriv). Its uid is host-assigned at first creation and read back, never authored.
+fn deploy_slot_account_operation() -> ExecutorPrivilegedOperation {
+  EnsureJobAccount {
+    login: deploy_slot_job_user,
+    shell: fleet_posix_nologin_shell_path,
+    home: fleet_posix_home_directory(login: deploy_slot_job_user),
   }
 }

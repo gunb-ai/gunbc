@@ -12,7 +12,7 @@ import extdeps.tools.grep { grep_fixed_string_in_tree_argv }
 import extdeps.linux.cgroup_v2 { cgroup_v2_events_populated_key, cgroup_v2_events_interface_file }
 import extdeps.systemd.systemctl { systemctl_show_properties_argv, systemctl_list_all_service_units_argv, systemctl_daemon_reload_argv, systemctl_show_load_state_argv, systemctl_stop_argv, systemctl_disable_now_argv }
 import extdeps.systemd.unit_file { systemd_directive_value_wire, DirectiveCpuTime }
-import extdeps.posix.getent { getent_passwd_command }
+import extdeps.posix.getent { getent_passwd_command, getent_key_not_found_exit }
 import extdeps.rust.cargo { CargoBuildJobsEnv, cargo_environment_variable_name }
 import extdeps.tools.make { make_makeflags_env_name }
 import gunbc.host.ctrl_jobserver_residue { ctrl_jobserver_unit, ctrl_jobserver_residue_files, ctrl_jobserver_residue_directories }
@@ -58,7 +58,9 @@ import extdeps.needrestart {
 }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
-import gunbc.runner.runner_slot_job_role { deploy_slot_identities }
+import gunbc.runner.runner_slot_job_role { deploy_slot_identities, runner_host_has_deploy_slot, deploy_slot_account_operation }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user }
+import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name, fleet_converge_subject_host_env_name }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_split_read, SplitOk, SplitRefused, fleet_converge_split_refusal_line }
@@ -1320,11 +1322,19 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
         map(concat(residue.files, residue.directories), p => LegMetadataProbe { path: p }),
         concat(
           map(retire_legs_for(residue: residue, observation: ResiduePresent { unit_known: true, present: concat(residue.files, residue.directories) }), l => LegElevated { command: l.argv }),
-          match runner_host_deploy_for(host: subject.host) {
-            RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
-            RunnerHostDeployRefused { host: _, cause: _ } => []
-            RunnerHostDeployUnmodeled { host: _ } => []
-          },
+          concat(
+            match runner_host_deploy_for(host: subject.host) {
+              RunnerHostDeployFound { deploy: d } => [LegJobUserPasswd { job_user: d.job_user }]
+              RunnerHostDeployRefused { host: _, cause: _ } => []
+              RunnerHostDeployUnmodeled { host: _ } => []
+            },
+            if runner_host_has_deploy_slot(host: subject.host) {
+              [
+                LegJobUserPasswd { job_user: deploy_slot_job_user },
+                LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
+              ]
+            } else { [] },
+          ),
         ),
       ),
     ),
@@ -1634,6 +1644,132 @@ fn observe_runner_job_user_uid(subject: RunnerHostFileSubject, context: FleetSsh
         TypedArgvExecConverged { result: r } =>
           runner_job_user_uid_reading(job_user: d.job_user, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }
+  }
+}
+
+// ── The deploy slot's account ──────────────────────────────────────────────────────────────────
+// A HOST WITH A DEPLOY SLOT OWES ITS ACCOUNT BEFORE ITS ROLE DROP-IN (gunbc.runner.runner_slot_job_role
+// srv1_deploy_slot). The drop-in names the account the slot's jobs run as, and the listener refuses
+// to start when that account does not exist (ctrl jit-runner.sh: "is not a user on this host"), so a
+// drop-in delivered before its account would take the slot down at its next restart. The converge
+// reads the account, creates it as the administrator when it is absent and the run applies, reads it
+// back, and withholds the role drop-in by name whenever the account is not there. Observe mode reads
+// and creates nothing. Absent is only getent's own key-not-found status; any other failure is
+// unreadable, which is not absence and creates nothing.
+type DeploySlotAccountStanding
+  = HostHasNoDeploySlot
+  | DeploySlotAccountPresent { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountCreated { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountMissing { cause: NonEmptyStr }
+
+type DeploySlotAccountRead
+  = DeploySlotAccountReadPresent { uid: Int, passwd_line: NonEmptyStr }
+  | DeploySlotAccountReadAbsent
+  | DeploySlotAccountReadUnreadable { cause: NonEmptyStr }
+
+fn classify_deploy_slot_account_read(exit_code: Int, stdout: String, stderr: String) -> DeploySlotAccountRead {
+  if exit_code == getent_key_not_found_exit {
+    DeploySlotAccountReadAbsent
+  } else {
+    match runner_job_user_uid_reading(job_user: deploy_slot_job_user, exit_code: exit_code, stdout: stdout, stderr: stderr) {
+      JobUserUidObserved { uid: u, passwd_line: l } => DeploySlotAccountReadPresent { uid: u, passwd_line: l }
+      JobUserUidUnobserved { cause: c } => DeploySlotAccountReadUnreadable { cause: c }
+    }
+  }
+}
+
+fn observe_deploy_slot_account(subject: RunnerHostFileSubject, context: FleetSshExecutionContext) -> DeploySlotAccountRead
+{
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegJobUserPasswd { job_user: deploy_slot_job_user }) {
+    TypedArgvExecRefused { reason: why } => DeploySlotAccountReadUnreadable { cause: concat("getent passwd leg refused: ", why) as NonEmptyStr }
+    TypedArgvExecConverged { result: r } => classify_deploy_slot_account_read(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+  }
+}
+
+// THE DECISION AFTER THE FIRST READ, pure: what the run does next and what it reports when it does
+// nothing. Only an absent account in an apply run with the administrator's privilege is created.
+type DeploySlotAccountStep
+  = DeploySlotAccountSettled { standing: DeploySlotAccountStanding }
+  | DeploySlotAccountCreate
+
+fn deploy_slot_account_step(read: DeploySlotAccountRead, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotAccountStep {
+  match read {
+    DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountSettled { standing: DeploySlotAccountPresent { uid: u, passwd_line: l } }
+    DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: concat("the account could not be read, so it is neither confirmed nor created: ", c) as NonEmptyStr } }
+    DeploySlotAccountReadAbsent =>
+      match mode {
+        FleetHostFilesObserveOnly => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: "absent; observe mode creates nothing" as NonEmptyStr } }
+        FleetHostFilesApply =>
+          match privilege {
+            AdministratorPrivilegeAvailable => DeploySlotAccountCreate
+            AdministratorPrivilegeRefused { reason: r } => DeploySlotAccountSettled { standing: DeploySlotAccountMissing { cause: concat("absent, and the administrator holds no privilege to create it: ", r) as NonEmptyStr } }
+          }
+      }
+  }
+}
+
+fn converge_deploy_slot_account(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  mode: FleetHostFileConvergeMode,
+  privilege: FleetHostPrivilegeStanding,
+) -> DeploySlotAccountStanding
+{
+  if !runner_host_has_deploy_slot(host: subject.host) {
+    HostHasNoDeploySlot
+  } else {
+    match deploy_slot_account_step(read: observe_deploy_slot_account(subject: subject, context: context), mode: mode, privilege: privilege) {
+      DeploySlotAccountSettled { standing: st } => st
+      DeploySlotAccountCreate =>
+        match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) }) {
+          TypedArgvExecRefused { reason: why } => DeploySlotAccountMissing { cause: concat("useradd leg refused: ", why) as NonEmptyStr }
+          TypedArgvExecConverged { result: r } =>
+            match observe_deploy_slot_account(subject: subject, context: context) {
+              DeploySlotAccountReadPresent { uid: u, passwd_line: l } => DeploySlotAccountCreated { uid: u, passwd_line: l }
+              DeploySlotAccountReadAbsent => DeploySlotAccountMissing { cause: join(["useradd exit=", to_string(r.exit_code), " ", trim(s: r.stderr), "; the account is still absent on readback"], "") as NonEmptyStr }
+              DeploySlotAccountReadUnreadable { cause: c } => DeploySlotAccountMissing { cause: concat("created, but the readback could not read it: ", c) as NonEmptyStr }
+            }
+        }
+    }
+  }
+}
+
+fn deploy_slot_account_held(standing: DeploySlotAccountStanding) -> Bool {
+  match standing {
+    HostHasNoDeploySlot => true
+    DeploySlotAccountPresent { uid: _, passwd_line: _ } => true
+    DeploySlotAccountCreated { uid: _, passwd_line: _ } => true
+    DeploySlotAccountMissing { cause: _ } => false
+  }
+}
+
+// THE ROLE DROP-INS LEAVE THE DELIVERED SET WHEN THE ACCOUNT IS NOT HELD, each as a withheld file
+// naming the account's cause, so an apply run refuses rather than restarting a slot under no user.
+type RunnerHostFilesAdmitted {
+  files: List<FleetHostFileDesired>
+  withheld: List<RunnerHostFileWithheld>
+}
+
+fn admit_files_for_deploy_slot_account(files: List<FleetHostFileDesired>, withheld: List<RunnerHostFileWithheld>, standing: DeploySlotAccountStanding) -> RunnerHostFilesAdmitted {
+  match standing {
+    DeploySlotAccountMissing { cause: c } =>
+      RunnerHostFilesAdmitted {
+        files: filter(files, f => (f.subject as String) != "runner-slot-role-dropin"),
+        withheld: concat(withheld, map(filter(files, f => (f.subject as String) == "runner-slot-role-dropin"), f => RunnerHostFileWithheld {
+          subject: f.subject,
+          cause: join(["the deploy slot's account ", deploy_slot_job_user as String, " is not held: ", c as String], "") as NonEmptyStr,
+        })),
+      }
+    _ => RunnerHostFilesAdmitted { files: files, withheld: withheld }
+  }
+}
+
+fn deploy_slot_account_line(standing: DeploySlotAccountStanding) -> String {
+  match standing {
+    HostHasNoDeploySlot => ""
+    DeploySlotAccountPresent { uid: u, passwd_line: l } => join(["deploy-slot-account=present uid=", to_string(u), " passwd=", l as String, "\n"], "")
+    DeploySlotAccountCreated { uid: u, passwd_line: l } => join(["deploy-slot-account=created uid=", to_string(u), " passwd=", l as String, "\n"], "")
+    DeploySlotAccountMissing { cause: c } => join(["deploy-slot-account=MISSING ", c as String, "\n"], "")
   }
 }
 
@@ -2016,6 +2152,7 @@ type RunnerHostFileRun {
   reload: RunnerHostManagerReload
   slots: RunnerSlotPopulation
   cap_phase: RunnerHostCapPhase
+  deploy_account: DeploySlotAccountStanding
 }
 
 fn plan_fleet_host_file(
@@ -2694,6 +2831,23 @@ fn run_runner_host_files(
 ) -> RunnerHostFileRun
 {
   let privilege = observe_fleet_host_administrator_privilege(subject: fleet_subject_of(s: subject), context: context)
+  let account = converge_deploy_slot_account(subject: subject, context: context, mode: mode, privilege: privilege)
+  let admitted = admit_files_for_deploy_slot_account(files: files, withheld: withheld, standing: account)
+  run_runner_host_files_admitted(subject: subject, context: context, files: admitted.files, withheld: admitted.withheld, mode: mode, per_slot: per_slot, privilege: privilege, account: account)
+}
+
+// THE RUN OVER THE FILES THE DEPLOY SLOT'S ACCOUNT ADMITS.
+fn run_runner_host_files_admitted(
+  subject: RunnerHostFileSubject,
+  context: FleetSshExecutionContext,
+  files: List<FleetHostFileDesired>,
+  withheld: List<RunnerHostFileWithheld>,
+  mode: FleetHostFileConvergeMode,
+  per_slot: HardwareThreadCount,
+  privilege: FleetHostPrivilegeStanding,
+  account: DeploySlotAccountStanding,
+) -> RunnerHostFileRun
+{
   // ORDER (review on ff67e67949): every file but the CPU drop-in is written first and the manager
   // reloaded, so a fresh host has the unit fragment before a slot is activated and converges in one
   // pass; then the slots are actuated; only then is the CPU drop-in written, gated on every actuation
@@ -2763,6 +2917,7 @@ fn run_runner_host_files(
     reload: reload,
     slots: slots,
     cap_phase: cap_phase,
+    deploy_account: account,
   }
 }
 
@@ -2859,6 +3014,7 @@ fn runner_host_file_run_text(run: RunnerHostFileRun) -> String {
     " principal=", run.subject.target.principal as String,
     " endpoint=", ssh_target_wire(target: run.subject.target) as String, "\n",
     "administrator-privilege=", runner_host_privilege_wire(privilege: run.privilege), "\n",
+    deploy_slot_account_line(standing: run.deploy_account),
     join(map(run.results, r => runner_host_file_result_line(r: r)), ""),
     "planned-writes=", to_string(length(filter(run.results, r => runner_host_file_planned_write(p: r.planned)))), "\n",
     "pre-actuation-reload=", runner_host_manager_reload_wire(reload: run.pre_actuation_reload), "\n",

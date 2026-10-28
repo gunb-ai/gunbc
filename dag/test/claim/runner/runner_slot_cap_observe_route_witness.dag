@@ -66,6 +66,7 @@ import gunbc.host_command_model { ssh_session_exec_portable_words_operation }
 import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext }
 import product.host_identity { HostIdentity }
 import gunbc.runner.runner_host_file_converge {
+  HostHasNoDeploySlot,
   RunnerHostFileSubject, RunnerHostFileSubjectAdmitted, RunnerHostFileSubjectRefused,
   runner_host_file_subject,
   FleetHostPrivilegeStanding, AdministratorPrivilegeAvailable,
@@ -749,6 +750,7 @@ fn observe_run_of(phase: RunnerHostCapPhase) -> RunnerHostFileRun? {
         reload: ManagerReloadNotOwed,
         slots: cap_population(),
         cap_phase: phase,
+        deploy_account: HostHasNoDeploySlot,
       }
     }
   }

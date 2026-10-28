@@ -79,6 +79,7 @@ type ExecutorPrivilegedOperation
   | SystemdMaskNowUnit { unit: NonEmptyStr }
   | SystemdSetUnitProperty { unit: NonEmptyStr, assignment: NonEmptyStr }
   | EnsureSystemAccount { login: NonEmptyStr, shell: NonEmptyStr }
+  | EnsureJobAccount { login: NonEmptyStr, shell: NonEmptyStr, home: NonEmptyStr }
   | EnsureSupplementaryGroupMembership { login: NonEmptyStr, group: NonEmptyStr }
   | InstallFile {
       source: NonEmptyStr
@@ -175,6 +176,20 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
       sh,
       l
     ]
+    // A RUNNER JOB'S ACCOUNT HAS A HOME, which is the one way it differs from EnsureSystemAccount: the
+    // slot's listener sets HOME to the account's passwd home before the job starts (ctrl
+    // jit-runner.sh), and a job's tools write there, so the directory is created with the account
+    // and owned by it. Still --system and still a nologin shell: nothing logs in as it.
+    EnsureJobAccount { login: l, shell: sh, home: h } => [
+      ci_runner_sudo_binary_path(b: SudoUseradd),
+      "--system" as NonEmptyStr,
+      "--create-home" as NonEmptyStr,
+      "--home-dir" as NonEmptyStr,
+      h,
+      "--shell" as NonEmptyStr,
+      sh,
+      l
+    ]
     EnsureSupplementaryGroupMembership { login: l, group: g } => [
       ci_runner_sudo_binary_path(b: SudoUsermod),
       "-aG" as NonEmptyStr,
@@ -253,6 +268,7 @@ fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> O
     SystemdMaskNowUnit { unit: _ } => RunsAsRoot
     SystemdSetUnitProperty { unit: _, assignment: _ } => RunsAsRoot
     EnsureSystemAccount { login: _, shell: _ } => RunsAsRoot
+    EnsureJobAccount { login: _, shell: _, home: _ } => RunsAsRoot
     EnsureSupplementaryGroupMembership { login: _, group: _ } => RunsAsRoot
     InstallFile { source: _, destination: _, owner: _, group: _, mode: _ } => RunsAsRoot
     SystemdReloadUnit { unit: _ } => RunsAsRoot
@@ -466,7 +482,8 @@ data executor_privileged_operation_shell_scaffold: Disposition = Scaffold {
 // the operation READ as idempotent while the guarantee lived in the neighbour. MEASURED on srv1:
 // re-running the projected argv returned rc=9 for the account and rc=0 for all six others.
 //
-// EXACTLY ONE OPERATION NEEDS A PRECONDITION, and that was established by measurement rather than
+// THE ACCOUNT-CREATING OPERATIONS NEED A PRECONDITION (EnsureJobAccount is the same useradd with a
+// home, so it exits 9 on an existing account exactly as EnsureSystemAccount does), and that was established by measurement rather than
 // assumed. An earlier revision also guarded EnsureSupplementaryGroupMembership with an
 // `id -nG | tr | grep -qx` pipeline -- a hand-authored program smuggled into a string, solving a
 // problem that does not exist: `usermod -aG` appending a group the user already has exits 0
@@ -482,6 +499,7 @@ type OperationPrecondition
 fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
   match op {
     EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
+    EnsureJobAccount { login: l, shell: _, home: _ } => AccountExistsCheck { login: l }
     EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
     EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
     RemoveDirectoryTree { path: _ } => NoPrecondition
