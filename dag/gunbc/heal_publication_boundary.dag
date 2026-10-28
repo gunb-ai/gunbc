@@ -984,3 +984,280 @@ fn heal_publication_is_published(o: HealPublicationOutcome) -> Bool {
     HealPublicationUnverified { detail: _ } => false
   }
 }
+
+// ── THE HEAL WINDOW: a sealed candidate must be CONSUMED, within a declared bound ─────────────
+//
+// WHY THIS SITS WITH THE BOUNDARY IT GUARDS. `gunbc.rung_drop_amendment.heal_green_window_over_a_stale_mirror`
+// names a window in which a pull request's head shows green REQUIRED checks -- v2-bootstrap, the witness
+// floor -- while the repair sealed for that head has not landed. The window is not the drop: the drop is
+// that row's later event, and its `bearing` already says a PUBLISHER FAILURE leaves no bound until someone
+// notices. Its first specimen is heal 39378154865 with heal-publish 39383896432, ~41 minutes of exposure
+// before the bot commit landed. Its second is heal 39389776978, which sealed a correct candidate for PR
+// #14493 at head 8807d2405c6; heal-publish 39396236576 then FAILED at its admission step, posted nothing,
+// and left that head showing heal-generated-artifacts/success, heal-fork-skipped/skipped and
+// v2-bootstrap/success with no commit status at all. The green is green on MAIN'S MIRROR: the publisher is
+// triggered by a `workflow_run` completion whose head_sha is main's, so the job's context belongs to main's
+// commit and the PR head receives nothing from it. A reader of that head cannot distinguish "the repair
+// landed" from "the repair was sealed and then dropped" -- which is exactly the reading the drop's `bearing`
+// says must not be available.
+//
+// THE FIX IS A FOURTH THING THE PUBLISHER CAN SAY. This boundary has admitted or refused; a refusal left the
+// job as an exit reason and died with the run, visible only in a run on main's sha. Here the publisher
+// states, about a candidate it actually sealed, whether that candidate was CONSUMED. When it was not, the
+// statement is typed (which conclusion failed to consume it), located (the record names the repository, the
+// pull number, the head sha, the sealing run and the publish run it speaks for), and posted where a reader
+// of the head looks -- the same comment channel the consumed receipt already uses, under the same grant.
+// Green v2-bootstrap inside this window is then not evidence about the head, and cannot be mistaken for it.
+//
+// THE BOUND IS A FACT OF THIS MODEL, never a literal in generated yaml. It is the publisher's own liveness
+// bound: the candidate's freshness check (candidate_freshness_verdict) and the publish job's wall clock are
+// measured against the same declared minute count, so an elapsed time past it means the candidate is already
+// untrusted AND no code left in the job can still consume it. `gunbc.heal_publisher_workflow` generates the
+// job's timeout-minutes from a declared count exactly as `gunbc.heal_workflow` does with
+// heal_workflow_timeout_minutes, and the guarantee-stall row named below uses this same fact as its ceiling,
+// so the bound the publisher refuses at and the bound the drop is measured against cannot drift apart.
+//
+// PURE BY CONSTRUCTION, LIKE THE REST OF THIS MODULE. Elapsed time and the consumed-by receipt are INPUTS
+// the wet publisher reads from the platform; nothing here performs a host effect, so the adjudication is
+// decidable in a hermetic claim witness and cannot be steered by anything the candidate's producer wrote.
+
+data heal_window_record_token: NonEmptyStr = "gunbc.heal-window.v1"
+data heal_window_consumed_token: String = "consumed"
+data heal_window_unconsumed_token: String = "unconsumed"
+data heal_window_expected_head_sha_label: String = "expected_head_sha"
+data heal_window_producer_run_id_label: String = "producer_run_id"
+data heal_window_missing_consumed_by_detail: String = "the publish concluded without a consumed-by receipt naming the sealed candidate"
+
+// THE BOUND, IN MINUTES, AS A DECLARED FACT OF THE PUBLISHER'S MODEL.
+data heal_publication_candidate_liveness_minutes: Int = 25
+
+// WHERE A CONSUMED-BY RECEIPT MUST BE READABLE. It is a fact the PUBLISHED HEAD carries -- this head
+// consumed this candidate -- so it is only obtainable by reading the published head back.
+data heal_publication_consumed_by_receipt_file_name: String = "HEAL_CONSUMED_BY"
+
+// THE SHAPE OF A WINDOW THAT REFUSES. Each name says which conclusion failed to consume the candidate:
+// it never got admitted, the write was refused, the fact needed to judge it could not be read, or the
+// publish reported success while leaving no receipt that names this candidate.
+type HealWindowCause
+  = HealWindowNeverAdmitted { detail: String }
+  | HealWindowWriteRefused { detail: String }
+  | HealWindowUnverified { detail: String }
+  | HealWindowConsumedWithoutProof { detail: String }
+
+// THE STATE ITSELF. A refusal carries the conclusion that caused it, the declared bound, and the elapsed
+// time observed, so a reader needs nothing outside the record to know what is missing and for how long.
+type HealWindowVerdict
+  = HealWindowConsumed { proof: NonEmptyStr }
+  | HealWindowUnconsumed { cause: HealWindowCause, bound_minutes: Int, elapsed_secs: Int }
+
+fn heal_window_bound_minutes() -> Int {
+  heal_publication_candidate_liveness_minutes
+}
+
+fn heal_window_secs_of_minutes(minutes: Int) -> Int {
+  minutes * 60
+}
+
+fn heal_window_deadline_passed(elapsed_secs: Int, bound_minutes: Int) -> Bool {
+  elapsed_secs >= heal_window_secs_of_minutes(minutes: bound_minutes)
+}
+
+// A CONSUMED-BY RECEIPT IS AN IDENTITY CHECK, not a token search. The word "consumed" somewhere in a
+// published head proves nothing: the receipt has to name the candidate it consumed, by the head sha it was
+// sealed against AND by the run that sealed it, with both labels present in the same record. A receipt for
+// some other candidate therefore cannot discharge this one, which is the confusion a stale mirror invites.
+fn heal_window_consumed_by_receipt_matches(receipt: String, expected_head_sha: String, producer_run_id: String) -> Bool {
+  string_contains(s: receipt, pattern: heal_window_consumed_token)
+    && string_contains(s: receipt, pattern: heal_window_expected_head_sha_label)
+    && string_contains(s: receipt, pattern: heal_window_producer_run_id_label)
+    && string_contains(s: receipt, pattern: expected_head_sha)
+    && string_contains(s: receipt, pattern: producer_run_id)
+}
+
+// THE WINDOW'S WHOLE ADJUDICATION, over facts the publisher read rather than facts anyone asserted. Two
+// things make it refuse: the declared bound has been exceeded -- the candidate is already untrusted and no
+// code left in the job can consume it, whether or not a receipt exists -- or the publish concluded and left
+// no consumed-by receipt naming this candidate, INCLUDING a success that did, in fact, conclude: a green
+// conclusion with no identity-bearing receipt is the stale-readback shape, and it does not count as consumed.
+// An unmeasurable elapsed (the platform gave no parseable creation stamp) is unverified, not closed.
+fn heal_window_verdict(
+  producer_run_id: String,
+  expected_head_sha: String,
+  publish_run_concluded: Bool,
+  publish_run_success: Bool,
+  elapsed_secs: Int?,
+  consumed_by_receipt: String?
+) -> HealWindowVerdict {
+  let bound = heal_window_bound_minutes()
+  match elapsed_secs {
+    Absent =>
+      HealWindowUnconsumed {
+        cause: HealWindowUnverified { detail: "the publish run gave no parseable creation stamp, so the declared bound cannot be measured" },
+        bound_minutes: bound,
+        elapsed_secs: 0
+      }
+    Present { value: elapsed } =>
+      if heal_window_deadline_passed(elapsed_secs: elapsed, bound_minutes: bound) {
+        HealWindowUnconsumed {
+          cause: match consumed_by_receipt {
+            Absent =>
+              HealWindowUnverified { detail: "the declared bound has passed with the publish run not concluded, and no consumed-by receipt exists to read" }
+            Present { value: receipt } =>
+              if heal_window_consumed_by_receipt_matches(receipt: receipt, expected_head_sha: expected_head_sha, producer_run_id: producer_run_id) {
+                HealWindowUnverified { detail: "the declared bound has passed although a consumed-by receipt names this candidate: the publish run never concluded to make it readable" }
+              } else {
+                HealWindowConsumedWithoutProof { detail: heal_window_missing_consumed_by_detail }
+              }
+          },
+          bound_minutes: bound,
+          elapsed_secs: elapsed
+        }
+      } else if !publish_run_concluded {
+        HealWindowConsumed { proof: "the publish run is still inside the declared bound; the sealed candidate is being consumed" }
+      } else if !publish_run_success {
+        HealWindowUnconsumed {
+          cause: HealWindowNeverAdmitted { detail: "the publish run concluded in failure without consuming the sealed candidate" },
+          bound_minutes: bound,
+          elapsed_secs: elapsed
+        }
+      } else {
+        match consumed_by_receipt {
+          Absent =>
+            HealWindowUnconsumed {
+              cause: HealWindowUnverified { detail: heal_window_missing_consumed_by_detail },
+              bound_minutes: bound,
+              elapsed_secs: elapsed
+            }
+          Present { value: receipt } =>
+            if heal_window_consumed_by_receipt_matches(receipt: receipt, expected_head_sha: expected_head_sha, producer_run_id: producer_run_id) {
+              HealWindowConsumed { proof: "the published head carries the consumed-by receipt naming this candidate" }
+            } else {
+              HealWindowUnconsumed {
+                cause: HealWindowConsumedWithoutProof { detail: heal_window_missing_consumed_by_detail },
+                bound_minutes: bound,
+                elapsed_secs: elapsed
+              }
+            }
+        }
+      }
+  }
+}
+
+fn heal_window_must_refuse(v: HealWindowVerdict) -> Bool {
+  match v {
+    HealWindowConsumed { proof: _ } => false
+    HealWindowUnconsumed { cause: _, bound_minutes: _, elapsed_secs: _ } => true
+  }
+}
+
+fn heal_window_cause_detail(cause: HealWindowCause) -> String {
+  match cause {
+    HealWindowNeverAdmitted { detail: d } => d
+    HealWindowWriteRefused { detail: d } => d
+    HealWindowUnverified { detail: d } => d
+    HealWindowConsumedWithoutProof { detail: d } => d
+  }
+}
+
+fn heal_window_cause_name(cause: HealWindowCause) -> String {
+  match cause {
+    HealWindowNeverAdmitted { detail: _ } => "never_admitted"
+    HealWindowWriteRefused { detail: _ } => "write_refused"
+    HealWindowUnverified { detail: _ } => "unverified"
+    HealWindowConsumedWithoutProof { detail: _ } => "consumed_without_proof"
+  }
+}
+
+// THE CAUSE, RENDERED. A cause whose name is not its detail is the kind of record a reader has to decode;
+// the two are pinned together here so a refusal can never arrive as bare prose with no typed name, which is
+// how the specimen's failure reached nobody.
+fn heal_window_cause_text(cause: HealWindowCause) -> String {
+  join([heal_window_cause_name(cause: cause), ": ", heal_window_cause_detail(cause: cause)], "")
+}
+
+// THE UNCONSUMED IDENTITY: what is missing, and WHERE the reader is being told about it. Located means the
+// record carries the coordinates it speaks FOR -- not the coordinates of the run that writes it, which
+// belong to main's sha -- so the record survives being read out of context.
+data HealWindowLocation {
+  repository_full_name: NonEmptyStr
+  pull_number: Int
+  head_sha: CommitSha
+  head_ref: NonEmptyStr
+  base_ref: NonEmptyStr
+  producer_run_id: NonEmptyStr
+  publish_run_id: NonEmptyStr
+}
+
+// THE LOCATED, TYPED, PR-VISIBLE RECORD. Header first (a reader scanning comments sees the token and the
+// verdict word), then the coordinates, then the typed cause with the bound it exceeded and the elapsed time.
+// It names the candidate it speaks for by the sealing run's id and the head sha it was sealed against, which
+// is also the identity a later consumed-by receipt must match to discharge it.
+fn heal_window_record_text(location: HealWindowLocation, v: HealWindowVerdict) -> String {
+  let verdict_line = match v {
+    HealWindowConsumed { proof: p } =>
+      join(["**", heal_window_record_token, " ", heal_window_consumed_token, "** -- ", p], "")
+    HealWindowUnconsumed { cause: c, bound_minutes: b, elapsed_secs: e } =>
+      join(
+        [
+          "**", heal_window_record_token, " ", heal_window_unconsumed_token,
+          "** -- a sealed heal repair candidate was NOT consumed. A green v2-bootstrap on this head is ",
+          "green on main's mirror and is NOT evidence for this head: the repair sealed against it was never ",
+          "applied. Cause ", heal_window_cause_text(cause: c),
+          "; declared bound ", to_string(b), " minutes; elapsed ", to_string(e), " seconds."
+        ],
+        ""
+      )
+  }
+  let consumed_by_line = match v {
+    HealWindowConsumed { proof: _ } => ""
+    HealWindowUnconsumed { cause: _, bound_minutes: _, elapsed_secs: _ } =>
+      join(
+        [
+          "\n\nTo discharge this record, publish must conclude having consumed THIS candidate: a ",
+          heal_publication_consumed_by_receipt_file_name, " receipt on the published head naming ",
+          heal_window_expected_head_sha_label, "=", location.head_sha, " and ",
+          heal_window_producer_run_id_label, "=", location.producer_run_id, "."
+        ],
+        ""
+      )
+  }
+  join(
+    [
+      verdict_line,
+      "\n\n",
+      heal_window_record_token, " location\n",
+      "- repository: ", location.repository_full_name, "\n",
+      "- pull_request: #", to_string(location.pull_number), "\n",
+      "- head_sha: ", location.head_sha, "\n",
+      "- head_ref: ", location.head_ref, "\n",
+      "- base_ref: ", location.base_ref, "\n",
+      "- ", heal_window_producer_run_id_label, ": ", location.producer_run_id, "\n",
+      "- publish_run_id: ", location.publish_run_id, "\n",
+      consumed_by_line
+    ],
+    ""
+  )
+}
+
+// THE SAME RECORD AS A RUN LOG LINE, for the step that refuses loudly. The job's exit reason is what a
+// maintainer reading the failed step sees; it carries the same token, the same coordinates and the same
+// typed cause, so the run and the pull request cannot tell two different stories about one window.
+fn heal_window_run_log_text(location: HealWindowLocation, v: HealWindowVerdict) -> String {
+  match v {
+    HealWindowConsumed { proof: _ } =>
+      join([heal_window_record_token, " ", heal_window_consumed_token, " producer_run_id=", location.producer_run_id], "")
+    HealWindowUnconsumed { cause: _, bound_minutes: _, elapsed_secs: _ } =>
+      join(
+        [
+          heal_window_record_token, " ", heal_window_unconsumed_token,
+          " repository=", location.repository_full_name,
+          " pull_request=", to_string(location.pull_number),
+          " head_sha=", location.head_sha,
+          " ", heal_window_producer_run_id_label, "=", location.producer_run_id,
+          " publish_run_id=", location.publish_run_id,
+          " -- ", heal_window_record_text(location: location, v: v)
+        ],
+        ""
+      )
+  }
+}
