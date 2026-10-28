@@ -3577,12 +3577,13 @@ pub fn settled_type(
                 ) {
                     std::option::Option::None => Some(Rc::new(SettledType {
                         head: d.clone(),
-                        args: n
-                            .children
-                            .iter()
-                            .cloned()
-                            .map(|ch| generic_actual_position_type(ch))
-                            .collect::<Vec<_>>(),
+                        args: Rc::new({
+                            let mut __result = Vec::new();
+                            for ch in n.children.clone().iter().cloned() {
+                                __result.push(generic_actual_position_type(ch.clone()));
+                            }
+                            __result
+                        }),
                     })),
                     Some(pa) => match settled_parameterized_alias(
                         pa.clone(),
@@ -3594,12 +3595,13 @@ pub fn settled_type(
                         Some(through) => Some(through.clone()),
                         std::option::Option::None => Some(Rc::new(SettledType {
                             head: d.clone(),
-                            args: n
-                                .children
-                                .iter()
-                                .cloned()
-                                .map(|ch| generic_actual_position_type(ch))
-                                .collect::<Vec<_>>(),
+                            args: Rc::new({
+                                let mut __result = Vec::new();
+                                for ch in n.children.clone().iter().cloned() {
+                                    __result.push(generic_actual_position_type(ch.clone()));
+                                }
+                                __result
+                            }),
                         })),
                     },
                 },
@@ -4032,12 +4034,13 @@ pub fn settled_rhs(
                         std::option::Option::None => {
                             break Some(Rc::new(SettledType {
                                 head: head.clone(),
-                                args: rhs
-                                    .children
-                                    .iter()
-                                    .cloned()
-                                    .map(|ch| generic_actual_position_type(ch))
-                                    .collect::<Vec<_>>(),
+                                args: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ch in rhs.children.clone().iter().cloned() {
+                                        __result.push(generic_actual_position_type(ch.clone()));
+                                    }
+                                    __result
+                                }),
                             }));
                         }
                         Some(pa) => {
@@ -4057,12 +4060,15 @@ pub fn settled_rhs(
                                     std::option::Option::None => {
                                         break Some(Rc::new(SettledType {
                                             head: head.clone(),
-                                            args: rhs
-                                                .children
-                                                .iter()
-                                                .cloned()
-                                                .map(|ch| generic_actual_position_type(ch))
-                                                .collect::<Vec<_>>(),
+                                            args: Rc::new({
+                                                let mut __result = Vec::new();
+                                                for ch in rhs.children.clone().iter().cloned() {
+                                                    __result.push(generic_actual_position_type(
+                                                        ch.clone(),
+                                                    ));
+                                                }
+                                                __result
+                                            }),
                                         }));
                                     }
                                 }
