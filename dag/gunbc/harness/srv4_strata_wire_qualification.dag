@@ -1,0 +1,58 @@
+module gunbc.harness.srv4_strata_wire_qualification
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.decl_ref { decl_ref }
+import extdeps.external_authority { CitedFigure, CitedFigureStanding, ObservedByReceipt, observed_receipt }
+
+// THE OBSERVING LAYER'S RECEIPT for the srv4 daily Strata engine (DESIGN 3: an observation is a receipt downstream,
+// never a property inside extdeps.strata.strata_server). Session eager-lynx-183 ran the live wire qualification on
+// 2026-10-28 at 02:30 UTC against the deployed engine; the raw credential-free requests and responses are kept on
+// srv4 under record_directory.
+type Srv4StrataWireQualification {
+  engine_source_commit: NonEmptyStr
+  engine_binary_sha256: NonEmptyStr
+  record_directory: NonEmptyStr
+  // Every value of the top-level reasoning_effort member the engine accepted; an unknown word answered 400.
+  accepted_reasoning_efforts: List<NonEmptyStr>
+  // "none" disables thinking (effort_kwargs maps it to enable_thinking=False): the tool-none reply had no reasoning.
+  reasoning_off_effort: NonEmptyStr
+  // A thinking reply carries reasoning in this assistant member, content null, and structured tool_calls
+  // (type function, id, function.name, function.arguments as a JSON string); no think block reaches content.
+  message_reasoning_field: NonEmptyStr
+  // max_tokens 1000000 with a 16-token prompt was clamped to 229352 (229376 - 8 - 16): the window bounds output,
+  // and there is no separate fixed output cap.
+  max_context_tokens: Nat
+}
+
+data srv4_strata_wire_qualification_receipt: Srv4StrataWireQualification = Srv4StrataWireQualification {
+  engine_source_commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" as NonEmptyStr,
+  engine_binary_sha256: "ca21007168a32e04075f5df222a841391a14491ae3e54ac6ff921c3769df2dff" as NonEmptyStr,
+  record_directory: "/opt/gunbc-serving/srv4-daily/state/qualification" as NonEmptyStr,
+  accepted_reasoning_efforts: [
+    "none" as NonEmptyStr, "off" as NonEmptyStr, "minimal" as NonEmptyStr, "disabled" as NonEmptyStr, "false" as NonEmptyStr,
+    "low" as NonEmptyStr, "medium" as NonEmptyStr, "high" as NonEmptyStr, "xhigh" as NonEmptyStr, "max" as NonEmptyStr, "maximum" as NonEmptyStr,
+  ],
+  reasoning_off_effort: "none" as NonEmptyStr,
+  message_reasoning_field: "reasoning_content" as NonEmptyStr,
+  max_context_tokens: 229376,
+}
+
+fn srv4_strata_wire_qualification_ground() -> CitedFigureStanding {
+  ObservedByReceipt {
+    observed: observed_receipt(receipt: decl_ref(
+      module_path: "gunbc.harness.srv4_strata_wire_qualification",
+      decl_name: "srv4_strata_wire_qualification_receipt",
+    ))
+  }
+}
+
+// The receipt's readings as figures that stand on it. The harness reads these, not the engine operator's
+// statement in extdeps.strata.strata_server, which stays a transcription.
+fn srv4_strata_observed_reasoning_field() -> CitedFigure<NonEmptyStr> {
+  CitedFigure { value: srv4_strata_wire_qualification_receipt.message_reasoning_field, standing: srv4_strata_wire_qualification_ground() }
+}
+
+fn srv4_strata_observed_max_context_tokens() -> CitedFigure<Nat> {
+  CitedFigure { value: srv4_strata_wire_qualification_receipt.max_context_tokens, standing: srv4_strata_wire_qualification_ground() }
+}

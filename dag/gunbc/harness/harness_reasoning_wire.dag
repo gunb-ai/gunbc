@@ -21,7 +21,8 @@ import extdeps.ninfer.qwen3_8_27b_nvfp4 { qwen3_8_27b_nvfp4_row }
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch }
 import std.nat { Nat }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
-import extdeps.strata.strata_server { strata_srv4_daily_model_id, strata_srv4_daily_max_context_tokens, strata_message_reasoning_field, strata_thinking_end_token }
+import extdeps.strata.strata_server { strata_srv4_daily_model_id, strata_thinking_end_token }
+import gunbc.harness.srv4_strata_wire_qualification { srv4_strata_wire_qualification_receipt, srv4_strata_observed_reasoning_field, srv4_strata_observed_max_context_tokens }
 import extdeps.pool.pool_front { pool_front_any_card_model_id, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_message_reasoning_field, pool_front_thinking_end_token }
 import extdeps.deepseek.deepseek_v4 {
   deepseek_v4_vllm_thinking_kwarg, deepseek_v4_vllm_reasoning_effort_kwarg,
@@ -327,18 +328,15 @@ fn harness_pool_front_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessR
   }
 }
 
-// THE SRV4 STRATA ARM. The engine operator states Strata accepts the efforts none/low/medium/high, but the request
-// key that carries them and whether "none" turns reasoning off have not been read from the srv4 engine, so off
-// REFUSES and standard/maximum send nothing (DESIGN 5), the stance the pool front arm takes for its own unread fact.
+// THE SRV4 STRATA ARM, read live (gunbc.harness.srv4_strata_wire_qualification): a top-level reasoning_effort
+// member, where "none" is a real off (enable_thinking=False). Standard sends "medium" and maximum sends "max", both
+// words the engine accepted; which accepted word means "ordinarily" is the lab's choice, sent explicitly so the
+// engine's own default never decides it.
 fn harness_strata_reasoning_kwargs(unit: HarnessServingUnit, level: HarnessReasoningLevel) -> HarnessReasoningKwargs {
   match level {
-    ReasoningOff => ReasoningLevelUnsupported {
-      unit: harness_serving_unit_wire(unit: unit),
-      level: harness_reasoning_level_wire(level: level),
-      cause: "no per-request reasoning switch has been read from the srv4 strata engine" as NonEmptyStr,
-    }
-    ReasoningStandard => ReasoningKwargsAdmitted { kwargs: [] }
-    ReasoningMaximum => ReasoningKwargsAdmitted { kwargs: [] }
+    ReasoningOff => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: srv4_strata_wire_qualification_receipt.reasoning_off_effort as String))] }
+    ReasoningStandard => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: "medium"))] }
+    ReasoningMaximum => ReasoningKwargsAdmitted { kwargs: [json_kv(key: "reasoning_effort", value: json_string(s: "max"))] }
   }
 }
 
@@ -518,7 +516,7 @@ fn harness_unit_reasoning_projection(unit: HarnessServingUnit) -> ReasoningRespo
         Absent => none
       }
     Qwen38FlashNextIq3sOnSrv4Strata =>
-      match cited_figure_read(figure: strata_message_reasoning_field) {
+      match cited_figure_read(figure: srv4_strata_observed_reasoning_field()) {
         Present { value: f } => Present { value: ParsedReasoningField { field: f } }
         Absent => none
       }
@@ -553,7 +551,7 @@ fn harness_unit_model_reasoning_field(unit: HarnessServingUnit) -> NonEmptyStr? 
     NemotronUltraFreeOnOpenRouter => Present { value: openrouter_message_reasoning_field }
     Qwen3_8_27bOnNinfer => Present { value: ninfer_message_reasoning_field }
     Qwen38FlashNextOnPoolFront => cited_figure_read(figure: pool_front_message_reasoning_field)
-    Qwen38FlashNextIq3sOnSrv4Strata => cited_figure_read(figure: strata_message_reasoning_field)
+    Qwen38FlashNextIq3sOnSrv4Strata => cited_figure_read(figure: srv4_strata_observed_reasoning_field())
   }
 }
 
@@ -636,7 +634,9 @@ fn harness_unit_server_parses_reasoning(unit: HarnessServingUnit) -> Bool {
     Qwen3_8_27bOnNinfer => true
     // Not read from the front (the reasoning figures are uncited), so no parse is claimed.
     Qwen38FlashNextOnPoolFront => false
-    Qwen38FlashNextIq3sOnSrv4Strata => false
+    // Read live (gunbc.harness.srv4_strata_wire_qualification): the engine's OutputParser splits the think block
+    // into reasoning_content and no think block reaches content.
+    Qwen38FlashNextIq3sOnSrv4Strata => true
   }
 }
 
@@ -663,6 +663,6 @@ fn harness_unit_declared_context_ceiling(unit: HarnessServingUnit) -> TokenCount
     NemotronUltraFreeOnOpenRouter => nemotron_ultra_free_context_length
     Qwen3_8_27bOnNinfer => qwen3_8_27b_nvfp4_row.context_tokens
     Qwen38FlashNextOnPoolFront => token_count(count: pool_budget_enforced(policy: pool_context_budget_policy, upstream: pool_front_max_context_tokens))
-    Qwen38FlashNextIq3sOnSrv4Strata => token_count(count: pool_budget_enforced(policy: strata_context_budget_policy, upstream: strata_srv4_daily_max_context_tokens))
+    Qwen38FlashNextIq3sOnSrv4Strata => token_count(count: pool_budget_enforced(policy: strata_context_budget_policy, upstream: srv4_strata_observed_max_context_tokens()))
   }
 }

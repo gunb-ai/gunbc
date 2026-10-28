@@ -23,12 +23,13 @@ import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedMo
 import gunbc.harness.harness_reasoning_wire {
   harness_unit_reasoning_projection,
   Qwen38FlashNextOnPoolFront, Qwen38FlashNextIq3sOnSrv4Strata, Qwen3_8_27bOnNinfer, RunOnOperatorEndpoint, PlacedOnFleetSeat, LeasedFromHostedQuota,
-  harness_reasoning_kwargs_for, ReasoningOff, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  HarnessReasoningLevel, harness_reasoning_kwargs_for, ReasoningOff, ReasoningStandard, ReasoningMaximum, ReasoningKwargsAdmitted, ReasoningLevelUnsupported, harness_unit_server_parses_reasoning,
   harness_unit_model_id, harness_unit_reasoning_field, harness_unit_thinking_end_token, harness_unit_model_reasoning_field, harness_unit_reasoning_field_aliases, harness_capped_max_tokens, harness_unit_declared_context_ceiling,
   DeepseekV4FlashOnVllm,
 }
 import gunbc.serving.turn_admission { InteractiveQualitySensitive, BatchQualityTolerant }
 import std.measure { token_count_value }
+import extdeps.languages.json.emit { json_object, serialize_json }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
 import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_model_id, pool_front_any_card_model_id, pool_front_session_header_name }
 import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
@@ -255,6 +256,25 @@ test fn the_qwen_unit_refuses_reasoning_off_because_no_per_request_switch_was_re
     ReasoningKwargsAdmitted { kwargs: _ } => true
     ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
   })
+}
+
+fn w_effort_wire(level: HarnessReasoningLevel) -> String {
+  match harness_reasoning_kwargs_for(unit: Qwen38FlashNextIq3sOnSrv4Strata, level: level) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => ""
+    ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k))
+  }
+}
+
+// THE SRV4 ENGINE'S EFFORT WIRE, read live: off is a real switch there (the pool front arm above still refuses it),
+// and every level is sent explicitly as a word the engine accepted. RED: the pool front's off refusal must not be
+// copied here, and an empty kwargs list would leave the engine's own default to decide the level.
+test fn the_srv4_route_sends_each_level_as_a_read_effort_word_and_parses_reasoning_server_side() -> Bool {
+  w_effort_wire(level: ReasoningOff).contains("\"reasoning_effort\": \"none\"")
+    && w_effort_wire(level: ReasoningStandard).contains("\"reasoning_effort\": \"medium\"")
+    && w_effort_wire(level: ReasoningMaximum).contains("\"reasoning_effort\": \"max\"")
+    && harness_unit_server_parses_reasoning(unit: Qwen38FlashNextIq3sOnSrv4Strata)
+    && !harness_unit_server_parses_reasoning(unit: Qwen38FlashNextOnPoolFront)
+    && token_count_value(t: harness_unit_declared_context_ceiling(unit: Qwen38FlashNextIq3sOnSrv4Strata)) == 229376
 }
 
 test fn a_models_document_with_no_data_array_is_unreadable_not_an_empty_list() -> Bool {
