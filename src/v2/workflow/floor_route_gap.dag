@@ -2402,11 +2402,7 @@ fn floor_route_gap_chunk_05() -> List<String> {
   Cons {
       head: "test.claim.repository_convergence_wet_witness.already_at_candidate_repairs_a_stale_index",
       tail: Cons {
-      head: "test.claim.repository_convergence_wet_witness.cas_race_is_observed_after_fetch",
-      tail: Cons {
       head: "test.claim.repository_convergence_wet_witness.detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree",
-      tail: Cons {
-      head: "test.claim.repository_convergence_wet_witness.reset_refusal_after_successful_cas_is_nonzero",
       tail: Cons {
       head: "test.claim.repository_convergence_wet_witness.undecodable_worktree_roster_refuses_before_mutation",
       tail: Cons {
@@ -2415,7 +2411,7 @@ fn floor_route_gap_chunk_05() -> List<String> {
       head: "test.claim.repository_convergence_wet_witness.wrong_primary_standing_refuses_from_gits_roster",
       tail: Cons {
       head: "test.claim.repository_convergence_wet_witness.a_legacy_derived_roster_file_is_retired_and_read_back_absent",
-      tail: Empty {} } } } } } } } }
+      tail: Empty {} } } } } } }
 }
 
 fn floor_route_gap_chunks() -> List<List<String>> {
