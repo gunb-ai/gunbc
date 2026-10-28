@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import product.placement_supply { HostIdentity }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.host.managed_host {
@@ -81,6 +81,7 @@ fn megarac_binding_step(host: ManagedHost) -> MegaRacBindingStep {
       match route.observation.identity.firmware.family {
         AmiMegaRac => MegaRacBindingAdmissible { host: host, route: route }
         OpenBmc => MegaRacBindingRefused { cause: MegaRacHostNotMegaRac { family: OpenBmc } }
+        SupermicroAten => MegaRacBindingRefused { cause: MegaRacHostNotMegaRac { family: SupermicroAten } }
       }
     BmcControlAccessUnobserved { endpoint: e } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: BmcControlAccessUnobserved { endpoint: e } } }
     BmcControlNotSecured { cause: c } => MegaRacBindingRefused { cause: MegaRacHostNotBound { standing: BmcControlNotSecured { cause: c } } }
@@ -175,6 +176,7 @@ fn megarac_family_text(family: BmcFirmwareFamily) -> String {
   match family {
     AmiMegaRac => "AMI MegaRAC"
     OpenBmc => "OpenBMC"
+    SupermicroAten => "Supermicro (ATEN)"
   }
 }
 

@@ -772,8 +772,19 @@ test fn the_ntfy_srv1_root_steps_select_the_approval_route_for_the_by_hand_reaso
     && row_diverges_for_exactly(key: "gunbc.auth.approval_ntfy_deployment::approval_ntfy_subscriber_grant_intervention", expected: srv1_root_step_by_hand_beside_the_broker_route, selects_approved: true)
 }
 
-test fn the_per_dispatch_srv1_environment_gate_selects_the_approval_route_for_the_github_gate_reason() -> Bool {
-  row_diverges_for_exactly(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment", expected: github_environment_gate_is_not_the_approval_route, selects_approved: true)
+// OPERATOR RULING 2026-10-26 (srv1_root_mutation_approval_is_filed_by_the_job): the per-dispatch gate is
+// the job's own broker filing, so the row selects the approval capability and CONFORMS -- no reason --
+// and the old GitHub-environment site is no longer a census row at all.
+test fn the_per_dispatch_srv1_root_mutation_gate_conforms_through_the_broker() -> Bool {
+  let vs = row_verdicts(key: "gunbc.fleet.srv1_root_mutation_approval_run::srv1_root_mutation_after_gate")
+  (vs |> count) == 1
+    && all(vs, v => selected_approved(s: v.selection) && match v.conformance {
+      Conforms => true
+      DivergesWithReason { reason: _ } => false
+      Diverges => false
+      SiteNotDecidable { standing: _ } => false
+    })
+    && (row_verdicts(key: "gunbc.fleet.fleet_converge_workflow::fleet_converge_srv1_root_mutation_environment") |> count) == 0
 }
 
 fn host_root_effect_at(f: HumanInterventionFrequency) -> PrivilegedEffect {

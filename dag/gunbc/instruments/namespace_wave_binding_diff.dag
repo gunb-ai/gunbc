@@ -33,7 +33,7 @@ import std.content_hash { sha256_hex_of_text }
 //   Appeared       head has an occurrence base did not;
 //   Vanished       base had an occurrence head does not.
 //
-// THE KEY IS (module, authored spelling, ordinal) -- v2.compiler.occurrence_binding_census says why the
+// THE KEY IS (module, authored spelling, ordinal) -- v2.compiler.occurrence_resolution_census says why the
 // ordinal survives inserting an import and nothing else. ITS STABILITY IS ENFORCED HERE, NOT ASSUMED: an
 // edit beyond import insertion that adds or removes an occurrence of a spelling shifts that spelling's
 // ordinals, and every shifted occurrence surfaces as Appeared or Vanished (or as TargetChanged where two
@@ -835,7 +835,7 @@ fn partial_rows(module: String, stdout: String) -> List<String> {
 }
 
 // A refused module's partial observation is unusable when either side recorded one occurrence with two different
-// bindings (binding_partial_module's conflicting field, v2.compiler.occurrence_binding_census occurrence_binding_partial).
+// bindings (binding_partial_module's conflicting field, v2.compiler.occurrence_resolution_census occurrence_resolution_partial).
 fn partial_conflicting(module: String, base_stdout: String, head_stdout: String) -> Bool {
   count((partial_rows(module: module, stdout: base_stdout) + partial_rows(module: module, stdout: head_stdout))
     |> filter(l => field_at(line: l, index: 3) != "0")) != 0

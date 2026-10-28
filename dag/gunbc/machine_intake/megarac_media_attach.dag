@@ -191,7 +191,7 @@ type MegaRacPresentationEvidence {
 //   effect uncertain  -- any other exit: a timeout (28), a transport failure, an abort -- with the
 //                        exit code and every byte that did arrive kept, never read as a complete answer.
 // The verdict is keyed on curl's TYPED exit code, the same fact
-// gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle bmc_curl_read_cause keys on (review 71971);
+// gunbc.machine_intake.megarac_boot_diagnostic_bundle bmc_curl_read_cause keys on (review 71971);
 // stderr is kept as evidence, never parsed for the verdict. In every case the read-back decides the
 // effect.
 type MegaRacWriteAnswer

@@ -5058,9 +5058,12 @@ mod compiler_tests {
             by_parent,
         );
         env_value.unit_variant_index_observed = observed;
-        crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
-            std::rc::Rc::new(env_value),
-            "Alpha".to_string(),
+        matches!(
+            crate::v1_compiler_infer_env::type_ref_measure_binding_authority(
+                std::rc::Rc::new(env_value),
+                "Alpha".to_string()
+            ),
+            crate::v1_compiler_infer_env::TypeRefMeasureBinding::TypeRefMeasureBound
         )
     }
 

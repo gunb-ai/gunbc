@@ -376,6 +376,7 @@ type CompilerDiagnostic
   | ImportCollidesWithKernelName { name: String, module_path: String, importing_module: String, kernel_declaration_module: String, span: SourceSpan }
   | KernelMintDeclarationAmbiguousAtImport { name: String, module_path: String, importing_module: String, row_count: Int, span: SourceSpan }
   | UnresolvedType     { name: String, span: SourceSpan }
+  | TypeRefMeasureBindingDisagreement { name: String, production_route: String, span: SourceSpan }
   | UnitVariantPhantomIdentityEvidenceUnavailable { name: String, span: SourceSpan }
   | TypeMismatch       { expected: String, got: String, span: SourceSpan }
   | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
@@ -633,6 +634,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: s } => s
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: s } => s
     UnresolvedType     { name: _, span: s }                    => s
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: s } => s
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: s } => s
     TypeMismatch       { expected: _, got: _, span: s }        => s
     ArityMismatch      { name: _, expected: _, got: _, span: s } => s
@@ -723,6 +725,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
     ImportCollidesWithKernelName { name: n, module_path: m, importing_module: i, kernel_declaration_module: k, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') collides with the kernel name whose mint is the declaration in '", k, "'. An authored import of a different type of that name is refused so the type environment and the field binding cannot type the same spelling two ways.")
     KernelMintDeclarationAmbiguousAtImport { name: n, module_path: m, importing_module: i, row_count: c, span: _ } => concat("import of '", n, "' from module '", m, "' (imported by '", i, "') cannot be judged against the kernel mint: ", to_string(value: c), " kernel_mint_declaration_rows bind that minted name, so the owning declaration is undecidable and the import is refused rather than bound to a guessed module.")
     UnresolvedType     { name: n, span: _ }                       => concat("unresolved type '", n, "'")
+    TypeRefMeasureBindingDisagreement { name: n, production_route: r, span: _ } => concat("type reference '", n, "' resolves in production through ", r, ", but the N1a measure's binding authority finds no binding for it here: its qualifier is neither an ancestor of this module nor a module this module imports. The two routes disagree; the measure refuses rather than reading a production binding as unresolved.")
     UnitVariantPhantomIdentityEvidenceUnavailable { name: n, span: _ } => concat("unit-variant marker identity evidence unavailable for '", n, "'")
     TypeMismatch       { expected: e, got: g, span: _ }           => concat("type mismatch: expected '", e, "', got '", g, "'")
     ArityMismatch      { name: n, expected: e, got: g, span: _ }  => concat("type ", n, " expects ", to_string(value: e), " type arguments, got ", to_string(value: g))
@@ -894,6 +897,7 @@ fn diagnostic_disposition(d: CompilerDiagnostic) -> DiagnosticDisposition {
     ImportCollidesWithKernelName { name: _, module_path: _, importing_module: _, kernel_declaration_module: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     KernelMintDeclarationAmbiguousAtImport { name: _, module_path: _, importing_module: _, row_count: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnresolvedType { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
+    TypeRefMeasureBindingDisagreement { name: _, production_route: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     UnitVariantPhantomIdentityEvidenceUnavailable { name: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     TypeMismatch { expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
     ArityMismatch { name: _, expected: _, got: _, span: _ } => DiagnosticDisposition { severity: SeverityError, gate: GateBlocking }
