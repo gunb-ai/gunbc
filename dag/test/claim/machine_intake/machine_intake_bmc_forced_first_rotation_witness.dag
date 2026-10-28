@@ -17,7 +17,7 @@ import gunbc.machine_intake.bmc_credential_policy {
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWritePurpose, BmcAccountWriteApproval, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit,
   ObservedSurfaceRead, QualifyByRotation, RotateCredential, QualifyRoute,
-  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject,
+  BmcWriteApprovalNotGranted, BmcWriteApprovalDenied, BmcWriteApprovalForAnotherPurpose, BmcWriteApprovalForAnotherSubject, BmcWriteApprovalIntentNotItsSubject, BmcWriteApprovalScopesNotItsSubject,
   ForcedFirstRotationAdmitted, ForcedFirstRotationRefused,
   ForcedStateForAnotherController, ForcedStateForAnotherBuild, ForcedWriteIsNotTheFactoryAccountsPasswordWrite,
   ForcedRouteDoesNotNameThisWrite, ForcedWriteApprovalRefused,
@@ -63,7 +63,7 @@ fn forced_at(endpoint: BmcControllerEndpoint) -> PublishedCredentialChangeForced
   match admit_published_credential_change_forced(
     endpoint: endpoint,
     key: asrock_altrad8ud_openbmc_3_22_00_key(),
-    status: "403" as NonEmptyStr,
+    status: 403,
     verdict: redfish_password_change_verdict(body: srv13_forced_change_body),
     response_evidence: response_receipt,
   ) {
@@ -100,6 +100,7 @@ fn verdict(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, 
                 BmcWriteApprovalForAnotherPurpose { approved: _, required: _ } => "another-purpose"
                 BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
                 BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
+                BmcWriteApprovalScopesNotItsSubject { approved: _ } => "scopes-not-its-subject"
               }
           }
       }
