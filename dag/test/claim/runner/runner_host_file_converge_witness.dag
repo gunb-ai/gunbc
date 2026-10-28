@@ -901,6 +901,7 @@ fn settled_run(mode: FleetHostFileConvergeMode, reload: RunnerHostManagerReload,
               FleetHostFilesApply => runner_host_cap_phase_not_owed
             },
             deploy_account: HostHasNoDeploySlot,
+            deploy_trees: [],
           })
       }
   }
@@ -1504,6 +1505,7 @@ test fn a_withheld_file_makes_apply_refuse() -> Bool {
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }
@@ -1663,6 +1665,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
       && runner_host_file_run_succeeded(run: RunnerHostFileRun {
         subject: s,
@@ -1678,6 +1681,7 @@ test fn a_refused_pre_actuation_reload_refuses_apply_through_its_own_field() -> 
         slots: population_of(standings: [SlotTeardownEffective]),
         cap_phase: runner_host_cap_phase_not_owed,
         deploy_account: HostHasNoDeploySlot,
+        deploy_trees: [],
       })
   }
 }

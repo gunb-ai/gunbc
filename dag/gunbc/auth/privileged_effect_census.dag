@@ -1214,7 +1214,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_host_file_converge", decl_name: "runner_host_file_converge_ci_wet"),
-    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, as the administrator over the fleet SSH edge: create the deploy slot's job account when the host has a deploy slot and getent finds it absent, and read it back; write what differs among the host's declared root-evaluated files (systemd drop-ins and unit fragment, needrestart conf.d, the job user's sudoers, slot cap drop-ins) with owner and mode readback, daemon-reload, and drain, mask, restart and re-admit runner slots inside the cap bracket" as NonEmptyStr),
+    effect: fleet_host_root_effect_on_dispatch(subject: "on a dispatch naming one fleet host, as the administrator over the fleet SSH edge: create the deploy slot's job account when the host has a deploy slot and getent finds it absent, and read it back; when a deploy slot's tree is owned by any other uid, drain and mask that slot, remove its whole tree and re-extract the pinned, digest-verified runner archive as the deploy account, and read the owner back; write what differs among the host's declared root-evaluated files (systemd drop-ins and unit fragment, needrestart conf.d, the job user's sudoers, slot cap drop-ins) with owner and mode readback, daemon-reload, and drain, mask, restart and re-admit runner slots inside the cap bracket" as NonEmptyStr),
     realized: RealizedAdministratorEdge,
     divergence_reason: Present { value: fleet_host_file_converge_edge_beside_the_broker_route },
   },

@@ -2,12 +2,16 @@ module test.claim.runner.deploy_slot_account_witness
 
 import std.types { Bool, String, List, NonEmptyStr, Int, FilePath }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { string_contains }
+import std.algebra { string_contains, list_at_optional }
+import std.optional { Present, Absent }
+import extdeps.exec.command { argv_words }
 import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountRead, DeploySlotAccountReadPresent, DeploySlotAccountReadAbsent, DeploySlotAccountReadUnreadable,
   DeploySlotAccountStep, DeploySlotAccountSettled, DeploySlotAccountCreate,
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
-  classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot_account,
+  classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
+  DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
+  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands,
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
@@ -79,16 +83,66 @@ fn fixture_file(subject: String) -> FleetHostFileDesired {
   }
 }
 
-// A MISSING ACCOUNT WITHHOLDS THE ROLE DROP-IN AND ONLY IT, naming the account; a held account admits
-// every file.
-test fn a_missing_account_withholds_only_the_role_dropin() -> Bool {
+// THE ROLE DROP-IN IS WITHHELD, AND ONLY IT, while the account is missing or a deploy slot's tree is
+// not yet its account's; a held account over held trees admits every file.
+test fn the_role_dropin_waits_for_the_account_and_the_tree() -> Bool {
   let files = [fixture_file(subject: "runner-slot-role-dropin"), fixture_file(subject: "runner-depriv-dropin")]
-  let missing = admit_files_for_deploy_slot_account(files: files, withheld: [], standing: DeploySlotAccountMissing { cause: "fixture" as NonEmptyStr })
-  let held = admit_files_for_deploy_slot_account(files: files, withheld: [], standing: DeploySlotAccountPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr })
+  let held = DeploySlotAccountPresent { uid: 996, passwd_line: "fixture" as NonEmptyStr }
+  let unit = "actions-runner@srv1-02.service" as NonEmptyStr
+  let missing = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: DeploySlotAccountMissing { cause: "fixture" as NonEmptyStr }, trees: []))
+  let pending = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreePending { unit: unit, cause: "fixture" as NonEmptyStr }]))
+  let ready = admit_files_for_deploy_slot(files: files, withheld: [], bar: deploy_slot_role_dropin_bar(account: held, trees: [DeploySlotTreeRebuilt { unit: unit }]))
   map(missing.files, f => f.subject as String) == ["runner-depriv-dropin"]
     && map(missing.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
     && all(missing.withheld, w => string_contains(s: w.cause as String, pattern: "ghdeploy"))
-    && length(held.files) == 2 && length(held.withheld) == 0
+    && map(pending.withheld, w => w.subject as String) == ["runner-slot-role-dropin"]
+    && length(ready.files) == 2 && length(ready.withheld) == 0
+}
+
+fn tree_settles_held(s: DeploySlotTreeStep) -> Bool {
+  match s {
+    DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: _ } } => true
+    _ => false
+  }
+}
+
+fn tree_rebuilds(s: DeploySlotTreeStep) -> Bool {
+  match s {
+    DeploySlotTreeDrainThenRebuild => true
+    _ => false
+  }
+}
+
+// A TREE OWNED BY THE ACCOUNT IS HELD (control); one owned by anyone else is drained and rebuilt only
+// in a privileged apply, and an unread owner or a missing account never rebuilds (the reds).
+test fn only_a_tree_owned_by_another_uid_in_a_privileged_apply_is_rebuilt() -> Bool {
+  let u = "actions-runner@srv1-02.service" as NonEmptyStr
+  tree_settles_held(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 996 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: none, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+}
+
+// THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
+// that order, then removes the archive: no file of the old tree survives and no new file is root's.
+test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
+  let lines = map(deploy_slot_tree_rebuild_commands(slot_dir: "/opt/actions-runner/srv1-02", tarball: "/tmp/stage/runner.tar.gz"), c => join(argv_words(command: c), " "))
+  length(lines) == 4
+    && string_contains(s: nth(xs: lines, i: 0), pattern: "-rf /opt/actions-runner/srv1-02")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 1), pattern: "/opt/actions-runner/srv1-02")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghdeploy")
+    && string_contains(s: nth(xs: lines, i: 2), pattern: "/tmp/stage/runner.tar.gz")
+    && string_contains(s: nth(xs: lines, i: 3), pattern: "/tmp/stage/runner.tar.gz")
+}
+
+fn nth(xs: List<String>, i: Int) -> String {
+  match list_at_optional(xs: xs, index: i) {
+    Present { value: v } => v
+    Absent => ""
+  }
 }
 
 // THE ACCOUNT IS A SYSTEM ACCOUNT WITH A HOME AND NO LOGIN SHELL, the argv the administrator runs.
