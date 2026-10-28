@@ -1,6 +1,6 @@
 module gunbc.harness.harness_session_recovery
 
-import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, HttpStatus, NonEmptyStr, EpochSecs, list_length }
 import std.algebra { trim }
 import std.optional { Present, Absent }
 import std.content_hash { content_hash_atom }
@@ -370,7 +370,7 @@ fn session_request_pending_cause(round: Int, cause: String) -> String {
 // THE ONE DURABLE PENDING EVENT, written by the worker as it exits on a request that drew no answer. Its
 // members are the whole contract: the round, the cause, the window's opening instant, whether the state is
 // resumable, and the tool calls still without a recorded result.
-fn session_event_request_pending(round: Int, cause: String, since: Int, validation: SessionValidation) -> String {
+fn session_event_request_pending(round: Int, cause: String, since: EpochSecs, validation: SessionValidation) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.request_pending")),
     json_kv(key: "round", value: json_int(n: round)),
@@ -384,7 +384,7 @@ fn session_event_request_pending(round: Int, cause: String, since: Int, validati
 // THE BELT'S RE-DELIVERY OF A PENDING ROUND, recorded as it re-spawns the SAME attempt. It answers nothing --
 // the request stays pending until a round actually completes -- it marks the delivery instant the schedule
 // doubles from, and counts the re-deliveries. Re-deliveries are not resumes: session_resume_bound never sees one.
-fn session_event_request_redelivered(ordinal: Int, round: Int, at: Int) -> String {
+fn session_event_request_redelivered(ordinal: Int, round: Int, at: EpochSecs) -> String {
   serialize_json(v: json_object([
     json_kv(key: "type", value: json_string(s: "turn.request_redelivered")),
     json_kv(key: "ordinal", value: json_int(n: ordinal)),
@@ -418,13 +418,19 @@ type SessionRecovery
   // THE WAKE ORDINALS ARE ONE SEQUENCE ACROSS BOTH KINDS (S3 resumes and re-deliveries): the exit spool keys
   // a resumed worker's role record by ordinal, and two records at one ordinal are unreadable. Both variants
   // carry the total wakes already recorded, and both the belt and the worker stamp ordinal = wakes_made + 1.
-  | SessionRecoveryRequestPending { cause: String, since: Int, re_deliveries: Int, wakes_made: Int, last_delivery_at: Int, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
+  // THE PENDING RECORD'S TIMESTAMPS ARE std.types EpochSecs INSTANTS (the same carrier as
+  // gunbc.compute.attempt_lifecycle AttemptRecord.opened_at), never a bare Int: the re-delivery schedule
+  // adds its gaps onto these, and an instant that is not an instant cannot be passed in by accident.
+  // 🟡 feature:measure-instant-carrier dissolve-on: a constructed std.measure instant carrier
+  // (ObservationInstant, or an EpochSecs with unit evidence at non-literal positions) that worker, belt,
+  // and stream all hand each other; then these fields become it and session_epoch_member deletes.
+  | SessionRecoveryRequestPending { cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
 
 type SessionRecoveryEvent
   = RecoveryEventNeeded { cause: String, round: Int, interrupted_calls: List<String> }
-  | RecoveryEventRequestPending { cause: String, round: Int, interrupted_calls: List<String>, since: Int, resumable: Bool }
-  | RecoveryEventRequestRedelivered { round: Int, at: Int }
+  | RecoveryEventRequestPending { cause: String, round: Int, interrupted_calls: List<String>, since: EpochSecs, resumable: Bool }
+  | RecoveryEventRequestRedelivered { round: Int, at: EpochSecs }
   | RecoveryEventCompleted
   | RecoveryEventResumed
   | RecoveryEventOther
@@ -434,6 +440,38 @@ type SessionRecoveryEvent
 type SessionInt
   = SessionIntFound { value: Int }
   | SessionIntMalformed { mismatch: String }
+
+// THE ONE EPOCH-SECOND READING admitted for recovery events: to the std.types instant carrier, or refused.
+// A missing member is Malformed (never defaulted, and never to zero: zero is a real instant -- the epoch --
+// so a default or sentinel standing in for "absent" would silently read as "delivered at the epoch"), and
+// so is a reading below zero: the carrier is branded, not validated, and the stream's word is only as good
+// as this admission.
+// 🟡 feature:measure-instant-carrier dissolve-on: a constructed std.measure instant carrier whose
+// constructor validates (then this function is the constructor's call site and the brand check deletes).
+type SessionEpoch
+  = SessionEpochRead { value: EpochSecs }
+  | SessionEpochMalformed { mismatch: String }
+
+fn session_epoch_member(v: JsonValue, key: String) -> SessionEpoch {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: found } =>
+      match found {
+        JsonNumber { lexeme: l } =>
+          match parse_int(text: serialize_json(v: JsonNumber { lexeme: l })) {
+            Present { value: n } => if n >= 0 { SessionEpochRead { value: n as EpochSecs } } else { SessionEpochMalformed { mismatch: join([key, " is negative: ", to_string(value: n)], "") } }
+            Absent => SessionEpochMalformed { mismatch: join(["member ", key, " is not an integer"], "") }
+          }
+        JsonNull => SessionEpochMalformed { mismatch: join([key, " is null, not an epoch second"], "") }
+        JsonBool { value: _ } => SessionEpochMalformed { mismatch: join([key, " is a boolean, not an epoch second"], "") }
+        JsonString { value: _ } => SessionEpochMalformed { mismatch: join([key, " is a string, not an epoch second"], "") }
+        JsonArray { elements: _ } => SessionEpochMalformed { mismatch: join([key, " is an array, not an epoch second"], "") }
+        JsonObject { members: _ } => SessionEpochMalformed { mismatch: join([key, " is an object, not an epoch second"], "") }
+      }
+    JsonMemberAbsent => SessionEpochMalformed { mismatch: join(["member ", key, " is absent"], "") }
+    JsonMemberDuplicated { count: _ } => SessionEpochMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
+    JsonMemberNotAnObject => SessionEpochMalformed { mismatch: join(["the value carrying member ", key, " is not an object"], "") }
+  }
+}
 
 fn session_int_member(v: JsonValue, key: String) -> SessionInt {
   match json_object_unique_member(v: v, key: key) {
@@ -522,9 +560,9 @@ fn session_request_pending_event_of(doc: JsonValue) -> SessionRecoveryEvent {
   match session_needed_event_of(doc: doc) {
     RecoveryEventMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending (read as a recovery event): ", m], "") }
     RecoveryEventNeeded { cause, round, interrupted_calls } =>
-      match session_int_member(v: doc, key: "since_epoch_seconds") {
-        SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
-        SessionIntFound { value: since } =>
+      match session_epoch_member(v: doc, key: "since_epoch_seconds") {
+        SessionEpochMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
+        SessionEpochRead { value: since } =>
           match session_bool_member(v: doc, key: "resumable") {
             SessionBoolMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_pending: ", m], "") }
             SessionBoolFound { value: resumable } => RecoveryEventRequestPending { cause: cause, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable }
@@ -554,9 +592,9 @@ fn session_recovery_event_of_line(line: String) -> SessionRecoveryEvent {
             match session_int_member(v: doc, key: "round") {
               SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_redelivered: ", m], "") }
               SessionIntFound { value: round } =>
-                match session_int_member(v: doc, key: "at_epoch_seconds") {
-                  SessionIntMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_redelivered: ", m], "") }
-                  SessionIntFound { value: at } => RecoveryEventRequestRedelivered { round: round, at: at }
+                match session_epoch_member(v: doc, key: "at_epoch_seconds") {
+                  SessionEpochMalformed { mismatch: m } => RecoveryEventMalformed { mismatch: join(["turn.request_redelivered: ", m], "") }
+                  SessionEpochRead { value: at } => RecoveryEventRequestRedelivered { round: round, at: at }
                 }
             }
           } else if kind == "turn.recovery_needed" {
@@ -668,24 +706,48 @@ fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> Sessio
   }
 }
 
-// THE WINDOW OF A ROUND is the earliest instant any pending event recorded for that same round. A re-delivered
-// round that re-pends records this function's value, not now, so the window does not restart under an attempt
-// and the schedule cannot be pushed forward forever by re-holding. A round that completes starts a window of
-// its own.
-fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: Int) -> Int {
+// THE WINDOW OF A ROUND is the earliest instant any pending event recorded for that same round, or none
+// when the round never went pending. A re-delivered round that re-pends records this function's value, not
+// now, so the window does not restart under an attempt and the schedule cannot be pushed forward forever
+// by re-holding. A round that completes starts a window of its own. The fold carries an Option, not a
+// sentinel: zero is a real instant (the epoch), so no Int value may stand in for "no window".
+fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: Int) -> EpochSecs? {
   let sinces = events |> flat_map(e => match e {
-    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since] } else { [] as List<Int> }
-    _ => [] as List<Int>
+    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since] } else { [] as List<EpochSecs> }
+    _ => [] as List<EpochSecs>
   })
-  fold(sinces, init: 9223372036854775807, f: (acc, x) => if x < acc { x } else { acc })
+  fold(sinces, init: none, f: fn(acc, x) {
+    match acc {
+      Present { value: v } => if x < v { Present { value: x } } else { Present { value: v } }
+      Absent => Present { value: x }
+    }
+  })
+}
+
+// THE RE-DELIVERY STAMPS OF A ROUND, in stream order: the ONE fold every re-delivery fact reads from --
+// the count the schedule doubles from, and the latest instant it adds its gap onto. Facts derived here
+// live nowhere else.
+fn session_request_redelivery_stamps_for(events: List<SessionRecoveryEvent>, round: Int) -> List<EpochSecs> {
+  events |> flat_map(e => match e {
+    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] as List<EpochSecs> }
+    _ => [] as List<EpochSecs>
+  })
 }
 
 // THE RE-DELIVERIES ALREADY RECORDED for a round: the count the re-delivery schedule doubles from.
 fn session_request_redeliveries_for(events: List<SessionRecoveryEvent>, round: Int) -> Int {
-  events |> filter(e => match e {
-    RecoveryEventRequestRedelivered { round: r, at: _ } => r == round
-    _ => false
-  }) |> count()
+  session_request_redelivery_stamps_for(events: events, round: round) |> count()
+}
+
+// THE LATEST OF A LIST OF INSTANTS, or none with it: an Option fold, so a real instant of zero answers
+// "yes, at the epoch" instead of masquerading as absent.
+fn session_latest_instant(instants: List<EpochSecs>) -> EpochSecs? {
+  fold(instants, init: none, f: fn(acc, x) {
+    match acc {
+      Present { value: v } => if v < x { Present { value: x } } else { Present { value: v } }
+      Absent => Present { value: x }
+    }
+  })
 }
 
 // THE READING OF A STANDING PENDING REQUEST, assembled from every event recorded for its round: the window
@@ -694,33 +756,26 @@ fn session_request_redeliveries_for(events: List<SessionRecoveryEvent>, round: I
 // the latest of them -- or the window's opening, when the round has never been re-delivered and its own
 // worker delivered it before finding it unserved.
 fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: String, round: Int, interrupted_calls: List<String>, resumable: Bool, wakes_made: Int) -> SessionRecovery {
-  let window = session_request_pending_since_for(events: events, round: round)
-  let stamps = events |> flat_map(e => match e {
-    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] as List<Int> }
-    _ => [] as List<Int>
-  })
-  let latest = fold(stamps, init: 0, f: (acc, x) => if x > acc { x } else { acc })
-  SessionRecoveryRequestPending {
-    cause: cause,
-    since: window,
-    re_deliveries: count(stamps),
-    wakes_made: wakes_made,
-    last_delivery_at: if latest > 0 { latest } else { window },
-    resumable: resumable,
-    interrupted_calls: interrupted_calls,
-    resume_round: round,
+  let stamps = session_request_redelivery_stamps_for(events: events, round: round)
+  match session_request_pending_since_for(events: events, round: round) {
+    // UNREACHABLE BY CONSTRUCTION -- the scan only calls this for a standing pending event, which names
+    // its window. Refused, never defaulted: a standing request that names no window is a stream this
+    // reading cannot vouch for.
+    Absent => SessionRecoveryMalformed { mismatch: join(["turn.request_pending round ", to_string(value: round), " stands with no readable since"], "") }
+    Present { value: window } => SessionRecoveryRequestPending {
+      cause: cause,
+      since: window,
+      re_deliveries: session_request_redeliveries_for(events: events, round: round),
+      wakes_made: wakes_made,
+      last_delivery_at: match session_latest_instant(instants: stamps) {
+        Present { value: latest } => latest
+        Absent => window
+      },
+      resumable: resumable,
+      interrupted_calls: interrupted_calls,
+      resume_round: round,
+    }
   }
-}
-
-// THE LAST DELIVERY INSTANT OF A ROUND: the instant of its most recent re-delivery, or none when the
-// round has never been re-delivered (its own worker's post is the delivery the schedule counts from).
-fn session_last_delivery_at_for(events: List<SessionRecoveryEvent>, round: Int) -> Int? {
-  let stamps = events |> flat_map(e => match e {
-    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] as List<Int> }
-    _ => [] as List<Int>
-  })
-  let latest = fold(stamps, init: 0, f: (acc, x) => if x > acc { x } else { acc })
-  if latest > 0 { Present { value: latest } } else { Absent }
 }
 
 // THE RE-DELIVERIES ALREADY RECORDED for a round, read straight from a worker's event stream: the
@@ -731,8 +786,12 @@ fn session_request_redeliveries_of(lines: List<String>, round: Int) -> Int {
 
 // THE SINCE A NEW PENDING EVENT RECORDS: the window already open for this round, else now. This is what makes
 // re-pending cheap to read and honest to report -- the window names when the request first went unserved.
-fn session_request_pending_since_of(lines: List<String>, round: Int, now: Int) -> Int {
+fn session_request_pending_since_of(lines: List<String>, round: Int, now: EpochSecs) -> EpochSecs {
   let events = lines |> map(l => session_recovery_event_of_line(line: l))
-  let window = session_request_pending_since_for(events: events, round: round)
-  if window < now { window } else { now }
+  match session_request_pending_since_for(events: events, round: round) {
+    // A window from a stream we did not read is clamped to the reading at hand; the window may never be
+    // in the future, and it is never the sentinel of a default.
+    Present { value: window } => if window < now { window } else { now }
+    Absent => now
+  }
 }

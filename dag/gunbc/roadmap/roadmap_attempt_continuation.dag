@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, list_length }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
 }
@@ -44,9 +44,10 @@ type PriorAttemptFacts {
   goal_audit: WorkflowSegment?
   recovery: SessionRecovery
   // THE CLOCK THE SCHEDULE IS READ AGAINST, supplied by the belt as a supplied reading: one epoch-second
-  // reading per sweep, passed down. Absent means the sweep could not read the clock, which is refused
-  // where a re-delivery instant is to be named -- never guessed at, and never an ending.
-  now: Int?
+  // instant per sweep, passed down -- the std.types carrier, so it cannot be confused with a count or an
+  // offset. Absent means the sweep could not read the clock, which is refused where a re-delivery instant
+  // is to be named -- never guessed at, and never an ending.
+  now: EpochSecs?
   verification_retry: RefusedRetryStanding
 }
 
@@ -166,7 +167,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
 // an ending would fail the witness that says so). An interrupted tool effect keeps the unchanged rule:
 // Hold, until that effect's outcome is established. A sweep that could not read the clock Holds naming
 // that -- a re-delivery instant cannot be guessed at, and refusing the instant is not ending the request.
-fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: Int, re_deliveries: Int, wakes_made: Int, last_delivery_at: Int, interrupted: List<String>) -> ContinuationDecision {
+fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, interrupted: List<String>) -> ContinuationDecision {
   if list_length(items: interrupted) > 0 {
     ContinuationHold {
       reason: join([

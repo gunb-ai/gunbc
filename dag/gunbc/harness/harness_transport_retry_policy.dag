@@ -1,6 +1,6 @@
 module gunbc.harness.harness_transport_retry_policy
 
-import std.types { String, Int, Bool }
+import std.types { String, Int, Bool, EpochSecs }
 import std.measure { Second, second, second_count }
 
 // ── WHEN THE BELT RE-DELIVERS A PATIENT REQUEST: the re-delivery schedule, kept apart ────────────────
@@ -72,8 +72,18 @@ fn transport_retry_offset_seconds(policy: HarnessTransportRetryPolicy, session_k
 // THE NEXT RE-DELIVERY INSTANT: the instant of the LAST DELIVERY (not of the last hold -- a round that
 // re-pends keeps the schedule it earned, so the gap never restarts under an attempt), plus the gap this
 // many re-deliveries have earned, plus the session's place in the schedule. Pure over clock readings
-// the caller already holds; the belt reads the clock once per sweep and passes it down.
-fn transport_retry_next_delivery_at(policy: HarnessTransportRetryPolicy, last_delivery_at: Int, re_deliveries: Int, session_key: String) -> Int {
+// the caller already holds; the belt reads the clock once per sweep and passes it down. Instants are
+// std.types EpochSecs -- the tree's epoch-second carrier (gunbc.compute.attempt_lifecycle AttemptRecord
+// .opened_at / .launch_deadline, product.capacity's seat ledger) -- never a bare Int: a schedule input
+// that is not an instant cannot be passed in by accident. The gaps are second COUNTS (the policy's own
+// first_delay and max_delay are std.measure Second; these functions add their counts onto an instant,
+// the same instant-plus-Nat-count arithmetic gunbc.serving.serving_front_door front_door_admit_held
+// performs on the seat ledger).
+// 🟡 feature:measure-instant-carrier dissolve-on: a constructed std.measure instant carrier
+// (ObservationInstant, or an EpochSecs with unit evidence at non-literal positions) that the wire, the
+// worker, and the belt can all hand each other; then these parameters and the recovery module's
+// since / last_delivery_at become it, and the epoch re-admission at parse (session_epoch_member) deletes.
+fn transport_retry_next_delivery_at(policy: HarnessTransportRetryPolicy, last_delivery_at: EpochSecs, re_deliveries: Int, session_key: String) -> EpochSecs {
   last_delivery_at
     + transport_retry_delay_seconds(policy: policy, re_deliveries: re_deliveries)
     + transport_retry_offset_seconds(policy: policy, session_key: session_key)
@@ -82,6 +92,6 @@ fn transport_retry_next_delivery_at(policy: HarnessTransportRetryPolicy, last_de
 // WHETHER THE NEXT RE-DELIVERY IS DUE at the instant the caller holds. No budget, no expiry, no
 // "stopped asking": due means the gap has passed, and nothing else is consulted. A pending request
 // waits ten days or a hundred -- the answer is the same function.
-fn transport_retry_redelivery_due(policy: HarnessTransportRetryPolicy, last_delivery_at: Int, re_deliveries: Int, session_key: String, at: Int) -> Bool {
+fn transport_retry_redelivery_due(policy: HarnessTransportRetryPolicy, last_delivery_at: EpochSecs, re_deliveries: Int, session_key: String, at: EpochSecs) -> Bool {
   transport_retry_next_delivery_at(policy: policy, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: session_key) <= at
 }
