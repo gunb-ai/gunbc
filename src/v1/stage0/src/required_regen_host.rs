@@ -7672,13 +7672,13 @@ mod heal_round_one_base_mirror_tests {
             &["v1-compiler".to_string()],
             "e",
             "c",
-            Some(("2a11b317d2caf3c37d1d38a4421e8e0c06188925", 44, 2)),
+            Some(("2a11b317d2caf3c37d1d38a4421e8e0c06188925", 252, 2)),
         )
         .expect("a heal-round receipt renders");
         assert!(
             healed.contains(
                 "regen-round-cost: base_mirror_commit=2a11b317d2caf3c37d1d38a4421e8e0c06188925 \
-                 crate=src/v1/stage0 crate_paths=44 head_added_paths_kept=2"
+                 crate=src/v1/stage0 crate_paths=252 head_added_paths_kept=2"
             ),
             "the receipt does not name the base commit round 1 seeded from:\n{healed}"
         );
