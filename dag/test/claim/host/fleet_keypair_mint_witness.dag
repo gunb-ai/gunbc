@@ -1,0 +1,396 @@
+module test.claim.host.fleet_keypair_mint_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, NonEmptyStr, Secret, String }
+import std.optional { Present, Absent }
+import gunbc.host_command_binding { HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched }
+import gunbc.host.fleet_keypair_mint {
+  FleetKeypairMintSubject, boot_medium_reader_keypair_mint_subject, mtcollins1_host_keypair_mint_subject,
+  fleet_keypair_mint_subject_rows, fleet_keypair_mint_subject_for,
+  MintDirOnTmpfs, MintDirRefusedAt, fleet_keypair_mint_dir_verdict,
+  GenerationYielded, GenerationRefusedWith, fleet_keypair_generation_verdict,
+  FleetAddRefusedWith, FleetAddMayHaveLanded, FleetAddContainerUnestablishable,
+  MintVerdictMinted, MintVerdictAlreadyPinned, MintVerdictRefused, MintVerdictOutcomeUnknown,
+  fleet_keypair_mint_verdict, fleet_keypair_mint_verdict_holds,
+  redact_fleet_keypair_private, fleet_keypair_public_line_admitted, fleet_keypair_fingerprint_admitted,
+  fleet_keypair_receipt_line, fleet_keypair_mint_word_holds, fleet_keypair_mint_argv,
+  fleet_keypair_mint_key_file, fleet_keypair_mint_public_file, fleet_keypair_privkey_resource,
+  fleet_keypair_unknown_outcome_guidance, fleet_keypair_pin_commit_rule,
+  fleet_keypair_mint_ruling_words, fleet_keypair_mint_ruling_date,
+}
+import gunbc.host.mtcollins1_ssh_host_key_mint {
+  HostKeypair, HostKeypairGeneration, HostKeypairGenerated, HostKeypairRefused,
+  HostKeyAddition, HostKeyVersionAdded, HostKeyAddRefused, HostKeyAddAmbiguous,
+  HostKeyMintReceipt, HostKeyMinted, HostKeyAlreadyPinned, HostKeyMintRefused, HostKeyMintOutcomeUnknown,
+  HostMintDirAdmission, HostMintDirOnTmpfs, HostMintDirRefused, host_mint_dir_admission,
+  host_keypair_from, host_key_mint_with, render_host_key_mint_receipt, host_key_mint_holds,
+  redact_host_private_material, mtcollins1_host_key_pinned_line, mtcollins1_host_key_mint_receipt_path,
+  mtcollins1_host_key_pin_commit_rule, mtcollins1_host_key_mint_ruling,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// WHAT THE ONE FLEET-KEYPAIR POLICY OWNS, WITNESSED ONCE AND APPLIED TO BOTH KEYS.
+//
+// gunbc.host.fleet_keypair_mint is where the mint of a fleet SSH keypair lives, and the reason this witness
+// asserts against the CORE rather than only against a mint is the reason the core exists: the safety of the
+// host-key mint does not come from its own code but from being the reader key's policy with a different
+// secret row. A test that exercised only the reader key would leave the host key's copy of "the private half
+// never leaves tmpfs" unverified, which is precisely the failure a generalization is accused of -- two
+// implementations that looked the same on the day one was written. So the gate, the judgement, the redaction
+// and the argv are asserted here, over BOTH subject rows, and the per-mint witnesses assert the vocabulary
+// each mint projects them into.
+//
+// WHY THESE ARE NOT MERELY POSITIVE TESTS. Several rows below are REDS: they assert that something REFUSES,
+// and they are the rows a future edit that widens the mint would trip. A RED that would also pass against a
+// broken mint is worthless, so each is written so the refusal is what is being compared -- the arm name, not
+// a rendered string that could coincidentally contain the word "refused".
+
+// THE FIXTURES. A planted private half, in the shape a mint actually handles -- armored, multi-line, with
+// long base64 bodies -- because a redaction tested against "secret" is a redaction that has not been tested.
+data planted_private: String = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\nsL8v0H8N7p0fK1mQ2vR9yT4wX7zB3cD6eF8gH0jK2lM5nO8pQ1rS4tU7vW9xY2zA\n-----END OPENSSH PRIVATE KEY-----\n"
+
+data public_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8k0Z1Tq0K6yQ9vX2rM7nB4cD1eF6gH8jK0lM2nO4pQ fleet-key"
+
+data fingerprint_line: String = "256 SHA256:8Xk2pQ0vN7mR4tY1wZ9cB3dE6fH0jK2lM5nO8pQ1rSs fleet-key (ED25519)"
+
+// THE tmpfs GATE, ON BOTH SUBJECTS (RED). The mint directory's filesystem is READ from findmnt and must come
+// back `tmpfs`; anything else refuses BEFORE ssh-keygen is dispatched, so a mint can never generate onto a
+// block device -- which is the half of Q1 that a path string beginning /dev/shm would silently betray, since
+// /dev/shm can be bind-mounted onto disk and satisfy a test that only looked at the name.
+test fn a_mint_directory_that_is_not_tmpfs_refuses_before_any_key_is_generated() -> Bool {
+  match fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "ext4\n" }) {
+    MintDirRefusedAt { cause: c, created: created } =>
+      created == true
+        && string_contains(s: c, pattern: "not on tmpfs")
+        && string_contains(s: c, pattern: "ext4")
+    _ => false
+  }
+    && match fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "overlay\n" }) {
+      MintDirRefusedAt { cause: _, created: _ } => true
+      _ => false
+    }
+    // AN UNANSWERED findmnt IS A REFUSAL, NOT A DEFAULT. A gate that passed on silence would pass whenever
+    // the check itself were broken, which is the only way this gate rots quietly.
+    && match fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandNotDispatched { reason: "not run" }) {
+      MintDirRefusedAt { cause: _, created: created } => created == true
+      _ => false
+    }
+    && match fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandUnconfirmed { exit_code: 0, stdout: "tmpfs", stderr: "" }) {
+      MintDirRefusedAt { cause: _, created: _ } => true
+      _ => false
+    }
+    // tmpfs PASSES, and only tmpfs.
+    && match fleet_keypair_mint_dir_verdict(made: HostCommandDone { stdout: "" }, fstype: HostCommandDone { stdout: "tmpfs\n" }) {
+      MintDirOnTmpfs => true
+      _ => false
+    }
+}
+
+// A DIRECTORY THAT COULD NOT BE CREATED IS NOT AN EXISTING DIRECTORY (RED). `created: false` is what tells a
+// caller not to remove a directory it never made -- deleting a directory left by a DIFFERENT mint would
+// destroy the evidence of a key nobody has accounted for, which is the opposite of what cleanup is for.
+test fn a_directory_that_was_never_created_is_not_offered_for_removal() -> Bool {
+  match fleet_keypair_mint_dir_verdict(made: HostCommandFailed { exit_code: 1, stderr: "File exists" }, fstype: HostCommandNotDispatched { reason: "no directory to ask about" }) {
+    MintDirRefusedAt { cause: c, created: created } =>
+      created == false && string_contains(s: c, pattern: "create-only")
+    _ => false
+  }
+    && match fleet_keypair_mint_dir_verdict(made: HostCommandNotDispatched { reason: "refused by policy" }, fstype: HostCommandNotDispatched { reason: "no directory" }) {
+      MintDirRefusedAt { cause: _, created: created } => created == false
+      _ => false
+    }
+}
+
+// THE GENERATION JUDGEMENT, ORDERED (REDS). The five conditions are one function here, so both mints are
+// refused by the SAME refusals; each condition is checked alone, with the others satisfied, so a refusal
+// cannot be passing for the wrong reason.
+test fn a_generated_pair_is_judged_by_five_conditions_and_the_order_of_them_is_the_policy() -> Bool {
+  // CLEANUP OUTRANKS SUCCESS: a pair generated into a directory that could not be removed is refused even
+  // though every other condition is perfect. Reporting a usable keypair from a run that left it on disk
+  // would reward the one failure the mint cannot undo with a receipt saying minted.
+  match fleet_keypair_generation_verdict(removed: false, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+    GenerationRefusedWith { cause: c } => string_contains(s: c, pattern: "not removed")
+    _ => false
+  }
+    // A private half that could not be read refuses, and does NOT fall back to the public half -- which would
+    // produce a store entry that looks complete and a key nobody can use.
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: false, private_text: "", public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+      GenerationRefusedWith { cause: _ } => true
+      _ => false
+    }
+    // A public line that is not ONE ssh-ed25519 key refuses: it is a credential no authorized_keys row and no
+    // known_hosts row can install, and storing it means a boot that can never authenticate with a mint that
+    // said success.
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: "ssh-rsa AAAAB3NzaC1yc2E fleet-key", fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+      GenerationRefusedWith { cause: _ } => true
+      _ => false
+    }
+    // A TRUNCATED public line -- the shape ssh-keygen prints when a write died half way -- refuses rather
+    // than being admitted as a key with no key in it.
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: "ssh-ed25519  fleet-key", fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+      GenerationRefusedWith { cause: _ } => true
+      _ => false
+    }
+    // A fingerprint that is not SHA256-shaped refuses: it is one no trust-anchor row will ever match, and an
+    // anchor whose fingerprint cannot match is the absence of the thing that makes a host connection mean
+    // anything.
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: "256 MD5:aa:bb:cc fleet-key (ED25519)" }) {
+      GenerationRefusedWith { cause: _ } => true
+      _ => false
+    }
+    // AND THE HAPPY PATH, so the refusals above are not merely a function that always refuses.
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+      GenerationYielded { pair: p } => (p.public_line as String) == public_line && (p.fingerprint as String) == fingerprint_line && p.private_half == planted_private
+      _ => false
+    }
+}
+
+// A REFUSED GENERATION CARRIES NO PRIVATE MATERIAL, IN ANY OF ITS FORMS (RED). ssh-keygen's diagnostics name
+// the file it is working on inside the directory this run owns, and a core path that echoed raw stderr is the
+// path that would one day echo a key. The three shapes tested are the three a store or a tool actually
+// produces: the whole armor, ONE base64 BODY LINE alone (what a store that rejects a payload echoes, and the
+// case a substring test against the full text misses entirely), and the Secret Manager wire encoding.
+test fn a_refusal_never_carries_the_private_half_whole_a_single_body_line_or_its_wire_encoding() -> Bool {
+  let one_body_line = "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz"
+  match fleet_keypair_generation_verdict(removed: true, generated: HostCommandFailed { exit_code: 1, stderr: concat("Writing key failed: ", planted_private) }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+    GenerationRefusedWith { cause: c } => !string_contains(s: c, pattern: "BEGIN OPENSSH") && !string_contains(s: c, pattern: one_body_line)
+    _ => false
+  }
+    && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandFailed { exit_code: 1, stderr: concat("echo: ", one_body_line) }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
+      GenerationRefusedWith { cause: c } => !string_contains(s: c, pattern: one_body_line)
+      _ => false
+    }
+    // A diagnostic that carries NONE of the material comes back VERBATIM: redaction that ate every message
+    // would hide the one thing an operator needs, which is why the mint failed.
+    && redact_fleet_keypair_private(text: "403 PERMISSION_DENIED secretmanager.secretVersionAdder", private_half: planted_private) == "403 PERMISSION_DENIED secretmanager.secretVersionAdder"
+    && redact_fleet_keypair_private(text: "the mint directory is not on tmpfs (findmnt FSTYPE: ext4)", private_half: planted_private) == "the mint directory is not on tmpfs (findmnt FSTYPE: ext4)"
+}
+
+// THE FOLD'S ORDERING, ONCE FOR BOTH KEYS. THE PIN IS CONSULTED BEFORE ANYTHING IS DISPATCHED, so re-running
+// a mint against a key that exists is a no-op and not a second version -- which is what makes it safe to
+// re-dispatch a mode that failed for an unrelated reason, the way these steps actually get used.
+test fn a_pinned_key_is_never_minted_again_and_the_effects_are_never_reached() -> Bool {
+  match fleet_keypair_mint_verdict(
+    pinned: Present { value: public_line },
+    generate: fn() { GenerationRefusedWith { cause: "generation must not be reached" } },
+    add: fn(half) { FleetAddMayHaveLanded { detail: "add must not be reached" } },
+  ) {
+    MintVerdictAlreadyPinned { public_line: l } => l == public_line
+    _ => false
+  }
+    // A REFUSED GENERATION NEVER REACHES THE STORE: a key that failed its own checks must not be offered to
+    // Secret Manager, where it would sit as a version nothing can use and nothing can account for.
+    && match fleet_keypair_mint_verdict(
+      pinned: none,
+      generate: fn() { GenerationRefusedWith { cause: "ssh-keygen refused" } },
+      add: fn(half) { FleetAddVersionNamed { version_name: "versions/999" } },
+    ) {
+      MintVerdictRefused { cause: c } => string_contains(s: c, pattern: "ssh-keygen refused")
+      _ => false
+    }
+    // A REFUSED ADD IS REPORTED WITH THE DETAIL REDACTED.
+    && match fleet_keypair_mint_verdict(
+      pinned: none,
+      generate: fn() { GenerationYielded { pair: FleetKeypairPairData { private_half: planted_private, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr } } },
+      add: fn(half) { FleetAddRefusedWith { detail: concat("payload rejected: ", planted_private) } },
+    ) {
+      MintVerdictRefused { cause: c } => !string_contains(s: c, pattern: "BEGIN OPENSSH")
+      _ => false
+    }
+    // A MAY-HAVE-LANDED ADD IS OUTCOME-UNKNOWN, NOT A FAILURE: the difference between those arms is the
+    // difference between "retry" and "go look, a credential may exist", and collapsing them loses the only
+    // information an operator has.
+    && match fleet_keypair_mint_verdict(
+      pinned: none,
+      generate: fn() { GenerationYielded { pair: FleetKeypairPairData { private_half: planted_private, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr } } },
+      add: fn(half) { FleetAddMayHaveLanded { detail: "connection reset after the request left" } },
+    ) {
+      MintVerdictOutcomeUnknown { cause: c, public_line: l, fingerprint: f } =>
+        string_contains(s: c, pattern: "may have landed") && (l as String) == public_line && (f as String) == fingerprint_line
+      _ => false
+    }
+}
+
+// AN UNKNOWN OUTCOME DOES NOT HOLD (RED). This is the arm a mint is tempted to soften -- reporting success
+// because the add might have worked -- and it is how a fleet acquires a live credential nobody can account
+// for. The rule is stated once, in the core, so a second mint cannot adopt a softer one and still call itself
+// the same policy.
+test fn an_unknown_add_outcome_never_holds_and_a_pinned_key_always_does() -> Bool {
+  fleet_keypair_mint_verdict_holds(v: MintVerdictOutcomeUnknown { cause: "may have landed", public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == false
+    && fleet_keypair_mint_verdict_holds(v: MintVerdictRefused { cause: "no" }) == false
+    && fleet_keypair_mint_verdict_holds(v: MintVerdictMinted { version_name: "versions/1", public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == true
+    && fleet_keypair_mint_verdict_holds(v: MintVerdictAlreadyPinned { public_line: public_line }) == true
+    && fleet_keypair_mint_word_holds(word: "unknown") == false
+    && fleet_keypair_mint_word_holds(word: "refused") == false
+    && fleet_keypair_mint_word_holds(word: "minted") == true
+    && fleet_keypair_mint_word_holds(word: "pinned") == true
+}
+
+// THE ARGV CARRIES NO KEY MATERIAL, FOR EITHER KEY (RED). Not "the mint promises not to" -- the four command
+// lists a mint issues are enumerated here, from the same builders the run uses, and checked word by word.
+// ssh-keygen is handed a TYPE, an empty passphrase, a COMMENT and a PATH; the private half is what the tool
+// WRITES, never an argument, so a reader of the runner's process list -- any process on a self-hosted runner
+// -- sees a path. A future edit that added the material as a positional operand trips this row.
+// THE FOUR COMMAND LISTS JOINED INTO ONE STRING TO SEARCH. A separate function rather than an inline block
+// because the claim is about the WORDS a process would show, and it has to be spelled once to be trusted.
+fn mint_argv_text(subject: FleetKeypairMintSubject) -> String {
+  let argv = fleet_keypair_mint_argv(subject: subject)
+  concat(join(argv.make_dir, " "), concat(" ", concat(join(argv.read_fstype, " "), concat(" ", concat(join(argv.generate, " "), concat(" ", join(argv.read_fingerprint, " ")))))))
+}
+
+// ONE SUBJECT'S WHOLE argv OBLIGATION, as a predicate so both rows are checked by the same words.
+fn argv_carries_no_key_material(subject: FleetKeypairMintSubject) -> Bool {
+  let argv = fleet_keypair_mint_argv(subject: subject)
+  let words = mint_argv_text(subject: subject)
+  !string_contains(s: words, pattern: "BEGIN OPENSSH")
+    // The private half never appears as an argument, in any of the four commands, for either subject.
+    && !string_contains(s: words, pattern: planted_private)
+    // An empty passphrase is passed as the EMPTY STRING operand to -N, which is the difference between a key
+    // a workflow can use and a key that blocks the run on a prompt nobody can answer.
+    && any(argv.generate, w => w == "-N")
+    && any(argv.generate, w => w == "")
+    && any(argv.generate, w => w == "-f")
+    && any(argv.generate, w => w == subject.mint_dir)
+    // AND THE PATHS ARE THE SUBJECT'S OWN: this is what makes one policy two mints without one mint ever
+    // writing into the other's directory.
+    && any(argv.make_dir, w => w == subject.mint_dir)
+    && any(argv.read_fstype, w => w == subject.mint_dir)
+    && fleet_keypair_mint_key_file(subject: subject) == concat(subject.mint_dir, concat("/", subject.key_file_name as String))
+    && fleet_keypair_mint_public_file(subject: subject) == concat(fleet_keypair_mint_key_file(subject: subject), ".pub")
+}
+
+test fn no_command_a_mint_issues_names_the_private_half_in_its_arguments() -> Bool {
+  all(fleet_keypair_mint_subject_rows(), s => argv_carries_no_key_material(subject: s))
+    // THE TWO MINTS ARE DISTINCT ROWS OVER ONE POLICY: different secrets, different directories, the same
+    // comment-to-lane discipline. A shared directory would mean one mint could read the other's key.
+    && fleet_keypair_mint_subject_rows().length() == 2
+    && boot_medium_reader_keypair_mint_subject.mint_dir != mtcollins1_host_keypair_mint_subject.mint_dir
+    && (boot_medium_reader_keypair_mint_subject.privkey_secret.secret as String) != (mtcollins1_host_keypair_mint_subject.privkey_secret.secret as String)
+    && starts_with(s: boot_medium_reader_keypair_mint_subject.mint_dir, prefix: "/dev/shm/")
+    && starts_with(s: mtcollins1_host_keypair_mint_subject.mint_dir, prefix: "/dev/shm/")
+    // A LANE THAT IS NOT A ROW RESOLVES TO NOTHING, rather than to a guess: the dispatch input names a lane
+    // and an unknown name must not acquire a subject by proximity.
+    && match fleet_keypair_mint_subject_for(lane: "some key nobody declared") { Absent => true  _ => false }
+    && match fleet_keypair_mint_subject_for(lane: mtcollins1_host_keypair_mint_subject.lane as String) {
+      Present { value: s } => (s.privkey_secret.secret as String) == (mtcollins1_host_keypair_mint_subject.privkey_secret.secret as String)
+      Absent => false
+    }
+}
+
+// THE RECEIPT FIELDS ARE THE SAME FOR BOTH KEYS, under each mint's own prefix. What a receipt NAMES is the
+// safety property -- version, public half, fingerprint, cause, and never a private half -- so the fields are
+// asserted once here for the policy, and the per-mint witnesses assert only the prefix.
+fn refused_receipt() -> String {
+  fleet_keypair_receipt_line(word: "host_key=refused", version_name: "", public_line: "", fingerprint: "", cause: "the store refused")
+}
+
+fn minted_receipt() -> String {
+  fleet_keypair_receipt_line(word: "host_key=minted", version_name: "versions/7", public_line: public_line, fingerprint: fingerprint_line, cause: "")
+}
+
+test fn a_receipt_names_version_public_key_and_fingerprint_and_never_the_private_half() -> Bool {
+  string_contains(s: minted_receipt(), pattern: "version_name=versions/7")
+    && string_contains(s: minted_receipt(), pattern: "public_key=")
+    && string_contains(s: minted_receipt(), pattern: "fingerprint=SHA256:")
+    && !string_contains(s: minted_receipt(), pattern: "BEGIN OPENSSH")
+    && !string_contains(s: minted_receipt(), pattern: planted_private)
+    // A REFUSED RECEIPT NAMES THE CAUSE AND NOTHING ELSE: a refusal that echoed a version_name or a
+    // fingerprint would be read as a key existing, which is a false claim about a credential.
+    && string_contains(s: refused_receipt(), pattern: "reason=the store refused")
+    && !string_contains(s: refused_receipt(), pattern: "version_name=")
+    && !string_contains(s: refused_receipt(), pattern: "fingerprint=")
+}
+
+// THE HOST-KEY MINT'S OWN OBLIGATIONS. Its vocabulary is its own, so these are asserted against it and not
+// only against the core: what a receipt renders, what the step checks, and -- the property that separates a
+// host key from a user key -- that the FINGERPRINT IS IN THE MINTED ARM. A reader key is pinned by an
+// authorized_keys row that can be regenerated from the public half; a host key is pinned by a known_hosts row
+// whose fingerprint is what every transport verifies on connect. If the receipt named only the public line,
+// the fingerprint would be transcribed by hand into the anchor, and a mistyped fingerprint is not a warning an
+// operator sees -- it is a connection that refuses forever, or (worse, if the anchor is then "fixed" by
+// copying what the host presented) the pin this row exists to prevent.
+test fn the_host_key_receipt_names_the_fingerprint_because_the_anchor_is_verified_on_every_connect() -> Bool {
+  let rendered = render_host_key_mint_receipt(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr })
+  starts_with(s: rendered, prefix: "host_key=minted")
+    && string_contains(s: rendered, pattern: "fingerprint=SHA256:")
+    && string_contains(s: rendered, pattern: "public_key=ssh-ed25519")
+    && string_contains(s: rendered, pattern: "version_name=versions/3")
+    && !string_contains(s: rendered, pattern: "BEGIN OPENSSH")
+    && host_key_mint_holds(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == true
+    && host_key_mint_holds(r: HostKeyMintOutcomeUnknown { cause: "the add may have landed" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr }) == false
+    // THE RECEIPT LANDS WHERE THE UPLOAD STEP LOOKS FOR IT.
+    && mtcollins1_host_key_mint_receipt_path == "target/mtcollins1-ssh-host-key-mint.txt"
+    // AND THE COMMIT RULE TRAVELS WITH THE MINT, in both places it is stated, because a mint that succeeds
+    // without it has produced a live credential nothing can prove it holds.
+    && string_contains(s: mtcollins1_host_key_pin_commit_rule, pattern: "fingerprint")
+    && string_contains(s: fleet_keypair_pin_commit_rule, pattern: "same commit")
+}
+
+// THE PIN IS READ, NEVER ASSERTED -- AND AN EMPTY ANCHOR FIELD IS NOT A PIN. The KnownHostKeyRow exists with
+// an empty public half before any key exists; reading that as "pinned" would make the mint refuse forever
+// without ever having minted, which is a mint that cannot run and looks like a mint that is done.
+test fn an_empty_anchor_is_not_a_pin_so_the_mint_can_still_run() -> Bool {
+  match mtcollins1_host_key_pinned_line() {
+    // Today mtcollins1 has no minted host key, so the honest answer is absent -- and the mint is reachable.
+    Absent => true
+    // If a pin exists it is a real ssh-ed25519 line, never an empty string.
+    Present { value: l } => !string_contains(s: l, pattern: "BEGIN OPENSSH") && l != "" && starts_with(s: l, prefix: "ssh-ed25519 ")
+  }
+    // THE FOLD HONOURS WHATEVER THE PIN LOOKS LIKE, without re-reading the anchor: a present pin is a no-op.
+    && match host_key_mint_with(
+      pinned: Present { value: public_line },
+      generate: fn() { HostKeypairRefused { cause: "generation must not be reached" as NonEmptyStr } },
+      add: fn(half) { HostKeyAddRefused { detail: "add must not be reached" } },
+    ) {
+      HostKeyAlreadyPinned { public_line: l } => (l as String) == public_line
+      _ => false
+    }
+}
+
+// THE REDACTION IS ATTACHED TO THE HOST MINT BY NAME, not merely present in the core: the module the step
+// actually calls is this one, and a mint that forgot to use the core's redaction would still pass a test that
+// only exercised the core.
+test fn the_host_mint_s_redaction_is_the_core_s_and_refuses_to_echo_the_key() -> Bool {
+  redact_host_private_material(text: concat("AddVersion rejected payload: ", planted_private), private_half: planted_private)
+    == redact_fleet_keypair_private(text: concat("AddVersion rejected payload: ", planted_private), private_half: planted_private)
+    && !string_contains(s: redact_host_private_material(text: planted_private, private_half: planted_private), pattern: "BEGIN OPENSSH")
+    && string_contains(s: redact_host_private_material(text: "no key material here", private_half: planted_private), pattern: "no key material here")
+}
+
+// THE UNKNOWABLE ADD TELLS AN OPERATOR WHAT TO DO. The guidance is shared because the property is the store's,
+// not the key's, and it is asserted to be ATTACHED rather than improvised: it names retry as safe but
+// insufficient, and it names the identity's own read as what settles the question -- because the minting
+// identity can read its own versions even though the adder grant cannot, which is the fact that makes the
+// situation recoverable without a human guessing.
+test fn an_unknown_outcome_carries_guidance_that_a_human_can_act_on() -> Bool {
+  string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "RETRY IS SAFE")
+    && string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "NOT SUFFICIENT")
+    && string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "versions")
+    && string_contains(s: fleet_keypair_unknown_outcome_guidance, pattern: "same commit")
+}
+
+// WHY A HUMAN STEP WAS REMOVED FROM BESIDE THIS KEY, RECORDED AS DATA AND NOT AS NARRATION (DESIGN §16). The
+// operator's words, the date, and the fact that both mints answer to the same ruling are asserted so that a
+// later reader of the mint cannot miss the decision that produced it -- and so that a rewrite that quietly
+// dropped the provenance fails.
+test fn the_mint_of_a_fleet_keypair_is_recorded_as_account_creation_on_the_operator_s_words() -> Bool {
+  fleet_keypair_mint_ruling_words == "i don't see why a human needs to do this - this seems just like normal account creation"
+    && fleet_keypair_mint_ruling_date == "2026-10-28"
+    && string_contains(s: mtcollins1_host_key_mint_ruling, pattern: "normal account creation")
+    && string_contains(s: mtcollins1_host_key_mint_ruling, pattern: "the_mint_of_a_fleet_ssh_keypair_is_account_creation")
+}
+
+// THE VALIDATORS ARE ONE PAIR, NOT ONE PER KEY (RED, against drift). Both mints admit a public line and a
+// fingerprint through these two functions; a second copy that accepted an ssh-rsa line, or a fingerprint
+// without the SHA256 prefix, is how one key would end up weaker than the other while both looked healthy.
+test fn only_an_ed25519_public_line_and_a_sha256_fingerprint_are_admitted() -> Bool {
+  match fleet_keypair_public_line_admitted(text: public_line) { Present { value: _ } => true  Absent => false }
+    && match fleet_keypair_public_line_admitted(text: "ssh-rsa AAAAB3NzaC1yc2E fleet-key") { Absent => true  _ => false }
+    && match fleet_keypair_public_line_admitted(text: "ssh-ed25519") { Absent => true  _ => false }
+    && match fleet_keypair_public_line_admitted(text: "ssh-ed25519  fleet-key") { Absent => true  _ => false }
+    && match fleet_keypair_public_line_admitted(text: "") { Absent => true  _ => false }
+    && match fleet_keypair_fingerprint_admitted(text: fingerprint_line) { Present { value: f } => (f as String) == "SHA256:8Xk2pQ0vN7mR4tY1wZ9cB3dE6fH0jK2lM5nO8pQ1rSs"  Absent => false }
+    && match fleet_keypair_fingerprint_admitted(text: "256 MD5:aa:bb fleet-key (ED25519)") { Absent => true  _ => false }
+    && match fleet_keypair_fingerprint_admitted(text: "") { Absent => true  _ => false }
+}

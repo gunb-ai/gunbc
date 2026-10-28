@@ -9,8 +9,9 @@ import extdeps.exec.command { argv_words }
 import gunbc.host_command_binding { HostCommandDone, HostCommandFailed }
 import extdeps.cloud.gcp.secret_manager { encode_sm_access_version_payload_wire }
 import extdeps.github.actions { Job, HostedRunner, SelfHosted, RunsOnExpression, Step, RunStep, UsesStep }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_boot_medium_reader_key_mint_job, fleet_converge_jobs, fleet_converge_boot_medium_reader_key_mint_job_id }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_fleet_keypair_mint_job, fleet_converge_jobs, fleet_converge_fleet_keypair_mint_job_id, fleet_converge_fleet_keypair_mint_step_id }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key }
+import gunbc.host.fleet_keypair_mint { boot_medium_reader_keypair_mint_subject }
 import gunbc.host.boot_medium_reader_key_mint {
   ReaderKeypair, ReaderKeypairGeneration, ReaderKeypairGenerated, ReaderKeypairRefused,
   ReaderKeyAddition, ReaderKeyVersionAdded, ReaderKeyAddRefused, ReaderKeyAddAmbiguous,
@@ -152,8 +153,18 @@ fn step_ids(j: Job) -> List<String> {
 }
 
 // THE MINT RUNS ONLY ON A DISCARDED VM: its job is GitHub-hosted, and no other job holds the mint step.
+//
+// THE STEP ID IS READ FROM THE POLICY RATHER THAN SPELLING IT, because the mint step id is now derived from
+// the subject's secret row (fleet_converge_fleet_keypair_mint_step_id) and a literal here would pin a spelling
+// the run does not use -- the failure being that a rename passes the claim while the generated workflow has no
+// such step. The claim's substance is unchanged: hosted runner, this key's mint step present in its job, and
+// absent from every other job, so no job user branch job can execute a mint as a side effect of its own
+// dispatch. The job was generalized to fleet_keypair_mint (one mode, a row per key) by the same change that
+// retired the human host-key mint step; see gunbc.design_ruling
+// the_mint_of_a_fleet_ssh_keypair_is_account_creation.
 test fn the_mint_runs_only_in_its_github_hosted_job() -> Bool {
-  (match fleet_converge_boot_medium_reader_key_mint_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
-    && step_ids(j: fleet_converge_boot_medium_reader_key_mint_job()).contains("boot_medium_reader_key_mint")
-    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_boot_medium_reader_key_mint_job_id as String)), j => !step_ids(j: j).contains("boot_medium_reader_key_mint"))
+  let mint_step_id = fleet_converge_fleet_keypair_mint_step_id(subject: boot_medium_reader_keypair_mint_subject)
+  (match fleet_converge_fleet_keypair_mint_job().runner { HostedRunner { label: _ } => true  SelfHosted { labels: _ } => false  RunsOnExpression { expression: _ } => false })
+    && step_ids(j: fleet_converge_fleet_keypair_mint_job()).contains(mint_step_id)
+    && all(filter(fleet_converge_jobs(), j => j.id != (fleet_converge_fleet_keypair_mint_job_id as String)), j => !step_ids(j: j).contains(mint_step_id))
 }
