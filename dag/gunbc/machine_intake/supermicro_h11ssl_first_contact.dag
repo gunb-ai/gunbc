@@ -1,5 +1,6 @@
 module gunbc.machine_intake.supermicro_h11ssl_first_contact
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac }
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import gunbc.machine_intake.bmc_operator_credential_inventory { OperatorHeldSecretRef, FactoryLoginCredential, OobLicenceKey }
@@ -140,7 +141,7 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
   board: supermicro_h11ssl_board_authority,
   bmc_firmware: supermicro_h11ssl_bmc_reported_identity.manager_firmware_version,
   bmc_address: "192.168.1.252",
-  bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123),
+  bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
   observations: [
     WebLoginObservation { credential: SupermicroDefaultAdminCredential, instant: H11sslObservedInstant { at: "2026-10-17T00:13:31Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: LoginRejected, unit_state_changed: false },
     WebLoginObservation { credential: SupermicroUniqueStickerCredential, instant: H11sslObservedInstant { at: "2026-10-17T00:15:34Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: SessionIssued, unit_state_changed: false },
@@ -149,14 +150,14 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
     RedfishRootObservation { instant: H11sslObservedInstant { at: "2026-10-17T02:58:07Z", basis: RequestIssuedAtFromObserverTranscript }, observed_by: "merry-fox-82", outcome: ServiceRootAnswered { redfish_version: "1.0.1", root_schema: "ServiceRoot.v1_1_0", uuid: "00000000-0000-0000-0000-AC1F6BE3F57B", members: [ServiceRootSystems, ServiceRootChassis, ServiceRootManagers, ServiceRootTasks, ServiceRootSessionService, ServiceRootAccountService, ServiceRootEventService, ServiceRootUpdateService, ServiceRootRegistries] }, unit_state_changed: false },
   ],
   licences: [
-    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), secret: OobLicenceKey } } },
+    H11sslLicenceActivation { product_code: "SFT-OOB-LIC", source: OperatorHeldCertificate { certificate_number: "0823170253", inventory_row: OperatorHeldSecretRef { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, secret: OobLicenceKey } } },
   ],
   label: H11sslLabelObservation {
     top_label_serial_barcode: "55503A0100160200000EAJ0A1",
     lan_macs: [mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 176), mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 246, octet6: 177)],
     jps1_silkscreen: "JPS1 1-2 Enable LSI SAS3008 (default) / 2-3 Disable",
     label_photo: LabelPhoto { document_url: "drive.google.com/file/d/1s89-T-RZntbpFnoXQ0kwvLKtftBssGz7/view" },
-    bmc_factory_credential: OperatorHeldSecretRef { bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123), secret: FactoryLoginCredential },
+    bmc_factory_credential: OperatorHeldSecretRef { bmc_mac: supermicro_h11ssl_unit1_bmc_mac, secret: FactoryLoginCredential },
   },
 }
 

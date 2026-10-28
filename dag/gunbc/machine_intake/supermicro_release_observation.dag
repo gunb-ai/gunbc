@@ -4,7 +4,9 @@ import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.network.mac { Eui48Address, mac_address }
+import extdeps.network.mac { Eui48Address }
+import extdeps.time.rfc3339 { Rfc3339Timestamp }
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import extdeps.bmc.types {
@@ -18,7 +20,7 @@ import extdeps.bmc.types {
 // unit reported. They are not in extdeps.bmc.supermicro because no Supermicro document states them: every
 // row is SupermicroSeenOnOneUnit. The vocabulary they use (the DMTF ServiceRoot members, the licence op)
 // is extdeps'. When a Supermicro document is cited for a row, the row becomes SupermicroStatedForRelease
-// and moves to extdeps.bmc.supermicro. This module imports only extdeps and std, so the first-contact
+// and moves to extdeps.bmc.supermicro. This module imports only extdeps, std and the unit identity rows, so the first-contact
 // receipt and the BMC reading may both read it without a cycle.
 
 // ── THE SERVICE ROOT, PER RELEASE. Which DMTF ServiceRoot members, Redfish version and ServiceRoot
@@ -39,15 +41,20 @@ import extdeps.bmc.types {
 // (extdeps.board_authority BoardFruIdentity).
 type SupermicroObservationScope {
   unit_bmc_mac: Eui48Address
-  observed_at: NonEmptyStr
+  observed: SupermicroObservedWhen
   receipt: DeclarationRef
 }
+
+// When the row's reading was made, at the precision the receipt actually holds: an RFC 3339 instant
+// when the observer's transcript timed the request, or only the receipt itself when the capture
+// recorded no instant (its directory names a day; no time of day is fabricated for it).
+type SupermicroObservedWhen
+  = ObservedAtInstant { at: Rfc3339Timestamp }
+  | ObservedUntimedInReceipt
 
 type SupermicroRowBasis
   = SupermicroStatedForRelease { authority: ExternalAuthority }
   | SupermicroSeenOnOneUnit { scope: SupermicroObservationScope, read_obligation: NonEmptyStr }
-
-data supermicro_h11ssl_unit1_bmc_mac_seen: Eui48Address = mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123)
 
 type SupermicroServiceRootFigures {
   redfish_version: NonEmptyStr
@@ -71,8 +78,8 @@ data supermicro_service_root_rows: List<SupermicroServiceRootRow> = [
     },
     basis: SupermicroSeenOnOneUnit {
       scope: SupermicroObservationScope {
-        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac_seen,
-        observed_at: "2026-10-17T02:58:07Z",
+        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
+        observed: ObservedAtInstant { at: "2026-10-17T02:58:07Z" },
         receipt: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact", decl_name: "supermicro_h11ssl_first_contact_receipt"),
       },
       read_obligation: "The Supermicro Redfish Reference Guide's ServiceRoot for 01.52.00, which would make this row release-wide.",
@@ -87,8 +94,8 @@ data supermicro_service_root_rows: List<SupermicroServiceRootRow> = [
     },
     basis: SupermicroSeenOnOneUnit {
       scope: SupermicroObservationScope {
-        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac_seen,
-        observed_at: "2026-10-27",
+        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
+        observed: ObservedUntimedInReceipt,
         receipt: decl_ref(module_path: "gunbc.machine_intake.supermicro_bmc_reading", decl_name: "supermicro_h11ssl_unit1_captures_2026_10_27"),
       },
       read_obligation: "The Supermicro Redfish Reference Guide's ServiceRoot for 01.52.25, which would make this row release-wide.",
@@ -126,8 +133,8 @@ data supermicro_licence_activation_accepted_rows: List<SupermicroLicenceActivati
     check: 1,
     basis: SupermicroSeenOnOneUnit {
       scope: SupermicroObservationScope {
-        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac_seen,
-        observed_at: "2026-10-17",
+        unit_bmc_mac: supermicro_h11ssl_unit1_bmc_mac,
+        observed: ObservedAtInstant { at: "2026-10-17T02:58:01Z" },
         receipt: decl_ref(module_path: "gunbc.machine_intake.supermicro_h11ssl_first_contact", decl_name: "supermicro_h11ssl_first_contact_receipt"),
       },
       read_obligation: "Supermicro's statement of the BIOS_LINCENSE_ACTIVATE.XML response and its CHECK values, which would make CHECK=1 release-wide.",
