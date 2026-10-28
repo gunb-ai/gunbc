@@ -1376,6 +1376,21 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
+    site: site(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_with_key"),
+    effect: PrivilegedEffect {
+      subject: "in the qualification_attempt fleet-converge mode, stage the gunbai-ci App key from Secret Manager under the run's federated identity and mint the controller installation token the qualification route's own sites then use (the JIT mint, the ref pin, the floor dispatch, the deregistration and the unpin, each rowed at its own site); the key is removed on every arm; pre-approved under the dispatching run's authorization (operator ruling 2026-10-03)" as NonEmptyStr,
+      frequency: EveryProvision,
+      reversibility: ReversibleByReapply,
+      surface: ApiSurface,
+      workload_identity: convergence_principal(),
+      minted_reach: MintsResourceScopedCredential,
+      billing: NoBillingConsequence,
+      witness_discharge: NoWitnessDischarge,
+    },
+    realized: RealizedFederatedGrant,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
     site: site(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
     effect: PrivilegedEffect {
       subject: "dispatch the generated fleet-converge workflow with the slot's attempt label as the input its floor job's runs-on reads, so only the JIT registration minted for that attempt can serve the job, under the gunbai-ci installation token whose App key is read over WIF, checked for actions: write" as NonEmptyStr,

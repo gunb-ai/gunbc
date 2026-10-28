@@ -14,7 +14,7 @@ import gunbc.machine_intake.supermicro_h11ssl_unit_observation { H11sslReportedF
 //
 // On 2026-10-24 the operator ruled: this unit's OS goes on BY HAND this time -- the install is an
 // effect performed at the physical console, OUTSIDE any modeled route. No modeled route produced it:
-// the x86 autoinstall seed does not exist (gunbc.provisioning.altra_autoinstall_seed admits
+// the x86 autoinstall seed does not exist (gunbc.provisioning.ubuntu_autoinstall_seed admits
 // Aarch64 targets only), the install-to-disk actuator is srv3/MegaRAC-scoped
 // (gunbc.srv3.srv3_os_install_actuate), and there is no x86 network-boot admission at the srv4 PXE
 // edge (gunbc.network_boot_delivery admits Aarch64 clients only). Recording the finished install as

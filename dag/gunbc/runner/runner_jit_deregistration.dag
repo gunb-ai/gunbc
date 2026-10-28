@@ -44,10 +44,15 @@ import gunbc.github_effect_perform {
 // job and also on session token expiry and on deprovision, so a zero status says only that the listener
 // ended cleanly; whether a job ran is a separate reading (GitHub's job record), and no arm here claims it.
 // Deregistration is required on every arm regardless.
+// A LISTENER STARTED WHOSE END WAS NOT OBSERVED IS ITS OWN ARM: a launch over a remote transport may return without
+// the unit's own result (a transport failure and a remote status are not yet distinguishable over FleetSsh,
+// gunbc.systemd_run_transient systemd_run_transient_wait_read), and reading that as clean, nonzero or never-launched
+// would fabricate the one fact the receipt carries.
 type JitSlotExit
   = SlotListenerExitedClean
   | SlotListenerExitedNonzero { cause: NonEmptyStr }
   | SlotNeverLaunched { cause: NonEmptyStr }
+  | SlotListenerOutcomeUnobserved { cause: NonEmptyStr }
   | SlotLostBoot { superseded_by: ServiceBootId }
 
 // THE SUBJECT IS MINTED FROM THE AUTHORIZED DISPATCH AND NOWHERE ELSE. jit_registration_of is its
