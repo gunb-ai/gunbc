@@ -49,10 +49,33 @@ type EthernetLinkAddress
   = ConfiguredLink { configured: Eui48Address }
   | PermanentAndConfigured { permanent: Eui48Address, configured: Eui48Address }
 
+// HOW A LINK ADDRESS WAS READ, declared beside the record that carries one. The same six octets
+// could be a redfish reply, an `ipmitool lan print`, a DHCP packet, or somebody's recollection, and
+// which of those it was decides how much weight a reach attempt puts on the address. A bare
+// `ConfiguredLink { configured: mac_address(...) }` cannot say, so the record that carries one says
+// it: what was asked of the unit, over which channel, where the raw capture is kept, when it was
+// true, and which reading produced the address.
+//
+// IT LIVES HERE, ON THE RECORD, NOT IN WHATEVER INVENTORY CITES IT LATER. Provenance is part of
+// taking a reading; a consumer that adds it afterwards can add the wrong one, and an inventory that
+// owned the provenance would be a second place an address's story is kept -- the §3 fork this
+// carrier exists to close.
+type InterfaceReadingProvenance {
+  instrument: NonEmptyStr
+  channel: NonEmptyStr
+  artifact: NonEmptyStr
+  observed_at: NonEmptyStr
+  reading: NonEmptyStr
+}
+
+// `provenance` is required rather than optional on purpose: a link address with no stated origin is
+// an assertion, and the only way to keep the record honest is to make it impossible to build without
+// saying where the address came from.
 type ObservedEthernetLan {
   binding: EthernetFunctionBinding
   network_address: Ipv4Address
   link: EthernetLinkAddress
+  provenance: InterfaceReadingProvenance
 }
 
 type PortUnitIdentityStanding
@@ -136,6 +159,13 @@ fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
   }
 }
 
+// A CONTROLLER FUNCTION IS A POSITIVE CLASSIFICATION, NOT THE ABSENCE OF A HOST ONE. The second
+// clause is the whole point: FunctionUnobserved is not a BMC function that happens to be unread, and
+// an inventory that counted it as one would report an interface as managed on nothing at all.
+fn ethernet_function_is_controller(f: EthernetFunction) -> Bool {
+  !(ethernet_function_is_unobserved(f: f)) && (f == BmcDedicated || f == BmcNcsi)
+}
+
 fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
   if ethernet_function_is_unobserved(f: a) || ethernet_function_is_unobserved(f: b) {
     FunctionIdentityUnobserved {
@@ -168,4 +198,16 @@ fn ethernet_port_may_carry_multiple_functions(
 
 fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {
   ipv4_address_eq(a: a.network_address, b: b.network_address) == false
+}
+
+// THE ADDRESS A LAN RECORD CARRIES, however it came. `permanent` when the reading reported one (that
+// is the burnable MAC burned into the interface, which is what a per-host inventory is for), and
+// `configured` otherwise (the address seen answering on the wire, which is evidence of an interface
+// and not a promise about its burned-in address -- the distinction EthernetLinkAddress was created to
+// keep, so it is kept here too rather than flattened by the accessor).
+fn lan_link_address(lan: ObservedEthernetLan) -> Eui48Address {
+  match lan.link {
+    ConfiguredLink { configured: c } => c
+    PermanentAndConfigured { permanent: p, configured: _ } => p
+  }
 }

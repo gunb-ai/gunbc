@@ -16,7 +16,6 @@ import gunbc.machine_intake.bmc_recovery_route_frontier {
 import gunbc.machine_intake.h11ssl_x86_bringup_frontier { h11ssl_x86_bringup_frontier_rows }
 import gunbc.auth.tracker_web_oauth_client { tracker_web_oauth_frontier_rows }
 import extdeps.cloud.hetzner { hetzner_money_rate_frontier_rows }
-import extdeps.dhcp.v4 { mac_address_anemic_brand_frontier_rows }
 import extdeps.docker.container_inspect {
   container_state_detail_redundant_bools_frontier_rows,
   memory_swap_unlimited_convention_frontier_rows,
@@ -118,7 +117,6 @@ fn census_closure_frontier_row_groups() -> List<List<FrontierRow>> {
     data_category_frontier_rows,
     buyer_review_ensure_projection_frontier_rows,
     hetzner_money_rate_frontier_rows,
-    mac_address_anemic_brand_frontier_rows,
     container_state_detail_redundant_bools_frontier_rows,
     remote_word_quoting_frontier_rows,
     memory_swap_unlimited_convention_frontier_rows,

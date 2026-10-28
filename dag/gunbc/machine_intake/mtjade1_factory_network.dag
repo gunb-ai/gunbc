@@ -113,6 +113,33 @@ data mtjade1_bmc_observed_network: ObservedBmcNetwork = BmcNetworkObservedStatic
   basis: "operator read of the controller, corroborated by a 90s tcpdump on srv1's enP3p3s0f1 which received this MAC's own ARP broadcasts (who-has 10.0.7.1 tell 10.0.7.2). PREFIX CORRECTED 2026-10-03 from 29 to 24: the controller's own ipmitool lan print 1, captured before it was reconfigured (srv1 ~/mtjade1/lan1-before-dhcp.txt), reports Subnet Mask 255.255.255.0; the earlier /29 was srv1's chosen access prefix, not the controller's.",
 }
 
+// THE CONTROLLER'S LINK ADDRESS, PROJECTED OUT OF THE OBSERVATION ABOVE. The octets are written ONCE,
+// in mtjade1_bmc_observed_network, and everything downstream reaches them through this accessor -- the
+// rule the interface inventory depends on: a reading is typed once and every other mention is a lookup.
+fn mtjade1_bmc_link_mac() -> Eui48Address {
+  match mtjade1_bmc_observed_network {
+    BmcNetworkObservedStatic { address: _, prefix: _, gateway: _, link: l, basis: _ } => l
+    // THE TWO ARMS BELOW ARE UNREACHABLE WHILE mtjade1_bmc_observed_network IS THE ROW WRITTEN ABOVE,
+    // and they are written to be noticed rather than to pass: an all-zero address is not a reading, it is
+    // the shape a missing reading leaves behind. mtjade1_bmc_link_is_read below is what a witness asserts
+    // so this can never quietly become true, and host_interface_addresses_are_disjoint would catch two
+    // such zeros meeting in the inventory.
+    BmcNetworkObservedDhcpLease { address: _, prefix: _, basis: _ } => Eui48Address { octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0 }
+    BmcNetworkUnobserved { discriminator: _ } => Eui48Address { octet1: 0, octet2: 0, octet3: 0, octet4: 0, octet5: 0, octet6: 0 }
+  }
+}
+
+// THE CLAIM THAT MAKES THE UNREACHABLE ARMS ABOVE HONEST: the controller's link address is a READING
+// only when the observation that supplies it is the static one. A witness asserts this, so an edit that
+// drops the link layer from the observation turns the inventory red instead of filling it with zeros.
+fn mtjade1_bmc_link_is_read() -> Bool {
+  match mtjade1_bmc_observed_network {
+    BmcNetworkObservedStatic { address: _, prefix: _, gateway: _, link: _, basis: _ } => true
+    BmcNetworkObservedDhcpLease { address: _, prefix: _, basis: _ } => false
+    BmcNetworkUnobserved { discriminator: _ } => false
+  }
+}
+
 // RECONFIGURED BY THE OPERATOR, 2026-10-03: the factory static above was preserved as evidence
 // until the operator chose to move the unit onto the site LAN. ipmitool lan set 1 ipsrc dhcp on the
 // factory address; the controller then took a lease from the site router (DHCP request from this

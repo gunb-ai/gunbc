@@ -1,0 +1,122 @@
+module test.claim.machine_intake.host_interface_inventory_witness
+
+// WHAT PHASE S1 CLAIMS, CHECKED RATHER THAN ASSERTED. The interface inventory is the carrier phase S2
+// will bind a site-segment anchor through, so the claims worth testing are not "the table has rows" but
+// the two properties that make the table worth binding through at all: every address in it IS the
+// reading the observation recorded (nothing was typed in along the way), and the host/controller split
+// is stated rather than assumed -- including for the host whose host-OS interface was never read.
+
+import std.types { Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.list { first_where }
+import std.optional { Absent, Present }
+import extdeps.network.mac { mac_addresses_are_equal }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_mtcollins1,
+  operator_host_mtjade1,
+  operator_host_srv1,
+}
+import gunbc.machine_intake.ethernet {
+  BmcDedicated,
+  BmcNcsi,
+  lan_link_address,
+}
+import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_is_read, mtjade1_bmc_link_mac }
+import gunbc.machine_intake.mtcollins1_platform_observation {
+  mtcollins1_dedicated_bmc_lan,
+  mtcollins1_host_nic_interface,
+  mtcollins1_second_bmc_lan,
+}
+import gunbc.host.host_primary_network_observed { srv1_bmc_usb_nic_mac, srv1_i210_mac }
+import gunbc.machine_intake.host_interface_inventory {
+  host_controller_dedicated_interface,
+  host_interface_addresses_are_disjoint,
+  host_interface_gaps_are_specific,
+  host_interface_provenance_is_stated,
+  host_interface_rows,
+  host_operating_system_interface,
+}
+
+// NOTHING IS RETYPED: each row's address must be the address the OBSERVATION reports, compared through
+// the same accessor the row itself uses. A hand-typed copy of an observation's octets would still print
+// correctly; it would fail here, and it would fail the moment the reading was corrected.
+test fn every_row_address_is_the_observation_s_own() -> Bool {
+  let rows = host_interface_rows(host: operator_host_mtcollins1)
+  match first_where(xs: rows, keep: row => row.function == BmcDedicated) {
+    Absent => false
+    Present { value: dedicated } =>
+      mac_addresses_are_equal(left: dedicated.permanent_address, right: lan_link_address(lan: mtcollins1_dedicated_bmc_lan))
+        && match first_where(xs: rows, keep: row => row.function == BmcNcsi) {
+          Absent => false
+          Present { value: shared } => mac_addresses_are_equal(left: shared.permanent_address, right: lan_link_address(lan: mtcollins1_second_bmc_lan))
+        }
+        && match host_operating_system_interface(host: operator_host_mtcollins1) {
+          Absent => false
+          Present { value: host_os } => mac_addresses_are_equal(left: host_os, right: lan_link_address(lan: mtcollins1_host_nic_interface))
+        }
+  }
+}
+
+// srv1's HOST-OS ROW IS THE LEASE HOLDER'S ADDRESS, not an address chosen because it looked like the
+// host's: the equality checked here is against the receipt's own NIC row, which is what makes the
+// function claim (host data port) evidence-backed rather than a guess about which port is which.
+test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
+  match host_operating_system_interface(host: operator_host_srv1) {
+    Absent => false
+    Present { value: host_os } =>
+      mac_addresses_are_equal(left: host_os, right: srv1_i210_mac)
+        && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.function == BmcNcsi) {
+          Absent => false
+          Present { value: shared } => mac_addresses_are_equal(left: shared.permanent_address, right: srv1_bmc_usb_nic_mac)
+        }
+  }
+}
+
+// THE mtjade1 CONTROLLER ADDRESS TRAVELS THROUGH THE ONE ARM THAT HOLDS A READING. mtjade1_bmc_link_is_read
+// is the assertion that the observation supplying it is still the static one: the projection has two
+// other arms that return an all-zero address, reachable only if the observation loses its link layer --
+// and a zero-filled controller address in a reachability anchor is the failure this witness exists to
+// make loud instead of quiet.
+test fn mtjade1_controller_address_is_a_reading_not_a_placeholder() -> Bool {
+  mtjade1_bmc_link_is_read()
+    && match host_controller_dedicated_interface(host: operator_host_mtjade1) {
+      Absent => false
+      Present { value: dedicated } => mac_addresses_are_equal(left: dedicated, right: mtjade1_bmc_link_mac())
+    }
+}
+
+// NO ADDRESS SERVES TWO INTERFACES, anywhere in the table. A duplicate is the shape that turns a
+// controller address into a host address and back, and on one rack and one broadcast domain it is an
+// outage rather than a data-quality smell.
+test fn no_address_is_claimed_twice() -> Bool {
+  host_interface_addresses_are_disjoint()
+}
+
+// EVERY ROW CAN SAY WHERE ITS ADDRESS CAME FROM, and every gap can say what is missing. A row with an
+// empty provenance field is an assertion about a network wearing the costume of a reading; a gap whose
+// function is unobserved is an empty list with a carrier bolted on.
+test fn nothing_is_reported_without_provenance() -> Bool {
+  host_interface_provenance_is_stated() && host_interface_gaps_are_specific()
+}
+
+// THE GAP IS THE POINT: mtjade1's CONTROLLER IS REACHABLE AND ITS HOST IS NOT READ, so the inventory
+// must answer with the controller and refuse the host, rather than inventing a host address or quietly
+// falling back to the controller's. The fallback that is not implemented is what this checks; had it
+// existed, this test would pass for the wrong host and nothing downstream would notice.
+test fn a_missing_host_interface_is_reported_and_not_filled_in() -> Bool {
+  match host_operating_system_interface(host: operator_host_mtjade1) {
+    Absent => match host_controller_dedicated_interface(host: operator_host_mtjade1) {
+      Absent => false
+      Present { value: dedicated } => match host_operating_system_interface(host: operator_host_mtcollins1) {
+        Absent => false
+        Present { value: some_host_os } => !mac_addresses_are_equal(left: dedicated, right: some_host_os)
+      }
+    }
+    Present { value: _ } => false
+  }
+}
+
+// NOTHING HERE TOUCHES A LIVE SYSTEM: every claim folds declared observation rows that are
+// already in the corpus, so the witness is admitted as substrate-only rather than pretending to
+// reach a host.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

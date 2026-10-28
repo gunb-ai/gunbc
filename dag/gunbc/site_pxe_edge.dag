@@ -408,10 +408,12 @@ fn site_edge_proxy_dhcp_config(network_address: Ipv4Address, roster: SiteEdgeRos
   serialize_dnsmasq(directives: site_edge_proxy_dhcp_directives(network_address: network_address, roster: roster, tftp_directory: tftp_directory))
 }
 
-// The first onboarding segment's only known client, parsed from the measured observation's wire text
-// rather than re-authored as octets, so the roster and the observation cannot disagree. A parse
-// failure is a MacParseFailed every consumer must refuse on, never an empty roster.
-data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: mtcollins1_host_nic_mac as String)
+// The first onboarding segment's only known client, taken from the measured observation's Eui48Address
+// and rendered by the carrier's OWN render_mac_address -- never re-authored as octets or a literal here,
+// so the roster and the observation cannot disagree. It is still carried as a MacParseResult, because the
+// converge gate must be able to REFUSE a malformed client rather than serve a roster without it: a parse
+// failure is a MacParseFailed every consumer refuses on, never an empty roster.
+data first_onboarding_known_client_mac: MacParseResult = parse_mac_address(text: render_mac_address(addr: mtcollins1_host_nic_mac))
 
 // The production routes this module provides and nothing yet executes, as counted
 // rows (enrolled in gunbc.census_closure_frontier) rather than prose.

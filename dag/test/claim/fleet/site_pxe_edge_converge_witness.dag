@@ -357,7 +357,7 @@ test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool 
         Present { value: cfg } =>
           cfg.path == "/etc/gunbc-site-pxe-edge.dnsmasq.conf"
             && contains(cfg.content, "dhcp-range=192.168.1.0,proxy")
-            && contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, concat(concat("dhcp-host=", render_mac_address(addr: mtcollins1_host_nic_mac)), ",set:onboarding-known"))
             && contains(cfg.content, "pxe-service=tag:efi-arm64,tag:onboarding-known,11,\"gunbc efi-arm64\",snponly.efi,192.168.1.196")
             && contains(cfg.content, "tftp-root=/srv/gunbc-site-pxe-edge/tftp")
             && length(split(cfg.content, "pxe-service=")) == 2
