@@ -76,6 +76,7 @@ import gunbc.fleet.fleet_posix_accounts {
 }
 import std.dissolution { dissolution_is_bound }
 import product.host_identity { host_identity_eq }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

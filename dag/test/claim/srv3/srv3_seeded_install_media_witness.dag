@@ -1,4 +1,6 @@
 module test.claim.srv3.srv3_seeded_install_media_witness
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

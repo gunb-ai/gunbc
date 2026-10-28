@@ -1,4 +1,8 @@
 module test.claim.fleet.fleet_converge_apply_witness
+import gunbc.host.host_converge { ConvergeKnob, ConvergePolicyDerived, ConvergePolicyUnsound, DeferToSubmodule, GunbcPinnedTree, HostConverge }
+import gunbc.host.host_effect { BootstrapFragment, ConvergePlan, EmitArtifactThenThinRun, HostOs }
+import std.live_tree { LiveTreeDisposition }
+import std.realization_reconcile { Reconciliation }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,5 @@
 module test.claim.node_http_server_emit
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,4 +1,9 @@
 module test.claim.nbd_proxy_virtual_media_install
+import gunbc.nbd_proxy_virtual_media_install { OsInstallActuatorStep }
+import gunbc.os_install_actuator_selection { ActuatorSelected, OsInstallActuatorSelection }
+import gunbc.provisioning.seeded_install_media_publish { SeededImageNotBuilt, SeededImageRecordDiverged, SeededImageRecordedImageAbsent, SeededImageResolution, SeededImageResolved, SeededImageUnobservable }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

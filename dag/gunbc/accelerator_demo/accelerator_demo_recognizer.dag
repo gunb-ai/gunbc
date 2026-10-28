@@ -1,4 +1,7 @@
 module gunbc.accelerator_demo.accelerator_demo_recognizer
+import gunbc.accelerator_demo.accelerator_demo_plan { AcceleratorRecognitionOutcome }
+import gunbc.accelerator_demo.accelerator_demo_program { AcceleratorDemoProgram }
+import std.numerical_contract { NumericalContract }
 
 
 fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {

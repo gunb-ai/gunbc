@@ -1,4 +1,5 @@
 module std.determinism
+import std.decl_ref { DeclarationRef }
 
 
 type Determinism

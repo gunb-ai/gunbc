@@ -1,4 +1,11 @@
 module test.claim.host.host_effect_apply_witness
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import gunbc.host.host_converge { ConvergeKnob, DeferToSubmodule, GunbcPinnedTree, HostConverge }
+import gunbc.host.host_effect { BootstrapFragment, ConvergePlan, EmitArtifactThenThinRun, HostEffectIntent, HostOs, LiveDeployRetract, NodeControlPlane, ProbeToolchainHomeInterference, ReadEffectivePosixPrincipal, RedfishAction, SshShell, ThinInvocation }
+import gunbc.host.host_effect_realize { ConvergeDirective, ShellExecObserved }
+import std.effects { IdempotencyEvidence, LatticeEffect, NonIdempotent }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

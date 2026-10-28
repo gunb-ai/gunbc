@@ -1,4 +1,6 @@
 module test.claim.jedec_ddr_generation
+import extdeps.memory.types { DramModuleCatalogRow }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,5 +1,6 @@
 module gunbc.hand_lens_host_bridge_scaffold_index
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition }
 
 data transport_script_position_host_bridge_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

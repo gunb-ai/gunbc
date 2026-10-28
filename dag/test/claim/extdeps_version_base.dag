@@ -1,4 +1,6 @@
 module test.claim.extdeps_version_base
+import extdeps.version { VersionConstraint, VersionIdentity }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

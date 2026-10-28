@@ -1,4 +1,7 @@
 module test.claim.cargo_target_path
+import extdeps.rust.cargo { Bench, Bin, CargoTarget, CargoTest, Example }
+import std.live_tree { LiveTreeDisposition }
+import std.types { FilePathParts }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,5 @@
 module v2.lens.doc_reachability
+import v2.lens.common.construction_justification { ConstructionJustification }
 
 
 fn doc_graph_orphan_clean_for_count(orphan_count: Int) -> Bool {

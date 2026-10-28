@@ -1,4 +1,6 @@
 module test.claim.srv3.srv3_os_install_witness
+import gunbc.os_install { LanInstallInfraSurvey }
+import std.live_tree { LiveTreeDisposition }
 
 import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

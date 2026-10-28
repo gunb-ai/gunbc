@@ -1,4 +1,6 @@
 module gunbc.idea_pr_spine
+import gunbc.review_verdict { ReviewProvider, ReviewVerdict }
+import std.reducible { ReduceVerdict }
 
 type WorkProduct
   = DesignPlan

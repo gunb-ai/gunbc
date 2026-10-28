@@ -52,10 +52,11 @@ import v2.extdeps.languages.rust {
   rust_value_expression_family_lex_rules,
   rust_value_semantics_carrier_atoms,
   rust_whitespace_trivia_rule,
-  rust_semantic_decl_emission_bundle_node
+  rust_semantic_decl_emission_bundle_node,
+  RustGramBuild1StateReady,
 }
 import v2.std.logic { bool_boolean_algebra }
-import v2.std.grammar { derive_grammar_relation_row_for_lhs }
+import v2.std.grammar { derive_grammar_relation_row_for_lhs, Sequence }
 import v2.std.compilers.target_model { ListIntroductionUnwired, PrimitiveRealizationsUnwired, TargetValueExpressionProjection, TokenClassEmitTransform, EmitSpellingQuote, EmitSpellingEscape, apply_emit_spelling_quote }
 import std.host_text { chars }
 import std.operation_argv { shell_materialize_operation_argv }

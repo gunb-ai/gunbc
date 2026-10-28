@@ -1,4 +1,5 @@
 module test.claim.interpreter_kernel_model_witness
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

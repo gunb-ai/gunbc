@@ -1,4 +1,7 @@
 module test.claim.materialization_ladder_witness
+import std.cache_interface { ByteCapacity, CapacityBounded, ReplaceExisting }
+import std.live_tree { LiveTreeDisposition }
+import std.materialization_ladder { AccessMode, CacheProvider, CasTier, DeclaredComputation, DemandNature, FrameDemand, LadderVerdict, MemoTier, ValueConsumerEdge, ValueUsage, WorldRead }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

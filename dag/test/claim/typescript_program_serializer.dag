@@ -1,4 +1,6 @@
 module test.claim.typescript_program_serializer
+import extdeps.languages.typescript.program { TsExpr, TsProgram, TsStmt }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

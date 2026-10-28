@@ -1,4 +1,6 @@
 module test.claim.map_lookup_dual_dispatch_witness
+import std.graph { CallGraph, GraphEdge }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

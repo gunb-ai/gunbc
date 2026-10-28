@@ -1,4 +1,11 @@
 module test.claim.runner.runner_activation_wall
+import gunbc.build_cache.build_cache_instance { BuildCacheInstance, EndpointAbsent, EndpointObservationUnavailable, EndpointOwnershipAmbiguous, RunnerSlotIdentity, ServerPlacementUnknown, ServerRunnerOwned, ServerUnsupervised }
+import gunbc.host.host_layout { CompilePoolSliceDeclared }
+import gunbc.runner.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
+import gunbc.runner.runner_host_deploy { RunnerCommandOrRefusal, RunnerHostDeploy }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

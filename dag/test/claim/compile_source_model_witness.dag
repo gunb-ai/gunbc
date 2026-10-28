@@ -1,4 +1,6 @@
 module test.claim.compile_source_model_witness
+import gunbc.compile_source_model { SourceRootRole }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

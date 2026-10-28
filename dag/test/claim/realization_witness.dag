@@ -1,4 +1,6 @@
 module test.claim.realization_witness
+import std.effects { CreateEffect, UpsertEffect }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,6 @@
 module gunbc.bootstrap
+import std.content_hash { ContentHash }
+import std.types { NonEmptyStr }
 
 
 type CompilerStage

@@ -1,4 +1,8 @@
 module test.claim.resource_namespace_upsert
+import gunbc.file_access { FileTreeScope }
+import gunbc.session_lease { PortObservationRefused, PortObserved, PortObservedStaleExpected, ProcessPortScope }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

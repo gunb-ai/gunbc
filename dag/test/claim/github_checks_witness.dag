@@ -1,4 +1,6 @@
 module test.claim.github_checks_witness
+import extdeps.github.checks { CheckOutput, CheckRun, CheckRunList }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -3,6 +3,7 @@ module test.claim.extdeps_version_semver
 import std.host_text { chars }
 import extdeps.version.semver { semver_compare, semver_compare_identifier, semver_numeric_field, semver_scheme, semver_to_version_identity, semver_version_label, semver_version_parse }
 import gunbc.compile_diagnostic_census { census_total_count }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

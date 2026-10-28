@@ -1,4 +1,5 @@
 module test.claim.realization_schedule_critical_path
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -4,6 +4,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.algebra { contains }
 import v2.std.text { string_eq }
 import std.realization_schedule { ScheduleWitnessEntry }
+import v2.std.qualified_name { QualifiedName }
 
 
 type SubjectRoster {

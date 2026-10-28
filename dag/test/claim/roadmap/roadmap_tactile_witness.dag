@@ -43,6 +43,7 @@ import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_to
 import gunbc.site.document { site_header, sound_toggle_control }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.css.selectors { ClassSelector }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

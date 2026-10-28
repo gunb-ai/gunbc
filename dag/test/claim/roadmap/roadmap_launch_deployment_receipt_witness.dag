@@ -124,6 +124,7 @@ import gunbc.roadmap.roadmap_launch_deployment_receipt {
   roadmap_launch_deployment_verdict,
   verdict_receipt_identity,
 }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

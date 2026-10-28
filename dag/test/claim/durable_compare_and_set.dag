@@ -1,4 +1,7 @@
 module test.claim.durable_compare_and_set
+import std.durable_compare_and_set { CasExpectation, CasGeneration, CasObservedReadable, CasObservedUnreadable, CasOutcome, CasReadablePresent, CasSlotVersion, CasUnreadableContentMissing, CasUnreadableMalformed, CasUnreadableObservationBoundExceeded, CasUnreadableReadRefused, ExpectSlotGeneration, CasSlotObservation }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 // Witnesses for std.durable_compare_and_set. Generations here are 7 and 9
 // rather than 0 and 1 on purpose: at the low values the "next" generation of

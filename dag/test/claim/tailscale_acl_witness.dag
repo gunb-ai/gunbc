@@ -1,4 +1,6 @@
 module test.claim.tailscale_acl_witness
+import extdeps.tailscale.acl { TailscaleAclPolicy, TailscaleGrant }
+import std.live_tree { LiveTreeDisposition }
 
 import extdeps.filesystem.filesystem_io { Filesystem }
 

@@ -1,4 +1,7 @@
 module test.claim.tailscale_acl_phase2_design_witness
+import gunbc.assimilate.bmc_token_federation { SecretAccessBinding }
+import gunbc.tailscale_acl_phase2_credential { DiffPending, DiffPrintOnly, LiveWriteRefused, OperatorConfirmed, PoliciesDiffer, RefusedAutoUpsert, TokenAbsent }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

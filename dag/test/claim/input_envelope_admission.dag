@@ -1,4 +1,7 @@
 module test.claim.input_envelope_admission
+import gunbc.ci.ci_input_envelope { BoundedInput, InputBound, InputEnvelope }
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Measure }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

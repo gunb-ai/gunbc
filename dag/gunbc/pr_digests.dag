@@ -1,4 +1,7 @@
 module gunbc.pr_digests
+import std.types { NonEmptyStr }
+import extdeps.github.errors { GitHubErrorShape }
+import extdeps.github.pulls { PullReview, ReviewComment }
 
 
 type MergeReadinessVerdict

@@ -1,4 +1,7 @@
 module test.claim.bmc.bmc_onboarding_lifecycle_witness
+import gunbc.auth.access_token_source { GoogleCloudInteractiveAuthenticationRequired }
+import gunbc.bmc.bmc_onboarding { BmcCredentialPosture, BmcLifecycleState, BmcOnboardingPhase, CredentialAccessUpsertRequired }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -2,6 +2,8 @@ module gunbc.host.host_identity_observation
 
 import std.disposition { Disposition }
 import std.algebra { trim }
+import gunbc.host.host_effect { HostEffectTransport, NodeControlPlane }
+import std.realization_reconcile { Reconciliation }
 
 
 type HostIdentityObservationRow {

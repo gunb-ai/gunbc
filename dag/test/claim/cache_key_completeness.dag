@@ -1,4 +1,6 @@
 module test.claim.cache_key_completeness
+import extdeps.cache.types { CatalogKeyDerivationFacts, HandAuthored, NativeInternal }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

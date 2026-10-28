@@ -1,4 +1,6 @@
 module test.claim.github_workflow_runs_witness
+import extdeps.github.workflow_runs { WorkflowRun, WorkflowRunList }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

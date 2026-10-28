@@ -1,4 +1,10 @@
 module test.claim.fleet.fleet_show_effective_read_witness
+import gunbc.fleet.fleet_show_effective_read { RunnerSliceCapLiveReadRow }
+import gunbc.host.host_converge { PerSlotMemoryCap }
+import gunbc.host.host_operation_exec { SystemctlShowProperty }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

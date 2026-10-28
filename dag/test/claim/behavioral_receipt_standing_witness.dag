@@ -11,7 +11,7 @@ import v2.compiler.self_host.promotion_admission {
   BehavioralReceiptStanding,
   BehavioralCorpus,
   behavioral_receipt_standing,
-  behavioral_receipt_standing_holds
+  behavioral_receipt_standing_holds,
 }
 
 data live_tree_disposition: std.live_tree.LiveTreeDisposition = std.live_tree.SubstrateInputsOnly

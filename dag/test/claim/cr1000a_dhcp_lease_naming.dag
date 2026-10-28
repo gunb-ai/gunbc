@@ -1,4 +1,9 @@
 module test.claim.cr1000a_dhcp_lease_naming
+import extdeps.dhcp.v4 { DynamicDhcpLease, MacAddress, StaticDhcpReservation }
+import extdeps.dns.domain_name { DnsLabel, DomainName, HostName }
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

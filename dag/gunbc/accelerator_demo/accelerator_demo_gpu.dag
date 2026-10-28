@@ -2,6 +2,8 @@ module gunbc.accelerator_demo.accelerator_demo_gpu
 
 import std.optional { Present, Absent }
 import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_bandwidth_count }
+import extdeps.communication.medium { DecodeFidelity }
+import std.numerical_contract { NumericalContract }
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {

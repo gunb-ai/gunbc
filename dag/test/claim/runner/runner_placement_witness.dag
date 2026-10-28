@@ -1,4 +1,14 @@
 module test.claim.runner.runner_placement_witness
+import gunbc.ci.ci_fleet { ComputeOffer }
+import gunbc.ci.ci_floor_measurement { Regime1WorstCase, SessionOperatingPointSet }
+import gunbc.ci.ci_runner_placement { CapacityQuota, HostAllocationUnchargeableOnHost, HostCpuAllocationRefused, HostCpuAllocationResolution, HostRunnerDeploymentDerived, HostRunnerDeploymentRefusal, HostRunnerDeploymentRefused, HostRunnerDeploymentStanding, RefusedHostDeployment, RunnerDeploymentPlan, RunnerHostDeployment, SessionHostReservation, SessionReservationUnestablished }
+import gunbc.fabric.fabric_control_plane_charge { ControlPlaneEnvelopeDeclared, ControlPlaneEnvelopeUnmeasured, ControlPlaneStaticPinned, FabricControlPlanePlacement }
+import gunbc.fleet.fleet_host_budget { HostAllocationVerdict }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.measure { ByteSize }
+import std.nat { Nat }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

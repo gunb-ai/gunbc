@@ -44,6 +44,7 @@ import extdeps.external_authority { ObservedByReceipt, CitedToAuthority, Transcr
 import gunbc.live_deploy.spec { deployment_srv1_target }
 import gunbc.live_deploy.desired { srv1_lab_desired_deployment, deployment_srv2_target }
 import extdeps.linux.apparmor_userns { apparmor_restrict_unprivileged_userns_sysctl_name }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

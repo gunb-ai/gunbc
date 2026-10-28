@@ -1,4 +1,12 @@
 module test.claim.host.host_identity_observation_witness
+import extdeps.dns.domain_name { DnsLabel }
+import gunbc.host.host_effect { BootstrapFragment, EmitArtifactThenThinRun, HostOs, NodeControlPlane, SetHostnameCas, ThinInvocation }
+import gunbc.host.host_identity_assimilation { HostIdentityAssimilationTarget }
+import gunbc.host.host_identity_converge { ApplyPlan }
+import gunbc.host.host_identity_observation { HostIdentityObservationRow }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

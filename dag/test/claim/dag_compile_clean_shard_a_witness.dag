@@ -1,4 +1,6 @@
 module test.claim.dag_compile_clean_shard_a_witness
+import gunbc.instruments.dag_compile_clean_partition { ShardFailed }
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

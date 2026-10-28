@@ -7,6 +7,8 @@ import std.types { GitRef, FilePath, Seconds }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cron.schedule_model { CronSchedule, Wildcard, render_cron_schedule }
 import std.integer { int_to_decimal_string }
+import extdeps.github.pulls { PullReview }
+import extdeps.llm.anthropic_messages_api { AnthropicChatMessage, UserMessage, UserTextBlock }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 

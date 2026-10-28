@@ -1,4 +1,5 @@
 module test.claim.srv3.srv3_os_install_actuate_scope_witness
+import std.live_tree { LiveTreeDisposition }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

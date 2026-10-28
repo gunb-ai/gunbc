@@ -1,7 +1,7 @@
 module test.claim.fleet.fleet_intent_network_witness
 
 import std.live_tree { LiveTreeDisposition }
-import extdeps.dhcp.v4 { Active }
+import extdeps.dhcp.v4 { Active, StaticDhcpReservation }
 import extdeps.network.ipv4 { ipv4_address }
 import gunbc.fleet.fleet_asset_identity { printer_01, printer_02 }
 import gunbc.fleet.fleet_host_identity {

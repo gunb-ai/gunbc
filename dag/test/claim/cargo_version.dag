@@ -1,4 +1,7 @@
 module test.claim.cargo_version
+import extdeps.rust.cargo { CargoDependency, CargoPackage, RegistryDep }
+import extdeps.rust.version { CargoVersionRequirement }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

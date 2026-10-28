@@ -1,4 +1,6 @@
 module test.claim.memory_scale_factor_derivation
+import std.live_tree { LiveTreeDisposition }
+import std.measure { Scale }
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,4 +1,10 @@
 module test.claim.grounded_principal_witness
+import extdeps.sudo.nopasswd_execute_probe { NopasswdExecuteCheck }
+import gunbc.ci.ci_deploy_access { PrivilegedCommand }
+import gunbc.ci.ci_deploy_target_host { DeployTargetHostObservation }
+import gunbc.fleet.fleet_posix_accounts { DeployRunnerPrincipal, GroundedPosixPrincipal, PosixAccountDeclaredProbe, PosixSudoGrant }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

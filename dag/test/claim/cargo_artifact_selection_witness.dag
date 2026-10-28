@@ -1,4 +1,6 @@
 module test.claim.cargo_artifact_selection_witness
+import extdeps.rust.cargo_message { CargoArtifactSelection }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

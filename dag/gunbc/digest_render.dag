@@ -1,4 +1,6 @@
 module gunbc.digest_render
+import extdeps.github.pulls { PullRequestState }
+import std.types { NonEmptyStr }
 
 
 type PullRequestDigestSubject {

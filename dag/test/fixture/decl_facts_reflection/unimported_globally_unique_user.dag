@@ -1,3 +1,4 @@
 module test.fixture.decl_facts_reflection.unimported_globally_unique_user
+import test.fixture.decl_facts_reflection.globally_unique_carrier { GloballyUniqueWitnessArm }
 
 data unimported_globally_unique_specimen: GloballyUniqueWitnessArm = OnlyArm

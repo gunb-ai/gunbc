@@ -1,4 +1,8 @@
 module test.claim.ci.ci_oom_reclassify_witness
+import gunbc.ci.ci_failure_class { FloorFailed, FloorOutcome, Structural }
+import gunbc.ci.ci_oom_reclassify { Clustered, ClusteringEvidence, OomKillObservation, SimultaneousMultiJobDeath }
+import std.live_tree { LiveTreeDisposition }
+import std.process { ExitFailure }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

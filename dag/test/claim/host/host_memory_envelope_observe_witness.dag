@@ -1,4 +1,8 @@
 module test.claim.host.host_memory_envelope_observe_witness
+import extdeps.external_authority { CitedFigureStanding }
+import gunbc.host.host_memory_envelope_observe { SliceMemoryReading }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

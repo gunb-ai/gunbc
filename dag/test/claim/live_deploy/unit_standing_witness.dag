@@ -21,6 +21,7 @@ import gunbc.live_deploy.unit_standing {
   service_unit_expectation_of,
   path_unit_target_of,
 }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,4 +1,9 @@
 module test.claim.posix_principal_allocation_witness
+import extdeps.access.posix { PosixLoginName, PosixUser }
+import gunbc.fleet.fleet_posix_accounts { AccountAllocated, FleetPosixAccountKey, GroundedPosixPrincipalOutcome, HostLocalIdentityDomain, NameRequirements, NameSchemeIdentity, PosixAccessObservation, PosixAccountAllocation, PosixAccountObservation, PosixAccountOccurrence }
+import product.host_identity { HostIdentity }
+import std.live_tree { LiveTreeDisposition }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

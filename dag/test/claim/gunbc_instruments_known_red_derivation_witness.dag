@@ -51,11 +51,12 @@ import gunbc.instruments.known_red_derivation {
   known_red_marker_ground_unpublished_mock, known_red_marker_ground_filesystem_removal,
   known_red_marker_ground_no_mock_response,
   known_red_word_pass, known_red_word_fail, known_red_word_panicked, known_red_word_unobserved,
-  known_red_terminal_of_line
+  known_red_terminal_of_line,
 }
 import std.dissolution { dissolution_is_bound }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.dissolution_observation { dissolution_census_pool_roots }
+import v2.workflow.floor_terminal_ledger { NotAttempted, ObservedVerdict, Panicked, Returned }
 
 // THE ARMS THIS FILE GIVES THE INSTRUMENT. Each one supplies the two things a run supplies — the
 // subjects it owes and what the children printed — and asks the fold what it concluded. Nothing here

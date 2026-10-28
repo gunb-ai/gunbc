@@ -1,4 +1,6 @@
 module test.claim.extdeps_git_versioning_witness
+import extdeps.git.versioning { GitCliReportedVersion, GitReleaseVersion, GitVersionWindows }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

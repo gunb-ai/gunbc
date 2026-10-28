@@ -1,4 +1,7 @@
 module gunbc.srv3.srv3_seeded_install_media
+import std.decl_ref { DeclarationRef }
+import std.disposition { Disposition }
+import std.process { ProcessExit }
 
 
 data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {

@@ -1,6 +1,6 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
-import std.algebra { list_at_optional }
+import std.algebra { list_at_optional, Cons }
 import std.types { List }
 import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.integer { Int }

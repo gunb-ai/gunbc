@@ -1,4 +1,6 @@
 module test.claim.filesystem_entry_kind_witness
+import std.filesystem.types { EntryKind }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

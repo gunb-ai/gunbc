@@ -1,4 +1,7 @@
 module gunbc.tailscale_acl_emit
+import extdeps.languages.json.emit { JsonKeyValue, JsonValue }
+import extdeps.tailscale.acl { TailscaleAclPolicy, TailscaleAclSelector, TailscaleGrant, TailscaleNodeAttr, TailscaleSshRule, TailscaleTagOwnerRow }
+import std.types { NonEmptyStr }
 
 
 fn selector_array_json(items: List<TailscaleAclSelector>) -> JsonValue {

@@ -10,6 +10,7 @@ import std.content_hash {
 // resolved it before this module imported anything from std.decl_ref, and adding the name to the
 // import block is the shadowing hazard rather than tidiness.
 import std.decl_ref { DeclarationRef, declaration_ref_eq, declaration_ref_display_key }
+import std.algebra { Cons }
 
 // THE MECHANICAL PLANNING CARRIER FOR REPLACEMENT MIGRATIONS (DESIGN section 3 standing rule,
 // operator-directed 2026-08-15; hardened per the 2026-08-15 planning-thread review). A

@@ -1,4 +1,6 @@
 module test.claim.srv3.srv3_runner_memory_converge_witness
+import gunbc.host.host_converge { ConvergeKnob, HostConverge, PerSlotMemoryCap }
+import std.live_tree { LiveTreeDisposition }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

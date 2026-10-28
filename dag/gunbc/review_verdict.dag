@@ -1,4 +1,6 @@
 module gunbc.review_verdict
+import std.content_hash { ContentHash }
+import std.types { ArtifactId, CommitSha, NonEmptyStr, Timestamp }
 
 
 type LlmReviewProvider

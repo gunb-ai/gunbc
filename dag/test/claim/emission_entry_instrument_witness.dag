@@ -1,4 +1,11 @@
 module test.claim.emission_entry_instrument_witness
+import extdeps.rust.cargo_diagnostic { CargoDiagnosticScan }
+import gunbc.emit_diagnostic_observation { CaptureExtent, EmitDiagnosticRead, EmitOutputTruncated, FilesEmitted }
+import gunbc.instruments.emission_entry_instrument { EmissionEmitRefused, EmissionMeasured, EmissionMeasurement, EmissionMeasurementSubject, EmissionSubjectUnestablished, EntryScope, PrimaryRootScope, RustfmtParseObservation }
+import gunbc.instruments.host_prelude { WitnessBinRefusalReason }
+import std.live_tree { LiveTreeDisposition }
+import std.measure { ByteSize }
+import std.types { CommitSha, NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
