@@ -1005,7 +1005,10 @@ fn roster_apply_path(table: List<RosterHeadRow>, scope: RosterHomeScope, held: R
 
 // A supply's file is its module's storage path (gunbc.source_layout), the one name-to-path rule.
 fn roster_supply_stored_at(sup: AmbientSiteSupply, path: String) -> Bool {
-  layout_module_storage_path(module: sup.module as String) == Present { value: path }
+  match layout_module_storage_path(module: sup.module as String) {
+    Present { value: stored } => stored == path
+    Absent => false
+  }
 }
 
 fn roster_supply_in_paths(sup: AmbientSiteSupply, paths: List<String>) -> Bool {
@@ -2097,7 +2100,12 @@ fn roster_stale_supply(text: String, path: String, parse_root: Node, spans: Span
 }
 
 fn roster_contains_start(xs: List<Int?>, at: Int) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(found, o) { found || (o == Present { value: at }) })
+  fold_list(xs: xs, empty: false, cons: fn(found, o) {
+    match o {
+      Present { value: v } => found || (v == at)
+      Absent => found
+    }
+  })
 }
 
 fn roster_row_heads_supply_precheck(text: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, sites: List<RosterSiteSupply>) -> Optional<RosterRefusalReason> {
