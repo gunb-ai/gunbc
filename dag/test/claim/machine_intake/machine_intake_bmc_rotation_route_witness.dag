@@ -188,7 +188,7 @@ test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
         match r {
           IpmiSetUserPassword { user: u } => (u as Int) == 3
           IpmiSetUserPrivilegeLimit { access: _ } => false
-          RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+          RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
         }
           && q.digest == mtcollins1_user3_route_digest
           && p.digest == mtcollins1_user3_route_digest
@@ -208,7 +208,7 @@ test fn mtjade1_has_only_a_historical_observation_at_its_factory_address() -> Bo
     Present { value: h } =>
       (h.observed_endpoint.host as String) == "10.0.7.2"
         && (h.firmware.raw_version as String) == "2.11.104000"
-        && account_write_request_eq(a: h.request, b: redfish_account_password_write())
+        && account_write_request_eq(a: h.request, b: redfish_account_password_write(account: "admin" as NonEmptyStr))
         && match h.evidence {
           ObservedSurfaceRead { surface: sf, receipt: _ } => match sf { SurfaceManagerIdentity => true  _ => false }
           PublicStandardOperation { authority: _ } => false
@@ -314,6 +314,7 @@ test fn a_response_for_another_controller_is_refused() -> Bool {
 // different approval identities, and an approval for one refuses the other.
 fn redfish_write(op_field: NonEmptyStr, action_field: NonEmptyStr) -> BmcAccountWriteRequest {
   RedfishAccountPasswordWrite {
+    account: "root" as NonEmptyStr,
     transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: op_field),
     action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: action_field),
   }
@@ -346,7 +347,7 @@ test fn the_qualification_classifier_refuses_every_other_crossing() -> Bool {
   refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: rotation_approval_for(s: lab_candidate(request: ipmi))) == "another-purpose"
     && refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: approved_bmc_write_for(subject: subject_at(endpoint: lab_endpoint_b, request: ipmi), purpose: QualifyRoute, attempt: "attempt-1" as NonEmptyStr)) == "another-subject"
     && refusal_of(world: bmc_world(power: BmcPowerOn), request: ipmi, approval_value: right) == "not-completed"
-    && refusal_of(world: lab_world_with_user3(), request: redfish_account_password_write(), approval_value: qualification_approval_for(standing: lab_candidate(request: redfish_account_password_write()), request: redfish_account_password_write())) == "unrealized"
+    && refusal_of(world: lab_world_with_user3(), request: redfish_account_password_write(account: "root" as NonEmptyStr), approval_value: qualification_approval_for(standing: lab_candidate(request: redfish_account_password_write(account: "root" as NonEmptyStr)), request: redfish_account_password_write(account: "root" as NonEmptyStr))) == "unrealized"
     && modeled_verdict(candidate: rotation_route_ungrounded(endpoint: lab_endpoint, firmware: lab_firmware()), approval_value: right, world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: ipmi)) == "not-a-candidate"
     && modeled_verdict(candidate: lab_candidate(request: ipmi), approval_value: right, world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: IpmiSetUserPassword { user: 4 })) == "response-for-another-subject"
 }

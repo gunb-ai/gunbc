@@ -83,6 +83,8 @@ import gunbc.machine_intake.arrival_converge {
   bmc_secure_bound,
 }
 import gunbc.machine_intake.bmc_secure {
+  PublishedWriteInputs,
+  DryProbePublished,
   BmcSecureGoal, BmcAccountStateObservation, dry_read_bmc_account_state, dry_apply_bmc_account_plan, plan_bmc_account_action,
   BmcAccountPlanned, BmcAccountPlanRefused, PublishedAccountRetired, ManagedCredentialReference,
   BmcSecurePhaseNoop, BmcSecurePhaseApplied, ControllerClockReading,
@@ -132,7 +134,7 @@ fn instance_step_is(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefus
 fn route_is_redfish_write_candidate_on_manager_read(route: BmcRotationRouteStanding) -> Bool {
   match route.grounding {
     RouteQualificationCandidate { request: r, evidence: e } =>
-      (match r { RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true  IpmiSetUserPassword { user: _ } => false  IpmiSetUserPrivilegeLimit { access: _ } => false })
+      (match r { RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => true  IpmiSetUserPassword { user: _ } => false  IpmiSetUserPrivilegeLimit { access: _ } => false })
         && (match e { ObservedSurfaceRead { surface: _, receipt: rc } => (rc.label as String) == "artifacts/bmc/mtjade1-redfish-manager-self-192.168.1.246-2026-10-06T184626Z.json"  PublicStandardOperation { authority: _ } => false })
     RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => false
     RouteGroundedByCitedSource { request: _, citation: _ } => false
@@ -439,6 +441,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     published_account: PublishedAccountRetired,
     break_glass: mtjade1_bmc_goal().published_break_glass,
     break_glass_password: "break-glass-generation-4!",
+    published_reading: DryProbePublished,
     attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )
@@ -468,9 +471,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
             managed_route: managed_route,
             managed_approval: mtjade1_rotation_approval(s: managed_route, user: mtjade1_managed_ipmi_user),
             managed_generation: mg,
-            published_route: published_route,
-            published_approval: mtjade1_rotation_approval(s: published_route, user: mtjade1_published_ipmi_user),
-            published_generation: bg,
+            published: PublishedWriteInputs { route: published_route, approval: mtjade1_rotation_approval(s: published_route, user: mtjade1_published_ipmi_user), generation: bg },
             channel_close: none,
             planned_at: dry_bmc_account_instant(millis: mtjade1_bmc_plan_at),
           ) {
@@ -497,6 +498,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
                 published_account: PublishedAccountRetired,
                 break_glass: p.goal.published_break_glass,
                 break_glass_password: "break-glass-generation-4!",
+                published_reading: DryProbePublished,
                 attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
                 read_at_millis: mtjade1_bmc_readback_at,
               )
@@ -573,6 +575,7 @@ test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool
     published_account: PublishedAccountRetired,
     break_glass: mtjade1_bmc_goal().published_break_glass,
     break_glass_password: "break-glass-generation-4!",
+    published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )
@@ -610,6 +613,7 @@ test fn w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path() -> 
     published_account: PublishedAccountRetired,
     break_glass: mtjade1_bmc_goal().published_break_glass,
     break_glass_password: "break-glass-generation-4!",
+    published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )
@@ -1348,6 +1352,7 @@ test fn w_bmc_secure_apply_of_another_channel_state_is_refused() -> Bool {
     published_account: PublishedAccountRetired,
     break_glass: mtjade1_bmc_goal().published_break_glass,
     break_glass_password: "break-glass-generation-4!",
+    published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
   )

@@ -54,7 +54,7 @@ data bmc_rotation_route_disposition: Disposition = Terminal {
 type BmcAccountWriteRequest
   = IpmiSetUserPassword { user: IpmiUserId }
   | IpmiSetUserPrivilegeLimit { access: IpmiUserChannelAccess }
-  | RedfishAccountPasswordWrite { transport_operation: DeclarationRef, action_shape: DeclarationRef }
+  | RedfishAccountPasswordWrite { account: NonEmptyStr, transport_operation: DeclarationRef, action_shape: DeclarationRef }
 
 // WHY A CANDIDATE IS WORTH TRYING. Either a surface was observed on THIS controller (the read surface
 // and the receipt of the read), or a public standard defines the operation. Neither grounds a route:
@@ -151,6 +151,7 @@ fn rotation_route_from_citation(
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "a_rotation_approval_for_one_controller_does_not_admit_another"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "lockout_verdict"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_rotation_route_witness", decl_name: "cited_password_route_at"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "cited_root_route"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_published_user"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "cited_lab_route_managed_user_previous_build"),
@@ -194,8 +195,8 @@ fn account_write_request_text(request: BmcAccountWriteRequest) -> NonEmptyStr {
     IpmiSetUserPassword { user: u } => join(["IPMI Set User Password (App 47h) user ", to_string(u as Int)], "") as NonEmptyStr
     IpmiSetUserPrivilegeLimit { access: a } =>
       join(["IPMI Set User Access, privilege limit only (App 43h, byte 1 bit 7 clear) user ", to_string(a.user as Int), " channel ", to_string(a.channel as Int), " privilege ", canonical_ipmi_privilege(privilege: a.privilege)], "") as NonEmptyStr
-    RedfishAccountPasswordWrite { transport_operation: op, action_shape: _ } =>
-      join(["Redfish account password write via ", op.module_path as String, " ", op.decl_name as String], "") as NonEmptyStr
+    RedfishAccountPasswordWrite { account: acct, transport_operation: op, action_shape: _ } =>
+      join(["Redfish account password write of account ", acct as String, " via ", op.module_path as String, " ", op.decl_name as String], "") as NonEmptyStr
   }
 }
 
@@ -212,7 +213,7 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
       match b {
         IpmiSetUserPassword { user: ub } => (ua as Int) == (ub as Int)
         IpmiSetUserPrivilegeLimit { access: _ } => false
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+        RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
       }
     IpmiSetUserPrivilegeLimit { access: xa } =>
       match b {
@@ -221,14 +222,14 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
           (xa.user as Int) == (xb.user as Int)
             && (xa.channel as Int) == (xb.channel as Int)
             && xa.privilege == xb.privilege
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+        RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
       }
-    RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
+    RedfishAccountPasswordWrite { account: aa, transport_operation: oa, action_shape: sa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
         IpmiSetUserPrivilegeLimit { access: _ } => false
-        RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
-          declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
+        RedfishAccountPasswordWrite { account: ab, transport_operation: ob, action_shape: sb } =>
+          (aa as String) == (ab as String) && declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
       }
   }
 }
@@ -244,19 +245,19 @@ fn account_write_request_same_operation(a: BmcAccountWriteRequest, b: BmcAccount
       match b {
         IpmiSetUserPassword { user: _ } => true
         IpmiSetUserPrivilegeLimit { access: _ } => false
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+        RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
       }
     IpmiSetUserPrivilegeLimit { access: _ } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
         IpmiSetUserPrivilegeLimit { access: _ } => true
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+        RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
       }
-    RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
+    RedfishAccountPasswordWrite { account: _, transport_operation: oa, action_shape: sa } =>
       match b {
         IpmiSetUserPassword { user: _ } => false
         IpmiSetUserPrivilegeLimit { access: _ } => false
-        RedfishAccountPasswordWrite { transport_operation: ob, action_shape: sb } =>
+        RedfishAccountPasswordWrite { account: _, transport_operation: ob, action_shape: sb } =>
           declaration_ref_eq(a: oa, b: ob) && declaration_ref_eq(a: sa, b: sb)
       }
   }
@@ -295,8 +296,8 @@ fn canonical_account_write_request(request: BmcAccountWriteRequest) -> String {
     IpmiSetUserPassword { user: u } => join(["ipmi-set-user-password;", canonical_component(text: to_string(u as Int))], "")
     IpmiSetUserPrivilegeLimit { access: a } =>
       join(["ipmi-set-user-privilege-limit;", canonical_component(text: to_string(a.user as Int)), canonical_component(text: to_string(a.channel as Int)), canonical_component(text: canonical_ipmi_privilege(privilege: a.privilege))], "")
-    RedfishAccountPasswordWrite { transport_operation: op, action_shape: act } =>
-      join(["redfish-account-password-write;", canonical_decl_ref(r: op), canonical_decl_ref(r: act)], "")
+    RedfishAccountPasswordWrite { account: acct, transport_operation: op, action_shape: act } =>
+      join(["redfish-account-password-write;", canonical_component(text: acct as String), canonical_decl_ref(r: op), canonical_decl_ref(r: act)], "")
   }
 }
 
@@ -522,7 +523,7 @@ type DryRouteQualificationStep {
 // reading a success from nothing.
 fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationSubject, password: String) -> DryRouteQualificationStep {
   match subject.request {
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
     IpmiSetUserPrivilegeLimit { access: x } => {
       let before = match bmc_ipmi_get_user_access(world: world, user: x.user, channel: x.channel) {
         Present { value: p } => p == x.privilege
@@ -775,7 +776,7 @@ fn qualification_retention_refusal(standing: BmcRotationRouteStanding, request: 
             }
           }
         IpmiSetUserPassword { user: _ } => none
-        RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+        RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => none
       }
   }
 }
@@ -792,7 +793,7 @@ fn candidate_request(standing: BmcRotationRouteStanding) -> BmcAccountWriteReque
 fn is_password_request(request: BmcAccountWriteRequest) -> Bool {
   match request {
     IpmiSetUserPassword { user: _ } => true
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => true
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => true
     IpmiSetUserPrivilegeLimit { access: _ } => false
   }
 }
@@ -942,7 +943,7 @@ fn lowers_privilege(privilege: IpmiChannelPrivilegeLimit) -> Bool {
 fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, readback: ManagedAdministratorReadback?, approved_attempt: AttemptIdentity) -> AdministratorRetentionRefusal? {
   match request {
     IpmiSetUserPassword { user: _ } => none
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => none
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => none
     IpmiSetUserPrivilegeLimit { access: x } =>
         match readback {
           Absent => Present { value: ManagedReadbackAbsent }
@@ -974,7 +975,7 @@ fn lowering_request(request: BmcAccountWriteRequest) -> Bool {
   match request {
     IpmiSetUserPrivilegeLimit { access: x } => lowers_privilege(privilege: x.privilege)
     IpmiSetUserPassword { user: _ } => false
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => false
   }
 }
 
@@ -1051,7 +1052,7 @@ fn admit_rotation_apply(
                   Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
                 }
               IpmiSetUserPassword { user: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
-              RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+              RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
             }
         }
       }
@@ -1071,8 +1072,9 @@ data rotation_route_consumption_frontier: DissolutionCondition = unbound_dissolu
 
 // The modeled Redfish account-password operation and action shape, by reference, for a candidate
 // naming an observed Redfish surface.
-fn redfish_account_password_write() -> BmcAccountWriteRequest {
+fn redfish_account_password_write(account: NonEmptyStr) -> BmcAccountWriteRequest {
   RedfishAccountPasswordWrite {
+    account: account,
     transport_operation: decl_field_ref(module_path: "extdeps.bmc.http", decl_name: "redfish.Http", field_name: "SetAccountPassword"),
     action_shape: decl_field_ref(module_path: "extdeps.bmc.types", decl_name: "RedfishSystemAction", field_name: "SetAccountPassword"),
   }

@@ -122,8 +122,14 @@ import gunbc.machine_intake.bmc_secure {
   AccountPlanNotDue,
   AccountPlanUnobserved,
   AccountWriteNotAdmitted,
-  AccountWriteRequestNotIpmiUser,
-  AccountWriteRequestForAnotherUser,
+  AccountWriteRequestForAnotherAccount,
+  PublishedAccountIsNotTheManagedAccount,
+  PublishedWriteWouldRepeatTheManagedWrite,
+  PublishedGoalIsNotTheManagedGoal,
+  PublishedWriteInputs,
+  PublishedAccountIsTheManagedAccount,
+  DryProbePublished,
+  DryDerivePublishedRetirement,
   ManagedGenerationForAnotherAccount,
   ManagedGenerationNotAdvanced,
   GenerationFetchedAfterPlan,
@@ -365,6 +371,7 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
     published_account: account,
     break_glass: goal_break_glass_ref(),
     break_glass_password: break_glass_password,
+    published_reading: DryProbePublished,
     attempt: attempt as AttemptIdentity,
     read_at_millis: at,
   )
@@ -390,7 +397,7 @@ fn request_user(r: BmcAccountWriteRequest) -> IpmiUserId {
   match r {
     IpmiSetUserPassword { user: u } => u
     IpmiSetUserPrivilegeLimit { access: x } => x.user
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => managed_user
+    RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => managed_user
   }
 }
 
@@ -569,9 +576,7 @@ fn plan_full_as(
               managed_route: managed_route,
               managed_approval: rotation_approval(s: managed_route, user: route_user(s: managed_route)),
               managed_generation: mg,
-              published_route: grounded_route(user: published_user),
-              published_approval: rotation_approval(s: grounded_route(user: published_user), user: published_user),
-              published_generation: bg,
+              published: PublishedWriteInputs { route: grounded_route(user: published_user), approval: rotation_approval(s: grounded_route(user: published_user), user: published_user), generation: bg },
               channel_close: channel_close,
               planned_at: i.plan,
             ),
@@ -636,8 +641,10 @@ fn plan_label(o: BmcAccountPlanOutcome?) -> String {
             AccountPlanNotDue { decision: d } => join(["not-due:", decision_label(d: d)], "")
             AccountPlanUnobserved { cause: _ } => "unobserved"
             AccountWriteNotAdmitted { target: _, admission: a } => join(["not-admitted:", admission_label(a: a)], "")
-            AccountWriteRequestNotIpmiUser { target: _, request: _ } => "not-ipmi-user"
-            AccountWriteRequestForAnotherUser { target: _, admitted: _, required: _ } => "another-user"
+            AccountWriteRequestForAnotherAccount { target: _, request: _ } => "another-account"
+            PublishedAccountIsNotTheManagedAccount { published_user: _, managed_user: _ } => "published-not-the-managed-account"
+            PublishedWriteWouldRepeatTheManagedWrite { user: _ } => "published-write-repeats-managed"
+            PublishedGoalIsNotTheManagedGoal { goal: _, managed: _ } => "published-goal-not-managed-goal"
             ManagedGenerationForAnotherAccount { generation: _, in_force: _ } => "generation-another-account"
             ManagedGenerationNotAdvanced { in_force: _, generation: _ } => "generation-not-advanced"
             PublishedGenerationNotGoalBound { generation: _, goal: _ } => "published-generation-not-goal-bound"
