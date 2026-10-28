@@ -1884,10 +1884,17 @@ fn percent_count(p: Percent) -> Nat {
 }
 
 // Concurrent max-length requests the engine prints as Nx (vLLM "Maximum concurrency for … tokens
-// per request: 11.22x"). Stored as hundredths (11.22x = 1122) on the same Dimensionless axis as
-// Percent, which this repository already uses for GPU utilization. A block is not a token; 11.22
-// concurrent requests is not 1122% utilization.
-type ConcurrentRequestHundredths = Measure<Dimensionless, One, Nat>
+// per request: 11.22x"), stored as hundredths (11.22x = 1122). THE AXIS IS Count, NOT Dimensionless:
+// 11.22 here means 11.22 REQUESTS resident, a number of things, the same quantity TokenCount and
+// CpuCoreCount carry — at the scale a tenth of a request is nameable. It was aliased on the
+// Dimensionless axis beside Percent, which made a concurrency reading and a utilization ratio ONE
+// STRUCTURAL TYPE: 1122 concurrent requests passed for 1122% utilization at every formal and at
+// measure_add, which is nicknaming (DESIGN 3), not a unit. The printed Nx is a mean concurrency
+// only where the reading aggregates over a window — that is a property of the observation carrying
+// it (extdeps.vllm.log_lines, gunbc.serving.flash_next_recipe_throughput_evidence), not of the
+// unit, so the aggregation is NOT spelled here. Converting a count of requests to a percentage of
+// some capacity is a division by a count of capacity, at the call site, and is not an alias.
+type ConcurrentRequestHundredths = Measure<Count, One, Nat>
 
 fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
   Measure { count: count }
@@ -1960,8 +1967,12 @@ fn permille_count(p: Permille) -> Nat {
 // Mean concurrent requests at milli resolution (Little's-law means: count 15860 is 15.86
 // requests resident). ConcurrentRequestHundredths holds whole hundredths at One; the milli
 // resolution is the sibling this family lacked (review 84973: mean_decode_concurrency_milli
-// and pool_ratio_milli printed milli figures on bare Nat).
-type ConcurrentRequestThousandths = Measure<Dimensionless, Milli, Nat>
+// and pool_ratio_milli printed milli figures on bare Nat). Count axis, not Dimensionless: see
+// ConcurrentRequestHundredths — a number of resident requests is a COUNT, and sharing
+// Measure<Dimensionless, .., Nat> with Permille/Percent made a mean concurrency and a ratio one
+// structural type. The "mean" is how the reading was aggregated (Little's law over an uptime
+// window) and belongs on the observation carrying it, not on the unit.
+type ConcurrentRequestThousandths = Measure<Count, Milli, Nat>
 
 fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
   Measure { count: count }
