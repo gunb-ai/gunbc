@@ -98,7 +98,9 @@ data text_string_importer_census_dissolution: DissolutionCondition = unbound_dis
 // The host text primitives. Each is a `std.primitives` row; the row supplies the name, except
 // `chars` and `parse_int`, whose names come from their declared-home projection identities
 // (std.primitive_projection primitive_chars, the std.host_text seam row, and primitive_parse_int, the
-// std.integer seam row) since their ambient contract rows were retired (T1.1; the parse_int home wave).
+// std.integer seam row). chars' ambient contract row was retired (T1.1); parse_int's contract row
+// still stands -- its retirement is deferred while the wave's residual population resolves the bare
+// name through it -- but the census names the declared home either way.
 data host_text_primitive_contracts: List<PrimitiveContract> = [
   char_at_contract,
   string_length_contract,

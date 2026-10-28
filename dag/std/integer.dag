@@ -309,8 +309,12 @@ fn int_to_decimal_string(value: Int) -> String {
 // int_to_decimal_string's image (a leading `+` and leading zeros parse), so it is a left inverse there, not a
 // bijection. A pure declared operation whose host realization binds by THIS declaration's identity
 // (std.primitive_projection primitive_parse_int, a HostRealizedSeam row; v1_rt::parse_int, Rust i64 FromStr), so
-// the body is a self-call no realization ever reaches. The std.primitives parse_int_contract row that let the bare
-// name resolve with no import is retired: a caller reaches it by `import std.integer { parse_int }`.
+// the body is a self-call no realization ever reaches. A caller reaches it by `import std.integer { parse_int }`.
+// The std.primitives parse_int_contract row that let the bare name resolve with no import is RETIRED BY THIS WAVE,
+// but its deletion is DEFERRED while any file still resolves parse_int through it: 20 files refuse the generated
+// import (compiler normalize gaps plus the std.checked_arithmetic cycle, named in the wave PR body), so the stopgap
+// row stands until that residual reaches zero. src/v2/test/claim/compiler/parse_int_ambient_authority_deferred.dag
+// pins the current state and states the flip.
 fn parse_int(s: String) -> Int? {
   parse_int(s: s)
 }
