@@ -12,7 +12,7 @@ import extdeps.vllm.engine_args {
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
 import extdeps.docker.create_spec { DockerEnvAssignment }
 import extdeps.storage.types { PcieLink, pcie_generation_wire }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
+import extdeps.gpu.types { GpuDeviceCatalogRow, gpu_catalog_row_eq }
 import extdeps.ninfer.ninfer_serve {
   NinferKvDtype, NinferSpeculation, ninfer_kv_dtype_wire, ninfer_speculation_wire,
 }
@@ -120,7 +120,7 @@ type ServingHostLink
   | HostLinkNegotiated { link: PcieLink }
 
 type ServingAcceleratorRealization {
-  sku: GpuModelCatalogRow
+  sku: GpuDeviceCatalogRow
   count: Nat
   host_link: ServingHostLink
   applied_power_limit: Watt?
@@ -519,7 +519,7 @@ fn serving_accelerator_realization_wire(a: ServingAcceleratorRealization) -> Non
 }
 
 fn serving_accelerator_realization(
-  sku: GpuModelCatalogRow,
+  sku: GpuDeviceCatalogRow,
   count: Nat,
   host_link: ServingHostLink,
   applied_power_limit: Watt?,

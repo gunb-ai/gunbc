@@ -1,284 +1,58 @@
-# Generated-file conflict policy — lane charter (operator-ruled 2026-08-01)
+# Generated-file conflict policy
 
-Status: RULED. Records the operator ruling of 2026-08-01 on how generated files,
-hand-authored authorities, and keyed rosters integrate under concurrent branches, and
-charters four lanes to land it. Mechanism principle: **the authority is the existing
-`.dag` model of artifacts, storage, commit workflow, and Git state — `.gitattributes` and
-Git config are downstream projections of it, never the policy.**
+**Ruled 2026-08-01.** Existing `.dag` artifact, storage, commit and Git authorities own integration policy. `.gitattributes` and repository-local Git config project it; Git remains a compatibility realization of [native integration](dag-scm-design.md).
 
-```text
-existing .dag authorities
-  → path/integration-policy derivation
-  → .gitattributes projection
-  → repository-local Git configuration projection
-  → commit-writer admission
-```
+The motivating failures were redundant projection conflicts, auto-heal `218dea61248d` committing conflict blocks in `publication_grant.dag`, and clean overlapping appends (#7565/#7580) producing eleven duplicate paths. The last case requires construction semantics, not conflict handling. [Original analysis and receipts](https://github.com/gunb-ai/gunbc/blob/06d3c1c3149a7420c4a548b9aba9b15c721c635d/docs/plans/generated-file-conflict-policy.md) preserves measurements and lane history.
 
-Git is a compatibility realization downstream of the native integration model
-(dag-scm-design.md), not the vocabulary the model derives from.
+## Policy and authority
 
-## The problem, with receipts
+| Subject | Integration | Before commit |
+|---|---|---|
+| Deterministic projection | Either side provisional; no manual byte resolution | Regenerate merged authority; prove byte equality |
+| Hand-authored semantic authority | Resolve semantic choices | Normalize index |
+| Keyed set/map authority | Neither take-ours nor line merge decides | Refuse duplicate keys before construction |
+| Roster of generated outputs | Derive from producer; delete duplicate roster | Exact produced/observed membership agreement |
 
-Three distinct failure classes were being experienced as "conflicts on generated files":
+Join `gunbc.generated_artifact`, `v2.std.artifact` and derived ModuleStorageBinding; do not mint a universal FileKind or path census. Provenance, merge, line-ending, diff and Linguist presentation are independent axes. A total path model may emit sparse nondefault attributes; generated does not imply hidden.
 
-1. **Redundant artifact conflicts.** DESIGN.md / ROADMAP.md / ci.yml changed 46/73/49
-   times in 3 weeks against 834 commits; DESIGN.md is 132 lines with lines up to 14KB,
-   so git's line-grain merge conflicts on nearly any concurrent pair. In every observed
-   case the `.dag` authority merged cleanly or conflicted resolvably — the artifact
-   conflict carried zero information beyond it (clever-ferret-451, 3× in one day on one
-   PR). The artifact is derivable; a human resolving its bytes is redundant work (§2).
-2. **Commit-writer fail-open.** Commit `218dea61248d` (auto-heal, eager-seal's #7573
-   branch) committed and pushed three literal `<<<<<<< HEAD` … `>>>>>>> origin/main`
-   blocks inside `dag/gunbc/publication_grant.dag`. The writing automation committed
-   *through* an unresolved merge instead of refusing — the §5 absorbing fallback at the
-   commit boundary.
-3. **Clean merges on keyed rosters — the expensive case is not a conflict.** #7565 and
-   #7580 appended overlapping row sets to `publication_grant.dag`; both merged cleanly
-   (git saw two list appends), main carried 11 duplicate paths, the placement gate went
-   red, batch-1 stalled, and the fleet's witness corpus stopped while multiple sessions
-   diagnosed it as their own regression (calm-badger-682). For append-only rosters a
-   clean merge is the dangerous case and a conflict the safe one; a conflict-only policy
-   fixes the visible half and leaves the expensive half.
+## Lane 1: every commit writer consumes admission
 
-A registration that can disagree with reality is a second authority (§3), and it did:
-`generated_stage0_files` registered a projection whose file did not exist (#7559) and
-five absent from main (#7515).
+Human, dashboard, heal and integration writers share one predicate at the actual write boundary. A generated pre-commit hook is optional feedback, never enforcement; infra bindings are countable work requiring operator routing.
 
-## The four-case policy
+Refuse any non-normal `extdeps.git.object_store.GitIndexStage`, carrying located path/stages. Also inspect the exact staged blobs for complete conflict-marker grammar: `git add` can normalize the index while retaining markers. An isolated token or repository-wide grep is insufficient. Test exemptions require typed provenance.
 
-| Path semantics | Git integration treatment | Required result before commit |
-| --- | --- | --- |
-| **Deterministic generated projection** | Either textual side may be retained provisionally; no human resolves its bytes | Regenerate from the merged authorities and prove byte equality |
-| **Hand-authored semantic authority** | Ordinary/native semantic integration; a conflict may carry information | All semantic choices resolved and index normalized |
-| **Keyed set/map authority** | Never "take ours" and never rely on line merge | One value per key by construction; duplicate-key input refuses |
-| **Roster naming generated outputs** | Delete the roster and derive membership from the producer | Produced set and observed output set agree exactly |
+Admission consumes the COMPLETE staged-index observation, with independent refusals for missing/extra observations, duplicates, index/blob identity disagreement, content not matching the indexed object, and unavailable decode/classification. Text classification is observed, not caller-selected. A fixture exemption is receipted from tracked artifact/module-storage authority and bound to the same path/blob; a freely constructed Artifact is not evidence.
 
-`publication_grant.dag`-shaped carriers are row 3, not row 1: hand-authored policy whose
-key is `path`. A generated-artifact merge driver there would hide decisions.
+REDs reproduce `218dea6` both as unmerged index and staged marker content; clean input admits. Also refuse source paired with test provenance, provenance/staged-path mismatch and a fabricated artifact with matching path. Heal and dashboard must consume this wall, not merely mention it.
 
-## What the model must NOT be
+## Lane 2: policy projections and clone realization
 
-- **No universal `FileKind` enum / path census.** `gunbc.generated_artifact.GeneratedArtifact`
-  (repo generated-projection + commit-policy authority) and `v2.std.artifact.Artifact`/
-  `ArtifactKind` (generic compiler artifact/provenance vocabulary) already exist with
-  different scopes; `.dag` path⇄module facts belong to the derived `ModuleStorageBinding`
-  authority. The conflict lane **joins** those facts; a third path census would be the
-  dual representation this lane exists to remove.
-- **No fused policy dimensions.** Linguist presentation, generated provenance, merge
-  behavior, line-ending behavior, and diff presentation are orthogonal questions answered
-  independently. Generated ⇏ linguist-hidden.
-- **Sparse projection over a total model.** The model may be total over tracked paths
-  while `.gitattributes` stays sparse: ordinary files derive Git's default three-way
-  behavior and the emitter writes only non-default attribute rows. No one-row-per-file
-  census.
+GitattributesArtifact projects only existing policy: the `.dag` language presentation row is independent; generated merge rows derive from committed deterministic projections, including `.gitattributes` itself without a special self-row. The driver definition is repo-local desired Git state. Model its config and core.hooksPath, reconcile idempotently, then read back; absence, wrong value and read failure have distinct typed refusals. A manual config command does not discharge this.
 
-## Lane 1 — commit-writer admission (FIRST: the live safety hole)
+The transaction is: integrate authored authorities without committing → refuse unmerged index → regenerate affected committed projections → prove equality to indexed bytes → required admission → commit. A take-ours/driver=true merge is provisional transport convenience. The writer MUST consume the regeneration receipt before writing.
 
-One modeled admission predicate, consumed by **every** commit writer
-(`HumanGitCommit | DashboardAutocommit | HealAutocommit | IntegrationCommit` — carrier
-names indicative, not final). Two independent refusal arms:
+Config converges before each clone's FIRST Git consumer, including heal's first merge. Acceptance exercises a fresh clone with absent config, convergence, a real projection conflict, provisional resolution, regeneration and equality. Deferred session/developer clones need a countable rollout carrier with population/converged/missing counts and retirement when every clone-creation path invokes convergence.
 
-1. **Unmerged-index refusal.** Every index entry must be `GitIndexStageNormal`
-   (`extdeps.git.object_store` `GitIndexStage`); any `Base`/`Ours`/`Theirs` stage yields
-   a typed, located refusal carrying the affected path and stage population. The Git
-   model already carries the facts (`GitIndexStage`, `DiffUnmergedStatus`) — no stringly
-   "conflicted tree" fact is minted.
-2. **Resolved-to-marker-text refusal.** `git add` can collapse an unresolved file into a
-   normal stage-0 blob with the conflict blocks still in the content. So the exact staged
-   blobs about to be committed are inspected for the complete conflict-marker *grammar*
-   (begin/separator/end structure, not one isolated token). Legitimate fixture content is
-   exempted via typed test-artifact provenance, never a path allowlist. Not a
-   repo-wide raw grep.
+Stage0 policy must join this population with collision refusal, not remain a follow-up named only in prose; the landed pure realization below supersedes the originally proposed live path-list join.
 
-The generated `.githooks/pre-commit` hook is fast local feedback, **not enforcement**
-(optional, bypassable — the repo's own hook notes already make the distinction). The
-dashboard/heal writer that produced `218dea6` must call the same modeled predicate at its
-actual write boundary; the repo lane lands the predicate + witnesses, and the infra
-binding is reported for operator routing.
+## Lane 3: stage0 projection coverage
 
-Acceptance: a witness reproducing `218dea6`'s exact shape (merge with unmerged entries;
-and separately the staged-marker-text variant) refuses typed/located; positive control
-(clean tree) admits; RED controls live.
+The handwritten generated_stage0_files roster is deleted. The planned stage0_emit_plan route died in #8406. Its replacement, `gunbc.stage0.stage0_rust_source_lifecycle_scaffold.derived_generated_stage0_repo_paths`, joins emitted population and tracked files at a revision, but live git observations cannot determine a pure committed projection: clones at one commit must not disagree.
 
-**Acceptance wall (operator second-pass review, 2026-08-01):** admission consumes a
-*complete staged-index observation*, never a caller-selected list — the observation
-population must equal the exact staged index population, with independent refusals for
-missing observations, extra observations, duplicates, index/blob identity mismatch, blob
-content not matching the indexed object, and unavailable decode/classification. The
-text/non-text classification is *observed*, never caller-selected (a caller labeling a
-text blob non-text to skip marker inspection is the writable bypass this wall closes).
-Fixture exemption must be bound to the same staged path/blob via a classification receipt
-derived from the tracked artifact/module-storage authority — a freely constructed
-`Artifact` value is not a provenance receipt, and RED controls must cover a source path
-paired with test provenance, a provenance path mismatching the staged path, and a
-fabricated artifact whose path happens to match. The two writer bindings (heal arm,
-dashboard daemon) are countable work carriers, not prose in an admission note.
+The landed merge-policy producer is `gunbc.generated_projection_paths.deterministic_generated_projection_merge_rows`: cover direct children of the stage0 source root, then unset `v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames` members not themselves registry artifacts. Last matching attribute wins, so exceptions MUST follow the glob. This covers newly emitted files without another roster; the former prose claim that the live derivation already fed attributes was false.
 
-## Lane 2 — path/integration-policy join, `.gitattributes` + Git config projections
+Recovery uses `claim_executor --required-regen` and generated-artifact registry `gunbc.instruments.generated_artifact_gate.main_wet`; `regen_stage0` was deleted. Take either provisional side, regenerate merged authority and verify zero divergence.
 
-`GitattributesArtifact` joins the registry with the meaning: *"the committed byte
-projection through which Git receives the relevant subset of the modeled
-repository-path policy."* Contents derive from existing authorities only:
+Unavailable/Refused source supply must remain refusing through emission, artifact generation and writer. No non-host or test-helper `Refused => []` fallback may yield writable bytes. Canonical OUTPUT paths, not merely module identities, require unique keys and located collision refusals because flattening can collide. The merge-policy consumer must actually cover this output population.
 
-```text
-**/*.dag linguist-language=Rust        ← modeled as its own presentation-policy row
-<each committed deterministic projection> merge=generated-artifact
-```
+## Lane 4: live keyed construction
 
-The second population is `committed_generated_artifact_paths()` verbatim — adding or
-deleting a generated artifact adds/deletes its attribute row. `.gitattributes`
-classifies **itself** through the same derivation; no handwritten self-row.
-(`.gitignore` is the precedent inversion: it already consumes the registry.)
+A keyed roster refuses repeats before a value exists, at per-PR admission. Consumers accept only Built from a typed Built|Refused outcome and preserve located key/first/duplicate evidence; a Bool frontier discards the required refusal. Optional line-union transport cannot establish uniqueness.
 
-The merge-driver *definition* is repository-local Git state, not `.gitattributes`
-content. It is modeled as desired state with: a generated config fragment or typed
-reconciliation plan; an idempotent actuator installing the repo-local binding (driver +
-`core.hooksPath`); observation/read-back proving the bindings present; typed refusal on
-reconciliation or read-back failure (the membership-reconcile desired-state shape). A
-documented manual `git config` command with no read-back is a declared-but-unrealized
-configuration and does not satisfy the lane.
+Generic kernel tests alone do not close this lane. Exercise a real roster end to end and the exact #7565/#7580 overlap. `public_file_publish_grants` was deleted by operator ruling #7591 and its re-land frozen for design review; keep incident fixtures and the lane open until a live carrier consumes the construction. Any re-land must satisfy set semantics, subtree grain and server-side admission.
 
-`merge=generated-artifact` with `driver=true` (take-ours) is a **transport
-convenience, not the safety boundary**. The integration transaction is:
+## Order and rejection bars
 
-```text
-integrate authored authorities without committing
-  → prove no unmerged index entries          (lane 1 predicate)
-  → regenerate affected committed projections
-  → prove generated == committed/indexed bytes
-  → run required admission checks
-  → write commit
-```
+The charter precedes implementation: lane 1 with complete observation/bound provenance → lane 2 with pre-consumer convergence → lane 3 stacked on lane 2 with refusal-preserving generation → lane 4, integrating commit_workflow semantically after lane 1.
 
-The commit writer consumes the regeneration receipt as a precondition — otherwise Git
-can write a merge commit containing the provisional "ours" bytes and the drift gate
-merely detects the bad transition after it exists.
-
-**Acceptance wall (operator second-pass review, 2026-08-01):** repo-local config
-converges *before the first Git consumer in each clone* — in the CI heal job, before the
-first `git merge`, since an actuator that runs after its consumer governs nothing in an
-ephemeral checkout; the executable acceptance is fresh clone → observe config absent →
-converge → real conflicting merge over a generated artifact → provisional
-generated-artifact resolution → regenerate → byte equality, not merely a temp-repo
-config write/read-back. Deferred clone populations (session worktrees, developer clones)
-are a *named, countable rollout carrier* — population, converged count, missing count,
-dissolve-on every clone-creation path invoking converge — never a documented one-time
-command. Application/read-back failure is a typed refusal distinguishing absence, wrong
-value, and read failure, not a Bool plus first-failure string. And the derived stage0
-paths must actually feed the merge-attribute population (a single derivation
-`deterministic_generated_projection_paths` = committed registry paths ∪ derived stage0
-paths, duplicate-path refusal before emission) — riding lane 3 stacked on this lane or an
-explicit follow-up PR, never an unnamed postscript.
-
-## Lane 3 — derive stage0 output membership (gates the emitted-Rust extension)
-
-**LANDED, AND THIS SECTION PREVIOUSLY MARKED IT LANDED ON A HALF THAT DID NOT REACH ITS
-CONSUMER.** `generated_stage0_files` was a handwritten filename list — the second-authority
-shape exactly — and it is deleted. The derivation this lane sketched routed through the
-stage0 emission plan:
-
-```text
-stage0 emission plan → produced module/file identities → canonical output paths
-  → generated projection membership → Git merge attributes
-```
-
-That route is not available: `gunbc.stage0_emit_plan` was deleted at the root by the
-regen cut (#8406), which is also what left the roster producerless. A derivation landed
-in its place — `gunbc.stage0.stage0_rust_source_lifecycle_scaffold derived_generated_stage0_repo_paths`,
-which reads the emitter's own declared population at a revision and intersects it with the
-tracked tree. **The last sentence of the old text — "the derived paths feed the merge-attribute
-population" — was never true of it.** The derivation landed; the join this lane names as its own
-gate did not, and for months `.gitattributes` covered only the committed generated-artifact
-registry while every emitted stage0 source resolved to `merge: unspecified`. That is the artifact
-the driver was written for (DESIGN's #7836 receipt is against this mirror), so the driver
-protected everything except its own subject.
-
-**THE JOIN COULD NOT HAVE BEEN MADE THE WAY THIS LANE PLANNED IT, AND THAT IS WHY IT SAT.**
-`derived_generated_stage0_repo_paths` takes two live observations — `git ls-files` and a
-`git show` of the emitted-population manifest — while `.gitattributes` is a committed byte
-projection reached through a pure generator that the drift gate assesses purely. Wiring one to
-the other would make the file's expected bytes a function of somebody's working tree: two clones
-at one commit could disagree about what it must contain.
-
-**WHAT LANDED INSTEAD IS A COMPLEMENT, NOT A PATH LIST.** `gunbc.generated_projection_paths`
-`deterministic_generated_projection_merge_rows` emits one glob claiming the direct children of
-the stage0 source root, followed by one unset row per `v2.compiler.self_host.stage0_crate_layout`
-`hand_maintained_stage0_filenames` member that is not itself a registry artifact. Row order is
-load-bearing — the last matching attributes line wins, so an unset row above the glob is inert in
-the dangerous direction. A newly emitted stage0 source is covered by construction, which no
-roster can do: the population gained three files during the hours this defect was being
-diagnosed.
-
-**RECOVERY GUIDANCE, CORRECTED.** The old text said to rerun `regen_stage0`. That binary was
-deleted by #8406, so the instruction named nothing for as long as it stood. The route is
-`claim_executor --required-regen`, and for the generated-artifact registry, `main_wet` on
-`dag/gunbc/instruments/generated_artifact_gate.dag`. Take either side, regenerate from the merged
-authorities, verify divergence 0 — never hand-pick hunks.
-
-**Acceptance wall (operator second-pass review, 2026-08-01):** an Unavailable/Refused
-source supply cannot project to an ordinary empty list or a syntactically valid generated
-artifact — the refusal is *preserved through the chain* (source supply → emission-plan
-outcome → artifact-generation outcome → writer), the authored non-host body returns
-Unavailable rather than a neutral empty value, and a refused plan is structurally
-incapable of producing bytes `main_wet` can write (a `Refused => []` arm anywhere,
-including test helpers, is the absorbing fallback this lane exists to remove). Canonical
-*output* paths are unique with located collision refusal — the output path is the key at
-this boundary, and module-path uniqueness does not imply it (flattening can merge
-distinct modules onto one basename). The derived paths feed the merge-attribute
-population (with lane 2's wall above).
-
-## Lane 4 — keyed rosters get set/map construction semantics
-
-For path-keyed grant/roster carriers (`PublicFilePublishGrant` key = `path`): the
-writable carrier becomes a keyed set/map or a construction fold that refuses a repeated
-key before a roster value exists; duplicate keys refuse at **per-PR admission**, not
-only on main (the union-append is the writable bad state git cannot see). A line-union
-merge driver remains optional convenience — it can still merge two branches into an
-invalid duplicate-key population, so the construction/admission wall is the fix.
-(Consistent with the recorded publication-grant re-land bar: set-semantics + subtree
-grain + server-side.)
-
-**Acceptance wall (operator second-pass review, 2026-08-01):** generic kernel machinery
-plus fixture tests do *not* satisfy the lane — it is satisfied only when a live
-path-keyed roster consumes keyed construction end-to-end: a typed Built|Refused outcome
-at the carrier, its consumer accepting only Built, per-PR admission executing it, and the
-exact #7565/#7580 overlap shape witnessed against that carrier. Production integrations
-consume the canonical build verdict directly — a frontier check that collapses the
-located duplicate evidence (key, first, duplicate) into a Bool discards the refusal this
-lane exists to type. *Sequencing note recorded by the coordinator:* the incident carrier
-itself (`public_file_publish_grants`) was deleted from main by operator ruling (#7591)
-with its re-land frozen pending design review, so this wall binds the first live
-path-keyed roster carrier — and binds the re-landed publication roster the moment it
-returns; until a live carrier exists, the exact incident row-sets are held as fixtures
-and the lane stays open rather than being satisfied by kernel tests.
-
-## Landing order and rejection bars
-
-Order: **1** commit-writer admissibility (incl. the `218dea6` reproduction) → **2** the
-policy join + generated `.gitattributes` + reconciled/read-back Git config → **3** stage0
-membership derivation, then emitted-Rust merge-policy extension → **4** keyed-roster
-set/map construction semantics.
-
-Corrected merge sequence (operator second-pass review, 2026-08-01): this charter merges
-first, carrying the acceptance walls above; then lane 1 (observation completeness +
-bound provenance fixed) first among implementations; then lane 2 (converge before the
-first Git consumer); then lane 3 stacked on lane 2, preserving refusal through generation
-and feeding the derived merge-policy rows; then lane 4, integrating `commit_workflow.dag`
-semantically after lane 1.
-
-Hard-reject bar for all lane PRs:
-
-- no second generated-path roster;
-- no hand-maintained `.gitattributes` policy rows;
-- no raw marker grep as the sole commit check;
-- no hook presented as enforcement;
-- no "take ours" treatment for hand-authored policy carriers;
-- no Git config mutation without modeled desired state and read-back;
-- no commit written before generated projections are regenerated and verified.
-
-## Out of scope, named
-
-Merge-freshness — a branch authored before a roster/authority changed merging with
-nothing re-checking it against the new state — is the same shape as the duplicate
-incident but independent of conflict handling; it belongs to the merge-admission lane,
-not here.
+Reject a second generated-path roster, handwritten attribute policy, marker grep as sole check, hooks claimed as enforcement, take-ours on authored policy, config mutation without desired state/readback, or commits before regeneration/equality. Merge-freshness against changed authority is separate merge-admission work.

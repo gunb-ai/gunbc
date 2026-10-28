@@ -65,14 +65,26 @@ import gunbc.serving.home_serving_candidate_field {
   hscf_cell_warrant,
   hscf_unread_gap_cause,
   HomeServingCellOutcome,
+  HomeServingCellExclusion,
+  ExcludedByPowerPolicy,
+  ExcludedBoardRefused,
   CellOffered,
   CellExcluded,
   select_home_serving_candidate,
 }
 import gunbc.serving.home_serving_accelerator_field { home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows }
 import gunbc.serving.home_serving_power_policy { HomeServingPowerReading }
-import extdeps.gpu.types { GpuModelCatalogRow, gpu_catalog_row_eq }
-import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_b200_sxm_catalog }
+import extdeps.gpu.types {
+  GpuBoardAdmission,
+  GpuBoardAdmitted,
+  GpuBoardRefused,
+  GpuBoardCatalogFacts,
+  BoardCarriesNoGpu,
+  admit_gpu_board,
+  gpu_board_admission_facts,
+  gpu_catalog_row_eq,
+}
+import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_b200_sxm_board_catalog, nvidia_b200_sxm_catalog }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority }
 
@@ -95,12 +107,25 @@ fn hscf_expected_cell_count() -> Nat {
 
 // ONE CELL'S EXPECTED IDENTITY, asked of the fold's OWN naming function. Spelling `cand_<row>_at_<n>w`
 // again in this file would be the same re-invention review 86449 filed against the module, one storey up.
-fn hscf_expected_key(row: GpuModelCatalogRow, rung: Watt) -> String? {
-  match hscf_cell_warrant(row: row) {
-    WarrantRead { warrant: warrant } => Present {
-      value: home_serving_cell_identity(anchor: warrant.anchor, rung: rung).decl_name as String,
-    }
-    WarrantMissing { cause: _ } => Absent
+fn hscf_expected_key(board: GpuBoardAdmission, rung: Watt) -> String? {
+  match board {
+    GpuBoardAdmitted { row: row } =>
+      match hscf_cell_warrant(board: row) {
+        WarrantRead { warrant: warrant } => Present {
+          value: home_serving_cell_identity(anchor: warrant.anchor, rung: rung).decl_name as String,
+        }
+        WarrantMissing { cause: _ } => Absent
+      }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+// An exclusion's cause as text: the policy's own renderer for a power cause, and the refusal for a board
+// the catalog's admission refused. Rendered rather than matched on spellings, as the claims below require.
+fn hscf_exclusion_text(x: HomeServingCellExclusion) -> String {
+  match x.cause {
+    ExcludedByPowerPolicy { cause: c } => hscf_unread_gap_cause(cause: c) as String
+    ExcludedBoardRefused { refusal: _ } => "BOARD-REFUSED-BY-ITS-CATALOG-ADMISSION"
   }
 }
 
@@ -371,13 +396,13 @@ test fn home_serving_field_covers_every_card_and_rung() -> ProcessExit {
   // home_serving_add_in_card_catalog_rows, or a fifth rung in the ladder, would simply have been absent
   // from this check while the claim stayed green. And each expected key is asked of the FOLD's naming
   // function rather than spelled again, so the naming rule has one implementation.
-  let expected = flat_map(home_serving_add_in_card_catalog_rows, row =>
+  let expected = flat_map(home_serving_add_in_card_catalog_rows, board =>
     flat_map(home_serving_applied_rungs, r =>
       // The fold's OWN derived decl_name on both sides. Nothing here spells `cand_..._at_...w`: the
       // expected key comes from home_serving_cell_identity, the actual key from the minted entry's
       // identity, so the naming rule has exactly one implementation and a rename cannot be hidden by a
       // substring test that still matches.
-      match hscf_expected_key(row: row, rung: r.limit) {
+      match hscf_expected_key(board: board, rung: r.limit) {
         Present { value: k } => [k]
         Absent => []
       },
@@ -408,23 +433,23 @@ fn hscf_difference(a: List<String>, b: List<String>) -> List<String> {
 // silent-drop defect. DESIGN.md asks of any added declaration "name the consumer AND THE EXECUTING
 // ROUTE", and an arm nothing can reach is the same vacuity wearing a new costume — so each cause is
 // produced here by data the catalog ALREADY holds. No invented fixtures: the exclusions below are the
-// real B200 SXM row, and the comparisons are real RTX PRO 5000 figures against its own cited ceiling.
+// real B200 SXM board, and the comparisons are real RTX PRO 5000 figures against its own cited ceiling.
 // Causes are rendered by the fold's OWN hscf_unread_gap_cause rather than matched as enum spellings, so
 // a claim cannot pass against a cause name the module no longer produces.
 
-// A row that publishes no TDP at all cannot lend a ceiling to any cell — its datasheet leaves the figure
-// unpublished. Excluding it says so, with the row named; offering it would mint a ceiling nobody states
+// A board that publishes no power figure at all cannot lend a ceiling to any cell — its datasheet leaves
+// the figure unpublished. Excluding it says so, with the board named; offering it would mint a ceiling nobody states
 // (§4d), and dropping it silently is the defect this type exists to end.
 test fn home_serving_row_without_a_tdp_is_excluded_with_its_cause() -> ProcessExit {
-  let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(row: nvidia_b200_sxm_catalog, rung: r))
+  let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(board: nvidia_b200_sxm_board_catalog, rung: r))
   let causes = map(outcomes, o => match o {
-    CellExcluded { exclusion: x } => hscf_unread_gap_cause(cause: x.cause) as String
+    CellExcluded { exclusion: x } => hscf_exclusion_text(x: x)
     CellOffered { entry: _ } => "OFFERED-WITHOUT-A-CEILING"
   })
   if (outcomes |> count) == count(home_serving_applied_rungs)
     && all(causes, c => string_contains(s: c, pattern: "no TDP figure at all"))
     && all(outcomes, o => match o {
-         CellExcluded { exclusion: x } => gpu_catalog_row_eq(a: x.row, b: nvidia_b200_sxm_catalog)
+         CellExcluded { exclusion: x } => gpu_catalog_row_eq(a: x.board.gpu, b: nvidia_b200_sxm_catalog)
          CellOffered { entry: _ } => false
        }) {
     ExitSuccess
@@ -436,8 +461,8 @@ test fn home_serving_row_without_a_tdp_is_excluded_with_its_cause() -> ProcessEx
 // ADMITTED and REFUSED come from ONE CARD'S OWN CITED CEILING. Every live rung carries
 // TranscribedUncited, so the policy stops at AppliedStandingUnstated and never compares — that is the
 // honest state of the catalog, but left alone it would make both comparison arms dead. These probes hand
-// the SAME function a rung whose standing is cited, over nvidia_rtx_pro_5000_48gb_catalog (cited TDP
-// 300 W): 200 W must be admitted with a reading, 400 W must be refused. Same function, same row,
+// the SAME function a rung whose standing is cited, over nvidia_rtx_pro_5000_48gb_board_catalog (cited
+// board power 300 W): 200 W must be admitted with a reading, 400 W must be refused. Same function, same row,
 // opposite verdicts — neither arm can be unreachable, and the refusal is §3d excluding a claimed
 // operating point that breaks the card's own ceiling, before Pareto rather than ranked by it.
 data hscf_probe_ground: CitedFigureStanding = CitedToAuthority {
@@ -455,7 +480,7 @@ fn hscf_cited_rung(w: Nat) -> HomeServingPowerReading {
 
 fn hscf_cause_text(o: HomeServingCellOutcome) -> String {
   match o {
-    CellExcluded { exclusion: x } => hscf_unread_gap_cause(cause: x.cause) as String
+    CellExcluded { exclusion: x } => hscf_exclusion_text(x: x)
     CellOffered { entry: _ } => "OFFERED"
   }
 }
@@ -468,8 +493,8 @@ fn hscf_is_admitted_with_one_reading(o: HomeServingCellOutcome) -> Bool {
 }
 
 test fn home_serving_comparison_arms_are_reachable_on_one_card() -> ProcessExit {
-  let under = home_serving_candidate_entry(row: nvidia_rtx_pro_5000_48gb_catalog, rung: hscf_cited_rung(w: 200))
-  let over = home_serving_candidate_entry(row: nvidia_rtx_pro_5000_48gb_catalog, rung: hscf_cited_rung(w: 400))
+  let under = home_serving_candidate_entry(board: nvidia_rtx_pro_5000_48gb_board_catalog, rung: hscf_cited_rung(w: 200))
+  let over = home_serving_candidate_entry(board: nvidia_rtx_pro_5000_48gb_board_catalog, rung: hscf_cited_rung(w: 400))
   if hscf_is_admitted_with_one_reading(o: under) && string_contains(s: hscf_cause_text(o: over), pattern: "exceeds the card's cited TDP") {
     ExitSuccess
   } else {
@@ -509,7 +534,7 @@ test fn home_serving_every_entry_is_identifiable_to_a_buyer() -> ProcessExit {
   let entries = hscf_live()
   let roster = home_serving_add_in_card_catalog_rows
   let readable = all(entries, e =>
-    any(roster, row => string_contains(s: hscf_display(e: e), pattern: row.model as String))
+    any(roster, b => string_contains(s: hscf_display(e: e), pattern: gpu_board_admission_facts(admission: b).model as String))
       && string_contains(s: hscf_identity_key(e: e), pattern: "_at_")
   )
   if (entries |> count) == hscf_expected_cell_count() && readable {
@@ -524,17 +549,17 @@ test fn home_serving_every_entry_is_identifiable_to_a_buyer() -> ProcessExit {
 // an invented ceiling. This claim used to assert that by grepping the grid for two hand-typed cell
 // names, which was a THIRD copy of the naming rule (beside the module's function and the coverage
 // claim) and went red the moment the rule was legitimately derived instead of spelled — it looked for
-// "rtx_pro_5000_48gb_at_200w" while the derived key is "cand_nvidia_rtx_pro_5000_48gb_catalog_at_200w".
+// "rtx_pro_5000_48gb_at_200w" while the derived key is "cand_nvidia_rtx_pro_5000_48gb_board_facts_at_200w".
 // So the probes are now asked of the fold's own naming function, and the NEGATIVE CONTROL is executed
 // rather than recorded: home_serving_row_without_a_tdp_is_excluded_with_its_cause runs the guard on the
-// real nvidia_b200_sxm_catalog (its tdp_watts is none) and requires every one of its cells to come back
-// excluded for that stated cause. Deleting a tdp_watts FactCitation from a live card still takes this
+// real nvidia_b200_sxm_board_catalog (its board_power is none) and requires every one of its cells to come
+// back excluded for that stated cause. Deleting a board_power FactCitation from a live board still takes this
 // claim and the coverage claim red, naming the cells.
 test fn home_serving_control_card_is_present() -> ProcessExit {
   let keys = map(hscf_live(), e => hscf_identity_key(e: e))
   let probes = [
-    hscf_row_at_rung(row_name: "nvidia_rtx_pro_5000_48gb_catalog", rung_watts: 200),
-    hscf_row_at_rung(row_name: "nvidia_rtx_pro_6000_workstation_catalog", rung_watts: 600),
+    hscf_row_at_rung(row_name: "nvidia_rtx_pro_5000_48gb_board_facts", rung_watts: 200),
+    hscf_row_at_rung(row_name: "nvidia_rtx_pro_6000_workstation_board_facts", rung_watts: 600),
   ]
   let absent = filter(probes, p => !any(keys, k => k == p))
   if (absent |> count) == 0 {
@@ -549,18 +574,54 @@ test fn home_serving_control_card_is_present() -> ProcessExit {
 // the string below has to be the row's real declaration name, and the roster lookup fails loudly if it
 // is not, so the probe cannot quietly stop pointing at anything.
 fn hscf_row_at_rung(row_name: String, rung_watts: Nat) -> String {
-  let row = first_where(home_serving_add_in_card_catalog_rows, r =>
-    match hscf_cell_warrant(row: r) {
-      WarrantRead { warrant: warrant } => warrant.anchor == row_name
-      WarrantMissing { cause: _ } => false
+  let row = first_where(home_serving_add_in_card_catalog_rows, b =>
+    match b {
+      GpuBoardAdmitted { row: r } =>
+        match hscf_cell_warrant(board: r) {
+          WarrantRead { warrant: warrant } => warrant.anchor == row_name
+          WarrantMissing { cause: _ } => false
+        }
+      GpuBoardRefused { facts: _, refusal: _ } => false
     }
   )
   match row {
     Present { value: r } =>
-      match hscf_expected_key(row: r, rung: watt(count: rung_watts)) {
+      match hscf_expected_key(board: r, rung: watt(count: rung_watts)) {
         Present { value: k } => k
         Absent => "NO_WARRANT_FOR_PROBE_ROW"
       }
     Absent => "PROBE_ROW_NOT_IN_ROSTER"
+  }
+}
+
+// ── A BOARD THE CATALOG REFUSES IS EXCLUDED WITH THAT REFUSAL, NOT DROPPED ─────────────────────
+// The roster holds board ADMISSIONS, so a board extdeps.gpu.types admit_gpu_board refuses reaches the
+// fold. Every live board is admitted, so this arm is executed on a refused copy of the real RTX PRO 5000
+// 48 GB board's facts (gpu_count 0, the BoardCarriesNoGpu refusal): every rung comes back excluded, naming
+// that board and the refusal, and none is offered.
+fn hscf_without_gpus(f: GpuBoardCatalogFacts) -> GpuBoardCatalogFacts {
+  GpuBoardCatalogFacts {
+    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment,
+    board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+    figure_citations: f.figure_citations,
+  }
+}
+
+test fn home_serving_refused_board_is_excluded_with_its_refusal() -> ProcessExit {
+  let live = gpu_board_admission_facts(admission: nvidia_rtx_pro_5000_48gb_board_catalog)
+  let refused = admit_gpu_board(facts: hscf_without_gpus(f: live))
+  let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(board: refused, rung: r))
+  let all_refused = all(outcomes, o => match o {
+    CellExcluded { exclusion: x } =>
+      gpu_catalog_row_eq(a: x.board.gpu, b: live.gpu) && (match x.cause {
+        ExcludedBoardRefused { refusal: BoardCarriesNoGpu } => true
+        _ => false
+      })
+    CellOffered { entry: _ } => false
+  })
+  if (outcomes |> count) == count(home_serving_applied_rungs) && (outcomes |> count) > 0 && all_refused {
+    ExitSuccess
+  } else {
+    exit_failure("a board refused by its catalog admission was offered, or excluded without its refusal")
   }
 }
