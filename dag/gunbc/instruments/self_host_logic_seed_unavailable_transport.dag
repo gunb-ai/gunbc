@@ -1,6 +1,7 @@
 module gunbc.instruments.self_host_logic_seed_unavailable_transport
 
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.filesystem.filesystem_io
 import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
@@ -158,9 +159,9 @@ fn slbu_seed_unavailable_receipt() -> SubjectEvidence<WitnessBinRefusal, Bool> {
 fn slbu_seed_unavailable_run(root: String, gunbc_bin: String) -> Bool {
   let logic_read = Filesystem.Read(path: slbu_repo_path(root: root, rel: slbu_logic_source_rel))
 
-  let stage_root = shell.Mkdir.Parents(path: concat(root, "/target/wet-stage-seed-unavail"))
+  let stage_root = shell.Mkdir.Parents(path: concat(cargo_default_target_dir(build_root: root), "/wet-stage-seed-unavail"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/wet-stage-seed-unavail/logic-src-XXXXXX")
+    template: concat(cargo_default_target_dir(build_root: root), "/wet-stage-seed-unavail/logic-src-XXXXXX")
   )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(

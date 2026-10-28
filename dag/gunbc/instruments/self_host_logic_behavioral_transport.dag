@@ -3,6 +3,7 @@ module gunbc.instruments.self_host_logic_behavioral_transport
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.filesystem.filesystem_io
 import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
@@ -150,9 +151,9 @@ fn slb_comparison_observation(root: String, gunbc_bin: String) -> BehavioralComp
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root, rel: slb_logic_source_rel))
   let seed_mirror_read = Filesystem.Read(path: slb_repo_path(root: root, rel: slb_seed_mirror_rel))
 
-  let stage_root = shell.Mkdir.Parents(path: concat(root, "/target/wet-stage"))
+  let stage_root = shell.Mkdir.Parents(path: concat(cargo_default_target_dir(build_root: root), "/wet-stage"))
   let scratch_src = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/wet-stage/logic-XXXXXX")
+    template: concat(cargo_default_target_dir(build_root: root), "/wet-stage/logic-XXXXXX")
   )
   let scratch_src_std = shell.Mkdir.Parents(path: concat(scratch_src.path, "/std"))
   let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
