@@ -1,22 +1,18 @@
 # Desired-set printing and automatic plate packing
 
-Requested after printer-01 completed the E1/E2 plate on 4 October 2026. This is the
-workflow milestone. The explicit-plate preparation/controller foundation now has a
-[modeled entrypoint](print-workflow-integration.md); the full desired-set scheduler and
-release contract below remain incomplete. This document grants no print start.
-The operator should request parts and quantities once, then clear beds when notified.
+Requested after printer-01 completed E1/E2 on 4 October 2026: request parts and quantities
+once, then clear beds when notified. The [modeled entrypoint](print-workflow-integration.md)
+covers explicit-plate preparation/controller work; the desired-set scheduler and release
+contract below remain incomplete. This document grants no print start.
 
 ## Assembly convergence source
 
-For cassette work, the desired multiset is derived from the selected assembly and
-its manufacturable requirements in the [assembly convergence plan](cassette-assembly-requirements.md).
-BATCH-1 must consume that source rather than independently authoring a second
-cassette list. Standalone print requests remain explicit selected goals.
-Assessment uses `std.goal_assessment`; unknown inventory or pending inspection
-creates evidence/reconciliation work, not a replacement print. The planner still
-needs durable reservations and the guarded start protocol: deriving a diff alone
-does not make physical actuation idempotent. BATCH-5 inspection receipts feed back
-into assembly assessment; FINISH never supplies physical acceptance.
+BATCH-1 derives cassette demand from the selected assembly's manufacturable requirements
+in the [assembly convergence plan](cassette-assembly-requirements.md), never a second list.
+Standalone requests remain explicit selected goals. Assess with `std.goal_assessment`;
+route unknown inventory or pending inspection to evidence/reconciliation work, not replacement prints.
+Actuation still requires durable reservations and guarded starts. BATCH-5 inspection
+receipts feed assembly assessment; FINISH never supplies physical acceptance.
 
 ## Contract
 
@@ -25,12 +21,10 @@ and an admitted process/material policy. Output is an explainable packed plate p
 per-printer schedule, remaining quantities and durable execution/handling receipts.
 Rerunning the same desired set reconciles existing work instead of printing duplicates.
 
-Use assembly part identities and content digests from the existing CAD/export path,
-`manufacturing_manifest` for physical attribution, the fleet's printer identities,
-and the reviewed shared start/approval/claim/reconciliation route from PR #13149.
-Do not introduce another publisher or another printer inventory. `bed_partition` divides
-an oversized design into manufacturable pieces; packing places those resulting pieces
-on plates. Both consume the same bed/process allowances but answer different questions.
+Reuse CAD/export part identities and digests, `manufacturing_manifest` physical attribution,
+fleet printer identities, and PR #13149's shared start/approval/claim/reconciliation route.
+No second publisher or printer inventory. `bed_partition` divides oversized designs into
+manufacturable pieces; packing places them on plates using the same bed/process allowances.
 
 ## Packing and scheduling
 
@@ -44,9 +38,8 @@ on plates. Both consume the same bed/process allowances but answer different que
    changing the load-bearing print orientation requires separate admission. Include supports,
    brim, object gaps, bed margins and printer exclusion zones. A whole-plate, layer-by-layer print
    avoids introducing sequential-print toolhead swept-volume assumptions.
-4. Minimize required bed-clear cycles first, then use sliced duration to balance the two printers
-   and respect assembly priorities. Do not make nominal area utilization the sole objective:
-   a dense fragile plate that fails or mixes incompatible processes is worse.
+4. Minimize bed-clear cycles first, then balance the two printers by sliced duration and assembly
+   priority. Nominal area utilization cannot justify fragile plates or incompatible processes.
 5. Start with a deterministic rectangle packer over conservative oriented envelopes, using several
    orderings and scoring the resulting plans. Later contour nesting can improve density. Label
    the algorithm and packing quality; do not claim a globally optimal solution from a heuristic.
@@ -57,18 +50,16 @@ on plates. Both consume the same bed/process allowances but answer different que
 7. Keep both queues prepared ahead. Reschedule only unclaimed work when a printer becomes free;
    never mutate the membership or digest of an approved/claimed/running plate.
 
-The recent arms and crossmember plates illustrate the opportunity: their modeled envelopes
-could be arranged as a 141.72 × 90 mm beam group and a rotated 112 × 50 mm arm group, with
-10 mm between groups, giving approximately 141.72 × 150 mm before outer brim. This is an
-unsliced packing candidate, not proof of admitted support/adhesion or a request to reprint them.
+Example: a 141.72 × 90 mm beam group and rotated 112 × 50 mm arm group, separated by 10 mm,
+fit approximately 141.72 × 150 mm before outer brim. This unsliced candidate establishes
+neither support/adhesion admission nor a reprint request.
 
 ## Durable execution and physical handling
 
-The batch reconciler owns stable required-instance slots. A plate attempt atomically reserves
-its member slots across both printers before invoking the existing approval/start boundary.
-A shared persistent lock/transaction prevents two schedulers from claiming the same instances.
-Store plate membership, geometry/process/3MF digests, placement, printer, approval identity,
-start claim and observations durably. A caller-selected output directory cannot reset identity.
+The batch reconciler owns stable required-instance slots. Before approval/start, each plate
+attempt atomically reserves its slots across both printers under a shared persistent
+lock/transaction. Durably store membership, geometry/process/3MF digests, placement, printer,
+approval identity, start claim and observations. An output-directory change cannot reset identity.
 
 Separate batch demand, plan revision, plate attempt and physical print instance. Plan IDs may
 change when packing improves; demand-slot reservations and completed inventory must not reset.
@@ -81,11 +72,9 @@ partial failure and rejection have named outcomes; no automatic republish follow
 Completion alone neither proves bed clearance nor proves all objects are usable. Partial failure
 can accept intact objects and replace only rejected instances, with an explicit operator record.
 
-Use the existing fresh bed-clear ntfy approval as the operator's combined clear-and-continue
-interaction for the next immutable plate. Notify completion and present the next packed plate
-there. A1 minis still need physical part removal; this design does not assume automatic unloading
-or infer a clear bed from FINISH, IDLE, a timer or an old confirmation. Approving a whole batch
-must not silently authorize future uncleared beds.
+Notify completion and present the next immutable plate through the existing fresh bed-clear
+ntfy approval: one clear-and-continue interaction. A1 minis require physical part removal;
+FINISH, IDLE, timers, old confirmations and batch approval cannot establish a clear bed.
 
 ## Implementation tasks
 

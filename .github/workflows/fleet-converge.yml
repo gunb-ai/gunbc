@@ -3160,7 +3160,6 @@ jobs:
           'chmod' '600' "$SUB_FILE"
           'rm' '-f' "$HDR_FILE" "$RESP_FILE"
           'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
-          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
           ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
 
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
@@ -3181,7 +3180,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: srv1-root-mutation-approval-receipts
-          path: artifacts/srv1-root-mutation-approval-*
+          path: ${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt
           if-no-files-found: warn
           retention-days: 30
         if: always()
@@ -3356,7 +3355,6 @@ jobs:
           'chmod' '600' "$SUB_FILE"
           'rm' '-f' "$HDR_FILE" "$RESP_FILE"
           'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
-          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
           ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
 
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
@@ -3369,7 +3367,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: srv1-root-mutation-approval-receipts
-          path: artifacts/srv1-root-mutation-approval-*
+          path: ${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt
           if-no-files-found: warn
           retention-days: 30
         if: always()
@@ -3503,7 +3501,6 @@ jobs:
           'chmod' '600' "$SUB_FILE"
           'rm' '-f' "$HDR_FILE" "$RESP_FILE"
           'export' 'GUNBC_APPROVAL_SUBMISSION_MAC_KEY_FILE='"$SUB_FILE"
-          'mkdir' '-p' "$GITHUB_WORKSPACE"'/artifacts'
           ROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')
 
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/srv1_root_mutation_approval_run.dag --function srv1_root_mutation_approval_wet
@@ -3520,7 +3517,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: srv1-root-mutation-approval-receipts
-          path: artifacts/srv1-root-mutation-approval-*
+          path: ${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt
           if-no-files-found: warn
           retention-days: 30
         if: always()
