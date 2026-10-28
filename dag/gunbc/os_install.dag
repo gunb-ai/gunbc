@@ -14,8 +14,9 @@ import extdeps.provisioning.network_boot {
 }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
-  AutoinstallIdentity,
-  WithIdentity,
+  CloudInitUserEntry,
+  UserDataOnly,
+  BashLoginShell,
   NoCloudNet,
   NoCloudLocal,
   AutoinstallStoragePolicy,
@@ -25,7 +26,7 @@ import extdeps.os.ubuntu_autoinstall {
 }
 import std.optional { Present }
 import gunbc.fleet.fleet_intent_network { operator_lan_segment }
-import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
 import product.host_identity { HostIdentity }
 import product.network_topology { NetworkSegment }
@@ -157,14 +158,36 @@ data srv3_pxe_network_boot_chain: NetworkBootChain = NetworkBootChain {
 }
 
 
-data srv3_autoinstall_bootstrap_password_hash: NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
+// NO PASSWORD HASH LIVES HERE, AND NONE MAY. These three payloads are the fleet's live install
+// documents, and every one of them is rendered to bytes that leave this repository over a network:
+// srv4's onto the BMC netboot volume at srv4's edge, srv3's onto the seeded ISO and the NoCloudNet
+// seed URL. A committed credential hash in that path is a credential published to whoever can reach
+// the port — the finding that closed the old srv4 row (dashboard node adhoc-dfa3a187, confirmed by
+// side chat). So all three take the KEY-ONLY posture: no identity section, one cloud-init account
+// with a locked password and the fleet's authorized keys, and the ssh section with password
+// authentication off. That is also the only posture gunbc.provisioning.public_nocloud_seed admits,
+// which is the single seed authority this document is now checked against — an identity-bearing
+// document (password or not) is refused by that contract by name, so there is no route from here
+// to the wire that keeps a credential field. The two crypt(3) hashes this file used to carry are
+// deleted, not moved: both were in git history, both are treated as exposed, and rotation is the
+// operator's call (raised with merry-fox-82). Nothing in a console/SOL recovery route read them —
+// BMC serial console goes through the Redfish SOL profile and the BMC's own credentials
+// (extdeps.bmc.serial_console), and fleet shell access is key-based — so no AdminPasswordHandle
+// was needed for either host: key-only for srv3 and srv4 alike.
 
-data srv3_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
-  hostname: operator_host_srv3,
-  username: "ubuntu",
-  realname: "gunbc fleet node srv3",
-  hashed_password: srv3_autoinstall_bootstrap_password_hash,
-}
+// THE KEY-ONLY ACCOUNT, ONE ROW FOR ALL THREE srv3/srv4 DOCUMENTS. Named "ubuntu" the way the deleted
+// identities named their account, with the password locked (there is no password to unlock), the
+// fleet's authorized keys, and bash as the login shell. The sudo rule is the emitter's own constant
+// (gunbc.os_install_emit cloudinit_nopasswd_sudo_rule): the account has no password, so a sudo rule
+// that asked for one would lock the operator out of the machine they just installed.
+data srv_fleet_key_only_install_account: List<CloudInitUserEntry> = [
+  CloudInitUserEntry {
+    name: "ubuntu" as NonEmptyStr,
+    ssh_authorized_keys: fleet_authorized_keys,
+    lock_passwd: true,
+    shell: BashLoginShell,
+  },
+]
 
 data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
   autoinstall_version: 1,
@@ -176,7 +199,7 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   },
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
@@ -188,20 +211,11 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
   storage_policy: StoragePolicyDirectLayout,
-}
-
-data srv4_console_password_hash: NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
-
-data srv4_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
-  hostname: operator_host_srv4,
-  username: "ubuntu",
-  realname: "gunbc fleet node srv4",
-  hashed_password: srv4_console_password_hash,
 }
 
 data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -209,7 +223,7 @@ data srv4_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: NobleNumbat2404Lts,
-  identity_posture: WithIdentity { identity: srv4_autoinstall_identity, user_data: Absent },
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },

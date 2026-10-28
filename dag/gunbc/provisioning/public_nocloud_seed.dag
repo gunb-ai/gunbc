@@ -319,12 +319,15 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
   }
 }
 
-// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. Today the admission's only callers are witnesses, and the
-// edge ships with no install binding (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_bindings is empty).
+// THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. As of 2026-10-28 the BMC netboot edge DOES admit its
+// seed through this contract in production (gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission, keyed
+// on the measured srv4 NIC MAC — dashboard node adhoc-dfa3a487), but that route is not the dissolution below:
+// the frontier asks for the SITE PXE EDGE, whose install bindings are still empty until the amd64 seed renderer
+// lands them.
 data public_nocloud_seed_frontier_rows: List<FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "gunbc.provisioning.public_nocloud_seed", decl_name: "admit_public_nocloud_seed"),
-    reason: "no production seed is admitted yet: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, and the site PXE edge's install bindings are empty until it is",
+    reason: "the site PXE edge still has no install bindings: the per-board amd64 seed renderer (the generalized autoinstall seed, gunbc.provisioning) is not landed, so no roster-MAC binding carries an admitted seed yet (the BMC netboot route admits srv4's seed since 2026-10-28 and does not dissolve this row)",
     dissolution: unbound_dissolution(
       description: "dissolves when a site_pxe_edge_converge install binding for a roster MAC carries a PublicNoCloudSeed admitted from the amd64 seed renderer's documents (autoinstall_user_data_document), and the edge's readback of the served user-data agrees with that seed's bytes; a witness over a hand-built tree does not fire this"
     )

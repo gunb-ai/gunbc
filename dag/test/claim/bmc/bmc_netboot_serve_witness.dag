@@ -3,6 +3,12 @@ module test.claim.bmc.bmc_netboot_serve_witness
 import std.logic { Bool }
 import std.types { list_length, NonEmptyStr, Int, String, List }
 import std.algebra { list_append }
+import gunbc.provisioning.public_nocloud_seed {
+  PublicSeedAdmitted
+  PublicSeedRefused
+  public_nocloud_seed_user_data
+  public_nocloud_seed_meta_data
+}
 import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
 import extdeps.exec.command {
   command_over_transport,
@@ -17,7 +23,7 @@ import gunbc.bmc.bmc_netboot_serve {
   bmc_path_resolved_mkdir_applet,
   bmc_netboot_grub_cfg_text,
   bmc_netboot_http_boot_entry,
-  bmc_netboot_user_seed_verdict,
+  bmc_netboot_user_seed_admission,
   bmc_netboot_staged_path,
   bmc_netboot_artifact,
   BmcNetbootPreparedOp,
@@ -34,10 +40,6 @@ import gunbc.bmc.bmc_netboot_serve {
   BmcNetbootOpStagesFile,
   bmc_netboot_provision_staging,
   bmc_netboot_prepared_realization,
-}
-import gunbc.os_install_emit {
-  AutoinstallUserDataRendered
-  AutoinstallUserDataRefused
 }
 
 // THE FIXTURE + TOOL-REALIZATION SIDE of the witness split. The domain gates over the typed
@@ -179,13 +181,27 @@ test fn srv4_http_boot_entry_targets_bmc() -> Bool {
     && entry.interface_name == "eth2"
 }
 
+// THE SERVED SEED IS THE ADMITTED PUBLIC SEED — asserted against the contract, not against a
+// rendering. srv4's payload is key-only (its committed password hash was deleted, dashboard node
+// adhoc-dfa3a487), so the SAME admit_public_nocloud_seed that governs a site PXE edge binding must
+// admit it here, keyed on the measured srv4 NIC MAC. What the BMC then serves is exactly these
+// bytes: the fleet's keys in canonical (uncommented) form, password authentication off, the
+// account's password locked, NO identity section and NO credential field anywhere, and an
+// instance-id derived from the client MAC — never from a hostname the module wrote itself.
 test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
-  match bmc_netboot_user_seed_verdict(plan: srv4_bmc_netboot_serve_plan) {
-    AutoinstallUserDataRendered { content: ud } =>
-      string_contains(s: ud, pattern: "hostname: srv4")
-        && string_contains(s: ud, pattern: "allow-pw: false")
-        && string_contains(s: ud, pattern: "fleet-automation@gunbc")
-    AutoinstallUserDataRefused { reason: _ } => false
+  match bmc_netboot_user_seed_admission(plan: srv4_bmc_netboot_serve_plan) {
+    PublicSeedRefused { findings: f } => false
+    PublicSeedAdmitted { seed: admitted } =>
+      let ud = public_nocloud_seed_user_data(seed: admitted)
+      let md = public_nocloud_seed_meta_data(seed: admitted)
+      string_contains(s: ud, pattern: "allow-pw: false")
+        && string_contains(s: ud, pattern: "lock_passwd: true")
+        && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN")
+        && string_contains(s: ud, pattern: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF")
+        && !string_contains(s: ud, pattern: "password")
+        && !string_contains(s: ud, pattern: "identity:")
+        && !string_contains(s: ud, pattern: "hostname:")
+        && md == "instance-id: iid-48-21-0b-87-2d-64\n"
   }
 }
 
@@ -330,8 +346,11 @@ test fn staged_puts_carry_the_rendered_grub_and_seed() -> Bool {
     })
   let seed_ok = fold(puts, init: false, f: (acc, op) =>
     acc || match op.disposition {
+      // THE STAGED SEED CARRIES THE FLEET KEY IN CANONICAL FORM. The comment is stripped on this
+      // route on purpose (the public-seed contract admits keytype+blob only); the blob is what
+      // proves the fleet key made it into the staged bytes.
       BmcNetbootPreparedPutText { remote_path: r, text: t } =>
-        string_contains(s: r as String, pattern: "nocloud/user-data") && string_contains(s: t, pattern: "fleet-automation@gunbc")
+        string_contains(s: r as String, pattern: "nocloud/user-data") && string_contains(s: t, pattern: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN")
       BmcNetbootPreparedPutArtifact { remote_path: _, local_path: _ } => false
       BmcNetbootPreparedMakeDir { remote_path: _ } => false
       BmcNetbootPreparedLaunchServe { serve_root: _, serve_port: _, busybox_path: _ } => false
