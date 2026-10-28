@@ -11701,7 +11701,7 @@ pub fn optional_cast_diags(
 
 pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
-            application_role: std::option::Option::None,
+        application_role: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
@@ -12054,7 +12054,7 @@ pub fn rest_operation_result_type(
             if resolution.rest_operation.clone() {
                 {
                     let carrier = Rc::new(Node {
-            application_role: std::option::Option::None,
+                        application_role: std::option::Option::None,
                         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                         name: "RestResult".to_string(),
                         span: kernel_span("RestResult".to_string()),
@@ -13723,7 +13723,7 @@ pub fn elaborated_expr_node(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
-            application_role: std::option::Option::None,
+        application_role: std::option::Option::None,
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
         span: span.clone(),
@@ -15386,7 +15386,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 scope.type_env.source_indices.clone(),
                                             )) {
                                             Rc::new(Node {
-            application_role: std::option::Option::None,
+                                                application_role: std::option::Option::None,
                                                 occurrence_identity: Rc::new(
                                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                                 ),
@@ -16632,8 +16632,12 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     .collect::<Vec<String>>()
                                     .join(",");
                                 let inf = match n.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved { node: r, .. }) => format!("R({})", r.name.clone()),
-                                    Some(InferredNode::TypeVariable { id: id, .. }) => format!("TV({})", id),
+                                    Some(InferredNode::Resolved { node: r, .. }) => {
+                                        format!("R({})", r.name.clone())
+                                    }
+                                    Some(InferredNode::TypeVariable { id: id, .. }) => {
+                                        format!("TV({})", id)
+                                    }
                                     _ => "-".to_string(),
                                 };
                                 format!(
@@ -16647,8 +16651,13 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     kids
                                 )
                             }
-                            let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
-                            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                            let path = std::env::var("BK381_LOG")
+                                .unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&path)
+                            {
                                 use std::io::Write;
                                 let _ = writeln!(
                                     f,
@@ -16656,32 +16665,75 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     bk381_shape(&then_rt.clone(), 0),
                                     bk381_shape(&else_rt.clone(), 0),
                                 );
-                            {
-                                let si = scope.type_env.source_indices.clone();
-                                let tj = Rc::new(TextJudgment::TextJudgedIn { env: scope.type_env.clone() });
-                                let col_t = crate::v1_compiler_infer_types::node_is_element_collection(then_rt.clone(), si.clone());
-                                let col_e = crate::v1_compiler_infer_types::node_is_element_collection(else_rt.clone(), si.clone());
-                                let ct_t = crate::v1_compiler_infer_types::canonical_template_name(then_rt.clone(), si.clone());
-                                let ct_e = crate::v1_compiler_infer_types::canonical_template_name(else_rt.clone(), si.clone());
-                                let ai = crate::v1_compiler_infer_types::alias_identity_in_judgment(then_rt.clone(), else_rt.clone(), si.clone(), tj.clone());
-                                let st_t = crate::v1_compiler_infer_env::settled_type(then_rt.clone(), si.clone(), scope.type_env.clone(), 16);
-                                let st_e = crate::v1_compiler_infer_env::settled_type(else_rt.clone(), si.clone(), scope.type_env.clone(), 16);
-                                let st_txt = |x: &Option<Rc<crate::v1_compiler_infer_env::SettledType>>| -> String {
-                                    match x {
-                                        Some(s0) => {
-                                            let args_txt = s0
-                                                .args
-                                                .clone()
-                                                .iter()
-                                                .map(|a| a.name.clone())
-                                                .collect::<Vec<String>>()
-                                                .join("+");
-                                            format!("Settled(head={}.{}:{:?}", s0.head.module_path.clone(), s0.head.decl_name.clone(), s0.head.field.clone()) + args_txt.as_str() + ")"
+                                {
+                                    let si = scope.type_env.source_indices.clone();
+                                    let tj = Rc::new(TextJudgment::TextJudgedIn {
+                                        env: scope.type_env.clone(),
+                                    });
+                                    let col_t =
+                                        crate::v1_compiler_infer_types::node_is_element_collection(
+                                            then_rt.clone(),
+                                            si.clone(),
+                                        );
+                                    let col_e =
+                                        crate::v1_compiler_infer_types::node_is_element_collection(
+                                            else_rt.clone(),
+                                            si.clone(),
+                                        );
+                                    let ct_t =
+                                        crate::v1_compiler_infer_types::canonical_template_name(
+                                            then_rt.clone(),
+                                            si.clone(),
+                                        );
+                                    let ct_e =
+                                        crate::v1_compiler_infer_types::canonical_template_name(
+                                            else_rt.clone(),
+                                            si.clone(),
+                                        );
+                                    let ai =
+                                        crate::v1_compiler_infer_types::alias_identity_in_judgment(
+                                            then_rt.clone(),
+                                            else_rt.clone(),
+                                            si.clone(),
+                                            tj.clone(),
+                                        );
+                                    let st_t = crate::v1_compiler_infer_env::settled_type(
+                                        then_rt.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let st_e = crate::v1_compiler_infer_env::settled_type(
+                                        else_rt.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let st_txt = |x: &Option<
+                                        Rc<crate::v1_compiler_infer_env::SettledType>,
+                                    >|
+                                     -> String {
+                                        match x {
+                                            Some(s0) => {
+                                                let args_txt = s0
+                                                    .args
+                                                    .clone()
+                                                    .iter()
+                                                    .map(|a| a.name.clone())
+                                                    .collect::<Vec<String>>()
+                                                    .join("+");
+                                                format!(
+                                                    "Settled(head={}.{} field={:?} args=[{}])",
+                                                    s0.head.module_path.clone(),
+                                                    s0.head.decl_name.clone(),
+                                                    s0.head.field.clone(),
+                                                    args_txt
+                                                )
+                                            }
+                                            None => "Unsettled".to_string(),
                                         }
-                                        None => "Unsettled".to_string(),
-                                    }
-                                };
-                                let _ = writeln!(
+                                    };
+                                    let _ = writeln!(
                                     f,
                                     "BK381-STAGES col_then={} col_else={} canon_then={} canon_else={} alias_agree={} settled_then={} settled_else={}",
                                     col_t,
@@ -16692,7 +16744,45 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                     st_txt(&st_t),
                                     st_txt(&st_e),
                                 );
-                            }
+                                    let then_elem = then_rt
+                                        .children
+                                        .clone()
+                                        .into_iter()
+                                        .next()
+                                        .unwrap_or_else(|| then_rt.clone());
+                                    let else_elem = else_rt
+                                        .children
+                                        .clone()
+                                        .into_iter()
+                                        .next()
+                                        .unwrap_or_else(|| else_rt.clone());
+                                    let routed_then_elem =
+                                        generic_actual_position_type(then_elem.clone());
+                                    let routed_else_elem =
+                                        generic_actual_position_type(else_elem.clone());
+                                    let st_rt_then = crate::v1_compiler_infer_env::settled_type(
+                                        routed_then_elem.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let st_rt_else = crate::v1_compiler_infer_env::settled_type(
+                                        routed_else_elem.clone(),
+                                        si.clone(),
+                                        scope.type_env.clone(),
+                                        16,
+                                    );
+                                    let _ = writeln!(
+                                    f,
+                                    "BK381-ROUTED then_elem={} routed={} st={} | else_elem={} routed={} st={}",
+                                    bk381_shape(&then_elem, 1),
+                                    bk381_shape(&routed_then_elem, 1),
+                                    st_txt(&st_rt_then),
+                                    bk381_shape(&else_elem, 1),
+                                    bk381_shape(&routed_else_elem, 1),
+                                    st_txt(&st_rt_else),
+                                );
+                                }
                             }
                         }
                         Rc::new(vec![inference_error(
@@ -17373,7 +17463,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                 std::option::Option::None => std::option::Option::None,
                             };
                         Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -19031,7 +19121,7 @@ pub fn transparent_alias_application_at_head(
                     std::option::Option::None
                 } else {
                     Some(Rc::new(Node {
-            application_role: std::option::Option::None,
+                        application_role: std::option::Option::None,
                         occurrence_identity: exp.occurrence_identity.clone(),
                         name: exp.name.clone(),
                         ident: exp.ident.clone(),
@@ -20060,7 +20150,7 @@ Rc::new(FieldInferResult {
                     let mut __result = Vec::new();
                     for fir in fi_infer_results.iter().cloned() {
                         __result.push(Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -20093,7 +20183,7 @@ Rc::new(FieldInferResult {
                     __result
                 });
                 let anon_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "".to_string(),
                     span: crate::v1_std_core::no_span(),
@@ -22616,7 +22706,7 @@ crate::v1_std_core::make_arg_node(child.occurrence_identity.clone(), crate::v1_s
                     __result
                 });
                 Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -22929,7 +23019,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     __result
                 });
                 Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23063,7 +23153,7 @@ crate::v1_std_core::make_arm_node(arm_node.occurrence_identity.clone(), crate::v
                     std::option::Option::None => Rc::new(vec![annotated_value.clone()]),
                 };
                 Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23160,7 +23250,7 @@ Rc::new(BlockAnnotateAcc {
 })
 });
                 Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -23430,7 +23520,7 @@ Rc::new(BlockAnnotateAcc {
                             __result
                         });
                         Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -23533,7 +23623,7 @@ Rc::new(BlockAnnotateAcc {
                 let annotated_coll = annotate_descent(coll.clone(), ctx.clone());
                 let annotated_body = annotate_descent(fe_body, inner_ctx.clone());
                 Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: body.name.clone(),
                     span: body.span.clone(),
@@ -25357,7 +25447,7 @@ pub fn infer_property_values(
                         infer_expr(val.clone(), scope.clone(), std::option::Option::None);
                     Rc::new(PropertyInferenceResult {
                         prop: Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: Rc::new(
                                 NodeOccurrenceIdentity::OccurrenceSynthetic,
                             ),
@@ -25576,7 +25666,7 @@ pub fn infer_transport_node(
             };
             Rc::new(InferTransportResult {
                 transport: Some(Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: t.name.clone(),
                     span: t.span.clone(),
@@ -25634,7 +25724,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
         {
             Rc::new(TypedItemResult {
                 item: Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: item.occurrence_identity.clone(),
                     name: item.name.clone(),
                     span: item.span.clone(),
@@ -25776,7 +25866,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     };
                     Rc::new(TypedItemResult {
                         item: Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -25867,7 +25957,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                             };
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -25904,7 +25994,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     {
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -25948,7 +26038,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                     } else {
                         Rc::new(TypedItemResult {
                             item: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -26314,7 +26404,9 @@ pub fn unify_generics(
 }
 
 pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
-    let result = if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
+    let result = if (((slot.children.clone().len() as i64) == 0)
+        && (slot.connective.clone() == Connective::NoConnective))
+    {
         match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
                 if is_unsolved_type_variable(r.clone()) {
@@ -26346,11 +26438,22 @@ pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
             static BK381_CALLS: AtomicUsize = AtomicUsize::new(0);
             let n = BK381_CALLS.fetch_add(1, Ordering::SeqCst);
             if n < 50000 {
-                let path = std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
-                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                let path =
+                    std::env::var("BK381_LOG").unwrap_or_else(|_| "/tmp/bk381-arm.log".to_string());
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                {
                     use std::io::Write;
                     let rd = match slot.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => format!("{} conn={:?} children={} params={}", r.name.clone(), r.connective.clone(), r.children.clone().len(), r.params.clone().len()),
+                        Some(InferredNode::Resolved { node: r, .. }) => format!(
+                            "{} conn={:?} children={} params={}",
+                            r.name.clone(),
+                            r.connective.clone(),
+                            r.children.clone().len(),
+                            r.params.clone().len()
+                        ),
                         _ => "-".to_string(),
                     };
                     let _ = writeln!(
@@ -26843,7 +26946,7 @@ pub fn substitute_generics_apply(
                             n.clone()
                         } else {
                             Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -27551,7 +27654,7 @@ pub fn local_binding_for_item(
             if has_structure.clone() {
                 {
                     let type_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                        application_role: std::option::Option::None,
                         occurrence_identity: item.occurrence_identity.clone(),
                         name: item.name.clone(),
                         span: item.span.clone(),
@@ -27591,7 +27694,7 @@ pub fn local_binding_for_item(
                 {
                     {
                         let fn_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -27632,7 +27735,7 @@ pub fn local_binding_for_item(
                     {
                         {
                             let alias_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: item.occurrence_identity.clone(),
                                 name: item.name.clone(),
                                 span: item.span.clone(),
@@ -27698,7 +27801,7 @@ pub fn local_binding_for_item(
                             {
                                 {
                                     let bare_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                                        application_role: std::option::Option::None,
                                         occurrence_identity: item.occurrence_identity.clone(),
                                         name: item.name.clone(),
                                         span: item.span.clone(),
@@ -27757,7 +27860,7 @@ pub fn local_binding_for_item(
                                     {
                                         {
                                             let type_node = Rc::new(Node {
-            application_role: std::option::Option::None,
+                                                application_role: std::option::Option::None,
                                                 occurrence_identity: item
                                                     .occurrence_identity
                                                     .clone(),
@@ -29976,7 +30079,7 @@ pub fn build_type_env(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -30017,7 +30120,7 @@ pub fn build_type_env(
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
                 resolved: Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
@@ -30642,7 +30745,7 @@ pub fn build_type_env_unresolved(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -32594,7 +32697,7 @@ pub fn grounded_node(
     match_pattern: Option<Rc<MatchPattern>>,
 ) -> Rc<Node> {
     Rc::new(Node {
-            application_role: std::option::Option::None,
+        application_role: std::option::Option::None,
         occurrence_identity: occurrence_identity.clone(),
         name: n.name.clone(),
         ident: n.ident.clone(),
@@ -34819,7 +34922,7 @@ pub fn typecheck_module(
                         && (item.body.clone() != std::option::Option::None))
                     {
                         Rc::new(Node {
-            application_role: std::option::Option::None,
+                            application_role: std::option::Option::None,
                             occurrence_identity: item.occurrence_identity.clone(),
                             name: item.name.clone(),
                             span: item.span.clone(),
@@ -36187,7 +36290,7 @@ pub fn compiler_kernel_type_env(
                         Rc::new(TypeBinding {
                             name: name.clone(),
                             resolved: Rc::new(Node {
-            application_role: std::option::Option::None,
+                                application_role: std::option::Option::None,
                                 occurrence_identity: Rc::new(
                                     NodeOccurrenceIdentity::OccurrenceSynthetic,
                                 ),
@@ -36228,7 +36331,7 @@ pub fn compiler_kernel_type_env(
             Rc::new(TypeBinding {
                 name: "Unit".to_string(),
                 resolved: Rc::new(Node {
-            application_role: std::option::Option::None,
+                    application_role: std::option::Option::None,
                     occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     name: "Unit".to_string(),
                     span: unit_span.clone(),
