@@ -1,5 +1,8 @@
 module extdeps.gpu_bench.kit_log
 
+// receipt probe (scratch, PR #15285): one comment line, nothing else changes; used to test whether
+// the census's whole-tree scan activates on the ambient host-text names this module already calls.
+
 import std.types { String, NonEmptyStr, Bool, List }
 import std.optional { Present, Absent }
 import std.nat { Nat }
