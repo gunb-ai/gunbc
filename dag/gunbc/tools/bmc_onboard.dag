@@ -52,6 +52,7 @@ import gunbc.bmc.bmc_onboarding {
   srv3_onboarding_plan,
   srv4_onboarding_plan,
   srv13_onboarding_plan,
+  srv14_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
@@ -571,6 +572,13 @@ fn srv4_converge_credential() -> ProcessExit
 fn srv13_converge_credential() -> ProcessExit
 {
   bmc_converge_credential_selected(plan: srv13_onboarding_plan)
+}
+
+// srv14 is in the same factory-credential state: its in-band recovery ended in a factory reset, and the
+// published credential now answers PasswordChangeRequired.
+fn srv14_converge_credential() -> ProcessExit
+{
+  bmc_converge_credential_selected(plan: srv14_onboarding_plan)
 }
 
 // srv1 AND srv2 TAKE WHATEVER CREDENTIAL THE RUN HAS -- the Workload Identity token in a federated

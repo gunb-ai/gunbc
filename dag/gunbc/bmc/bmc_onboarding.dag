@@ -9,8 +9,8 @@ import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, 
 import gunbc.auth.access_token_source { AccessEnsurePlan }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
-import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13 }
+import gunbc.fleet.fleet_intent { srv1_baseboard, srv2_baseboard, srv3_baseboard, srv4_baseboard, srv13_baseboard, srv14_baseboard }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv13, operator_host_srv14 }
 import product.host_identity { HostIdentity }
 import std.algebra { collection_concat_shape, list_push }
 
@@ -255,6 +255,8 @@ data srv3_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: opera
 data srv4_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv4, bmc_host: srv4_baseboard.bmc.host)
 
 data srv13_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv13, bmc_host: srv13_baseboard.bmc.host)
+
+data srv14_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(host: operator_host_srv14, bmc_host: srv14_baseboard.bmc.host)
 
 // srv1 AND srv2 JOIN THE LIFECYCLE srv3 AND srv4 WENT THROUGH, with their BMC endpoints read from the
 // fleet intent rather than retyped. They do NOT start from the factory credential: both were brought
