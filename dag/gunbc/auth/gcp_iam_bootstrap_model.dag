@@ -512,8 +512,14 @@ fn trust_root_tag_admission(what: String, collection: String, name: String, pare
   else { TrustRootTagAdmitted { name: name as NonEmptyStr } }
 }
 
+// The create request names the parent by project id; Resource Manager v3 answers TagKey.parent as
+// projects/<project number> (2026-10-28, receipt iam-ceremony-20261028T125901Z refused the id form).
+fn iam_bootstrap_trust_root_tag_key_parent_read() -> String {
+  concat("projects/", fleet_secrets_project_number)
+}
+
 fn trust_root_tag_key_admission(name: String, parent: String, short_name: String, namespaced_name: String?) -> TrustRootTagAdmission {
-  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent() as String,
+  trust_root_tag_admission(what: "the trust-root tag key", collection: "tagKeys", name: name, parent: parent, want_parent: iam_bootstrap_trust_root_tag_key_parent_read(),
     short_name: short_name, want_short: iam_bootstrap_trust_root_tag_key_short as String, namespaced_name: namespaced_name, want_namespaced: iam_bootstrap_trust_root_tag_key_namespaced() as String)
 }
 
