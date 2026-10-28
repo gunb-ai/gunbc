@@ -362,7 +362,11 @@ fn deny_condition_matches(observed: IamCondition?, declared: IamCondition?) -> B
     Absent => match observed { Absent => true  Present { value: _ } => false }
     Present { value: want } => match observed {
       Absent => false
-      Present { value: got } => got.expression == want.expression && got.title == want.title && got.description == want.description
+      Present { value: got } => got.expression == want.expression && got.title == want.title
+        && match want.description {
+          Absent => match got.description { Absent => true  Present { value: _ } => false }
+          Present { value: w } => match got.description { Absent => false  Present { value: g } => g == w }
+        }
     }
   }
 }
