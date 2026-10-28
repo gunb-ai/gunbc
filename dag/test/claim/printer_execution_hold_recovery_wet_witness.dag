@@ -44,9 +44,9 @@ import gunbc.auth.approval_decision_store {
 
 // THE SLOT THE PRODUCTION CONTROLLER USES, verbatim: what these witnesses prove is about the same
 // slot the printer daemon claims.
-data printer_recovery_witness_slot: NonEmptyStr = "fleet-print-controller"
+data printer_recovery_witness_slot: NonEmptyStr = "fleet-print-controller" as NonEmptyStr
 
-data printer_recovery_witness_attempt: AttemptIdentity = "printer-recovery-witness-attempt" as AttemptIdentity
+data printer_recovery_witness_attempt: AttemptIdentity = ("printer-recovery-witness-attempt" as NonEmptyStr) as AttemptIdentity
 
 // A far-future deadline: the grant the approval route mints carries this as expires_at, so std's
 // clock rule (authorize at a real instant) can only ever pass. A literal, not a clock read, so the
