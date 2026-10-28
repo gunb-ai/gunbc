@@ -16638,9 +16638,15 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
     // LANGUAGE'S DECLARED `not` keyword row (extdeps.languages.rust emit, key "not"), applied by
     // the shared unary-operator emitter -- the same route a `!x` written in source takes. No `!`
     // is spliced as a string literal here: a spliced one would be a second spelling of the
-    // operator beside the declared row, and the seed parser misreads a `"!"` literal in this
-    // position anyway (minimal repro in this PR's description).
-    if op == Ne { emit_unary_op(op: Not, operand_str: eq_call, target: Rust) } else { eq_call }
+    // operator beside the declared row.
+    //
+    // THE CONDITION IS PARENTHESIZED, AND THAT IS NOT COSMETIC: written `if op == Ne {`, the seed
+    // parser reads `== Ne { ... }` as a COPRODUCT CONSTRUCTION of variant `Ne` and swallows the
+    // block, so the refusal arrives as an unrelated token inside it (two revisions of this line
+    // were refused that way -- first at the comma of `concat("!", eq_call)`, then at the colon of
+    // `emit_unary_op(op: ...)`, both blaming the block's contents for the condition's shape).
+    // `v1_src_dag_parse` is the check that sees this before a runner does.
+    if (op == Ne) { emit_unary_op(op: Not, operand_str: eq_call, target: Rust) } else { eq_call }
   } else {
     match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
