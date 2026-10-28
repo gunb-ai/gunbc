@@ -645,7 +645,9 @@ fn base_step(rows: List<AmbientNameHome>, renames: List<RosterHeadRow>, module: 
     match map_through_rounds(rounds: rounds, offset: o) {
       OffsetCovered => BaseStep { delta: Present { value: JoinRefused { cause: "EditCoversOccurrence", coordinate: coordinate, detail: "an edit extent contains the occurrence" } }, claimed: Absent }
       OffsetMapped { offset: m } =>
-        let key = b.spelling + " @" + locus_at(starts: head_starts, offset: m)
+        // MUTATION (revert arm, sunny-bee-153): pair at the BASE locus instead of the position carried through the
+        // edit rounds. The controls must go RED.
+        let key = b.spelling + " @" + locus_at(starts: base_starts, offset: o)
         match map_get(head_index, key) {
           Absent => BaseStep { delta: Present { value: JoinRefused { cause: "Vanished", coordinate: coordinate, detail: b.source + " " + b.target } }, claimed: Absent }
           Present { value: a } => BaseStep { delta: join_pair(rows: rows, coordinate: coordinate, before: b, after: a), claimed: Present { value: key } }
