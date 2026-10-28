@@ -3810,6 +3810,7 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     fn_decl_items: base_info.fn_decl_items,
     fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: closure_source_indices),
+    fn_equality_bounds: v1_fn_equality_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: closure_source_indices),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -4519,6 +4520,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     fn_decl_items: base_info.fn_decl_items,
     fn_decl_identity_items: base_info.fn_decl_identity_items,
     fn_map_key_bounds: v1_fn_map_key_bound_table(fn_decl_items: base_info.fn_decl_items, type_decl_items: base_info.type_decl_items, type_bounds: map_key_bounded, source_indices: merged_module_source_indices(modules: [typed_module])),
+    fn_equality_bounds: v1_fn_equality_bound_table(fn_decl_items: base_info.fn_decl_items, source_indices: merged_module_source_indices(modules: [typed_module])),
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -5854,6 +5856,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -8040,6 +8043,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             fn_decl_items: emit_info.fn_decl_items,
             fn_decl_identity_items: emit_info.fn_decl_identity_items,
             fn_map_key_bounds: emit_info.fn_map_key_bounds,
+            fn_equality_bounds: emit_info.fn_equality_bounds,
             recursive_type_set: emit_info.recursive_type_set,
             fielded_variants: emit_info.fielded_variants,
             positional_payload_variants: emit_info.positional_payload_variants,
@@ -9385,7 +9389,7 @@ fn v1_call_forwarding_forwarded_param_names(
 // `S: Clone` by cloning a CostTimeAxis<S> through derive(Clone); the wrapper instantiates that same
 // S and emitted bare, so regen produced a seed that does not typecheck (rustc E0277).
 //
-// The walk mirrors v1_call_forwarding_bound_param_names (EqualityForwarded) exactly rather than adding a
+// The walk mirrors v1_call_forwarding_bound_param_names exactly rather than adding a
 // scrutinee special case, and for the reason that half already states: descending every child can
 // only find more call sites, while precision stays where it belongs, in the exact type-resolving
 // predicate v1_call_forwarding_bound_wrapper_param_names applies per (callee param, argument) pair.
@@ -9892,23 +9896,21 @@ fn v1_call_site_static_forwarded_param_names(
   }
 }
 
-// WHICH BOUND A CALL-FORWARDING WALK PROPAGATES. One walker serves every bound class (DESIGN.md S2:
-// one derivation of how a callee's bound reaches the caller's generics, not a copy per class); the
-// class selects only where the callee's OWN bound comes from. EqualityForwarded derives the one-hop
-// equality bound from the callee body. MapKeyForwarded READS the callee's DECLARED map-key bound from
-// `declared_map_key_bounds` (EmitGraphInfo.fn_map_key_bounds, built once per emission by
-// v1_fn_map_key_bound_table); it never re-derives key position at a call site, and a call cycle
-// needs no guard because the table is a fixpoint, not a recursion.
-type ForwardedBoundClass
-  = EqualityForwarded
-  | MapKeyForwarded
-
+// ONE CALL-GRAPH FIXPOINT PER BOUND CLASS, ONE FORWARDING WALK FOR ALL OF THEM. A callee's bound
+// reaches a caller's generics through exactly one derivation: the walk below reads the callee's
+// bound from `callee_bounds`, a closure-wide fn name -> bound-generics table closed to a fixpoint
+// (v1_fn_bound_fixpoint), so a call cycle needs no guard and a chain of any length forwards. The
+// bound class only chooses which table is passed: EmitGraphInfo.fn_map_key_bounds
+// (v1_fn_map_key_bound_table) or EmitGraphInfo.fn_equality_bounds (v1_fn_equality_bound_table).
+// Equality used to be the exception: its forwarding re-derived the callee's bound from the callee
+// body, one hop and no further, beside the map-key table it shared this walk with, so
+// std.state_durability state_durability_boundary_evidence_verdict<Target, ReadbackSubject> (two
+// hops from the == in state_durability_admission_eq) emitted without PartialEq (rustc E0277).
 fn v1_call_forwarding_bound_param_names(
-  bound_class: ForwardedBoundClass,
   generic_param_names: List<String>,
   body: Node,
   fn_decl_items: Map<String, Node>,
-  declared_map_key_bounds: Map<String, List<String>>,
+  callee_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   if (generic_param_names |> count) == 0 {
@@ -9916,11 +9918,10 @@ fn v1_call_forwarding_bound_param_names(
   }
   let here = match body.expr_data {
     ExprCall => v1_call_site_forwarded_param_names(
-      bound_class: bound_class,
       call: body,
       generic_param_names: generic_param_names,
       fn_decl_items: fn_decl_items,
-      declared_map_key_bounds: declared_map_key_bounds,
+      callee_bounds: callee_bounds,
       source_indices: source_indices
     )
     _ => []
@@ -9929,11 +9930,10 @@ fn v1_call_forwarding_bound_param_names(
     v1_union_bound_param_names(
       base: acc,
       extra: v1_call_forwarding_bound_param_names(
-        bound_class: bound_class,
         generic_param_names: generic_param_names,
         body: child,
         fn_decl_items: fn_decl_items,
-        declared_map_key_bounds: declared_map_key_bounds,
+        callee_bounds: callee_bounds,
         source_indices: source_indices
       )
     )
@@ -9941,11 +9941,10 @@ fn v1_call_forwarding_bound_param_names(
 }
 
 fn v1_call_site_forwarded_param_names(
-  bound_class: ForwardedBoundClass,
   call: Node,
   generic_param_names: List<String>,
   fn_decl_items: Map<String, Node>,
-  declared_map_key_bounds: Map<String, List<String>>,
+  callee_bounds: Map<String, List<String>>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
   let si = source_indices
@@ -9955,20 +9954,12 @@ fn v1_call_site_forwarded_param_names(
     Present { value: callee_item } =>
       match callee_item.body {
         Absent => []
-        Present { value: callee_body } =>
+        Present { value: _ } =>
           let callee_params = callee_item.params
           let callee_generic_param_names = function_type_params(params: callee_params) |> map(p => generic_param_name_at(n: p, source_indices: si))
-          let callee_bound_param_names = match bound_class {
-            EqualityForwarded => v1_fn_body_equality_bound_param_names(
-              body: callee_body,
-              generic_param_names: callee_generic_param_names,
-              source_indices: si
-            )
-            MapKeyForwarded =>
-              match map_get(declared_map_key_bounds, callee_name) {
-                Present { value: declared } => declared
-                Absent => []
-              }
+          let callee_bound_param_names = match map_get(callee_bounds, callee_name) {
+            Present { value: bound } => bound
+            Absent => []
           }
           v1_call_forwarding_forwarded_param_names(
             call: call,
@@ -10005,14 +9996,36 @@ fn v1_fn_map_key_bound_table(fn_decl_items: Map<String, Node>, type_decl_items: 
       Absent => acc
     }
   )
-  v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
+  v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
 }
 
-fn v1_fn_map_key_bound_total(table: Map<String, List<String>>) -> Int {
+// THE EQUALITY BOUND OF EVERY FN, ONCE: the generics its own body compares
+// (v1_fn_body_equality_bound_param_names), closed over the call graph by the same fixpoint the
+// map-key table uses, so a caller any number of hops above a == owes PartialEq exactly where the
+// generics it forwards reach one.
+fn v1_fn_equality_bound_table(fn_decl_items: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, List<String>> {
+  let names = sorted_map_keys(fn_decl_items)
+  let seed = names |> fold(init: empty_map(), f: (acc, n) =>
+    match map_get(fn_decl_items, n) {
+      Present { value: item } =>
+        match item.body {
+          Absent => acc
+          Present { value: body } =>
+            let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+            let bound = v1_fn_body_equality_bound_param_names(body: body, generic_param_names: generics, source_indices: source_indices)
+            if (bound |> count) > 0 { map_insert(acc, n, bound) } else { acc }
+        }
+      Absent => acc
+    }
+  )
+  v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: seed, fuel: names |> count)
+}
+
+fn v1_fn_bound_total(table: Map<String, List<String>>) -> Int {
   map_values(table) |> fold(init: 0, f: (acc, l) => acc + (l |> count))
 }
 
-fn v1_fn_map_key_bound_fixpoint(
+fn v1_fn_bound_fixpoint(
   names: List<String>,
   fn_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>,
@@ -10030,11 +10043,10 @@ fn v1_fn_map_key_bound_fixpoint(
           Present { value: body } =>
             let generics = function_type_params(params: item.params) |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
             let forwarded = v1_call_forwarding_bound_param_names(
-              bound_class: MapKeyForwarded,
               generic_param_names: generics,
               body: body,
               fn_decl_items: fn_decl_items,
-              declared_map_key_bounds: acc,
+              callee_bounds: acc,
               source_indices: source_indices
             )
             let existing = match map_get(acc, n) {
@@ -10047,10 +10059,10 @@ fn v1_fn_map_key_bound_fixpoint(
       Absent => acc
     }
   )
-  if v1_fn_map_key_bound_total(table: next) == v1_fn_map_key_bound_total(table: table) {
+  if v1_fn_bound_total(table: next) == v1_fn_bound_total(table: table) {
     next
   } else {
-    v1_fn_map_key_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: next, fuel: fuel - 1)
+    v1_fn_bound_fixpoint(names: names, fn_decl_items: fn_decl_items, source_indices: source_indices, table: next, fuel: fuel - 1)
   }
 }
 
@@ -10222,11 +10234,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     source_indices: si
   )
   let call_forwarding_eq_param_names = v1_call_forwarding_bound_param_names(
-    bound_class: EqualityForwarded,
     generic_param_names: generic_param_names,
     body: body,
     fn_decl_items: emit_info.fn_decl_items,
-    declared_map_key_bounds: emit_info.fn_map_key_bounds,
+    callee_bounds: emit_info.fn_equality_bounds,
     source_indices: si
   )
   let eq_param_names = v1_union_bound_param_names(
@@ -10243,11 +10254,10 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
       source_indices: si
     ),
     extra: v1_call_forwarding_bound_param_names(
-      bound_class: MapKeyForwarded,
       generic_param_names: generic_param_names,
       body: body,
       fn_decl_items: emit_info.fn_decl_items,
-      declared_map_key_bounds: emit_info.fn_map_key_bounds,
+      callee_bounds: emit_info.fn_map_key_bounds,
       source_indices: si
     )
   )
@@ -14249,6 +14259,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_decl_items: emit_info.fn_decl_items,
               fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
+              fn_equality_bounds: emit_info.fn_equality_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -14292,6 +14303,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               fn_decl_items: emit_info.fn_decl_items,
               fn_decl_identity_items: emit_info.fn_decl_identity_items,
               fn_map_key_bounds: emit_info.fn_map_key_bounds,
+              fn_equality_bounds: emit_info.fn_equality_bounds,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,

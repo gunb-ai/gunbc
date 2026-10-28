@@ -19490,6 +19490,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     fn_decl_items: built.fn_decl_items,
     fn_decl_identity_items: built.fn_decl_identity_items,
     fn_map_key_bounds: empty_map(),
+    fn_equality_bounds: empty_map(),
     recursive_type_set: all_recursive,
     fielded_variants: variant_shapes.fielded,
     positional_payload_variants: variant_shapes.positional_payload,

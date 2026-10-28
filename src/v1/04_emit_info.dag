@@ -587,6 +587,7 @@ type EmitGraphInfo {
   fn_decl_items: Map<String, Node>
   fn_decl_identity_items: Map<String, Node>
   fn_map_key_bounds: Map<String, List<String>>
+  fn_equality_bounds: Map<String, List<String>>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -649,6 +650,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     fn_decl_items: empty_map(),
     fn_decl_identity_items: empty_map(),
     fn_map_key_bounds: empty_map(),
+    fn_equality_bounds: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
@@ -686,6 +688,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -722,6 +725,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -763,6 +767,7 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     fn_decl_items: emit_info.fn_decl_items,
     fn_decl_identity_items: emit_info.fn_decl_identity_items,
     fn_map_key_bounds: emit_info.fn_map_key_bounds,
+    fn_equality_bounds: emit_info.fn_equality_bounds,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
