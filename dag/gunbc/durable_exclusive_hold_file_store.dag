@@ -601,7 +601,7 @@ fn file_hold_recover_dead_holder(
 ) -> FileHoldDeadHolderRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
-    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "with_execution_hold"),
+    decl_ref(module_path: "gunbc.fleet.printer_execution_hold", decl_name: "printer_hold_enter"),
   ]
 {
   match live_owner(h: holder) {
