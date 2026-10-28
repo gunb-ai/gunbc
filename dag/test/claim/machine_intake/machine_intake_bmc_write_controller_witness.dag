@@ -6,13 +6,13 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
-import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv2, operator_host_srv13 }
+import gunbc.fleet.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1, operator_host_srv2, operator_host_srv13, operator_host_srv15 }
 import gunbc.runner.runner_throughput_qualification { RunnerThroughputAssessment }
 import gunbc.machine_intake.bmc_write_controller {
   BmcWriteRoute, ByStandingGrant, ByPerWriteApproval, UntilRunnerQualified,
   BmcWriteControllerSelected, BmcWriteControllerRefused,
   NoControllerRowForHost, ControllerRowIsAnotherEndpoint, ControllerWritesHeld, StandingGrantNotAdmittedForController,
-  mtjade1_bmc_write_controller, srv13_bmc_write_controller, select_bmc_write_controller, hold_released,
+  mtjade1_bmc_write_controller, srv13_bmc_write_controller, srv15_bmc_write_controller, select_bmc_write_controller, hold_released,
 }
 import test.claim.runner.runner_throughput_qualification_witness { selection, good_run, assess_at_width, assess_unobserved }
 
@@ -79,6 +79,14 @@ test fn an_assessment_for_another_host_releases_nothing() -> Bool {
 test fn srv13_admits_a_per_write_approval_and_refuses_the_standing_grant() -> Bool {
   verdict(host: operator_host_srv13, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "selected"
     && verdict(host: operator_host_srv13, target: srv13(), route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
+}
+
+// srv15 (box 2) ADMITS ONLY A PER-WRITE APPROVAL, at its own controller and not at srv13's.
+test fn srv15_admits_a_per_write_approval_at_its_own_controller() -> Bool {
+  let box2 = srv15_bmc_write_controller.endpoint
+  verdict(host: operator_host_srv15, target: box2, route: ByPerWriteApproval, qualification: no_release()) == "selected"
+    && verdict(host: operator_host_srv15, target: box2, route: ByStandingGrant, qualification: no_release()) == "standing-grant-not-admitted"
+    && verdict(host: operator_host_srv15, target: srv13(), route: ByPerWriteApproval, qualification: no_release()) == "another-endpoint"
 }
 
 // A HOST WITH NO ROW ADMITS NO WRITE, and a row admits writes only at its own controller's endpoint.
