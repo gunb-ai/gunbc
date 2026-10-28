@@ -1,0 +1,47 @@
+module gunbc.serving.strata_checkpoint_transfer
+
+import std.types { String, NonEmptyStr, Int }
+import std.measure { Second }
+import extdeps.http.client
+import extdeps.http.client { http_client_max_time_flag }
+import extdeps.tools.curl { classify_curl_http_code_after_newline, curl_body_before_http_code, CurlWroteHttpStatus, CurlWroteNoHttpStatus }
+import extdeps.strata.session_file { SlotRequest, SlotReply, SlotReplyUnreadable, slot_request_path, slot_request_body, slot_reply }
+
+// The engine-facing transfer door. The owning turn must keep its existing engine
+// grant through restore, inference, save and checkpoint_store's head commit.
+// SlotOutcomeUnknown MUST retain that grant until engine quiescence is observed;
+// transport failure is not evidence that a native mutation stopped.
+// Consumer frontier: the existing router's checkpoint turn barrier; it must
+// consume this door before automatic persistence is considered implemented.
+type StrataSlotDoor {
+  origin: NonEmptyStr
+  header_file: NonEmptyStr
+  ca_certificate: NonEmptyStr
+}
+
+type SlotExchange
+  = SlotAnswered { reply: SlotReply }
+  | SlotOutcomeUnknown { detail: String }
+
+fn strata_slot_exchange(request: SlotRequest, exit_code: Int, stdout: String, stderr: String) -> SlotExchange {
+  if exit_code != 0 { SlotOutcomeUnknown { detail: stderr } }
+  else { match classify_curl_http_code_after_newline(stdout: stdout) {
+    CurlWroteNoHttpStatus { cause: c } => SlotOutcomeUnknown { detail: c as String }
+    CurlWroteHttpStatus { status: status } => {
+      let reply = slot_reply(request: request, status: status, body: curl_body_before_http_code(stdout: stdout))
+      match reply {
+        SlotReplyUnreadable { detail: d } => SlotOutcomeUnknown { detail: d }
+        _ => SlotAnswered { reply: reply }
+      }
+    }
+  } }
+}
+
+fn strata_slot_call(door: StrataSlotDoor, request: SlotRequest, connect_bound: Second, request_bound: Second) -> SlotExchange {
+  let call = http.Client.PostJsonStdinWithHeaderFileWithin(
+    url: concat(door.origin as String, slot_request_path(request: request) as String) as NonEmptyStr,
+    request_body: slot_request_body(request: request), header_file: door.header_file, ca_certificate: door.ca_certificate,
+    connect_seconds: http_client_max_time_flag(max_time: connect_bound),
+    max_seconds: http_client_max_time_flag(max_time: request_bound))
+  strata_slot_exchange(request: request, exit_code: call.exit_code, stdout: call.body, stderr: call.stderr)
+}
