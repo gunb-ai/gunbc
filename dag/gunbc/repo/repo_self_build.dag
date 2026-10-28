@@ -492,7 +492,7 @@ fn tracked_tree_identity_stmt() -> Node {
           bash_build_word_lit(text: ":"),
           // `HEAD^{tree}` is git revision syntax, not a shell brace expansion; the braces are
           // escaped because the .dag string lexer reads an unescaped brace as interpolation.
-          bash_build_word_cmdsubst(body: command(argv: ["git", "rev-parse", "HEAD^\\{tree\\}"])),
+          bash_build_word_cmdsubst(body: command(argv: ["git", "rev-parse", "HEAD^\{tree\}"])),
         ])
       ),
       command(argv: ["export", "GUNBC_MATERIALIZED_TREE_IDENTITY"]),

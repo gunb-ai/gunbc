@@ -1,19 +1,44 @@
 module gunbc.recurring_failure_mode.seed_sha256_is_runner_relative
 
-import std.types { NonEmptyStr, String, List, Int }
-import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
 
 data seed_sha256_is_runner_relative: RecurringFailureMode = RecurringFailureMode {
   identity: "seed_sha256_is_runner_relative" as NonEmptyStr,
 
-  rung: RungUnread { cause: CeilingNotStated },
+  // FOUND AT MITIGATABLE, NOT READ-UNSTATED: the human-readable cause and the interim citation
+  // rule are recorded here, and the mitigation is built and MEASURED (the modeled seed-build
+  // preamble of gunbc.repo.repo_self_build, consumed by every emitted seed-build step, plus the
+  // seed_build_environment axis of gunbc.fleet.fleet_release_bins_key). It is not higher, because
+  // the control that would catch a regression is an ON-DEMAND instrument rather than an enrolled
+  // gate: the required path does not run the v1 unit tests, so a step that drops a prefix lands
+  // green until someone runs the label by hand.
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      // Named as a CAPABILITY, not an artifact: an executed check that runs the seed-build
+      // reproducibility falsifier (two clones of one commit, each built cold under the preamble
+      // authority, asserting equal sha256; and the same pair with the preamble authority disabled,
+      // asserting they differ) and fails the seed build on which CI depends, OR the cheaper
+      // equivalent -- each emitted seed-build step echoing the preamble's digest into its own
+      // receipt, so a step that dropped the authority is visible in the receipt rather than in a
+      // hand-run test. Either raises the rung; neither is built yet, which is why this is
+      // ClimbableButUnbuilt and not a drop from a held rung.
+      trigger_capability: "an executed check on the seed build's own required path that runs the reproducibility falsifier (build twice from two clones of one commit under the preamble authority, assert sha256 equality; rerun with the authority disabled, assert the sha256 differs), or the cheaper floor: every emitted seed-build step echoing the preamble's digest into its receipt so a dropped authority is visible without a hand-run test",
+    },
+  },
 
   receipts: [
     "A seed sha256 names a (commit, runner) pair, not a commit, until the seed build pins its path and identity environment: two builds of ONE commit on runners whose absolute checkout path, CARGO_TARGET_DIR, CARGO_HOME, or rustc sysroot differ produce DIFFERENT sha256 values, while one build system with all four pinned is reproducible. Until the seed-build preamble declares the remap prefixes and the tree identity once and every seed-binary build step consumes it, every receipt, verdict, or cache key that cites seed sha256 alone as THE identity of a seed build is falsified by the runner it ran on. The sound interim citation for a seed build is commit + sha256 + host (the runner's identity), never commit + sha256.",
 
     "MEASURED 2026-10-25 on the ctrl-build runner (linux/amd64, rustc 1.95.0-nightly e943f00), all from commit a430c878e5cfa56f06ce1b461cccac20f415d468, each build cold from a fresh target directory: (1) same checkout path twice, clean tree: IDENTICAL sha256 b8c24b3d — codegen/LTO/cgo contribute no variance on this toolchain. (2) same checkout path plus ONE untracked file: DIFFER (eedf8e3c) — src/v1/stage0/build.rs bakes GUNBC_BUILD_IDENTITY=<git-HEAD> with a '-dirty' suffix whenever git status --porcelain is non-empty, so any runner-local untracked file changes the binary. (3) two independent clones at different absolute paths, both clean: DIFFER (b8c24b3d vs ec03f8ac); objcopy shows the variance lives entirely in .rodata, and strings shows the checkout path baked into the binary (…/g1/src/v1/stage0/src/cli_run/pre_entry_phase.rs in one, …/g2/… in the other) — path literals from the compilation environment with no --remap-path-prefix set anywhere. (4) the fix, measured: two independent clones, each built with RUSTFLAGS='--remap-path-prefix=<its checkout>=/build/checkout --remap-path-prefix=<its target>=/build/target --remap-path-prefix=<its CARGO_HOME>=/build/cargo-home --remap-path-prefix=<its sysroot>=/build/rust' and GUNBC_MATERIALIZED_TREE_IDENTITY pinned to a tree:sha256 value: cmp reports gunbc AND claim_executor byte-IDENTICAL across the two clones. (5) a single runner's own cross-run receipt failure: seed 3dbf6b88 at main a430c878e5cf hashed differently on three runners. Related but distinct: gunbc.recurring_failure_mode.build_cache_key_includes_the_absolute_checkout_path is about the same path inputs poisoning a CACHE KEY; this row is about them poisoning the seed's IDENTITY DIGEST.",
 
-    "SCOPE OF THE CLAIM: the second axis is the build identity, not the paths. A producer that leaves GUNBC_MATERIALIZED_TREE_IDENTITY unset makes build.rs fall back to git HEAD plus the dirty flag, so the same commit builds different bytes on a dirty runner. A producer that pins the tree identity but not the remap prefixes still gets path-dependent bytes. BOTH must be declared for one commit to give one sha256, which is what the seed-build preamble (remap prefixes + tree identity, declared once in the .dag and consumed by every emitted seed-build step) exists to guarantee. Until that lands and its control (build twice from two clones, assert sha256 equality, with the remap disabled as the red arm) is green, treat every historical seed sha256 as runner-relative evidence, admissible only alongside its host."
+    "SCOPE OF THE CLAIM: the second axis is the build identity, not the paths. A producer that leaves GUNBC_MATERIALIZED_TREE_IDENTITY unset makes build.rs fall back to git HEAD plus the dirty flag, so the same commit builds different bytes on a dirty runner. A producer that pins the tree identity but not the remap prefixes still gets path-dependent bytes. BOTH must be declared for one commit to give one sha256, which is what the seed-build preamble (remap prefixes + tree identity, declared once in the .dag and consumed by every emitted seed-build step) exists to guarantee. THE MITIGATION NOW SHIPS: the preamble authority is declared once in the .dag, consumed by every emitted seed-build step, and keyed into the release-bins axis. Its control is the gunbc test label seed_build_reproducibility_falsifier, which builds twice from two clones of one commit and asserts the two sha256 values are equal, with the preamble authority disabled as the red arm; it printed a=b=fde094512484e3c7 (green arm, equal) and c=7a206d54631b4a8f (red arm, differs from a) on the ctrl-build runner at 28c994c4e1e5, in 1165s, under distinct CARGO_HOME and CARGO_TARGET_DIR per clone and with RUSTC_WRAPPER, RUSTFLAGS and GUNBC_MATERIALIZED_TREE_IDENTITY removed from the ambient environment. THAT LABEL IS ON DEMAND, NOT ENROLLED: the required path does not run the v1 unit tests, so the rung the executed evidence establishes is mitigatable. Until the trigger capability above exists, treat every historical seed sha256 as runner-relative evidence, admissible only alongside its host."
   ],
 
   evidence: []
