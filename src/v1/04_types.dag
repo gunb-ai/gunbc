@@ -40,7 +40,7 @@ import v1.std.core { Unmarked,
   AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
   leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality,
-  unit_type, bool_type, string_type, int_type, float_type, none_type,
+  unit_type, bool_type, string_type, symbol_type, int_type, float_type, none_type,
   error_type,
   default_ident_span, kernel_span,
   authored_name_at,
@@ -1584,7 +1584,7 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitBool { value: _ } => bool_type
     LitNull => with_optional_cardinality(n: unit_type)
 
-    LitSymbol { value: _ } => string_type
+    LitSymbol { value: _ } => symbol_type
   }
 }
 
