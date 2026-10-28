@@ -3,7 +3,7 @@ module test.claim.supermicro_h11ssl_witness
 import std.types { Bool, List }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import extdeps.bmc.types { RedfishServiceRootMember, ServiceRootCertificateService }
-import extdeps.bmc.supermicro { supermicro_licence_activation_accepted_basis, supermicro_service_root_of_release, SupermicroRowBasis, SupermicroSeenOnOneUnit, SupermicroServiceRootReading, ServiceRootSeenOnOneUnit, ServiceRootStatedForRelease, SupermicroServiceRootFigures, SupermicroObservationScope }
+import gunbc.machine_intake.supermicro_release_observation { supermicro_licence_activation_accepted_basis, supermicro_service_root_of_release, SupermicroRowBasis, SupermicroSeenOnOneUnit, SupermicroServiceRootReading, ServiceRootSeenOnOneUnit, ServiceRootStatedForRelease, SupermicroServiceRootFigures, SupermicroObservationScope }
 import extdeps.network.mac { mac_addresses_are_equal }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
   OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
@@ -178,7 +178,7 @@ fn has_reading(s: SupermicroRowBasis?) -> Bool {
   match s { Absent => false  Present { value: _ } => true }
 }
 
-// What CHECK=1 means is the release's row in extdeps.bmc.supermicro, not a literal in this receipt:
+// What CHECK=1 means is the release's row in gunbc.machine_intake.supermicro_release_observation, not a literal in this receipt:
 // the same observations read on 01.52.25, which has no activation row, are not an activation, so
 // the transition is not observed. A CHECK with no row on its own release has no reading, and the
 // transition on the receipt comes back carrying the row's one-unit scope (this BMC, this receipt), never as a firmware rule.

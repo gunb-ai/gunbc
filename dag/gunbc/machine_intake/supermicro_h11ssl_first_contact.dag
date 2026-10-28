@@ -7,8 +7,8 @@ import extdeps.network.mac { Eui48Address, mac_address }
 import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes, Rfc3339Follows, Rfc3339Simultaneous, Rfc3339OrderUndecidable }
 import extdeps.bmc.supermicro {
   SupermicroFactoryCredentialForm, SupermicroDefaultAdminCredential, SupermicroUniqueStickerCredential,
-  supermicro_licence_activation_accepted_basis, SupermicroRowBasis,
 }
+import gunbc.machine_intake.supermicro_release_observation { supermicro_licence_activation_accepted_basis, SupermicroRowBasis }
 import extdeps.bmc.types {
   RedfishServiceRootMember, ServiceRootSystems, ServiceRootChassis, ServiceRootManagers, ServiceRootTasks,
   ServiceRootSessionService, ServiceRootAccountService, ServiceRootEventService, ServiceRootUpdateService,
@@ -167,7 +167,7 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
 // gunbc.machine_intake.supermicro_bmc_reading (SupermicroIdentityRead). bmc_firmware above is the
 // release these observations were made on, as the BMC reported it on 2026-10-17
 // (supermicro_h11ssl_bmc_reported_identity); what each code means on that release is
-// extdeps.bmc.supermicro's.
+// gunbc.machine_intake.supermicro_release_observation's (no Supermicro document states it yet).
 
 fn rejects_factory_default(o: H11sslObservation) -> Bool {
   match o {
@@ -215,7 +215,7 @@ fn is_root_refused(o: H11sslObservation) -> Bool {
 }
 
 // Licence activation CGI that changed the unit, timed on the transcript; the CHECK it answered is read
-// through the release's row in extdeps.bmc.supermicro, whose basis (scope and receipt) comes back with it. A CHECK with
+// through the release's row in gunbc.machine_intake.supermicro_release_observation, whose basis (scope and receipt) comes back with it. A CHECK with
 // no row on this release has no reading, so the step is not an activation.
 fn activation_check_basis(o: H11sslObservation, firmware: FirmwareSemanticVersion) -> SupermicroRowBasis? {
   match o {
@@ -234,7 +234,7 @@ fn is_activation(o: H11sslObservation, firmware: FirmwareSemanticVersion) -> Boo
 
 // The transition is observed only together with the basis of the CHECK reading it rests on: the
 // refusal, the state change and the answer are this receipt's observations, but that the CHECK meant
-// acceptance is extdeps.bmc.supermicro's row, and while that row is SupermicroSeenOnOneUnit the
+// acceptance is gunbc.machine_intake.supermicro_release_observation's row, and while that row is SupermicroSeenOnOneUnit the
 // transition is a one-unit bet, never a firmware rule.
 type H11sslActivationTransition
   = ActivationTransitionObserved { check_basis: SupermicroRowBasis }
