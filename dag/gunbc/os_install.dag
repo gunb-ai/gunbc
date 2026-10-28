@@ -165,10 +165,25 @@ data srv3_pxe_network_boot_chain: NetworkBootChain = NetworkBootChain {
 // the port — the finding that closed the old srv4 row (dashboard node adhoc-dfa3a187, confirmed by
 // side chat). So all three take the KEY-ONLY posture: no identity section, one cloud-init account
 // with a locked password and the fleet's authorized keys, and the ssh section with password
-// authentication off. That is also the only posture gunbc.provisioning.public_nocloud_seed admits,
-// which is the single seed authority this document is now checked against — an identity-bearing
-// document (password or not) is refused by that contract by name, so there is no route from here
-// to the wire that keeps a credential field. The two crypt(3) hashes this file used to carry are
+// authentication off. THE RUNG IS STATED BY ROUTE, NOT CLAIMED UNIFORMLY (DESIGN.md §4b — a rung is
+// the minimum across in-scope paths, and inflation is worse than sitting low):
+//   * srv4's BMC netboot route is CONTRACT-GATED: gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission
+//     runs the same admit_public_nocloud_seed a site PXE edge binding passes, over this document tree,
+//     keyed on the plan's subject host's boot NIC. An identity section (password or not), an allow-pw
+//     that is not false, or a non-canonical key refuses there BY NAME and stages nothing. That is the
+//     route the finding closed.
+//   * srv3's two routes are NOT contract-gated yet — they are KEY-ONLY BY DATA and pinned by witness
+//     bytes, which exposes a regression but does not block one: the seeded ISO renders straight from
+//     autoinstall_user_data(srv3_ubuntu_autoinstall_on_iso) (gunbc.srv3.srv3_seeded_install_media_artifact)
+//     with no admission step, and the NoCloudNet payload renders the same way through the emit path.
+//     The blocker is honest and named: srv3 has no measured boot-NIC row, so there is no client MAC to
+//     key an instance-id on — see gunbc.provisioning.public_nocloud_seed's srv3 frontier row and
+//     gunbc.host.host_network_diagnosis.boot_nic_inventory. Until that row exists AND those renderings
+//     pass the admission, srv3's credential-free status rests on these rows being UserDataOnly plus the
+//     witness greps, not on a contract. Anyone restoring a WithIdentity posture on an srv3 payload
+//     reddens srv3_os_install_emit / srv3_seeded_install_media_witness / os_install_deduction, and owes
+//     it to the reader to land srv3's boot-NIC row and route it through the admission instead.
+// The two crypt(3) hashes this file used to carry are
 // deleted, not moved: both were in git history, both are treated as exposed, and rotation is the
 // operator's call (raised with merry-fox-82). Nothing in a console/SOL recovery route read them —
 // BMC serial console goes through the Redfish SOL profile and the BMC's own credentials

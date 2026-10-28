@@ -4,8 +4,10 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 
 import std.types { NonEmptyStr, String, Int, List, Port }
 import std.algebra { list_append, FreeSemigroup }
-import extdeps.network.mac { MacParsed, MacParseFailed, parse_mac_address }
-import gunbc.host.host_network_diagnosis { srv4_lan_interface }
+import extdeps.network.mac { Eui48Address, MacParsed, MacParseFailed, parse_mac_address }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
+import gunbc.host.host_network_diagnosis { boot_nic_of }
 import gunbc.provisioning.public_nocloud_seed {
   PublicSeedAdmission
   PublicSeedAdmitted
@@ -53,6 +55,12 @@ type BmcNetbootServePlan {
   serve_port: Port
   netboot_dir: NonEmptyStr
   boot_interface: NonEmptyStr
+  // THE HOST THIS EDGE INSTALLS. The plan's subject is a typed fact, not an inference: the BMC at
+  // bmc_host is the management interface OF this host, and the netboot client the served seed is
+  // keyed on is THIS host's boot NIC (gunbc.host.host_network_diagnosis.boot_nic_of), never "the
+  // interface that happens to be measured nearby". A plan whose subject has no boot-NIC row cannot
+  // name its client and refuses before staging anything.
+  subject_host: HostIdentity
   bulk_iso_url: Uri
   autoinstall: UbuntuAutoinstallPayload
 }
@@ -62,6 +70,11 @@ data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
   serve_port: 8080,
   netboot_dir: "/tmp/netboot",
   boot_interface: "eth2",
+  // The typed statement of what this edge is for: 192.168.1.195 is srv4's BMC
+  // (gunbc.fleet.fleet_intent_network srv4_bmc_endpoint, subject EndpointHost srv4), so the host
+  // this serve plan installs is srv4, and its client MAC is srv4's boot NIC from the inventory —
+  // derived from the plan's subject, not hard-wired to srv4's interface row.
+  subject_host: operator_host_srv4,
   bulk_iso_url: Uri {
     scheme: Https,
     locator: "cdimage.ubuntu.com/ubuntu/releases/24.04/release/ubuntu-24.04.3-live-server-arm64.iso",
@@ -123,7 +136,7 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
 }
 
 // THE SERVED SEED IS THE ADMITTED PUBLIC SEED, NOT A RENDERING. This payload leaves the repository
-// over a network — httpd at srv4's BMC edge serves the volume to whatever NIC netboots — so the
+// over a network — httpd at the plan's BMC edge serves the volume to whatever NIC netboots — so the
 // document that reaches it must be the one the fleet's public-seed contract signs: the same
 // admit_public_nocloud_seed that governs a site PXE edge binding, over the SAME document tree the
 // emitter renders (autoinstall_user_data_document; never a re-parse of rendered text). Nothing
@@ -132,27 +145,62 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
 // password or not), an allow-pw that is not false, or a non-canonical key refuses by name here
 // (dashboard node adhoc-dfa3a487; the finding came from #15136's public-seed audit).
 //
-// THE CLIENT MAC COMES FROM THE ROW THAT MEASURED THE CLIENT. The instance-id rule this module
-// defers to derives the field from the netbooting client's MAC, and the plan has no MAC — at
-// serve-plan time the client has not been identified yet. It is wrong that it cannot: this edge
-// serves exactly one machine, srv4, through exactly one cable, and gunbc.host.host_network_diagnosis
-// carries srv4_lan_interface — the observed NIC on that LAN, the row the boot-chain and
-// host_phase_status authorities already cite. Its mac is the client's MAC, so the derivation this
-// module once refused to invent is now performed under the one cited rule, with the client named
-// by a measured row rather than by a made-up default. The parse can still fail — the row is a
-// NonEmptyStr whose bytes upstream chose — and the refusal below says so.
+// THE CLIENT MAC IS THE PLAN'S SUBJECT HOST'S BOOT NIC. The instance-id rule this module defers to
+// derives the field from the netbooting client's MAC, so the plan carries a SUBJECT (subject_host)
+// and the MAC comes from gunbc.host.host_network_diagnosis.boot_nic_of(subject) — the inventory
+// that answers "which NIC does THIS host PXE from" with the row that measured it. That is a
+// derivation from the plan's own subject, not a hard-wire to any one host's interface row: a plan
+// whose subject has no boot-NIC assignment cannot name its client, and refuses below before any op
+// is prepared (a borrowed MAC would mint an instance-id for the wrong machine, which is exactly
+// what the contract's MAC-derived instance-id exists to prevent). The parse can still fail — the
+// row's mac is a NonEmptyStr whose bytes upstream chose — and that refusal says so too.
+// The client-MAC verdict, in this module's own vocabulary (§5: a typed, located refusal): either
+// the plan's subject names a measured boot NIC whose bytes parse, or a reason that names the host
+// and the missing/bad row.
+type NetbootClientMacVerdict
+  = ClientMacNamed { mac: Eui48Address }
+  | ClientMacUnnameable { reason: NonEmptyStr }
+
+fn seed_client_mac_verdict(plan: BmcNetbootServePlan) -> NetbootClientMacVerdict {
+  match boot_nic_of(host: plan.subject_host) {
+    Absent => ClientMacUnnameable {
+      reason: join(
+        [
+          "bmc-netboot cannot name its netboot client: ",
+          plan.subject_host as String,
+          " has no boot-NIC assignment in gunbc.host.host_network_diagnosis.boot_nic_inventory",
+        ],
+        "",
+      ) as NonEmptyStr,
+    }
+    Present { value: nic } =>
+      match parse_mac_address(text: nic.mac as String) {
+        MacParseFailed { error: _ } => ClientMacUnnameable {
+          reason: join(
+            [
+              "bmc-netboot cannot name its netboot client: ",
+              plan.subject_host as String,
+              " boot NIC ",
+              nic.name as String,
+              " has a mac that does not parse",
+            ],
+            "",
+          ) as NonEmptyStr,
+        }
+        MacParsed { address: client_mac } => ClientMacNamed { mac: client_mac }
+      }
+  }
+}
+
 fn bmc_netboot_user_seed_admission(plan: BmcNetbootServePlan) -> PublicSeedAdmission {
-  match parse_mac_address(text: srv4_lan_interface.mac as String) {
-    MacParseFailed { error: _ } => PublicSeedRefused {
+  match seed_client_mac_verdict(plan: plan) {
+    ClientMacUnnameable { reason: why } => PublicSeedRefused {
       findings: FreeSemigroup {
-        head: SeedRenderRefused {
-          document: SeedUserData,
-          reason: "bmc-netboot cannot name its netboot client: srv4_lan_interface.mac does not parse as a MAC address",
-        },
+        head: SeedRenderRefused { document: SeedUserData, reason: why },
         tail: [],
       },
     }
-    MacParsed { address: client_mac } => admit_public_nocloud_seed(
+    ClientMacNamed { mac: client_mac } => admit_public_nocloud_seed(
       client_mac: client_mac,
       user_data: autoinstall_user_data_document(payload: plan.autoinstall),
     )

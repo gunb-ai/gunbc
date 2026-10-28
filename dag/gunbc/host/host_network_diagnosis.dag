@@ -18,7 +18,8 @@ import extdeps.cloud_init.cloud_init {
 }
 import gunbc.host.host_phase_status { observation_verdict_eq }
 import gunbc.readback_independence { readback_evidence_verdict, ip_link_carrier_read_probe }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 import extdeps.netplan.netplan {
   NetplanConfigFile,
   NetplanConfigWriter,
@@ -120,6 +121,41 @@ data srv4_unused_port: InterfaceObservation = InterfaceObservation {
   mac: "48:21:0b:87:2d:63",
   admin: AdminDownUnconfigured,
   carrier: CarrierUnobserved,
+}
+
+// THE BOOT NIC IS A FACT ABOUT A HOST, NOT A CONSTANT ANY MODULE MAY REACH FOR. A netboot edge
+// installs a SUBJECT host, and the client MAC the seed's instance-id derives from must be that
+// subject's own boot NIC — not whatever measured interface happens to be in scope at the call
+// site. This list is the fleet's answer to "which NIC does this host PXE from": one row per host
+// that netboots, keyed by the host identity from gunbc.fleet.fleet_host_identity, carrying the
+// observed InterfaceObservation (name AND mac) that the boot actually uses. srv4 is the only host
+// that netboots through an edge today, so srv4 is the only row; a host with no row is answered
+// Absent, and the routes that need a client MAC refuse rather than borrow one. srv3's ISO is
+// hand-delivered media and its NoCloudNet route has no measured boot-NIC row: that is a declared
+// gap, not an omission (see the srv3 frontier row in gunbc.provisioning.public_nocloud_seed).
+type BootNicAssignment {
+  host: HostIdentity
+  boot_nic: InterfaceObservation
+}
+
+data srv4_boot_nic_assignment: BootNicAssignment = BootNicAssignment {
+  host: operator_host_srv4,
+  // THE SAME MEASURED ROW the boot-chain and host_phase_status authorities cite: srv4's wired LAN
+  // NIC, observed on the LAN where the BMC edge serves. Naming it here is a statement of ROLE
+  // ("this is the NIC srv4 PXEs from"), not a second measurement.
+  boot_nic: srv4_lan_interface,
+}
+
+data boot_nic_inventory: List<BootNicAssignment> = [srv4_boot_nic_assignment]
+
+// THE ONE LOOKUP. Absent is an honest answer, not a failure of this function: a host nobody has
+// observed netbooting has no boot NIC, and callers must refuse in their own vocabulary.
+fn boot_nic_of(host: HostIdentity) -> Optional<InterfaceObservation> {
+  let rows = filter(boot_nic_inventory, a => host_identity_eq(a: a.host, b: host))
+  match rows.first() {
+    Present { value: a } => Present { value: a.boot_nic }
+    Absent => Absent
+  }
 }
 
 // THE forbidden inference, written as an executable declaration rather than a warning: if the

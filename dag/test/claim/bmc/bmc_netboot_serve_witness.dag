@@ -6,6 +6,7 @@ import std.algebra { list_append }
 import gunbc.provisioning.public_nocloud_seed {
   PublicSeedAdmitted
   PublicSeedRefused
+  SeedRenderRefused
   public_nocloud_seed_user_data
   public_nocloud_seed_meta_data
 }
@@ -17,8 +18,12 @@ import extdeps.exec.command {
   scp_command,
 }
 import extdeps.tools.mkdir { mkdir_parents_command_at }
+import extdeps.uri { Uri, Https }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.os_install { srv4_ubuntu_autoinstall_on_iso }
 import gunbc.bmc.bmc_netboot_serve {
-  srv4_bmc_netboot_serve_plan,
+  srv4_bmc_netboot_serve_plan
+  BmcNetbootServePlan,
   bmc_transport,
   bmc_path_resolved_mkdir_applet,
   bmc_netboot_grub_cfg_text,
@@ -203,6 +208,44 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
         && !string_contains(s: ud, pattern: "hostname:")
         && md == "instance-id: iid-48-21-0b-87-2d-64\n"
   }
+}
+
+// A PLAN MUST INSTALL ITS OWN SUBJECT — THE REFUSAL RED (merry-fox-82's side-chat ask). The client
+// MAC the seed's instance-id is keyed on is derived from the PLAN'S SUBJECT host through
+// gunbc.host.host_network_diagnosis.boot_nic_of — never hard-wired to srv4's interface row. This
+// fixture is the srv4 plan with ONE word changed: subject_host is srv1, a host with no boot-NIC
+// assignment in the inventory. The admission must REFUSE — it cannot name its client, and minting
+// an instance-id from another machine's MAC is exactly the wrong-machine seed the MAC-derived
+// instance-id exists to prevent. And it refuses BEFORE staging: the provisioning for this plan
+// carries no operations, so nothing reaches the wire.
+data foreign_subject_netboot_plan: BmcNetbootServePlan = BmcNetbootServePlan {
+  bmc_host: "192.168.1.195",
+  serve_port: 8080,
+  netboot_dir: "/tmp/netboot",
+  boot_interface: "eth2",
+  subject_host: operator_host_srv1,
+  bulk_iso_url: Uri {
+    scheme: Https,
+    locator: "releases.ubuntu.com/24.04/ubuntu-24.04.2-live-server-arm64.iso",
+  },
+  autoinstall: srv4_ubuntu_autoinstall_on_iso,
+}
+
+test fn a_plan_whose_subject_has_no_boot_nic_row_refuses() -> Bool {
+  match bmc_netboot_user_seed_admission(plan: foreign_subject_netboot_plan) {
+    PublicSeedAdmitted { seed: _ } => false
+    PublicSeedRefused { findings: f } =>
+      match f.head {
+        SeedRenderRefused { document: _, reason: r } =>
+          string_contains(s: r, pattern: "srv1")
+            && string_contains(s: r, pattern: "boot-NIC")
+        _ => false
+      }
+  }
+    && match bmc_netboot_provision_staging(plan: foreign_subject_netboot_plan) {
+      BmcNetbootStagingReady { operations: ops } => false
+      BmcNetbootStagingRefused { reason: _ } => true
+    }
 }
 
 // THE PROVISION REALIZES AS TWO ON-BMC COMMANDS, FOUR TRANSFERS, AND THREE STAGED TEXT PUTS --
