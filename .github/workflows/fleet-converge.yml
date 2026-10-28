@@ -3327,7 +3327,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 97
+    timeout-minutes: 114
     if: github.event.inputs.mode == 'approval_broker_dark_install' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3468,7 +3468,7 @@ jobs:
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_wet
-        timeout-minutes: 30
+        timeout-minutes: 47
   microvm-controller-install:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
