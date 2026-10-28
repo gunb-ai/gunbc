@@ -1752,6 +1752,32 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     claims: [
       SingleClaimFillDebtClaim { claim: "the_module_real_path_pairing_row_grounds_against_the_real_discovery", standing: ActiveFillDebt }
     ]
+  },
+  // THE WITNESS'S LIVE-ENTRY CLAIM, enrolled by identity on warm-wolf-570's ruling (gunbc#14575).
+  // `the_live_entry_exits_one_while_the_wet_lane_has_no_executor` calls the no-argument live entry
+  // `gunbc.claim_coverage_census_live claim_coverage_census_exit` and checks its exit number, so like
+  // the pairing row above it must run the census's fold over the checkout -- fixtures cannot vouch for
+  // what discovery can change. COST, recorded as a LOWER BOUND because the claim never FINISHED a run
+  // to measure: no verdict within a 3400s wall at head 8f7af1271081476ec2c2019db4d2d448c481ea52 and at
+  // fork-base 201fe0bd10da30ff0eeabaf2eabfc1b42f5e02f1 with the same head-built binary
+  // (claim_batch --features text_lookup_work_counter,interp_test_witness,test_hooks). The six sibling
+  // claims of the same file pass; the fold's cost is the interpreted marker channel, the same one the
+  // row above records. NO STEP COUNT IS ASSERTED -- a step count for a run that never ended would be
+  // fabricated, so this row carries the lower bound and the identity of the run instead.
+  // TRIGGER (the capability that retires this row, identical to the row above): the host-native marker
+  // read on the C4-E native route, so a scoped discovery costs file reads rather than interpreted
+  // parses. SEPARATE OPEN ITEM, kept on the record and NOT absorbed here: in one of seven attempts at
+  // the head tree (the v9 run, binary sha256 1dedddfd8aafa665592e5584fedabe91791b9ca2dc5ab9d56b49ea758debdaa9,
+  // 1800s timeout) the claim ended with `runtime error [type-error]: type error: call` at ~9 minutes,
+  // unplaced and unreproduced in six controlled re-attempts (including both trees and a call-chain
+  // instrumented binary). A budget wall should surface as a budget terminal, not a type error, so that
+  // observation is either a misclassified terminal or a real defect; it is triaged as its own row
+  // (unplaced, 1/7), not as this debt, and not as inherited -- placement is open.
+  SingleClaimFillDebtModule {
+    module: "test.claim.claim_coverage_census_witness",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "the_live_entry_exits_one_while_the_wet_lane_has_no_executor", standing: ActiveFillDebt }
+    ]
   }
 ]
 
