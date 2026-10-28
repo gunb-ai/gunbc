@@ -5,7 +5,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Optional, Present }
 import extdeps.cloud.gcp.iam { GcpIamBindingCell, GcpPolicy, gcp_cells_bindings, gcp_cell_in }
 import gunbc.auth.gcp_iam_converge {
-  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, SecretPolicy, SecretPolicyReading,
+  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable, PolicyReading, SecretPolicy, SecretPolicyReading,
   cell_preimage, fleet_roster_grants, gcp_iam_converge_grant_set_secrets, gcp_iam_converge_grant_sets,
   gcp_iam_converge_targets, grant_set_secrets, iam_observe_service_account, plan_grant_set,
 }
@@ -356,46 +356,78 @@ test fn the_post_run_proof_population_is_the_deltas_root_cell_population() -> Bo
     && count(proved) == count(iam_bootstrap_root_ceremony_bindings())
 }
 
-// THE PROOF REFUSES, IN THE DELTA'S OWN WORDS, WHEN A CELL IT OWNS IS NOT BOUND (both sides call the
-// cell through ceremony_cell_phrase, so one fact is one string); a fully bound reading is silent.
+// THE FIXTURES FOR THE POST-RUN PROOF BUILD A COMPLETE READING SET. The gate folds the WHOLE owned
+// population (ceremony_unestablished_cell_phrases looks up EVERY owned cell against the readings it is
+// handed), so a fixture that supplies readings for a single subject leaves every OTHER subject's cells
+// unestablished and the counts can never be what the claim asserts -- that is what the first run of
+// these three claims did, and it is the fixture being wrong, not the gate. Every subject's cells are
+// bound by default; the subject under test is overridden. Both journal cells ride the SAME bucket
+// subject, so an unbound/absent/unreadable bucket costs as many phrases as that subject has cells, and
+// the claims say so rather than quietly expecting one.
+fn owned_subjects() -> List<IamBootstrapResource> {
+  roster_subjects(roster: iam_bootstrap_ceremony_owned_cells())
+}
+
+fn cells_on(subject: IamBootstrapResource) -> List<IamBootstrapBinding> {
+  let k = iam_bootstrap_resource_key(resource: subject)
+  filter(iam_bootstrap_ceremony_owned_cells(), b => iam_bootstrap_resource_key(resource: b.resource) == k)
+}
+
+fn readings_with_all_cells_bound() -> List<CeremonySubjectReading> {
+  map(owned_subjects(), s =>
+    CeremonySubjectReading { subject: s, reading: PolicyObserved { policy: bound_policy(cells: cells_on(subject: s)) } })
+}
+
+fn readings_overriding(subject: IamBootstrapResource, override: PolicyReading) -> List<CeremonySubjectReading> {
+  let k = iam_bootstrap_resource_key(resource: subject)
+  map(owned_subjects(), s =>
+    if iam_bootstrap_resource_key(resource: s) == k {
+      CeremonySubjectReading { subject: s, reading: override }
+    } else {
+      CeremonySubjectReading { subject: s, reading: PolicyObserved { policy: bound_policy(cells: cells_on(subject: s)) } }
+    })
+}
+
+// THE PROOF REFUSES, IN THE DELTA'S OWN WORDS, WHEN A CELL IT OWNS IS NOT BOUND (both sides name the
+// cell through ceremony_cell_phrase, so one fact is one string); a fully bound estate is silent.
 test fn the_proof_names_an_unbound_cell_with_the_shared_phrase() -> Bool {
-  let cell = iam_bootstrap_journal_cells().first()
-  match cell {
+  match iam_bootstrap_journal_cells().first() {
     Present { value: b } => {
-      let bound = CeremonySubjectReading { subject: b.resource, reading: PolicyObserved { policy: GcpPolicy { bindings: gcp_cells_bindings(cs: [b.cell]), etag: "w", version: 1 } } }
-      let unbound = CeremonySubjectReading { subject: b.resource, reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "w", version: 1 } } }
-      count(ceremony_unestablished_cell_phrases(readings: [bound])) == 0
-      && ceremony_owned_proof_refusal(readings: [bound]) == ""
-      && ceremony_owned_proof_refusal(readings: [unbound]) != ""
-      && count(filter(ceremony_unestablished_cell_phrases(readings: [unbound]), p => p == ceremony_cell_phrase(b: b))) == 1
+      let unbound = readings_overriding(subject: b.resource, override: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "w", version: 1 } })
+      count(ceremony_unestablished_cell_phrases(readings: readings_with_all_cells_bound())) == 0
+      && ceremony_owned_proof_refusal(readings: readings_with_all_cells_bound()) == ""
+      && count(ceremony_unestablished_cell_phrases(readings: unbound)) == count(cells_on(subject: b.resource))
+      && ceremony_owned_proof_refusal(readings: unbound) != ""
+      && count(filter(ceremony_unestablished_cell_phrases(readings: unbound), p => p == ceremony_cell_phrase(b: b))) == 1
     }
     Absent => false
   }
 }
 
 // FAIL CLOSED: an unreadable policy and a never-read subject are both NOT established -- "no evidence
-// of absence" never means "present" (DESIGN section 5).
+// of absence" never means "present" (DESIGN section 5). The cause is named so an operator can tell
+// unreadable from unbound.
 test fn unreadable_or_unread_policies_are_not_established() -> Bool {
-  let cell = iam_bootstrap_journal_cells().first()
-  match cell {
+  match iam_bootstrap_journal_cells().first() {
     Present { value: b } => {
-      let unreadable = CeremonySubjectReading { subject: b.resource, reading: PolicyUnreadable { cause: "403" } }
-      count(ceremony_unestablished_cell_phrases(readings: [unreadable])) == 1
+      let unreadable = readings_overriding(subject: b.resource, override: PolicyUnreadable { cause: "403" })
+      count(ceremony_unestablished_cell_phrases(readings: unreadable)) == count(cells_on(subject: b.resource))
       && count(ceremony_unestablished_cell_phrases(readings: [])) == count(iam_bootstrap_ceremony_owned_cells())
-      && count(filter(ceremony_unestablished_cell_phrases(readings: [unreadable]), p => p == concat(ceremony_cell_phrase(b: b), " (policy unreadable: 403)"))) == 1
+      && count(filter(ceremony_unestablished_cell_phrases(readings: unreadable), p => p == concat(ceremony_cell_phrase(b: b), " (policy unreadable: 403)"))) == 1
     }
     Absent => false
   }
 }
 
-// AN ABSENT POLICY RESOURCE IS NOT ESTABLISHED either (the bucket stage must have created it first).
+// AN ABSENT POLICY RESOURCE IS NOT ESTABLISHED either -- the bucket stage has to create the bucket
+// before its cells can be bound, and a ceremony that skipped that stage must say so.
 test fn an_absent_policy_is_not_established() -> Bool {
-  let cell = iam_bootstrap_journal_cells().first()
-  match cell {
+  match iam_bootstrap_journal_cells().first() {
     Present { value: b } => {
-      let absent_reading = CeremonySubjectReading { subject: b.resource, reading: PolicyResourceAbsent }
-      count(ceremony_unestablished_cell_phrases(readings: [absent_reading])) == 1
-        && ceremony_owned_proof_refusal(readings: [absent_reading]) != ""
+      let absent = readings_overriding(subject: b.resource, override: PolicyResourceAbsent)
+      count(ceremony_unestablished_cell_phrases(readings: absent)) == count(cells_on(subject: b.resource))
+        && ceremony_owned_proof_refusal(readings: absent) != ""
+        && count(filter(ceremony_unestablished_cell_phrases(readings: absent), p => p == ceremony_cell_phrase(b: b))) == 1
     }
     Absent => false
   }
