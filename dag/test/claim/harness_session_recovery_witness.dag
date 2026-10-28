@@ -81,11 +81,11 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
       refusal.status == 400
         && (match validation_of(request: validated_request()) { SessionValidated => true SessionInterrupted { unrecorded_call_ids: _ } => false _ => false })
         && (match session_recovery_of_events(lines: recovery_lines(request: validated_request(), rounds: 38)) {
-          SessionRecoveryPending { causes, resumes_made, interrupted_calls, resume_round } =>
+          SessionRecoveryPending { causes, resumes_made, wakes_made: _, interrupted_calls, resume_round } =>
             resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
-          SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => false
+          SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => false
           SessionRecoveryMalformed { mismatch: _ } => false
         })
   }
@@ -219,7 +219,7 @@ fn decision_at(lines: List<String>, now: Int) -> ContinuationDecision {
 test fn patient_claim_a_pending_round_reads_as_a_standing_request() -> Bool {
   let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
   match pending_recovery(lines: lines) {
-    SessionRecoveryRequestPending { cause, since, re_deliveries, last_delivery_at, resumable, interrupted_calls: _, resume_round } =>
+    SessionRecoveryRequestPending { cause, since, re_deliveries, wakes_made, last_delivery_at, resumable, interrupted_calls: _, resume_round } =>
       resume_round == 12 && since == 1000 && re_deliveries == 0 && last_delivery_at == 1000 && resumable
         && cause.contains("503") && cause.contains("no TLS card") && cause.contains("it stands")
     _ => false
@@ -277,7 +277,7 @@ test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
   session_resume_bound == 3
     && all(outcomes, o => o == "resume" || o == "hold")
     && match pending_recovery(lines: ten_days) {
-      SessionRecoveryRequestPending { cause: _, since, re_deliveries, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
+      SessionRecoveryRequestPending { cause: _, since, re_deliveries, wakes_made: _, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
         since == 1000 && re_deliveries == 20 && last_delivery_at == 1000 + 20 * 43200
       _ => false
     }
@@ -293,7 +293,7 @@ test fn patient_claim_a_re_pend_keeps_the_windows_opening_instant() -> Bool {
     && session_request_pending_since_of(lines: first, round: 13, now: 5000) == 5000
     && session_request_redeliveries_of(lines: after_a_wake, round: 12) == 1
     && (match pending_recovery(lines: after_a_wake) {
-      SessionRecoveryRequestPending { cause: _, since, re_deliveries, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
+      SessionRecoveryRequestPending { cause: _, since, re_deliveries, wakes_made: _, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
         since == 1000 && re_deliveries == 1 && last_delivery_at == 1500
       _ => false
     })
@@ -323,7 +323,7 @@ test fn patient_claim_only_a_completed_round_clears_a_standing_request() -> Bool
   let woken = concat(lines, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1200)])
   let answered = concat(woken, ["\{\"type\":\"turn.completed\"}"])
   (match pending_recovery(lines: woken) {
-    SessionRecoveryRequestPending { cause: _, since: _, re_deliveries, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => re_deliveries == 1
+    SessionRecoveryRequestPending { cause: _, since: _, re_deliveries, wakes_made: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => re_deliveries == 1
     _ => false
   }) && (match pending_recovery(lines: answered) {
     SessionRecoveryNone => true
@@ -390,5 +390,45 @@ test fn patient_claim_a_pending_event_is_its_own_kind() -> Bool {
     // A resume of the S3 kind does NOT answer a standing pending request: the round is still owed its answer.
     SessionRecoveryNone => false
     _ => true
+  })
+}
+
+// CLAIM P-12 (the wake ordinals are ONE sequence). The exit spool keys a resumed worker's role record by
+// ordinal -- "worker-resumed-<n>" -- and two records at one ordinal are unreadable, so an attempt that took
+// S3 resumes and THEN went pending must not re-issue an ordinal an S3 resume already stamped. Both wake
+// kinds count into one sequence: the stream below holds two S3 resumes (the third recovery_needed is the
+// standing one, under the bound) and one recorded re-delivery of the pending round; the due re-delivery is
+// stamped 4, never 1. RED for a pending resume that counts only its own kind: an ordinal of re_deliveries + 1
+// stamps this stream 1, which the two S3 resumes already used.
+fn needed_line(round: Int) -> String {
+  match refusal_of(request: validated_request(), route_qualifies: true, body: "") {
+    Absent => ""
+    Present { value: refusal } => session_event_recovery_needed(round: round, refusal: refusal, validation: validation_of(request: validated_request()))
+  }
+}
+
+fn mixed_lines() -> List<String> {
+  let s3_lines = [
+    needed_line(round: 4),
+    session_event_resumed(ordinal: 1, round: 4, cause: "c1"),
+    needed_line(round: 5),
+    session_event_resumed(ordinal: 2, round: 5, cause: "c2"),
+    needed_line(round: 6),
+  ]
+  concat(concat(s3_lines, [session_event_request_pending(round: 6, cause: "the pool front answered 503 (no TLS card serving)", since: 1000, validation: validation_of(request: validated_request()))]), [session_event_request_redelivered(ordinal: 3, round: 6, at: 1015)])
+}
+
+test fn patient_claim_the_wake_ordinals_are_one_sequence_across_both_kinds() -> Bool {
+  (match session_recovery_of_events(lines: [needed_line(round: 4), session_event_resumed(ordinal: 1, round: 4, cause: "c1"), needed_line(round: 5), session_event_resumed(ordinal: 2, round: 5, cause: "c2"), needed_line(round: 6)]) {
+    // A standing S3 recovery beneath the bound: two resumes made, two wakes made.
+    SessionRecoveryPending { resumes_made, wakes_made, interrupted_calls: _, causes: _, resume_round: _ } => resumes_made == 2 && wakes_made == 2
+    _ => false
+  }) && (match pending_recovery(lines: mixed_lines()) {
+    // A standing pending request over the same stream: three wakes recorded, so the next re-delivery is 4.
+    SessionRecoveryRequestPending { cause: _, since: _, re_deliveries, wakes_made, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => re_deliveries == 1 && wakes_made == 3
+    _ => false
+  }) && (match decision_at(lines: mixed_lines(), now: 999999999) {
+    ContinuationResume { reason: _, attempt_key: _, ordinal, causes: _ } => ordinal == 4
+    _ => false
   })
 }

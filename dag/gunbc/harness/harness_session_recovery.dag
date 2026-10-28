@@ -414,8 +414,11 @@ fn session_event_resumed(ordinal: Int, round: Int, cause: String) -> String {
 // member and no deadline to read, because no clock ends a delivered request.
 type SessionRecovery
   = SessionRecoveryNone
-  | SessionRecoveryPending { causes: List<String>, resumes_made: Int, interrupted_calls: List<String>, resume_round: Int }
-  | SessionRecoveryRequestPending { cause: String, since: Int, re_deliveries: Int, last_delivery_at: Int, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
+  | SessionRecoveryPending { causes: List<String>, resumes_made: Int, wakes_made: Int, interrupted_calls: List<String>, resume_round: Int }
+  // THE WAKE ORDINALS ARE ONE SEQUENCE ACROSS BOTH KINDS (S3 resumes and re-deliveries): the exit spool keys
+  // a resumed worker's role record by ordinal, and two records at one ordinal are unreadable. Both variants
+  // carry the total wakes already recorded, and both the belt and the worker stamp ordinal = wakes_made + 1.
+  | SessionRecoveryRequestPending { cause: String, since: Int, re_deliveries: Int, wakes_made: Int, last_delivery_at: Int, resumable: Bool, interrupted_calls: List<String>, resume_round: Int }
   | SessionRecoveryMalformed { mismatch: String }
 
 type SessionRecoveryEvent
@@ -482,7 +485,8 @@ fn session_bool_member(v: JsonValue, key: String) -> SessionBool {
         JsonObject { members: _ } => SessionBoolMalformed { mismatch: join(["member ", key, " is an object, not a boolean"], "") }
       }
     JsonMemberAbsent => SessionBoolMalformed { mismatch: join(["member ", key, " is absent"], "") }
-    JsonMemberDuplicated { key: k } => SessionBoolMalformed { mismatch: join(["member ", k, " is duplicated"], "") }
+    JsonMemberDuplicated { count: _ } => SessionBoolMalformed { mismatch: join(["member ", key, " appears more than once"], "") }
+    JsonMemberNotAnObject => SessionBoolMalformed { mismatch: join(["the value carrying member ", key, " is not an object"], "") }
   }
 }
 
@@ -594,6 +598,7 @@ type SessionRecoveryScan {
   pending: SessionRecoveryEvent?
   s3_causes: List<String>
   s3_resumed: Int
+  redelivered: Int
 }
 
 fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent) -> SessionRecoveryScan {
@@ -603,15 +608,20 @@ fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent)
         pending: Present { value: RecoveryEventNeeded { cause: cause, round: round, interrupted_calls: interrupted_calls } },
         s3_causes: concat(acc.s3_causes, [cause]),
         s3_resumed: acc.s3_resumed,
+        redelivered: acc.redelivered,
       }
     RecoveryEventRequestPending { cause, round, interrupted_calls, since, resumable } =>
       SessionRecoveryScan {
         pending: Present { value: RecoveryEventRequestPending { cause: cause, round: round, interrupted_calls: interrupted_calls, since: since, resumable: resumable } },
         s3_causes: acc.s3_causes,
         s3_resumed: acc.s3_resumed,
+        redelivered: acc.redelivered,
       }
-    RecoveryEventRequestRedelivered { round: _, at: _ } => acc
-    RecoveryEventCompleted => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed }
+    // A RE-DELIVERY IS A WAKE: it joins the ordinal sequence the exit spool keys role records by, so the
+    // scan counts it beside the S3 resumes, whatever stands pending beneath it.
+    RecoveryEventRequestRedelivered { round: _, at: _ } =>
+      SessionRecoveryScan { pending: acc.pending, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed, redelivered: acc.redelivered + 1 }
+    RecoveryEventCompleted => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed, redelivered: acc.redelivered }
     // AN S3 RESUME ANSWERS AN S3 NEED, NOT A DELIVERED REQUEST: a standing pending round is owed an answer
     // (turn.completed), and an S3 resume of a different refusal cannot be that answer.
     RecoveryEventResumed => SessionRecoveryScan {
@@ -621,6 +631,7 @@ fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent)
       },
       s3_causes: acc.s3_causes,
       s3_resumed: acc.s3_resumed + 1,
+      redelivered: acc.redelivered,
     }
     RecoveryEventOther => acc
     RecoveryEventMalformed { mismatch: _ } => acc
@@ -628,13 +639,13 @@ fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent)
 }
 
 fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> SessionRecovery {
-  let scan = fold(events, init: SessionRecoveryScan { pending: none, s3_causes: [], s3_resumed: 0 }, f: (acc, e) => session_recovery_scan_step(acc: acc, e: e))
+  let scan = fold(events, init: SessionRecoveryScan { pending: none, s3_causes: [], s3_resumed: 0, redelivered: 0 }, f: (acc, e) => session_recovery_scan_step(acc: acc, e: e))
   match scan.pending {
     Absent => SessionRecoveryNone
     Present { value: latest } =>
       match latest {
         RecoveryEventNeeded { cause: _, round, interrupted_calls } =>
-          SessionRecoveryPending { causes: scan.s3_causes, resumes_made: scan.s3_resumed, interrupted_calls: interrupted_calls, resume_round: round }
+          SessionRecoveryPending { causes: scan.s3_causes, resumes_made: scan.s3_resumed, wakes_made: scan.s3_resumed + scan.redelivered, interrupted_calls: interrupted_calls, resume_round: round }
         RecoveryEventRequestPending { cause, round, interrupted_calls, since: _, resumable } =>
           session_request_pending_recovery(
             events: events,
@@ -642,8 +653,14 @@ fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> Sessio
             round: round,
             interrupted_calls: interrupted_calls,
             resumable: resumable,
+            wakes_made: scan.s3_resumed + scan.redelivered,
           )
         RecoveryEventResumed => SessionRecoveryNone
+        // A RE-DELIVERY IS A WAKE MARKER, NEVER A STANDING RECORD: the scan keeps the pending event beneath it
+        // as the standing one. A stream that reads otherwise names a wake with no request beneath it, and
+        // neither a resume nor an ending is established from that.
+        RecoveryEventRequestRedelivered { round: r, at: _ } =>
+          SessionRecoveryMalformed { mismatch: join(["a re-delivery was recorded as the standing record for round ", to_string(value: r), " with no pending request beneath it"], "") }
         RecoveryEventCompleted => SessionRecoveryNone
         RecoveryEventOther => SessionRecoveryNone
         RecoveryEventMalformed { mismatch: _ } => SessionRecoveryNone
@@ -676,7 +693,7 @@ fn session_request_redeliveries_for(events: List<SessionRecoveryEvent>, round: I
 // re-deliveries are the belt's recorded wakes the schedule doubles from, and the last delivery instant is
 // the latest of them -- or the window's opening, when the round has never been re-delivered and its own
 // worker delivered it before finding it unserved.
-fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: String, round: Int, interrupted_calls: List<String>, resumable: Bool) -> SessionRecovery {
+fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: String, round: Int, interrupted_calls: List<String>, resumable: Bool, wakes_made: Int) -> SessionRecovery {
   let window = session_request_pending_since_for(events: events, round: round)
   let stamps = events |> flat_map(e => match e {
     RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] as List<Int> }
@@ -687,6 +704,7 @@ fn session_request_pending_recovery(events: List<SessionRecoveryEvent>, cause: S
     cause: cause,
     since: window,
     re_deliveries: count(stamps),
+    wakes_made: wakes_made,
     last_delivery_at: if latest > 0 { latest } else { window },
     resumable: resumable,
     interrupted_calls: interrupted_calls,

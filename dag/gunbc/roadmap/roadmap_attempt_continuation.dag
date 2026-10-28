@@ -129,9 +129,9 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
       ContinuationRefused {
         reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
       }
-    SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
-      continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, last_delivery_at: last_delivery_at, interrupted: interrupted)
-    SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
+    SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
+      continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, interrupted: interrupted)
+    SessionRecoveryPending { causes: causes, resumes_made: made, wakes_made: wakes, interrupted_calls: interrupted, resume_round: _ } =>
       if list_length(items: interrupted) > 0 {
         ContinuationHold {
           reason: join([
@@ -148,7 +148,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
         ContinuationResume {
           reason: join(["the prior attempt ", prior.attempt_key, " stopped at a validated state and is resumed in its own session, resume ", to_string(value: made + 1), " of ", to_string(value: session_resume_bound), "; cause: ", join(causes, " | ")], ""),
           attempt_key: prior.attempt_key,
-          ordinal: made + 1,
+          ordinal: wakes + 1,
           causes: causes,
         }
       }
@@ -166,7 +166,7 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
 // an ending would fail the witness that says so). An interrupted tool effect keeps the unchanged rule:
 // Hold, until that effect's outcome is established. A sweep that could not read the clock Holds naming
 // that -- a re-delivery instant cannot be guessed at, and refusing the instant is not ending the request.
-fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: Int, re_deliveries: Int, last_delivery_at: Int, interrupted: List<String>) -> ContinuationDecision {
+fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: Int, re_deliveries: Int, wakes_made: Int, last_delivery_at: Int, interrupted: List<String>) -> ContinuationDecision {
   if list_length(items: interrupted) > 0 {
     ContinuationHold {
       reason: join([
@@ -186,7 +186,7 @@ fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, si
             reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is due: the same round of its own session is RE-DELIVERED (re-delivery ", to_string(value: re_deliveries + 1),
               ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending ", to_string(value: now - since), " seconds ago: ", cause], ""),
             attempt_key: prior.attempt_key,
-            ordinal: re_deliveries + 1,
+            ordinal: wakes_made + 1,
             causes: [cause],
           }
         } else {

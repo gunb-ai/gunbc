@@ -1832,6 +1832,31 @@ fn harness_turn_after_post(
                   HarnessEventsWritten => TurnTransportRefused { detail: join(["the pool front's certificate did not verify for its host (curl exit ", to_string(value: x), "; the chain or a missing IP SAN, not a different certificate); the request was refused in the handshake and no byte of it was sent"], "") }
                 }
               }
+              // THE FRONT'S TYPED 503/502/429 THAT REACHED HERE ARE UNREADABLE RESPONSES NO CLASSIFIER CAN
+              // VOUCH FOR: the pending reading needs the response itself, and a typed fault on a body no one
+              // can re-read is not evidence of an unserved request. It stops visibly, as every other
+              // unreadable response does -- a request that cannot be read is not a request that was delivered.
+              Present { value: OperatorNoCapacity } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (503, no TLS card serving) on a response no one can re-read: ", c], "") }
+                }
+              }
+              Present { value: OperatorCardUnanswered } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (502, the card did not answer) on a response no one can re-read: ", c], "") }
+                }
+              }
+              Present { value: OperatorUpstreamsBusy } => {
+                let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+                match harness_write_events(config: config, events: failed) {
+                  HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+                  HarnessEventsWritten => TurnTransportRefused { detail: join(["the front typed a busy status (429, every compatible upstream busy) on a response no one can re-read: ", c], "") }
+                }
+              }
               Absent =>
             match posted_round.unexplained {
               Present { value: refusal } => {
@@ -2235,19 +2260,19 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
     match session_recovery_of_events(lines: lines) {
       SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
       SessionRecoveryMalformed { mismatch: mismatch } => TurnResumeRefused { cause: join(["the session's recovery record is unreadable, so it is not resumable: ", mismatch], "") }
-      SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: woken, last_delivery_at: _, resumable: _, interrupted_calls: interrupted, resume_round: round } =>
+      SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, wakes_made: wakes, last_delivery_at: _, resumable: _, interrupted_calls: interrupted, resume_round: round } =>
         match now_epoch_seconds() {
           // THE RE-DELIVERY IS STAMPED AT THE INSTANT THE WORKER ARRIVES (the belt delivered by spawning it).
           // An unstamped re-delivery cannot feed the schedule, so this one refuses visibly and the request
           // simply stays pending: the belt re-delivers it on its next sweep. Nothing here ends a request.
           Absent => TurnResumeRefused { cause: "the clock could not be read as epoch seconds, so this re-delivery of the pending round could not be stamped; the request still stands pending and the belt re-delivers it on its next sweep" }
-          Present { value: now } => harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_request_redelivered(ordinal: woken + 1, round: round, at: now))
+          Present { value: now } => harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_request_redelivered(ordinal: wakes + 1, round: round, at: now))
         }
-      SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: round } =>
+      SessionRecoveryPending { causes: causes, resumes_made: made, wakes_made: wakes, interrupted_calls: interrupted, resume_round: round } =>
         if made >= session_resume_bound {
           TurnResumeRefused { cause: join(["the session has already been resumed ", to_string(value: made), " times, the bound; causes: ", join(causes, " | ")], "") }
         } else {
-          harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_resumed(ordinal: made + 1, round: round, cause: join(causes, " | ")))
+          harness_resume_from_round(config: config, step_budget: step_budget, prior_content: prior.content, round: round, interrupted: interrupted, resumed_event: session_event_resumed(ordinal: wakes + 1, round: round, cause: join(causes, " | ")))
         }
     }
   }
