@@ -1,0 +1,200 @@
+module test.claim.serving.serving_benchmark_telemetry_witness
+
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.types { Bool, String, List, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.measure {
+  microsecond, microsecond_count, milliwatt, milliwatt_count, hertz, hertz_count, celsius, celsius_count, bandwidth, bandwidth_count, mebibyte, mebibyte_count,
+}
+import extdeps.filesystem.filesystem_io
+import extdeps.storage.types { Gen4 }
+import extdeps.nvidia.management_library { NvmlClocksEventGpuIdle, NvmlClocksEventSwPowerCap, NvmlClocksEventSwThermalSlowdown }
+import extdeps.nvidia.system_management_interface {
+  NvidiaSmiGpuIdentity, NvidiaSmiGpuSample, NvidiaSmiPcieSample, NvidiaSmiIdentityRowsParsed, NvidiaSmiIdentityRowUnparsed, NvidiaSmiSampleRowsParsed, NvidiaSmiSampleRowUnparsed, NvidiaSmiPcieRowsParsed, NvidiaSmiPcieRowUnparsed, NvidiaSmiMemoryUsedRowsParsed, NvidiaSmiMemoryUsedRowUnparsed,
+  nvidia_smi_identity_rows, nvidia_smi_sample_rows, nvidia_smi_dmon_pcie_rows, nvidia_smi_memory_used_rows,
+}
+import gunbc.serving.serving_benchmark_run_receipt { WallPowerUnmetered, LevelTelemetry, GpuLevelTelemetry }
+import gunbc.serving.serving_benchmark_telemetry { serving_benchmark_level_telemetry, observed_gpu }
+import gunbc.fleet.fleet_job_principal { job_principal_reading, JobPrincipalAdmitted, JobPrincipalRefused }
+import test.claim.serving.serving_benchmark_run_receipt_witness { fx_version, fx_prime, fx_level_1, fx_level_2, rows }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE SAMPLER READERS AGAINST WHAT srv3'S DRIVER PRINTS. Raw captures from srv3 (2x RTX 2000 Ada, driver
+// 595.91.07, 2026-10-25 06:29 UTC, the pool idle): gunbc-private tools/gpu-bench/captures/srv3-2026-10-25,
+// sections copied byte for byte. They pin the readers to the real format, including the case that cost a
+// round trip to find: in query mode `-c` is refused with an error that names the field list, so an error
+// line must refuse the read and never count as zero samples.
+
+data capture_dir: String = "fixtures/serving_benchmark/srv3_captures_2026_10_25/"
+
+fn capture(name: String) -> String {
+  filesystem_read(path: join([capture_dir, name], "")).content
+}
+
+test fn srv3_identity_reads_both_ada_cards() -> Bool {
+  match nvidia_smi_identity_rows(text: capture(name: "query_gpu_identity.csv")) {
+    NvidiaSmiIdentityRowUnparsed { line: _ } => false
+    NvidiaSmiIdentityRowsParsed { rows: gs } =>
+      count(gs) == 2 && match first(gs) {
+        Absent => false
+        Present { value: g } =>
+          g.index == 0
+            && (g.uuid as String) == "GPU-18d7308a-e1fe-ffe6-c8e2-93c1d19b2b45"
+            && (g.vbios as String) == "95.07.4D.00.05"
+            && (g.driver as String) == "595.91.07"
+            && mebibyte_count(m: g.memory_total) == 16380
+            && milliwatt_count(w: g.power_limit) == 70000
+            && match observed_gpu(row: g) {
+              Absent => false
+              Present { value: o } => match o.link_max.generation { Gen4 => o.link_max.lane_count == 8, _ => false }
+            }
+      }
+  }
+}
+
+test fn srv3_samples_read_with_utc_timestamps_and_the_idle_mask() -> Bool {
+  match nvidia_smi_sample_rows(text: capture(name: "query_gpu_samples_lms500.csv")) {
+    NvidiaSmiSampleRowUnparsed { line: _ } => false
+    NvidiaSmiSampleRowsParsed { rows: ss } =>
+      count(ss) == 12 && match first(ss) {
+        Absent => false
+        // 2026/10/25 06:29:44.531 UTC; 6.99 W; 210 MHz SM; mask 0x1, GPU idle; an idle link at gen 1 x8
+        Present { value: s } =>
+          microsecond_count(m: s.at_unix) == 1792909784531000
+            && milliwatt_count(w: s.power_draw) == 6990
+            && hertz_count(h: s.sm_clock) == 210000000
+            && s.clocks_event_mask == 1
+            && s.link_generation == 1
+            && s.link_width == 8
+      }
+  }
+}
+
+test fn the_count_option_error_refuses_the_read() -> Bool {
+  match nvidia_smi_sample_rows(text: "ERROR: Option --query-gpu=timestamp,uuid is not recognized. Please run 'nvidia-smi -h' for help.\n") {
+    NvidiaSmiSampleRowUnparsed { line: _ } => true
+    NvidiaSmiSampleRowsParsed { rows: _ } => false
+  }
+}
+
+test fn srv3_dmon_reads_pcie_rows_and_skips_its_headers() -> Bool {
+  match nvidia_smi_dmon_pcie_rows(text: capture(name: "dmon_pcie.txt")) {
+    NvidiaSmiPcieRowUnparsed { line: _ } => false
+    NvidiaSmiPcieRowsParsed { rows: ps } =>
+      count(ps) == 6 && match first(ps) {
+        Absent => false
+        Present { value: p } => p.index == 0 && microsecond_count(m: p.at_unix) == 1792909763000000 && bandwidth_count(b: p.rx) == 0
+      }
+  }
+}
+
+// ── THE FOLD ONTO LEVELS, OVER SUPPLIED SAMPLES ─────────────────────────────────────────────────
+//
+// The receipt witness's run (levels 1 and 2; level 1 runs 230.00-251.46 s, level 2 260.0-301.0 s on
+// the clock its lines carry) with two GPUs sampled under load. Each sample is placed by its instant: one
+// sample sits in the gap between the levels and must count for neither.
+
+fn gpu(index: Nat, uuid: String) -> NvidiaSmiGpuIdentity {
+  NvidiaSmiGpuIdentity {
+    index: index, uuid: uuid as NonEmptyStr, name: "NVIDIA RTX 2000 Ada Generation" as NonEmptyStr, vbios: "95.07.4D.00.05" as NonEmptyStr,
+    driver: "595.91.07" as NonEmptyStr, memory_total: mebibyte(count: 16380), power_limit: milliwatt(count: 70000), link_generation_max: 4, link_width_max: 8,
+  }
+}
+
+fn sample(at_s: Nat, uuid: String, watts_milli: Nat, temp: Nat, mask: Nat, gen: Nat) -> NvidiaSmiGpuSample {
+  NvidiaSmiGpuSample {
+    at_unix: microsecond(count: at_s * 1000000), uuid: uuid as NonEmptyStr, power_draw: milliwatt(count: watts_milli),
+    sm_clock: hertz(count: 2400000000), memory_clock: hertz(count: 8001000000), temperature: celsius(count: temp),
+    clocks_event_mask: mask, link_generation: gen, link_width: 8,
+  }
+}
+
+fn pcie(at_s: Nat, index: Nat, rx_mb: Nat) -> NvidiaSmiPcieSample {
+  NvidiaSmiPcieSample { at_unix: microsecond(count: at_s * 1000000), index: index, rx: bandwidth(count: rx_mb * 1000000), tx: bandwidth(count: 40000000) }
+}
+
+data fx_gpus: List<NvidiaSmiGpuIdentity> = [gpu(index: 0, uuid: "GPU-a"), gpu(index: 1, uuid: "GPU-b")]
+
+data fx_samples: List<NvidiaSmiGpuSample> = [
+  sample(at_s: 235, uuid: "GPU-a", watts_milli: 60000, temp: 70, mask: 4, gen: 4),
+  sample(at_s: 245, uuid: "GPU-a", watts_milli: 66000, temp: 74, mask: 32, gen: 4),
+  sample(at_s: 240, uuid: "GPU-b", watts_milli: 50000, temp: 60, mask: 0, gen: 4),
+  sample(at_s: 255, uuid: "GPU-a", watts_milli: 10000, temp: 40, mask: 1, gen: 1),
+  sample(at_s: 280, uuid: "GPU-a", watts_milli: 68000, temp: 76, mask: 4, gen: 4),
+  sample(at_s: 280, uuid: "GPU-b", watts_milli: 30000, temp: 55, mask: 1, gen: 1),
+]
+
+data fx_pcie: List<NvidiaSmiPcieSample> = [pcie(at_s: 240, index: 0, rx_mb: 800), pcie(at_s: 241, index: 0, rx_mb: 1000), pcie(at_s: 240, index: 1, rx_mb: 200), pcie(at_s: 280, index: 0, rx_mb: 500), pcie(at_s: 280, index: 1, rx_mb: 100)]
+
+fn level(ts: List<LevelTelemetry>, active: Nat) -> LevelTelemetry? {
+  first(ts |> filter(t => t.active == active))
+}
+
+fn gpu_of(t: LevelTelemetry, uuid: String) -> GpuLevelTelemetry? {
+  first(t.gpus |> filter(g => (g.uuid as String) == uuid))
+}
+
+data fx_telemetry_levels: List<LevelTelemetry> = serving_benchmark_level_telemetry(
+  version: fx_version, requests: rows(text: join([fx_prime, fx_level_1, fx_level_2], "")), gpus: fx_gpus, samples: fx_samples, pcie: fx_pcie, wall_power: WallPowerUnmetered,
+)
+
+test fn level_one_folds_only_the_samples_inside_its_window() -> Bool {
+  match level(ts: fx_telemetry_levels, active: 1) {
+    Absent => false
+    Present { value: t } => count(t.gpus) == 2 && match gpu_of(t: t, uuid: "GPU-a") {
+      Absent => false
+      // 60 W and 66 W inside 230-251.46 s; the 10 W idle sample at 255 s is between levels
+      Present { value: g } =>
+        milliwatt_count(w: g.power_mean) == 63000
+          && milliwatt_count(w: g.power_peak) == 66000
+          && celsius_count(c: g.temperature_peak) == 74
+          && count(g.clocks_events.reasons) == 2
+          && any(g.clocks_events.reasons, r => match r { NvmlClocksEventSwPowerCap => true, _ => false })
+          && any(g.clocks_events.reasons, r => match r { NvmlClocksEventSwThermalSlowdown => true, _ => false })
+          && bandwidth_count(b: g.pcie_rx_mean) == 900000000
+    }
+  }
+}
+
+// GPU-b's only level-two sample shows an idle gen-1 link: the reader admits only Gen3-Gen5, so that GPU has no
+// reading at level two rather than a generation the driver did not print, and admission will name it.
+test fn a_gpu_whose_link_never_trained_has_no_level_reading() -> Bool {
+  match level(ts: fx_telemetry_levels, active: 2) {
+    Absent => false
+    Present { value: t } => count(t.gpus) == 1 && match gpu_of(t: t, uuid: "GPU-b") { Absent => true, Present { value: _ } => false }
+  }
+}
+
+// ── THE JOB PRINCIPAL AND THE GPU MEMORY SNAPSHOT, over supplied text ───────────────────────────
+
+data fx_group_file: String = "root:x:0:\ndocker:x:998:ubuntu\nghrunner:x:999:\n"
+
+test fn a_principal_in_only_its_own_group_is_admitted() -> Bool {
+  match job_principal_reading(status: "Name:\tgunbc\nUid:\t999\t999\t999\t999\nGid:\t999\t999\t999\t999\nGroups:\t999 \n", group_file: fx_group_file) {
+    JobPrincipalRefused { reason: _ } => false
+    JobPrincipalAdmitted { effective_uid: u, gids: gs, groups: ns } => u == 999 && count(gs) == 1 && any(ns, n => (n as String) == "ghrunner")
+  }
+}
+
+test fn a_principal_in_the_docker_group_is_refused() -> Bool {
+  match job_principal_reading(status: "Uid:\t999\t999\t999\t999\nGroups:\t998 999 \n", group_file: fx_group_file) {
+    JobPrincipalAdmitted { effective_uid: _, gids: _, groups: _ } => false
+    JobPrincipalRefused { reason: r } => string_contains(s: r, pattern: "root-equivalent group(s): docker")
+  }
+}
+
+test fn a_group_the_file_cannot_name_is_refused() -> Bool {
+  match job_principal_reading(status: "Uid:\t999\t999\t999\t999\nGroups:\t999 4242\n", group_file: fx_group_file) {
+    JobPrincipalAdmitted { effective_uid: _, gids: _, groups: _ } => false
+    JobPrincipalRefused { reason: r } => string_contains(s: r, pattern: "gid 4242")
+  }
+}
+
+test fn gpu_memory_used_rows_read_per_gpu() -> Bool {
+  match nvidia_smi_memory_used_rows(text: "GPU-a, 512\nGPU-b, 2048\n") {
+    NvidiaSmiMemoryUsedRowUnparsed { line: _ } => false
+    NvidiaSmiMemoryUsedRowsParsed { rows: rs } => count(rs) == 2 && any(rs, r => (r.uuid as String) == "GPU-b" && mebibyte_count(m: r.used) == 2048)
+  }
+}

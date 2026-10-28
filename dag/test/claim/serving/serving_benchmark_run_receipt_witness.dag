@@ -8,8 +8,11 @@ import std.content_hash { Sha256Digest }
 import std.measure {
   token_count, token_count_value, byte_size, mebibyte, milliwatt, hertz, celsius, bandwidth, millicore, cpu_core_count,
   hardware_thread_count, millisecond, basis_point, microsecond_count, milli_tokens_per_second_count, events_per_hour_count, millicore_count, byte_size_count,
-  positive_slot_count, positive_measure_count,
+  positive_slot_count, positive_measure_count, second, second_count,
 }
+import std.materialization_ladder { string_list_contains }
+import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
+import extdeps.http.client { http_client_probe_status_arguments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import extdeps.linux.proc_cpuinfo { CpuArmMidr }
 import extdeps.uri { Uri, Https }
@@ -57,6 +60,8 @@ data fx_version: ServingBenchmarkVersion = ServingBenchmarkVersion {
   },
   quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
   telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+  gpu_sample_interval: millisecond(count: 500),
+  pcie_sample_interval: second(count: 1),
 }
 
 // The run, in seconds on the client's wall clock. Primes 199,466 and 199,500 tokens; each follow-up's
@@ -361,6 +366,8 @@ data fx_version_with_warmup: ServingBenchmarkVersion = ServingBenchmarkVersion {
   },
   quantities: [AggregateEndToEnd, DecodeRate, CompletedTurnsPerHour],
   telemetry: [GpuPower, GpuClocks, GpuTemperature, GpuClocksEventReasons, GpuPcieLinkAndThroughput, EngineCpuBusyThreads, EngineCgroupMemoryCurrent, WallPower],
+  gpu_sample_interval: millisecond(count: 500),
+  pcie_sample_interval: second(count: 1),
 }
 
 // The fixture run has one round per level, so a version demanding a warm-up round before each measured
@@ -383,4 +390,30 @@ test fn the_short_run_is_its_own_version_at_one_level() -> Bool {
     && token_count_value(t: w.max_output) == token_count_value(t: serving_benchmark_v1.workload.max_output)
     && token_count_value(t: w.tool_delta) == token_count_value(t: serving_benchmark_v1.workload.tool_delta)
     && token_count_value(t: w.retained_context) == token_count_value(t: serving_benchmark_v1.workload.retained_context)
+}
+
+// THE READINESS PROBE IS RENDERED FROM CARRIERS, NOT SPELLED AS STRINGS (review 86842). The poll
+// policy — 900 tries, 2 s apart, 10 s per request — is pinning of the cell plan, and the argv is
+// rendered by extdeps.http.client from it. A red here means someone moved the durations out of
+// std.measure and back into literals, or changed the wait bound without changing the plan.
+test fn the_readiness_probe_renders_the_pinned_poll_policy() -> Bool {
+  let args = http_client_probe_status_arguments(
+    url: "http://127.0.0.1:8000/v1/models",
+    attempts: srv3_strata_ada_pair_plan.readiness_attempts,
+    delay: srv3_strata_ada_pair_plan.readiness_delay,
+    max_time: srv3_strata_ada_pair_plan.readiness_max_time
+  )
+  srv3_strata_ada_pair_plan.readiness_attempts == 900
+    && second_count(s: srv3_strata_ada_pair_plan.readiness_delay) == 2
+    && second_count(s: srv3_strata_ada_pair_plan.readiness_max_time) == 10
+    && string_list_contains(xs: args, wanted: "--retry")
+    && string_list_contains(xs: args, wanted: "900")
+    && string_list_contains(xs: args, wanted: "--retry-delay")
+    && string_list_contains(xs: args, wanted: "2")
+    && string_list_contains(xs: args, wanted: "--retry-all-errors")
+    && string_list_contains(xs: args, wanted: "--max-time")
+    && string_list_contains(xs: args, wanted: "10")
+    && string_list_contains(xs: args, wanted: "-w")
+    && string_list_contains(xs: args, wanted: "%\{http_code\}")
+    && string_list_contains(xs: args, wanted: "http://127.0.0.1:8000/v1/models")
 }

@@ -335,7 +335,7 @@ fn dre_same_leaf_resolved() -> ResolvedTree {
     root: call.root,
     symbol_index: call.symbol_index,
     resolved_declarations: symbol_index_insert(index: call.resolved_declarations, qualified_path: [^p, ^Wrap], resolved: dre_same_leaf_wrap_declaration()),
-    occurrence_bindings: call.occurrence_bindings, duplicate_binding_records: call.duplicate_binding_records,
+    occurrence_resolutions: call.occurrence_resolutions, duplicate_binding_records: call.duplicate_binding_records,
     module_outcomes: call.module_outcomes, outcome_index: call.outcome_index,
     member_kinds: no_member_declaration_kinds(),
     type_declaration_modifiers: type_declaration_modifiers_covering_no_modules(),

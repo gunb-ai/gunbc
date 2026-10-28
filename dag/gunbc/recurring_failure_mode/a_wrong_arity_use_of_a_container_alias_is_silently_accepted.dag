@@ -1,0 +1,29 @@
+module gunbc.recurring_failure_mode.a_wrong_arity_use_of_a_container_alias_is_silently_accepted
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_wrong_arity_use_of_a_container_alias_is_silently_accepted: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_wrong_arity_use_of_a_container_alias_is_silently_accepted" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "resolve decides every type use's arity from the declaration it resolves to, container-family uses included" } },
+
+  receipts: [
+    "INVALID STATE: a use of a parameterized container alias with the wrong number of type arguments is ACCEPTED with no diagnostic. A module importing std.types Map (`type Map<key, value> = FinitelySupportedFunction<key, value>`, two parameters) that writes `fn f(m: Map<String>) -> Map<String> { m }` compiles clean: exit 0, 0 blocking errors, no TypeArgumentArityMismatch.",
+
+    "MEASURED, two bases, the same module compiled against the real corpus (`gunbc compile --source-root dag --source-root src/v2 --entry` a scratch test.claim module): main 507e4131069 (gunbc sha256 d75dfdb9e556935d1d0e712c01507e1e7f83b16b81fe5e515f1862cd9c2df25a) and PR #15118 head 525985c9c40 (sha256 757d480a305f45388d4e7043911a9300f2f621880be20a684c3735a071d87d79) both exit 0 with 0 blocking. Pre-existing on main, so it is not caused by #15118, whose own fallback (an alias that cannot be substituted settles to its own declaration) neither creates nor hides it.",
+
+    "DISTINGUISHING FACTS: `v1.compiler.infer` `alias_chain_arity_diagnostics` returns [] for any carrier for which `is_container_type(name)` holds, and a std.types Map use takes `v1.compiler.resolve` `resolve_node_bounded`'s kernel-container arm. That arm mints the keyed container from the use's own children and never asks the declaration's parameter count. So the arity refusal is keyed on the leaf spelling being a container name, not on the resolved declaration: the same class as gunbc.recurring_failure_mode emitter_keyed_container_lowering_is_keyed_by_leaf_spelling, at the arity question.",
+
+    "HARM: an under-applied Map / List / Set reaches typecheck and emission with a missing argument and is filled by whatever the kernel arm and downstream inference produce, a silent widen (DESIGN 5) where the ordinary compiler floor (DESIGN 4b: applications bind in exact bijection) requires a located refusal.",
+
+    "RUNG FOUND AT: below the ladder (silent). CEILING: structurally guaranteed: the arity follows the resolved declaration at every use site. NEXT-RUNG TRIGGER: smart-tern-402's `is_user_generic_use_site` fix (the resolved declaration decides whether a use takes the kernel-container path, never the spelling), which carries the RED `a_wrong_arity_use_of_a_parameterized_alias_refuses_located` (a `Map<String>` use refuses with the located TypeArgumentArityMismatch), moved there from #15118 by tidy-ant-251's ruling of 2026-10-25."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "std.types", decl_name: "Map", field: WholeDeclaration },
+  ],
+}

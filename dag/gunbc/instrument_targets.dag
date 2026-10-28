@@ -52,7 +52,7 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceResolutionReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
   NativeCensusVerbProducer,
   SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
@@ -310,7 +310,7 @@ fn type_declaration_use_census_label() -> Label {
 // THE OCCURRENCE-BINDING CENSUS THE NAMESPACE-XL WAVES ARE DRIVEN FROM (operator ruling 2026-10-15:
 // every name the corpus uses is an ordinary declaration reached by import). One row per module-level
 // reference occurrence of `dag` + `src/v2`, read off resolve's one binding record
-// (v2.compiler.occurrence_binding_census) by the same native census-infer walk; the ambient rows are
+// (v2.compiler.occurrence_resolution_census) by the same native census-infer walk; the ambient rows are
 // the names a wave has left to move, grouped by spelling and table by the reader
 // (gunbc.instruments.ambient_name_census_reading), which also refuses when any module recorded one
 // occurrence twice. `gunbc test //gunbc/instruments:ambient-name-census`. A report: its numbers are a
@@ -1230,6 +1230,51 @@ fn brand_mark_assets_binding() -> TargetBinding {
   TargetBinding { target: brand_mark_assets_label() producer: NativeClaimProgramProducer { entry: brand_mark_assets_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b): the pinned OpenResty run
+// with gunbc.serving.router_proxy_config's emitted configuration by the NativeClaimDriver program
+// gunbc.instruments.router_proxy_falsifier, through extdeps.docker.cli_service DockerCli (ruling
+// gunbc.design_ruling native_claim_route_admits_the_docker_cli). It needs a docker daemon, so it is not a
+// merge gate; it is dispatched on the fleet (gunbc.instruments.instrument_dispatch_workflow) at the head
+// under test, and a runner with no daemon answers no observation.
+// `gunbc test //gunbc/instruments:router-proxy-falsifier`.
+fn router_proxy_falsifier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "router-proxy-falsifier" } }
+}
+
+fn router_proxy_falsifier_entry() -> String {
+  "dag/gunbc/instruments/router_proxy_falsifier.dag"
+}
+
+fn router_proxy_falsifier_binding() -> TargetBinding {
+  TargetBinding { target: router_proxy_falsifier_label() producer: NativeClaimProgramProducer { entry: router_proxy_falsifier_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+// ONE RUN OF THE SERVING BENCHMARK ON ITS CELL (work item node://adhoc-ffb4b5c7-4a5): the NativeClaimDriver
+// program gunbc.instruments.serving_benchmark_run starts the engine, the gpu-bench kit and the nvidia-smi
+// samplers through extdeps.docker.cli_service DockerCli (ruling gunbc.design_ruling
+// native_claim_route_admits_the_docker_cli) and admits the run against its version. It needs the cell's
+// GPUs and a GPU-capable docker daemon, so it is dispatched on the fleet and never a merge gate; every
+// missing capability answers no observation. `gunbc test //gunbc/instruments:serving-benchmark-run`.
+fn serving_benchmark_run_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "serving-benchmark-run" } }
+}
+
+fn serving_benchmark_run_entry() -> String {
+  "dag/gunbc/instruments/serving_benchmark_run.dag"
+}
+
+// Wall budget for one short run on the srv3 pair, from calm-crab-645's estimate for that cell: the engine
+// loading its weights (minutes), four cold ~200k-token primes at ~2 min each, one warm-up and two measured
+// rounds of four 1,024-token turns at ~2.3 min each. About 25 min of work; the budget is 60 min so that a
+// slow load reads as a run that finished late, not one that was cut, and a stalled one is still cut.
+fn serving_benchmark_run_deadline() -> Millisecond {
+  millisecond(count: 3600000)
+}
+
+fn serving_benchmark_run_binding() -> TargetBinding {
+  TargetBinding { target: serving_benchmark_run_label() producer: NativeClaimProgramProducer { entry: serving_benchmark_run_entry() deadline: serving_benchmark_run_deadline() } }
+}
+
 fn value_position_block_nests_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "value-position-block-nests" } }
 }
@@ -1272,7 +1317,7 @@ fn ambient_operation_disposition_census_binding() -> TargetBinding {
 }
 
 fn ambient_name_census_binding() -> TargetBinding {
-  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
+  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceResolutionReading } }
 }
 
 fn namespace_wave_binding_diff_binding() -> TargetBinding {
@@ -1439,7 +1484,7 @@ fn instrument_targets() -> List<Label> {
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
   ]
 }
 
@@ -1462,7 +1507,7 @@ fn instrument_bindings() -> List<TargetBinding> {
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 

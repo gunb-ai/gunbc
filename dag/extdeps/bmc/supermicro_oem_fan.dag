@@ -1,0 +1,236 @@
+module extdeps.bmc.supermicro_oem_fan
+
+import std.types { Bool, Int, List, NonEmptyStr, String, Unit }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.algebra { trim }
+import std.measure { Percent, percent, percent_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
+import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_reply_bytes, ipmitool_raw_byte_text }
+import extdeps.uri { Uri, Https }
+
+// ── SUPERMICRO'S OEM FAN COMMANDS, AS ipmitool `raw` CARRIES THEM. Two commands on the OEM NetFn
+// 0x30: 0x45 gets (sub-function 0x00) or sets (0x01) the BMC's fan mode, and 0x70 0x66 gets (0x00)
+// or sets (0x01) one zone's duty in percent. The interface is the bytes; what a mode code MEANS and
+// what the firmware does to duty it was never told are Supermicro's to state, and this module has
+// not read Supermicro saying them, so they carry their standing rather than a bare fact.
+//
+// WHAT WAS READ, AND WHERE THAT LIVES. On the H11 host (BMC firmware 1.52, H11SSL-i/c/nc), a get of
+// the mode answered " 01" and gets of zones 0 and 1 answered " 1d" and " 64"; a hand-written host loop
+// sets mode 0x01 and writes duty with sub-function 0x01. Those are receipts of one host, so they are
+// the observing layer's (the GPU-card converge leg), not facts of this interface.
+//
+// TRANSPORT. These operations reach the local BMC in band (ipmitool's default open interface on the
+// host, /dev/ipmi0), which is how a host-side converge talks to it. An out-of-band binding over
+// lanplus is a second handler of the same interface, added when a consumer needs it.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/support/faqs/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.supermicro_oem_fan",
+      decl_name: "SupermicroFanMode",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+service supermicro.OemFan {
+  operation GetFanMode {
+    requires none
+    input {}
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["ipmitool", "raw", "0x30", "0x45", "0x00"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw get fan mode failed"
+    }
+  }
+
+  // `mode` is the mode code as one argv byte ("0x01").
+  operation SetFanMode {
+    requires none
+    input { mode: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["ipmitool", "raw", "0x30", "0x45", "0x01", "{mode}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw set fan mode failed"
+    }
+  }
+
+  operation GetZoneDuty {
+    requires none
+    input { zone: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["ipmitool", "raw", "0x30", "0x70", "0x66", "0x00", "{zone}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw get zone duty failed"
+    }
+  }
+
+  // `duty` is percent as one argv byte ("0x64" for 100).
+  operation SetZoneDuty {
+    requires none
+    input { zone: NonEmptyStr, duty: NonEmptyStr }
+    output {
+      stdout: String from "stdout"
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+    }
+    transport shell { argv: ["ipmitool", "raw", "0x30", "0x70", "0x66", "0x01", "{zone}", "{duty}"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool raw set zone duty failed"
+    }
+  }
+}
+
+// ── MODES. The code a get answers, kept as the code. The names below are a transcription with no
+// Supermicro citation, so a consumer may use them to READ a posture but must not treat the
+// name as Supermicro's contract until it is cited.
+type SupermicroFanMode { code: Nat }
+
+type SupermicroFanModeName { code: Nat, name: NonEmptyStr }
+
+data supermicro_fan_mode_names: List<SupermicroFanModeName> = [
+  SupermicroFanModeName { code: 0, name: "Standard" },
+  SupermicroFanModeName { code: 1, name: "Full" },
+  SupermicroFanModeName { code: 2, name: "Optimal" },
+  SupermicroFanModeName { code: 4, name: "HeavyIO" },
+]
+
+data supermicro_fan_mode_names_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Supermicro documentation for the BMC fan-mode codes on the H11 generation (the OEM NetFn 0x30 command 0x45), stating each code's name and behaviour. The table is the common reading of these codes, not a Supermicro statement.",
+}
+
+// THE FACT BOTH FAN POSTURES REST ON, AND IT IS UNREAD. Whether, in Full mode, the firmware holds a
+// zone at the last duty written, at 100 percent, or at something else when no host writes is the
+// difference between a fail-safe and a fail-open. Nothing here has read Supermicro state it.
+data supermicro_unwritten_duty_standing: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "Supermicro documentation, or a controlled reading on a host whose controller is stopped, of the duty each zone holds in each fan mode when no host has written duty since the mode was set.",
+}
+
+// A name is returned with the table's standing, so a consumer cannot read "Full" as Supermicro's word
+// without also holding that nobody has cited it.
+type SupermicroFanModeNameReading {
+  name: NonEmptyStr
+  standing: CitedFigureStanding
+}
+
+fn supermicro_fan_mode_name(mode: SupermicroFanMode) -> SupermicroFanModeNameReading? {
+  match first(filter(supermicro_fan_mode_names, n => n.code == mode.code)) {
+    Absent => none
+    Present { value: n } => Present { value: SupermicroFanModeNameReading { name: n.name, standing: supermicro_fan_mode_names_standing } }
+  }
+}
+
+// ── ONE-BYTE ANSWERS. A get here answers exactly one byte, read through ipmitool's raw-reply format
+// (extdeps.bmc.ipmitool_raw_reply). Anything else is no reading.
+fn supermicro_one_byte_answer(stdout: String) -> Nat? {
+  match ipmitool_raw_reply_bytes(stdout: stdout, expected: 1) {
+    Absent => none
+    Present { value: bytes } => match first(bytes) {
+      Absent => none
+      Present { value: v } => checked_int_to_nat(n: v)
+    }
+  }
+}
+
+fn supermicro_fan_mode_answer(stdout: String) -> SupermicroFanMode? {
+  match supermicro_one_byte_answer(stdout: stdout) {
+    Absent => none
+    Present { value: c } => Present { value: SupermicroFanMode { code: c } }
+  }
+}
+
+// A duty above 100 is not a percent, so it is no reading rather than a clamped one.
+fn supermicro_zone_duty_answer(stdout: String) -> Percent? {
+  match supermicro_one_byte_answer(stdout: stdout) {
+    Absent => none
+    Present { value: d } => if d > 100 { none } else { Present { value: percent(count: d) } }
+  }
+}
+
+// ── WHAT A SET MAY WRITE. Each argv byte a set takes is built only through a checked constructor, so
+// an out-of-range byte has no constructor rather than a later check (DESIGN section 5). The records are
+// sole_constructor, the same pattern extdeps.systemd uses for SystemdUnitName. Each constructor spells
+// its byte once, through the shared formatter, and keeps the spelling: a value that is not a byte has
+// no spelling, so it has no argument, and no later wire function can misspell it.
+//
+// THE RESIDUAL, STATED. The operations above take their argv as NonEmptyStr, as every operation in the
+// corpus does: an operation's input is the argv template's text, and no operation takes a record. So a
+// caller can still hand SetZoneDuty a string it built itself. Closing that is a change to how operation
+// inputs are typed (a record input whose wire function fills the template), which is a substrate change,
+// not this module's; until then a consumer calls the operations only with the wire of these records.
+type SupermicroDutyArgument sole_constructor { duty: Percent, wire: NonEmptyStr }
+type SupermicroFanZone sole_constructor { index: Nat, wire: NonEmptyStr }
+type SupermicroFanModeArgument sole_constructor { mode: SupermicroFanMode, wire: NonEmptyStr }
+
+// A duty above 100 is not a percent, so it has no argument rather than a wrapped byte.
+fn supermicro_duty_argument(duty: Percent) -> SupermicroDutyArgument? {
+  if percent_count(duty) > 100 { none } else {
+    match ipmitool_raw_byte_text(n: percent_count(duty) as Int) {
+      Absent => none
+      Present { value: w } => Present { value: SupermicroDutyArgument { duty: duty, wire: w as NonEmptyStr } }
+    }
+  }
+}
+
+// A zone is one byte on the wire. Which zones a board has is the board's fact (its cooling-zone count),
+// so this constructor bounds only the byte, and the formatter is what bounds it.
+fn supermicro_fan_zone(index: Nat) -> SupermicroFanZone? {
+  match ipmitool_raw_byte_text(n: index as Int) {
+    Absent => none
+    Present { value: w } => Present { value: SupermicroFanZone { index: index, wire: w as NonEmptyStr } }
+  }
+}
+
+fn supermicro_fan_mode_argument(mode: SupermicroFanMode) -> SupermicroFanModeArgument? {
+  match ipmitool_raw_byte_text(n: mode.code as Int) {
+    Absent => none
+    Present { value: w } => Present { value: SupermicroFanModeArgument { mode: mode, wire: w as NonEmptyStr } }
+  }
+}
+
+fn supermicro_duty_argument_wire(a: SupermicroDutyArgument) -> NonEmptyStr {
+  a.wire
+}
+
+fn supermicro_fan_zone_wire(z: SupermicroFanZone) -> NonEmptyStr {
+  z.wire
+}
+
+fn supermicro_fan_mode_argument_wire(a: SupermicroFanModeArgument) -> NonEmptyStr {
+  a.wire
+}
+
+// DESIGN section 3c declared frontier.
+data supermicro_oem_fan_consumer_frontier: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the fleet fan posture for zones that reach a passive card imports these operations to set and read back the zone's posture on a Supermicro BMC, and the GPU-card converge leg refuses a host whose zone readback does not echo the write. SUFFICIENT FOR: the operations have a production consumer. THE INHABITANCE CLAIM IS PART OF THIS TRIGGER AND IS NOT MET: the witness parses captures that were produced by running exactly these argv in band on the H11 (BMC 1.52), but no enrolled claim executes GetFanMode or GetZoneDuty on a real Supermicro BMC; that claim runs host-side in the converge leg, against the host it converges." as NonEmptyStr
+)

@@ -12,13 +12,14 @@ import v2.std.node { symbol_lexeme, named_edge_sort_key }
 import v2.std.node_query { node_labeled_child_edges }
 import v2.std.decl_index { DataDeclTypeFact, data_decl_type_facts, decl_facts }
 import extdeps.gpu.types {
-  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, gpu_catalog_row_eq
+  GpuModelCatalogRow, PcieAddInCard, SxmModule, IntegratedComputePackage, GpuOnMultiGpuBoard, gpu_catalog_row_eq
 }
 import extdeps.gpu.nvidia {
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog,
+  nvidia_rtx_2000_ada_catalog
 }
 import gunbc.serving.home_serving_accelerator_field {
   home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows,
@@ -301,6 +302,7 @@ fn p4_row_is_add_in_card(row: GpuModelCatalogRow) -> Bool {
     PcieAddInCard => true
     SxmModule => false
     IntegratedComputePackage => false
+    GpuOnMultiGpuBoard => false
   }
 }
 
@@ -309,6 +311,7 @@ fn p4_row_is_sxm(row: GpuModelCatalogRow) -> Bool {
     PcieAddInCard => false
     SxmModule => true
     IntegratedComputePackage => false
+    GpuOnMultiGpuBoard => false
   }
 }
 
@@ -323,7 +326,8 @@ data p4_catalog_universe: List<GpuModelCatalogRow> = [
   nvidia_rtx_5090_catalog, nvidia_rtx_pro_6000_workstation_catalog,
   nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog,
   nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog,
-  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog
+  nvidia_b200_sxm_catalog, nvidia_b300_sxm_catalog, nvidia_h200_nvl_catalog,
+  nvidia_rtx_2000_ada_catalog
 ]
 
 // Same membership fold the shipped home-serving witness uses, so row identity is
@@ -521,14 +525,34 @@ test fn the_two_watt_fields_are_optional_watts_where_they_are_declared() -> Bool
     )
 }
 
-// NO CARD IS CHOSEN — READ, NOT WORDS. The plan used to assert that no card or
-// power limit had been picked. That is a DissolutionCondition the frontier
-// carries: an unbound frontier whose trigger is still unset. REDDENS the moment
-// someone binds it — i.e. actually chooses — which is the only way a sentence
-// about "not yet" can be worth anything.
-test fn the_frontier_still_holds_no_card_and_no_limit() -> Bool {
+// THE FRONTIER IS BOUND TO THE FOLD THAT CONSUMES IT, AND THAT IS NOT A CLAIM ABOUT CHOOSING.
+// This check used to require the frontier UNBOUND and was cited as "no card is chosen". That was two
+// facts riding on one carrier, and the second one was only ever a proxy: while no consuming fold
+// existed, the only thing that could bind the frontier was someone picking a card, so unbound happened
+// to mean not-yet-chosen. The fold now exists (gunbc.serving.home_serving_candidate_field), so the
+// frontier's own trigger has fired and it is bound — and a check that kept demanding unbound would be
+// holding a satisfied §3c frontier open just to preserve a sentence about "not yet".
+//
+// WHAT EACH FACT NOW READS AT ITS OWN SEAT:
+//  - "the lists are consumed" — the frontier is bound, and std.dissolution says
+//    dissolution_is_bound answers a carrier-SHAPE question (it calls dissolution_status with
+//    present_decls: [], so a BoundDissolution reports Pending-or-Fired regardless of whether the named
+//    declaration is on the tree). So shape alone is not enough and the ref itself is read out: the
+//    bound condition's own description, produced by declaration_ref_display_key, is the module::name of
+//    the consuming fold. If the frontier were bound to anything else, this goes red.
+//  - "no card is chosen" — NOT claimed here. It is seen by calling the fold, in
+//    test.claim.home_serving_candidate_field_witness::home_serving_live_verdict_is_never_a_pick_and_never_empty,
+//    which fails if the live selection returns SelectedWithin. A proxy could not tell a refusal from a
+//    pick; a call into the fold can.
+// REDDENS: if the frontier is unbound again, if it is bound to some other declaration, or if the
+// candidate field empties.
+test fn the_frontier_is_bound_to_the_fold_that_consumes_it() -> Bool {
   count(home_serving_add_in_card_catalog_rows) > 0
-    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier) == false
+    && dissolution_is_bound(condition: home_serving_accelerator_field_p4_frontier)
+    && string_contains(
+         s: dissolution_description(condition: home_serving_accelerator_field_p4_frontier),
+         pattern: "gunbc.serving.home_serving_candidate_field::select_home_serving_candidate"
+       )
 }
 
 // THE RECEIPTS, THROUGH THE PARSER THAT OWNS THEM. `gpu_bench_parse_jsonl` is the

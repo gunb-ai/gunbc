@@ -13,7 +13,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
 import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
-import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64 }
+import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64 }
 import std.decl_ref { decl_ref }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
@@ -60,6 +60,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainPinned,
   SitePxeEdgeChainUnpinned,
   SitePxeEdgePinnedChain,
+  SitePxeEdgePinnedMember,
   site_pxe_edge_chain_pins,
   site_pxe_edge_arm64_ipxe_chain_pin,
   site_pxe_edge_ubuntu_chain_pin,
@@ -143,6 +144,15 @@ import gunbc.fleet.site_pxe_edge_converge {
   HttpLegActivation,
   site_pxe_edge_install_bindings,
   site_pxe_edge_seed_origin_resolution,
+  PlacementNotNeeded,
+  PlacementRefused,
+  PlacementVerified,
+  site_pxe_edge_withheld_only_on_members,
+  site_pxe_edge_chain_media,
+  ChainMediaOne,
+  ChainMediaRefused,
+  ChainMediaNone,
+  ChainMediaMixed,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -418,6 +428,7 @@ fn observe_run_with_unit(chains: List<SitePxeEdgeChainStanding>, causes: List<Si
     chains: chains,
     gate_causes: causes,
     installs: [],
+    placement: PlacementNotNeeded,
     files: [],
     activation: SitePxeEdgeProbeNotAttempted { reason: "observe-only" },
     unit_active: unit_active,
@@ -433,6 +444,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
     chains: [],
     gate_causes: [],
     installs: [],
+    placement: PlacementNotNeeded,
     files: [],
     activation: SitePxeEdgeProbeHeld,
     unit_active: SitePxeEdgeProbeHeld,
@@ -941,8 +953,8 @@ test fn the_listening_socket_must_be_the_onboarding_address() -> Bool {
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
-  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  let wildcard = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenWildcard { local: "0.0.0.0:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
   !site_pxe_edge_run_succeeded(run: wildcard) && site_pxe_edge_run_succeeded(run: bound)
 }
 
@@ -950,7 +962,7 @@ test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
 // reason, and an apply whose probe was unobservable is not converged either.
 test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
-  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
+  let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
 }
 
@@ -963,4 +975,73 @@ test fn the_net_seed_token_is_built_once_and_quoted_by_grub() -> Bool {
       Present { value: a } => grub_cmdline_arg_render(arg: a) == "\"ds=nocloud-net;s=http://srv4:8080/seed/y/\""
       Absent => false
     })
+}
+
+// AN APPLY WHOSE PLACEMENT REFUSED IS NOT CONVERGED, whatever else held.
+test fn an_apply_whose_placement_refused_is_not_converged() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let refused = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementRefused { step: "verify vmlinuz", reason: "the placed bytes differ from the pin; removed" }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  let placed = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: PlacementVerified { placed: ["vmlinuz"] }, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: base.http }
+  !site_pxe_edge_run_succeeded(run: refused) && site_pxe_edge_run_succeeded(run: placed)
+}
+
+// WHICH CHAIN PLACEMENT MAY WRITE INTO (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_withheld_only_on_members):
+// a chain withheld only because its members are unplaced or differ from their pins. A chain withheld for any other
+// cause, a servable chain, or a chain of another architecture is never placed into.
+test fn placement_runs_only_for_a_chain_withheld_on_its_own_members() -> Bool {
+  let unplaced = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [MemberDigestMismatch { served_path: "initrd", observed: digest_a, pinned: digest_b }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [unplaced])
+}
+
+test fn placement_refuses_a_chain_withheld_for_another_cause() -> Bool {
+  let mixed = SitePxeEdgeChainWithheld { architecture: X86_64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "vmlinuz", reason: "No such file" }, tail: [ChainUnpinned { obligation: "no rendering" }] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [mixed]) == false
+}
+
+test fn placement_does_not_cross_architectures() -> Bool {
+  let arm = SitePxeEdgeChainWithheld { architecture: Aarch64, causes: FreeSemigroup { head: MemberUnobservable { served_path: "snponly.efi", reason: "No such file" }, tail: [] } }
+  site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: [arm]) == false
+    && site_pxe_edge_withheld_only_on_members(architecture: X86_64, standings: []) == false
+}
+
+// THE IMAGE IS THE CHAIN'S OWN MEDIA (review 86920): placement and the install surface read which ISO holds the
+// members off the members' sources, never a point release named at the dispatch site.
+test fn the_amd64_chain_names_its_own_iso() -> Bool {
+  match amd64_chain() {
+    Present { value: c } => match site_pxe_edge_chain_media(chain: c) {
+      ChainMediaOne { media: md } => md == noble_numbat_2404_3_live_server_amd64
+      ChainMediaRefused { cause: _ } => false
+    }
+    Absent => false
+  }
+}
+
+// RED: one member re-sourced from another ISO leaves the chain with no single image, named by both media.
+test fn a_chain_mixing_two_isos_has_no_image() -> Bool {
+  match amd64_chain() {
+    Present { value: c } => {
+      let swapped = SitePxeEdgePinnedChain {
+        architecture: c.architecture,
+        members: FreeSemigroup {
+          head: c.members.head,
+          tail: map(c.members.tail, m => match m.source {
+            VerifiedMediaSource { media: _, source: src, pin: pn, digest: d } => if (m.member.served_path as String) == "vmlinuz" { SitePxeEdgePinnedMember { member: m.member, source: VerifiedMediaSource { media: noble_numbat_2404_5_live_server_arm64, source: src, pin: pn, digest: d } } } else { m }
+            IpxeBuildSource { build: _ } => m
+            RenderedSource { content: _, digest: _ } => m
+          }),
+        },
+        citation: c.citation,
+      }
+      site_pxe_edge_chain_media(chain: swapped) == ChainMediaRefused { cause: ChainMediaMixed { first: noble_numbat_2404_3_live_server_amd64, other: noble_numbat_2404_5_live_server_arm64 } }
+    }
+    Absent => false
+  }
+}
+
+// RED: the iPXE chain has no media member, so it has no image to place.
+test fn the_ipxe_chain_has_no_install_media() -> Bool {
+  match arm_chain(pin: pinned(digest: digest_a)).first() {
+    Present { value: c } => site_pxe_edge_chain_media(chain: c) == ChainMediaRefused { cause: ChainMediaNone }
+    Absent => false
+  }
 }

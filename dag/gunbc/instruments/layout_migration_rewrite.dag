@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, String, Map }
 import std.optional { Absent, Optional, Present, optional_present }
 
 import std.algebra { skip, empty_map, map_insert, map_lookup }
+import std.integer { int_to_decimal_string }
 
 // THE REFERENCE REWRITE ENGINE OF THE LAYOUT MIGRATION (gunbc.plans.source_layout_authority, C1).
 // Given the old and new name of every module and the old and new path of every file, it rewrites
@@ -829,7 +830,7 @@ type ShieldFold {
 }
 
 fn shield_mark(index: Int) -> String {
-  concat(pin_mark(), index as String, pin_mark())
+  concat(pin_mark(), int_to_decimal_string(value: index), pin_mark())
 }
 
 // One pinned text replaced, wherever it occurs, by its mark; a text the file does not contain is

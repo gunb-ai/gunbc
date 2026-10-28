@@ -732,7 +732,7 @@ fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_delivers_exact_bytes", operation: "Run", ground: NoMockResponse {} },
     tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdin_fidelity_is_independent_of_terminal_newline", operation: "Run", ground: NoMockResponse {} },
+    head: FloorRouteGapExpectation { identity: "test.claim.transport_script_stdin_byte_fidelity_witness.transport_script_stdout_is_independent_of_a_payload_terminal_newline", operation: "Run", ground: NoMockResponse {} },
     tail: Empty {}
   }
   }

@@ -37,6 +37,7 @@ import std.durable_transfer {
   LocalCommitNotAttempted,
 }
 import gunbc.fleet_observation.collector_ownership { CollectorSessionId }
+import std.integer { int_to_decimal_string }
 
 // BOUNDED DURABLE CAPTURE: the bytes, their identity, and what it takes to say they are kept.
 // Ownership is gunbc.fleet_observation.collector_ownership; the published fact is
@@ -323,7 +324,7 @@ fn local_commit_from_cas<T>(outcome: CasOutcome<T>) -> LocalCommitStanding<Durab
             CasUnreadableObservationBoundExceeded { bound: bound } =>
               LocalCommitFailed {
                 cause: ChunkCommitRefused {
-                  detail: join(["slot observation exceeded its probe bound of ", bound as String, " generations"], "") as NonEmptyStr
+                  detail: join(["slot observation exceeded its probe bound of ", int_to_decimal_string(value: bound), " generations"], "") as NonEmptyStr
                 }
               }
           }
