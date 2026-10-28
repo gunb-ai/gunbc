@@ -15,17 +15,17 @@ These are the PRs that were approved, or approved apart from a small fix. Each w
 | #15228 | 213a3e12 | v1 builtins: the digest row declares its own digest carrier | `src/v1/00_core.dag` resolved by hand: kept #14082's `symbol_type` and deleted `hash_type` as #15228 intends; mirrors provisional |
 | #15026 | 53220486 | A unit variant's phantom marker is decided by scope lookup, not name match | mirrors provisional |
 | #15008 | 45773a78 | Equality bounds forward through one call-graph fixpoint at any arity | mirrors provisional |
-| #15015 | 8738e878 | An operation with no declared transport refuses by name | mirrors provisional |
 | #15020 | 0198ec26 | `extdeps.github.pulls`: the list state filter is its own type | clean merge |
 | #14793 | 92d35c4f | `ObservationUnrepresentable.reason` is the probe cause (`NonEmptyStr`) | clean merge |
 | #14056 | d5657221 | Applied head identity in `node_type_equals` | mirrors provisional |
-| #15277 | 5b4edb8c | `CoproductWireContract` rows keyed by `(module_path, decl_name)` | mirrors provisional |
 | #15276 | dfc7e243 | C4-H2: the remaining `<scratch>/target` sites onto `extdeps.rust.cargo` `cargo_default_target_dir` | clean merge, plus the review 87029 fix (two duplicate imports deleted) |
 | #14411 | 79be16cb | Failure-mode row: `unify_generics` fixes a fold accumulator to the `[]` placeholder | applied as a diff (see below) |
 | #14369 | 393a472c | C4-B: parse gate measured; scope the PASS=0 FAIL=0 reading | applied as a diff |
 | #14437 | e9b7a15f | C4: registry-vs-rows identity check (frozen seed residue, run by hand) | applied as a diff |
 
 **Provisional mirrors.** Several of these PRs regenerate the same `src/v1/stage0/src/*.rs` mirrors. Where the only conflicts were in those generated files, the integration kept the base side provisionally, as `docs/plans/generated-file-conflict-policy.md` allows for a deterministic projection. The branch does not land on that. The heal job (`gunbc.heal_workflow`) must converge the mirrors to the seed's own fixed point over the merged `.dag`, with a receipt, before the branch is reviewed. A v2-bootstrap green over stale mirrors judges main's behaviour, not this branch's.
+
+**Taken back out: #15015 and #15277.** Both change a generated function's surface AND the hand-written seed code that calls it (`cli_run.rs`, `data_initializer_identity.rs`): #15015 adds `undeclared_transport_node`, and #15277 adds a parameter to `resolve_local_coproduct_wire_policy`. Heal builds its regenerator from the checkout before it regenerates. So a branch whose hand-written seed code needs regenerated mirrors, without those mirrors committed, can never pass heal: building from the old mirrors fails, and the rebuild after regenerating fails against the old hand-written code. That happened on this branch (heal run 40616715648, E0061 and E0425). Each PR's own branch carries mirrors consistent with its hand-written code, so each lands on its own after this branch, by merging main and letting heal re-converge. They are listed as follow-ons below.
 
 **Applied as a diff.** #14411, #14369 and #14437 were cut from a repository history that has no common ancestor with today's `main`. Their PR diffs were applied with `git apply -3`, and all three applied cleanly. Their original branches cannot be merged.
 
@@ -42,11 +42,16 @@ These are the PRs that were approved, or approved apart from a small fix. Each w
 4. **Evidence still owed by individual PRs:**
    - #14082's mirror fixed-point check never completed. Step 1 discharges it.
    - #15228 was last tested before #15189 landed over two of its files. Step 3 discharges it.
-   - #15026, #15008 and #15015 were granted to land one per batch. In one branch they need the step 3 run, with no newly refused row attributable to any of them.
-   - #14056, #15020, #14793, #14369, #14437, #14411, #15276 and #15277 had a dashboard approval but no side-chat review at hand-off. Review them as part of this branch.
+   - #15026 and #15008 were granted to land one per batch. In one branch they need the step 3 run, with no newly refused row attributable to either.
+   - #14056, #15020, #14793, #14369, #14437, #14411 and #15276 had a dashboard approval but no side-chat review at hand-off. Review them as part of this branch.
 5. **Side-chat approval** at the exact final head, then the merge queue.
 
 ## Follow-on PRs (not in this branch)
+
+### Approved, but land on their own after this branch
+
+- **#15015** (an operation with no declared transport refuses by name): after this branch lands, merge main into its branch, let heal re-converge, then a composed run. It couples hand-written `cli_run.rs` to a new generated function.
+- **#15277** (`CoproductWireContract` rows keyed by `(module_path, decl_name)`): same as #15015. It changes `resolve_local_coproduct_wire_policy`'s signature and its `cli_run.rs` caller.
 
 ### Approved, but a known fix comes first
 
@@ -91,4 +96,4 @@ These are the PRs that were approved, or approved apart from a small fix. Each w
 - #15283 is a heal WIP with a fabricated "consumed" verdict.
 - #14009 is a stale draft.
 - #14426 and #14389 are pre-ruling C4-D work.
-- Close the 16 source PRs listed above once this branch lands.
+- The 14 source PRs carried here are already closed as superseded by #15290.
