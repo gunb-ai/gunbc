@@ -16609,7 +16609,32 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: Opera
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else if derived != none && (op == Eq || op == Ne) {
-    emit_rust_derived_equality_call(negate: op == Ne, function: derived.value, l_str: l_str, r_str: r_str)
+    // A PLANNED `==` IS AN ORDINARY CALL of the declared function the checker named for it (the
+    // ExprBinOp's `derived`): the operand type's synthesized derived equality, or the routed
+    // function itself (v1.compiler.infer equality_derived_target). It goes through the same call
+    // lowering as any other call -- emit_typed_call_expr with a SourceDeclarationCall identity --
+    // so argument handling, module spelling, and effect suffixes come from the ordinary rules, not
+    // from a second call-emission path. `!=` is the call's result under `not`, one operator out.
+    let eq_fn = derived.value
+    let eq_target = SourceDeclarationCall {
+      owner_module_path: eq_fn.module_path as String,
+      decl_name: eq_fn.decl_name as String
+    }
+    let eq_args = [left, right] |> map(a => make_arg_node(occurrence_identity: OccurrenceSynthetic, name: none, value: a, span: left.span, name_span: left.span))
+    let eq_call = emit_typed_call_expr(
+      func: eq_fn.decl_name as String,
+      args: eq_args,
+      inferred: none,
+      call_semantics: Present { value: PlainCallSemantics { target: eq_target } },
+      callee_is_function_value: false,
+      call_target: eq_target,
+      registry: registry,
+      scope: scope,
+      depth: depth,
+      shared_types: shared_types,
+      emit_info: emit_info
+    )
+    if op == Ne { concat("!", eq_call) } else { eq_call }
   } else {
     match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
@@ -16809,15 +16834,6 @@ fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Nod
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
   operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
-}
-
-// A PLANNED `==` IS ONE CALL of the declared function the checker named for it (the ExprBinOp's `derived`):
-// the operand type's synthesized derived equality, or the routed function itself (v1.compiler.infer
-// equality_derived_target). It is realized the way emit_rust_structural_comparison realizes a declared
-// comparison. Every per-member decision lives in that declaration's ordinary body, which this emitter
-// lowers like any other function, so carriers and ownership come from the ordinary rules.
-fn emit_rust_derived_equality_call(negate: Bool, function: DeclarationRef, l_str: String, r_str: String) -> String {
-  concat(if negate { "!" } else { "" }, rust_declaration_path(module_path: function.module_path as String, decl_name: function.decl_name as String), "(", l_str, ", ", r_str, ")")
 }
 
 fn rust_declaration_path(module_path: String, decl_name: String) -> String {

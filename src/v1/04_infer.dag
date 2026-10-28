@@ -4152,6 +4152,35 @@ fn equality_item_collection_key_rows(item: Node, scope: InferScope) -> List<Erro
   equality_item_declared_types(item: item) |> fold(init: [], f: (acc, t) => concat(acc, equality_collection_key_rows(t: t, decl: decl, scope: scope, fuel: 12)))
 }
 
+// The INFERRED arm of the same census, taken over the TYPED item so every settled type is the one
+// inference produced (equality_body_collection_key_rows, beside the walker).
+fn equality_item_body_key_rows(item: Node, scope: InferScope) -> List<ErrorNode> {
+  let decl = concat(scope.module_name, " ", authored_name_at(source_indices: scope.type_env.source_indices, node: item))
+  equality_body_collection_key_rows(body: item.body, decl: decl, scope: scope, fuel: 1024)
+}
+
+// THE SAME KEY WALK OVER INFERRED TYPES (gunbc.rung_drop derived_equality_residual_field_equality,
+// the bound condition of the 2026-10-28 admission): `equality_item_collection_key_rows` covers the
+// DECLARED positions -- fields, parameters, return, annotation. A key type that is never declared
+// anywhere -- `let m = map_insert(m: empty_map(), key: n, value: 1)` in a function body, where the
+// Map<Node, Int> exists only in the value's inferred type -- is the same residual, and a census
+// that misses it is a subset, not a bound. This walks the TYPED body and feeds every node's
+// settled type through the very same `equality_collection_key_rows`, so the drop row's population
+// is one derivation over every emitted use, never a hand-kept list.
+fn equality_body_collection_key_rows(body: Node?, decl: String, scope: InferScope, fuel: Int) -> List<ErrorNode> {
+  match body {
+    Absent => []
+    Present { value: n } =>
+      if fuel <= 0 { [] } else {
+        let here = match n.inferred {
+          Present { value: Resolved { node: t } } => equality_collection_key_rows(t: t, decl: decl, scope: scope, fuel: 12)
+          _ => []
+        }
+        fold(n.children, init: here, f: (acc, ch) => concat(acc, equality_body_collection_key_rows(body: Present { value: ch }, decl: decl, scope: scope, fuel: fuel - 1)))
+      }
+  }
+}
+
 fn equality_admission_refused(diags: List<ErrorNode>) -> EqualityAdmission {
   EqualityAdmission { diags: diags, derived: none }
 }
@@ -15666,7 +15695,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
 fn infer_items(items: List<Node>, scope: InferScope) -> List<TypedItemResult> {
   map(items, item =>
     let r = infer_item(item: item, scope: scope)
-    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope))) })
+    TypedItemResult { item: r.item, emissions: infer_emissions_concat(left: r.emissions, right: infer_emissions_concat(left: infer_emissions_of_diagnostics(diagnostics: equality_item_collection_key_rows(item: item, scope: scope)), right: infer_emissions_of_diagnostics(diagnostics: equality_item_body_key_rows(item: r.item, scope: scope)))) })
 }
 
 fn is_type_variable_name(name: String) -> Bool {

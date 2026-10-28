@@ -21,8 +21,12 @@ import gunbc.guarantee_rung { OutsideTheLadder, StructurallyGuaranteed }
 // instantiation at a Node-reaching type from above. CollectionKeyReachesEqualityRoute is a Map/Set key
 // type in a declared type that the equality walk finds reaching a routed declaration.
 // //gunbc/instruments:compile-clean-diagnostic-census compiles the whole-tree closure and prints them as
-// its ROUTED_EQUALITY_RESIDUAL TSV, so this row restates no member. NOT COVERED, and this row's gap: a
-// Map/Set key type that appears only in an inferred local and in no declared type. Both census rows are
+// its ROUTED_EQUALITY_RESIDUAL TSV, so this row restates no member. The key census covers BOTH sides of
+// the type's appearance: the DECLARED positions (v1.compiler.infer equality_item_collection_key_rows --
+// fields, parameters, return, annotation) and the INFERRED ones (equality_body_collection_key_rows, which
+// walks the typed body and feeds every settled type through the same walker, so a Map/Set key that exists
+// only in an inferred local is counted too). Neither side is a hand-kept list, and the population is the
+// bound this row's subject states -- every emitted use, not only at checked == sites. Both census rows are
 // advisory and dissolve with this drop. The leading-edge measurement that motivated the drop (16 E0369
 // derived-PartialEq sites in v2-emitted-policy-unit-2 with the derive stripped) is recorded on the
 // follow-up work item adhoc-c0150380-08c.

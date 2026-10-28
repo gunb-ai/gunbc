@@ -90,6 +90,12 @@ data generic_eq_census_row_source: String = "module eq_probe_generic\nfn same<T>
 
 data collection_key_census_row_source: String = "module eq_probe_collection_key\nimport std.types { Map, Int }\nimport v2.std.node { Node }\ntype Keyed { by_node: Map<Node, Int> }\n"
 
+// THE INFERRED SIDE OF THE SAME CENSUS (gunbc.rung_drop derived_equality_residual_field_equality).
+// No DECLARED type here mentions a Map: `Map<Node, Int>` exists only in the local's inferred type, so
+// the row it earns can come only from v1.compiler.infer equality_body_collection_key_rows. A census
+// restricted to declared positions reports 0 for this module and is a subset, not a bound.
+data collection_key_inferred_census_row_source: String = "module eq_probe_collection_key_inferred\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nimport v2.std.node { Node }\nfn has_node(n: Node) -> Bool {\n  let m = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
+
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
 test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
@@ -180,6 +186,23 @@ test fn generic_eq_census_row_is_present_and_the_program_stays_accepted() -> Boo
 test fn collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
   eq_admitted(source: collection_key_census_row_source)
     && eq_class_count(source: collection_key_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+}
+
+// THE POPULATION IS A BOUND, NOT A SUBSET (manager ruling msg_7f0d6824, blocker 1). The declared walk
+// alone reports 0 for a module whose only routed key type is inferred, so the drop row's subject --
+// EVERY emitted use -- would have outrun its population. It must not be able to.
+test fn inferred_collection_key_census_row_is_present_and_the_program_stays_accepted() -> Bool {
+  eq_admitted(source: collection_key_inferred_census_row_source)
+    && eq_class_count(source: collection_key_inferred_census_row_source, wanted: "CollectionKeyReachesEqualityRoute") >= 1
+}
+
+// CONTROL: an ordinary value key is not the residual. Same shape, Int key, so the inferred walk must
+// report nothing -- it counts by the same walker, not by "any Map in a body".
+data collection_key_inferred_control_source: String = "module eq_probe_collection_key_inferred_ctl\nimport std.types { Map, Int }\nimport std.algebra { empty_map, map_insert, map_contains_key }\nfn has_one(n: Int) -> Bool {\n  let m = map_insert(m: empty_map(), key: n, value: 1)\n  map_contains_key(m: m, key: n)\n}\n"
+
+test fn inferred_collection_key_census_control_reports_nothing() -> Bool {
+  eq_admitted(source: collection_key_inferred_control_source)
+    && eq_class_count(source: collection_key_inferred_control_source, wanted: "CollectionKeyReachesEqualityRoute") == 0
 }
 
 // ONE CALLING CONVENTION (sleek-owl-397's RED). A planned `==` emits as one call of the declared derived
