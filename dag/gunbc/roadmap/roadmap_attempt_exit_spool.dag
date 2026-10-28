@@ -110,11 +110,18 @@ fn attempt_role_token_is_worker(token: String) -> Bool {
   }
 }
 
+// THE PREFIX EVERY REVIEWER EXIT RECORD BEGINS WITH for one criterion. Spelled ONCE, here: the
+// role token below is this prefix plus the head, and a settlement pass looking for the criterion's
+// records matches on this prefix rather than re-spelling the format somewhere it could drift.
+fn attempt_reviewer_role_token_prefix(criterion_key: String) -> String {
+  join(["review.", criterion_key, "."], "")
+}
+
 fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
   match role {
     AttemptWorkerRole => "worker"
     AttemptWorkerResumedRole { ordinal } => join([attempt_worker_resumed_token_prefix, to_string(value: ordinal)], "")
-    AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
+    AttemptReviewerRole { criterion_key, head_sha } => join([attempt_reviewer_role_token_prefix(criterion_key: criterion_key), head_sha], "")
     AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
     AttemptObligationRole => "obligation"
     AttemptSupervisorRole { turn } => join(["supervise.t", to_string(value: turn)], "")
