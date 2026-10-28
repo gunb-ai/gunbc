@@ -106,6 +106,7 @@ pub enum Scale {
     Nano,
     Micro,
     Milli,
+    Centi,
     One,
     Sixty,
     ThirtySixHundred,
@@ -134,6 +135,7 @@ pub fn scale_exponent(s: Scale) -> Option<i64> {
         Scale::Nano => Some(v1_rt::int_neg(9)),
         Scale::Micro => Some(v1_rt::int_neg(6)),
         Scale::Milli => Some(v1_rt::int_neg(3)),
+        Scale::Centi => Some(v1_rt::int_neg(2)),
         Scale::One => Some(0),
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
@@ -224,6 +226,7 @@ pub fn time_scale_factor_seconds(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::Kilo => std::option::Option::None,
         Scale::Mega => std::option::Option::None,
         Scale::Giga => std::option::Option::None,
@@ -250,6 +253,7 @@ pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
         Scale::Nano => std::option::Option::None,
         Scale::Micro => std::option::Option::None,
         Scale::Milli => std::option::Option::None,
+        Scale::Centi => std::option::Option::None,
         Scale::ArcsecondAngle => std::option::Option::None,
         Scale::DegreeAngle => std::option::Option::None,
         Scale::TurnAngle => std::option::Option::None,
@@ -2018,7 +2022,7 @@ pub fn percent_count(p: Percent) -> Nat {
     measure_count(p)
 }
 
-pub type ConcurrentRequestHundredths = Rc<Measure<Count, One, Nat>>;
+pub type ConcurrentRequestHundredths = Rc<Measure<Count, Centi, Nat>>;
 
 pub fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
     Rc::new(Measure {
@@ -2613,6 +2617,8 @@ pub struct Nano;
 pub struct Micro;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Milli;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Centi;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
