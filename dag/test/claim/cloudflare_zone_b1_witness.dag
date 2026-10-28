@@ -11,21 +11,29 @@ module test.claim.cloudflare_zone_b1_witness
 // carriers. No credential is touched, no transport runs, and nothing is re-implemented from the module
 // under test.
 
-import std.types { Bool }
+import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.dns.domain_name { host_name_eq }
 import extdeps.cloudflare.zone {
   CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord, ProxyNotApplicable,
-  RecordTypeA, RecordTypeTXT, RecordTypeMX, ZoneStatusActive, ZoneStatusPending,
+  RecordTypeA, RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA,
+  ZoneStatusActive, ZoneStatusPending,
+  ZoneNotUnderHold, ZoneUnderHold, ZoneHoldUnobserved,
   r2_custom_domain_zone_admissible, ZoneAdmissible,
-  ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused,
+  ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused, ZoneRefusedHold, ZoneRefusedHoldUnobserved,
   r2_custom_domain_requires_zone_reading, cloudflare_r2_custom_domain_is_serving,
-  cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy,
+  cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy, cloudflare_dns_record_key,
+  cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
+  CloudflareR2CustomDomainStatus,
+  R2OwnershipStatus, R2SslStatus, OwnershipActive, SslActive,
+  OwnershipStatusUnknown, SslStatusUnknown,
+  r2_ownership_status_of_text, r2_ssl_status_of_text,
+  r2_ownership_status_wire, r2_ssl_status_wire,
 }
 import gunbc.cloudflare.zone {
-  namecheap_copied_records, cloudflare_served_records, unverified_copied_records,
-  unproxied_contents_agree, copied_record_is_carried, zone_record_copy_standing,
-  CopyPendingRecordList, namecheap_observed_record_count, namecheap_uncopied_record_count,
-  namecheap_ttl_short, namecheap_apex_txt, namecheap_apex_mx,
+  namecheap_copied_records, namecheap_observed_records, cloudflare_served_records,
+  unverified_copied_records, unproxied_contents_agree, copied_record_is_carried, zone_record_copy_standing,
+  CopyPendingRecordList,
+  namecheap_ttl_short, namecheap_apex_txt, namecheap_apex_mx, namecheap_registrar_soa,
   cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
   ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
   boot_origin_bind_effect_gap, CloudflareRecordListUnread,
@@ -34,16 +42,47 @@ import gunbc.cloudflare.zone {
   gunb_ai_delegated_nameservers, boot_origin_binding_readback_pending, boot_origin_nxdomain_answers,
 }
 
+// Witness ids are MINTED, never cast (review 38602: a cast walks straight through a `where brand`
+// alias). Each minter below fails loudly if its literal stops satisfying the vendor's 32-hex shape; the
+// Absent arm exists only because an initializer needs a total Optional, and the all-zero fallback is the
+// witness's own "no such identity" value, never something a real read could produce.
+fn account_of(text: String) -> CloudflareAccountId {
+  match cloudflare_account_id_from_text(text: text) {
+    Present { value: account } => account
+    Absent =>
+      CloudflareAccountId {
+        value: "00000000000000000000000000000000" as NonEmptyStr,
+      }
+  }
+}
+
+fn zone_id_of(text: String) -> CloudflareZoneId {
+  match cloudflare_zone_id_from_text(text: text) {
+    Present { value: zone_id } => zone_id
+    Absent =>
+      CloudflareZoneId {
+        value: "00000000000000000000000000000000" as NonEmptyStr,
+      }
+  }
+}
+
 data same_account: CloudflareAccountId = gunb_ai_bucket_account
-data other_account: CloudflareAccountId = "00000000000000000000000000000000" as CloudflareAccountId
+data other_account: CloudflareAccountId = account_of(text: "00000000000000000000000000000001")
 
 fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> CloudflareZone {
+  zone_with_hold(account: account, active: active, paused: paused, hold: ZoneNotUnderHold)
+}
+
+// THE HOLD IS A FIELD, not a sentence: the admissibility rule is exercised across all three hold states,
+// so a zone under a hold cannot be judged admissible and an unread hold cannot be read as no hold.
+fn zone_with_hold(account: CloudflareAccountId, active: Bool, paused: Bool, hold: ZoneHoldState) -> CloudflareZone {
   CloudflareZone {
     apex: gunb_ai_apex,
     account: account,
-    zone_id: "0123456789abcdef0123456789abcdef" as CloudflareZoneId,
+    zone_id: zone_id_of(text: "0123456789abcdef0123456789abcdef"),
     status: if active { ZoneStatusActive } else { ZoneStatusPending },
     paused: paused,
+    hold: hold,
   }
 }
 
@@ -78,19 +117,84 @@ test fn paused_zone_refuses() -> Bool {
   }
 }
 
-// The reading must carry the rule that closes the plan's open item, in the vendor's own words, and the
-// zone-hold warning with it — otherwise a fold could satisfy "has a zone" and still never activate.
-test fn cited_reading_names_same_account_and_zone_hold() -> Bool {
+// The reading must carry the rule that closes the plan's open item, in the vendor's own words. The
+// zone-hold warning is NOT checked by grep here (review 38602): the hold is modelled as a field and an
+// arm, and the three tests below are the consumers — a fold that ignored it would fail one of them.
+test fn cited_reading_names_the_same_account_rule() -> Bool {
   string_contains(s: r2_custom_domain_requires_zone_reading, pattern: "zone in the same account as the R2 bucket")
-    && string_contains(s: r2_custom_domain_requires_zone_reading, pattern: "zone hold")
 }
 
-// THE COPY, exactly as observed: 4 A + 4 AAAA + TXT + MX at the apex and 1 CNAME at www = 11 copied, with
-// the registrar's SOA and two NS (3 records) observed and deliberately not copied. The two numbers must
-// keep that relation, or the copy has silently lost or invented a record.
-test fn copy_cardinality_is_the_observed_set_minus_the_uncopied() -> Bool {
-  list_length(items: namecheap_copied_records()) == 11
-    && list_length(items: namecheap_copied_records()) == namecheap_observed_record_count - namecheap_uncopied_record_count
+// THE HOLD, as a rule with arms: an Enterprise zone under a hold is active, unpaused and in the right
+// account, and STILL refuses — that is the whole point of modelling it. An unobserved hold refuses for a
+// DIFFERENT reason, because the next action differs (release it vs read it). Both must be distinct from
+// every other refusal, and only the not-under-hold arm admits.
+test fn held_zone_refuses_even_when_active_in_account() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account, active: true, paused: false, hold: ZoneUnderHold), bucket_account: same_account) {
+    ZoneRefusedHold { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn unobserved_hold_refuses_for_its_own_reason() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account, active: true, paused: false, hold: ZoneHoldUnobserved), bucket_account: same_account) {
+    ZoneRefusedHoldUnobserved { zone: _, basis: _ } => true
+    _ => false
+  }
+}
+
+test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: other_account, active: false, paused: true, hold: ZoneUnderHold), bucket_account: same_account) {
+    ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+    _ => false
+  }
+}
+
+// THE COPY IS JOINED TO THE OBSERVED SET BY RECORD KEY, not counted against a transcription of the tree
+// (review 38602; DESIGN section 5: "Completeness is an identity join, not a count equality"). Three
+// things have to hold together: every copied key is an observed key (the copy invented nothing), every
+// observed key that is not copied is one of the registrar's own SOA/NS rows (nothing went missing), and
+// the un-copied rows are keyed by name/type/content so dropping an MX from the copy moves this test
+// instead of leaving it green.
+fn keys_of(records: List<CloudflareDnsRecord>) -> List<String> {
+  map(records, record => cloudflare_dns_record_key(record: record))
+}
+
+fn key_is_in(key: String, keys: List<String>) -> Bool {
+  fold(keys, init: false, f: (acc, k) => acc || k == key)
+}
+
+test fn copy_is_a_keyed_subjoin_of_the_observed_set() -> Bool {
+  let observed_keys = keys_of(records: namecheap_observed_records())
+  fold(
+    namecheap_copied_records(),
+    init: true,
+    f: (acc, record) => acc && key_is_in(key: cloudflare_dns_record_key(record: record), keys: observed_keys)
+  )
+}
+
+// The complement of the join, computed from the two lists rather than asserted as a number: the observed
+// rows the copy does NOT carry are exactly the registrar's SOA and its two NS, and each is identified by
+// its key, not by a cardinality someone copied out of the tree.
+test fn the_uncopied_observed_rows_are_the_registars_own() -> Bool {
+  let copied_keys = keys_of(records: namecheap_copied_records())
+  fold(
+    namecheap_observed_records(),
+    init: true,
+    f: (acc, record) =>
+      if key_is_in(key: cloudflare_dns_record_key(record: record), keys: copied_keys) {
+        acc
+      } else {
+        acc && match record.record_type {
+          RecordTypeNS => true
+          RecordTypeSOA => true
+          _ => false
+        }
+      }
+  )
+    && key_is_in(
+         key: join(["gunb.ai", "SOA", namecheap_registrar_soa], "/"),
+         keys: keys_of(records: namecheap_observed_records())
+       )
 }
 
 // The unproxied contents are the part a credential-free read settles, and both copies DO agree on them.
@@ -207,7 +311,68 @@ test fn record_list_reason_selects_its_own_arm() -> Bool {
   }
 }
 
-// The RecordTypeA import is exercised by nothing above; pin it so the import list stays honest about
+// THE TWO STATUS DIMENSIONS ARE TYPED, not strings (review 38602): the six published values decode to
+// their own arms, an unpublished spelling lands in Unknown carrying the wire it came from, and serving
+// needs enabled + both dimensions active. A fold that compared strings could not tell "blocked" from a
+// typo, and that is exactly the confusion these three tests make impossible.
+fn binding_with(ownership: String, ssl: String, enabled: Bool) -> CloudflareR2CustomDomainBinding {
+  CloudflareR2CustomDomainBinding {
+    domain: boot_origin_hostname,
+    bucket: boot_origin_bucket,
+    zone_id: zone_id_of(text: "0123456789abcdef0123456789abcdef"),
+    enabled: enabled,
+    status: CloudflareR2CustomDomainStatus {
+      ownership: r2_ownership_status_of_text(text: ownership),
+      ssl: r2_ssl_status_of_text(text: ssl),
+    },
+  }
+}
+
+test fn published_status_values_decode_to_their_arms() -> Bool {
+  match r2_ownership_status_of_text(text: "blocked") {
+    OwnershipBlocked => true
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "initializing") {
+         SslInitializing => true
+         _ => false
+       }
+}
+
+// A value outside the published vocabulary keeps its wire instead of becoming a quiet "not serving": the
+// Unknown arm is the only place it can go, and it is distinguishable from every named arm.
+test fn unpublished_status_reaches_unknown_with_its_wire() -> Bool {
+  match r2_ownership_status_of_text(text: "verifying-ownership") {
+    OwnershipStatusUnknown { wire } => wire == "verifying-ownership"
+    _ => false
+  }
+    && match r2_ssl_status_of_text(text: "revoked") {
+         SslStatusUnknown { wire } => wire == "revoked"
+         _ => false
+       }
+}
+
+// The wire decoders and the wire printers are INVERSES on every published value, so the vocabulary
+// cannot drift from what the vendor publishes without one of these failing.
+test fn status_wires_round_trip() -> Bool {
+  r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "pending")) == "pending"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "deactivated")) == "deactivated"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "blocked")) == "blocked"
+    && r2_ownership_status_wire(status: r2_ownership_status_of_text(text: "error")) == "error"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "initializing")) == "initializing"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "pending")) == "pending"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "active")) == "active"
+    && r2_ssl_status_wire(status: r2_ssl_status_of_text(text: "deactivated")) == "deactivated"
+}
+
+test fn serving_needs_enabled_and_both_active() -> Bool {
+  cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "pending", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "blocked", ssl: "active", enabled: true))
+    && !cloudflare_r2_custom_domain_is_serving(binding: binding_with(ownership: "active", ssl: "active", enabled: false))
+}
+
+// The RecordTypeA import is exercised by nothing else above; pin it so the import list stays honest about
 // what the witness actually uses (an unused import is a roster that lies about its dependencies).
 test fn address_record_identity_is_its_wire_spelling() -> Bool {
   cloudflare_record_type_admits_proxy(record_type: RecordTypeA)

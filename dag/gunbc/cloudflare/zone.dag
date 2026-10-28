@@ -22,24 +22,41 @@ module gunbc.cloudflare.zone
 // names which gap it is waiting on. NO effect lives in this module — writes stay behind the gunbc.auth
 // authorization pattern (WIF / ntfy approval / explicit refusal), and no token ever passes through here.
 
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, Duration, Int, List, NonEmptyStr }
+import std.optional { Absent, Optional, Present }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.zone {
-  CloudflareAccountId, CloudflareZoneId, CloudflareZone,
+  CloudflareAccountId, CloudflareZoneId, CloudflareZone, ZoneHoldState, ZoneNotUnderHold,
   CloudflareDnsRecord, RecordTypeA, RecordTypeAAAA, RecordTypeCNAME,
-  RecordTypeTXT, RecordTypeMX, Proxied, Direct, ProxyNotApplicable,
+  RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA, Proxied, Direct, ProxyNotApplicable,
   cloudflare_dns_record_key, cloudflare_record_type_admits_proxy, cloudflare_record_type_wire_eq,
+  cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
   CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
+  R2OwnershipStatus, R2SslStatus, OwnershipStatusUnknown, SslStatusUnknown,
+  cloudflare_r2_custom_domain_is_serving,
   r2_custom_domain_requires_zone_citation, dns_record_api_citation,
 }
 
 // The account the fleet's R2 storage lives in, and the bucket the boot origin publishes from — both read
-// from where they are already pinned (gunbc.cloudflare.r2_origin), restated here under their branded
+// from where they are already pinned (gunbc.cloudflare.r2_origin), restated here under their vendor-model
 // types because a comparison against an observed binding must name the account and bucket the fleet MEANS,
-// not compare a free string to whatever a read happens to carry.
-data gunb_ai_bucket_account: CloudflareAccountId = "5f71db675ad3e94c16a3d5c159d16298" as CloudflareAccountId
+// not compare a free string to whatever a read happens to carry. The account id is MINTED through
+// cloudflare_account_id_from_text (the checked constructor) rather than cast, so this pinned value is
+// itself proof the vendor's 32-hex shape was satisfied; the Absent arm is unreachable for the literal
+// below and exists only because an initializer needs a total Optional.
+fn gunb_ai_bucket_account_mint() -> CloudflareAccountId {
+  match cloudflare_account_id_from_text(text: "5f71db675ad3e94c16a3d5c159d16298") {
+    Present { value: account } => account
+    Absent =>
+      CloudflareAccountId {
+        value: "00000000000000000000000000000000" as NonEmptyStr,
+      }
+  }
+}
+
+data gunb_ai_bucket_account: CloudflareAccountId = gunb_ai_bucket_account_mint()
 data boot_origin_bucket: NonEmptyStr = "gunbai-fabric-boot"
 
 // The three names this carrier is about, in the vendor's own absolute spelling.
@@ -77,17 +94,79 @@ data namecheap_apex_aaaa_contents: List<NonEmptyStr> = [
 data namecheap_apex_txt: NonEmptyStr = "v=spf1 include:_spf.google.com ~all"
 data namecheap_apex_mx: NonEmptyStr = "1 smtp.google.com"
 data namecheap_www_cname: NonEmptyStr = "gunb-ai.github.io"
-data namecheap_ttl_short: Int = 1799
+// A TTL is a duration in seconds, and std.types already publishes Duration for exactly that; a bare Int
+// here would let a minute-count be stored where a second-count is meant (the review's unit-modeling rule).
+data namecheap_ttl_short: Duration = 1799
 
 // The zone's own SOA and NS pair are observed and DELIBERATELY NOT COPIED: Cloudflare mints its own the
 // moment a zone is added, so transcribing the registrar's serial or its NS delegation would be an edit to
-// records that are not the fleet's to copy. They are counted (below) so the completeness question can be
-// answered honestly.
+// records that are not the fleet's to copy. They are carried as RECORDS, not as a number beside the copy
+// (review 38602: a count copied from the tree is a change detector — completeness is an identity join on
+// the record key, so the witness joins these three rows against the observed fourteen, not against 14 - 3).
 // 14 distinct records, not the 21 rows a raw sweep prints: a CNAME answers every query type at its own
 // name, so the single www CNAME came back under all seven query types (an A answer whose rdata is a name
-// is the giveaway) and the two NS and the SOA are counted once each. The count is the set, not the sweep.
-data namecheap_uncopied_record_count: Int = 3
-data namecheap_observed_record_count: Int = 14
+// is the giveaway) and the two NS and the SOA are counted once each. The set is the set, not the sweep.
+data namecheap_registrar_ns_contents: List<NonEmptyStr> = [
+  "dns1.registrar-servers.com", "dns2.registrar-servers.com",
+]
+data namecheap_registrar_soa: NonEmptyStr = "dns1.registrar-servers.com hostmaster.registrar-servers.com 2020020801 3600 1800 604800 3600"
+data namecheap_ttl_registrar: Duration = 1800
+
+// THE OBSERVED SET, as the two registrar nameservers answered it, independent of what the copy chose to
+// carry. This is the set the copy is measured AGAINST: copied and uncopied below are claims over it, and
+// the witness joins all three by cloudflare_dns_record_key rather than trusting any cardinality.
+fn namecheap_observed_records() -> List<CloudflareDnsRecord> {
+  let apex_a = map(namecheap_apex_a_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeA,
+    content: content,
+    ttl: namecheap_ttl_short,
+    proxy: Direct { record_type: RecordTypeA },
+  })
+  let apex_aaaa = map(namecheap_apex_aaaa_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeAAAA,
+    content: content,
+    ttl: namecheap_ttl_short,
+    proxy: Direct { record_type: RecordTypeAAAA },
+  })
+  let txt = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeTXT,
+    content: namecheap_apex_txt,
+    ttl: namecheap_ttl_short,
+    proxy: ProxyNotApplicable { record_type: RecordTypeTXT },
+  }]
+  let mx = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeMX,
+    content: namecheap_apex_mx,
+    ttl: namecheap_ttl_short,
+    proxy: ProxyNotApplicable { record_type: RecordTypeMX },
+  }]
+  let www = [CloudflareDnsRecord {
+    name: gunb_ai_www,
+    record_type: RecordTypeCNAME,
+    content: namecheap_www_cname,
+    ttl: namecheap_ttl_short,
+    proxy: Direct { record_type: RecordTypeCNAME },
+  }]
+  let ns = map(namecheap_registrar_ns_contents, content => CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeNS,
+    content: content,
+    ttl: namecheap_ttl_registrar,
+    proxy: ProxyNotApplicable { record_type: RecordTypeNS },
+  })
+  let soa = [CloudflareDnsRecord {
+    name: gunb_ai_apex,
+    record_type: RecordTypeSOA,
+    content: namecheap_registrar_soa,
+    ttl: namecheap_ttl_registrar,
+    proxy: ProxyNotApplicable { record_type: RecordTypeSOA },
+  }]
+  concat(apex_a, concat(apex_aaaa, concat(txt, concat(mx, concat(www, concat(ns, soa))))))
+}
 
 fn namecheap_copied_records() -> List<CloudflareDnsRecord> {
   let apex_a = map(namecheap_apex_a_contents, content => CloudflareDnsRecord {
@@ -153,7 +232,8 @@ data cloudflare_apex_aaaa_answers: List<NonEmptyStr> = [
 ]
 data cloudflare_apex_txt: NonEmptyStr = "v=spf1 include:_spf.google.com ~all"
 data cloudflare_apex_mx: NonEmptyStr = "1 smtp.google.com"
-data cloudflare_ttl_proxied: Int = 300
+// The Cloudflare-side TTL, the same unit: 300 seconds is what the proxied records serve with.
+data cloudflare_ttl_proxied: Duration = 300
 
 // www resolves to the same two anycast pairs at both servers, and a CNAME query at www returned ZERO
 // answers. So the zone publishes A and AAAA at www, while the Namecheap copy carries a CNAME there: one
@@ -237,8 +317,11 @@ fn served_set_publishes(record: CloudflareDnsRecord) -> Bool {
 }
 
 
-// The records whose CONTENT the DNS read could not settle: everything proxied on the Cloudflare side. This
-// is the outstanding work for a Complete copy, named rather than assumed away.
+// The records whose CONTENT the DNS read could not settle: everything the Cloudflare side answers from
+// behind its anycast front, plus anything whose name/type the served set does not publish at all. This is
+// the outstanding work for a Complete copy, named rather than assumed away. The check matches the record's
+// OWN proxy variant directly — a proxiable type is not the same claim as "this record is proxied", and the
+// removed helpers used to blur exactly that (review 38602).
 fn unverified_copied_records() -> List<CloudflareDnsRecord> {
   fold(
     namecheap_copied_records(),
@@ -246,6 +329,8 @@ fn unverified_copied_records() -> List<CloudflareDnsRecord> {
     f: (acc, record) => if !served_set_publishes(record: record) {
       concat(acc, [record])
     } else if cloudflare_record_type_admits_proxy(record_type: record.record_type) {
+      // A record whose TYPE Cloudflare can proxy: the copy's own proxy field says how the registrar
+      // answers, not how Cloudflare will, so the content question stays open for these.
       concat(acc, [record])
     } else {
       acc
@@ -339,14 +424,29 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
 }
 
 // The readback the bind will eventually produce, in the vendor's own field spellings. Nothing is claimed
-// about it: `not-read` in both status dimensions is what an unperformed read looks like, and the only way
-// out of it is a read that happened.
+// about it: the two Unknown { wire: "unobserved" } arms are what an unperformed read looks like — a value
+// the reader has not seen, which the typed status sums already distinguish from any vendor vocabulary word
+// — and the only way out of them is a read that happened. The zone id is the account id's zero witness,
+// also unreachable-as-a-truth: it says "no zone identity has been read", and nothing reads it as a zone.
+fn boot_origin_unobserved_zone_id() -> CloudflareZoneId {
+  match cloudflare_zone_id_from_text(text: "00000000000000000000000000000000") {
+    Present { value: zone_id } => zone_id
+    Absent =>
+      CloudflareZoneId {
+        value: "00000000000000000000000000000000" as NonEmptyStr,
+      }
+  }
+}
+
 data boot_origin_binding_readback_pending: CloudflareR2CustomDomainBinding = CloudflareR2CustomDomainBinding {
   domain: boot_origin_hostname,
   bucket: boot_origin_bucket,
-  zone_id: "not-read" as CloudflareZoneId,
+  zone_id: boot_origin_unobserved_zone_id(),
   enabled: false,
-  status: CloudflareR2CustomDomainStatus { ownership: "not-read", ssl: "not-read" },
+  status: CloudflareR2CustomDomainStatus {
+    ownership: OwnershipStatusUnknown { wire: "unobserved" as NonEmptyStr },
+    ssl: SslStatusUnknown { wire: "unobserved" as NonEmptyStr },
+  },
 }
 
 // --------------------------------------------------------------------------------
@@ -394,9 +494,11 @@ fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timest
   }
 }
 
+// NO SECOND "active" COMPARISON HERE (review 38602): the serving question has exactly one home,
+// cloudflare_r2_custom_domain_is_serving in extdeps, and this fold calls it. The previous copy re-derived
+// the two string comparisons and gave the fleet two sources for one fact.
 fn cloudflare_r2_custom_domain_readback_serving() -> Bool {
-  let binding = boot_origin_binding_readback_pending
-  binding.enabled && binding.status.ownership == "active" && binding.status.ssl == "active"
+  cloudflare_r2_custom_domain_is_serving(binding: boot_origin_binding_readback_pending)
 }
 
 // --------------------------------------------------------------------------------
