@@ -5,16 +5,16 @@ import std.optional { Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.http.header_dump { HeaderDumpRead }
 import gunbc.harness.harness_turn { HarnessPostOutcome, harness_post_drew_no_response, harness_route_is_fleet_engine }
+import gunbc.harness.harness_transport_retry_policy { harness_transport_retry_policy_now, transport_retry_next_delivery_at }
 import gunbc.harness.harness_session_recovery {
-  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryAwaitingCapacity,
-  PoolCapacityObservation, CapacityNotAsked, CapacityServing, CapacityNotServing, CapacityUnobserved,
-  session_event_capacity_wait, session_event_capacity_resumed, session_capacity_wait_since_for, session_capacity_wait_budget_seconds,
+  UnexplainedEngineRefusal, SessionValidation, SessionValidated, SessionInterrupted, SessionUnresumable, SessionRecoveryMalformed, SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryRequestPending,
+  session_event_request_pending, session_event_request_redelivered, session_request_pending_since_of, session_request_redeliveries_of,
   harness_unexplained_refusal, session_messages_validation, session_conversation_from_request, session_conversation_messages,
   session_event_recovery_needed, session_event_resumed, session_recovery_of_events, session_resume_bound,
 }
 import gunbc.harness.harness_hosted_route { BackendAdmittedBySeat, BackendAdmittedByOperatorEndpoint }
 import gunbc.roadmap.roadmap_attempt_continuation {
-  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, ContinuationCapacityExpired, continuation_decision,
+  PriorAttemptFacts, ContinuationDecision, ContinuationResume, ContinuationEnded, ContinuationHold, ContinuationRefused, continuation_decision,
 }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
@@ -59,13 +59,16 @@ fn recovery_lines(request: String, rounds: Int) -> List<String> {
 }
 
 fn prior_with(recovery: SessionRecovery) -> PriorAttemptFacts {
-  prior_observing(recovery: recovery, capacity: CapacityNotAsked)
+  prior_at(recovery: recovery, now: 1000000)
 }
 
-fn prior_observing(recovery: SessionRecovery, capacity: PoolCapacityObservation) -> PriorAttemptFacts {
+// THE BELT READS THE CLOCK ONCE PER SWEEP and passes the reading down; the witness supplies it, which is
+// exactly the shape the module demands -- there is no /models probe argument any more, and no way for a
+// sweep to ask the front whether a card is serving.
+fn prior_at(recovery: SessionRecovery, now: Int) -> PriorAttemptFacts {
   PriorAttemptFacts {
     node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
-    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, capacity: capacity, verification_retry: RefusedRetryOperatorOnly,
+    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, now: Present { value: now }, verification_retry: RefusedRetryOperatorOnly,
   }
 }
 
@@ -82,7 +85,7 @@ test fn s3_claim_1_an_empty_body_refusal_at_a_validated_state_is_recovery_needed
             resumes_made == 0 && resume_round == 38 && list_length(items: interrupted_calls) == 0
               && any(causes, c => c.contains("req_2ae5021ab9c56e6eb7fe1707af067e27"))
           SessionRecoveryNone => false
-          SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made: _, capacity_resumes: _, interrupted_calls: _, resume_round: _ } => false
+          SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: _, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => false
           SessionRecoveryMalformed { mismatch: _ } => false
         })
   }
@@ -138,7 +141,7 @@ test fn s3_claim_5_past_the_resume_bound_the_lineage_ends_with_every_cause() -> 
 // NOT a request that drew no response (so it is never retried in place), and only the fleet's own
 // routes qualify.
 test fn s3_claim_6_the_real_post_path_shape_for_the_empty_400_is_classified_not_retried() -> Bool {
-  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() }, retries: [] as List<String> }
+  let posted = HarnessPostOutcome { body: "", success: false, headers: Present { value: receipt_headers() }, fault: none }
   !harness_post_drew_no_response(posted: posted)
     && (match harness_unexplained_refusal(route_qualifies: true, success: posted.success, body: posted.body, headers: posted.headers, request_body: validated_request()) {
       Present { value: r } => r.status == 400 && r.request_id == Present { value: "req_2ae5021ab9c56e6eb7fe1707af067e27" }
@@ -185,117 +188,207 @@ test fn s3_claim_10_a_recovery_needed_line_without_a_cause_refuses_typed() -> Bo
     })
 }
 
-// POOL-FRONT-ROUTE-1. A turn held by the front's 503 is a CAPACITY WAIT: its own event kind, its own tally, its own
-// recorded budget, woken by a capacity observation. It never spends session_resume_bound, which counts unexplained
-// engine refusals only.
-fn wait_lines(request: String, round: Int, since: Int) -> List<String> {
-  [session_event_capacity_wait(round: round, held: 3, since: since, validation: validation_of(request: request), status: 503)]
+// ── THE PATIENT REQUEST CONTRACT (operator direction 2026-10-27): a request the front could not serve ──────
+//
+// The front's 503/502/429, or a post that drew no response, recorded ONE durable turn.request_pending event and
+// the worker exited. What follows reads that record the way the belt must: it holds until the re-delivery
+// schedule says the round is due, re-delivers the SAME attempt when it is, and has NO TERMINAL FOR THE WAIT AT
+// ALL -- no budget, no expiry, no clock that ends a delivered request. A re-delivery is not a resume and never
+// spends session_resume_bound, which counts unexplained engine refusals only.
+
+// THE RE-DELIVERY SCHEDULE, read from the same policy the belt reads, so the witness never hard-codes an
+// instant the policy could change under it.
+// A STANDING PENDING REQUEST, as the worker wrote it: one event, its round, the front's own cause, the instant
+// the window opened, and the resumability of the state it was written from.
+fn pending_lines(request: String, round: Int, cause: String, since: Int) -> List<String> {
+  [session_event_request_pending(round: round, cause: cause, since: since, validation: validation_of(request: request))]
 }
 
-fn waiting_recovery(lines: List<String>) -> SessionRecovery {
+fn pending_recovery(lines: List<String>) -> SessionRecovery {
   session_recovery_of_events(lines: lines)
 }
 
-fn decision_observing(lines: List<String>, capacity: PoolCapacityObservation) -> ContinuationDecision {
-  continuation_decision(prior: Present { value: prior_observing(recovery: waiting_recovery(lines: lines), capacity: capacity) })
+fn decision_at(lines: List<String>, now: Int) -> ContinuationDecision {
+  continuation_decision(prior: Present { value: prior_at(recovery: pending_recovery(lines: lines), now: now) })
 }
 
-test fn pool_claim_a_503_held_turn_is_a_capacity_wait_that_holds_without_spending_a_resume() -> Bool {
-  let lines = wait_lines(request: validated_request(), round: 12, since: 1000)
-  (match waiting_recovery(lines: lines) {
-    SessionRecoveryAwaitingCapacity { cause, since, budget_seconds, resumes_made, capacity_resumes, interrupted_calls: _, resume_round } =>
-      resumes_made == 0 && capacity_resumes == 0 && resume_round == 12 && since == 1000 && budget_seconds == session_capacity_wait_budget_seconds
-        && cause.contains("503") && cause.contains("no TLS card")
+// CLAIM P-1 (brief 2, and RED for any in-process retry: a worker that slept and re-posted would leave NO
+// pending event at all -- the stream below is the whole record of what the worker did). A round the front could
+// not serve reads as a standing pending request: its own round, the front's cause, the window it opened, the
+// state's resumability, and zero re-deliveries so far.
+test fn patient_claim_a_pending_round_reads_as_a_standing_request() -> Bool {
+  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  match pending_recovery(lines: lines) {
+    SessionRecoveryRequestPending { cause, since, re_deliveries, last_delivery_at, resumable, interrupted_calls: _, resume_round } =>
+      resume_round == 12 && since == 1000 && re_deliveries == 0 && last_delivery_at == 1000 && resumable
+        && cause.contains("503") && cause.contains("no TLS card") && cause.contains("it stands")
     _ => false
-  }) && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1060 }) {
-    ContinuationHold { reason } => reason.contains("no resume is spent")
+  }
+}
+
+// CLAIM P-2 (brief 2). PENDING AND NOT DUE: the decision Holds and NAMES THE NEXT INSTANT -- the same instant
+// the schedule computes, so the Hold cannot disagree with the later Resume.
+test fn patient_claim_not_due_holds_naming_the_next_redelivery_instant() -> Bool {
+  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 502 (the card did not answer)", since: 1000)
+  let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
+  (match decision_at(lines: lines, now: next - 1) {
+    ContinuationHold { reason } => reason.contains(to_string(value: next)) && reason.contains("next re-delivery at")
     _ => false
   })
 }
 
-// RED on e9ed7e4de1: there the fourth 503 hold read Ended with every cause, the lineage lost to a TLS-card outage.
-// Here N consecutive holds (N = 5, past session_resume_bound = 3), each woken and held again at the same round, leave
-// the S3 tally at zero and the lineage waiting.
-test fn pool_claim_consecutive_503_holds_past_the_resume_bound_do_not_end_the_lineage() -> Bool {
-  let wait = wait_lines(request: validated_request(), round: 12, since: 1000)
-  let woken = [session_event_capacity_resumed(ordinal: 1, round: 12)]
-  let lines = concat(concat(concat(wait, woken), concat(concat(wait, woken), concat(wait, woken))), concat(concat(wait, woken), wait))
+// CLAIM P-3 (brief 2). PENDING AND DUE: the SAME attempt is re-delivered -- the same attempt_key, so the same
+// session, the same conversation and the same x-pool-session -- and the decision says plainly that the S3
+// resume bound is not spent by a re-delivery.
+test fn patient_claim_due_resumes_the_same_attempt() -> Bool {
+  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 429 (every compatible upstream busy)", since: 1000)
+  let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
+  match decision_at(lines: lines, now: next) {
+    ContinuationResume { reason, attempt_key, ordinal, causes } =>
+      attempt_key == "a1" && ordinal == 1 && list_length(items: causes) == 1
+        && reason.contains("not spent by a re-delivery") && reason.contains("429")
+    _ => false
+  }
+}
+
+// CLAIM P-4 (brief 2, RED FOR ANY EXPIRY). TEN DAYS PENDING IS THE SAME TWO ANSWERS. A round the front
+// could not serve, re-delivered across ten days, never produces an ending: at an instant just before the
+// schedule's next delivery the decision is Hold, at that instant it is Resume, and ten days after the
+// window opened it is still only ever one of those two. This is what a budget or a capacity-expiry
+// terminal cannot survive: reintroduce one and some instant in this range answers an ending of its own,
+// and the claim goes red.
+fn wake_lines(n: Int, at_every: Int, acc: List<String>) -> List<String> {
+  if n <= 0 {
+    acc
+  } else {
+    wake_lines(n: n - 1, at_every: at_every, acc: concat(acc, [session_event_request_redelivered(ordinal: n, round: 12, at: 1000 + n * at_every)]))
+  }
+}
+
+test fn patient_claim_ten_days_pending_never_ends_the_request() -> Bool {
+  let first = pending_lines(request: validated_request(), round: 12, cause: "the request drew no response at all", since: 1000)
+  let ten_days = wake_lines(n: 20, at_every: 43200, acc: first)
+  let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000 + 20 * 43200, re_deliveries: 20, session_key: "a1")
+  let outcomes = map([next - 1, next, 1000 + 864000], at => match decision_at(lines: ten_days, now: at) {
+    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => "resume"
+    ContinuationHold { reason: _ } => "hold"
+    _ => "ended"
+  })
   session_resume_bound == 3
-    && (match waiting_recovery(lines: lines) {
-      SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made, capacity_resumes, interrupted_calls: _, resume_round: _ } => resumes_made == 0 && capacity_resumes == 4
+    && all(outcomes, o => o == "resume" || o == "hold")
+    && match pending_recovery(lines: ten_days) {
+      SessionRecoveryRequestPending { cause: _, since, re_deliveries, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
+        since == 1000 && re_deliveries == 20 && last_delivery_at == 1000 + 20 * 43200
       _ => false
-    })
-    && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1100 }) {
-      ContinuationHold { reason } => reason.contains("waiting for capacity")
+    }
+}
+
+// CLAIM P-5 (brief 3). A RE-DELIVERED ROUND THAT RE-PENDS KEEPS THE ORIGINAL `since`: the window names when
+// the request first went unserved, and a re-pend does not restart it. (The schedule it doubles from is the
+// last DELIVERY, recorded as turn.request_redelivered, also not restarted by the re-pend.)
+test fn patient_claim_a_re_pend_keeps_the_windows_opening_instant() -> Bool {
+  let first = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let after_a_wake = concat(concat(first, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1500)]), pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 5000))
+  session_request_pending_since_of(lines: first, round: 12, now: 5000) == 1000
+    && session_request_pending_since_of(lines: first, round: 13, now: 5000) == 5000
+    && session_request_redeliveries_of(lines: after_a_wake, round: 12) == 1
+    && (match pending_recovery(lines: after_a_wake) {
+      SessionRecoveryRequestPending { cause: _, since, re_deliveries, last_delivery_at, resumable: _, interrupted_calls: _, resume_round: _ } =>
+        since == 1000 && re_deliveries == 1 && last_delivery_at == 1500
       _ => false
     })
 }
 
-// A capacity observation wakes the resume of the SAME attempt (so the same conversation and x-pool-session), numbered
-// after every earlier resume of either kind, and the S3 bound is untouched by it.
-test fn pool_claim_a_capacity_observation_wakes_the_same_session() -> Bool {
-  let wait = wait_lines(request: validated_request(), round: 12, since: 1000)
-  let woken = [session_event_capacity_resumed(ordinal: 1, round: 12)]
-  let lines = concat(concat(wait, woken), wait)
-  (match decision_observing(lines: lines, capacity: CapacityServing { at: 1500 }) {
-    ContinuationResume { reason, attempt_key, ordinal, causes: _ } => attempt_key == "a1" && ordinal == 2 && reason.contains("is not spent")
+// CLAIM P-6 (brief 4). AN INTERRUPTED TOOL CALL STILL HOLDS, whatever the schedule says -- even at an instant
+// the same round would otherwise be due. The unchanged rule, made discriminating: a decision that resumed on
+// the schedule alone would resume here.
+test fn patient_claim_interrupted_calls_hold_even_when_due() -> Bool {
+  let lines = pending_lines(request: interrupted_request(), round: 7, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  let next = transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: 1000, re_deliveries: 0, session_key: "a1")
+  (match decision_at(lines: lines, now: next) {
+    ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
     _ => false
-  }) && (match waiting_recovery(lines: concat(lines, [session_event_capacity_resumed(ordinal: 2, round: 12)])) {
+  }) && (match decision_at(lines: lines, now: next + 100000) {
+    ContinuationHold { reason: _ } => true
+    _ => false
+  })
+}
+
+// CLAIM P-7 (brief 2, the companion half of "never an ending"). ONLY AN ANSWERED ROUND CLOSES THE CONTRACT:
+// a re-delivery answers nothing (it is itself a delivery, so the round keeps standing), and a completed round
+// is what ends the wait. A wake that read as an ending would strand every answered session; a completed round
+// that left the request standing would re-deliver answered work forever.
+test fn patient_claim_only_a_completed_round_clears_a_standing_request() -> Bool {
+  let lines = pending_lines(request: validated_request(), round: 12, cause: "the request drew no response at all", since: 1000)
+  let woken = concat(lines, [session_event_request_redelivered(ordinal: 1, round: 12, at: 1200)])
+  let answered = concat(woken, ["\{\"type\":\"turn.completed\"}"])
+  (match pending_recovery(lines: woken) {
+    SessionRecoveryRequestPending { cause: _, since: _, re_deliveries, last_delivery_at: _, resumable: _, interrupted_calls: _, resume_round: _ } => re_deliveries == 1
+    _ => false
+  }) && (match pending_recovery(lines: answered) {
     SessionRecoveryNone => true
     _ => false
   })
 }
 
-// A capacity that is serving resumes however long the wait lasted; only continued absence past the recorded budget
-// reaches the wait's own terminal, which is not Ended and not Refused. An observation that could not be made, or was
-// not asked, refuses rather than guessing either answer.
-test fn pool_claim_a_wait_past_its_budget_reaches_its_own_typed_terminal() -> Bool {
-  let lines = wait_lines(request: validated_request(), round: 12, since: 1000)
-  let past = 1000 + session_capacity_wait_budget_seconds + 1
-  (match decision_observing(lines: lines, capacity: CapacityNotServing { at: past }) {
-    ContinuationCapacityExpired { reason, waited_seconds, budget_seconds } =>
-      waited_seconds == session_capacity_wait_budget_seconds + 1 && budget_seconds == session_capacity_wait_budget_seconds && reason.contains("the session was not refused by the engine")
-    _ => false
-  }) && (match decision_observing(lines: lines, capacity: CapacityNotServing { at: 1000 + session_capacity_wait_budget_seconds }) {
-    ContinuationHold { reason: _ } => true
-    _ => false
-  }) && (match decision_observing(lines: lines, capacity: CapacityServing { at: past }) {
-    ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => true
-    _ => false
-  }) && (match decision_observing(lines: lines, capacity: CapacityUnobserved { reason: "key rejected" }) {
-    ContinuationRefused { reason } => reason.contains("key rejected")
-    _ => false
-  }) && (match decision_observing(lines: lines, capacity: CapacityNotAsked) {
-    ContinuationRefused { reason: _ } => true
-    _ => false
-  })
-}
-
-// Re-holding the same round does not restart the budget; a later round opens a window of its own. A wait with an
-// interrupted tool effect holds as not resumable whatever the front says.
-test fn pool_claim_a_rehold_keeps_the_window_and_an_interrupted_effect_still_holds() -> Bool {
-  let first = wait_lines(request: validated_request(), round: 12, since: 1000)
-  let lines = concat(concat(first, [session_event_capacity_resumed(ordinal: 1, round: 12)]), wait_lines(request: validated_request(), round: 12, since: 5000))
-  session_capacity_wait_since_for(lines: first, round: 12, now: 5000) == 1000
-    && session_capacity_wait_since_for(lines: first, round: 13, now: 5000) == 5000
-    && (match waiting_recovery(lines: lines) {
-      SessionRecoveryAwaitingCapacity { cause: _, since, budget_seconds: _, resumes_made: _, capacity_resumes: _, interrupted_calls: _, resume_round: _ } => since == 1000
-      _ => false
-    })
-    && (match decision_observing(lines: wait_lines(request: interrupted_request(), round: 7, since: 1000), capacity: CapacityServing { at: 2000 }) {
-      ContinuationHold { reason } => reason.contains("c2") && reason.contains("not resumable")
-      _ => false
-    })
-}
-
-// The S3 count bound is unchanged for unexplained refusals, even interleaved with capacity waits.
-test fn pool_claim_capacity_waits_do_not_move_the_s3_bound() -> Bool {
+// CLAIM P-8 (the bound stays the S3 bound). Pending requests and their re-deliveries, interleaved through an
+// S3 lineage, do not move it: the third unexplained engine refusal still ends the lineage, and no number of
+// pending rounds or re-deliveries counts toward it.
+test fn patient_claim_pending_rounds_never_move_the_s3_bound() -> Bool {
   let needed = recovery_lines(request: validated_request(), rounds: 38)
   let resumed = [session_event_resumed(ordinal: 1, round: 38, cause: "c")]
-  let waited = concat(wait_lines(request: validated_request(), round: 40, since: 1), [session_event_capacity_resumed(ordinal: 1, round: 40)])
+  let waited = concat(pending_lines(request: validated_request(), round: 40, cause: "the pool front answered 503 (no TLS card serving)", since: 1), [session_event_request_redelivered(ordinal: 1, round: 40, at: 2)])
   let lines = concat(concat(concat(needed, resumed), waited), concat(concat(concat(needed, resumed), waited), concat(concat(needed, resumed), concat(waited, needed))))
   match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: lines)) }) {
     ContinuationEnded { reason } => reason.contains("every recorded cause") && reason.contains("bound of 3")
     _ => false
   }
+}
+
+// CLAIM P-9 (RED for a reader that guesses). A pending event whose `resumable` is not a boolean, or whose
+// `since` is missing, is MALFORMED -- never read as resumable, never defaulted to a window of now. The
+// decision refuses rather than re-delivering a state it cannot read.
+test fn patient_claim_an_unreadable_pending_event_refuses_rather_than_guessing() -> Bool {
+  let no_since = "\{\"type\":\"turn.request_pending\",\"round\":4,\"cause\":\"c\",\"resumable\":true,\"interrupted_calls\":[]}"
+  let bad_resumable = "\{\"type\":\"turn.request_pending\",\"round\":4,\"cause\":\"c\",\"since_epoch_seconds\":7,\"resumable\":\"yes\",\"interrupted_calls\":[]}"
+  (match session_recovery_of_events(lines: [no_since]) {
+    SessionRecoveryMalformed { mismatch } => mismatch.contains("since_epoch_seconds")
+    _ => false
+  }) && (match session_recovery_of_events(lines: [bad_resumable]) {
+    SessionRecoveryMalformed { mismatch } => mismatch.contains("resumable")
+    _ => false
+  }) && (match continuation_decision(prior: Present { value: prior_with(recovery: session_recovery_of_events(lines: [no_since])) }) {
+    ContinuationRefused { reason } => reason.contains("since_epoch_seconds")
+    _ => false
+  })
+}
+
+// CLAIM P-10 (a sweep without a clock is refused as a fact, never as an ending). The belt reads the clock once
+// per sweep; a sweep that could not read it Holds -- the request still stands -- rather than guessing an
+// instant or ending the lineage.
+test fn patient_claim_a_sweep_without_a_clock_holds_the_request() -> Bool {
+  let lines = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  match continuation_decision(prior: Present { value: prior_without_a_clock(recovery: pending_recovery(lines: lines)) }) {
+    ContinuationHold { reason } => reason.contains("could not read the clock")
+    _ => false
+  }
+}
+
+// A sweep that could not read the clock: the belt's own reading, absent.
+fn prior_without_a_clock(recovery: SessionRecovery) -> PriorAttemptFacts {
+  PriorAttemptFacts {
+    node_id: "n1", attempt_key: "a1", branch: "dispatch/n1-a1", worker_terminal: true,
+    capture: CaptureAbsent, verification: none, review: none, goal_audit: none, recovery: recovery, now: Absent, verification_retry: RefusedRetryOperatorOnly,
+  }
+}
+
+// CLAIM P-11 (a pending line is not a recovery_needed line). The two event kinds keep their own tallies: an
+// S3 resume never answers a pending request, and a re-delivery never counts as an S3 resume.
+test fn patient_claim_a_pending_event_is_its_own_kind() -> Bool {
+  let pending = pending_lines(request: validated_request(), round: 12, cause: "the pool front answered 503 (no TLS card serving)", since: 1000)
+  (match session_recovery_of_events(lines: concat(pending, [session_event_resumed(ordinal: 1, round: 12, cause: "c")])) {
+    // A resume of the S3 kind does NOT answer a standing pending request: the round is still owed its answer.
+    SessionRecoveryNone => false
+    _ => true
+  })
 }

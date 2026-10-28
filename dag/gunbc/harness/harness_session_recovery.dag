@@ -612,7 +612,16 @@ fn session_recovery_scan_step(acc: SessionRecoveryScan, e: SessionRecoveryEvent)
       }
     RecoveryEventRequestRedelivered { round: _, at: _ } => acc
     RecoveryEventCompleted => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed }
-    RecoveryEventResumed => SessionRecoveryScan { pending: none, s3_causes: acc.s3_causes, s3_resumed: acc.s3_resumed + 1 }
+    // AN S3 RESUME ANSWERS AN S3 NEED, NOT A DELIVERED REQUEST: a standing pending round is owed an answer
+    // (turn.completed), and an S3 resume of a different refusal cannot be that answer.
+    RecoveryEventResumed => SessionRecoveryScan {
+      pending: match acc.pending {
+        Present { value: RecoveryEventNeeded { cause: _, round: _, interrupted_calls: _ } } => none
+        _ => acc.pending
+      },
+      s3_causes: acc.s3_causes,
+      s3_resumed: acc.s3_resumed + 1,
+    }
     RecoveryEventOther => acc
     RecoveryEventMalformed { mismatch: _ } => acc
   }

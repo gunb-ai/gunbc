@@ -16,7 +16,8 @@ import gunbc.harness.harness_backend {
   HarnessBackendServing, HarnessBackendModelNotAdmitted,
   HarnessRosterServing, HarnessRosterNoneServing, HarnessBackendUnreachable, HarnessBackendUnreadable,
 }
-import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat }
+import gunbc.harness.harness_hosted_route { BackendAdmittedByOperatorEndpoint, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota }
+import extdeps.api_rate_limit { UpstreamRateLimit, RateLimitPeriod, PerMinute, PerDay }
 import gunbc.harness.harness_reasoning_wire { pool_budget_enforced, pool_output_budget_policy, pool_context_budget_policy }
 import gunbc.harness.harness_turn { harness_backend_header_file }
 import gunbc.harness.harness_seat { harness_requirement_placement, AnyAdmittedModel }
@@ -32,7 +33,7 @@ import std.measure { token_count_value }
 import extdeps.languages.json.emit { json_object, serialize_json }
 import extdeps.external_authority { CitedFigure, cited_figure_read }
 import extdeps.pool.pool_front { pool_front_message_reasoning_field, pool_front_thinking_end_token, pool_front_max_context_tokens, pool_front_max_output_tokens, pool_front_model_id, pool_front_any_card_model_id, pool_front_session_header_name }
-import gunbc.harness.harness_turn { harness_post_is_retryable, HarnessPostOutcome, harness_outcome_label, TurnPoolNoCapacity, TurnBackendRefusedUnexplained }
+import gunbc.harness.harness_turn { harness_request_pending_cause, HarnessPostOutcome, harness_outcome_label, TurnRequestPending, TurnBackendRefusedUnexplained }
 import gunbc.harness.harness_cli { harness_turn_exit }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.harness.harness_session_recovery { harness_unexplained_refusal }
@@ -306,8 +307,41 @@ fn w_post(success: Bool, exit_code: Int, status_line: String, body: String) -> H
     success: success,
     headers: Present { value: HeaderDumpRead { text: status_line } },
     fault: operator_round_fault(success: success, curl_exit: exit_code, status: http_header_dump_status(dump: HeaderDumpRead { text: status_line })),
-    retries: [],
   }
+}
+
+// WHETHER THIS POST OPENS A PATIENT-REQUEST WINDOW on the named backend. The reading is the turn path's
+// own, called once, and the discriminating part is that it is ROUTE-DEPENDENT: the same unanswered post
+// stands pending on the operator endpoint and does not on a hosted quota (hosted routes keep today's
+// behaviour). A witness that pinned "retriable" as a property of the post alone could not tell those
+// two apart, which is what an earlier shape of this claim did.
+fn w_pending_on_operator(posted: HarnessPostOutcome) -> Bool {
+  match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "witness/authorization" as NonEmptyStr }, posted: posted) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn w_pending_on_hosted(posted: HarnessPostOutcome) -> Bool {
+  match harness_request_pending_cause(access: BackendAdmittedByHostedQuota {
+    header_file: "witness/authorization" as NonEmptyStr,
+    quota: HarnessHostedQuota {
+      short_hostname: "witness",
+      actor: "hosted-witness" as NonEmptyStr,
+      per_minute: UpstreamRateLimit { upstream: "witness" as NonEmptyStr, scope: "minute" as NonEmptyStr, requests: 20, period: PerMinute },
+      per_day: UpstreamRateLimit { upstream: "witness" as NonEmptyStr, scope: "day" as NonEmptyStr, requests: 1000, period: PerDay },
+    },
+  }, posted: posted) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// A POST THAT DREW NO RESPONSE AT ALL: the transport failed, the body is empty, and the response-header
+// file holds nothing -- curl's --max-time expiry and a connection reset both land here. The window the
+// client was watching closed; the request the worker delivered did not fail with it.
+fn w_post_drew_nothing() -> HarnessPostOutcome {
+  HarnessPostOutcome { body: "", success: false, headers: Present { value: HeaderDumpRead { text: "" } }, fault: none }
 }
 
 // CLAIM 1. A request on the pool route carries the bearer key, x-pool-session = the conversation id, and the
@@ -347,7 +381,7 @@ test fn a_curl_exit_60_is_a_host_verification_refusal_typed_apart_from_a_differe
     Present { value: OperatorCardUnanswered } => false
     Present { value: OperatorUpstreamsBusy } => false
     Absent => false
-  }) && !harness_post_is_retryable(posted: p)
+  }) && !w_pending_on_operator(posted: p)
 }
 
 // The pin firing is curl exit 90 (the pinned public key did not match) and a peer the trust anchor refuses is 51:
@@ -361,7 +395,7 @@ fn peer_exit_is_typed_not_pinned_and_never_retried(code: Int) -> Bool {
     Present { value: OperatorCardUnanswered } => false
     Present { value: OperatorUpstreamsBusy } => false
     Absent => false
-  }) && !harness_post_is_retryable(posted: p)
+  }) && !w_pending_on_operator(posted: p)
 }
 
 test fn a_pinned_public_key_mismatch_curl_exit_90_is_not_pinned_and_never_retried() -> Bool {
@@ -378,6 +412,32 @@ test fn curl_exit_51_is_obsolete_and_is_not_typed_as_a_certificate_refusal() -> 
   }
 }
 
+// CLAIM 1 OF THE PATIENT REQUEST CONTRACT. A post that drew NO RESPONSE AT ALL -- the client's --max-time
+// window closed, the connection reset before a response header arrived -- stands pending: the reading is
+// the same one the turn path consults, and the cause names the window for what it is (an observation that
+// stopped, never a failure or a cancellation). The same post on a HOSTED QUOTA route stands for nothing:
+// the patient contract is the operator route's, and hosted routes keep today's behaviour. That the two
+// readings differ on the same evidence is the discriminating part.
+test fn a_post_that_drew_no_response_stands_pending_on_the_operator_route_only() -> Bool {
+  let drew_nothing = w_post_drew_nothing()
+  w_pending_on_operator(posted: drew_nothing)
+    && !w_pending_on_hosted(posted: drew_nothing)
+    && (match harness_request_pending_cause(access: BackendAdmittedByOperatorEndpoint { header_file: "witness/authorization" as NonEmptyStr }, posted: drew_nothing) {
+      Present { value: cause } => cause.contains("--max-time") && cause.contains("stopped watching")
+      Absent => false
+    })
+}
+
+// THE TERMINAL REFUSALS DO NOT STAND PENDING: a 401 -- the front refusing THIS request's credentials --
+// and a 500 -- the engine answered, with an error, but answered -- are read where they always were, as
+// refusals that stop visibly. A witness that made every failure pending could not tell these two apart
+// from a 503.
+test fn a_401_and_a_500_are_terminal_refusals_not_pending_requests() -> Bool {
+  let denied = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 401 Unauthorized\r\n", body: "{\"error\":{\"message\":\"no such api key\"}}")
+  let broken = w_post(success: false, exit_code: 22, status_line: "HTTP/1.1 500 Internal Server Error\r\n", body: "{\"error\":\"boom\"}")
+  !w_pending_on_operator(posted: denied) && !w_pending_on_operator(posted: broken)
+}
+
 // CLAIM 3. A 503 from the front yields the typed no-capacity outcome: a hold on the retry policy, recorded, and
 // NEITHER an unexplained engine refusal NOR an ended session.
 test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> Bool {
@@ -389,8 +449,8 @@ test fn a_503_from_the_front_is_typed_no_capacity_and_held_not_unexplained() -> 
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
-  }) && harness_post_is_retryable(posted: p)
-    && (harness_outcome_label(outcome: TurnPoolNoCapacity { retries: 3, steps_taken: 2 }) == "pool-no-capacity")
+  }) && w_pending_on_operator(posted: p)
+    && (harness_outcome_label(outcome: TurnRequestPending { re_deliveries: 3, steps_taken: 2 }) == "request-pending")
 }
 
 // CLAIM 3b. The front's 502 (a card was chosen and did not answer, observed live 2026-10-26) is its own typed
@@ -404,7 +464,7 @@ test fn a_502_from_the_front_is_typed_card_unanswered_and_held() -> Bool {
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
-  }) && harness_post_is_retryable(posted: p)
+  }) && w_pending_on_operator(posted: p)
 }
 
 test fn a_429_from_the_front_is_typed_upstreams_busy_and_held() -> Bool {
@@ -416,7 +476,7 @@ test fn a_429_from_the_front_is_typed_upstreams_busy_and_held() -> Bool {
     Present { value: OperatorCertificateNotPinned { curl_exit: _ } } => false
     Present { value: OperatorCertificateNotVerifiedForHost { curl_exit: _ } } => false
     Absent => false
-  }) && harness_post_is_retryable(posted: p)
+  }) && w_pending_on_operator(posted: p)
 }
 
 test fn a_500_from_the_front_is_no_pool_fault_and_not_held() -> Bool {
@@ -424,7 +484,7 @@ test fn a_500_from_the_front_is_no_pool_fault_and_not_held() -> Bool {
   (match p.fault {
     Present { value: _ } => false
     Absent => true
-  }) && !harness_post_is_retryable(posted: p)
+  }) && !w_pending_on_operator(posted: p)
 }
 
 test fn a_503_with_an_empty_body_carries_the_typed_no_capacity_fault() -> Bool {
@@ -535,11 +595,13 @@ test fn an_uncited_pool_figure_is_not_read_and_the_projection_parses_nothing() -
     && (match harness_unit_reasoning_projection(unit: Qwen38FlashNextOnPoolFront) { Present { value: _ } => false  Absent => true })
 }
 
-// The real harness CLI's exit derivation maps the held turn to exit 1 labelled pool-no-capacity (not success).
-test fn a_503_held_turn_exits_failure_labelled_pool_no_capacity() -> Bool {
-  match harness_turn_exit(outcome: TurnPoolNoCapacity { retries: 3, steps_taken: 2 }) {
+// The real harness CLI's exit derivation maps a PATIENT REQUEST turn to exit 1 labelled request-pending
+// (not success, not a provider terminal): the request was delivered and stands, so the worker reports
+// the wait rather than an ending, and the belt reads the durable event the worker wrote.
+test fn a_request_pending_turn_exits_failure_labelled_request_pending() -> Bool {
+  match harness_turn_exit(outcome: TurnRequestPending { re_deliveries: 3, steps_taken: 2 }) {
     ExitSuccess => false
-    ExitFailure { code, reason } => code == 1 && reason.contains("pool-no-capacity")
+    ExitFailure { code, reason } => code == 1 && reason.contains("request-pending")
   }
 }
 

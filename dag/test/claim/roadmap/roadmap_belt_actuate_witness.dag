@@ -2,7 +2,8 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
-import gunbc.harness.harness_session_recovery { SessionRecoveryNone, CapacityNotAsked }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import std.optional { Present }
 import gunbc.roadmap.roadmap_belt_actuate {
   belt_spawn_outcome_with_release, belt_commit_git_argv,
   belt_commit_gitfile_points_at, belt_commit_commondir_points_at,
@@ -2776,7 +2777,7 @@ test fn an_active_systemd_worker_blocks_the_launch_and_the_spawn_alike() -> Bool
       goal_audit: none,
       recovery: SessionRecoveryNone,
       verification_retry: RefusedRetryOperatorOnly,
-    capacity: CapacityNotAsked,
+    now: Present { value: 1700000000 },
     } },
   )
   live_refusal
