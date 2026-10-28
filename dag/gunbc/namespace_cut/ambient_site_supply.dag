@@ -1,0 +1,57 @@
+module gunbc.namespace_cut.ambient_site_supply
+
+import std.types { Int, List, NonEmptyStr, String }
+import std.optional { Optional }
+
+// THE AUTHORED SITE SUPPLIES OF A SUPPLIED WAVE (NAMESPACE-XL; tidy-ant-251's sort_by rulings, 2026-10-28). A row of
+// gunbc.namespace_cut.ambient_name_home whose home declares a parameter the ambient spelling never took (sort_by(xs, key) ->
+// list_sort_by_key(xs, key, order)) cannot know that argument's text: it differs per call (the order is the total order
+// of THAT call's key type), so it is an authored judgment per site, and this module is where those judgments live. The
+// import sweep (v2.workflow.roster_import_sweep) writes them, and the namespace-wave binding diff's recomputation
+// (gunbc.instruments.namespace_wave_occurrence_join) reads the same rows to prove the head is the generator's output.
+//
+// A SITE IS NAMED BY ITS CENSUS COORDINATE AT A BASE: the commit, the module, and the 1-based line and byte column of the
+// call head, exactly the locus the ambient-name census prints for the occurrence and the binding diff joins on. Neither
+// reader keys on call text. Both carry the base locus forward through the generator's own edit rounds
+// (roster_import_sweep map_through_rounds) to the pass that writes the arguments, so an import inserted above, or an
+// earlier site renamed on the same line, moves the locus without changing which site it names.
+//
+// A row is bound to its base. A run whose base is another commit refuses base-mismatch rather than re-deriving, and a
+// locus that lands on no head of the row's call refuses stale. A head of a supplied row with no row refuses unsupplied,
+// and two rows naming one site refuse.
+//
+// DISPOSITION: the rows of a wave are added by that wave's PR and read there by the generator and the gate. After the
+// wave lands they are stale by construction (their base is no longer anyone's base) and nothing reads them, so a
+// follow-up whose trigger is "the wave lands" deletes them; git keeps the record.
+type AmbientSiteSupply {
+  // The commit whose tree the locus is read in.
+  base: NonEmptyStr
+  // The row's ambient spelling (ambient_name_home name): which supplied row this site belongs to.
+  call: NonEmptyStr
+  // The module holding the site, as the census prints it; its file is the module's storage path
+  // (gunbc.source_layout layout_module_storage_path), never stored beside it.
+  module: NonEmptyStr
+  line: Int
+  column: Int
+  // One text per label of the row's supplied parameters, in order.
+  args: List<String>
+  // The declarations the supplied texts use, as dotted declaration paths (std.algebra.int_total_order); a name the module
+  // already binds, or one the module itself declares, is not imported.
+  imports: List<NonEmptyStr>
+  key_let: Optional<AmbientKeyLet>
+}
+
+// THE KEY AS AN ANNOTATED LET AT THE TOP OF THE ENCLOSING FUNCTION'S BODY (tidy-ant-251's interim ruling): the positional
+// argument labelled `label` (a function literal) moves to `let name: annotation = <its text>` and the call reads `name`.
+// The annotation types a field read in the lambda that the seed cannot type through a declared generic's parameter.
+// DISSOLVES when that seed gap closes and the lambda types at the call (lambda_value_has_no_derived_type_in_v2_infer).
+type AmbientKeyLet {
+  label: String
+  name: String
+  annotation: String
+}
+
+// Every supplied wave's rows, one list. Empty while no supplied wave is in flight.
+fn ambient_site_supplies() -> List<AmbientSiteSupply> {
+  []
+}

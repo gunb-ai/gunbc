@@ -4,8 +4,8 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_e
 import v2.compiler.module_acquisition { AcquiredModule, AcquisitionNotVerified, AcquisitionVerified, SourceRootBinding, acquire_verified }
 import v2.cli.repository_layout { repository_storage_layout, repository_tree_directory, repository_path_of_module_file }
 import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator }
-import v2.compiler.parse { PreparedGrammar, parse_module_prepared }
+import v2.compiler.normalize { normalize_with, NormalizeWithIsolatedAllocator, ScopedNormalizedTree }
+import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 // THE ROSTER'S POSITION-AND-KIND READING IS NOT IN HERE. Whether a site's position is compatible with the kind its
 // home declaration declares is decided by v2.workflow.roster_home_kind (v2.std.decl_index's only consumer on the roster
@@ -27,7 +27,7 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node,
   parse_import_block_idents
 }
-import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup }
+import std.algebra { Cons, Empty, FreeMonoid, fold_list, is_empty, list_snoc_item, list_map, length, take_prefix, list_at_optional, list_append, list_reverse, string_contains, zip_map, for_all, list_sort_by_key, int_total_order, empty_map, map_insert, map_lookup, list_find_first, trim }
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.integer { int_to_decimal_string }
 import std.process { ExitFailure, ExitSuccess, ProcessExit, exit_failure }
@@ -49,6 +49,8 @@ import extdeps.git
 import extdeps.git.inspect
 import std.optional { Absent, Optional, Present }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.namespace_cut.ambient_site_supply { AmbientSiteSupply, AmbientKeyLet, ambient_site_supplies }
+import gunbc.source_layout { layout_module_storage_path }
 import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
 import v2.std.grammar { parse_production_emitted_identity_optional, node_atom_identity_optional }
 import v2.std.node_query { find_named_child }
@@ -92,18 +94,43 @@ type RosterHeadRow {
   head: RosterHeadRewrite
 }
 
+// AN ARGUMENT THE HOME DECLARES AND THE AMBIENT SPELLING NEVER TOOK (sort_by(xs, key) -> list_sort_by_key(xs, key, order)):
+// `supplied` names those parameters, after `positional`, and the row cannot know their text, because it differs per call
+// (the order is the total order of THAT call's key type). Each call's text comes from one authored SITE SUPPLY
+// (gunbc.namespace_cut.ambient_site_supply AmbientSiteSupply), never part of the landed table, so the landed row carries
+// `sites: []` and every call of a supplied row refuses (RefusalSuppliedArgUnsupplied) until its supply is authored.
+// A supply is authored at its census coordinate at a base and carried here as `at`, the byte offset of the call head IN THE
+// TEXT BEING SWEPT: before each round the base offset is moved through the rounds already applied (map_through_rounds), so
+// an import inserted above or an earlier rename on the line shifts it without changing which site it names. A head is
+// joined to its supply by that offset alone; no call text is read or compared.
+type RosterSiteSupply {
+  at: Int
+  // One text per label of the row's `supplied`, in order.
+  args: List<String>
+  // Names the supplied texts use, by home; a name the module already binds, or a home that is the module itself, is skipped.
+  imports: List<QualifiedName>
+  key_let: Optional<AmbientKeyLet>
+}
+
+// ONE SUPPLIED IMPORT, read off a declaration path (its prefix the home, its last segment the name). The supply carries the
+// paths, not these records: a list of records inside the row's variant left the seed unable to type `row.home` in this
+// module's lambdas (`no field 'home' on type 'T'`, measured), and a declaration path is the fact anyway.
+type RosterSuppliedImport {
+  origin: QualifiedName
+  name: String
+}
+
 // A ROW WHOSE HOME DECLARES THE OPERATION UNDER ANOTHER NAME (tidy-ant-251's map_get ruling A: the ambient spelling's
 // operation is already declared, so the call moves to the declaration rather than minting a second name for it).
 // KeepHead is every row whose call spelling IS the home's name, so the rows that predate this field are unchanged by
 // construction. RenameHead rewrites each selected call head to `to`; its `positional` is the other half of the same
 // fact, so it lives in the arm and a KeepHead row cannot carry one: the home declaration's parameter labels, in order, given to a call's positional arguments, because the home's
-// callable is called by label where the ambient spelling was called by position. EXACT ARITY IS REQUIRED: a call that does
-// not have exactly that many positional arguments refuses. An argument already named with the label this row declares AT
-// ITS POSITION is retained as authored; a mismatched or reordered label refuses, because the rewrite never reorders
-// arguments -- reordering an argument list reorders its evaluation.
+// callable is called by label where the ambient spelling was called by position. A call that does not have exactly that
+// many positional arguments, or that names any argument, refuses: the row cannot know which parameter a named or
+// surplus argument meant.
 type RosterHeadRewrite
   = KeepHead
-  | RenameHead { to: String, positional: List<String> }
+  | RenameHead { to: String, positional: List<String>, supplied: List<String>, sites: List<RosterSiteSupply> }
 
 // THE ARGUMENT LABELS A ROW'S HOME RENAMES at its call sites: a field of the row, so the call and the home a rename belongs
 // to are the row's own facts, stated once (review 82024).
@@ -209,6 +236,15 @@ type RosterRefusalReason
   // plan refuses before any splice and names the extents.
   | RefusalEditsOverlap { start: Int, end: Int, reach: Int }
   | RefusalEditsCoincide { at: Int }
+  // A SUPPLIED ROW'S CALL THE RUN CANNOT SUPPLY (RosterSiteSupply): no supply has its text, several do or two calls share
+  // it, the supply's argument count is not the row's, a supply names another file, or the key let has no place.
+  | RefusalSuppliedArgUnsupplied { call: String, locus: String }
+  | RefusalSupplyDuplicate { call: String, locus: String }
+  | RefusalSupplyStale { call: String, module: String, locus: String }
+  | RefusalSupplyBaseMismatch { module: String, supply_base: String, run_base: String }
+  | RefusalNotConverged
+  | RefusalSupplyMalformed { call: String, locus: String }
+  | RefusalKeyLetUnplaced { call: String, name: String }
 
 fn roster_refusal_text(reason: RosterRefusalReason) -> String {
   match reason {
@@ -252,6 +288,13 @@ fn roster_refusal_text(reason: RosterRefusalReason) -> String {
     RefusalRenameCallNamedArgument { call: c } => "rename-call-named-argument call=" + c
     RefusalRenamePipeOperandUnclean { call: c } => "rename-pipe-operand-unclean call=" + c
     RefusalCompanionUnderivable { call: c, detail: d } => "companion-underivable call=" + c + " " + d
+    RefusalSuppliedArgUnsupplied { call: c, locus: l } => "supplied-arg-unsupplied call=" + c + " at=" + l
+    RefusalSupplyDuplicate { call: c, locus: l } => "supply-duplicate call=" + c + " at=" + l
+    RefusalSupplyStale { call: c, module: m, locus: l } => "supply-stale call=" + c + " module=" + m + " at=" + l
+    RefusalSupplyBaseMismatch { module: m, supply_base: sb, run_base: rb } => "supply-base-mismatch module=" + m + " supply-base=" + sb + " run-base=" + rb
+    RefusalNotConverged => "not-converged"
+    RefusalSupplyMalformed { call: c, locus: l } => "supply-malformed call=" + c + " at=" + l
+    RefusalKeyLetUnplaced { call: c, name: n } => "key-let-unplaced call=" + c + " name=" + n
   }
 }
 
@@ -352,6 +395,15 @@ type RosterLabelEdit {
   relocation: Optional<RosterHeadRelocation>
 }
 
+// A landed row's empty supply, typed by its declaration (the row table lists no site; a run fills it).
+fn roster_no_sites() -> List<RosterSiteSupply> {
+  []
+}
+
+fn roster_no_supplied() -> List<String> {
+  []
+}
+
 fn roster_head_rows() -> List<RosterHeadRow> {
   [
     RosterHeadRow { call: "shell_materialize_operation_argv", import_name: "shell_materialize_operation_argv", home: qualified_name_from_dotted_string(dotted: "std.operation_argv"), labels: [], head: KeepHead },
@@ -381,7 +433,17 @@ fn roster_head_rows() -> List<RosterHeadRow> {
       import_name: "map_lookup",
       home: qualified_name_from_dotted_string(dotted: "std.algebra"),
       labels: [],
-      head: RenameHead { to: "map_lookup", positional: ["m", "key"] }
+      head: RenameHead { to: "map_lookup", positional: ["m", "key"], supplied: roster_no_supplied(), sites: roster_no_sites() }
+    },
+    // sort_by's operation is declared (tidy-ant-251's sort_by rulings): std.algebra list_sort_by_key(xs, key, order), the
+    // stable sort by key under an EXPLICIT total order of the key type. The ambient spelling chose that order implicitly, so
+    // every call is supplied its order by a run (sites are never landed).
+    RosterHeadRow {
+      call: "sort_by",
+      import_name: "list_sort_by_key",
+      home: qualified_name_from_dotted_string(dotted: "std.algebra"),
+      labels: [],
+      head: RenameHead { to: "list_sort_by_key", positional: ["xs", "key"], supplied: ["order"], sites: roster_no_sites() }
     }
   ]
 }
@@ -522,23 +584,170 @@ fn roster_sweep_all(paths_csv: String, prepared: PreparedGrammar, lex: PreparedL
 }
 
 fn roster_sweep_selected(paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
+  roster_sweep_selected_in(table: roster_head_rows(), paths_csv: paths_csv, prepared: prepared, lex: lex, scope: scope)
+}
+
+fn roster_sweep_selected_in(table: List<RosterHeadRow>, paths_csv: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope) -> String {
   let closures = roster_home_closures(root: "", scope: scope)
-  let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-  let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: lex)
+  let selected = roster_rows_for_scope_in(table: table, scope: scope)
+  let sides = roster_home_sides(rows: selected)
+  let companions = roster_rename_companions(rows: selected, prepared: prepared, lex: lex)
   fold_list(
     xs: split(s: paths_csv, delimiter: ","),
     empty: "",
-    cons: fn(acc, path) { acc + roster_sweep_path(sides: sides, companions: companions, path: path, prepared: prepared, lex: lex, scope: scope, closures: closures) }
+    cons: fn(acc, path) { acc + roster_sweep_path(sides: sides, companions: companions, path: path, prepared: prepared, lex: lex, candidates: selected, closures: closures) }
   )
 }
 
-fn roster_sweep_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
+fn roster_sweep_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> String {
   let read = Filesystem.Read(path: path)
   if read.success {
-    roster_render_outcome(path: path, outcome: roster_sweep_text_scoped(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures))
+    roster_render_outcome(path: path, outcome: roster_sweep_text_rows(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, candidates: candidates, closures: closures))
   } else {
     roster_refuse_row(path: path, reason: RefusalUnreadable)
   }
+}
+
+// THE ONE CONVERGENCE (tidy-ant-251, 2026-10-28): sweep, splice, repeat to a fixed point, in memory, from the text a run
+// starts at. The apply step writes its result once; the namespace-wave binding diff's recomputation
+// (gunbc.instruments.namespace_wave_occurrence_join recompute_wave_text) is this same fold over the base text, so the gate
+// recomputes exactly what the generator writes. A round sweeps the first scope (in the order given) that is not Clean;
+// every scope Clean is the fixed point. A run that is still editing after the last round is unfinished, never accepted.
+//
+// SITE SUPPLIES ride the rounds: each authored row (gunbc.namespace_cut.ambient_site_supply) for this file is read at its
+// base locus in the starting text, and before every round that offset is carried through the rounds already applied
+// (map_through_rounds, the gate's one mover). Carried by position, it names the head the round may rewrite; carried as a
+// rename, the round that wrote it consumed it; covered by an edit, or not a byte of the starting text, it is stale and
+// refuses. The rows' base binding is checked by the caller, which knows what commit its starting text is.
+type RosterConvergence {
+  text: String
+  rounds: List<List<EditStep>>
+  done: Bool
+  refused: Optional<RosterRefusalReason>
+}
+
+fn roster_converge_round_bound() -> List<Int> {
+  [0, 1, 2, 3]
+}
+
+fn roster_converge(table: List<RosterHeadRow>, scopes: List<RosterHomeScope>, closures: List<RosterHomeClosure>, path: String, text: String, prepared: PreparedGrammar, lex: PreparedLexRules, supplies: List<AmbientSiteSupply>) -> RosterConvergence {
+  let base_starts = line_starts(text: text)
+  fold_list(xs: roster_converge_round_bound(), empty: RosterConvergence { text: text, rounds: [], done: false, refused: Absent }, cons: fn(st, _i) {
+    roster_converge_round(st: st, table: table, scopes: scopes, closures: closures, path: path, prepared: prepared, lex: lex, supplies: supplies, base_starts: base_starts)
+  })
+}
+
+fn roster_converge_round(st: RosterConvergence, table: List<RosterHeadRow>, scopes: List<RosterHomeScope>, closures: List<RosterHomeClosure>, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, supplies: List<AmbientSiteSupply>, base_starts: List<Int>) -> RosterConvergence {
+  if st.done || roster_refusal_present(r: st.refused) {
+    st
+  } else {
+    match roster_round_table(table: table, supplies: supplies, path: path, base_starts: base_starts, rounds: st.rounds) {
+      RoundTableRefused { reason: r } => RosterConvergence { text: st.text, rounds: st.rounds, done: false, refused: Present { value: r } }
+      RoundTable { table: t } =>
+        let outcome = fold_list(xs: scopes, empty: RosterClean, cons: fn(acc, scope) {
+          match acc {
+            RosterClean =>
+              let rows = roster_rows_for_scope_in(table: t, scope: scope)
+              roster_sweep_text_rows(sides: roster_home_sides(rows: rows), companions: roster_rename_companions(rows: rows, prepared: prepared, lex: lex), path: path, text: st.text, prepared: prepared, lex: lex, candidates: rows, closures: closures)
+            _ => acc
+          }
+        })
+        match outcome {
+          RosterClean => RosterConvergence { text: st.text, rounds: st.rounds, done: true, refused: Absent }
+          RosterRefused { reason: r } => RosterConvergence { text: st.text, rounds: st.rounds, done: false, refused: Present { value: r } }
+          _ =>
+            match roster_applied(before: st.text, outcome: outcome) {
+              RosterApplyWritten { content: c } => RosterConvergence { text: c, rounds: list_snoc_item(xs: st.rounds, item: outcome_steps(outcome: outcome)), done: false, refused: Absent }
+              RosterApplyRefused { reason: r } => RosterConvergence { text: st.text, rounds: st.rounds, done: false, refused: Present { value: r } }
+            }
+        }
+    }
+  }
+}
+
+fn roster_refusal_present(r: Optional<RosterRefusalReason>) -> Bool {
+  match r {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+type RosterRoundTable
+  = RoundTable { table: List<RosterHeadRow> }
+  | RoundTableRefused { reason: RosterRefusalReason }
+
+// The table this round sweeps: each supplied row's sites are this file's live supplies at their carried offsets.
+fn roster_round_table(table: List<RosterHeadRow>, supplies: List<AmbientSiteSupply>, path: String, base_starts: List<Int>, rounds: List<List<EditStep>>) -> RosterRoundTable {
+  fold_list(xs: roster_supplied_calls(table: table), empty: RoundTable { table: table }, cons: fn(acc, call) {
+    match acc {
+      RoundTableRefused { reason: _ } => acc
+      RoundTable { table: t } =>
+        match roster_live_supplies(supplies: supplies, call: call, path: path, base_starts: base_starts, rounds: rounds) {
+          LiveSuppliesRefused { reason: r } => RoundTableRefused { reason: r }
+          LiveSupplies { sites: sites } => RoundTable { table: roster_table_with_sites(table: t, call: call, sites: sites) }
+        }
+    }
+  })
+}
+
+fn roster_supplied_calls(table: List<RosterHeadRow>) -> List<String> {
+  fold_list(xs: table, empty: [], cons: fn(acc, r) {
+    match r.head {
+      KeepHead => acc
+      RenameHead { to: _, positional: _, supplied: supplied, sites: _ } => if is_empty(xs: supplied) { acc } else { list_snoc_item(xs: acc, item: r.call) }
+    }
+  })
+}
+
+type RosterLiveSupplies
+  = LiveSupplies { sites: List<RosterSiteSupply> }
+  | LiveSuppliesRefused { reason: RosterRefusalReason }
+
+fn roster_live_supplies(supplies: List<AmbientSiteSupply>, call: String, path: String, base_starts: List<Int>, rounds: List<List<EditStep>>) -> RosterLiveSupplies {
+  fold_list(xs: supplies, empty: LiveSupplies { sites: [] }, cons: fn(acc, s) {
+    match acc {
+      LiveSuppliesRefused { reason: _ } => acc
+      LiveSupplies { sites: got } =>
+        if (s.call as String) != call {
+          acc
+        } else {
+          let stale = LiveSuppliesRefused { reason: RefusalSupplyStale { call: call, module: s.module as String, locus: int_to_decimal_string(value: s.line) + ":" + int_to_decimal_string(value: s.column) } }
+          let base_at = offset_at(starts: base_starts, line: s.line, column: s.column)
+          if base_at < 0 {
+            stale
+          } else {
+            match map_through_rounds(rounds: rounds, offset: base_at) {
+              OffsetMapped { offset: o } => LiveSupplies { sites: list_snoc_item(xs: got, item: roster_site_supply_at(s: s, at: o)) }
+              OffsetRenamed { offset: _, from: _, to: _ } => acc
+              OffsetCovered => stale
+            }
+          }
+        }
+    }
+  })
+}
+
+fn roster_site_supply_at(s: AmbientSiteSupply, at: Int) -> RosterSiteSupply {
+  RosterSiteSupply { at: at, args: s.args, imports: list_map(xs: s.imports, f: fn(d) { qualified_name_from_dotted_string(dotted: d as String) }), key_let: s.key_let }
+}
+
+// The supplies of the rows a scope selects, from the one authored list.
+fn roster_scope_supplies(table: List<RosterHeadRow>, scope: RosterHomeScope) -> List<AmbientSiteSupply> {
+  let calls = roster_supplied_calls(table: roster_rows_for_scope_in(table: table, scope: scope))
+  fold_list(xs: ambient_site_supplies(), empty: [], cons: fn(acc, s) { if roster_contains(xs: calls, name: s.call as String) { list_snoc_item(xs: acc, item: s) } else { acc } })
+}
+
+fn roster_table_with_sites(table: List<RosterHeadRow>, call: String, sites: List<RosterSiteSupply>) -> List<RosterHeadRow> {
+  list_map(xs: table, f: fn(r) {
+    if r.call != call {
+      r
+    } else {
+      match r.head {
+        KeepHead => r
+        RenameHead { to: t, positional: p, supplied: s, sites: _ } => RosterHeadRow { call: r.call, import_name: r.import_name, home: r.home, labels: r.labels, head: RenameHead { to: t, positional: p, supplied: s, sites: sites } }
+      }
+    }
+  })
 }
 
 // THE APPLY STEP, in the same entry family as the generator: the file is read, the outcome computed,
@@ -562,7 +771,7 @@ fn roster_import_sweep_apply_exit(root_dir: String, paths_csv: String) -> Proces
 // segment), never from the working directory: two invocations from different directories on the same root contend for
 // the same file. Every target is a relative path confined under that root (no leading `/`, no `.`, `..` or empty segment);
 // a target that is not is refused before any read. The effectful steps take a RosterHeldLock, whose only constructor is
-// roster_lock_acquire, and roster_apply_edit re-checks that the lock file still exists before it writes, so an entry
+// roster_lock_acquire, and roster_apply_content re-checks that the lock file still exists before it writes, so an entry
 // that never acquired the lock refuses `lock-not-held` and writes nothing. The root and every target are then checked
 // against git itself (roster_root_is_toplevel, roster_target_refusal), which also covers symlinks.
 // WHY NOT std.durable_exclusive_hold / std.temporal_effect::HeldLease (DESIGN §3b leasing home): durable_hold_*_assess
@@ -733,59 +942,100 @@ fn roster_lock_release(held: RosterHeldLock) -> Bool {
 }
 
 fn roster_apply_for_paths(root_dir: String, paths_csv: String, home: QualifiedName, rows: RosterRowSelection) -> String {
+  roster_apply_for_paths_in(table: roster_head_rows(), root_dir: root_dir, paths_csv: paths_csv, home: home, rows: rows)
+}
+
+fn roster_apply_for_paths_in(table: List<RosterHeadRow>, root_dir: String, paths_csv: String, home: QualifiedName, rows: RosterRowSelection) -> String {
   let scope = OneHome { home: home, rows: rows }
-  match roster_scope_selection_refusal_in(table: roster_head_rows(), scope: scope) {
+  match roster_scope_selection_refusal_in(table: table, scope: scope) {
     Present { value: reason } => roster_refuse_row(path: "*", reason: reason)
     Absent =>
       match roster_lock_acquire(root_dir: root_dir) {
         RosterLockRefused { reason: reason } => roster_refuse_row(path: "*", reason: reason)
         RosterLockAcquired { held: held } => {
-          let report = roster_apply_locked(held: held, paths_csv: paths_csv, scope: scope)
+          let report = roster_apply_locked(table: table, held: held, paths_csv: paths_csv, scope: scope)
           if roster_lock_release(held: held) { report } else { report + roster_refuse_row(path: "*", reason: RefusalApplyLockNotReleased) }
         }
       }
   }
 }
 
-fn roster_apply_locked(held: RosterHeldLock, paths_csv: String, scope: RosterHomeScope) -> String {
+fn roster_apply_locked(table: List<RosterHeadRow>, held: RosterHeldLock, paths_csv: String, scope: RosterHomeScope) -> String {
   match dag_prepared_grammar() {
     Rejected { diagnostics: _ } => roster_refuse_row(path: "*", reason: RefusalGrammarUnprepared)
     Accepted { value: prepared, diagnostics: _ } => {
       let closures = roster_home_closures(root: held.root, scope: scope)
-      let sides = roster_home_sides(rows: roster_rows_for_scope(scope: scope))
-      let companions = roster_rename_companions(rows: roster_rows_for_scope(scope: scope), prepared: prepared, lex: dag_prepared_lex())
-      fold_list(
-        xs: split(s: paths_csv, delimiter: ","),
-        empty: "",
-        cons: fn(acc, path) { acc + roster_apply_path(sides: sides, companions: companions, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), scope: scope, closures: closures) }
-      )
+      let paths = split(s: paths_csv, delimiter: ",")
+      let supplies = roster_scope_supplies(table: table, scope: scope)
+      match list_find_first(xs: supplies, predicate: fn(sup) { !roster_supply_in_paths(sup: sup, paths: paths) }) {
+        // A supply whose module's file this run does not visit names no site the run can reach: stale, before anything is written.
+        Present { value: sup } => roster_refuse_row(path: "*", reason: RefusalSupplyStale { call: sup.call as String, module: sup.module as String, locus: int_to_decimal_string(value: sup.line) + ":" + int_to_decimal_string(value: sup.column) })
+        Absent =>
+          fold_list(
+            xs: paths,
+            empty: "",
+            cons: fn(acc, path) { acc + roster_apply_path(table: table, scope: scope, held: held, path: path, prepared: prepared, lex: dag_prepared_lex(), closures: closures, supplies: roster_supplies_stored_at(supplies: supplies, path: path)) }
+          )
+      }
     }
   }
 }
 
-fn roster_apply_path(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, scope: RosterHomeScope, closures: List<RosterHomeClosure>) -> String {
+fn roster_apply_path(table: List<RosterHeadRow>, scope: RosterHomeScope, held: RosterHeldLock, path: String, prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>, supplies: List<AmbientSiteSupply>) -> String {
   if !roster_path_admitted(path: path) {
     roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else {
     let read = Filesystem.Read(path: held.root + "/" + path)
-    if read.success {
-      match roster_sweep_text_scoped(sides: sides, companions: companions, path: path, text: read.content, prepared: prepared, lex: lex, scope: scope, closures: closures) {
-        RosterClean => ""
-        RosterRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
-        RosterEdit { start: start, end: end, text: text, own_line: own_line } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEdit { start: start, end: end, text: text, own_line: own_line })
-        RosterLabelEdits { edits: edits } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterLabelEdits { edits: edits })
-        RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls } =>
-          roster_apply_edit(held: held, path: path, before: read.content, outcome: RosterEditWithLabels { start: st, end: en, text: tx, own_line: ol, labels: ls })
-      }
-    } else {
+    if !read.success {
       roster_refuse_row(path: path, reason: RefusalUnreadable)
+    } else {
+      match roster_supply_base_refusal(root: held.root, path: path, supplies: supplies) {
+        Present { value: r } => roster_refuse_row(path: path, reason: r)
+        Absent => {
+          let end = roster_converge(table: table, scopes: [scope], closures: closures, path: path, text: read.content, prepared: prepared, lex: lex, supplies: supplies)
+          match end.refused {
+            Present { value: r } => roster_refuse_row(path: path, reason: r)
+            Absent => if !end.done { roster_refuse_row(path: path, reason: RefusalNotConverged) } else { roster_apply_content(held: held, path: path, before: read.content, content: end.text) }
+          }
+        }
+      }
     }
   }
 }
 
-fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome: RosterOutcome) -> String {
+// A supply's file is its module's storage path (gunbc.source_layout), the one name-to-path rule.
+fn roster_supply_stored_at(sup: AmbientSiteSupply, path: String) -> Bool {
+  layout_module_storage_path(module: sup.module as String) == Present { value: path }
+}
+
+fn roster_supply_in_paths(sup: AmbientSiteSupply, paths: List<String>) -> Bool {
+  fold_list(xs: paths, empty: false, cons: fn(found, p) { found || roster_supply_stored_at(sup: sup, path: p) })
+}
+
+fn roster_supplies_stored_at(supplies: List<AmbientSiteSupply>, path: String) -> List<AmbientSiteSupply> {
+  fold_list(xs: supplies, empty: [], cons: fn(acc, sup) { if roster_supply_stored_at(sup: sup, path: path) { list_snoc_item(xs: acc, item: sup) } else { acc } })
+}
+
+// A FILE WITH SUPPLIES IS READ AT THEIR BASE: the worktree's HEAD must be each supply's base commit. The write step's target
+// check already requires the file tracked and unmodified against HEAD, so its text is the base blob the loci were read in.
+fn roster_supply_base_refusal(root: String, path: String, supplies: List<AmbientSiteSupply>) -> Optional<RosterRefusalReason> {
+  let mine = supplies
+  if is_empty(xs: mine) {
+    Absent
+  } else {
+    let head = git.Inspect.HeadCommitIn(repository_path: root)
+    if !head.success {
+      Present { value: RefusalGitUnobservable }
+    } else {
+      match list_find_first(xs: mine, predicate: fn(sup) { (sup.base as String) != trim(s: head.sha) }) {
+        Present { value: sup } => Present { value: RefusalSupplyBaseMismatch { module: sup.module as String, supply_base: sup.base as String, run_base: trim(s: head.sha) } }
+        Absent => Absent
+      }
+    }
+  }
+}
+
+fn roster_apply_content(held: RosterHeldLock, path: String, before: String, content: String) -> String {
   if !roster_path_admitted(path: path) {
     roster_refuse_row(path: path, reason: RefusalPathOutsideRoot)
   } else if !roster_lock_still_held(held: held) {
@@ -796,18 +1046,12 @@ fn roster_apply_edit(held: RosterHeldLock, path: String, before: String, outcome
       Absent =>
         if !roster_target_unchanged(root: held.root, path: path, before: before) {
           roster_refuse_row(path: path, reason: RefusalStaleRead)
+        } else if content == before {
+          ""
+        } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
+          ""
         } else {
-          match roster_applied(before: before, outcome: outcome) {
-            RosterApplyRefused { reason: reason } => roster_refuse_row(path: path, reason: reason)
-            RosterApplyWritten { content: content } =>
-              if content == before {
-                ""
-              } else if Filesystem.Write(path: held.root + "/" + path, content: content).success {
-                ""
-              } else {
-                roster_refuse_row(path: path, reason: RefusalWriteFailed)
-              }
-          }
+          roster_refuse_row(path: path, reason: RefusalWriteFailed)
         }
     }
   }
@@ -969,7 +1213,7 @@ fn roster_is_continuation(octet: Int) -> Bool {
 }
 
 // A replaced extent is a whole std.algebra import declaration (it opens with the keyword and the module and ends at
-// its closing brace (roster_apply_edit also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
+// its closing brace (roster_applied also refuses an extent carrying a `//` annotation, which the replacement would erase); an insertion point is the end of an import block. Offsets here are scalar offsets.
 // An insertion holds where the parse put it: after an import block's closing brace, or (a module with no import yet) at the
 // end of the module header's line.
 fn roster_ends_module_header_line(before: String, at: Int) -> Bool {
@@ -1111,25 +1355,42 @@ fn roster_census_text_rows(sides: List<RosterHomeSide>, companions: List<RosterC
               match normalize_with(parse_tree: artifact.tree, source: NormalizeWithIsolatedAllocator, spans: artifact.span_index) {
                 Rejected { diagnostics: _ } => roster_census_refused(reason: RefusalNormalizeRefused)
                 Accepted { value: scoped, diagnostics: _ } =>
-                  let outcome = match roster_sweep_rows(sides: sides, 
-                    parse_root: artifact.tree,
-                    spans: artifact.span_index,
-                    normalized_root: scoped.tree.root,
-                    imported: scoped.tree.import_bindings,
-                    candidates: candidates,
-                    closures: closures
-                  ) {
-                    RosterClean => roster_label_outcome(sides: sides, text: text, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
-                    other => other
-                  }
-                  let converged = match outcome {
-                    RosterClean => roster_companion_outcome(companions: companions, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, homes: candidates)
-                    other => other
-                  }
-                  RosterCensusRead { outcome: converged, heads: roster_census_heads(parse_root: artifact.tree, call: census_call) }
+                  roster_census_scoped(sides: sides, companions: companions, path: path, text: text, artifact: artifact, scoped: scoped, candidates: candidates, closures: closures, census_call: census_call)
               }
           }
       }
+}
+
+fn roster_census_scoped(sides: List<RosterHomeSide>, companions: List<RosterCompanion>, path: String, text: String, artifact: ParseArtifact, scoped: ScopedNormalizedTree, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>, census_call: Optional<String>) -> RosterCensusRead {
+  let heads = roster_census_heads(parse_root: artifact.tree, call: census_call)
+  let outcome = match roster_supply_precheck(text: text, path: path, sides: sides, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates) {
+    Present { value: reason } => RosterRefused { reason: reason }
+    Absent => roster_census_planned(sides: sides, text: text, artifact: artifact, scoped: scoped, candidates: candidates, closures: closures)
+  }
+  let converged = match outcome {
+    RosterClean => roster_companion_outcome(companions: companions, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, homes: candidates)
+    other => other
+  }
+  RosterCensusRead { outcome: converged, heads: heads }
+}
+
+// The rows' own import, then the supplied texts' imports, then the labels and renames: one step per pass.
+fn roster_census_planned(sides: List<RosterHomeSide>, text: String, artifact: ParseArtifact, scoped: ScopedNormalizedTree, candidates: List<RosterHeadRow>, closures: List<RosterHomeClosure>) -> RosterOutcome {
+  match roster_sweep_rows(sides: sides, 
+    parse_root: artifact.tree,
+    spans: artifact.span_index,
+    normalized_root: scoped.tree.root,
+    imported: scoped.tree.import_bindings,
+    candidates: candidates,
+    closures: closures
+  ) {
+    RosterClean =>
+      match roster_supplied_import_outcome(text: text, sides: sides, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates) {
+        RosterClean => roster_label_outcome(sides: sides, text: text, parse_root: artifact.tree, spans: artifact.span_index, normalized_root: scoped.tree.root, imported: scoped.tree.import_bindings, candidates: candidates)
+        other => other
+      }
+    other => other
+  }
 }
 
 // THE FREE HEADS OF ONE ROW: the parse tree's primary heads spelled `call` whose joined reference site is free. The one head
@@ -1375,10 +1636,10 @@ fn roster_rows_label_plan(sides: List<RosterHomeSide>,
       LabelsSelected { edits: es } =>
         match row.head {
           KeepHead => roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es)
-          RenameHead { to: to, positional: positional } =>
+          RenameHead { to: to, positional: positional, supplied: supplied, sites: sites } =>
             match roster_row_label_edits(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, edits: es) {
               LabelsSelected { edits: es3 } =>
-                match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, pipe_index: pipe_index, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional) {
+                match roster_rename_plan(sides: sides, text: text, parse_root: parse_root, pipe_index: pipe_index, spans: spans, normalized_root: normalized_root, imported: imported, row: row, to: to, positional: positional, supplied: supplied, sites: sites) {
                   LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es3, right: more) }
                   other => other
                 }
@@ -1480,7 +1741,9 @@ fn roster_rename_plan(
   imported: List<AliasBindingRow>,
   row: RosterHeadRow,
   to: String,
-  positional: List<String>
+  positional: List<String>,
+  supplied: List<String>,
+  sites: List<RosterSiteSupply>
 ) -> RosterLabelPlan {
   match roster_free_heads(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
     FreeHeadsAmbiguous => LabelsAmbiguous
@@ -1491,7 +1754,7 @@ fn roster_rename_plan(
     fold_list(xs: roster_heads_innermost_first(pipe_index: pipe_index, spans: spans, heads: heads), empty: LabelsSelected { edits: [] }, cons: fn(acc, selected) {
       match acc {
         LabelsSelected { edits: es } =>
-          match roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional) {
+          match roster_supplied_call_edits(text: text, parse_root: parse_root, selected: selected, spans: spans, row: row, to: to, positional: positional, supplied: supplied, sites: sites) {
             LabelsSelected { edits: more } => LabelsSelected { edits: list_append(left: es, right: more) }
             other => other
           }
@@ -1522,6 +1785,419 @@ fn roster_rename_call_edits(text: Optional<String>, selected: RosterSelectedHead
           }
       }
   }
+}
+
+// A SUPPLIED ROW'S CALL: the ordinary rename (direct or pipe), then its supplied arguments after the last written argument and,
+// when the site's supply says so, its key moved into an annotated let at the top of the enclosing function's body. A row with no
+// supplied parameter is exactly the ordinary rename. Without the text (the import pass) a supplied call plans nothing: its
+// supply is read off the call's text, and a head renamed in the import pass without its supplied arguments would be a call the
+// home's arity refuses.
+fn roster_supplied_call_edits(text: Optional<String>, parse_root: Node, selected: RosterSelectedHead, spans: SpanIndex, row: RosterHeadRow, to: String, positional: List<String>, supplied: List<String>, sites: List<RosterSiteSupply>) -> RosterLabelPlan {
+  let head = selected.head
+  if is_empty(xs: supplied) {
+    roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional)
+  } else {
+    match text {
+      Absent => LabelsSelected { edits: [] }
+      Present { value: t } =>
+        match roster_head_supply(text: t, head: head, spans: spans, sites: sites, call: row.call) {
+          RosterSupplyRefused { reason: r } => LabelsRenameRefused { reason: r }
+          RosterSupplyFound { supply: supply } =>
+            match roster_rename_call_edits(text: text, selected: selected, spans: spans, row: row, to: to, positional: positional) {
+              LabelsSelected { edits: base } => roster_supply_edits(text: t, parse_root: parse_root, head: head, read: selected.read, spans: spans, row: row, positional: positional, supplied: supplied, supply: supply, base: base)
+              other => other
+            }
+        }
+    }
+  }
+}
+
+type RosterHeadSupply
+  = RosterSupplyFound { supply: RosterSiteSupply }
+  | RosterSupplyRefused { reason: RosterRefusalReason }
+
+fn roster_head_supply(text: String, head: Node, spans: SpanIndex, sites: List<RosterSiteSupply>, call: String) -> RosterHeadSupply {
+  match roster_node_start(node: head, spans: spans) {
+    Absent => RosterSupplyRefused { reason: RefusalLabelSitesAmbiguous }
+    Present { value: at } =>
+      match fold_list(xs: sites, empty: [], cons: fn(acc, s) { if s.at == at { list_snoc_item(xs: acc, item: s) } else { acc } }) {
+        Empty => RosterSupplyRefused { reason: RefusalSuppliedArgUnsupplied { call: call, locus: locus_at(starts: line_starts(text: text), offset: at) } }
+        Cons { head: one, tail: Empty } => RosterSupplyFound { supply: one }
+        _ => RosterSupplyRefused { reason: RefusalSupplyDuplicate { call: call, locus: locus_at(starts: line_starts(text: text), offset: at) } }
+      }
+  }
+}
+
+fn roster_supply_edits(text: String, parse_root: Node, head: Node, read: RosterPipeRead, spans: SpanIndex, row: RosterHeadRow, positional: List<String>, supplied: List<String>, supply: RosterSiteSupply, base: List<RosterLabelEdit>) -> RosterLabelPlan {
+  if length(xs: supply.args) != length(xs: supplied) {
+    LabelsRenameRefused { reason: RefusalSupplyMalformed { call: row.call, locus: locus_at(starts: line_starts(text: text), offset: supply.at) } }
+  } else {
+    match roster_last_arg_end(head: head, spans: spans) {
+      Absent => LabelsRenameRefused { reason: RefusalSupplyMalformed { call: row.call, locus: locus_at(starts: line_starts(text: text), offset: supply.at) } }
+      Present { value: at } =>
+        roster_supply_tail_edits(text: text, parse_root: parse_root, head: head, read: read, spans: spans, row: row, positional: positional, supply: supply, written: list_snoc_item(xs: base, item: RosterLabelEdit { start: at, end: at, from: "", to: roster_supplied_args_text(labels: supplied, args: supply.args), relocation: Absent }))
+    }
+  }
+}
+
+fn roster_supply_tail_edits(text: String, parse_root: Node, head: Node, read: RosterPipeRead, spans: SpanIndex, row: RosterHeadRow, positional: List<String>, supply: RosterSiteSupply, written: List<RosterLabelEdit>) -> RosterLabelPlan {
+  match supply.key_let {
+    Absent => LabelsSelected { edits: written }
+    Present { value: kl } =>
+      match roster_key_let_edits(text: text, parse_root: parse_root, head: head, read: read, spans: spans, row: row, positional: positional, kl: kl) {
+        LabelsSelected { edits: moved } => LabelsSelected { edits: list_append(left: written, right: moved) }
+        other => other
+      }
+  }
+}
+
+// `, order: <text>` for each supplied label, as ONE insertion after the last written argument (two insertions at one offset
+// coincide and refuse). After the last argument, not before the `)`, so a trailing comma or a line break before the `)` stays.
+fn roster_supplied_args_text(labels: List<String>, args: List<String>) -> String {
+  fold_list(xs: zip_map(a: labels, b: args, f: fn(l, a) { ", " + l + ": " + a }), empty: "", cons: fn(acc, piece) { acc + piece })
+}
+
+fn roster_last_arg_end(head: Node, spans: SpanIndex) -> Int? {
+  let slots = dag_call_direct_arg_slots(node: head)
+  match list_at_optional(xs: slots, index: length(xs: slots) - 1) {
+    Absent => Absent
+    Present { value: slot } =>
+      match slot {
+        Absent => Absent
+        Present { value: arg } =>
+          match roster_node_byte_range(node: arg, spans: spans) {
+            Absent => Absent
+            Present { value: r } => Present { value: r.end }
+          }
+      }
+  }
+}
+
+// THE KEY LET: the call's argument at the row's positional label `kl.label` (counting a pipe's left operand as slot 0, which
+// cannot be the key) is replaced by `kl.name`, and `let <name>: <annotation> = <the argument's text>` is inserted at the start of
+// the first statement of the innermost enclosing fn declaration's body, at that statement's indentation. The argument must be a
+// function literal: a let of anything else is not what the ruling admitted. A body whose first statement shares the `{` line has
+// no line to give the let, and refuses.
+fn roster_key_let_edits(text: String, parse_root: Node, head: Node, read: RosterPipeRead, spans: SpanIndex, row: RosterHeadRow, positional: List<String>, kl: AmbientKeyLet) -> RosterLabelPlan {
+  let refused = LabelsRenameRefused { reason: RefusalKeyLetUnplaced { call: row.call, name: kl.name } }
+  let piped = match read {
+    PipedFrom { left: _, call: _ } => 1
+    _ => 0
+  }
+  match roster_index_of(xs: positional, item: kl.label) {
+    Absent => refused
+    Present { value: k } =>
+      if k < piped {
+        refused
+      } else {
+        match list_at_optional(xs: dag_call_direct_arg_slots(node: head), index: k - piped) {
+          Absent => refused
+          Present { value: slot } =>
+            match roster_key_arg(slot: slot, spans: spans, text: text) {
+              Absent => refused
+              Present { value: arg } =>
+                match roster_body_top(parse_root: parse_root, head: head, spans: spans, text: text) {
+                  Absent => refused
+                  Present { value: top } =>
+                    LabelsSelected { edits: [
+                      RosterLabelEdit { start: top.at, end: top.at, from: "", to: "let " + kl.name + ": " + kl.annotation + " = " + arg.text + "\n" + top.indent, relocation: Absent },
+                      RosterLabelEdit { start: arg.start, end: arg.end, from: arg.text, to: kl.name, relocation: Absent }
+                    ] }
+                }
+            }
+        }
+      }
+  }
+}
+
+type RosterKeyArg {
+  start: Int
+  end: Int
+  text: String
+}
+
+// A positional (unnamed) argument whose extent is exactly a function literal's.
+fn roster_key_arg(slot: Optional<Node>, spans: SpanIndex, text: String) -> RosterKeyArg? {
+  match slot {
+    Absent => Absent
+    Present { value: arg } =>
+      if roster_arg_is_named(arg: arg) {
+        Absent
+      } else {
+        match roster_node_byte_range(node: arg, spans: spans) {
+          Absent => Absent
+          Present { value: r } =>
+            if roster_has_production_at(root: arg, spans: spans, id: ^dag_surface_fn_literal, range: r) {
+              match roster_text_between(text: text, start: r.start, end: r.end) {
+                Absent => Absent
+                Present { value: t } => Present { value: RosterKeyArg { start: r.start, end: r.end, text: t } }
+              }
+            } else {
+              Absent
+            }
+        }
+      }
+  }
+}
+
+fn roster_has_production_at(root: Node, spans: SpanIndex, id: Symbol, range: RosterByteRange) -> Bool {
+  fold_list(xs: node_subtree_nodes(root: root), empty: false, cons: fn(found, n) {
+    found || (roster_production_is(node: n, id: id) && roster_range_is(node: n, spans: spans, range: range))
+  })
+}
+
+fn roster_production_is(node: Node, id: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: got } => got == id
+    Absent => false
+  }
+}
+
+fn roster_range_is(node: Node, spans: SpanIndex, range: RosterByteRange) -> Bool {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => r.start == range.start && r.end == range.end
+    Absent => false
+  }
+}
+
+fn roster_range_contains(node: Node, spans: SpanIndex, range: RosterByteRange) -> Bool {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => r.start <= range.start && range.end <= r.end
+    Absent => false
+  }
+}
+
+type RosterBodyTop {
+  at: Int
+  indent: String
+}
+
+// The innermost fn declaration containing the call; its body's statement sequence is the widest one inside it (a nested
+// lambda's body is narrower). The let goes at that sequence's start, which must begin its own line after nothing but spaces.
+fn roster_body_top(parse_root: Node, head: Node, spans: SpanIndex, text: String) -> RosterBodyTop? {
+  match roster_node_byte_range(node: head, spans: spans) {
+    Absent => Absent
+    Present { value: hr } =>
+      match roster_narrowest(nodes: roster_productions_containing(root: parse_root, spans: spans, id: ^dag_surface_fn_decl, range: hr), spans: spans) {
+        Absent => Absent
+        Present { value: decl } =>
+          match roster_widest(nodes: roster_productions_containing(root: decl, spans: spans, id: ^dag_surface_stmt_seq, range: hr), spans: spans) {
+            Absent => Absent
+            Present { value: seq } =>
+              match roster_node_byte_range(node: seq, spans: spans) {
+                Absent => Absent
+                Present { value: sr } => roster_line_indent(text: text, at: sr.start)
+              }
+          }
+      }
+  }
+}
+
+fn roster_productions_containing(root: Node, spans: SpanIndex, id: Symbol, range: RosterByteRange) -> List<Node> {
+  fold_list(xs: node_subtree_nodes(root: root), empty: [], cons: fn(acc, n) {
+    if roster_production_is(node: n, id: id) && roster_range_contains(node: n, spans: spans, range: range) { list_snoc_item(xs: acc, item: n) } else { acc }
+  })
+}
+
+fn roster_width(node: Node, spans: SpanIndex) -> Int {
+  match roster_node_byte_range(node: node, spans: spans) {
+    Present { value: r } => r.end - r.start
+    Absent => 0
+  }
+}
+
+fn roster_narrowest(nodes: List<Node>, spans: SpanIndex) -> Node? {
+  fold_list(xs: nodes, empty: Absent, cons: fn(acc, n) {
+    match acc {
+      Absent => Present { value: n }
+      Present { value: best } => if roster_width(node: n, spans: spans) < roster_width(node: best, spans: spans) { Present { value: n } } else { acc }
+    }
+  })
+}
+
+fn roster_widest(nodes: List<Node>, spans: SpanIndex) -> Node? {
+  fold_list(xs: nodes, empty: Absent, cons: fn(acc, n) {
+    match acc {
+      Absent => Present { value: n }
+      Present { value: best } => if roster_width(node: n, spans: spans) > roster_width(node: best, spans: spans) { Present { value: n } } else { acc }
+    }
+  })
+}
+
+// The bytes from the line's start to `at`, when they are all spaces: the statement's indentation. Anything else on the line
+// before `at` (the body's `{`, another statement) leaves no line for the let.
+fn roster_line_indent(text: String, at: Int) -> RosterBodyTop? {
+  match roster_text_between(text: text, start: 0, end: at) {
+    Absent => Absent
+    Present { value: before } =>
+      roster_indent_of(line: roster_last_line(before: before), at: at)
+  }
+}
+
+fn roster_last_line(before: String) -> String {
+  let lines = split(s: before, delimiter: "\n")
+  match list_at_optional(xs: lines, index: length(xs: lines) - 1) {
+    Present { value: l } => l
+    Absent => before
+  }
+}
+
+fn roster_indent_of(line: String, at: Int) -> RosterBodyTop? {
+  if string_length(s: line) > 0 && trim(s: line) == "" { Present { value: RosterBodyTop { at: at, indent: line } } } else { Absent }
+}
+
+fn roster_index_of(xs: List<String>, item: String) -> Int? {
+  roster_index_of_from(xs: xs, item: item, at: 0)
+}
+
+fn roster_index_of_from(xs: List<String>, item: String, at: Int) -> Int? {
+  match xs {
+    Empty => Absent
+    Cons { head: h, tail: t } => if h == item { Present { value: at } } else { roster_index_of_from(xs: t, item: item, at: at + 1) }
+  }
+}
+
+// THE SUPPLY PRECHECK, before any import is planned: a file holding a supplied row's free call refuses unless every such call
+// has exactly one supply and no supply belongs to another file. Otherwise the import pass would import the home into a file
+// whose calls the rename pass then refuses, leaving the file half moved.
+fn roster_supply_precheck(text: String, path: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> Optional<RosterRefusalReason> {
+  fold_list(xs: candidates, empty: Absent, cons: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match row.head {
+          KeepHead => Absent
+          RenameHead { to: _, positional: _, supplied: supplied, sites: sites } =>
+            if is_empty(xs: supplied) {
+              Absent
+            } else {
+              roster_row_supply_precheck(text: text, path: path, sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, sites: sites)
+            }
+        }
+    }
+  })
+}
+
+fn roster_row_supply_precheck(text: String, path: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, sites: List<RosterSiteSupply>) -> Optional<RosterRefusalReason> {
+  match roster_stale_supply(text: text, path: path, parse_root: parse_root, spans: spans, row: row, sites: sites) {
+    Present { value: r } => Present { value: r }
+    Absent => roster_row_heads_supply_precheck(text: text, sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row, sites: sites)
+  }
+}
+
+// A SUPPLY THAT NAMES NO SITE: its carried offset is the start of no head of the row's call in this text (the base locus was
+// not a call head, or an edit took it). Every head of the call counts, not only this pass's selection: a pipe whose inner
+// call is rewritten first keeps its own head, and its supply waits on it.
+fn roster_stale_supply(text: String, path: String, parse_root: Node, spans: SpanIndex, row: RosterHeadRow, sites: List<RosterSiteSupply>) -> Optional<RosterRefusalReason> {
+  let starts = list_map(xs: roster_primary_heads(parse_root: parse_root, call: row.call), f: fn(h) { roster_node_start(node: h, spans: spans) })
+  match list_find_first(xs: sites, predicate: fn(s) { !roster_contains_start(xs: starts, at: s.at) }) {
+    Present { value: s } => Present { value: RefusalSupplyStale { call: row.call, module: path, locus: locus_at(starts: line_starts(text: text), offset: s.at) } }
+    Absent => Absent
+  }
+}
+
+fn roster_contains_start(xs: List<Int?>, at: Int) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(found, o) { found || (o == Present { value: at }) })
+}
+
+fn roster_row_heads_supply_precheck(text: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, row: RosterHeadRow, sites: List<RosterSiteSupply>) -> Optional<RosterRefusalReason> {
+  let pipe_index = roster_pipe_index(parse_root: parse_root, spans: spans)
+      match roster_free_heads(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
+        // The label plan refuses this module as ambiguous on its own.
+        FreeHeadsAmbiguous => Absent
+        FreeHeads { heads: heads } =>
+          fold_list(xs: heads, empty: Absent, cons: fn(acc, h) {
+            match acc {
+              Present { value: _ } => acc
+              Absent =>
+                match roster_head_supply(text: text, head: h, spans: spans, sites: sites, call: row.call) {
+                  RosterSupplyRefused { reason: r } => Present { value: r }
+                  RosterSupplyFound { supply: sup } =>
+                    roster_key_let_refusal(text: text, parse_root: parse_root, head: h, read: roster_pipe_read(index: pipe_index, spans: spans, head: h), spans: spans, row: row, supply: sup)
+                }
+            }
+          })
+      }
+}
+
+// A key let that cannot be placed refuses here, before any import is planned, not in the rename pass after the imports.
+fn roster_key_let_refusal(text: String, parse_root: Node, head: Node, read: RosterPipeRead, spans: SpanIndex, row: RosterHeadRow, supply: RosterSiteSupply) -> Optional<RosterRefusalReason> {
+  match supply.key_let {
+    Absent => Absent
+    Present { value: kl } =>
+      match row.head {
+        KeepHead => Absent
+        RenameHead { to: _, positional: positional, supplied: _, sites: _ } =>
+          match roster_key_let_edits(text: text, parse_root: parse_root, head: head, read: read, spans: spans, row: row, positional: positional, kl: kl) {
+            LabelsRenameRefused { reason: r } => Present { value: r }
+            LabelsAmbiguous => Present { value: RefusalLabelSitesAmbiguous }
+            LabelsSelected { edits: _ } => Absent
+          }
+      }
+  }
+}
+
+
+// THE SUPPLIED TEXTS' IMPORTS, one home per pass through the one import renderer (roster_import_names_edit), after the rows'
+// own import and before the rename: each supply this file's calls matched names what its texts use. A name the module already
+// binds is not imported again, and a home that is this module is not imported at all.
+fn roster_supplied_import_outcome(text: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> RosterOutcome {
+  match qualified_name_from_module_node(root: parse_root) {
+    Rejected { diagnostics: _ } => RosterRefused { reason: RefusalModuleNameUnread }
+    Accepted { value: self_qn, diagnostics: _ } =>
+      roster_missing_import_edit(parse_root: parse_root, spans: spans, missing: roster_missing_imports(self_qn: self_qn, imported: imported, wanted: fold_list(xs: roster_matched_supplies(text: text, sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, candidates: candidates), empty: [], cons: fn(acc, s) { list_append(left: acc, right: list_map(xs: s.imports, f: roster_supplied_import_of)) })))
+  }
+}
+
+fn roster_missing_imports(self_qn: QualifiedName, imported: List<AliasBindingRow>, wanted: List<RosterSuppliedImport>) -> List<RosterSuppliedImport> {
+  fold_list(xs: wanted, empty: [], cons: fn(acc, w) {
+    if roster_qn_text(qn: w.origin) == roster_qn_text(qn: self_qn) || roster_name_bound(imported: imported, name: w.name) || roster_import_listed(xs: acc, item: w) { acc } else { list_snoc_item(xs: acc, item: w) }
+  })
+}
+
+fn roster_missing_import_edit(parse_root: Node, spans: SpanIndex, missing: List<RosterSuppliedImport>) -> RosterOutcome {
+  match list_head(xs: missing) {
+    Absent => RosterClean
+    Present { value: first } =>
+      roster_import_names_edit(parse_root: parse_root, spans: spans, home: first.origin, wanted: fold_list(xs: missing, empty: [], cons: fn(acc, w) {
+        if roster_qn_text(qn: w.origin) == roster_qn_text(qn: first.origin) { list_snoc_item(xs: acc, item: w.name) } else { acc }
+      }))
+  }
+}
+
+fn roster_supplied_import_of(path: QualifiedName) -> RosterSuppliedImport {
+  let parts = split(s: roster_qn_text(qn: path), delimiter: ".")
+  RosterSuppliedImport {
+    origin: qualified_name_from_dotted_string(dotted: roster_join_exact(xs: take_prefix(xs: parts, n: length(xs: parts) - 1), sep: ".")),
+    name: roster_field(fields: parts, at: length(xs: parts) - 1)
+  }
+}
+
+fn roster_name_bound(imported: List<AliasBindingRow>, name: String) -> Bool {
+  fold_list(xs: imported, empty: false, cons: fn(found, b) { found || symbol_lexeme(sym: b.binding) == name })
+}
+
+fn roster_import_listed(xs: List<RosterSuppliedImport>, item: RosterSuppliedImport) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(found, w) { found || (w.name == item.name && roster_qn_text(qn: w.origin) == roster_qn_text(qn: item.origin)) })
+}
+
+fn roster_matched_supplies(text: String, sides: List<RosterHomeSide>, parse_root: Node, spans: SpanIndex, normalized_root: Node, imported: List<AliasBindingRow>, candidates: List<RosterHeadRow>) -> List<RosterSiteSupply> {
+  fold_list(xs: candidates, empty: [], cons: fn(acc, row) {
+    match row.head {
+      KeepHead => acc
+      RenameHead { to: _, positional: _, supplied: _, sites: sites } =>
+        match roster_free_heads(sides: sides, parse_root: parse_root, spans: spans, normalized_root: normalized_root, imported: imported, row: row) {
+          FreeHeadsAmbiguous => acc
+          FreeHeads { heads: heads } =>
+            fold_list(xs: heads, empty: acc, cons: fn(acc2, h) {
+              match roster_head_supply(text: text, head: h, spans: spans, sites: sites, call: row.call) {
+                RosterSupplyFound { supply: s } => list_snoc_item(xs: acc2, item: s)
+                RosterSupplyRefused { reason: _ } => acc2
+              }
+            })
+        }
+    }
+  })
 }
 
 fn roster_pipe_site_refusal(head: Node, row: RosterHeadRow, positional: List<String>) -> Optional<RosterRefusalReason> {
@@ -2334,7 +3010,7 @@ fn roster_rename_production_row() -> List<RosterHeadRow> {
   fold_list(xs: roster_head_rows(), empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
-      RenameHead { to: _, positional: _ } => list_snoc_item(xs: acc, item: r)
+      RenameHead { to: _, positional: _, supplied: _, sites: _ } => if r.call == "map_get" { list_snoc_item(xs: acc, item: r) } else { acc }
     }
   })
 }
@@ -2350,27 +3026,20 @@ fn roster_rename_expect_refusal(companions: List<RosterCompanion>, name: String,
   }
 }
 
-// The generator's own fixed point on a text: sweep, splice, repeat (as the apply step converges), at most four passes.
+// The generator's own fixed point on a text, through the one convergence the apply step and the gate use (roster_converge).
 type RosterConverged
   = ConvergedText { text: String }
   | ConvergedRefused { cause: String }
 
+fn roster_control_converged(end: RosterConvergence) -> RosterConverged {
+  match end.refused {
+    Present { value: r } => ConvergedRefused { cause: roster_refusal_text(reason: r) }
+    Absent => if end.done { ConvergedText { text: end.text } } else { ConvergedRefused { cause: roster_refusal_text(reason: RefusalNotConverged) } }
+  }
+}
+
 fn roster_rename_converge(companions: List<RosterCompanion>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterConverged {
-  fold_list(xs: [0, 1, 2, 3], empty: ConvergedText { text: text }, cons: fn(acc, _i) {
-    match acc {
-      ConvergedRefused { cause: c } => ConvergedRefused { cause: c }
-      ConvergedText { text: t } =>
-        match roster_rename_outcome(companions: companions, text: t, prepared: prepared, lex: lex) {
-          RosterClean => acc
-          RosterRefused { reason: r } => ConvergedRefused { cause: roster_refusal_text(reason: r) }
-          outcome =>
-            match roster_applied(before: t, outcome: outcome) {
-              RosterApplyRefused { reason: r } => ConvergedRefused { cause: "splice " + roster_refusal_text(reason: r) }
-              RosterApplyWritten { content: c } => ConvergedText { text: c }
-            }
-        }
-    }
-  })
+  roster_control_converged(end: roster_converge(table: roster_head_rows(), scopes: [OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "map_get" } }], closures: roster_control_closures(), path: "control/rename.dag", text: text, prepared: prepared, lex: lex, supplies: []))
 }
 
 fn roster_rename_expect_text(companions: List<RosterCompanion>, name: String, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
@@ -2452,8 +3121,125 @@ fn roster_rename_control_names() -> List<String> {
     "edits-adjacent-replacements",
     "edits-pipe-three-adjacent",
     "edits-connector-overlaps-head-by-one",
-    "relocation-splice"
+    "relocation-splice",
+    "supplied-direct",
+    "supplied-pipe",
+    "supplied-key-let",
+    "supplied-self-home-import-skipped",
+    "supplied-equal-spellings",
+    "supplied-locus-carried-through-the-import",
+    "supplied-unsupplied",
+    "supplied-wrong-correspondence",
+    "supplied-duplicate",
+    "supplied-key-let-inline-body",
+    "supplied-key-let-not-a-lambda"
   ]
+}
+
+// THE SUPPLIED ROW'S CONTROLS, over the PRODUCTION sort_by row, its sites authored as gunbc.namespace_cut.ambient_site_supply
+// rows at their loci and run through the one convergence (roster_converge), so a change to the row, to the carrying of a
+// locus through the rounds, or to the filling of the table is measured. Positives: a direct call, a pipe, a key moved into an
+// annotated let at the body's top, a home that is the module itself, two calls of IDENTICAL text each written from its own
+// row (which call text could not tell apart), and a site moved down a line by its own import (the locus carried through the
+// import round). REDs: a call with no row, a row whose locus is no call head (the equal-count wrong correspondence), two rows
+// to one site, a key let with no line to go to, and a key let over a key that is not a lambda. Each RED is read on the
+// FIRST round, so a refused file is also shown to be left unwritten (no import before a refusal).
+fn roster_supplied_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
+  let head = "module c.sortby\n\nimport std.algebra { Cons }\n\n"
+  let int_order = ["std.algebra.int_total_order" as NonEmptyStr]
+  let direct_text = head + "fn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n"
+  let direct = roster_control_supply(line: 6, column: 3, args: ["int_total_order()"], imports: int_order, key_let: Absent)
+  let record = "type R {\n  d: Int\n}\n\n"
+  let key_let = Present { value: AmbientKeyLet { label: "key", name: "r_key", annotation: "fn(R) -> Int" } }
+  [
+    roster_control_verdict(name: "supplied-direct", fail: roster_supplied_expect_text(name: "supplied-direct", rows: [direct],
+      before: direct_text,
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-pipe", fail: roster_supplied_expect_text(name: "supplied-pipe",
+      rows: [roster_control_supply(line: 6, column: 9, args: ["int_total_order()"], imports: int_order, key_let: Absent)],
+      before: head + "fn f(xs: List<Int>) -> List<Int> {\n  xs |> sort_by(fn(x) { x })\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let", fail: roster_supplied_expect_text(name: "supplied-key-let",
+      rows: [roster_control_supply(line: 11, column: 5, args: ["int_total_order()"], imports: int_order, key_let: key_let)],
+      before: head + record + "fn f(xs: List<R>) -> List<R> {\n  g(\n    sort_by(xs, fn(h) { h.d })\n  )\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key, int_total_order }\n\n" + record + "fn f(xs: List<R>) -> List<R> {\n  let r_key: fn(R) -> Int = fn(h) { h.d }\n  g(\n    list_sort_by_key(xs: xs, key: r_key, order: int_total_order())\n  )\n}\n",
+      prepared: prepared, lex: lex)),
+    // The supplied home is this module itself: its name is not imported.
+    roster_control_verdict(name: "supplied-self-home-import-skipped", fail: roster_supplied_expect_text(name: "supplied-self-home-import-skipped",
+      rows: [roster_control_supply(line: 6, column: 3, args: ["int_total_order()"], imports: ["c.sortby.local_order" as NonEmptyStr], key_let: Absent)],
+      before: direct_text,
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<Int>) -> List<Int> {\n  list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())\n}\n",
+      prepared: prepared, lex: lex)),
+    // Two calls with one text, each written from its own row: the join is the locus, so they take different arguments.
+    roster_control_verdict(name: "supplied-equal-spellings", fail: roster_supplied_expect_text(name: "supplied-equal-spellings",
+      rows: [roster_control_supply(line: 6, column: 4, args: ["a_order()"], imports: [], key_let: Absent), roster_control_supply(line: 6, column: 30, args: ["b_order()"], imports: [], key_let: Absent)],
+      before: head + "fn f(xs: List<Int>) -> List<List<Int>> {\n  [sort_by(xs, fn(x) { x }), sort_by(xs, fn(x) { x })]\n}\n",
+      after: "module c.sortby\n\nimport std.algebra { Cons, list_sort_by_key }\n\nfn f(xs: List<Int>) -> List<List<Int>> {\n  [list_sort_by_key(xs: xs, key: fn(x) { x }, order: a_order()), list_sort_by_key(xs: xs, key: fn(x) { x }, order: b_order())]\n}\n",
+      prepared: prepared, lex: lex)),
+    // No std.algebra import yet: the import round adds lines above the site, and its locus is carried through them.
+    roster_control_verdict(name: "supplied-locus-carried-through-the-import", fail: roster_supplied_expect_call(name: "supplied-locus-carried-through-the-import",
+      rows: [roster_control_supply(line: 4, column: 3, args: ["int_total_order()"], imports: int_order, key_let: Absent)],
+      before: "module c.sortby\n\nfn f(xs: List<Int>) -> List<Int> {\n  sort_by(xs, fn(x) { x })\n}\n",
+      call: "list_sort_by_key(xs: xs, key: fn(x) { x }, order: int_total_order())",
+      prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-unsupplied", fail: roster_supplied_expect_refusal(name: "supplied-unsupplied", rows: [],
+      text: direct_text, want: "supplied-arg-unsupplied call=sort_by at=6:3", prepared: prepared, lex: lex)),
+    // The row names the call's first argument, not its head: one row, one call, and still refused.
+    roster_control_verdict(name: "supplied-wrong-correspondence", fail: roster_supplied_expect_refusal(name: "supplied-wrong-correspondence",
+      rows: [roster_control_supply(line: 6, column: 11, args: ["int_total_order()"], imports: int_order, key_let: Absent)],
+      text: direct_text, want: "supply-stale call=sort_by module=c.sortby at=6:11", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-duplicate", fail: roster_supplied_expect_refusal(name: "supplied-duplicate", rows: [direct, direct],
+      text: direct_text, want: "supply-duplicate call=sort_by at=6:3", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let-inline-body", fail: roster_supplied_expect_refusal(name: "supplied-key-let-inline-body",
+      rows: [roster_control_supply(line: 9, column: 32, args: ["int_total_order()"], imports: int_order, key_let: key_let)],
+      text: head + record + "fn f(xs: List<R>) -> List<R> { sort_by(xs, fn(h) { h.d }) }\n",
+      want: "key-let-unplaced call=sort_by name=r_key", prepared: prepared, lex: lex)),
+    roster_control_verdict(name: "supplied-key-let-not-a-lambda", fail: roster_supplied_expect_refusal(name: "supplied-key-let-not-a-lambda",
+      rows: [roster_control_supply(line: 10, column: 3, args: ["int_total_order()"], imports: int_order, key_let: key_let)],
+      text: head + record + "fn f(xs: List<R>, k: fn(R) -> Int) -> List<R> {\n  sort_by(xs, k)\n}\n",
+      want: "key-let-unplaced call=sort_by name=r_key", prepared: prepared, lex: lex))
+  ]
+}
+
+fn roster_control_supply(line: Int, column: Int, args: List<String>, imports: List<NonEmptyStr>, key_let: Optional<AmbientKeyLet>) -> AmbientSiteSupply {
+  AmbientSiteSupply { base: "control" as NonEmptyStr, call: "sort_by" as NonEmptyStr, module: "c.sortby" as NonEmptyStr, line: line, column: column, args: args, imports: imports, key_let: key_let }
+}
+
+fn roster_supplied_control_scope() -> RosterHomeScope {
+  OneHome { home: qualified_name_from_dotted_string(dotted: "std.algebra"), rows: OnlyCall { call: "sort_by" } }
+}
+
+fn roster_supplied_run_text(rows: List<AmbientSiteSupply>, text: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> RosterConvergence {
+  roster_converge(table: roster_head_rows(), scopes: [roster_supplied_control_scope()], closures: roster_control_closures(), path: "control/sortby.dag", text: text, prepared: prepared, lex: lex, supplies: rows)
+}
+
+fn roster_supplied_expect_text(name: String, rows: List<AmbientSiteSupply>, before: String, after: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_control_converged(end: roster_supplied_run_text(rows: rows, text: before, prepared: prepared, lex: lex)) {
+    ConvergedRefused { cause: c } => "CONTROL-FAIL " + name + ": refused " + c + "\n"
+    ConvergedText { text: t } => if t != after { "CONTROL-FAIL " + name + ": converged to unexpected text: " + t + "\n" } else { "" }
+  }
+}
+
+// Where the exact import layout is the import planner's own fact (pinned by its controls), the supplied call is what is read.
+fn roster_supplied_expect_call(name: String, rows: List<AmbientSiteSupply>, before: String, call: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  match roster_control_converged(end: roster_supplied_run_text(rows: rows, text: before, prepared: prepared, lex: lex)) {
+    ConvergedRefused { cause: c } => "CONTROL-FAIL " + name + ": refused " + c + "\n"
+    ConvergedText { text: t } => if string_contains(s: t, pattern: call) { "" } else { "CONTROL-FAIL " + name + ": converged without the supplied call: " + t + "\n" }
+  }
+}
+
+// The refusal of the FIRST round: nothing was planned, so nothing is written before it.
+fn roster_supplied_expect_refusal(name: String, rows: List<AmbientSiteSupply>, text: String, want: String, prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
+  let end = roster_supplied_run_text(rows: rows, text: text, prepared: prepared, lex: lex)
+  match end.refused {
+    Present { value: r } =>
+      if !is_empty(xs: end.rounds) { "CONTROL-FAIL " + name + ": refused after " + int_to_decimal_string(value: length(xs: end.rounds)) + " written round(s)\n" }
+      else if roster_refusal_text(reason: r) == want { "" }
+      else { "CONTROL-FAIL " + name + ": refused " + roster_refusal_text(reason: r) + ", wanted " + want + "\n" }
+    Absent => "CONTROL-FAIL " + name + ": not refused\n"
+  }
 }
 
 fn roster_rename_control_count_check(verdicts: List<RosterControlVerdict>) -> String {
@@ -2525,7 +3311,7 @@ fn roster_rename_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRul
 
 // AN UNDERIVABLE COMPANION REFUSES THE FILE IT WOULD GOVERN: a rename row whose callee the home does not declare.
 fn roster_companion_underivable_control(prepared: PreparedGrammar, lex: PreparedLexRules) -> String {
-  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"] } }]
+  let ghost = [RosterHeadRow { call: "map_get", import_name: "no_such_lookup", home: qualified_name_from_dotted_string(dotted: "std.algebra"), labels: [], head: RenameHead { to: "no_such_lookup", positional: ["m", "key"], supplied: roster_no_supplied(), sites: roster_no_sites() } }]
   let companions = roster_rename_companions(rows: ghost, prepared: prepared, lex: lex)
   let text = "module c.rename\n\nimport std.algebra { Cons, no_such_lookup }\n\nfn f(m: Map<String, String>, k: String) -> Bool {\n  match no_such_lookup(m: m, key: k) {\n    Present { value: _ } => true\n    Absent => false\n  }\n}\n"
   match roster_sweep_text_rows(sides: roster_home_sides(rows: ghost), companions: companions, path: "control/rename.dag", text: text, prepared: prepared, lex: lex, candidates: ghost, closures: roster_control_closures()) {
@@ -3395,7 +4181,7 @@ fn roster_control_annotation(prepared: PreparedGrammar, lex: PreparedLexRules) -
 //   unheld:   a token built without roster_lock_acquire (no lock file) refuses `lock-not-held`; the target keeps its bytes.
 //   stale:    a token from an earlier acquisition refuses `lock-not-held` while another acquisition holds the lock.
 //   contend:  with the lock held, a second take on the same root is refused.
-//   traversal: roster_apply_edit itself (the write boundary) refuses `../outside.dag` under a held lock and creates nothing.
+//   traversal: roster_apply_content itself (the write boundary) refuses `../outside.dag` under a held lock and creates nothing.
 //   spellings: the scratch dir and a subdirectory of the real toplevel are not the git toplevel, so acquire refuses `root-not-git-toplevel`
 //             and creates no lock; a relative or non-canonical root is refused.
 //   (the pure controls cover an unreadable generation history and the porcelain reader; the git admission of a target
@@ -3426,11 +4212,11 @@ fn roster_control_unheld(root_dir: String) -> String {
   if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
     "CONTROL-FAIL unheld: scratch target could not be created\n"
   } else {
-    let refused = roster_apply_edit(
+    let refused = roster_apply_content(
       held: RosterHeldLock { root: root_dir, nonce: "forged" },
       path: target,
       before: before,
-      outcome: roster_control_valid_edit(module_name: "c.unheld")
+      content: before + "\n"
     )
     let after = Filesystem.Read(path: root_dir + "/" + target)
     let removed = Filesystem.Delete(path: root_dir + "/" + target)
@@ -3459,11 +4245,11 @@ fn roster_control_stale(root_dir: String) -> String {
             if !Filesystem.WriteCreateNew(path: root_dir + "/" + target, content: before).success {
               "CONTROL-FAIL stale: scratch target could not be created\n"
             } else {
-              let refused = roster_apply_edit(
+              let refused = roster_apply_content(
                 held: first,
                 path: target,
                 before: before,
-                outcome: roster_control_valid_edit(module_name: "c.stale")
+                content: before + "\n"
               )
               let after = Filesystem.Read(path: root_dir + "/" + target)
               let removed = Filesystem.Delete(path: root_dir + "/" + target)
@@ -3504,10 +4290,9 @@ fn roster_control_traversal(root_dir: String) -> String {
   match roster_lock_take(root_dir: root_dir) {
     RosterLockRefused { reason: reason } => "CONTROL-FAIL traversal: acquire refused " + roster_refusal_text(reason: reason) + "\n"
     RosterLockAcquired { held: held } => {
-      let edit = roster_control_valid_edit(module_name: "c.traversal")
       let source = roster_control_source(module_name: "c.traversal")
-      let up = roster_apply_edit(held: held, path: "../roster_control_outside.dag", before: source, outcome: edit)
-      let abs = roster_apply_edit(held: held, path: "/tmp/roster_control_outside.dag", before: source, outcome: edit)
+      let up = roster_apply_content(held: held, path: "../roster_control_outside.dag", before: source, content: source + "\n")
+      let abs = roster_apply_content(held: held, path: "/tmp/roster_control_outside.dag", before: source, content: source + "\n")
       let made = Filesystem.Read(path: root_dir + "/../roster_control_outside.dag")
       let released = roster_lock_release(held: held)
       if up == roster_refuse_row(path: "../roster_control_outside.dag", reason: RefusalPathOutsideRoot) && abs == roster_refuse_row(path: "/tmp/roster_control_outside.dag", reason: RefusalPathOutsideRoot) && !made.success && released {
@@ -3714,7 +4499,7 @@ fn roster_rename_companions(rows: List<RosterHeadRow>, prepared: PreparedGrammar
   fold_list(xs: rows, empty: [], cons: fn(acc, r) {
     match r.head {
       KeepHead => acc
-      RenameHead { to: t, positional: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
+      RenameHead { to: t, positional: _, supplied: _, sites: _ } => list_snoc_item(xs: acc, item: roster_companion_of(row: r, to: t, prepared: prepared, lex: lex))
     }
   })
 }
@@ -3840,4 +4625,213 @@ fn roster_rename_controls_report() -> String {
     Rejected { diagnostics: _ } => "CONTROL-FAIL grammar-unprepared\n"
     Accepted { value: prepared, diagnostics: _ } => roster_rename_controls_ran(verdicts: roster_rename_controls_verdicts_all(prepared: prepared, lex: dag_prepared_lex()))
   }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// THE EDIT MAP: what one round of the generator does to the bytes, and where an offset lands through it. The generator
+// owns it because its outcomes are what it maps (outcome_steps); the gate's occurrence join reads it from here, and a
+// site supply (RosterSiteSupply) is carried through it from its base locus to the pass that writes its arguments.
+
+// ONE STEP OF THE GENERATOR'S EDIT MAP, by what it does to the bytes (the kinds are a sum, and every length is derived,
+// never stored beside the text it measures; carried from #14844, review 84836).
+//   SpliceStep   the bytes [start, end) replaced by `text` -- an import block; what it removed is not carried, so it
+//                can never carry an occurrence and any occurrence inside it refuses EditCoversOccurrence;
+//   ReplaceStep  exactly the bytes of `from` at `start` replaced by `to` -- a label or call-head rename; its extent is
+//                `from`'s own length, so a span that disagrees with the replaced text has no constructor;
+//   InsertStep   `text` inserted at `at`, removing nothing -- a positional label;
+//   RelocateHeadStep  a call head that changes position as well as spelling (a pipe `xs |> f(a)` rewritten to a direct
+//                call `g(xs, a)`): ONE edit that removes exactly the bytes of `from` at `head_at` and writes `to` then
+//                `suffix` at `insert_at` (the operand's start), so no second insertion shares that offset and the written
+//                text is headed by the new name by construction (tidy-ant-251, 2026-10-25; the carrier mirrors the
+//                generator's RosterHeadRelocation { insert_at, to, suffix }, review 86155). The head occurrence is carried
+//                from head_at to insert_at, the first len(to) bytes; the operand's bytes are untouched and only shift
+//                (ruling A2). DISSOLVES ON: a pipe into a declared function resolving natively
+//                (gunbc.recurring_failure_mode pipe_into_a_declared_function_resolves_as_a_method), when pipe sites keep
+//                their pipe and no head relocates.
+type EditStep
+  = SpliceStep { start: Int, end: Int, text: String }
+  | ReplaceStep { start: Int, from: NonEmptyStr, to: String }
+  | InsertStep { at: Int, text: String }
+  | RelocateHeadStep { head_at: Int, from: NonEmptyStr, insert_at: Int, to: NonEmptyStr, suffix: String }
+
+fn step_start(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: s, end: _, text: _ } => s
+    ReplaceStep { start: s, from: _, to: _ } => s
+    InsertStep { at: a, text: _ } => a
+    RelocateHeadStep { head_at: _, from: _, insert_at: i, to: _, suffix: _ } => i
+  }
+}
+
+fn step_end(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: _, end: e, text: _ } => e
+    ReplaceStep { start: s, from: f, to: _ } => s + text_byte_length(text: f as String)
+    InsertStep { at: a, text: _ } => a
+    RelocateHeadStep { head_at: h, from: f, insert_at: _, to: _, suffix: _ } => h + text_byte_length(text: f as String)
+  }
+}
+
+fn step_new_len(step: EditStep) -> Int {
+  match step {
+    SpliceStep { start: _, end: _, text: t } => text_byte_length(text: t)
+    ReplaceStep { start: _, from: _, to: t } => text_byte_length(text: t)
+    InsertStep { at: _, text: t } => text_byte_length(text: t)
+    RelocateHeadStep { head_at: _, from: _, insert_at: _, to: t, suffix: x } => text_byte_length(text: (t as String) + x)
+  }
+}
+
+fn text_byte_length(text: String) -> Int {
+  length(xs: bytes_octets(b: utf8_encode_bytes(s: text)))
+}
+
+// The generator's label edit says what it removes in `from`; an empty `from` at a zero-width extent removes nothing.
+// Any other label edit whose `from` is empty is not one this map can name, so it is a splice that carries nothing.
+// A pipe site's head-removal edit carries its relocation (v2.workflow.roster_import_sweep RosterHeadRelocation): it maps
+// to ONE RelocateHeadStep when it removes exactly its `from` and names a non-empty `to`; anything else is a splice, so a
+// covered head refuses EditCoversOccurrence.
+fn label_step(edit: RosterLabelEdit) -> EditStep {
+  match edit.relocation {
+    Present { value: r } =>
+      if (edit.from != "") && ((edit.end - edit.start) == text_byte_length(text: edit.from)) && (r.to != "") {
+        RelocateHeadStep { head_at: edit.start, from: edit.from as NonEmptyStr, insert_at: r.insert_at, to: r.to as NonEmptyStr, suffix: r.suffix }
+      } else {
+        SpliceStep { start: edit.start, end: edit.end, text: edit.to }
+      }
+    Absent => label_step_in_place(edit: edit)
+  }
+}
+
+fn label_step_in_place(edit: RosterLabelEdit) -> EditStep {
+  if edit.from == "" {
+    if edit.start == edit.end { InsertStep { at: edit.start, text: edit.to } } else { SpliceStep { start: edit.start, end: edit.end, text: edit.to } }
+  } else if (edit.end - edit.start) == text_byte_length(text: edit.from) {
+    ReplaceStep { start: edit.start, from: edit.from as NonEmptyStr, to: edit.to }
+  } else {
+    SpliceStep { start: edit.start, end: edit.end, text: edit.to }
+  }
+}
+
+fn outcome_steps(outcome: RosterOutcome) -> List<EditStep> {
+  match outcome {
+    RosterClean => []
+    RosterRefused { reason: _ } => []
+    RosterEdit { start: s, end: e, text: t, own_line: o } => [SpliceStep { start: s, end: e, text: (if o { "\n" } else { "" }) + t }]
+    RosterLabelEdits { edits: es } => fold_list(xs: es, empty: [], cons: fn(acc, e) { list_snoc_item(xs: acc, item: label_step(edit: e)) })
+    RosterEditWithLabels { start: s, end: e, text: t, own_line: o, labels: ls } => fold_list(xs: ls, empty: [SpliceStep { start: s, end: e, text: (if o { "\n" } else { "" }) + t }], cons: fn(acc, l) { list_snoc_item(xs: acc, item: label_step(edit: l)) })
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// POSITIONS: a census locus is `<line>:<byte column>`, 1-based, in the side's own text.
+
+type LineScan {
+  next: Int
+  starts: List<Int>
+}
+
+fn line_scan_starts(scan: LineScan) -> List<Int> {
+  scan.starts
+}
+
+fn line_starts(text: String) -> List<Int> {
+  line_scan_starts(scan: fold_list(xs: bytes_octets(b: utf8_encode_bytes(s: text)), empty: LineScan { next: 0, starts: [0] }, cons: fn(acc, o) {
+    if o == 10 {
+      LineScan { next: acc.next + 1, starts: list_snoc_item(xs: acc.starts, item: acc.next + 1) }
+    } else {
+      LineScan { next: acc.next + 1, starts: acc.starts }
+    }
+  }))
+}
+
+fn offset_at(starts: List<Int>, line: Int, column: Int) -> Int {
+  match list_at_optional(xs: starts, index: line - 1) {
+    Present { value: s } => s + column - 1
+    Absent => 0 - 1
+  }
+}
+
+fn locus_at(starts: List<Int>, offset: Int) -> String {
+  let before = fold_list(xs: starts, empty: [], cons: fn(acc, s) { if s <= offset { list_snoc_item(xs: acc, item: s) } else { acc } })
+  match list_at_optional(xs: before, index: length(xs: before) - 1) {
+    Present { value: s } => int_to_decimal_string(value: length(xs: before)) + ":" + int_to_decimal_string(value: offset - s + 1)
+    Absent => "-"
+  }
+}
+
+// WHERE A BASE OFFSET LANDS ON HEAD under the generator's own plan: carried by position, carried by the one ReplaceStep that
+// starts exactly at it (a call-head rename: the occurrence's spelling changes and its locus is the replacement's), or
+// covered by an extent that removes it.
+type MappedOffset
+  = OffsetMapped { offset: Int }
+  | OffsetRenamed { offset: Int, from: String, to: String }
+  | OffsetCovered
+
+// A step covers an offset when it removes the byte there. A RelocateHeadStep removes only its head's bytes; the span
+// between its insertion and its head is untouched.
+fn step_covers(step: EditStep, offset: Int) -> Bool {
+  match step {
+    RelocateHeadStep { head_at: h, from: f, insert_at: _, to: _, suffix: _ } => (h <= offset) && (offset < h + text_byte_length(text: f as String))
+    _ => (step_start(step: step) <= offset) && (offset < step_end(step: step))
+  }
+}
+
+// How far one step moves an offset it does not cover. A contiguous step moves only what lies at or after its end; a
+// RelocateHeadStep adds its insertion to what lies at or after insert_at and removes its head from what lies after it.
+fn step_delta(step: EditStep, offset: Int) -> Int {
+  match step {
+    RelocateHeadStep { head_at: h, from: f, insert_at: i, to: t, suffix: x } =>
+      (if i <= offset { text_byte_length(text: (t as String) + x) } else { 0 }) - (if h + text_byte_length(text: f as String) <= offset { text_byte_length(text: f as String) } else { 0 })
+    _ => if step_end(step: step) <= offset { step_new_len(step: step) - (step_end(step: step) - step_start(step: step)) } else { 0 }
+  }
+}
+
+// Where a relocated head lands: its insertion offset, moved by every OTHER step that lies before it. No other zero-width
+// insertion may share that offset (the generator's disjointness check refuses coincident edits), so any that did would
+// already have refused upstream; here one at the same offset is not counted.
+fn relocated_head_offset(steps: List<EditStep>, head_at: Int, insert_at: Int) -> Int {
+  insert_at + fold_list(xs: steps, empty: 0, cons: fn(a, s) {
+    match s {
+      RelocateHeadStep { head_at: h, from: _, insert_at: _, to: _, suffix: _ } => if h == head_at { a } else { a + step_delta(step: s, offset: insert_at) }
+      InsertStep { at: at, text: _ } => if at < insert_at { a + step_delta(step: s, offset: insert_at) } else { a }
+      _ => a + step_delta(step: s, offset: insert_at)
+    }
+  })
+}
+
+fn map_through_round(steps: List<EditStep>, offset: Int) -> MappedOffset {
+  let covering = fold_list(xs: steps, empty: [], cons: fn(acc, s) { if step_covers(step: s, offset: offset) { list_snoc_item(xs: acc, item: s) } else { acc } })
+  let shifted = offset + fold_list(xs: steps, empty: 0, cons: fn(a, s) { a + step_delta(step: s, offset: offset) })
+  if length(xs: covering) == 0 {
+    OffsetMapped { offset: shifted }
+  } else if length(xs: covering) == 1 {
+    match list_at_optional(xs: covering, index: 0) {
+      Present { value: s } =>
+        match s {
+          ReplaceStep { start: st, from: f, to: t } => if st == offset { OffsetRenamed { offset: shifted, from: f as String, to: t } } else { OffsetCovered }
+          SpliceStep { start: _, end: _, text: _ } => OffsetCovered
+          InsertStep { at: _, text: _ } => OffsetCovered
+          RelocateHeadStep { head_at: h, from: f, insert_at: i, to: t, suffix: _ } => if h == offset { OffsetRenamed { offset: relocated_head_offset(steps: steps, head_at: h, insert_at: i), from: f as String, to: t as String } } else { OffsetCovered }
+        }
+      Absent => OffsetCovered
+    }
+  } else {
+    OffsetCovered
+  }
+}
+
+fn map_through_rounds(rounds: List<List<EditStep>>, offset: Int) -> MappedOffset {
+  fold_list(xs: rounds, empty: OffsetMapped { offset: offset }, cons: fn(acc, steps) {
+    match acc {
+      OffsetCovered => OffsetCovered
+      OffsetMapped { offset: o } => map_through_round(steps: steps, offset: o)
+      // A renamed occurrence is carried through later rounds by position; a second rename of it is not one edit's fact.
+      OffsetRenamed { offset: o, from: f, to: t } =>
+        match map_through_round(steps: steps, offset: o) {
+          OffsetMapped { offset: m } => OffsetRenamed { offset: m, from: f, to: t }
+          OffsetRenamed { offset: _, from: _, to: _ } => OffsetCovered
+          OffsetCovered => OffsetCovered
+        }
+    }
+  })
 }
