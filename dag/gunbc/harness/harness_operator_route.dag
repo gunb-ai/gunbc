@@ -12,7 +12,7 @@ import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, F
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text }
 import extdeps.tools.openssl
 import extdeps.tools.curl { curl_exit_outcome, CurlPeerFailedVerification, CurlPinnedPubkeyMismatch }
-import extdeps.pool.pool_card { pool_card_models_path, pool_card_chat_completions_path }
+import extdeps.strata.strata_server { strata_models_path, strata_chat_completions_path, strata_srv4_daily_active_turns }
 import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, NinferModelsUnreadable, ninfer_models_list }
 import extdeps.pool.pool_front {
   PoolFrontCertificate, pool_front_models_path, pool_front_chat_completions_path, pool_front_card_concurrency_high,
@@ -20,7 +20,7 @@ import extdeps.pool.pool_front {
   pool_front_certificate_is_pinned, pool_front_fingerprint_from_openssl_text, pool_front_status_meaning,
   PoolFrontNoTlsCardServing, PoolFrontCardUnanswered, PoolFrontUpstreamsBusy, PoolFrontAnswered, PoolFrontKeyRejected, PoolFrontRefused,
 }
-import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, Qwen38FlashNextOnSrv1Card, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
+import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen38FlashNextOnPoolFront, Qwen38FlashNextIq3sOnSrv4Strata, harness_unit_model_id, PoolBudgetPolicy, pool_budget_enforced }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
 import std.list { list_member }
 
@@ -66,15 +66,20 @@ data operator_pool_front_certificate: PoolFrontCertificate = PoolFrontCertificat
   not_after: "2028-09-17" as NonEmptyStr,
 }
 
-// THE SRV1 CARD, REACHED WITHOUT THE FRONT (operator direction 2026-10-27: pin the lab's harness to the known srv1
-// Blackwell and wait for it). The card's self-signed certificate names only CN=pool-card (no subject alternative
-// name), so the one name that verifies is pool-card; the lab host maps it to 127.0.0.1 (/etc/hosts on srv1, a
-// deployment fact of this lab, not of the card). The port is the card container's published listener.
-data operator_srv1_card_origin: NonEmptyStr = "https://pool-card:18000" as NonEmptyStr
+// THE SRV4 DAILY STRATA ENGINE, REACHED WITHOUT THE FRONT (operator direction 2026-10-28, relayed by eager-lynx-183:
+// the lab's inference moves to srv4's two RTX 2000 Ada cards; srv1 stays in the ctrl pool). The certificate's
+// subject alternative names include the IP 192.168.1.196, so the origin is the LAN address the lab reaches it at.
+data operator_srv4_strata_origin: NonEmptyStr = "https://192.168.1.196:18443" as NonEmptyStr
 
-data operator_srv1_card_certificate: PoolFrontCertificate = PoolFrontCertificate {
-  sha256_fingerprint: "E4:6E:F7:7E:FD:CB:14:41:04:5A:13:E1:CD:AA:3D:BC:56:3B:5A:79:B3:3D:9C:D8:FB:DD:26:69:F4:54:CC:97" as NonEmptyStr,
-  not_after: "2036-10-21" as NonEmptyStr,
+data operator_srv4_strata_certificate: PoolFrontCertificate = PoolFrontCertificate {
+  sha256_fingerprint: "E8:1A:D5:74:EB:0D:AB:6A:67:A9:03:90:92:A2:CE:43:08:74:C6:38:FF:38:91:B7:8B:E3:56:87:8E:59:41:8B" as NonEmptyStr,
+  not_after: "2028-10-27" as NonEmptyStr,
+}
+
+// The srv4 engine is dedicated to the daily workspace and holds two open turns; the lab takes both.
+data strata_concurrency_budget_policy: PoolBudgetPolicy = PoolBudgetPolicy {
+  value: 2,
+  reason: "the srv4 engine operator states two active turns, the third refused with 429 (eager-lynx-183, 2026-10-28); the lab bounds its own fan-out there before any measured burst" as NonEmptyStr,
 }
 
 // The certificate the selected route pins.
@@ -153,27 +158,27 @@ data harness_pool_front_operator_route: HarnessOperatorRoute = HarnessOperatorRo
   },
 }
 
-data harness_srv1_card_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
-  unit: Qwen38FlashNextOnSrv1Card,
-  origin: operator_srv1_card_origin,
-  models_path: pool_card_models_path,
-  chat_completions_path: pool_card_chat_completions_path,
-  pinned_certificate: operator_srv1_card_certificate,
-  group_wire: "operator:srv1-card" as NonEmptyStr,
-  credential_relative_path: ".config/gunbc-srv1-card/api-key" as NonEmptyStr,
-  certificate_relative_path: ".config/gunbc-srv1-card/server.pem" as NonEmptyStr,
-  credential_identifier: "gunbc-srv1-card-api-key" as NonEmptyStr,
-  certificate_identifier: "gunbc-srv1-card-server-pem" as NonEmptyStr,
-  concurrency_ceiling: pool_budget_enforced(policy: pool_concurrency_budget_policy, upstream: pool_front_card_concurrency_high),
+data harness_srv4_strata_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
+  unit: Qwen38FlashNextIq3sOnSrv4Strata,
+  origin: operator_srv4_strata_origin,
+  models_path: strata_models_path,
+  chat_completions_path: strata_chat_completions_path,
+  pinned_certificate: operator_srv4_strata_certificate,
+  group_wire: "operator:srv4-strata" as NonEmptyStr,
+  credential_relative_path: ".config/gunbc-srv4-strata/api-key" as NonEmptyStr,
+  certificate_relative_path: ".config/gunbc-srv4-strata/server.pem" as NonEmptyStr,
+  credential_identifier: "gunbc-srv4-strata-api-key" as NonEmptyStr,
+  certificate_identifier: "gunbc-srv4-strata-server-pem" as NonEmptyStr,
+  concurrency_ceiling: pool_budget_enforced(policy: strata_concurrency_budget_policy, upstream: strata_srv4_daily_active_turns),
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
-    consequence: "the operator route serves the pool's Qwen3.8-Flash-Next (the srv1 card, reached without the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
+    consequence: "the operator route serves Qwen3.8-Flash-Next at IQ3_S with a q4_0 KV cache (the srv4 strata engine, reached without the front), not the fleet's GLM-5.3-Flash: a quality-sensitive (interactive) turn is REFUSED here rather than answered by it, and a batch turn placed here is answered by it knowingly" as NonEmptyStr,
   },
 }
 
-// THE ROUTE THE LAB'S HARNESS TAKES: pinned to the srv1 card (operator direction 2026-10-27). The pool front row
+// THE ROUTE THE LAB'S HARNESS TAKES: the srv4 strata engine (operator direction 2026-10-28). The pool front row
 // stays declared beside it; switching back is this one binding.
-data harness_operator_route: HarnessOperatorRoute = harness_srv1_card_operator_route
+data harness_operator_route: HarnessOperatorRoute = harness_srv4_strata_operator_route
 
 type OperatorClassAdmission
   = OperatorClassAdmitted

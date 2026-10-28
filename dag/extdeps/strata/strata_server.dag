@@ -1,0 +1,39 @@
+module extdeps.strata.strata_server
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import extdeps.external_authority { CitedFigure, TranscribedUncited }
+
+// A STRATA INFERENCE ENGINE'S OWN OPENAI-COMPATIBLE SURFACE, reached directly (no pool front). Strata is an
+// independently operated engine, not vLLM and not the pool front, so it shares no fact with either module.
+// Every figure is the engine operator's statement for the srv4 daily deployment (session eager-lynx-183,
+// 2026-10-28: one engine across srv4's two RTX 2000 Ada cards), a transcription of a named party's word and
+// not a reading. The first live reading of each is the lab qualification that follows.
+data strata_models_path: NonEmptyStr = "/v1/models" as NonEmptyStr
+data strata_chat_completions_path: NonEmptyStr = "/v1/chat/completions" as NonEmptyStr
+
+// The id the srv4 engine serves: IQ3_S weights with a q4_0 KV cache, a different quantization product from the
+// srv1 card's NVFP4/FP8 Qwen3.8-Flash-Next, so it is never spelled as that model.
+data strata_srv4_daily_model_id: NonEmptyStr = "qwen3.8-flash-next-iq3_s" as NonEmptyStr
+
+data strata_srv4_daily_max_context_tokens: CitedFigure<Nat> = CitedFigure {
+  value: 229376,
+  standing: TranscribedUncited { read_obligation: "read the maximum context from the srv4 engine's GET /v1/models, or its refusal of an oversized request" as NonEmptyStr },
+}
+
+// The engine admits two open turns and answers the third with 429 (max_queue=0, no queue of its own).
+data strata_srv4_daily_active_turns: CitedFigure<Nat> = CitedFigure {
+  value: 2,
+  standing: TranscribedUncited { read_obligation: "read the admission limit from a measured burst of three concurrent requests (the third answered 429)" as NonEmptyStr },
+}
+
+// Neither statement names where a reply carries reasoning nor how inline thinking closes; these are the
+// OpenAI-compatible spellings, a bet typed as a bet, answered through cited_figure_read only once read live.
+data strata_message_reasoning_field: CitedFigure<NonEmptyStr> = CitedFigure {
+  value: "reasoning_content" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the member a srv4 engine reply carries reasoning in, from a live reply" as NonEmptyStr },
+}
+data strata_thinking_end_token: CitedFigure<NonEmptyStr> = CitedFigure {
+  value: "</think>" as NonEmptyStr,
+  standing: TranscribedUncited { read_obligation: "read the token the srv4 engine closes inline thinking with, from a live reply" as NonEmptyStr },
+}
