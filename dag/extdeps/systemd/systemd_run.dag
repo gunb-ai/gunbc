@@ -200,6 +200,19 @@ fn systemd_run_named_setting_assignment(property: SystemdUnitProperty, value: No
 // systemd.exec(5) spells the empty bounding set as the directive with no names.
 data systemd_run_empty_capability_bounding_set_assignment: String = "CapabilityBoundingSet="
 
+// WHAT A PER-USER MANAGER CAN APPLY. Changing a process's capability bounding set needs CAP_SETPCAP, which an
+// unprivileged per-user manager (systemd --user) does not hold, so a unit it starts with CapabilityBoundingSet=
+// fails exec setup with EXIT_CAPABILITIES (status 218) and its command never runs (read on srv1, systemd 255,
+// 2026-10-21 and again 2026-10-28: every review unit of a lab attempt). Only the system manager applies it. A
+// launcher passing --user decides from this which properties it may send, never by trying and failing.
+fn systemd_run_property_applies_under_user_manager(property: SystemdRunProperty) -> Bool {
+  match property {
+    EmptyCapabilityBoundingSet => false
+    NamedUnitSetting { property: _, value: _ } => true
+    LoadCredentialSetting { identifier: _, source: _ } => true
+  }
+}
+
 // THE CREDENTIAL ID IS A FILE NAME IN THE CREDENTIALS DIRECTORY (systemd.exec(5)): not "." or "..", no "/",
 // and no ":" because the directive splits ID from PATH at the first one. The source is the path the manager
 // opens, so it is absolute and one line.

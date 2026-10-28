@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_path_for_instance }
 import std.filesystem { path_parent_directory }
 import extdeps.systemd.systemd_run {
-  SystemdRunProperty, systemd_run_property_assignment,
+  SystemdRunProperty, systemd_run_property_assignment, systemd_run_property_applies_under_user_manager,
   SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused,
 }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -205,6 +205,20 @@ test fn the_reviewer_unit_writes_only_its_review_directory_and_runs_from_the_rep
     && !has_property(props: props, needle: "RemainAfterExit")
     && !has_property(props: supervisor, needle: "RemainAfterExit")
     && has_property(props: supervisor, needle: "ExecStopPost=+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/s")
+}
+
+// THE REVIEW UNIT SENDS ONLY WHAT THE PER-USER MANAGER CAN APPLY, AND KEEPS THE REST OF THE CONFINEMENT. Every
+// review unit of the srv1 lab's 2026-10-28 attempt exited 218 because its properties carried the empty bounding
+// set. RED: re-adding EmptyCapabilityBoundingSet to the review properties fails the first conjunct; dropping
+// NoNewPrivileges with it fails the second; dropping the bounding set from the system-manager worker fails the last.
+test fn the_review_unit_carries_no_property_the_user_manager_cannot_apply_and_the_worker_keeps_the_bounding_set() -> Bool {
+  let inst = srv2_deploy_dashboard_instance()
+  let review = dispatch_review_unit_properties(instance: inst, working_directory: inst.repo_root as String, log_path: "/r/log", review_dir: "/state/a/review", exit_hook: "+install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr)
+  let worker = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", attempt_worktree: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1048576), process_bounds: session_process_bounds, exit_hook: "install -d -m 0755 -o svc -g grp -- /i/attempt-exit-spool/inbox/n+k+x" as NonEmptyStr)
+  all(review, p => systemd_run_property_applies_under_user_manager(property: p))
+    && has_property(props: review, needle: "NoNewPrivileges=yes")
+    && has_property(props: review, needle: "RestrictSUIDSGID=yes")
+    && any(property_words(props: worker), p => p == "CapabilityBoundingSet=")
 }
 
 // THE POINTER FILES BIND WITHOUT A SKIP, AND config.worktree IS INERT RATHER THAN PROTECTED (review 81053).
