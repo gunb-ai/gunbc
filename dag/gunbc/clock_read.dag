@@ -77,6 +77,8 @@ fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> Observer
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_bmc_account_instant"),
     decl_ref(module_path: "gunbc.machine_intake.prior_life_boundary", decl_name: "dry_prior_life_instant"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_is_one_write_and_a_second_published_write_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "the_root_rotation_applies_reads_back_and_converges"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "reflash_restored_factory_access_takes_the_same_apply_and_readback_path"),
