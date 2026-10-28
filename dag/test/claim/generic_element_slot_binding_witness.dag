@@ -54,6 +54,20 @@ fn slot_alias_undeclared_control_source() -> String {
   slot_source(module_leaf: "aliasnope", body: "fn keyed(xs: List<Hash>) -> List<Hash> {\n  sk(xs: xs, key: fn(h) { 1 })\n}\n")
 }
 
+// THE UNBOUND-PARAMETER READ: the slot's element is a type variable NOTHING grounds -- a parameter with no
+// declaration behind it. Kept identity must not turn this into an acceptance: the field read on a parameter
+// that declares no record can never be established, so this refuses with the guard for the same reason it
+// refused without one. The arm is the guard's fail-closed side (the descent keeps the slot's identity for an
+// unsolved variable; the reader must still refuse the undeclared name), paired with the module-minus-read
+// control below so it measures the read and not the harness.
+fn slot_unbound_param_field_source() -> String {
+  "module slotbind.unboundparam\n\nimport std.types { List, String }\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn field_on_unbound<T>(xs: List<T>) -> List<T> {\n  sk(xs: xs, key: fn(e) { e.digest })\n}\n"
+}
+
+fn slot_unbound_param_control_source() -> String {
+  "module slotbind.unboundparam\n\nimport std.types { List, String }\n\nfn sk<Q, K>(xs: List<Q>, key: fn(Q) -> K) -> List<Q> {\n  xs\n}\n\nfn field_on_unbound<T>(xs: List<T>) -> List<T> {\n  sk(xs: xs, key: fn(e) { 1 })\n}\n"
+}
+
 fn slot_kernel_split_source() -> String {
   "module slotbind.kernelsplit\n\nimport std.algebra { skip }\nimport std.optional { Present, Absent }\nimport std.types { String, Bool }\n\nfn second_nonempty(s: String) -> Bool {\n  let parts = split(s: s, delimiter: \"/\")\n  match skip(parts, n: 1) |> first {\n    Present { value: v } => v != \"\"\n    Absent => false\n  }\n}\n"
 }
@@ -75,6 +89,22 @@ test fn a_kernel_built_list_binds_a_declared_generic_test() -> Bool {
 // CONTROL: the same shape with the slot's type annotated by the author compiles on main too.
 test fn a_kernel_built_list_with_an_annotated_let_binds_test() -> Bool {
   compile_dag_rust_emit_check(slot_kernel_split_annotated_source(), "src/slotbind_kernelsplitann.rs", ["second_nonempty"], ["compile_error"])
+}
+
+// FAIL-CLOSED SIDE OF THE GENERALIZED GUARD (non-empty-list unsolved slot): an ungrounded parameter's
+// element keeps its identity at generic_actual_position_type instead of descending, and the field read on it
+// STILL refuses -- nothing grounds it, so no reader can key on it. Guards that keep unsolved identity must
+// not become acceptances. A CLIMB for this shape (refused on main, types with the change) is not authorable
+// at a field read: an unsolved variable with nothing grounding it has no establishedness to recover, so this
+// pair, not a RED, is what the non-empty-list half can assert.
+test fn an_unbound_parameter_element_still_refuses_a_field_read_test() -> Bool {
+  !compile_dag_rust_emit_check(slot_unbound_param_field_source(), "src/slotbind_unboundparam.rs", [], [])
+}
+
+// ITS HARNESS CONTROL: the module without the read compiles with the guard, so the arm above measures the
+// read and not the harness.
+test fn an_unbound_parameter_module_without_the_read_compiles_test() -> Bool {
+  compile_dag_rust_emit_check(slot_unbound_param_control_source(), "src/slotbind_unboundparam.rs", ["field_on_unbound"], ["compile_error"])
 }
 
 // CONTROL: a record element, which escaped by accident before this change and must stay clean.
