@@ -716,10 +716,18 @@ fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResou
 // the stage refused "tag bindings unreadable" with the upstream's cause discarded.
 type TagBindingRead = TagBindingReadAnswered { reading: TagBindingReading } | TagBindingReadRefused { cause: String }
 
+// The account parent is requested as //iam.googleapis.com/projects/<project id>/serviceAccounts/<uniqueId>;
+// the same resource under the project number is the other spelling the listing may answer.
+fn tag_parent_spellings(parent: String) -> List<String> {
+  let by_id = concat("//iam.googleapis.com/projects/", fleet_secrets_project_id as String)
+  let by_number = concat("//iam.googleapis.com/projects/", fleet_secrets_project_number)
+  if starts_with(s: parent, prefix: concat(by_id, "/")) { [parent, concat(by_number, parent.substring(start: by_id.length(), end: parent.length()))] } else { [parent] }
+}
+
 fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingRead {
   match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
     RestRefused { refusal } => TagBindingReadRefused { cause: rest_refusal_text(o: refusal) }
-    RestAnswered { answer: l } => TagBindingReadAnswered { reading: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
+    RestAnswered { answer: l } => TagBindingReadAnswered { reading: trust_root_tag_binding_reading(parents: tag_parent_spellings(parent: parent), value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
   }
 }
 

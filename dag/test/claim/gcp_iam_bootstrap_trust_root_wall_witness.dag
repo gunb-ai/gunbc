@@ -158,21 +158,21 @@ fn binding_row(parent: String, value: String) -> GcpTagBindingWire {
 }
 
 test fn a_row_with_the_value_on_another_parent_establishes_nothing() -> Bool {
-  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: wanted_value as String)] }, next_page_token: none) {
+  match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: wanted_value as String)] }, next_page_token: none) {
     TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false
   }
 }
 
 test fn the_exact_row_establishes_the_binding() -> Bool {
-  match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: "tagValues/9"), binding_row(parent: parent_a, value: wanted_value as String)] }, next_page_token: Present { value: "more" }) {
+  match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_b, value: "tagValues/9"), binding_row(parent: parent_a, value: wanted_value as String)] }, next_page_token: Present { value: "more" }) {
     TagBindingEstablished => true  TagBindingAbsent => false  TagBindingIncomplete => false
   }
 }
 
 test fn an_unmatched_page_with_another_page_is_incomplete_never_absent() -> Bool {
-  (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
+  (match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Present { value: [binding_row(parent: parent_a, value: "tagValues/9")] }, next_page_token: Present { value: "more" }) {
     TagBindingEstablished => false  TagBindingAbsent => false  TagBindingIncomplete => true })
-    && (match trust_root_tag_binding_reading(parent: parent_a, value_name: wanted_value, bindings: Absent, next_page_token: Present { value: "" }) {
+    && (match trust_root_tag_binding_reading(parents: [parent_a], value_name: wanted_value, bindings: Absent, next_page_token: Present { value: "" }) {
     TagBindingEstablished => false  TagBindingAbsent => true  TagBindingIncomplete => false })
 }
 
@@ -232,4 +232,16 @@ test fn only_a_tag_values_id_name_is_admitted() -> Bool {
     && !value_admitted(name: "tagValues/", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
     && !value_admitted(name: "tagKeys/281479000000002", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
     && !value_admitted(name: "tagValues/2/extra", parent: trust_root_key_name, short_name: "root", namespaced: Present { value: declared_value_namespaced })
+}
+
+// The binding listing answers rows under the project-number spelling of the account parent that was
+// requested by project id (receipt iam-ceremony-20261028T140050Z); both spellings name one resource.
+test fn a_binding_row_under_the_project_number_spelling_is_established() -> Bool {
+  let wanted = "tagValues/281480188215009" as NonEmptyStr
+  let by_id = "//iam.googleapis.com/projects/gunbai-secrets/serviceAccounts/114094559386085842174"
+  let by_number = "//iam.googleapis.com/projects/582015116396/serviceAccounts/114094559386085842174"
+  match trust_root_tag_binding_reading(parents: [by_id, by_number], value_name: wanted, bindings: Present { value: [binding_row(parent: by_number, value: wanted as String)] }, next_page_token: none) {
+    TagBindingEstablished => true
+    _ => false
+  }
 }

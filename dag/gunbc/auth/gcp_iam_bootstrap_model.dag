@@ -554,9 +554,13 @@ data iam_bootstrap_trust_root_walled_permissions: List<String> = [
 // another page and no exact row is incomplete, never absence. An empty next-page token is no page.
 type TagBindingReading = TagBindingEstablished | TagBindingAbsent | TagBindingIncomplete
 
-fn trust_root_tag_binding_reading(parent: String, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
+// `parents` is every spelling the upstream may answer for the one resource asked about: the listing
+// is requested by the project-id form and answers rows under the project-number form (2026-10-28,
+// receipt iam-ceremony-20261028T140050Z: the binding existed, the row did not match, and the create
+// answered 409 ALREADY_EXISTS).
+fn trust_root_tag_binding_reading(parents: List<String>, value_name: NonEmptyStr, bindings: List<GcpTagBindingWire>?, next_page_token: String?) -> TagBindingReading {
   let rows = match bindings { Absent => []  Present { value: bs } => bs }
-  if any(rows, b => b.parent == parent && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
+  if any(rows, b => any(parents, p => b.parent == p) && match b.tag_value { Present { value: t } => t == (value_name as String)  Absent => false }) { TagBindingEstablished }
   else { match next_page_token { Present { value: t } => if t != "" { TagBindingIncomplete } else { TagBindingAbsent }  Absent => TagBindingAbsent } }
 }
 
