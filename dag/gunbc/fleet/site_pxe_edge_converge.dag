@@ -1,6 +1,6 @@
 module gunbc.fleet.site_pxe_edge_converge
 
-import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port }
+import std.types { String, NonEmptyStr, List, Bool, Int, FilePath, Port, EpochMs }
 import std.algebra { FreeSemigroup }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -8,7 +8,13 @@ import std.content_hash { ContentHash, Sha256Digest, Sha256Hash, serialize_conte
 import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
-import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
+import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg, UbuntuAutoinstallPayload, UserDataOnly, AutoinstallSshServer, StoragePolicyDirectLayout }
+import std.os.types { NobleNumbat2404Lts }
+import gunbc.os_install { srv_fleet_key_only_install_account }
+import gunbc.os_install_emit { autoinstall_user_data_document }
+import gunbc.fleet.fleet_ssh_access { fleet_authorized_keys }
+import gunbc.fleet.srv4_segment_name_resolution_observation { srv4_segment_resolver_answer, srv4_segment_resolver_observed_at }
+import std.decl_ref { decl_ref, DeclarationRef }
 import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data, admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, PublicSeedFinding }
 import extdeps.languages.yaml.types { YamlValue }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
@@ -462,15 +468,61 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 // THE INSTALLS REQUESTED OF THIS EDGE, and the observation that srv4's name resolves from the segment. A request
 // names its client by a MAC parse and its user-data as a document; the run admits each through the public seed
 // authority, so a list of already-admitted seeds (which could only be authored by dropping refusals) never exists.
-data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = []
+data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = [
+  SitePxeEdgeInstallRequest {
+    client: srv14_install_client,
+    user_data: autoinstall_user_data_document(payload: srv14_ubuntu_autoinstall),
+    architecture: Aarch64,
+  },
+]
+
+data srv14_install_client: MacParseResult = parse_mac_address(text: srv14_host_nic_mac as String)
+
+// srv14's install: the fleet's key-only account, no identity section, and the direct layout over the installer's
+// chosen disk, which replaces whatever OS the NVMe carried before. The seed travels over NoCloud-net from this
+// edge's seed root; the per-client directory under it is the edge's to name from the admitted binding.
+data srv14_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudNet { seed_url: site_pxe_edge_seed_root_uri },
+  fully_automated: true,
+  target_distribution: NobleNumbat2404Lts,
+  identity_posture: UserDataOnly { users: srv_fleet_key_only_install_account },
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  ssh: Present { value: AutoinstallSshServer { authorized_keys: fleet_authorized_keys, password_auth: false } },
+  storage_policy: StoragePolicyDirectLayout,
+}
 
 // THE CLIENTS THE EDGE KNOWS, each parsed from a measured observation of the client's NIC, never retyped.
 data site_pxe_edge_known_client_observations: List<MacParseResult> = [
   first_onboarding_known_client_mac,
-  parse_mac_address(text: srv14_host_nic_mac as String),
+  srv14_install_client,
 ]
 
-data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = BootNetworkProbeUnobserved
+data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = site_pxe_edge_seed_origin_probe(
+  answer: parse_ipv4_address(text: srv4_segment_resolver_answer as String),
+  origin: site_pxe_edge_tftp_server_address,
+  observation: decl_ref(module_path: "gunbc.fleet.srv4_segment_name_resolution_observation", decl_name: "srv4_segment_resolver_answer"),
+  observed_at: srv4_segment_resolver_observed_at,
+)
+
+// The segment resolves the seed origin's name only if it answers with the address the edge serves from; any other
+// answer, or one that does not parse, is a failed probe.
+fn site_pxe_edge_seed_origin_probe(answer: Ipv4ParseResult, origin: Ipv4ParseResult, observation: DeclarationRef, observed_at: EpochMs) -> BootNetworkProbe {
+  match answer {
+    Ipv4Parsed { address: a } =>
+      match origin {
+        Ipv4Parsed { address: o } =>
+          if (a == o) {
+            BootNetworkProbeSucceeded { observation: observation, observed_at: observed_at }
+          } else {
+            BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+          }
+        Ipv4ParseFailed { error: _ } => BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+      }
+    Ipv4ParseFailed { error: _ } => BootNetworkProbeFailed { observation: observation, observed_at: observed_at }
+  }
+}
 
 // ── Per-chain standing (pure) ────────────────────────────────────────────────────────────────────
 
@@ -1068,8 +1120,12 @@ fn site_pxe_edge_grub_mac_path(mac: Eui48Address) -> NonEmptyStr {
   concat("grub/grub.cfg-01-", join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-")) as NonEmptyStr
 }
 
+data site_pxe_edge_seed_root: String = "seed/"
+
+data site_pxe_edge_seed_root_uri: Uri = site_pxe_edge_http_uri(name: site_pxe_edge_seed_origin_name, path: site_pxe_edge_seed_root)
+
 fn site_pxe_edge_seed_path(mac: Eui48Address) -> String {
-  concat("seed/", join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-"))
+  concat(site_pxe_edge_seed_root, join(split(s: render_mac_address(addr: mac) as String, delimiter: ":"), "-"))
 }
 
 // ONE HOST'S GRUB CONFIGURATION: the casper kernel and initrd from this TFTP root, the verified installer image
