@@ -31,8 +31,8 @@ import extdeps.bmc.types {
 // row, and the readers return a reading whose arm names it, so a consumer cannot take a one-unit
 // observation as a firmware rule: the figures are reachable only through a match that names the scope.
 //
-// CONSUMPTION, declared frontier (DESIGN section 3c). In this change these rows, the activation op and
-// the CHECK rows below are read only by test.claim.supermicro_h11ssl_witness, and the CHECK rows also by
+// CONSUMPTION, declared frontier (DESIGN section 3c). In this change these rows and the CHECK rows below
+// are read only by test.claim.supermicro_h11ssl_witness, and the CHECK rows also by
 // gunbc.machine_intake.supermicro_h11ssl_first_contact supermicro_h11ssl_redfish_root_answered_after_activation.
 // The named later change is the H11SSL arrival-intake binding (a gunbc.board_authority_binding row for
 // the board), the same frontier the first-contact receipt declares: its Redfish first contact reads the

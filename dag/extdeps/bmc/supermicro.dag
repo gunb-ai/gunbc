@@ -294,6 +294,10 @@ fn supermicro_redfish_licence_gate(body: String) -> SupermicroLicenceGate {
 // ── LICENCE ACTIVATION THROUGH THE VENDOR CGI. POST /cgi/ipmi.cgi with this op (the firmware's own
 // spelling, LINCENSE included) activates a licence key; the page answers a CHECK attribute. The key
 // itself is an operator-held secret and is never a value in the corpus.
+// CONSUMPTION, declared frontier (DESIGN section 3c): nothing reads this op in this change. Its named
+// consumer is the H11SSL arrival-intake binding's licence step (a gunbc.board_authority_binding row for
+// the board), which issues it; trigger: that binding's FRU Board Area read (extdeps.board_authority
+// BoardFruIdentity).
 data supermicro_cgi_licence_activate_op: NonEmptyStr = "BIOS_LINCENSE_ACTIVATE.XML"
 
 // ── THE REDFISH Oem KEY. The Manager, ServiceRoot, ComputerSystem and EthernetInterface resources carry
