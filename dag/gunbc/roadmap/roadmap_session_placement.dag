@@ -1858,7 +1858,7 @@ fn session_reviewer_observe_peak(unit: NonEmptyStr) -> SessionReviewerPeakSample
 // THE SAMPLE RECORD, written beside the placement records. One per reviewer unit; the row author
 // reads these, cites the instrument, and the sample floor in gunbc.compute.work_class_grant decides
 // whether they are enough to size the class below the ceiling.
-fn session_reviewer_record_peak_sample(stores: SessionPlacementStores, name: SessionReviewerName, granted: Kibibyte, sample: SessionReviewerPeakSample, observed_at: EpochSecs) -> SessionPlacementWrite {
+fn session_reviewer_record_peak_sample(stores: SessionPlacementStores, host: String, name: SessionReviewerName, granted: Kibibyte, sample: SessionReviewerPeakSample, observed_at: EpochSecs) -> SessionPlacementWrite {
   let path = join([stores.records_dir, "/session-placement-peak-", session_reviewer_placement_basename(name: name)], "")
   let peak_field = match sample {
     SessionReviewerPeakObserved { peak } => json_kv(key: "peak_kibibytes", value: json_int(n: kibibyte_count(k: peak))),
@@ -1869,6 +1869,7 @@ fn session_reviewer_record_peak_sample(stores: SessionPlacementStores, name: Ses
     json_kv(key: "node_id", value: json_string(s: name.node_id)),
     json_kv(key: "attempt_key", value: json_string(s: session_reviewer_placement_key(attempt_key: name.attempt_key, criterion_key: name.criterion_key))),
     json_kv(key: "criterion_key", value: json_string(s: name.criterion_key)),
+    json_kv(key: "host", value: json_string(s: host)),
     json_kv(key: "granted_kibibytes", value: json_int(n: kibibyte_count(k: granted))),
     peak_field,
     json_kv(key: "observed_at_seconds", value: json_int(n: observed_at)),
@@ -1948,7 +1949,7 @@ fn session_reviewer_settle_release(stores: SessionPlacementStores, host: String,
   let freed = compute_release_on(store: stores.store, partition: stores.partition, appropriation: kibibyte(count: 0), reference: unit, reason: why)
   let write = session_reviewer_placement_release_write(stores: stores, name: name, grant_binding: binding, reason: why, freed: freed)
   let sample = session_reviewer_observe_peak(unit: unit)
-  let noted = session_reviewer_record_peak_sample(stores: stores, name: name, granted: granted, sample: sample, observed_at: now)
+  let noted = session_reviewer_record_peak_sample(stores: stores, host: host, name: name, granted: granted, sample: sample, observed_at: now)
   let peak_note = match noted {
     SessionPlacementWritten { path: p } => join(["; peak sample recorded at ", p], "")
     SessionPlacementWriteFailed { path: p, error: e } => join(["; peak sample NOT written at ", p, ": ", e], "")
