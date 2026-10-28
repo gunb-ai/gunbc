@@ -386,7 +386,7 @@ type GapRoom
 // to the sentence that produced it.
 fn standing_origin(g: ChassisGap) -> NonEmptyStr {
   match g {
-    Measured {name: n, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: i, date: d, positions: _, repeat: _}} => join([n, ": caliper reading (", i, ", ", d, ")"], "")
+    Measured {name: n, from_point: _, to_point: _, distance: _, standing: CaliperByOperator {instrument: i, date: d, positions: _}} => join([n, ": caliper reading (", i, ", ", d, ")"], "")
     Measured {name: n, from_point: _, to_point: _, distance: _, standing: DeclaredConservativeByOperator {bound: _, date: d, positions: p, basis: _, does_not_settle: _}} => join([n, ", declared by the operator on ", d, ": ", p], "")
     Measured {name: n, from_point: _, to_point: _, distance: _, standing: EstimatedByOperator {bound: b, date: d, positions: p, bound_is: _}} => join([n, ", reported by the operator on ", d, " ('", p, "'), less the ", to_string(value: micrometer_count(m: b) / 1000), " mm width this repository puts on a figure given by eye"], "")
     NeedsMeasurement {name: n, from_point: _, to_point: _, read_obligation: _} => join([n, ": unread"], "")
@@ -398,11 +398,12 @@ fn gap_room(g: ChassisGap) -> GapRoom {
     Measured {name: _, from_point: _, to_point: _, distance: dist, standing: _} =>
       // The comparison value, by standing: an estimate's face value less its own width, a declared bound as
       // the allowance the operator authored, a caliper reading as itself.
-      let limit = if gap_is_estimate(g: g) {
-        match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: dist) - micrometer_count(m: b) Absent => micrometer_count(m: dist) }
-      } else {
-        match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: b) Absent => micrometer_count(m: dist) }
-      }
+      // `limit` is an Int here, not a Nat: an estimate's face value less its own width can go under zero
+      // when the width this repository puts on a by-eye figure exceeds the figure, and that underflow is
+      // exactly the OverSubscribed case below. Int is deliberate; both branches below produce it.
+      let face = micrometer_count(m: dist) as Int
+      let width = match gap_declared_bound(g: g) { Present { value: b } => micrometer_count(m: b) as Int Absent => 0 }
+      let limit = if gap_is_estimate(g: g) { face - width } else { if width > 0 { width } else { face } }
       let origin = standing_origin(g: g)
       if limit < 0 { OverSubscribed { shortfall: micrometer(count: 0 - limit), from: origin } } else { Room { room: micrometer(count: limit), from: origin } }
     NeedsMeasurement {name: _, from_point: _, to_point: _, read_obligation: o} => NoReading { obligation: o }

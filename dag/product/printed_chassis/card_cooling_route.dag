@@ -9,6 +9,7 @@ import product.printed_chassis.gpu_duct {EndFaceMeasurement, GpuDuctDesign, a16_
 import extdeps.fans.types {RadialBlowerEnvelope}
 import extdeps.fans.delta {delta_bfb1012m_envelope}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
+import extdeps.gpu.types {gpu_board_power_ceiling, GpuBoardPowerSpecification, RatedBoardPower, ConfigurableBoardPower}
 import std.measure {CelsiusDelta, MillilitrePerSecond, Watt, celsius_delta, celsius_delta_count, gram_per_cubic_metre_count, joule_per_kilogram_kelvin_count, micrometer_count, millilitre_per_second, millilitre_per_second_count, watt, watt_count}
 import extdeps.physics.dry_air {dry_air_at_20c}
 import product.printed_chassis.exhaust_thermal {exhaust_rise}
@@ -409,12 +410,12 @@ fn room_plus(base: GapRoom, room: GapRoom) -> GapRoom {
 fn room_of(m: Micrometer, from: NonEmptyStr) -> GapRoom { Room { room: m, from: from } }
 
 fn room_less(room: GapRoom, deductions: List<Micrometer>) -> GapRoom {
-  let taken = fold(deductions, init: 0, f: (t, w) => t + micrometer_count(m: w))
+  let taken = fold(deductions, init: 0, f: (t, w) => t + (micrometer_count(m: w) as Int))
   match room {
     Room {room: r, from: o} =>
-      let left = micrometer_count(m: r) - taken
+      let left = (micrometer_count(m: r) as Int) - taken
       if left < 0 { OverSubscribed { shortfall: micrometer(count: 0 - left), from: o } } else { Room { room: micrometer(count: left), from: o } }
-    OverSubscribed {shortfall: s, from: o} => OverSubscribed { shortfall: micrometer(count: micrometer_count(m: s) + taken), from: o }
+    OverSubscribed {shortfall: s, from: o} => OverSubscribed { shortfall: micrometer(count: (micrometer_count(m: s) as Int) + taken), from: o }
     NoReading {obligation: o} => NoReading { obligation: o }
   }
 }
@@ -436,9 +437,11 @@ fn unread_extent(obligation: NonEmptyStr) -> ShapeExtent { Unread { obligation: 
 // a gap row and carries that row's provenance, so a reader can check any single number back to the
 // operator's sentence that produced it; where nothing was read, the answer says so and names the reading
 // owed, rather than reporting a maximum somebody never took.
+type BlowerShape { across_the_binding_gap: ShapeExtent, along_the_row: ShapeExtent, behind_the_end: ShapeExtent }
+
 fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> BlowerShape {
   let rear = gap_room(g: card_end_rear_fan_clearance)
-  let walls_two = [um(m: d.wall), um(m: d.wall)]
+  let walls_two = [d.wall, d.wall]
   match home {
     // BESIDE THE ROW. The fan lies flat in the free lane: its planform spans the lane, so the lane caps the
     // edge that crosses it, and the rear bound caps the edge that runs back behind the end. The fan's own
@@ -446,15 +449,15 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     // floor-to-lid at an unnamed place, and no deck height exists -- so this home's third extent reports the
     // reading it still owes.
     BesideTheRow => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: side_lane_width), deductions: concat(walls_two, [um(m: d.band_clearance), um(m: d.band_clearance)])), why: "less two duct walls and the band clearance on both sides"),
-      along_the_row: extent_of(room: room_less(room: rear, deductions: [um(m: d.sleeve_clearance)]), why: "less the sleeve clearance"),
+      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: side_lane_width), deductions: concat(walls_two, [d.band_clearance, d.band_clearance])), why: "less two duct walls and the band clearance on both sides"),
+      along_the_row: extent_of(room: room_less(room: rear, deductions: [d.sleeve_clearance]), why: "less the sleeve clearance"),
       behind_the_end: unread_extent(obligation: "nothing was read between the chassis deck and the lid at the height a fan standing on its side would need"),
     }
     // OVER THE ROW. The fan's thickness is what stands up, so the lid caps it directly; the card's own height
     // and the riser are inside the same 120 mm figure and are subtracted first. The other two extents run
     // along and across the row, where nothing was read.
     OverTheRow {riser: _} => BlowerShape {
-      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: deck_to_lid_clearance), deductions: concat([um(m: a16_end_face.face_length), riser], [um(m: d.wall), um(m: d.wall), um(m: d.wall)])), why: "less the card's own height, the riser, and the three walls a leg needs"),
+      across_the_binding_gap: extent_of(room: room_less(room: gap_room(g: deck_to_lid_clearance), deductions: concat([a16_end_face.face_length, riser], [d.wall, d.wall, d.wall])), why: "less the card's own height, the riser, and the three walls a leg needs"),
       along_the_row: unread_extent(obligation: "nothing was read along the row, where this home's long edge would run"),
       behind_the_end: extent_of(room: rear, why: "the rear bound itself"),
     }
@@ -472,7 +475,7 @@ fn shape_max_for_home(home: BlowerHome, d: GpuDuctDesign, riser: Micrometer) -> 
     PlaneAcrossRowStanding => BlowerShape {
       across_the_binding_gap: extent_of(room: room_of(m: a16_slot_pitch(), from: "the 40.64 mm slot pitch"), why: "the housing may not overhang into a neighbouring card's lane"),
       along_the_row: unread_extent(obligation: "nothing was read along the row for this home"),
-      behind_the_end: extent_of(room: room_less(room: rear, deductions: [um(m: d.wall)]), why: "less the wall at the back"),
+      behind_the_end: extent_of(room: room_less(room: rear, deductions: [d.wall]), why: "less the wall at the back"),
     }
   }
 }
@@ -484,7 +487,7 @@ fn a16_slot_pitch() -> Micrometer { a16_blower_duct_design.slot_pitch }
 // does not fit the pitch, halved, because the planform is centred on the slot.
 fn plane_on_end_overhang_per_side(b: RadialBlowerEnvelope) -> Micrometer {
   let excess = longest_face_edge(b: b) - um(m: a16_slot_pitch())
-  if excess <= 0 { micrometer(count: 0) } else { micrometer(count: micrometer_count(m: um(m: excess)) / 2) }
+  if excess <= 0 { micrometer(count: 0) } else { micrometer(count: excess / 2) }
 }
 
 // WHAT TWO DUCTED CARDS SPEND BETWEEN THEM. Two adjacent ducted cards put their overhangs facing each other
@@ -589,9 +592,9 @@ fn largest_planform_per_home() -> List<String> {
   [join(["beside the row, against the '60mm' side: ", shape_display(s: shape_max_for_home(home: BesideTheRow, d: d, riser: shape_um(m: 6000)))], ""),
    join(["over the row on a 6 mm riser: ", shape_display(s: shape_max_for_home(home: OverTheRow {riser: shape_um(m: 6000)}, d: d, riser: shape_um(m: 6000)))], ""),
    join(["flat on the plug end, two ducted cards across the inter-card gap: ", shape_display(s: shape_max_for_home(home: PlaneOnEnd, d: d, riser: shape_um(m: 6000)))], ""),
-   join(["what the BFB1012M actually asks for: across the slot ", mm_text(m: um(m: longest_face_edge(b: b))),
-         "; up the end face ", mm_text(m: um(m: shortest_face_edge(b: b))),
-         "; behind the end ", mm_text(m: shape_um(m: plane_on_end_run_back(b: b, d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
+   join(["what the BFB1012M actually asks for: across the slot ", mm_text(m: micrometer(count: longest_face_edge(b: b))),
+         "; up the end face ", mm_text(m: micrometer(count: shortest_face_edge(b: b))),
+         "; behind the end ", mm_text(m: micrometer(count: plane_on_end_run_back(b: b, d: d))), " (fan envelope from extdeps.fans.delta delta_bfb1012m_envelope, cited)"], "")]
 }
 
 // THE FIXED FAN DECIDES THE POSE, AND THE POSE DECIDES WHETHER IT FITS
@@ -655,9 +658,19 @@ type AxisCheck {
   clears: Bool,
 }
 
+// A direction that HAS a room is not automatically a direction that CLEARS: the room is an allowance and
+// the need is a claim on it, and when the claim exceeds the allowance the honest report is
+// FullySubscribed with the difference, not Fits with a false flag. Reporting Fits there would let every
+// renderer downstream print "at most 70 mm" beside a 101 mm part as though the two agreed.
 fn axis_check(along: EnvelopeAxis, need: Micrometer, room: GapRoom) -> AxisCheck {
   match room {
-    Room {room: r, from: o} => AxisCheck { along: along, need: need, room: Fits { at_most: r, capped_by: o }, clears: micrometer_count(m: r) >= micrometer_count(m: need) }
+    Room {room: r, from: o} =>
+      let spare = (micrometer_count(m: r) as Int) - (micrometer_count(m: need) as Int)
+      if spare < 0 {
+        AxisCheck { along: along, need: need, room: FullySubscribed { short_by: micrometer(count: 0 - spare), capped_by: o }, clears: false }
+      } else {
+        AxisCheck { along: along, need: need, room: Fits { at_most: r, capped_by: o }, clears: true }
+      }
     OverSubscribed {shortfall: s, from: o} => AxisCheck { along: along, need: need, room: FullySubscribed { short_by: s, capped_by: o }, clears: false }
     NoReading {obligation: o} => AxisCheck { along: along, need: need, room: Unread { obligation: o }, clears: false }
   }
@@ -669,6 +682,16 @@ type FanPose {
   behind_end: PlacedDimension,
   across_row: PlacedDimension,
   along_end_face: PlacedDimension,
+}
+
+// A pose's three checks, as NAMED fields rather than a positional List. A list read with [i] yields an
+// Optional -- the substrate refuses to invent an element for an index past the end -- and a pose always
+// has exactly these three directions, so making them three fields says so and removes a whole class of
+// unwrap. It also means a caller cannot silently take the across-row room when it meant the rear room.
+type PoseFit {
+  rear: AxisCheck,
+  across_row: AxisCheck,
+  end_face: AxisCheck,
 }
 
 // The six poses, enumerated rather than listed by hand: for each of the three axes the wheel could lie along,
@@ -697,18 +720,20 @@ fn fan_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<FanPose> {
 // across the row is the span the row leaves (one pitch plus the declared side lane on each side); along the
 // end face is the card's own 97.84 mm bracket face, which is all the duct can be supported by. No room is
 // read off a raw number -- each carries its standing's origin through gap_room.
-fn fan_pose_checks(pose: FanPose, d: GpuDuctDesign) -> List<AxisCheck> {
-  [ axis_check(along: ForeAft, need: pose.behind_end.extent, room: gap_room(g: card_end_rear_fan_clearance)),
-    axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap()),
-    axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: a16_end_face.face_length, from: "the card's own end-face length, caliper-read (product.printed_chassis.gpu_duct a16_end_face)") ) ]
+fn fan_pose_checks(pose: FanPose, d: GpuDuctDesign) -> PoseFit {
+  PoseFit {
+    rear: axis_check(along: ForeAft, need: pose.behind_end.extent, room: gap_room(g: card_end_rear_fan_clearance)),
+    across_row: axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap()),
+    end_face: axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: a16_end_face.face_length, from: "the card's own end-face length, caliper-read (product.printed_chassis.gpu_duct a16_end_face)")),
+  }
 }
 
-fn fan_pose_admits(checks: List<AxisCheck>) -> Bool { all(checks, c => c.clears) }
+fn fan_pose_admits(fit: PoseFit) -> Bool { fit.rear.clears && fit.across_row.clears && fit.end_face.clears }
 
 // Which of the six admit, as facts a caller can branch on.
 fn admitting_fan_poses() -> List<FanPose> {
   let d = a16_wall_design()
-  filter(fan_poses(fan: a16_blower(), d: d), p => fan_pose_admits(checks: fan_pose_checks(pose: p, d: d)))
+  filter(fan_poses(fan: a16_blower(), d: d), p => fan_pose_admits(fit: fan_pose_checks(pose: p, d: d)))
 }
 
 // The printed home IS one of the six, and this says which: the duct's own run-back, from the same fn the CAD
@@ -727,12 +752,12 @@ fn printed_pose() -> FanPose {
 
 // The report's rendering -- the only place a pose becomes a sentence, and it reads out facts, adding nothing.
 fn fan_pose_display(pose: FanPose, d: GpuDuctDesign) -> String {
-  let checks = fan_pose_checks(pose: pose, d: d)
-  join([if fan_pose_admits(checks: checks) { "ADMITTED" } else { "REFUSED" }, ": wheel axis ",
+  let fit = fan_pose_checks(pose: pose, d: d)
+  join([if fan_pose_admits(fit: fit) { "ADMITTED" } else { "REFUSED" }, ": wheel axis ",
         envelope_axis_display(a: pose.wheel_axis),
-        "; behind the end ", mm_text(m: pose.behind_end.extent), " (", pose.behind_end.which_envelope_dimension, ") vs ", extent_display(e: (checks[0]).room),
-        "; across the row ", mm_text(m: pose.across_row.extent), " (", pose.across_row.which_envelope_dimension, ") vs ", extent_display(e: (checks[1]).room),
-        "; along the end face ", mm_text(m: pose.along_end_face.extent), " (", pose.along_end_face.which_envelope_dimension, ") vs ", extent_display(e: (checks[2]).room)], "")
+        "; behind the end ", mm_text(m: pose.behind_end.extent), " (", pose.behind_end.which_envelope_dimension, ") vs ", extent_display(e: fit.rear.room),
+        "; across the row ", mm_text(m: pose.across_row.extent), " (", pose.across_row.which_envelope_dimension, ") vs ", extent_display(e: fit.across_row.room),
+        "; along the end face ", mm_text(m: pose.along_end_face.extent), " (", pose.along_end_face.which_envelope_dimension, ") vs ", extent_display(e: fit.end_face.room)], "")
 }
 
 fn fan_pose_displays() -> List<String> {
@@ -758,7 +783,8 @@ fn scroll_is_not_a_second_geometry() -> String {
 // How far a pose falls short behind the end, as a positive Micrometer the reader never has to subtract.
 // Refusal arithmetic, not fabrication: a pose that clears, or one whose room no reading reaches, has no
 // shortfall to report and says so with zero rather than with a made-up number.
-fn fan_pose_rear_shortfall(check: AxisCheck) -> Micrometer {
+fn fan_pose_rear_shortfall(pose: FanPose) -> Micrometer {
+  let check = fan_pose_checks(pose: pose, d: a16_wall_design()).rear
   match check.room {
     FullySubscribed {short_by: s, capped_by: _} => s
     Fits {at_most: _, capped_by: _} => micrometer(count: 0)
@@ -769,8 +795,8 @@ fn fan_pose_rear_shortfall(check: AxisCheck) -> Micrometer {
 // The best the reference image's family of poses can do behind the plug end: the SMALLEST shortfall among the
 // four sideways poses, which is the most favourable reading anyone could honestly give the idea.
 fn best_sideways_rear_shortfall() -> Micrometer {
-  let checks = map(sideways_fan_poses(), p => (fan_pose_checks(pose: p, d: a16_wall_design()))[0])
-  micrometer(count: fold(checks, init: 0, f: (best, c) => closer_to_zero(best: best, other: micrometer_count(m: fan_pose_rear_shortfall(check: c)))))
+  let shortfalls = map(sideways_fan_poses(), p => micrometer_count(m: fan_pose_rear_shortfall(pose: p)))
+  micrometer(count: fold(shortfalls, init: 0, f: (best, s) => closer_to_zero(best: best, other: s)))
 }
 
 // The smaller NON-ZERO shortfall: zero means "nothing to report" for a pose that clears or whose room no
@@ -881,14 +907,6 @@ fn side_display(s: BlockedSide) -> String {
   }
 }
 
-// The answer to the manager's question, as text: same geometry, or two. Every number behind it is above.
-fn scroll_is_not_a_second_geometry() -> String {
-  "one geometry, not two. With the BFB1012M fixed -- 97.2 mm along the flow path, 94.4 mm across it, 33 mm on the wheel axis (extdeps.fans.delta delta_bfb1012m_envelope) -- the reference image's sideways-intake pose must put a disc dimension behind the plug end and needs 24.4 mm more than the operator's declared 70 mm; the only pose that clears is the wheel-axis-vertical one the flat-on-end duct already uses. What the image keeps is the collector's SHAPE, a throat turning the discharge into the heatsink's end face, printed here as the duct's open-shoulder collector rather than as a second root."
-}
-
-// THE ANSWER FOR THE OPERATOR'S SHAPE, as text: the largest wheel under the readings, at the wheel-width
-// ratio the design assumes, per home, and where each card's intake faces.
-
 // ================================================================================================
 // THE AIRFLOW THE A16 NEEDS -- AND WHY IT IS A FUNCTION AND NOT A NUMBER
 // ================================================================================================
@@ -966,10 +984,18 @@ fn free_air_cfm_text(flow: MillilitrePerSecond) -> String {
 // The A16's own power rows, read rather than quoted: the default and the maximum are what the duct must be
 // sized against, MaxQ and the minimum are what it is sized against when the operator caps the card.
 fn a16_power_points_w() -> List<String> {
-  let bp = nvidia_a16_board_facts.board_power
-  [join(["default ", to_string(value: watt_count(w: bp.default)), " W"], ""),
-   join(["maximum ", to_string(value: watt_count(w: bp.maximum)), " W"], ""),
-   join(["minimum ", to_string(value: watt_count(w: bp.minimum)), " W"], "")]
+  // board_power is an Optional<GpuBoardPowerSpecification>: a board either states its power window or it
+  // does not, and a report that printed "0 W" for the silent case would be the fabricated output DESIGN.md
+  // SS5 refuses. So the absence is reported as absence.
+  match nvidia_a16_board_facts.board_power {
+    Absent => ["the A16's board row states no power window: nothing to size against"]
+    Present { value: ConfigurableBoardPower { default: dd, minimum: lo, maximum: hi, named_points: _ } } =>
+      [join(["default ", to_string(value: watt_count(w: dd)), " W"], ""),
+       join(["maximum ", to_string(value: watt_count(w: hi)), " W"], ""),
+       join(["minimum ", to_string(value: watt_count(w: lo)), " W"], "")]
+    Present { value: RatedBoardPower { rated: r } } =>
+      [join(["rated ", to_string(value: watt_count(w: r)), " W (the vendor states one figure, not a window)"], "")]
+  }
 }
 
 // THE CURVE, at the board's maximum, over the rises an operator might accept. Each row says what it is: the
@@ -978,7 +1004,10 @@ fn a16_power_points_w() -> List<String> {
 // about where the A16's junction will actually sit, which needs the installed measurement exhaust_thermal
 // already asks for.
 fn airflow_required_at_rises() -> List<String> {
-  let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
+  let watts = match nvidia_a16_board_facts.board_power {
+    Present { value: bp } => watt_count(w: gpu_board_power_ceiling(spec: bp)) as Int
+    Absent => 0
+  }
   let rises = [5, 10, 15, 20, 30]
   map(rises, k => match required_flow(heat: watt(count: watts), rise: celsius_delta(count: k)) {
     Absent => join(["at ", to_string(value: k), " K of rise across the whole air path: no such flow can be named -- the inputs asked for something the arithmetic cannot carry"], "")

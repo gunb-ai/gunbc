@@ -2,6 +2,7 @@ module test.claim.card_cooling_route_witness
 
 import std.types {Bool, NonEmptyStr, String}
 import std.measure {micrometer}
+import extdeps.gpu.types {gpu_board_power_ceiling}
 import product.printed_chassis.card_cooling_route {
   PlaneOnEnd, PlaneAcrossRowStanding, OverTheRow, BesideTheRow,
   RouteAdmission, RouteAdmitted, RouteAdmittedOnOperatorBound, RouteProposalOnly, RouteRefusedByChassis, RouteHomeUnmeasured,
@@ -25,6 +26,12 @@ import extdeps.gpu.passive_card_row {row_is_sealed, row_unread_fields, row_field
 import extdeps.gpu.nvidia_passive_rows {a16_row, t10_row, a2_row, card_rows, all_rows_bench_list}
 import product.printed_chassis.chassis_clearances {GapRoom, Room}
 import product.printed_chassis.gpu_duct {a16_end_face, EndFaceMeasurement, plane_on_end_duct_run_back, plane_on_end_face_clear_of_keepout, plane_on_end_keepout_crossing, plane_on_end_housing_clears_keepout, plane_on_end_connector_protrusion_admits, plane_on_end_max_admissible_protrusion}
+
+// required_flow answers with an Optional carrier; a witness comparing two of them needs the count, and an
+// absent flow must fail the comparison rather than read as zero -- which is what this does.
+fn required_flow_count(heat: Watt, rise: CelsiusDelta) -> Int {
+  match required_flow(heat: heat, rise: rise) { Present {value: f} => millilitre_per_second_count(f: f) Absent => 0 - 1 }
+}
 
 // A GapRoom read as a number, ONLY for a test that means to pin a measured gap's room. An unread or
 // over-subscribed gap fails this rather than comparing against somebody's stand-in value -- which is the
@@ -434,8 +441,17 @@ test fn w_only_the_fore_aft_wheel_axis_admits_and_the_reference_images_pose_refu
     && length(list: admits) == 2
     && length(list: sideways) == 4
     && all(admits, p => match p.wheel_axis { ForeAft => true _ => false })
-    && all(sideways, p => !fan_pose_admits(checks: fan_pose_checks(pose: p, d: a16_wall_design())))
-    && all(sideways, p => match (fan_pose_checks(pose: p, d: a16_wall_design()))[0].room { FullySubscribed {short_by: _, capped_by: _} => true _ => false })
+    && all(sideways, p => !fan_pose_admits(fit: fan_pose_checks(pose: p, d: a16_wall_design())))
+    && all(sideways, p => match fan_pose_checks(pose: p, d: a16_wall_design()).rear.room { FullySubscribed {short_by: _, capped_by: _} => true _ => false })
+}
+
+// The pose in the list whose rear spend is `extent`, found rather than indexed: a witness that reaches for
+// [0] or [1] is a witness that changes meaning the moment the enumeration is reordered.
+fn first_pose_sideways_reaching(poses: List<FanPose>, extent: Int) -> FanPose {
+  match first(poses, p => micrometer_count(m: p.behind_end.extent) == extent) {
+    Present {value: p} => p
+    Absent => printed_pose()
+  }
 }
 
 test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
@@ -444,12 +460,15 @@ test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
   // never has to subtract; the pose that admits reports zero instead of inventing one, and the headline figure
   // is the BEST of the four (the most favourable reading anyone could honestly give the idea), not the worst.
   let sideways = sideways_fan_poses()
-  let worst = (fan_pose_checks(pose: sideways[0], d: a16_wall_design()))[0]
-  let best = (fan_pose_checks(pose: sideways[1], d: a16_wall_design()))[0]
-  micrometer_count(m: fan_pose_rear_shortfall(check: worst)) == 31200
-    && micrometer_count(m: fan_pose_rear_shortfall(check: best)) == 28400
+  // The four sideways poses come from fan_poses' own enumeration; two stand the axis across the row and
+  // two along the end face, each pair differing by which disc dimension goes behind the end. Checked by
+  // what each actually spends, so a reordering of the enumeration cannot quietly swap which is which.
+  let deep_behind = first_pose_sideways_reaching(sideways, 99400)
+  let shallow_behind = first_pose_sideways_reaching(sideways, 96400)
+  micrometer_count(m: fan_pose_rear_shortfall(pose: deep_behind)) == 31200
+    && micrometer_count(m: fan_pose_rear_shortfall(pose: shallow_behind)) == 28400
     && micrometer_count(m: best_sideways_rear_shortfall()) == 28400
-    && micrometer_count(m: fan_pose_rear_shortfall(check: (fan_pose_checks(pose: printed_pose(), d: a16_wall_design()))[0])) == 0
+    && micrometer_count(m: fan_pose_rear_shortfall(pose: printed_pose())) == 0
 }
 
 test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
@@ -462,7 +481,7 @@ test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
     && micrometer_count(m: pose.across_row.extent) == 97200
     && micrometer_count(m: pose.along_end_face.extent) == 94400
     && match pose.wheel_axis { ForeAft => true _ => false }
-    && fan_pose_admits(checks: fan_pose_checks(pose: pose, d: a16_wall_design()))
+    && fan_pose_admits(fit: fan_pose_checks(pose: pose, d: a16_wall_design()))
     // the enumeration CONTAINS it, so this fn is naming a pose rather than inventing a seventh
     && any(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => micrometer_count(m: p.behind_end.extent) == 37500 && match p.wheel_axis { ForeAft => true _ => false })
 }
@@ -540,11 +559,16 @@ test fn w_the_pose_report_says_what_the_types_say() -> Bool {
 test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_direction() -> Bool {
   // The datasheet carries no airflow requirement, so this is the only honest form: the flow that carries the
   // board's cited maximum power at a rise somebody allows, verified by exhaust_thermal's own forward run.
-  let watts = watt_count(w: nvidia_a16_board_facts.board_power.maximum)
+  // board_power is an Optional, so the absence has an arm here rather than a default: a witness that
+  // silently read the silent case as 0 W would pass while proving nothing about the airflow the card needs.
+  let watts = match nvidia_a16_board_facts.board_power {
+    Present { value: bp } => watt_count(w: gpu_board_power_ceiling(spec: bp)) as Int
+    Absent => 0 - 1
+  }
   watts == 250 && required_flow_rise_check(heat: watt(count: 250), rise: celsius_delta(count: 15))
     && required_flow_rise_check(heat: watt(count: 195), rise: celsius_delta(count: 20))
     // A smaller allowed rise must need more air, never less -- compared through the carrier, not a scalar.
-    && flow_count(heat: watt(count: 250), rise: celsius_delta(count: 10)) > flow_count(heat: watt(count: 250), rise: celsius_delta(count: 20))
+    && required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 10)) > required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 20))
 }
 
 test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() -> Bool {
@@ -557,7 +581,7 @@ test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() 
   // and cp = 1005 J/kg K is 13775 mL/s. The CFM rendering is checked against the one published pair the
   // corpus has -- the BFB1012M listing prints 22.60 CFM beside 10666 mL/s -- because a rendering nobody
   // checks against a published figure is exactly where a factor of 100 hides.
-  let flow = flow_count(heat: watt(count: 250), rise: celsius_delta(count: 15))
+  let flow = required_flow_count(heat: watt(count: 250), rise: celsius_delta(count: 15))
   flow == 13775 && free_air_cfm_text(flow: millilitre_per_second(count: flow)) == "29.19 CFM"
     && free_air_cfm_text(flow: delta_bfb1012m_rating.free_air_flow) == "22.60 CFM"
     && flow > 10666 && string_contains(s: bfb1012m_flow_context(), pattern: "10666 mL/s free air")
