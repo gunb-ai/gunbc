@@ -10,12 +10,13 @@ import product.printed_chassis.card_cooling_route {
   plane_on_end_run_back, plane_on_end_slot_demand, plane_across_row_run_back, plane_on_end_overhang_per_side,
   beside_the_row_demand, over_the_row_height, smaller_i, a16_slot_pitch,
   shape_um, shape_max_for_home, extent_display, flat_on_end_pair_need, flat_on_end_pair_span, flat_on_end_twin_verdict,
-  scroll_intake_facing, scroll_poses, scroll_pose_verdict, scroll_pose_admits, scroll_pose_summaries, scroll_is_not_a_second_geometry,
+  fan_poses, fan_pose_checks, fan_pose_admits, admitting_fan_poses, sideways_fan_poses, printed_pose, fan_pose_rear_shortfall, best_sideways_rear_shortfall, fan_pose_displays, scroll_is_not_a_second_geometry,
+  card_intake, CardIntake, Facing, RowEmpty, NoSuchCard, BlockedSide, NeighbourCard, ChassisWall,
   required_flow, required_flow_rise_check, free_air_cfm_text, bfb1012m_flow_context,
   a16_blower, a16_wall_design, a16_route_report, outlet_alignment_obligation,
 }
 import product.printed_chassis.gpu_duct {a16_blower_duct_design, blower_reach_behind, um}
-import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print}
+import product.printed_chassis.chassis_clearances {ChassisGap, Measured, DeclaredConservativeByOperator, EstimatedByOperator, NeedsMeasurement, card_end_rear_fan_clearance, neighbour_lane_width, side_lane_width, deck_to_lid_clearance, chassis_gaps, chassis_gap, gap_display, gap_name, gap_is_measured, gap_is_estimate, gap_may_be_printed_on, gap_room, remeasure_before_print, measured_distance, standing_origin}
 import extdeps.gpu.nvidia_a16 {nvidia_a16_board_facts}
 import extdeps.fans.delta {delta_bfb1012m_envelope, delta_bfb1012m_rating}
 import extdeps.fans.types {RadialBlowerEnvelope}
@@ -167,7 +168,12 @@ test fn w_the_printable_part_budgets_exactly_the_admitted_run_back() -> Bool {
 // clearance ever becomes real, this witness fails and says so, rather than the part quietly becoming legal.
 test fn w_the_housing_cannot_be_placed_clear_of_the_power_keepout_on_this_card() -> Bool {
   um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design())) == 71840
-    && um(m: plane_on_end_keepout_crossing(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design)) == 22400
+    // 26.28 mm, from the module's own arithmetic: centred on the 97.84 mm face, the collector's shoulder
+    // reaches to 94.4/2 + 2 = 49.2 mm from the centre, while the band's inner edge sits at 48.92 - 26.0 =
+    // 22.92 mm -- so the shoulder crosses it by 26.28 mm. (The housing alone, with no shoulder, would cross
+    // by 24.28 mm; the 22.56 mm figure that is 94.4 less 71.84 is a different question, the shortest
+    // possible placement, and is not what this fn measures.) Pinned so a change to any input is noticed.
+    && um(m: plane_on_end_keepout_crossing(f: a16_end_face, d: a16_wall_design(), b: a16_blower_duct_design)) == 26280
     && !plane_on_end_housing_clears_keepout(b: a16_blower_duct_design, f: a16_end_face, d: a16_wall_design())
     && smaller_i(a: um(m: delta_bfb1012m_envelope.housing_length), b: um(m: delta_bfb1012m_envelope.housing_depth)) > um(m: plane_on_end_face_clear_of_keepout(f: a16_end_face, d: a16_wall_design()))
 }
@@ -331,7 +337,7 @@ test fn w_a_spoken_estimate_leaves_its_room_after_its_own_width_and_admits_nothi
   let room = gap_room(g: side_lane_width)
   let need = beside_the_row_demand(b: a16_blower(), d: a16_wall_design())
   let verdict = ask(gap: side_lane_width, need: need, home: BesideTheRow, unmet: RouteDemand { name: "housing width across the free lane", needed: shape_um(m: need), of_gap: "free lane beside the card row" })
-  room_ok(r: room, at_most: 50000) && need == 98400 && match verdict {
+  room_ok(r: room, at_most: 50000) && need == 100400 && match verdict {
     Present { value: r } => match r {
       RouteRefusedByChassis {home: _, unmet: _, gap: g} => gap_name(g: g) == "free lane beside the card row"
       _ => false
@@ -371,48 +377,136 @@ test fn w_the_largest_planform_reports_its_cap_and_never_invents_an_unread_exten
   let d = a16_wall_design()
   let beside = shape_max_for_home(home: BesideTheRow, d: d, riser: micrometer(count: 6000))
   let plane = shape_max_for_home(home: PlaneOnEnd, d: d, riser: micrometer(count: 6000))
-  // Beside the row: 50000 of lane, less two walls and two band clearances = 42000 across the lane; and the
-  // extent no reading reaches (fan thickness toward a lid that was never read at deck height) says "no cap".
-  extent_count(e: beside.across_the_binding_gap) == 42000
+  // Beside the row: the lane leaves 50000 after its own 10 mm estimate width, less two 2 mm duct walls and
+  // two 1 mm band clearances = 44000 across the lane; and the extent no reading reaches (fan thickness
+  // toward a lid that was never read at deck height) says "no cap" rather than offering a number.
+  extent_count(e: beside.across_the_binding_gap) == 44000
     && string_contains(s: extent_display(e: beside.behind_the_end), pattern: "no cap")
-    // Flat on the end: one pitch + 2 * the declared lane = 150640 across the slot, and the card's own
-    // end-face height along the row. Not 81640: that is the PAIR cap, and charging it to a single card
-    // would forbid room the twin case shows the card never spends.
-    && extent_count(e: plane.across_the_binding_gap) == 150640
+    // Flat on the end: one 40.64 mm pitch + 2 * the DECLARED 70 mm side lane = 180640 across the slot, and
+    // the card's own 97.84 mm end-face length along the row. Not 81640: that is the PAIR cap, and charging
+    // it to a single card would forbid room the twin case shows the card never spends.
+    && extent_count(e: plane.across_the_binding_gap) == 180640
     && extent_count(e: plane.along_the_row) == 97840
 }
 
-// THE SCROLL IS ONE GEOMETRY WITH THE FLAT-ON-END DUCT, ONCE THE FAN IS FIXED. The reference image's
-// sideways-intake pose has to put a DISC dimension behind the plug end -- 94.4 mm, or 97.2 mm spun the other
-// way -- against the operator's declared 70 mm. Both refusals are on cited envelope dimensions, not on
-// anyone's estimate, and the pose that does clear is the one the printable duct already uses.
-test fn w_the_reference_images_sideways_intake_pose_is_refused_by_the_fans_own_dimensions() -> Bool {
-  let lines = scroll_pose_summaries()
-  length(list: lines) == 3
-    && string_contains(s: lines[0], pattern: "REFUSED") && string_contains(s: lines[0], pattern: "94 mm")
-    && string_contains(s: lines[1], pattern: "REFUSED") && string_contains(s: lines[1], pattern: "97 mm")
-    && string_contains(s: lines[2], pattern: "ADMITTED")
-    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "one geometry, not two")
+// THE FIXED FAN SETTLES THE POSE, AND THE ANSWER IS DERIVED FROM ALL SIX OF THEM. The reference image's
+// pose has its wheel axis perpendicular to the CARD FACE, which puts a disc dimension behind the plug end.
+// The module enumerates every pose the fan can stand in -- three choices of where its 33 mm axis lies, times
+// two spins about it -- and checks each against the readings, so the verdict is arithmetic and not an
+// assertion. These witnesses consume the TYPES (EnvelopeAxis, AxisCheck.clears, the Micrometer shortfalls),
+// because DESIGN.md SS5 refuses ".contains() grep" as a consumer: a text-only witness stays green after the
+// geometry underneath it changes, which is the opposite of a witness.
+test fn w_only_the_fore_aft_wheel_axis_admits_and_the_reference_images_pose_refuses() -> Bool {
+  let poses = fan_poses(fan: a16_blower(), d: a16_wall_design())
+  let admits = admitting_fan_poses()
+  let sideways = sideways_fan_poses()
+  // Six poses; exactly the two with the 33 mm wheel axis fore-aft clear; all four sideways poses refused,
+  // and refused on the FORE-AFT check (behind the plug end) rather than on anyone's reading of the row.
+  length(list: poses) == 6
+    && length(list: admits) == 2
+    && length(list: sideways) == 4
+    && all(admits, p => match p.wheel_axis { ForeAft => true _ => false })
+    && all(sideways, p => !fan_pose_admits(checks: fan_pose_checks(pose: p, d: a16_wall_design())))
+    && all(sideways, p => match (fan_pose_checks(pose: p, d: a16_wall_design()))[0].room { FullySubscribed {short_by: _, capped_by: _} => true _ => false })
+}
+
+test fn w_a_refused_pose_names_its_rear_shortfall_in_micrometres() -> Bool {
+  // The reference image's family, worst and best: 97.2 mm or 94.4 mm of housing behind a declared 70 mm, plus
+  // the printed pocket's two 2 mm walls -- short by 31.2 mm and 28.4 mm. Positive, typed shortfalls a reader
+  // never has to subtract; the pose that admits reports zero instead of inventing one, and the headline figure
+  // is the BEST of the four (the most favourable reading anyone could honestly give the idea), not the worst.
+  let sideways = sideways_fan_poses()
+  let worst = (fan_pose_checks(pose: sideways[0], d: a16_wall_design()))[0]
+  let best = (fan_pose_checks(pose: sideways[1], d: a16_wall_design()))[0]
+  micrometer_count(m: fan_pose_rear_shortfall(check: worst)) == 31200
+    && micrometer_count(m: fan_pose_rear_shortfall(check: best)) == 28400
+    && micrometer_count(m: best_sideways_rear_shortfall()) == 28400
+    && micrometer_count(m: fan_pose_rear_shortfall(check: (fan_pose_checks(pose: printed_pose(), d: a16_wall_design()))[0])) == 0
 }
 
 test fn w_the_admitted_pose_is_the_one_the_printable_duct_uses() -> Bool {
-  // The upright pose's rear spend is the duct's own run-back, from the same fn the CAD is built with -- so
-  // the report cannot drift from the geometry. 33 mm of housing with its tolerance plus two 2 mm walls.
-  let pose = (scroll_poses(fan: a16_blower(), d: a16_wall_design()))[2]
-  micrometer_count(m: pose.behind_end) == 37500 && micrometer_count(m: pose.across_row) == 97200
-    && micrometer_count(m: pose.height) == 94400
-    && scroll_pose_admits(fits: scroll_pose_verdict(pose: pose, d: a16_wall_design()))
+  // The printed pose's rear spend comes from the SAME fn the CAD is built with, so a report cannot drift from
+  // the geometry it describes: 33 mm of thickness with its tolerance plus the pocket's two 2 mm walls = 37500,
+  // with the 97.2 mm flow path across the row and the 94.4 mm disc dimension along the end face -- those are
+  // gpu_duct plane_on_end_duct_parts' own placements (housing_x = the smaller, housing_y = the larger).
+  let pose = printed_pose()
+  micrometer_count(m: pose.behind_end.extent) == 37500
+    && micrometer_count(m: pose.across_row.extent) == 97200
+    && micrometer_count(m: pose.along_end_face.extent) == 94400
+    && match pose.wheel_axis { ForeAft => true _ => false }
+    && fan_pose_admits(checks: fan_pose_checks(pose: pose, d: a16_wall_design()))
+    // the enumeration CONTAINS it, so this fn is naming a pose rather than inventing a seventh
+    && any(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => micrometer_count(m: p.behind_end.extent) == 37500 && match p.wheel_axis { ForeAft => true _ => false })
 }
 
-test fn w_both_cards_intakes_face_their_own_vertical_axes_not_each_other() -> Bool {
-  // The fixed fan's inlets face along its axis, which stands vertical in the only pose that admits -- so
-  // the "two cards drinking the same air between them" consequence the sideways pose would have had never
-  // arises. What the readings DO bear on is where replacement air comes from, and the free lane is the
-  // '60mm until it touches the heatsink' side.
-  string_contains(s: scroll_intake_facing(card_index: 0, card_count: 2), pattern: "60mm until it touches the heatsink")
-    && string_contains(s: scroll_intake_facing(card_index: 1, card_count: 2), pattern: "60mm until it touches the heatsink")
-    && string_contains(s: scroll_intake_facing(card_index: 0, card_count: 1), pattern: "above and below")
-    && scroll_intake_facing(card_index: 2, card_count: 2) == "no such card in the row"
+// THE INTAKE IS TYPED, AND ITS REFUSALS ARE REFUSALS (review 87223). Two of card_intake's four cases are
+// refusals -- an empty row, or an index off the end of it -- and a caller must branch on them without
+// comparing sentences. The facing, the bounds and the obstacles are carriers too: each bound is a ChassisGap,
+// which already holds the measurement, its standing and the operator's verbatim words, so no quote is
+// re-typed here and none can drift from the row that carries it.
+test fn w_an_out_of_range_index_is_a_refusal_a_caller_can_branch_on_not_a_sentence() -> Bool {
+  match card_intake(card_index: 2, card_count: 2) {
+    NoSuchCard {index: i, count: n} => i == 2 && n == 2
+    _ => false
+  }
+    && match card_intake(card_index: 0, card_count: 0) { RowEmpty {cards: n} => n == 0 _ => false }
+    // a negative index is the same refusal, not a read off the end of the row
+    && match card_intake(card_index: 0 - 1, card_count: 2) { NoSuchCard {index: i, count: n} => i == 0 - 1 && n == 2 _ => false }
+    && match card_intake(card_index: 0, card_count: 2) { Facing {card_index: i} => i == 0 _ => false }
+}
+
+test fn w_every_card_drinks_fore_aft_and_each_obstacle_carries_its_own_gap() -> Bool {
+  let c0 = card_intake(card_index: 0, card_count: 2)
+  let c1 = card_intake(card_index: 1, card_count: 2)
+  match c0 {
+    Facing {wheel_axis: ax, air_drawn_from: air, replacement_air_from: lane, blocked: bs} =>
+      // The inlets face along the wheel axis, which is fore-aft in the only pose that admits, so no card
+      // drinks through the 46 mm between the cards: the "both cards drinking the same air between them"
+      // consequence the sideways pose would have had never arises.
+      match ax { ForeAft => true _ => false }
+        // Supply is the operator's 70 mm to the chassis fans; replacement air comes down the '60mm until it
+        // touches the heatsink' lane. Both arrive as ChassisGaps, so the witness checks the gap's own name,
+        // its distance and the standing it carries -- not a sentence about them.
+        && gap_name(g: air) == "each card to the front face of the chassis fans"
+        && gap_is_estimate(g: air)
+        && gap_at(g: air, at: 70000)
+        && gap_name(g: lane) == "free lane beside the card row"
+        && gap_at(g: lane, at: 60000)
+        && string_contains(s: standing_origin(g: lane), pattern: "reported by the operator on 2026-10-27")
+        // card 0 sits against the tight wall, so the neighbour card AND that wall block it; each names the
+        // gap that measures it, which is why the witness checks 46 mm and a bound of 3 mm instead of an
+        // adjective -- and the wall's distance is 0 because "a few mm" cannot be spent.
+        && length(list: bs) == 2
+        && match bs[0] { NeighbourCard {across: g} => gap_name(g: g) == "clear gap between the two cards" && gap_at(g: g, at: 46000) _ => false }
+        && match bs[1] { ChassisWall {at: g} => gap_name(g: g) == "outer face of the outermost card to the chassis edge" && gap_at(g: g, at: 0) && gap_is_estimate(g: g) _ => false }
+    _ => false
+  }
+    && match c1 {
+         Facing {blocked: bs} =>
+           // card 1 has the free lane on its other side, so only the neighbour card blocks it
+           length(list: bs) == 1 && match bs[0] { NeighbourCard {across: g} => gap_at(g: g, at: 46000) _ => false }
+         _ => false
+       }
+    && match card_intake(card_index: 0, card_count: 1) {
+         Facing {blocked: bs} => length(list: bs) == 1 && match bs[0] { ChassisWall {at: _} => true _ => false }
+         _ => false
+       }
+}
+
+// A gap's distance, checked against a value -- and an UNMEASURED gap fails this rather than matching some
+// stand-in number, which is the whole reason the distance is an Optional and not an Int.
+fn gap_at(g: ChassisGap, at: Int) -> Bool {
+  match measured_distance(g: g) { Present { value: d } => micrometer_count(m: d) == at Absent => false }
+}
+
+// The report renders those same facts. This witness checks the RENDERING only where a fact could be lost --
+// the count of poses and which verdict each carries -- so rewording cannot hide a change to the model.
+test fn w_the_pose_report_says_what_the_types_say() -> Bool {
+  let lines = fan_pose_displays()
+  length(list: lines) == 6
+    && string_contains(s: lines[0], pattern: "ADMITTED")
+    && string_contains(s: lines[2], pattern: "REFUSED")
+    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "one geometry, not two")
 }
 
 test fn w_the_air_the_a16_needs_is_derived_and_checked_back_through_the_forward_direction() -> Bool {
@@ -442,12 +536,3 @@ test fn w_the_required_air_sits_above_the_blowers_free_air_rating_and_says_so() 
     && string_contains(s: bfb1012m_flow_context(), pattern: "TranscribedUncited")
 }
 
-// NOTHING IN THE SCROLL REPORT INVENTS A PART. The wheel question died with the operator's ruling that the
-// fan is fixed, so what is left must name the fan it is sizing around and must not read like a product
-// listing. The pose report is the only scroll output this module has now, and it cites the envelope row.
-test fn w_the_scroll_report_names_the_fan_it_is_sizing_around() -> Bool {
-  let lines = scroll_pose_summaries()
-  length(list: lines) == 3
-    && string_contains(s: join(list: lines, separator: "\n"), pattern: "the reference image's pose")
-    && string_contains(s: scroll_is_not_a_second_geometry(), pattern: "delta_bfb1012m_envelope")
-}

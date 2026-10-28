@@ -598,122 +598,286 @@ fn largest_planform_per_home() -> List<String> {
 //
 // The fan was fixed by the operator's ruling of 2026-10-28 (relayed by wise-bat-528): the Delta BFB1012M,
 // four on hand, for every variant. That retires any "largest wheel that fits": a wheel you may choose is a
-// different object from a wheel you already own, and sizing a hypothetical one now answers a question nobody
-// is asking. What the reference image still asks IS answerable from cited dimensions alone. The image shows an
-// end-cap scroll whose WHEEL AXIS IS PERPENDICULAR TO THE CARD FACE, taking air in sideways. The BFB1012M's
-// own datasheet row says which of its three dimensions is which (extdeps.fans.delta delta_bfb1012m_envelope,
-// standing TranscribedUncited): housing_length 97.2 mm runs ALONG THE FLOW PATH, housing_depth 94.4 mm runs
-// ACROSS it, and the 33 mm thickness is the WHEEL AXIS -- the only direction a double-inlet radial blower
-// takes air along ("Both inlets face along the axis, directly opposite each other"). So there are exactly two
-// poses, and what each spends behind the plug end follows from that, not from a choice:
+// different object from a wheel you already own, and sizing a hypothetical one answers a question nobody is
+// asking. What the reference image still asks IS answerable, and from cited dimensions alone -- but only once
+// the axes are named. This module's frame (product.printed_chassis.gpu_duct plane_on_end_duct_parts) is:
 //
-//   axis perpendicular to the card face (the image)  the wheel's DISC lies parallel to the card face, so what
-//                              recedes behind the end is a disc dimension -- 94.4 mm or 97.2 mm, whichever way
-//                              the fan is spun about that sideways axis. Both exceed the operator's declared
-//                              70 mm behind the plug end: short by 24.4 mm at best. THE IMAGE'S POSE REFUSED.
-//   axis perpendicular to the PCB (this home)        only the 33 mm axis and the printed collector's walls
-//                              recede behind the end; the 97.2 mm flow path lies ACROSS the row, which the
-//                              admitted flat-on-end home already spends and has room for.
+//   x  along the card's END FACE, the 97.84 mm bracket face (gpu_duct a16_end_face face_length)
+//   y  ACROSS THE ROW -- where the 46 mm between the cards and the 60 mm heatsink lane live
+//   z  FORE-AFT, the direction anything goes BEHIND THE PLUG END -- the declared 70 mm lives here
 //
-// ARE THE SCROLL AND THE FLAT-ON-END DUCT THE SAME GEOMETRY? ONE GEOMETRY, NOT TWO. With this fan fixed, the
-// only pose that clears the rear bound is the pose the flat-on-end duct already uses; the reference design's
-// distinguishing feature -- the sideways intake -- is exactly the feature this fan's own dimensions refuse.
-// What the image still contributes is the collector's SHAPE: a throat that turns the wheel's discharge into
-// the heatsink's end face, which this PR prints as the duct's open-shoulder collector rather than as a second
-// root. A second printable root would be the same plate under a different name, and the operator asked for one
-// root to prepare.
-type ScrollPose {
-  axis_direction: String,
-  behind_end: Micrometer,
-  across_row: Micrometer,
-  height: Micrometer,
-  why_these_numbers: String,
+// The BFB1012M's datasheet row (extdeps.fans.delta delta_bfb1012m_envelope, standing TranscribedUncited)
+// says which of its three dimensions is which: housing_length 97.2 mm runs ALONG THE FLOW PATH, housing_depth
+// 94.4 mm ACROSS it, and the 33 mm thickness IS THE WHEEL AXIS -- the only direction a double-inlet radial
+// takes air along ("Both inlets face along the axis, directly opposite each other"). So a pose is nothing
+// more mysterious than WHICH MODEL AXIS EACH ENVELOPE DIMENSION LIES ALONG, and there are exactly six:
+// three choices of where the 33 mm axis goes, times two spins about it. All six are enumerated below and
+// all six are checked against the readings; none is hand-picked, and the answer is a derived fact rather
+// than a claim. Each direction is a typed axis, not a sentence (DESIGN.md SS4c: a fact belongs in a carrier;
+// SS2: a String leaf hiding named parts is anemic modeling), and the display is a separate reading-out.
+type EnvelopeAxis
+  = AlongEndFace     // x: along the 97.84 mm bracket face
+  | AcrossRow        // y: across the card row
+  | ForeAft          // z: behind the plug end
+
+fn envelope_axis_display(a: EnvelopeAxis) -> String {
+  match a {
+    AlongEndFace => "along the end face, horizontal (x)"
+    AcrossRow => "across the card row, toward the neighbour card or the heatsink (y)"
+    ForeAft => "fore-aft, out of the plug end, parallel to the PCB (z)"
+  }
 }
 
-fn scroll_pose(axis_direction: NonEmptyStr, behind_end: Micrometer, across_row: Micrometer, height: Micrometer, why_these_numbers: NonEmptyStr) -> ScrollPose {
-  ScrollPose { axis_direction: axis_direction, behind_end: behind_end, across_row: across_row, height: height, why_these_numbers: why_these_numbers }
+// A fan dimension placed on an axis. Two of these and the axis the wheel stands on describe any pose.
+type PlacedDimension {
+  along: EnvelopeAxis,
+  extent: Micrometer,
+  which_envelope_dimension: NonEmptyStr,   // names the cited row's field, so the number has a source
 }
 
-// What a need of a given size does against the room a gap leaves. The room keeps its kind and its origin
-// inside the ShapeExtent the rest of this module reports with; `clears` is the one bit of arithmetic, and it
-// is only true where the room has a value -- an unread direction never reports as clear.
-type ScrollFit {
+fn placed(along: EnvelopeAxis, extent: Micrometer, which_envelope_dimension: NonEmptyStr) -> PlacedDimension {
+  PlacedDimension { along: along, extent: extent, which_envelope_dimension: which_envelope_dimension }
+}
+
+// The same dimension as it stands INSIDE the printed pocket: the housing always sits in a pocket, so two
+// walls are always added to whatever goes behind the end. This is the pocket, not a guess at one -- the same
+// `wall` the duct design carries.
+fn placed_in_pocket(p: PlacedDimension, wall: Micrometer) -> PlacedDimension {
+  placed(along: p.along, extent: micrometer(count: micrometer_count(m: p.extent) + 2 * micrometer_count(m: wall)), which_envelope_dimension: p.which_envelope_dimension)
+}
+
+// What one pose spends along one axis, and whether the room there covers it. Room keeps its kind and origin
+// inside ShapeExtent; `clears` is the one bit of arithmetic, and an unread direction never reports as clear.
+type AxisCheck {
+  along: EnvelopeAxis,
   need: Micrometer,
   room: ShapeExtent,
   clears: Bool,
 }
 
-fn scroll_fit(need: Micrometer, room: GapRoom) -> ScrollFit {
+fn axis_check(along: EnvelopeAxis, need: Micrometer, room: GapRoom) -> AxisCheck {
   match room {
-    Room {room: r, from: o} => ScrollFit { need: need, room: Fits { at_most: r, capped_by: o }, clears: micrometer_count(m: r) >= micrometer_count(m: need) }
-    OverSubscribed {shortfall: s, from: o} => ScrollFit { need: need, room: FullySubscribed { short_by: s, capped_by: o }, clears: false }
-    NoReading {obligation: o} => ScrollFit { need: need, room: Unread { obligation: o }, clears: false }
+    Room {room: r, from: o} => AxisCheck { along: along, need: need, room: Fits { at_most: r, capped_by: o }, clears: micrometer_count(m: r) >= micrometer_count(m: need) }
+    OverSubscribed {shortfall: s, from: o} => AxisCheck { along: along, need: need, room: FullySubscribed { short_by: s, capped_by: o }, clears: false }
+    NoReading {obligation: o} => AxisCheck { along: along, need: need, room: Unread { obligation: o }, clears: false }
   }
 }
 
-// The three poses. Only the vertical-axis pose spends printed walls behind the end; each dimension is placed
-// by which physical axis of the cited envelope it belongs to.
-fn scroll_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<ScrollPose> {
-  let sideways_flat = scroll_pose(axis_direction: "horizontal, perpendicular to the card face -- the reference image's pose",
-    behind_end: fan.housing_depth, across_row: fan.thickness, height: fan.housing_length,
-    why_these_numbers: "the wheel's disc lies parallel to the card face, so a disc dimension (housing_depth, 94.4 mm) has to lie behind the plug end")
-  let sideways_up = scroll_pose(axis_direction: "vertical, perpendicular to the card face -- the image's fan spun 90 degrees about its own sideways axis",
-    behind_end: fan.housing_length, across_row: fan.thickness, height: fan.housing_depth,
-    why_these_numbers: "the other disc dimension: housing_length, 97.2 mm, goes behind the plug end instead")
-  let upright = scroll_pose(axis_direction: "perpendicular to the PCB -- the flat-on-end home this PR prints",
-    behind_end: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: d),
-    across_row: fan.housing_length, height: fan.housing_depth,
-    why_these_numbers: "the 33 mm wheel axis stands up, so behind the end goes only the housing thickness (with its tolerance) and the collector's two walls; the 97.2 mm flow path lies across the row, where the admitted home has room")
-  [ sideways_flat, sideways_up, upright ]
+// A pose of the fixed fan: which way its wheel axis points, and what that puts on each model axis.
+type FanPose {
+  wheel_axis: EnvelopeAxis,
+  behind_end: PlacedDimension,
+  across_row: PlacedDimension,
+  along_end_face: PlacedDimension,
 }
 
-// One pose, checked against the three readings that can refuse it: the declared bound behind the plug end
-// (less the walls the collector spends), the span the row leaves across it, and the card's own end face.
-// No room is read off a raw number -- each carries its standing's origin through gap_room.
-fn scroll_pose_verdict(pose: ScrollPose, d: GpuDuctDesign) -> List<ScrollFit> {
-  let walls = [d.wall, d.wall]
-  let rear = scroll_fit(need: pose.behind_end, room: room_less(room: gap_room(g: card_end_rear_fan_clearance), deductions: walls))
-  let across = scroll_fit(need: pose.across_row, room: flat_on_end_housing_length_cap())
-  let high = scroll_fit(need: pose.height, room: Room { room: a16_end_face.face_length, from: "the card's own end-face height, caliper-read (product.printed_chassis.gpu_duct a16_end_face)" })
-  [ rear, across, high ]
+// The six poses, enumerated rather than listed by hand: for each of the three axes the wheel could lie along,
+// the two remaining envelope dimensions can be swapped between the other two axes. `wheels` is how far the
+// printed collector's two walls add behind the end -- spent in every pose, because the housing always sits in
+// a printed pocket.
+fn fan_poses(fan: RadialBlowerEnvelope, d: GpuDuctDesign) -> List<FanPose> {
+  let len = placed(along: ForeAft, extent: fan.housing_length, which_envelope_dimension: "housing_length (flow path), extdeps.fans.delta delta_bfb1012m_envelope")
+  let dep = placed(along: ForeAft, extent: fan.housing_depth, which_envelope_dimension: "housing_depth (across the flow path), same row")
+  let thk = placed(along: ForeAft, extent: fan.thickness, which_envelope_dimension: "thickness (the wheel axis), same row")
+  let pocket = placed_in_pocket(p: thk, wall: d.wall)
+  // wheel axis fore-aft: the printed home -- thickness behind the end, the disc standing in the x-y plane
+  let upright_long_across = FanPose { wheel_axis: ForeAft, behind_end: pocket, across_row: len, along_end_face: dep }
+  let upright_deep_across = FanPose { wheel_axis: ForeAft, behind_end: pocket, across_row: dep, along_end_face: len }
+  // wheel axis across the row: THE REFERENCE IMAGE'S POSE (axis perpendicular to the card face). The disc
+  // stands in the x-z plane, so a disc dimension is what recedes behind the end.
+  let sideways_flat_long_behind = FanPose { wheel_axis: AcrossRow, behind_end: placed_in_pocket(p: len, wall: d.wall), across_row: thk, along_end_face: dep }
+  let sideways_flat_deep_behind = FanPose { wheel_axis: AcrossRow, behind_end: placed_in_pocket(p: dep, wall: d.wall), across_row: thk, along_end_face: len }
+  // wheel axis along the end face: the disc stands in the y-z plane; also a sideways intake, spun the other way
+  let facewise_long_behind = FanPose { wheel_axis: AlongEndFace, behind_end: placed_in_pocket(p: len, wall: d.wall), across_row: dep, along_end_face: thk }
+  let facewise_deep_behind = FanPose { wheel_axis: AlongEndFace, behind_end: placed_in_pocket(p: dep, wall: d.wall), across_row: len, along_end_face: thk }
+  [ upright_long_across, upright_deep_across, sideways_flat_long_behind, sideways_flat_deep_behind, facewise_long_behind, facewise_deep_behind ]
 }
 
-// Does the pose admit? All three directions must clear; an unread direction clears nothing.
-fn scroll_pose_admits(fits: List<ScrollFit>) -> Bool { all(fits, f => f.clears) }
-
-// The one-line verdict per pose, with each shortfall named rather than implied.
-fn scroll_pose_summary(pose: ScrollPose, d: GpuDuctDesign) -> String {
-  let fits = scroll_pose_verdict(pose: pose, d: d)
-  join([if scroll_pose_admits(fits: fits) { "ADMITTED" } else { "REFUSED" }, ": axis ", pose.axis_direction,
-        " -- behind the end ", mm_text(m: pose.behind_end), " vs ", extent_display(e: (fits[0]).room),
-        "; across the row ", mm_text(m: pose.across_row), " vs ", extent_display(e: (fits[1]).room),
-        "; height ", mm_text(m: pose.height), " vs ", extent_display(e: (fits[2]).room),
-        " (", pose.why_these_numbers, ")"], "")
+// One pose against the three readings that can refuse it. The rear bound is the operator's declared 70 mm;
+// across the row is the span the row leaves (one pitch plus the declared side lane on each side); along the
+// end face is the card's own 97.84 mm bracket face, which is all the duct can be supported by. No room is
+// read off a raw number -- each carries its standing's origin through gap_room.
+fn fan_pose_checks(pose: FanPose, d: GpuDuctDesign) -> List<AxisCheck> {
+  [ axis_check(along: ForeAft, need: pose.behind_end.extent, room: gap_room(g: card_end_rear_fan_clearance)),
+    axis_check(along: AcrossRow, need: pose.across_row.extent, room: flat_on_end_housing_length_cap()),
+    axis_check(along: AlongEndFace, need: pose.along_end_face.extent, room: room_of(m: a16_end_face.face_length, from: "the card's own end-face length, caliper-read (product.printed_chassis.gpu_duct a16_end_face)") ) ]
 }
 
-fn scroll_pose_summaries() -> List<String> {
+fn fan_pose_admits(checks: List<AxisCheck>) -> Bool { all(checks, c => c.clears) }
+
+// Which of the six admit, as facts a caller can branch on.
+fn admitting_fan_poses() -> List<FanPose> {
   let d = a16_wall_design()
-  map(scroll_poses(fan: a16_blower(), d: d), p => scroll_pose_summary(pose: p, d: d))
+  filter(fan_poses(fan: a16_blower(), d: d), p => fan_pose_admits(checks: fan_pose_checks(pose: p, d: d)))
 }
 
-// WHERE THE AIR COMES FROM, per card, for the pose that actually admits. A double-inlet blower takes air in
-// along its wheel axis, which here is VERTICAL -- so each duct drinks from above and below the card's plug
-// end, not from beside it. That is the direct consequence of the two poses above: the sideways intake the
-// reference image shows is the very thing the fan's dimensions refuse, so the facings the image implies (two
-// cards 46 mm apart drinking the same air between them) never arise. What the readings do bear on is where
-// the air can be REPLACED from: the row's own supply side is the chassis fans the operator read 70 mm ahead
-// of the plug ends (card_to_rear_fans), and the free lane is the '60mm until it touches the heatsink' side.
-fn scroll_intake_facing(card_index: Int, card_count: Int) -> String {
+// The printed home IS one of the six, and this says which: the duct's own run-back, from the same fn the CAD
+// is built with, so a report can never drift from the geometry it describes.
+fn printed_pose() -> FanPose {
+  let fan = a16_blower()
+  let d = a16_wall_design()
+  let walls = micrometer(count: 2 * micrometer_count(m: d.wall))
+  FanPose {
+    wheel_axis: ForeAft,
+    behind_end: placed(along: ForeAft, extent: plane_on_end_duct_run_back(b: a16_blower_duct_design, d: d), which_envelope_dimension: "thickness + tolerance + the printed pocket's two walls (gpu_duct plane_on_end_duct_run_back)"),
+    across_row: placed(along: AcrossRow, extent: fan.housing_length, which_envelope_dimension: "housing_length, placed across the row by gpu_duct plane_on_end_duct_parts (housing_y = the larger envelope dimension)"),
+    along_end_face: placed(along: AlongEndFace, extent: fan.housing_depth, which_envelope_dimension: "housing_depth, placed along the end face by the same fn (housing_x = the smaller)"),
+  }
+}
+
+// The report's rendering -- the only place a pose becomes a sentence, and it reads out facts, adding nothing.
+fn fan_pose_display(pose: FanPose, d: GpuDuctDesign) -> String {
+  let checks = fan_pose_checks(pose: pose, d: d)
+  join([if fan_pose_admits(checks: checks) { "ADMITTED" } else { "REFUSED" }, ": wheel axis ",
+        envelope_axis_display(a: pose.wheel_axis),
+        "; behind the end ", mm_text(m: pose.behind_end.extent), " (", pose.behind_end.which_envelope_dimension, ") vs ", extent_display(e: (checks[0]).room),
+        "; across the row ", mm_text(m: pose.across_row.extent), " (", pose.across_row.which_envelope_dimension, ") vs ", extent_display(e: (checks[1]).room),
+        "; along the end face ", mm_text(m: pose.along_end_face.extent), " (", pose.along_end_face.which_envelope_dimension, ") vs ", extent_display(e: (checks[2]).room)], "")
+}
+
+fn fan_pose_displays() -> List<String> {
+  let d = a16_wall_design()
+  map(fan_poses(fan: a16_blower(), d: d), p => fan_pose_display(pose: p, d: d))
+}
+
+// ARE THE SCROLL AND THE FLAT-ON-END DUCT THE SAME GEOMETRY? ONE GEOMETRY, NOT TWO -- derived, above. The
+// reference image's pose has its wheel axis perpendicular to the CARD FACE (across the row), which puts a DISC
+// dimension behind the plug end: 94.4 mm, or 97.2 mm spun the other way, against the operator's declared
+// 70 mm -- short by 28.4 mm at best, printed pocket walls included (best_sideways_rear_shortfall derives it). The poses that clear are the
+// ones with the 33 mm wheel axis fore-aft, and that is the pose the flat-on-end duct already prints. What the
+// image still contributes is the collector's SHAPE -- a throat that turns the wheel's tangential discharge
+// into the heatsink's end face -- printed here as the duct's open-shoulder collector rather than as a second
+// root. A second root would be the same plate under another name, and the operator asked for one to prepare.
+fn scroll_is_not_a_second_geometry() -> String {
+  join(["one geometry, not two. Of the ", to_string(value: length(list: fan_poses(fan: a16_blower(), d: a16_wall_design()))),
+        " poses the fixed BFB1012M can stand in, ", to_string(value: length(list: admitting_fan_poses())),
+        " clear every reading, and all of them have the 33 mm wheel axis fore-aft -- the pose gpu_duct plane_on_end_duct_parts already prints. The reference image's pose (axis across the row) is refused on cited envelope dimensions: a disc dimension goes behind the plug end and is short by ",
+        mm_text(m: micrometer(count: best_sideways_rear_shortfall())), " at best. What survives of the image is its collector SHAPE, printed as the duct's open shoulder."], "")
+}
+
+// How far a pose falls short behind the end, as a positive Micrometer the reader never has to subtract.
+// Refusal arithmetic, not fabrication: a pose that clears, or one whose room no reading reaches, has no
+// shortfall to report and says so with zero rather than with a made-up number.
+fn fan_pose_rear_shortfall(check: AxisCheck) -> Micrometer {
+  match check.room {
+    FullySubscribed {short_by: s, capped_by: _} => s
+    Fits {at_most: _, capped_by: _} => micrometer(count: 0)
+    Unread {obligation: _} => micrometer(count: 0)
+  }
+}
+
+// The best the reference image's family of poses can do behind the plug end: the SMALLEST shortfall among the
+// four sideways poses, which is the most favourable reading anyone could honestly give the idea.
+fn best_sideways_rear_shortfall() -> Micrometer {
+  let checks = map(sideways_fan_poses(), p => (fan_pose_checks(pose: p, d: a16_wall_design()))[0])
+  micrometer(count: fold(checks, init: 0, f: (best, c) => closer_to_zero(best: best, other: micrometer_count(m: fan_pose_rear_shortfall(check: c)))))
+}
+
+// The smaller NON-ZERO shortfall: zero means "nothing to report" for a pose that clears or whose room no
+// reading reaches, and it must never win the comparison and make the idea look better than it is.
+fn closer_to_zero(best: Int, other: Int) -> Int {
+  if other <= 0 { best }
+  else if best == 0 { other }
+  else if other < best { other }
+  else { best }
+}
+
+// The four poses with the wheel axis perpendicular to the CARD FACE -- the reference image's family.
+fn sideways_fan_poses() -> List<FanPose> {
+  filter(fan_poses(fan: a16_blower(), d: a16_wall_design()), p => match p.wheel_axis { AcrossRow => true AlongEndFace => true ForeAft => false })
+}
+
+// WHERE EACH CARD'S AIR COMES FROM, per card, for the pose that actually admits.
+//
+// This is read off the model's OWN axes, which are: x along the end face's length (the 97.84 mm face),
+// y across the row (where the 46 mm between the cards and the 60 mm heatsink lane live), and z fore-aft --
+// the direction anything goes BEHIND the plug end. The duct puts the housing at 94.4 mm in x, 97.2 mm in y
+// and 33 mm in z (product.printed_chassis.gpu_duct plane_on_end_duct_parts: housing_x = the smaller housing
+// dimension, housing_y = the larger, th = the thickness). So the WHEEL AXIS LIES ALONG z: fore-aft, pointing
+// OUT OF THE PLUG END, parallel to the PCB and perpendicular to the end face. A double-inlet radial takes air
+// in along that axis, so the fan drinks from the space BEHIND THE PLUG END -- the 70 mm the operator read to
+// the rear chassis fans -- and its discharge leaves tangentially, in the x-y plane, which is where the
+// printed shoulder turns it down the window. The reference image's pose (axis along y, perpendicular to the
+// card face) is one of the four refused by the fan's own dimensions above.
+//
+// WHY THIS IS A COPRODUCT AND NOT A STRING (DESIGN.md SS5: "every path succeeds fully or fails with a typed,
+// located diagnostic"; SS2: "A String leaf hiding named parts is anemic modeling"). Two of the four cases
+// below are REFUSALS -- the row has no cards, or the index is not a card -- and a caller must be able to tell
+// a refusal from an answer without comparing sentences. And the answer itself names a direction, a bound and
+// two obstacles, each of which is a fact with a standing; carrying them as English would put the operator's
+// measurements and the geometry's conclusion in the same untyped blob, so a witness could only grep them.
+// Every bound here is a ChassisGap: the carrier that already holds the measurement, its Micrometer, its
+// standing and the operator's own words. The quotes live on those rows and on gunbc.design_ruling, once each.
+// What stands where the air would otherwise come from, with the gap that measures it.
+type BlockedSide
+  = NeighbourCard { across: ChassisGap }   // the card on the other side of the inter-card gap
+  | ChassisWall { at: ChassisGap }         // the chassis edge on the tight side of the row
+
+// One card's inlet, or why there isn't one. The axis is the SAME EnvelopeAxis the poses above use -- an
+// intake direction and a pose direction are the same kind of fact, and two enums for one fact is the
+// re-invention DESIGN.md SS2 refuses.
+type CardIntake
+  = Facing {
+      card_index: Int,
+      wheel_axis: EnvelopeAxis,              // fore-aft, out of the plug end, for the admitted pose
+      air_drawn_from: ChassisGap,            // the gap the inlet looks into
+      replacement_air_from: ChassisGap,      // the lane air arrives through to replace it
+      blocked: List<BlockedSide>,            // what it cannot drink through, and by which gap
+    }
+  | RowEmpty { cards: Int }                  // no card to face: the count is the diagnostic
+  | NoSuchCard { index: Int, count: Int }
+
+// The pose that admits has its axis fore-aft; the four refused ones put it sideways, where the fan's own
+// datasheet dimensions refuse to fit. See fan_poses for the arithmetic.
+fn admitted_wheel_axis() -> EnvelopeAxis { ForeAft }
+
+fn card_intake(card_index: Int, card_count: Int) -> CardIntake {
   if card_count <= 0 {
-    "no cards: nothing to face"
+    RowEmpty { cards: card_count }
   } else if card_index < 0 || card_index >= card_count {
-    "no such card in the row"
+    NoSuchCard { index: card_index, count: card_count }
   } else if card_count == 1 {
-    "along the wheel axis, which stands vertical: air in above and below the card's plug end, from the 70 mm the operator read ahead of the row ('There is 70mm between each card to the front of the chassis fans.')"
+    // One card: nothing beside it, so both horizontal sides are chassis walls, and the supply is the space
+    // behind the end with replacement air drawn down the lane the operator read on the free side.
+    Facing {
+      card_index: card_index, wheel_axis: admitted_wheel_axis(),
+      air_drawn_from: card_to_rear_fans(), replacement_air_from: side_lane_width(),
+      blocked: [ChassisWall { at: outer_side_at_the_wall() }],
+    }
   } else if card_index == 0 {
-    "along its own vertical axis (above and below its plug end); it cannot drink sideways through the card beside it, and its other side is 'a few mm til one edge of the chassis'"
+    // The card nearer the tight wall: it cannot draw through the card beside it, and its other side is the
+    // wall with "only a few mm" on it, so it drinks fore-aft like every other card here.
+    Facing {
+      card_index: card_index, wheel_axis: admitted_wheel_axis(),
+      air_drawn_from: card_to_rear_fans(), replacement_air_from: side_lane_width(),
+      blocked: [NeighbourCard { across: inter_card_gap() }, ChassisWall { at: outer_side_at_the_wall() }],
+    }
   } else {
-    "along its own vertical axis (above and below its plug end); its free side is the '60mm until it touches the heatsink' lane, which is where replacement air will come from"
+    Facing {
+      card_index: card_index, wheel_axis: admitted_wheel_axis(),
+      air_drawn_from: card_to_rear_fans(), replacement_air_from: side_lane_width(),
+      blocked: [NeighbourCard { across: inter_card_gap() }],
+    }
+  }
+}
+
+// The report's rendering, which is the ONLY place this becomes a sentence. Facts stay above; this only reads
+// them out, using gap_display so a bound always arrives with the standing it carries and the operator's words.
+fn card_intake_display(c: CardIntake) -> String {
+  match c {
+    RowEmpty {cards: n} => join(["no cards in the row (count ", to_string(value: n), "): nothing to face"], "")
+    NoSuchCard {index: i, count: n} => join(["no such card: index ", to_string(value: i), " of ", to_string(value: n)], "")
+    Facing {card_index: i, wheel_axis: ax, air_drawn_from: air, replacement_air_from: lane, blocked: bs} => join([
+      "card ", to_string(value: i), ": intake along ", envelope_axis_display(a: ax),
+      "; drawn from ", gap_display(g: air), "; replacement air from ", gap_display(g: lane),
+      "; cannot draw through ", join(map(bs, side_display), "; ")], "")
+  }
+}
+
+fn side_display(s: BlockedSide) -> String {
+  match s {
+    NeighbourCard {across: g} => join(["the neighbour card across ", gap_display(g: g)], "")
+    ChassisWall {at: g} => join(["the chassis wall at ", gap_display(g: g)], "")
   }
 }
 
