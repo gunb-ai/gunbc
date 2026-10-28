@@ -329,9 +329,36 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
     }
 }
 
+// A WHERE-PREDICATE SET: the captured-node projection a where-refinement declaration carries for its
+// clause (v2.compiler.body_lowering_fold body_lower_where_refined_type_edges). v2.compiler.infer declines
+// its subtree and reports each predicate call as unjudged (infer_where_predicate_set_edge asks THIS predicate),
+// and node_inferred_subtree_nodes excludes it through the same predicate, so no stage demands facts infer was
+// never asked to produce (v2.compiler.program_partition partition_facts_miss). PARKED with the clause itself:
+// where-refinements are being replaced by checked constructors returning Optional.
+fn where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
+  match edge.label {
+    Positional => false
+    StructuralLabel { label: _ } => false
+    Authored { name: label } =>
+      if label == ^grammar_production_captured_node_projection {
+        match find_named_child(root: parent, name: ^grammar_production_identity_node_projection) {
+          Accepted { value: identity, diagnostics: _ } =>
+            match identity.kind {
+              TypeNode { connective: Atom { identity: emitted } } => emitted == ^dag_surface_where_refinement_clause
+              TypeNode { connective: _ } => false
+              ComputationNode { behavior: _ } => false
+            }
+          Rejected { diagnostics: _ } => false
+        }
+      } else {
+        false
+      }
+  }
+}
+
 // THE NODES INFER DERIVES FACTS FOR: every node of the subtree except those under an Arrow's declared
 // order edge (arrow_signature_order_label, parameter LABELS), under a declaration's binder edge
-// (declaration_binder_edge, binder NAMES) and under a match arm's pattern edge
+// (declaration_binder_edge, binder NAMES) under a where-predicate set (where_predicate_set_edge), under a match arm's pattern edge
 // (v2.std.node match_arm_pattern_edge, a binding form) and a Bind's key (v2.std.node bind_key_edge, a binder name).
 // v2.compiler.infer declines these subtrees and carries each as
 // its parent's own evidence. Every stage that asks infer for a node's facts --
@@ -347,7 +374,7 @@ fn declaration_binder_edge(parent: Node, edge: Edge) -> Bool {
 // (infer_facts_key_conflict). v2.compiler.infer's gather skips the same cells by the same accessor.
 fn node_inferred_subtree_nodes(root: Node) -> List<Node> {
   fold(root.children, init: [root], f: fn(acc, e) {
-    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || bind_key_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
+    if (e.label == arrow_signature_order_label) || arrow_named_edge_is_metadata(e: e) || declaration_binder_edge(parent: root, edge: e) || match_arm_pattern_edge(parent: root, edge: e) || bind_key_edge(parent: root, edge: e) || where_predicate_set_edge(parent: root, edge: e) || (resolved_reference_body_kind(target: root) != NotMarkedReference) {
       acc
     } else {
       concat(acc, node_inferred_subtree_nodes(root: e.target))
