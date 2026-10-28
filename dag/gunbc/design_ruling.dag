@@ -88,7 +88,7 @@ data kernel_map_is_the_host_realization_of_the_finitely_supported_function: Desi
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "kernel_map_is_the_host_realization_of_the_finitely_supported_function"),
   decided: "2026-10-21",
   section: "4",
-  provenance: "Operator ruling, approved through sleek-owl-397; the Map instance of text_crossings_go_through_the_unfold. std.types Map is std.algebra FinitelySupportedFunction, one concept; the kernel Map is its host realization, reached only through one declared crossing, and type compatibility keys on the exact declaration, never the leaf name Map. Evidence: scratch/algebra-map-fsf 27bda760a8 (BuildBuddy 35e3f094-c706-497f-a642-7a07d75f4f20), where the retyped std.algebra map surface failed seed typecheck on FinitelySupportedFunction vs Map.",
+  provenance: "Operator default approval of escalation msg_19996554 (2026-10-21), recommended by sleek-owl-397; the Map instance of text_crossings_go_through_the_unfold. std.types Map is std.algebra FinitelySupportedFunction, one concept; the kernel Map is its host realization, reached only through one declared crossing, and type compatibility keys on the exact declaration, never the leaf name Map. Evidence: scratch/algebra-map-fsf 27bda760a8 (BuildBuddy 35e3f094-c706-497f-a642-7a07d75f4f20), where the retyped std.algebra map surface failed seed typecheck on FinitelySupportedFunction vs Map.",
 }
 
 data epistemic_humility_is_symmetric: DesignRuling = DesignRuling {
