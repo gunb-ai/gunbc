@@ -3,7 +3,8 @@ module test.claim.supermicro_h11ssl_witness
 import std.types { Bool, List }
 import extdeps.firmware.types { FirmwareSemanticVersion, firmware_semantic_version }
 import extdeps.bmc.types { RedfishServiceRootMember, ServiceRootCertificateService }
-import extdeps.bmc.supermicro { supermicro_licence_activation_accepted, supermicro_service_root_of_release }
+import extdeps.bmc.supermicro { supermicro_licence_activation_accepted_standing, supermicro_service_root_of_release }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import gunbc.machine_intake.bmc_operator_credential_inventory {
   OperatorHeldSecretRef, operator_held_bmc_credential_inventory, operator_attested_bmc_inventory_roster,
   operator_inventory_attests, FactoryLoginCredential, OobLicenceKey,
@@ -26,7 +27,7 @@ import extdeps.boards.supermicro_h11ssl {
 }
 import gunbc.machine_intake.supermicro_h11ssl_first_contact {
   supermicro_h11ssl_first_contact_receipt, supermicro_h11ssl_factory_login_producer_admitted,
-  supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt,
+  supermicro_h11ssl_redfish_root_answered_after_activation, H11sslFirstContactReceipt, ActivationTransitionObserved, ActivationTransitionNotObserved,
   supermicro_h11ssl_bmc_reported_inventory, supermicro_h11ssl_reported_inventory_is_hardware, H11sslBmcReportedInventory, ConfirmedPresent, supermicro_h11ssl_redfish_read_batches, supermicro_h11ssl_read_batches_on_transcript_basis, H11sslRedfishReadBatch, supermicro_h11ssl_attested_hardware, supermicro_h11ssl_power_on_refusal, H11sslAttestedHardware, PowerOnRefusedCpuWithoutHeatsink, PowerOnNotRefused,
   OperatorHeldCertificate, H11sslObservation, H11sslObservedInstant, BmcClockReading,
   WebLoginObservation, RedfishRootObservation, LicenceActivationObservation,
@@ -95,6 +96,13 @@ test fn w_rejected_default_login_does_not_admit_factory_producer() -> Bool {
   !supermicro_h11ssl_factory_login_producer_admitted(r: supermicro_h11ssl_first_contact_receipt)
 }
 
+fn transition_observed(r: H11sslFirstContactReceipt) -> Bool {
+  match supermicro_h11ssl_redfish_root_answered_after_activation(r: r) {
+    ActivationTransitionObserved { check_standing: _ } => true
+    ActivationTransitionNotObserved => false
+  }
+}
+
 fn without_outcome(r: H11sslFirstContactReceipt, drop_activation: Bool) -> H11sslFirstContactReceipt {
   H11sslFirstContactReceipt {
     board: r.board, bmc_firmware: r.bmc_firmware, bmc_address: r.bmc_address, bmc_mac: r.bmc_mac,
@@ -151,12 +159,12 @@ fn activation_refused_check(o: H11sslObservation) -> H11sslObservation {
 // that mismatch is structurally impossible rather than checked.
 test fn w_redfish_root_answered_only_after_ordered_activation() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
-  supermicro_h11ssl_redfish_root_answered_after_activation(r: r)
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: true))
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: without_outcome(r: r, drop_activation: false))
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_on_bmc_clock))
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_that_changed_nothing))
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: with_activation(r: r, f: activation_refused_check))
+  transition_observed(r: r)
+    && !transition_observed(r: without_outcome(r: r, drop_activation: true))
+    && !transition_observed(r: without_outcome(r: r, drop_activation: false))
+    && !transition_observed(r: with_activation(r: r, f: activation_on_bmc_clock))
+    && !transition_observed(r: with_activation(r: r, f: activation_that_changed_nothing))
+    && !transition_observed(r: with_activation(r: r, f: activation_refused_check))
 }
 
 fn on_firmware(r: H11sslFirstContactReceipt, firmware: FirmwareSemanticVersion) -> H11sslFirstContactReceipt {
@@ -166,16 +174,25 @@ fn on_firmware(r: H11sslFirstContactReceipt, firmware: FirmwareSemanticVersion) 
   }
 }
 
+fn has_reading(s: CitedFigureStanding?) -> Bool {
+  match s { Absent => false  Present { value: _ } => true }
+}
+
 // What CHECK=1 means is the release's row in extdeps.bmc.supermicro, not a literal in this receipt:
 // the same observations read on 01.52.25, which has no activation row, are not an activation, so
-// the transition does not hold. A CHECK with no row on its own release is not read as acceptance.
+// the transition is not observed. A CHECK with no row on its own release has no reading, and the
+// transition on the receipt comes back carrying the row's TranscribedUncited standing, never as settled.
 test fn w_activation_check_is_read_through_the_releases_row() -> Bool {
   let r = supermicro_h11ssl_first_contact_receipt
-  supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1)
-    && !supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 0)
-    && !supermicro_licence_activation_accepted(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25), check: 1)
-    && supermicro_h11ssl_redfish_root_answered_after_activation(r: r)
-    && !supermicro_h11ssl_redfish_root_answered_after_activation(r: on_firmware(r: r, firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)))
+  has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 1))
+    && !has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0), check: 0))
+    && !has_reading(s: supermicro_licence_activation_accepted_standing(firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25), check: 1))
+    && match supermicro_h11ssl_redfish_root_answered_after_activation(r: r) {
+      ActivationTransitionObserved { check_standing: TranscribedUncited { read_obligation: _ } } => true
+      ActivationTransitionObserved { check_standing: _ } => false
+      ActivationTransitionNotObserved => false
+    }
+    && !transition_observed(r: on_firmware(r: r, firmware: firmware_semantic_version(major: 1, minor: 52, patch: 25)))
 }
 
 fn answered_members(r: H11sslFirstContactReceipt) -> List<RedfishServiceRootMember> {
