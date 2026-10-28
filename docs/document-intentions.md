@@ -2,7 +2,7 @@
 
 Review snapshot of [gunbc at d919d662ddf5](https://github.com/gunb-ai/gunbc/tree/d919d662ddf59813f9dab24ca3b25ed5b54ec236), surveyed 2026-10-28.
 
-The operator requested this worksheet to review one inferred purpose per file and decide what to delete, prune/consolidate, or leave. Intent does not establish implementation status.
+The [operator explicitly requested committing this worksheet](https://github.com/gunb-ai/gunbc/pull/15299#issuecomment-6460721529) to review one inferred purpose per file and decide what to delete, prune/consolidate, or leave. Intent does not establish implementation status.
 
 The review consumes this snapshot. Remove it when the operator's cleanup dispositions have been recorded at the surviving sources or in the cleanup PRs.
 
