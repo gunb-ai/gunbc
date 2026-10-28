@@ -499,28 +499,6 @@ service http.Client {
     }
   }
 
-  // JSON on stdin, credentials in a header file; retain transport failure and
-  // HTTP status separately because a timed-out mutation may have completed.
-  operation PostJsonStdinWithHeaderFileWithin {
-    requires Network
-    input { url: NonEmptyStr, request_body: String, header_file: NonEmptyStr, ca_certificate: NonEmptyStr, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
-    output { exit_code: Int from "exit_code", body: String from "stdout", stderr: String from "stderr" }
-    transport shell {
-      argv: ["curl", "-sS", "--connect-timeout", "{connect_seconds}", "--max-time", "{max_seconds}",
-        "--cacert", "{ca_certificate}",
-        "-X", "POST", "-H", "Content-Type: application/json", "-H", "@{header_file}",
-        "--data-binary", "@-", "-w", "\n%\{http_code\}", "{url}"]
-      stdin: request_body
-    }
-    exit {
-      0 => Unit
-      nonzero => String "authenticated JSON POST did not complete"
-    }
-    mock_response {
-      0 => { exit_code: 7, body: "", stderr: "hermetic: no live HTTP endpoint" } "no fabricated mutation success"
-    }
-  }
-
   operation PostFormFromFile {
     input { url: NonEmptyStr, request_body_file: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
