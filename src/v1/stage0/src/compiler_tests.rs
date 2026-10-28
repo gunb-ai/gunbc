@@ -4121,15 +4121,15 @@ mod compiler_tests {
                      catch, not a test to relax)",
                 );
                 // Re-read from that offset and take the block through the identity guard's `fi`.
+                // The terminator is a line ENDING in `fi`, not a line EQUAL to it: the modeled
+                // route serializes a guard as one line (`if …; then …; fi`), so the block ends on
+                // the guard's own line rather than on a standalone bash keyword.
                 yaml.lines()
                     .skip(start)
                     .scan(false, |done, l| {
                         if *done {
                             return None;
                         }
-                        // The terminator is a line ENDING in `fi`, not a line EQUAL to it: the
-                        // modeled route serializes a guard as one line (`if …; then …; fi`), so the
-                        // block ends on the guard's own line, not on a standalone bash keyword.
                         *done = l.trim().ends_with("fi");
                         Some(l)
                     })
