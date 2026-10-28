@@ -1,12 +1,11 @@
 module gunbc.runner.runner_qualification_subject_readings
 
-import std.types { Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
 import std.measure { Second, second, second_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNatReady, CheckedNatOverflow }
-import std.algebra { list_at_optional }
 import extdeps.github.workflow_runs { WorkflowJobRun, WorkflowJobStep }
-import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds }
+import extdeps.units.iso8601_calendar { iso8601_utc_epoch_seconds, iso8601_utc_epoch_seconds_floor }
 import gunbc.emitted_subject_build_gate { EmittedSubjectBuildRow, emitted_subject_build_step_name }
 import gunbc.host.memory_envelope_receipt_reading {
   MemoryReceiptReading, MemoryReceiptLine, NotAMemoryReceipt, MemoryReceiptRead, MemoryReceiptGarbled, memory_receipt_line,
@@ -19,10 +18,19 @@ import gunbc.host.memory_envelope_receipt_reading {
 // never a second spelling. The same reader serves the qualification run on the attempt's slot and the baseline run on a
 // fleet host: only the slot unit whose cgroup must bound the receipts differs, so it is a parameter.
 //
+// A RECEIPT IS JOINED TO ITS STEP BY IDENTITY, NEVER BY POSITION (review 87065; DESIGN section 5, "completeness is an
+// identity join, not a count equality"). A receipt names no step, but every line of a job's log carries the instant it
+// was written and every step carries its own start and completion instants, so a receipt belongs to the subject step
+// whose window contains its instant. Each subject step must hold exactly one receipt; a receipt in no subject's window, a
+// receipt in two windows (a step's last second is the next step's first, and a receipt in that second cannot be
+// placed), a step with no receipt, and a step with two each refuse with the line or the step named. Receipts out of
+// order, a step that printed twice while another printed nothing, or a retried step therefore never attach one step's
+// memory to another step's wall.
+//
 // EVERY SUBJECT MUST BE READ EXACTLY ONCE, OR THE READING REFUSES. A job record that carries no steps, a subject step
-// that is absent, repeated, untimed or carries an instant this reader cannot parse, a garbled receipt, a receipt count
-// that is not the subject count, or a receipt bounded by any cgroup but the slot's: each is a typed refusal, never a
-// partial reading. Receipts are paired with subjects in order, the order the gate's steps run in.
+// that is absent, repeated, untimed or carries an instant this reader cannot parse, a garbled or untimed receipt, a
+// receipt bounded by any cgroup but the slot's, and every failure of the join above: each is a typed refusal, never a
+// partial reading.
 
 type SubjectStepReading {
   row: EmittedSubjectBuildRow
@@ -38,64 +46,116 @@ type SubjectReadingsRefusal
   | SubjectStepInstantUnreadable { step: String, instant: String }
   | SubjectStepEndsBeforeItStarts { step: String }
   | SubjectReceiptGarbled { line: String, cause: NonEmptyStr }
-  | SubjectReceiptCountDiffers { receipts: Int, subjects: Int }
+  | SubjectReceiptUntimed { line: String }
+  | SubjectReceiptOutsideEveryStep { line: String }
+  | SubjectReceiptInTwoSteps { line: String, first: String, second: String }
+  | SubjectReceiptMissing { step: String }
+  | SubjectReceiptRepeated { step: String, count: Int }
   | SubjectReceiptOutsideSlot { cgroup: NonEmptyStr, slot_unit: NonEmptyStr }
 
 type SubjectReadings
   = SubjectReadingsRead { readings: List<SubjectStepReading> }
   | SubjectReadingsRefused { refusal: SubjectReadingsRefusal }
 
-type StepWall
-  = StepWallRead { wall: Second }
-  | StepWallRefused { refusal: SubjectReadingsRefusal }
+// ── each subject step's window ───────────────────────────────────────────────────────────────
 
-fn step_wall(step: WorkflowJobStep) -> StepWall {
+type SubjectWindow {
+  row: EmittedSubjectBuildRow
+  step: String
+  from: Second
+  to: Second
+}
+
+type StepWindow
+  = StepWindowRead { window: SubjectWindow }
+  | StepWindowRefused { refusal: SubjectReadingsRefusal }
+
+fn step_window(row: EmittedSubjectBuildRow, step: WorkflowJobStep) -> StepWindow {
   match step.started_at {
-    Absent => StepWallRefused { refusal: SubjectStepUntimed { step: step.name } }
+    Absent => StepWindowRefused { refusal: SubjectStepUntimed { step: step.name } }
     Present { value: started } =>
       match step.completed_at {
-        Absent => StepWallRefused { refusal: SubjectStepUntimed { step: step.name } }
+        Absent => StepWindowRefused { refusal: SubjectStepUntimed { step: step.name } }
         Present { value: completed } =>
           match iso8601_utc_epoch_seconds(text: started) {
-            Absent => StepWallRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: started } }
+            Absent => StepWindowRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: started } }
             Present { value: s } =>
               match iso8601_utc_epoch_seconds(text: completed) {
-                Absent => StepWallRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: completed } }
-                Present { value: e } => {
-                  let span = (second_count(e) as Int) - (second_count(s) as Int)
-                  if span < 0 {
-                    StepWallRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
+                Absent => StepWindowRefused { refusal: SubjectStepInstantUnreadable { step: step.name, instant: completed } }
+                Present { value: e } =>
+                  if (second_count(e) as Int) < (second_count(s) as Int) {
+                    StepWindowRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
                   } else {
-                    match checked_int_magnitude(a: span) {
-                      CheckedNatOverflow { cause: _ } => StepWallRefused { refusal: SubjectStepEndsBeforeItStarts { step: step.name } }
-                      CheckedNatReady { value: n } => StepWallRead { wall: second(count: n) }
-                    }
+                    StepWindowRead { window: SubjectWindow { row: row, step: step.name, from: s, to: e } }
                   }
-                }
               }
           }
       }
   }
 }
 
-fn subject_step_wall(steps: List<WorkflowJobStep>, row: EmittedSubjectBuildRow) -> StepWall {
+fn subject_step_window(steps: List<WorkflowJobStep>, row: EmittedSubjectBuildRow) -> StepWindow {
   let name = emitted_subject_build_step_name(row: row)
   let named = steps |> filter(s => s.name == name)
   if count(named) == 0 {
-    StepWallRefused { refusal: SubjectStepAbsent { step: name } }
+    StepWindowRefused { refusal: SubjectStepAbsent { step: name } }
   } else if count(named) > 1 {
-    StepWallRefused { refusal: SubjectStepRepeated { step: name, count: count(named) } }
+    StepWindowRefused { refusal: SubjectStepRepeated { step: name, count: count(named) } }
   } else {
     match named.first() {
-      Absent => StepWallRefused { refusal: SubjectStepAbsent { step: name } }
-      Present { value: s } => step_wall(step: s)
+      Absent => StepWindowRefused { refusal: SubjectStepAbsent { step: name } }
+      Present { value: s } => step_window(row: row, step: s)
     }
   }
 }
 
+type SubjectWindows
+  = SubjectWindowsRead { windows: List<SubjectWindow> }
+  | SubjectWindowsRefused { refusal: SubjectReadingsRefusal }
+
+fn subject_windows(steps: List<WorkflowJobStep>, rows: List<EmittedSubjectBuildRow>) -> SubjectWindows {
+  fold(rows, init: SubjectWindowsRead { windows: [] }, f: (acc, row) =>
+    match acc {
+      SubjectWindowsRefused { refusal: _ } => acc
+      SubjectWindowsRead { windows: ws } =>
+        match subject_step_window(steps: steps, row: row) {
+          StepWindowRefused { refusal: r } => SubjectWindowsRefused { refusal: r }
+          StepWindowRead { window: w } => SubjectWindowsRead { windows: list_push(ws, w) }
+        }
+    })
+}
+
+fn window_wall(w: SubjectWindow) -> Second {
+  match checked_int_magnitude(a: (second_count(w.to) as Int) - (second_count(w.from) as Int)) {
+    CheckedNatOverflow { cause: _ } => second(count: 0)
+    CheckedNatReady { value: n } => second(count: n)
+  }
+}
+
+fn window_holds(w: SubjectWindow, at: Second) -> Bool {
+  (second_count(w.from) as Int) <= (second_count(at) as Int) && (second_count(at) as Int) <= (second_count(w.to) as Int)
+}
+
+// ── each receipt, with the instant its log line was written ───────────────────────────────────
+
+type TimedReceipt {
+  at: Second
+  line: String
+  reading: MemoryReceiptReading
+}
+
 type LogReceipts
-  = LogReceiptsRead { receipts: List<MemoryReceiptReading> }
+  = LogReceiptsRead { receipts: List<TimedReceipt> }
   | LogReceiptsRefused { refusal: SubjectReadingsRefusal }
+
+// A JOB LOG LINE IS `<instant> <text>` (the Actions log's own prefix); a receipt whose line carries no readable instant
+// cannot be placed in any step and refuses.
+fn line_instant(line: String) -> Second? {
+  match split(s: line, delimiter: " ").first() {
+    Absent => none
+    Present { value: w } => iso8601_utc_epoch_seconds_floor(text: w)
+  }
+}
 
 fn log_receipts(log: String) -> LogReceipts {
   fold(split(s: log, delimiter: "\n"), init: LogReceiptsRead { receipts: [] }, f: (acc, line) =>
@@ -105,7 +165,11 @@ fn log_receipts(log: String) -> LogReceipts {
         match memory_receipt_line(line: line) {
           NotAMemoryReceipt => acc
           MemoryReceiptGarbled { line: l, cause: c } => LogReceiptsRefused { refusal: SubjectReceiptGarbled { line: l, cause: c } }
-          MemoryReceiptRead { reading: r } => LogReceiptsRead { receipts: list_push(rs, r) }
+          MemoryReceiptRead { reading: r } =>
+            match line_instant(line: line) {
+              Absent => LogReceiptsRefused { refusal: SubjectReceiptUntimed { line: line } }
+              Present { value: at } => LogReceiptsRead { receipts: list_push(rs, TimedReceipt { at: at, line: line, reading: r }) }
+            }
         }
     })
 }
@@ -114,68 +178,81 @@ fn receipt_in_slot(receipt: MemoryReceiptReading, slot_unit: NonEmptyStr) -> Boo
   ends_with(s: receipt.cgroup as String, suffix: concat("/", slot_unit as String))
 }
 
-// The walls in roster order, or the first refusal.
-fn subject_walls(steps: List<WorkflowJobStep>, rows: List<EmittedSubjectBuildRow>) -> List<StepWall> {
-  rows |> map(r => subject_step_wall(steps: steps, row: r))
-}
+// ── the identity join ────────────────────────────────────────────────────────────────────────
 
-fn first_wall_refusal(walls: List<StepWall>) -> SubjectReadingsRefusal? {
-  match walls |> filter(w => match w { StepWallRefused { refusal: _ } => true StepWallRead { wall: _ } => false }) |> first() {
-    Present { value: StepWallRefused { refusal: r } } => Present { value: r }
-    _ => none
-  }
-}
-
-// ONE PASS OVER THE ROSTER WITH ITS INDEX: the walls were checked total above and the receipt count equals the row
-// count, so every index has a wall and a receipt; an index that had neither would drop that row, and the caller
-// compares the paired count with the roster before admitting the reading.
-type PairingAcc {
-  index: Int
-  readings: List<SubjectStepReading>
-}
-
-fn paired(rows: List<EmittedSubjectBuildRow>, walls: List<StepWall>, receipts: List<MemoryReceiptReading>) -> List<SubjectStepReading> {
-  fold(rows, init: PairingAcc { index: 0, readings: [] }, f: (acc, row) => {
-    let next = acc.index + 1
-    match list_at_optional(xs: walls, index: acc.index) {
-      Present { value: StepWallRead { wall: w } } =>
-        match list_at_optional(xs: receipts, index: acc.index) {
-          Present { value: rc } => PairingAcc { index: next, readings: list_push(acc.readings, SubjectStepReading { row: row, wall: w, receipt: rc }) }
-          Absent => PairingAcc { index: next, readings: acc.readings }
+// EVERY RECEIPT IS PLACED IN EXACTLY ONE SUBJECT WINDOW, or the reading refuses with that receipt's line.
+fn first_unplaced_receipt(receipts: List<TimedReceipt>, windows: List<SubjectWindow>) -> SubjectReadingsRefusal? {
+  fold(receipts, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => {
+        let holding = windows |> filter(w => window_holds(w: w, at: r.at))
+        if count(holding) == 0 {
+          Present { value: SubjectReceiptOutsideEveryStep { line: r.line } }
+        } else if count(holding) > 1 {
+          match holding.first() {
+            Absent => Present { value: SubjectReceiptOutsideEveryStep { line: r.line } }
+            Present { value: a } =>
+              match holding.skip(n: 1).first() {
+                Absent => Present { value: SubjectReceiptOutsideEveryStep { line: r.line } }
+                Present { value: b } => Present { value: SubjectReceiptInTwoSteps { line: r.line, first: a.step, second: b.step } }
+              }
+          }
+        } else {
+          none
         }
-      _ => PairingAcc { index: next, readings: acc.readings }
-    }
-  }).readings
+      }
+    })
+}
+
+type JoinedReadings
+  = JoinedRead { readings: List<SubjectStepReading> }
+  | JoinedRefused { refusal: SubjectReadingsRefusal }
+
+// EVERY SUBJECT WINDOW HOLDS EXACTLY ONE RECEIPT, or the reading refuses with that step named.
+fn joined_by_window(windows: List<SubjectWindow>, receipts: List<TimedReceipt>) -> JoinedReadings {
+  fold(windows, init: JoinedRead { readings: [] }, f: (acc, w) =>
+    match acc {
+      JoinedRefused { refusal: _ } => acc
+      JoinedRead { readings: rs } => {
+        let held = receipts |> filter(r => window_holds(w: w, at: r.at))
+        if count(held) == 0 {
+          JoinedRefused { refusal: SubjectReceiptMissing { step: w.step } }
+        } else if count(held) > 1 {
+          JoinedRefused { refusal: SubjectReceiptRepeated { step: w.step, count: count(held) } }
+        } else {
+          match held.first() {
+            Absent => JoinedRefused { refusal: SubjectReceiptMissing { step: w.step } }
+            Present { value: r } => JoinedRead { readings: list_push(rs, SubjectStepReading { row: w.row, wall: window_wall(w: w), receipt: r.reading }) }
+          }
+        }
+      }
+    })
 }
 
 fn subject_readings_of(job: WorkflowJobRun, log: String, slot_unit: NonEmptyStr, rows: List<EmittedSubjectBuildRow>) -> SubjectReadings {
   match job.steps {
     Absent => SubjectReadingsRefused { refusal: JobStepsUnrecorded }
-    Present { value: steps } => {
-      let walls = subject_walls(steps: steps, rows: rows)
-      match first_wall_refusal(walls: walls) {
-        Present { value: r } => SubjectReadingsRefused { refusal: r }
-        Absent =>
+    Present { value: steps } =>
+      match subject_windows(steps: steps, rows: rows) {
+        SubjectWindowsRefused { refusal: r } => SubjectReadingsRefused { refusal: r }
+        SubjectWindowsRead { windows: windows } =>
           match log_receipts(log: log) {
             LogReceiptsRefused { refusal: r } => SubjectReadingsRefused { refusal: r }
-            LogReceiptsRead { receipts: rs } =>
-              if count(rs) != count(rows) {
-                SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: count(rs), subjects: count(rows) } }
-              } else {
-                match rs |> filter(r => !receipt_in_slot(receipt: r, slot_unit: slot_unit)) |> first() {
-                  Present { value: outside } => SubjectReadingsRefused { refusal: SubjectReceiptOutsideSlot { cgroup: outside.cgroup, slot_unit: slot_unit } }
-                  Absent => {
-                    let readings = paired(rows: rows, walls: walls, receipts: rs)
-                    if count(readings) != count(rows) {
-                      SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: count(readings), subjects: count(rows) } }
-                    } else {
-                      SubjectReadingsRead { readings: readings }
-                    }
+            LogReceiptsRead { receipts: receipts } =>
+              match receipts |> filter(r => !receipt_in_slot(receipt: r.reading, slot_unit: slot_unit)) |> first() {
+                Present { value: outside } => SubjectReadingsRefused { refusal: SubjectReceiptOutsideSlot { cgroup: outside.reading.cgroup, slot_unit: slot_unit } }
+                Absent =>
+                  match first_unplaced_receipt(receipts: receipts, windows: windows) {
+                    Present { value: r } => SubjectReadingsRefused { refusal: r }
+                    Absent =>
+                      match joined_by_window(windows: windows, receipts: receipts) {
+                        JoinedRefused { refusal: r } => SubjectReadingsRefused { refusal: r }
+                        JoinedRead { readings: rs } => SubjectReadingsRead { readings: rs }
+                      }
                   }
-                }
               }
           }
       }
-    }
   }
 }

@@ -43,7 +43,7 @@ import gunbc.fleet.fleet_host_budget {
 import gunbc.fleet.fleet_container { gha_runner_container }
 import gunbc.ci.ci_floor_measurement { OomdEnforced }
 import gunbc.runner.runner_qualification_subject_readings {
-  SubjectStepReading, subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, SubjectReceiptCountDiffers,
+  SubjectStepReading, subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, SubjectReceiptMissing,
 }
 import test.fixture.recorded_v2_bootstrap_receipts {
   recorded_v2_bootstrap_run, recorded_v2_bootstrap_head_sha, recorded_v2_bootstrap_slot_unit,
@@ -593,14 +593,14 @@ test fn a_receipt_disagreeing_with_its_numbers_refuses_as_its_own_finding() -> B
     && (match unfounded.memory { MemoryReceiptDisagreesAt { subject: _, printed_violated: p, verdict: _ } => p _ => false })
 }
 
-// RED: A SUBJECT WHOSE RECEIPT IS MISSING IS NEVER A RUN. The decoder refuses the job (one receipt for two subjects),
+// RED: A SUBJECT WHOSE RECEIPT IS MISSING IS NEVER A RUN. The decoder refuses the job (the second step's window holds no receipt),
 // so no observed run is minted from it; a run carrying only one subject's reading refuses on the roster.
 test fn a_missing_receipt_refuses_the_qualification() -> Bool {
   let first_line = match split(s: attempt_log(), delimiter: "\n").first() { Present { value: l } => l Absent => "" }
   let decoded = subject_readings_of(job: recorded_job(), log: first_line, slot_unit: slot_unit(), rows: emitted_subject_build_rows())
   let one = subject_readings() |> filter(r => label_of(r: r) == first_label())
   let a = assess_at_width(selection: selection(), runs: [varied_run(id: run_a, subjects: one)])
-  (match decoded { SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: 1, subjects: _ } } => true _ => false })
+  (match decoded { SubjectReadingsRefused { refusal: SubjectReceiptMissing { step: _ } } => true _ => false })
     && count(one) == 1 && count(subject_readings()) >= 2
     && !assessment_holds(a: a)
     && (match a.subject_roster { SubjectMissing { subject: _ } => true _ => false })

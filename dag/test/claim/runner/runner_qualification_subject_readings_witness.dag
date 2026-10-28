@@ -19,7 +19,8 @@ import gunbc.host.memory_envelope_receipt_reading {
   memory_receipt_standing, MemoryReceiptHeld, MemoryReceiptViolated, MemoryReceiptSentenceDisagrees,
 }
 import gunbc.runner.runner_qualification_subject_readings {
-  subject_readings_of, SubjectReadingsRead, SubjectReadingsRefused, JobStepsUnrecorded, SubjectReceiptCountDiffers,
+  subject_readings_of, SubjectReadings, SubjectReadingsRead, SubjectReadingsRefused, JobStepsUnrecorded, SubjectReceiptMissing,
+  SubjectReceiptRepeated, SubjectReceiptOutsideEveryStep, SubjectReceiptInTwoSteps, SubjectReceiptUntimed,
   SubjectReceiptOutsideSlot, SubjectReceiptGarbled, SubjectStepAbsent,
 }
 import test.fixture.recorded_v2_bootstrap_receipts {
@@ -69,7 +70,7 @@ test fn a_recorded_required_run_decodes_to_one_reading_per_subject_step() -> Boo
 // RED: a subject whose receipt is missing refuses the reading; it never reads as a subject with no memory.
 test fn a_missing_receipt_refuses() -> Bool {
   match subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: first_receipt_line(), slot_unit: slot(), rows: emitted_subject_build_rows()) {
-    SubjectReadingsRefused { refusal: SubjectReceiptCountDiffers { receipts: 1, subjects: 2 } } => true
+    SubjectReadingsRefused { refusal: SubjectReceiptMissing { step: st } } => st == "emit and build //gunbc/instruments:v2-native-cli"
     _ => false
   }
 }
@@ -185,4 +186,47 @@ test fn the_swap_peak_rise_is_bytes_or_the_printers_sentence() -> Bool {
       MemoryReceiptGarbled { line: _, cause: c } => string_contains(s: c as String, pattern: "swap_peak_delta")
       _ => false
     })
+}
+
+// ── the identity join (review 87065) ───────────────────────────────────────────────────────────
+
+fn second_receipt_line() -> String {
+  match split(s: recorded_v2_bootstrap_receipt_log, delimiter: "\n").skip(n: 1).first() {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+fn read_log(log: String) -> SubjectReadings {
+  subject_readings_of(job: job_with(steps: recorded_v2_bootstrap_subject_steps), log: log, slot_unit: slot(), rows: emitted_subject_build_rows())
+}
+
+// A RECEIPT IS JOINED TO THE STEP WHOSE WINDOW HOLDS ITS INSTANT, NOT TO ITS POSITION: the first step's receipt, marked by
+// a distinct peak and written AFTER the second step's in the log, still reads as the first step's. A positional pairing
+// would attach it to the second step.
+test fn a_receipt_is_joined_to_its_step_by_instant_not_position() -> Bool {
+  let marked_first = replace(s: first_receipt_line(), from: "peak_bytes=14481920000", to: "peak_bytes=1000")
+  match read_log(log: concat(concat(second_receipt_line(), "\n"), marked_first)) {
+    SubjectReadingsRead { readings: rs } =>
+      count(rs) == 2
+        && (match rs.first() { Present { value: r } => byte_size_count(b: r.receipt.peak) == 1000 && second_count(r.wall) == 813 Absent => false })
+        && (match rs.skip(n: 1).first() { Present { value: r } => byte_size_count(b: r.receipt.peak) == 14481920000 && second_count(r.wall) == 870 Absent => false })
+    SubjectReadingsRefused { refusal: _ } => false
+  }
+}
+
+// RED: ONE STEP WITH TWO RECEIPTS WHILE ANOTHER HAS NONE has the right count and still refuses, naming the step; a
+// receipt in no subject's window, a receipt in the one second two windows share, and a receipt line with no instant each
+// refuse with the line.
+test fn a_receipt_that_cannot_be_placed_exactly_once_refuses() -> Bool {
+  let outside = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z", to: "2026-10-27T12:00:00.0000000Z")
+  let shared = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z", to: "2026-10-27T13:25:13.5000000Z")
+  let untimed = replace(s: first_receipt_line(), from: "2026-10-27T13:25:12.2484511Z ", to: "")
+  (match read_log(log: concat(concat(first_receipt_line(), "\n"), first_receipt_line())) {
+    SubjectReadingsRefused { refusal: SubjectReceiptRepeated { step: st, count: 2 } } => st == "emit and build //gunbc/instruments:self-host"
+    _ => false
+  })
+    && (match read_log(log: concat(concat(outside, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptOutsideEveryStep { line: _ } } => true _ => false })
+    && (match read_log(log: concat(concat(shared, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptInTwoSteps { line: _, first: _, second: _ } } => true _ => false })
+    && (match read_log(log: concat(concat(untimed, "\n"), second_receipt_line())) { SubjectReadingsRefused { refusal: SubjectReceiptUntimed { line: _ } } => true _ => false })
 }

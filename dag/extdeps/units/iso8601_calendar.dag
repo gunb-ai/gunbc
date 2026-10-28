@@ -161,3 +161,21 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
     }
   }
 }
+
+// THE SAME INSTANT WITH A FRACTION OF A SECOND (`YYYY-MM-DDTHH:MM:SS.f+Z`, the form a GitHub Actions job log prefixes to
+// every line), floored to its whole second. A fraction that is empty or not all digits is no instant; the whole-second
+// form reads as itself.
+fn iso8601_utc_epoch_seconds_floor(text: String) -> Second? {
+  let t = trim(s: text)
+  let n = string_length(s: t)
+  if n == 20 {
+    iso8601_utc_epoch_seconds(text: t)
+  } else if n > 21 && substring(s: t, start: 19, end: 20) == "." && substring(s: t, start: n - 1, end: n) == "Z" {
+    match parse_int(s: substring(s: t, start: 20, end: n - 1)) {
+      Absent => none
+      Present { value: f } => if f < 0 { none } else { iso8601_utc_epoch_seconds(text: concat(substring(s: t, start: 0, end: 19), "Z")) }
+    }
+  } else {
+    none
+  }
+}
