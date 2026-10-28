@@ -116,6 +116,10 @@ fn refused_naming(exit: ProcessExit, failure: String) -> Bool {
 // belt_commit_staged: git add -A, then git commit -m): its identity comes from its own environment, never from the
 // repository's config. The replaying worker account (WorkerDedicatedAccount, gunbc-worker) has none, so the replay
 // gets no such pair and must not need one.
+// The git object type the recording ref must hold. recording_capture_write points the ref at the recorded TREE; if it
+// minted a commit instead (the pre-repair shape, git.Plumbing.CommitTree) this reads "commit" and the claim goes red.
+data recording_recorded_object_type: String = "tree"
+
 data belt_identity_config_pairs: List<String> = ["-c", "user.name=gunbc-belt", "-c", "user.email=gunbc-belt@invalid"]
 
 // THE BELT'S COMMIT OVER THE ATTEMPT WORKTREE, run the way belt_commit_staged runs it, so the claim is about the
@@ -316,11 +320,20 @@ fn capture_over(root: String) -> Bool {
   let ref_name = join(["refs/gunbc/recordings/", base, ".", result_tree, ".3.exit-code.", recording_provenance_captured_word], "")
   let captured = recorded && exit_code_of(exit: recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)) == 0
   let ref_tree = git_out(dir: repo, args: ["rev-parse", concat(ref_name, recording_peel_to_tree_suffix)])
-  let ref_parent = git_out(dir: repo, args: ["rev-parse", concat(ref_name, "^")])
+  // THE REF'S OBJECT IS THE RECORDED TREE ITSELF, not a minted commit (recording_capture_write says why: the only
+  // reader is the replay's `<ref>^{tree}` peel, which a tree-typed ref answers identically, and minting a commit
+  // instead takes its author from ambient config -- the identity the dedicated account does not have). `cat-file -t`
+  // is the discriminating assertion: mint the commit back with git.Plumbing.CommitTree and it reads commit, red.
+  // The base needs no parent edge to be checked: it is a part of the REF NAME the capture wrote, so the id the
+  // replay decodes is the same text the ref is named with, and the assertion below is that they agree.
+  let ref_object_type = git_out(dir: repo, args: ["cat-file", "-t", ref_name])
+  let ref_id_text = recording_id_part(parts: ref_name.split(delimiter: "/"), index: 3)
+  let ref_name_carries_base = recording_id_part(parts: ref_id_text.split(delimiter: recording_id_separator), index: 0) == base
   let again = recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)
   let deferred_written = capture_records_written(instance: instance, base: base, outcome: CommitDeferred { node_id: capture_node, reason: "control" }, head: result)
   let deferred = recording_capture_for_instance(instance: instance, node_id: capture_node, attempt_key: capture_attempt)
-  captured && result_tree != "" && ref_tree == result_tree && ref_parent == base
+  captured && result_tree != "" && ref_tree == result_tree && ref_object_type == recording_recorded_object_type
+    && ref_name_carries_base
     && exit_code_of(exit: again) != 0 && string_contains(s: reason_of(exit: again), pattern: "already exists")
     && deferred_written && exit_code_of(exit: deferred) != 0 && string_contains(s: reason_of(exit: deferred), pattern: "did not settle a result")
 }
@@ -403,15 +416,16 @@ fn prepared_over(repo: String, work: String) -> Bool {
         && git_ok(dir: repo, args: ["worktree", "add", "-q", "--detach", wt_other_word, base])
 
       // NAMESPACE: the ref is under the prepared prefix and nothing exists under the captured one.
-      // The ref exists under the prepared prefix and holds a commit whose TREE is the recorded tree and whose one
-      // parent is the base (the mint mints a fresh commit, so its sha is not the fixture's result commit -- asserting
-      // the tree and the parent is what says the end state is the one prepared). And nothing appears under the
-      // captured prefix, which is the listing a downstream reader or operator consults for receipts.
+      // The ref exists under the prepared prefix, its OBJECT IS THE RECORDED TREE (same object type as the captured
+      // arm -- the two arms differ only in namespace and id word, which is what makes them one route), and nothing
+      // appears under the captured prefix, which is the listing a downstream reader or operator consults for receipts.
+      // The base is not asserted through a parent edge because there is none; it travels in the ref NAME, and the
+      // replay below admits this worktree only because the decoded id's base equals it.
       let in_prepared_namespace = string_contains(s: ref_name, pattern: recording_prepared_ref_prefix)
         && !string_contains(s: ref_name, pattern: recording_ref_prefix)
         && git_out(dir: repo, args: ["rev-parse", "--verify", ref_name]) != ""
         && git_out(dir: repo, args: ["rev-parse", concat(ref_name, recording_peel_to_tree_suffix)]) == result_tree
-        && git_out(dir: repo, args: ["rev-parse", concat(ref_name, "^")]) == base
+        && git_out(dir: repo, args: ["cat-file", "-t", ref_name]) == recording_recorded_object_type
         && git_out(dir: repo, args: ["for-each-ref", "--count=1", recording_ref_prefix]) == ""
       let prepared_id = recording_id_of(ref_name: ref_name)
       // THE PREPARED END STATE REPLAYS THROUGH THE SAME ROUTE: same tree, same exit, still uncommitted.

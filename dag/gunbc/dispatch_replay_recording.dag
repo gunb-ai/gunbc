@@ -7,7 +7,6 @@ import extdeps.git.plumbing
 import extdeps.git.plumbing {
   GitRepositoryAddress,
   GitWorktreeAt,
-  GitParents,
   GitCreateRefIfAbsent,
   GitRefMutationOutcome,
   GitRefMutationApplied,
@@ -295,49 +294,51 @@ type RecordingCapture
   = RecordingCaptured { id: RecordingId, ref_name: String }
   | RecordingCaptureRefused { cause: RecordingCaptureRefusal }
 
+// WRITE THE RECORDING: one create-only ref whose object IS the recorded tree, named by the whole recording. There is
+// no minted commit object behind it, and that is deliberate (lab run of 2026-10-27, on the head whose mint called
+// git.Plumbing.CommitTree): the replay reads the recording through `rev-parse --verify <ref>^{tree}` and nothing else
+// -- not in this change, not in Rust, no CLI, no reader anywhere -- and a ref aimed at a tree object answers that peel
+// identically to a ref aimed at a commit whose tree it is (measured: `cat-file -t` reads tree, `<ref>^{tree}` returns
+// the same hex, and `update-ref` peels nothing and hashes nothing). So the commit was a step NO CONSUMER ASKED FOR,
+// and `git commit-tree` takes its author and committer from ambient config, which made whether a recording could be
+// written depend on which account ran it and what that account's ~/.gitconfig holds -- an undeclared input, the
+// DESIGN 5 class. Under the dedicated account, which holds no identity, the mint died with `empty ident name not
+// allowed`. The base and the id's text were already carried by the ref NAME, so the commit held no fact anyone reads;
+// deleting it removes the undeclared input rather than supplying a value for one. THE CLAIMS THIS MAKES RED are the
+// wet witness's `cat-file -t` assertions in the captured and prepared claims, and the mutation is to mint the commit
+// back with git.Plumbing.CommitTree -- green again only by reintroducing the ambient-identity dependency (measured:
+// both claims FAIL that mutation, PASS without it).
+//
+// WHAT IS STILL CHECKED AFTER THE WRITE is unchanged in kind: the ref is re-read and must hold exactly the recorded
+// tree, so a create that reported success without landing is refused rather than believed.
 fn recording_capture_write(repo_root: String, id: RecordingId) -> RecordingCapture {
-  let committed = git.Plumbing.CommitTree(
+  let recorded_tree = recording_object_hex(oid: id.result_tree)
+  let mutation = GitCreateRefIfAbsent { name: recording_ref_of(id: id) as GitRefName, new: id.result_tree }
+  let attempted = git.Plumbing.CreateRefIfAbsent(
     address: devboot_repo_address(repo_root: repo_root),
-    tree: recording_object_hex(oid: id.result_tree),
-    parents: GitParents { first: git_object_id_wire_hex(oid: id.base), remaining: [] },
-    message: concat("replay recording ", recording_id_text(id: id)),
+    ref_name: recording_ref_of(id: id),
+    new: recorded_tree,
   )
-  if !(committed.exit_code == 0) {
-    RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: trim(s: committed.stderr) } }
+  let outcome = git_ref_mutation_outcome(
+    mutation: mutation,
+    exit_code: attempted.exit_code,
+    stderr: trim(s: attempted.stderr),
+    observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: recording_ref_of(id: id)),
+  )
+  if git_ref_mutation_applied(outcome: outcome) {
+    RecordingCaptured { id: id, ref_name: recording_ref_of(id: id) }
   } else {
-    let commit_hex = trim(s: committed.commit)
-    match git_object_id_from_untagged_hex(hex: commit_hex) {
-      Absent =>
-        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "commit-tree returned an object id this capture cannot decode" } }
-      Present { value: commit_oid } =>
-        let mutation = GitCreateRefIfAbsent { name: recording_ref_of(id: id) as GitRefName, new: commit_oid }
-        let attempted = git.Plumbing.CreateRefIfAbsent(
-          address: devboot_repo_address(repo_root: repo_root),
-          ref_name: recording_ref_of(id: id),
-          new: commit_hex,
-        )
-        let outcome = git_ref_mutation_outcome(
-          mutation: mutation,
-          exit_code: attempted.exit_code,
-          stderr: trim(s: attempted.stderr),
-          observed_after: devboot_observe_ref(repo_root: repo_root, ref_name: recording_ref_of(id: id)),
-        )
-        if git_ref_mutation_applied(outcome: outcome) {
-          RecordingCaptured { id: id, ref_name: recording_ref_of(id: id) }
-        } else {
-          match outcome {
-            GitRefMutationPreconditionNotHeld { mutation: _, observed: _ } =>
-              RecordingCaptureRefused { cause: RecordingCaptureAlreadyRecorded { ref_name: recording_ref_of(id: id) } }
-            GitRefMutationApplied { mutation: _ } =>
-              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "applied outcome read as not applied" } }
-            GitRefMutationExecutionRefused { mutation: _, exit_code: _, stderr } =>
-              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
-            GitRefMutationObservationRefused { mutation: _, exit_code: _, stderr } =>
-              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
-            GitRefMutationReadBackMismatch { mutation: _, observed: _ } =>
-              RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "the ref does not hold the recording commit after the write" } }
-          }
-        }
+    match outcome {
+      GitRefMutationPreconditionNotHeld { mutation: _, observed: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureAlreadyRecorded { ref_name: recording_ref_of(id: id) } }
+      GitRefMutationApplied { mutation: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "applied outcome read as not applied" } }
+      GitRefMutationExecutionRefused { mutation: _, exit_code: _, stderr } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+      GitRefMutationObservationRefused { mutation: _, exit_code: _, stderr } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: stderr } }
+      GitRefMutationReadBackMismatch { mutation: _, observed: _ } =>
+        RecordingCaptureRefused { cause: RecordingCaptureWriteRefused { ref_name: recording_ref_of(id: id), detail: "the ref does not hold the recorded tree after the write" } }
     }
   }
 }
