@@ -2235,7 +2235,7 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
     match session_recovery_of_events(lines: lines) {
       SessionRecoveryNone => TurnResumeRefused { cause: "the session's stream records no recovery-needed refusal that is still unanswered, so there is nothing to resume" }
       SessionRecoveryMalformed { mismatch: mismatch } => TurnResumeRefused { cause: join(["the session's recovery record is unreadable, so it is not resumable: ", mismatch], "") }
-      SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: woken, resumable: _, interrupted_calls: interrupted, resume_round: round } =>
+      SessionRecoveryRequestPending { cause: _, since: _, re_deliveries: woken, last_delivery_at: _, resumable: _, interrupted_calls: interrupted, resume_round: round } =>
         match now_epoch_seconds() {
           // THE RE-DELIVERY IS STAMPED AT THE INSTANT THE WORKER ARRIVES (the belt delivered by spawning it).
           // An unstamped re-delivery cannot feed the schedule, so this one refuses visibly and the request
@@ -2254,8 +2254,8 @@ fn harness_resume_turn(config: HarnessTurnConfig, step_budget: Int) -> HarnessTu
 }
 
 // THE SHARED RESUME: the refused round's request is the state, the conversation is validated, the resumed event
-// (S3's turn.resumed or a capacity wake's turn.capacity_resumed, each counted apart) is appended, and the loop
-// picks up at that round with the steps already taken. The same conversation, the same events file, the same
+// (S3's turn.resumed or the patient contract's turn.request_redelivered, each counted apart) is appended, and the
+// loop picks up at that round with the steps already taken. The same conversation, the same events file, the same
 // x-pool-session: only what is recorded as answering the stop differs.
 fn harness_resume_from_round(config: HarnessTurnConfig, step_budget: Int, prior_content: String, round: Int, interrupted: List<String>, resumed_event: String) -> HarnessTurnOutcome {
   if list_length(items: interrupted) > 0 {
