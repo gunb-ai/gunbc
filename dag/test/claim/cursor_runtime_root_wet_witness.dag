@@ -25,6 +25,7 @@ import gunbc.cursor_harness_credential {
 }
 import gunbc.worker_turn_standing { cursor_bounded_keyed_probe_command, CursorBoundedProbeReady, CursorBoundedProbeNameRefused, CursorBoundedProbeEmitRefused, cursor_observed_standing_for_program, cursor_sandbox_unavailable_reason_prefix }
 import test.claim.dispatch_credential_acquisition_witness { fx_cursor_taken, fx_slots_dir }
+import std.integer { parse_int }
 
 // WET, NON-ROOT, over FRESH attempt roots: every invocation binds HOME and XDG_CONFIG_HOME to a root made
 // here, so the operator's real ~/.config/cursor is neither read nor written nor asserted. Every control is

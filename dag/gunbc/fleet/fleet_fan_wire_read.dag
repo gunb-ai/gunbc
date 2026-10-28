@@ -25,6 +25,7 @@ import gunbc.machine_intake.megarac_media_attach { images_array_elements, json_n
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import product.fleet_fan_policy { FirmwareAutomatic, HeldAtDutyFloor }
 import gunbc.fleet.fleet_fan_converge { FleetFanControlObserved, FleetFanControlUnobservable, FleetFanReading }
+import std.integer { parse_int }
 
 // THE MEGARAC PURE DECODER OF THE FLEET FAN FOLD: the two SUPPLIED GET bodies (get_manager_status
 // and get_fan_info, extdeps.bmc.megarac megarac_op_fan_get_manager_status / megarac_op_fan_get_fan_info)
