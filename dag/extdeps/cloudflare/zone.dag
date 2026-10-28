@@ -44,7 +44,7 @@ data r2_custom_domain_requires_zone_authority: ExternalAuthority = ExternalAutho
 // member spellings matter: the create body is {domain, enabled, zoneId} — camelCase zoneId, and no
 // hostname/zone_id spelling exists on that route — so a fold that addressed it differently would be
 // writing a field the vendor does not read.
-data r2_custom_domain_api_reading: NonEmptyStr = "R2 buckets custom domains: POST /client/v4/accounts/$ACCOUNT_ID/r2/buckets/$BUCKET_NAME/domains/custom with body {domain, enabled, zoneId} and optional {minTLS, ciphers}; the list route GET /accounts/{account_id}/r2/buckets/{bucket_name}/domains/custom returns {domains: array of {domain, enabled, status, zoneId, ciphers, minTLS, 4 more}}, status being {ownership, ssl}. Read 2026-10-27."
+data r2_custom_domain_api_reading: NonEmptyStr = "R2 buckets custom domains: POST /client/v4/accounts/$ACCOUNT_ID/r2/buckets/$BUCKET_NAME/domains/custom with body \{domain, enabled, zoneId\} and optional \{minTLS, ciphers\}; the list route GET /accounts/\{account_id\}/r2/buckets/\{bucket_name\}/domains/custom returns \{domains: array of \{domain, enabled, status, zoneId, ciphers, minTLS, 4 more\}\}, status being \{ownership, ssl\}. Read 2026-10-27."
 data r2_custom_domain_api_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
     module_path: "extdeps.cloudflare.zone",
@@ -65,7 +65,7 @@ data r2_custom_domain_api_authority: ExternalAuthority = ExternalAuthority {
 // status is one of initializing / pending / active / moved. The model has one arm per published value and
 // Unknown for a value the reader has not seen: a new vendor value must arrive as a fact, never silently
 // as active.
-data zone_list_api_reading: NonEmptyStr = "Zones: GET /client/v4/zones filters by name and account.id and returns Zone { status, paused, type, verification_key, ... } with status one of initializing, pending, active, moved. Read 2026-10-27."
+data zone_list_api_reading: NonEmptyStr = "Zones: GET /client/v4/zones filters by name and account.id and returns Zone \{ status, paused, type, verification_key, ... \} with status one of initializing, pending, active, moved. Read 2026-10-27."
 data zone_list_api_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
     module_path: "extdeps.cloudflare.zone",
@@ -107,7 +107,7 @@ data r2_custom_domain_status_api_authority: ExternalAuthority = ExternalAuthorit
 // use when a fold has a write authorization. Proxied is a boolean on A/AAAA/CNAME only, and a PROXIED
 // record answers with Cloudflare's own addresses rather than its stored content — which is why a DNS
 // answer cannot confirm a proxied record's content and the record LIST is the only complete source.
-data dns_record_api_reading: NonEmptyStr = "DNS records: GET /client/v4/dns/records returns the zone's record list; POST /client/v4/zones/{zone_id}/dns_records adds one with body {type, name, content, ttl?, proxied?} where proxied is valid on A/AAAA/CNAME only. Read 2026-10-27."
+data dns_record_api_reading: NonEmptyStr = "DNS records: GET /client/v4/dns/records returns the zone's record list; POST /client/v4/zones/\{zone_id\}/dns_records adds one with body \{type, name, content, ttl?, proxied?\} where proxied is valid on A/AAAA/CNAME only. Read 2026-10-27."
 data dns_record_api_citation: FactCitation = FactCitation {
   fact: DeclarationRef {
     module_path: "extdeps.cloudflare.zone",
