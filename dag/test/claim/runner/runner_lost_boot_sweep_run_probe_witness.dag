@@ -35,6 +35,12 @@ test fn sweep_and_deregister_refuses_an_outside_caller() -> Bool {
            wanted: "ConstructorCallAdmissionRefused", subject: "sweep_and_deregister") >= 1
 }
 
+test fn the_dry_run_key_site_and_its_plan_refuse_an_outside_caller() -> Bool {
+  let c = compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content)
+  blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "dry_run_under_staged_key") >= 1
+    && blocking(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "plan_without_deleting") >= 1
+}
+
 test fn a_current_boot_evidence_literal_refuses_outside_its_mint() -> Bool {
   blocking(c: compile_dag_diagnostic_census(filesystem_read(path: "dag/test/probe/lost_boot_sweep_run_probe.dag").content),
            wanted: "SoleConstructorViolation", subject: "CurrentBootEvidence") >= 1
