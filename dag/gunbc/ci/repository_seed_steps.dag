@@ -1,0 +1,119 @@
+module gunbc.ci.repository_seed_steps
+
+import std.types { String, NonEmptyStr }
+import std.optional { Present, Absent }
+import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.github.actions { RunStep, Step, UsesStep }
+import gunbc.action_use_admission { checkout_action, setup_rust_action }
+import gunbc.ci.repository_ci_profile { PublicSeed }
+
+// THE FIVE STEPS EVERY CI JOB IN A MIRROR REPOSITORY HAS, written once. A repository that runs its
+// claims under a compiler checked out beside it must: take its own tree, take the seed, say WHICH seed
+// revision it judged, install a toolchain, and build the compiler from the seed's source. Both forked
+// repositories wrote these five by hand, in two dialects, and the only difference between the two
+// versions was the text of the step names -- which is what the caller passes in.
+//
+// WHY THE NAMES COME IN AS ARGUMENTS AND NOT AS ROWS. A step name is the voice of the job that runs
+// the step ("Build gunbc from the public seed" is an explanation, not an identity), and the same job
+// body is written by one emitter. Putting them on the profile row would let a repository rename a
+// step without touching the emitter that owns what the step DOES, which is the half a row should not
+// hold. The seed row DOES carry two of them -- the record and build names -- because those steps
+// describe the seed itself, and the seed is data.
+
+// THE REPOSITORY'S OWN TREE. No ref, no `with` at all: a job runs from the commit that triggered it,
+// and a checkout that took a ref would let a workflow decide which of its own definitions ran.
+fn repository_checkout_step(step_name: NonEmptyStr) -> Step {
+  UsesStep {
+    name: Present { value: step_name },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE SEED, CHECKED OUT BESIDE THE REPOSITORY UNDER CI. `ref` is a row rather than "whatever the runner
+// happens to have", because the claims are judged by that compiler and an unpinned checkout makes the
+// verdict unattributable.
+fn seed_checkout_step(seed: PublicSeed) -> Step {
+  UsesStep {
+    name: Present { value: join(["Checkout ", seed.repository as String], "") },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [
+        kv(key: "repository", value: yaml_string(s: seed.repository as String)),
+        kv(key: "ref", value: yaml_string(s: seed.ref_name as String)),
+        kv(key: "path", value: yaml_string(s: seed.checkout_path as String))
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// WHICH SEED REVISION WAS JUDGED, printed by the step that judged it. Without this, a green gate is a
+// claim about an unnamed compiler, and the first thing an operator does after a regression is guess.
+fn seed_revision_step(seed: PublicSeed) -> Step {
+  RunStep {
+    name: Present { value: seed.record_step_name },
+    id: none,
+    run: seed_revision_receipt_script(seed: seed),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn seed_revision_receipt_script(seed: PublicSeed) -> String {
+  join(
+    [
+      "set -u",
+      join(["cd ", seed.checkout_path as String], ""),
+      join(["echo \"", seed.repository as String, " resolved to $(git rev-parse HEAD)\"",], ""),
+      join(["echo \"tracking ref: ", seed.ref_name as String, "\""], "")
+    ],
+    "\n"
+  )
+}
+
+// THE TOOLCHAIN, with the action's own cache OFF: the cache key would be the host's, and a job that
+// restores a toolchain from a previous job's image is a job whose behaviour depends on which runner it
+// landed on.
+fn toolchain_install_step(step_name: NonEmptyStr) -> Step {
+  UsesStep {
+    name: Present { value: step_name },
+    id: none,
+    uses: setup_rust_action,
+    with: Present { value: [kv(key: "cache", value: yaml_bool(b: false))] },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE COMPILER IS BUILT FROM SOURCE IN THE SEED CHECKOUT rather than downloaded: the claims are about
+// this revision of the compiler's own language, and a released binary would be testing the language the
+// mirror's rows were written against rather than the one on main.
+fn seed_build_step(seed: PublicSeed) -> Step {
+  RunStep {
+    name: Present { value: seed.build_step_name },
+    id: none,
+    run: join([seed.build_command, "\n"], ""),
+    shell: none,
+    env: none,
+    working_directory: Present { value: seed.checkout_path as String },
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}

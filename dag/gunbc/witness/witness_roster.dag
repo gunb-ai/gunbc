@@ -77,7 +77,7 @@ fn roster_entry_is_must_not_compile(entry: RosterEntry) -> Bool {
   match entry.kind {
     Enforced => false
     KnownRed { reason, expected_causes, restoration_trigger } => false
-    MustNotCompile { guards, expected_refusals, dissolution } => false
+    MustNotCompile { guards, expected_refusals, dissolution } => true
   }
 }
 

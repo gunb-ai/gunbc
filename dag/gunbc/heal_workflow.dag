@@ -128,11 +128,11 @@ data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
 // commits no generated mirror deletes the heal row and this file with it, and a repository that does
 // keeps them - with one description of the job rather than this module and the profile each carrying one.
 // The committed bytes are the evidence (dag/test/claim/repository_ci_profile_emission_bytes_witness.dag).
-fn heal_workflow_name() -> String { gunbc_heal_job().workflow_name as String }
+data heal_workflow_name: String = gunbc_heal_job().workflow_name as String
 
-fn heal_workflow_job_id() -> String { gunbc_heal_job().job_id as String }
+data heal_workflow_job_id: String = gunbc_heal_job().job_id as String
 
-fn heal_workflow_timeout_minutes() -> Int { gunbc_heal_job().timeout_minutes }
+data heal_workflow_timeout_minutes: Int = gunbc_heal_job().timeout_minutes
 
 data heal_workflow_required_bins: List<String> = ["gunbc", "claim_executor"]
 

@@ -60,7 +60,7 @@ module gunbc.witness.compiler_gate_workflow
 // does not resolve that. merge_group and heal revalidation keep their immutable groups
 // (witness_floor_concurrency_group), so a later push never cancels them.
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.algebra { fold_list, list_append, list_map, list_find_first }
 import gunbc.parse_verdict_schema { parse_verdict_restore_ancestor_ordinals }
 import std.optional { Absent, Optional, Present }
@@ -358,7 +358,7 @@ fn compiler_gate_fleet_head_bound_steps() -> List<CompilerGateBoundStep> {
 // allowed is this module also holding a copy of the name, because then a rename in the epoch authority
 // would leave the required gate and branch protection describing different checks, and the only witness of
 // that would be a red run nobody can promote.
-fn compiler_gate_required_job_id() -> String { gunbc_roster_gate().required_context as String }
+data compiler_gate_required_job_id: String = gunbc_roster_gate().required_context as String
 
 // THE TIMEOUT IS A BOUND, NOT A BUDGET, and it is deliberately well above the measured wall: a
 // timeout that trims a slow-but-honest run converts a subject verdict into silence on the required
@@ -369,7 +369,7 @@ fn compiler_gate_required_job_id() -> String { gunbc_roster_gate().required_cont
 // module's step list. It stays well above the measured wall (see the claim that the bound is not a
 // budget): a timeout that trims a slow-but-honest run turns a subject verdict into silence on the
 // required context.
-fn compiler_gate_emit_build_timeout_minutes() -> Int { gunbc_roster_gate().timeout_minutes }
+data compiler_gate_emit_build_timeout_minutes: Int = gunbc_roster_gate().timeout_minutes
 
 // ONE STEP PER SUBJECT, EACH WITH ITS OWN ID. `witness_floor_build_step` cannot be reused: it binds
 // the fixed step id `build_witness_fold`, and two steps in one job may not share an id. The
@@ -651,7 +651,7 @@ fn compiler_gate_required_job_env() -> List<YamlKeyValue> {
 
 fn compiler_gate_required_job() -> Job {
   Job {
-    id: compiler_gate_required_job_id(),
+    id: compiler_gate_required_job_id,
     name: none,
     // THE MACHINE CLASS IS SELECTED, NOT STATED. The profile row carries a CiRunnerTarget and the spec is
     // projected from it (gunbc.ci.ci_runner_target ci_runner_target_spec), which keeps the label, the
@@ -710,7 +710,7 @@ fn compiler_gate_hosted_job_ids() -> List<String> {
 }
 
 fn compiler_gate_merge_path_job_ids() -> List<String> {
-  [compiler_gate_required_job_id()]
+  [compiler_gate_required_job_id]
 }
 
 fn compiler_gate_merge_path_runs_on_the_fleet() -> Bool {
@@ -828,10 +828,20 @@ type CompilerGateGenerationGate {
 // gunbc.witness.repository_witness_workflow, and it refuses the mirror image of this case.
 data compiler_gate_wrong_lane_refusal_reason: String = "REFUSED gunbc.witness.compiler_gate_workflow: this repository's CI profile row runs its roster through the composed-overlay interpreter route (gunbc.ci.repository_ci_profile ComposedOverlayInterpreterRoster), so its required gate is emitted by gunbc.witness.repository_witness_workflow. Emitting this workflow as well would put two files behind one required context."
 
-fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
+// WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: the required context has one owner, and the row says
+// which lane this repository's gate is.
+fn compiler_gate_row_refusal() -> Optional<NonEmptyStr> {
   if roster_route_is_instrument_dispatcher(profile: gunbc_repository_ci_profile()) == false {
-    WitnessFloorGenerationRefused { reason: compiler_gate_wrong_lane_refusal_reason }
-  } else
+    Present { value: compiler_gate_wrong_lane_refusal_reason }
+  } else {
+    Absent
+  }
+}
+
+fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
+  match compiler_gate_row_refusal() {
+    Present { value: reason } => WitnessFloorGenerationRefused { reason: reason as String }
+    Absent =>
   match admit_workflow_action_uses(workflow: compiler_gate_workflow) {
     WorkflowActionUsesRefused { refusals: rs } =>
       WitnessFloorGenerationRefused { reason: workflow_action_uses_refusal_reason(workflow_module: "gunbc.witness.compiler_gate_workflow", refusals: rs) }
@@ -856,6 +866,7 @@ fn expected_compiler_gate_yml() -> WitnessFloorGenerationOutcome {
               }
           }
       }
+  }
   }
   }
 }

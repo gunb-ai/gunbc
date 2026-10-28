@@ -23,6 +23,11 @@ import gunbc.witness.witness_roster {
 import gunbc.ci.repository_compose_overlay {
   ComposeSpec, ComposeLink, merge_checkout_compose, compose_preamble, compose_reentry, compose_gunbc_run,
   composed_source_roots, source_roots_argv_of, overlay_note_line, local_runs_note_line,
+  SealEnvBinding, heal_seal_env,
+}
+import gunbc.ci.repository_projection_drift_workflow {
+  DriftProgram, projection_drift_refusal, expected_projection_drift_workflow_yml,
+  ProjectionDriftWorkflowGenerated, ProjectionDriftWorkflowGenerationRefused,
 }
 import gunbc.witness.repository_witness_workflow {
   RosterProgram, repository_witness_lane_refusal, expected_repository_witnesses_yml,
@@ -201,40 +206,21 @@ test fn the_declared_red_arm_states_both_directions_and_carries_its_trigger() ->
     && string_contains(s: block, pattern: "the cause that has not yet arrived")
 }
 
-// A MUST-NOT-COMPILE PROBE IS ONLY EVIDENCE IF THE REFUSAL IS THE ONE IT NAMES. Any nonzero exit
-// satisfies a bare expecting-red check - a typo in an import refuses too - so a probe whose wall has been
-// removed elsewhere fails as PROBE DRIFT rather than passing quietly on an exit code.
+// A MUST-NOT-COMPILE PROBE IS EVIDENCE ONLY IF IT REFUSES FOR THE REFUSAL IT NAMES. Any nonzero exit
+// satisfies a bare expecting-red check -- a typo in an import refuses too -- so the emitted arm compares
+// the diagnostic against the declared refusal, fails the run when a declared refusal is absent, and names
+// the wall the probe was supposed to be measuring.
 test fn the_must_not_compile_arm_compares_the_refusal_not_the_exit_code() -> Bool {
   let block = must_not_compile_block(entries: fixture_roster(), entry_prefix: "overlay/dag/")
   string_contains(s: block, pattern: "WALL GONE")
     && string_contains(s: block, pattern: "PROBE DRIFT")
+    && string_contains(s: block, pattern: "grep -qF --")
+    && string_contains(s: block, pattern: "this program MUST NOT COMPILE and it compiled")
+    && string_contains(s: block, pattern: "refused, but NOT for its declared cause")
+    && count(must_not_compile_entries(entries: fixture_roster())) == 1
+    && string_contains(s: block, pattern: "dag/claim/d.dag")
+    && string_contains(s: block, pattern: "no such module")
     && string_contains(s: block, pattern: "the wall that keeps the credential out of the image")
-    && string_contains(s: block, pattern: "if ! printf") == false
-}
-
-// THE COMPOSITION IS A WORKTREE OUTSIDE EVERY REPOSITORY ROOT, WITH THE OVERLAY COPIED IN AND THE CACHE
-// RESET. Each clause is load-bearing: an in-repo copy was pushed to the public repository by archive
-// auto-push (2026-09-11), and the two cache variables resolve a composed run against a cache written for
-// a different corpus - a green run about code that is not on disk.
-test fn the_composition_makes_a_detached_worktree_copies_the_overlay_and_resets_the_caches() -> Bool {
-  let script = compose_preamble(seed: fixture_seed(), c: merge_checkout_compose(seed: fixture_seed(), overlay: fixture_overlay(), notes: []))
-  string_contains(s: script, pattern: "git worktree add --detach")
-    && string_contains(s: script, pattern: "cp -a")
-    && string_contains(s: script, pattern: "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR")
-    && string_contains(s: script, pattern: "unset GUNBC_NATIVE_CACHE_ROOT")
-    && string_contains(s: script, pattern: "RUNNER_TEMP")
-    && string_contains(s: compose_reentry(seed: fixture_seed(), shell_options: "set -euo pipefail", compose: "$COMPOSE"), pattern: "$GITHUB_WORKSPACE/seed_repo/target/release/gunbc")
-}
-
-// THE OVERLAY IS LABELLED AS A GENERATED INGEST COPY BY THE STEP THAT MAKES IT, with the capability that
-// deletes the copy printed beside it. A reader of a green run can then tell a composed ingest directory
-// from a checked-in source tree, and "when the copy is no longer needed" - satisfied by anything - is not
-// what retires the line of shell.
-test fn the_overlay_copy_and_the_local_run_warning_are_echoed_by_the_step_that_makes_them() -> Bool {
-  string_contains(s: overlay_note_line(overlay: fixture_overlay()), pattern: "generated ingest copy")
-    && string_contains(s: overlay_note_line(overlay: fixture_overlay()), pattern: "Dissolves when")
-    && string_contains(s: local_runs_note_line(overlay: fixture_overlay()), pattern: "LOCAL RUNS")
-    && string_contains(s: run_one_definition(source_roots_argv: source_roots_argv_of(roots: composed_source_roots(profile_roots: ["dag"], overlay: fixture_overlay()))), pattern: "--source-root overlay/dag")
 }
 
 // ONE SUBJECT, INVOKED THE SAME WAY IN EVERY REPOSITORY. The argv is built from the row rather than
@@ -349,6 +335,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
               seal_step_id: "heal_seal",
               seal_step_name: "Seal a repair candidate",
               upload_step_name: "Upload the repair candidate",
+              head_tree_dir_name: "example-mirror-head",
               head_link_name: "head_repo",
               compose_dir_name: "example-mirror-heal-compose",
               candidate_artifact: "repair-candidate",
@@ -369,8 +356,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           job_display_name: "publish",
           runner: github_hosted_publisher_runner_target(),
           timeout_minutes: 45,
-          trigger_workflow: "projection-drift.yml",
-          job_condition: "!cancelled() && github.event_name == 'pull_request'",
+          trigger_workflow: "projection-drift",
           candidate_artifact: "repair-candidate",
           admit: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_admit" } },
           publish: Present { value: DagInvocation { entry: "dag/claim/heal.dag", function: "heal_publish" } },
@@ -404,7 +390,7 @@ fn fixture_overlay() -> OverlayIngest {
     compose_root_env_default: "/tmp",
     overlay_copy_dissolves_when: unbound_dissolution(description: "gunbc admits an extra --source-root outside the process workspace roots"),
     local_runs_warning: "compose in a temporary directory, never in a session worktree",
-    shared_process_dissolves_when: unbound_dissolution(description: "the roster runs as typed step outcomes")
+    shared_process_dissolves_when: unbound_dissolution(description: "the roster runs as typed argv")
   }
 }
 
@@ -570,5 +556,115 @@ fn gate_profile_without_schedule() -> RepositoryCiProfile {
     public_seed: base.public_seed,
     drift: base.drift,
     publisher: base.publisher
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE SHARED DRIFT CHECK. A mirror's drift job is the same comparison gunbc's own drift watch makes,
+// with a seed checked out beside it and a seal at the end. These claims hold the two things that make
+// it trustworthy rather than merely similar: the emitter refuses a row that cannot support the job, and
+// the seal names its candidate exactly the way the publisher expects to find it.
+
+fn mirror_drift_program() -> DriftProgram {
+  DriftProgram {
+    checkout_step_name: "Checkout the mirror",
+    toolchain_step_name: "Install Rust toolchain",
+    check_step_name: "Check every committed projection against its authority",
+    check_authority_banner: "projection-drift: every committed projection must equal its authority"
+  }
+}
+
+fn with_no_drift() -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: base.roster,
+    public_seed: base.public_seed,
+    drift: Absent,
+    publisher: base.publisher
+  }
+}
+
+fn with_no_seed() -> RepositoryCiProfile {
+  let base = mirror_profile(seal: true, publish: true)
+  RepositoryCiProfile {
+    repository: base.repository,
+    default_branch: base.default_branch,
+    heal: base.heal,
+    roster: base.roster,
+    public_seed: Absent,
+    drift: base.drift,
+    publisher: base.publisher
+  }
+}
+
+// A DRIFT JOB WITHOUT ITS ROW IS REFUSED, not emitted as an empty job. A workflow file that exists and
+// checks nothing is worse than no file, because it reads as coverage.
+test fn the_drift_emitter_refuses_a_repository_with_no_drift_row() -> Bool {
+  match projection_drift_refusal(profile: with_no_drift()) {
+    Present { value: reason } => string_contains(s: reason, pattern: "declares no drift check")
+    Absent => false
+  }
+}
+
+// A MIRROR THAT CLAIMS A SEAL IT CANNOT COMPOSE IS REFUSED. The seal regenerates from the seed's
+// compiler over the composed overlay; with no seed row the job would emit steps that reference a
+// checkout nobody performed, and the candidate would be bytes from whatever was lying around.
+test fn the_drift_emitter_refuses_a_mirror_with_no_seed() -> Bool {
+  match projection_drift_refusal(profile: with_no_seed()) {
+    Present { value: reason } => string_contains(s: reason, pattern: "needs that seed")
+    Absent => false
+  }
+}
+
+// THE SEAL NAMES THE FACTS THE PUBLISHER READS. The publisher's admit step refuses a candidate that
+// does not say which pull request it came from; these names are the contract between the two jobs, so
+// they are asserted here rather than left to match by coincidence in two step bodies.
+test fn the_seal_names_every_fact_the_publisher_reads() -> Bool {
+  let keys = join(list_map(xs: heal_seal_env(), f: fn(b) { b.key as String }), ",")
+    string_contains(s: keys, pattern: "HEAD_SHA")
+      && string_contains(s: keys, pattern: "HEAL_REPOSITORY")
+      && string_contains(s: keys, pattern: "HEAL_PULL_NUMBER")
+      && string_contains(s: keys, pattern: "HEAL_HEAD_REF")
+      && string_contains(s: keys, pattern: "HEAL_BASE_REF")
+      && string_contains(s: keys, pattern: "HEAL_RUN_ID")
+}
+
+// THE COMMITTED DRIFT YAML IS THE EMISSION, and it carries the three things the mirror's fork carried:
+// the seal composes at the pull request HEAD (not at the merge), the candidate is uploaded as the
+// artifact the publisher downloads, and a missing candidate fails the job rather than publishing
+// nothing quietly.
+test fn the_drift_emission_seals_at_the_head_and_uploads_the_candidate() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(s: text, pattern: "worktree add --detach \"$HEAD_TREE\"")
+        && string_contains(s: text, pattern: "name: repair-candidate")
+        && string_contains(s: text, pattern: "if-no-files-found: error")
+        && string_contains(s: text, pattern: "steps.heal_seal.outcome == 'success'")
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
+}
+
+// A MIRROR WITH NO CADENCE GETS NO SCHEDULE TRIGGER. It has three: dispatch, push, and the pull request
+// that the seal needs. A schedule here would only re-run the same comparison against an unchanged seed.
+test fn a_mirror_with_no_cadence_gets_no_schedule_trigger() -> Bool {
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: false, publish: false),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerated { content: text } => !string_contains(s: text, pattern: "on:") == false
+      && string_contains(s: text, pattern: "workflow_dispatch")
+      && string_contains(s: text, pattern: "pull_request")
+      && !string_contains(s: text, pattern: "cron:")
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
   }
 }

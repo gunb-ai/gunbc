@@ -2,7 +2,7 @@ module gunbc.heal_publisher_workflow
 
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue, YamlValue }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
@@ -72,11 +72,11 @@ import gunbc.ci.ci_spec {
 // literals used to sit beside the step list while the profile also described the job; the row is now the
 // single description and this emitter is a projection of it, with the committed bytes checked against the
 // emission in dag/test/claim/repository_ci_profile_emission_bytes_witness.dag.
-fn heal_publisher_workflow_name() -> String { gunbc_heal_publisher_job().workflow_name as String }
+data heal_publisher_workflow_name: String = gunbc_heal_publisher_job().workflow_name as String
 
-fn heal_publisher_workflow_job_id() -> String { gunbc_heal_publisher_job().job_id as String }
+data heal_publisher_workflow_job_id: String = gunbc_heal_publisher_job().job_id as String
 
-fn heal_publisher_timeout_minutes() -> Int { gunbc_heal_publisher_job().timeout_minutes }
+data heal_publisher_timeout_minutes: Int = gunbc_heal_publisher_job().timeout_minutes
 
 data heal_publisher_no_job_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the repository's CI profile row declares no publisher (gunbc.ci.repository_ci_profile RepositoryCiProfile publisher is Absent). A publisher whose candidate source is not declared is a job that fires with nothing to publish - the shape this repository must not be able to commit. Delete .github/workflows/heal-publish.yml, or declare the heal or drift job that seals the candidate."
 
@@ -448,10 +448,20 @@ data heal_publisher_isolation_refusal_reason: String = "REFUSED gunbc.heal_publi
 
 data heal_publisher_capability_refusal_reason: String = "REFUSED gunbc.heal_publisher_workflow: the job's capability closure does not hold. No workflow yaml was emitted."
 
-fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
+// WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: a publisher job for a repository that declares no
+// publisher is a job that downloads a candidate nothing seals.
+fn heal_publisher_row_refusal() -> Optional<NonEmptyStr> {
   if repository_declares_publisher(profile: gunbc_repository_ci_profile()) == false {
-    HealPublisherWorkflowGenerationRefused { reason: heal_publisher_no_job_refusal_reason }
-  } else
+    Present { value: heal_publisher_no_job_refusal_reason }
+  } else {
+    Absent
+  }
+}
+
+fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutcome {
+  match heal_publisher_row_refusal() {
+    Present { value: reason } => HealPublisherWorkflowGenerationRefused { reason: reason as String }
+    Absent =>
   match admit_workflow_checkout_refs(workflow: heal_publisher_workflow, declared: []) {
     WorkflowCheckoutRefsRefused { refusals: crs } =>
       HealPublisherWorkflowGenerationRefused { reason: workflow_checkout_refs_refusal_reason(workflow_module: "gunbc.heal_publisher_workflow", refusals: crs) }
@@ -472,4 +482,5 @@ fn expected_heal_publisher_workflow_yml() -> HealPublisherWorkflowGenerationOutc
       }
   }
   }
+}
 }

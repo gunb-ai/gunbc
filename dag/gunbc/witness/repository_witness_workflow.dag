@@ -404,25 +404,12 @@ fn repository_witness_triggers(profile: RepositoryCiProfile) -> List<WorkflowTri
 }
 
 fn schedule_triggers(profile: RepositoryCiProfile) -> List<WorkflowTrigger> {
-  if count(profile.roster.schedule_hours) == 0 {
-    []
-  } else {
-    [Schedule { cron: hour_listed_cron(hours: profile.roster.schedule_hours) }]
+  match profile.roster.schedule {
+    Present { value: cron } => [Schedule { cron: cron }]
+    Absent => []
   }
 }
 
-// A CRON AT MINUTE ZERO OVER THE DECLARED HOURS. Minute zero because the row declares hours, and a
-// schedule whose minute is unstated is the kind of detail that silently shifts a nightly check by an
-// hour each time someone rewrites it.
-fn hour_listed_cron(hours: List<Int>) -> CronSchedule {
-  CronSchedule {
-    minute: Exact { value: 0 },
-    hour: Listed { values: hours },
-    day_of_month: Wildcard,
-    month: Wildcard,
-    day_of_week: Wildcard
-  }
-}
 
 // THE GATE'S JOB. The runner is a CiRunnerTarget projected to a spec
 // (gunbc.ci.ci_runner_target ci_runner_target_spec) rather than a label list, so moving a repository's

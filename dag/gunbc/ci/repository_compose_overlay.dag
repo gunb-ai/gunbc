@@ -160,11 +160,11 @@ fn compose_gunbc_run(overlay: OverlayIngest, source_roots_argv: String, entry: N
 // made. Derived rather than written into a row, because a row that lists the overlay root can go stale
 // against the row that names the overlay directory - and a stale root list resolves claims against a
 // corpus that is not the one on disk.
-fn composed_source_roots(profile_roots: List<NonEmptyStr>, overlay: OverlayIngest) -> List<NonEmptyStr> {
-  concat(profile_roots, [join([overlay.overlay_dir_name as String, "/dag"], "") as NonEmptyStr])
+fn composed_source_roots(profile_roots: List<String>, overlay: OverlayIngest) -> List<String> {
+  concat(profile_roots, [join([overlay.overlay_dir_name as String, "/dag"], "")])
 }
 
-fn source_roots_argv_of(roots: List<NonEmptyStr>) -> String {
+fn source_roots_argv_of(roots: List<String>) -> String {
   join(map(roots, r => join(["--source-root ", r as String], "")), " ")
 }
 
@@ -173,18 +173,24 @@ fn source_roots_argv_of(roots: List<NonEmptyStr>) -> String {
 // must be the one the reviewer is looking at, not the one GitHub merged. Same worktree discipline
 // (outside the root, detached, pruned), and the link to the tree is named so the seal's own
 // witnesses can say which tree generated the bytes.
-fn head_tree_compose(seed: PublicSeed, overlay: OverlayIngest, head_tree_dir_name: NonEmptyStr, head_link_name: NonEmptyStr) -> List<String> {
+fn head_tree_compose(
+  seed: PublicSeed,
+  overlay: OverlayIngest,
+  head_tree_dir_name: NonEmptyStr,
+  head_link_name: NonEmptyStr,
+  compose_dir_name: NonEmptyStr
+) -> List<String> {
   [
     "set -euo pipefail",
     "cd " + seed.checkout_path as String,
     "GUNBC=\"$PWD/" + seed.seed_binary_relative_path as String + "\"",
     "PRIVATE_ROOT=\"$(cd .. && pwd)\"",
-    "HEAD_TREE=\"${RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + head_tree_dir_name as String + "\"",
+    "HEAD_TREE=\"$\{RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + head_tree_dir_name as String + "\"",
     "git -C \"$PRIVATE_ROOT\" fetch --no-tags --depth=1 origin \"$HEAD_SHA\"",
     "rm -rf \"$HEAD_TREE\"",
     "git -C \"$PRIVATE_ROOT\" worktree prune",
     "git -C \"$PRIVATE_ROOT\" worktree add --detach \"$HEAD_TREE\" \"$HEAD_SHA\"",
-    "COMPOSE=\"${RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + overlay.compose_dir_name as String + "\"",
+    "COMPOSE=\"$\{RUNNER_TEMP:-" + overlay.compose_root_env_default as String + "}/" + compose_dir_name as String + "\"",
     "rm -rf \"$COMPOSE\"",
     "git worktree prune",
     "git worktree add --detach \"$COMPOSE\" HEAD",
@@ -199,14 +205,19 @@ fn head_tree_compose(seed: PublicSeed, overlay: OverlayIngest, head_tree_dir_nam
 
 // THE SEAL'S ENVIRONMENT. Names the publisher's admit step reads, so they are shared vocabulary and not
 // per-repo configuration: the publisher refuses a candidate whose seal did not name the pull request.
-fn heal_seal_env() -> List<(String, String)> {
+type SealEnvBinding {
+  key: NonEmptyStr
+  value: NonEmptyStr
+}
+
+fn heal_seal_env() -> List<SealEnvBinding> {
   [
-    ("HEAD_SHA", "${{ github.event.pull_request.head.sha }}"),
-    ("HEAL_REPOSITORY", "${{ github.repository }}"),
-    ("HEAL_PULL_NUMBER", "${{ github.event.pull_request.number }}"),
-    ("HEAL_HEAD_REF", "${{ github.event.pull_request.head.ref }}"),
-    ("HEAL_BASE_REF", "${{ github.event.pull_request.base.ref }}"),
-    ("HEAL_RUN_ID", "${{ github.run_id }}")
+    SealEnvBinding { key: "HEAD_SHA", value: "${{ github.event.pull_request.head.sha }}" },
+    SealEnvBinding { key: "HEAL_REPOSITORY", value: "${{ github.repository }}" },
+    SealEnvBinding { key: "HEAL_PULL_NUMBER", value: "${{ github.event.pull_request.number }}" },
+    SealEnvBinding { key: "HEAL_HEAD_REF", value: "${{ github.event.pull_request.head.ref }}" },
+    SealEnvBinding { key: "HEAL_BASE_REF", value: "${{ github.event.pull_request.base.ref }}" },
+    SealEnvBinding { key: "HEAL_RUN_ID", value: "${{ github.run_id }}" }
   ]
 }
 
