@@ -8,7 +8,7 @@ import extdeps.google.userinfo
 import extdeps.auth.oidc { OidcStandardClaims }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, GcpService, GcpStorage, gcp_service_api_id, GoogleRpcStatus }
 import extdeps.cloud.gcp.iam_admin
-import extdeps.cloud.gcp.iam_deny
+import extdeps.cloud.gcp.iam_deny { GcpDenyPolicyWire }
 import extdeps.cloud.gcp.serviceusage { gcp_service_usage_state_from_wire, ServiceUsageStateEnabled, ServiceUsageStateDisabled }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam {
@@ -433,8 +433,22 @@ fn iam_bootstrap_ensure_deny(token: Secret) -> String {
   fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else { iam_bootstrap_ensure_deny_bounded(policy: d, token: token, remaining: 0) })
 }
 
+// IAM v2 policy reads are limited to 10 per minute per credential; the ceremony reads three deny
+// policies more than once, and on 2026-10-28 (receipt iam-ceremony-20261028T150131Z) a read answered
+// 429. A 429 waits and re-reads within a fixed bound; any other answer is returned as read.
+fn iam_bootstrap_deny_read(policy_id: NonEmptyStr, token: Secret, remaining: Int) -> RestResult<GcpDenyPolicyWire> {
+  let read = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy_id)
+  match read {
+    RestRefused { refusal: RestStatusRefused { status, body: _ } } =>
+      if (status as Int) == 429 && remaining > 0 && sleep_delay_seconds_second_carrier_projection(duration: second(count: 15)) {
+        iam_bootstrap_deny_read(policy_id: policy_id, token: token, remaining: remaining - 1)
+      } else { read }
+    _ => read
+  }
+}
+
 fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
-  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
+  match iam_bootstrap_deny_read(policy_id: policy.policy_id, token: token, remaining: 6) {
     RestAnswered { answer: seen } =>
       if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { join([policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: seen_refusal } =>
@@ -794,7 +808,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     BootstrapTrustRootTags => trust_root_tags_stage_text(o: iam_bootstrap_ensure_trust_root_tags(token: token))
     BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
     BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
-      match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
+      match iam_bootstrap_deny_read(policy_id: d.policy_id, token: token, remaining: 6) {
         RestAnswered { answer: seen } =>
           if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { join([d.policy_id as String, ": existing deny policy differs; no authority granted; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: d.rules })], "") }
         RestRefused { refusal: seen_refusal } =>
@@ -1354,7 +1368,7 @@ fn iam_bootstrap_current_authority_live() -> Bool {
 
 // An accepted asynchronous create is followed only by bounded reads, never another create.
 fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
-  match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
+  match iam_bootstrap_deny_read(policy_id: policy.policy_id, token: token, remaining: 6) {
     // CreatePolicy is a long-running operation: a read just after it can answer the policy before its
     // rules are visible (2026-10-28, receipt iam-ceremony-20261028T142632Z refused "differs" on a
     // policy that read back exactly minutes later), so a rule-less answer is pending, not a mismatch.
