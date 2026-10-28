@@ -1,0 +1,88 @@
+module gunbc.recurring_failure_mode.interpreted_recursion_depth_is_host_stack
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { CeilingNotStated, RecurringFailureMode, RungUnread }
+
+data interpreted_recursion_depth_is_host_stack: RecurringFailureMode = RecurringFailureMode {
+  identity: "interpreted_recursion_depth_is_host_stack" as NonEmptyStr,
+
+  // FOUND AT rung 1, mitigatable per site: an author can rewrite one recursion into the intercepted
+  // fold and that site stops consuming stack (three sites were, in gunbc#15258). The CEILING is
+  // deliberately not stated here because it is not this row's to state: removing the cost class
+  // entirely is a native-execution / interpreter-retirement question, which is another manager's
+  // authority (Manager 2, native execution). So the row is filed unread on the ceiling rather than
+  // guessing one, and the routing ask is recorded in the last receipt.
+  rung: RungUnread { cause: CeilingNotStated },
+
+  receipts: [
+    "INVALID STATE: a `.dag` function whose recursion count grows with the size of its input runs on
+     the v1 interpreter, and the interpreter gives every interpreted call a host frame. Call depth is
+     therefore host stack depth. Nothing in the source says so: the function parses, type-checks, and
+     is correct on every small input, and it fails only when some consumer hands it a big one. The
+     failure can also arrive as someone else's death, because the recursion is a property of the
+     CALLEE's shape and the frame belongs to whoever's witness happens to be running.",
+
+    "WHY IT LOOKS SAFE AND ISN'T, and this is the instructive part. Tail position is not a mitigation
+     HERE. The v1 interpreter performs NO tail-call optimization: `tco`, `tail call` and `trampoline`
+     appear nowhere in src/v1/stage0/src/v1_interpreter.rs, and the only interpreted functions the
+     interpreter realizes natively at all are fold_list and fold_list_right (arms
+     `native_intercept.fold_list`, `native_intercept.fold_list_right`). `__tco_loop` -- the marker that
+     makes people believe the recursion is handled -- is produced by the EMITTER
+     (is_tco_eligible / emit_shared_tco_expr in src/v1/05_emit.dag) and exists only in generated Rust.
+     So a function can carry a __tco_loop in its mirror, be genuinely O(1) on the native lane, and
+     still put one host frame per element on the wet lane, which is what `claim_batch --claim-run`
+     executes. Checking the emitted Rust proves the native lane; it says nothing about the interpreted one.",
+
+    "TWO REPORTING SURFACES FOR THE ONE CAUSE, which is why this class reads as two unrelated bugs.
+     Below the interpreter's own ceiling the recursion is invisible. Cross the ceiling and the wet lane
+     refuses LOUDLY with a typed runtime error that names the function (`call depth exceeded ... at fn
+     '<name>' ... refused, never a host stack overflow`). Cross it on a path the ceiling does not
+     intercept and the process dies SILENTLY by host stack overflow (rc=134, `thread 'main' has
+     overflowed its stack`), naming nothing -- and the claim that dies is whatever witness was running,
+     not the function at fault. Both were observed in gunbc#15258 on two shapes of the same defect: a
+     list comparator refused by name at its ceiling, while a census witness that merely imported a long
+     list aborted on the host stack after hours.",
+
+    "HOW THE FAULTY FRAME WAS FOUND, since the crash names nothing. The before-receipt for the host
+     abort was 13,737 identical host frames (call_function -> call_function_dispatch -> call_function_inner
+     -> eval_expr -> eval_pure_named_call), which identifies the interpreter but not the .dag function.
+     The instrument that does name it is a call-depth trace over call_function_dispatch that prints the
+     callee's own symbol at each new maximum depth (a temporary print in a scratch copy; the interpreter
+     has no such hook today). It showed depth climbing by a FIXED STEP per sibling through a mutual
+     family -- a pair comparator calling two node comparison functions calling it back -- which is the
+     signature of a frame held across a recursive call rather than a list walked once. Corollary the
+     trace forces on any classifier: a +N-per-iteration pattern with N > 1 is a MUTUAL family, so
+     single-function scanning under-reports this class structurally. Reading the fix's shape off
+     `tail_position` alone is likewise wrong in this lane: what costs a frame is a call whose result is
+     still needed -- inside `&&` or `||`, a constructor field, an argument, a comparison -- AND, because
+     there is no tail-call optimization, a pure self-tail loop too. The last of these is what makes the
+     population big: tail-recursive walkers written in the good style are still charged.",
+
+    "THE POPULATION, sized rather than guessed. A source scan over dag/ and src/v2/ for self-recursive
+     call sites in a frame-holding position found 1,726 sites across 1,248 distinct functions; adding
+     the pure-self-tail shape the wet lane also charges raises the population further. The census table
+     (top sites by count, with the statement text) is in the gunbc#15258 PR body. This row does NOT
+     promise to rewrite them: per-site rewrites are rung 1 work and were taken only where a named
+     consumer was blocked. The list is the population, not a to-do; the count is the finding.",
+
+    "WHAT IS NOT CLAIMED. No site here is proven reachable with an input large enough to die -- most
+     are never called with anything long. The claim is about the COST MODEL (depth is unpriced and
+     charged to a shared host stack, so the failure is deferred to whichever consumer crosses the line)
+     and about the two surfaces that make it unattributable. A site with no large-input consumer is not
+     a defect waiting to be fixed; it is why the class goes unnoticed.",
+
+    "CEILING AND TRIGGER, deliberately left to their owner. The per-site mitigation exists and works
+     (rewrite the walk through the intercepted fold). The class only disappears when the wet lane stops
+     being the execution surface, i.e. under native execution / interpreter retirement -- Manager 2's
+     authority. Filing the row with its ceiling unstated is the honest state, and routing it there is
+     recorded as the ask rather than assumed.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "std.algebra", decl_name: "zip_eq"),
+    decl_ref(module_path: "std.algebra", decl_name: "list_init"),
+    decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: "dag_string_framed_body_optional"),
+    decl_ref(module_path: "v2.test.claim.algebra.list_linear_combinators", decl_name: "zip_eq_compares_a_list_too_long_to_recurse_over"),
+  ],
+}
