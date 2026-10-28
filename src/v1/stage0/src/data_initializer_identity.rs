@@ -360,19 +360,6 @@ pub fn build_type_decl_index(
     }
 }
 
-impl TypeDeclIndex {
-    /// The module that DECLARED the coproduct with this bare name, first-declarer-wins -- the same
-    /// authority `decode_nullary_coproduct` reaches through `module_path_for_type_decl_node`. The
-    /// wire-policy fold keys CoproductWireContract rows by (declaring module, decl name) exactly as
-    /// `build_coproduct_wire_contract_index` does, so a row aimed at another module's same-named
-    /// coproduct governs nothing here (RFM coproduct_wire_contract_target_not_local_in_emitted_extdeps_github).
-    pub fn declaring_module_for_coproduct(&self, bare_name: &str) -> Option<String> {
-        self.coproduct_by_bare_name
-            .get(bare_name)
-            .map(|(_node, module_path)| module_path.clone())
-    }
-}
-
 fn declaration_identity_for_type_item(
     ctx: &InterpContext,
     type_item: &Rc<Node>,
