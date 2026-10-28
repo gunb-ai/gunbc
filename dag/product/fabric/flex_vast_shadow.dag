@@ -4,7 +4,7 @@ import product.fabric.flex_serving_image { flex_lil_serving_image, flex_serving_
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.types { NonEmptyStr, String, Bool, Int, List, Port, EpochMs }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_5000_72gb_catalog, nvidia_rtx_pro_6000_workstation_catalog, nvidia_rtx_pro_6000_max_q_catalog, nvidia_rtx_pro_6000_server_catalog }
 import std.integer { int_to_decimal_string }
 import std.measure {
@@ -545,7 +545,7 @@ fn vast_gpu_ram_bytes(gpu_ram_mb: Int) -> ByteSize? {
 // 2026-10-18 operator read-only search; a name outside the table maps to no row rather than a guess.
 type FlexVastEditionName {
   gpu_name: String
-  catalog: GpuModelCatalogRow
+  catalog: GpuDeviceCatalogRow
 }
 
 data flex_vast_pro_6000_editions: List<FlexVastEditionName> = [
@@ -582,7 +582,7 @@ fn flex_vast_offer_query(recipe: ServingRecipe) -> VastAiOfferQuery? {
 }
 
 // INGEST: a Vast gpu_name to the cited catalog row it names; the PRO 6000 editions come from the table above.
-fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuModelCatalogRow? {
+fn flex_vast_gpu_catalog_row(gpu_name: String) -> GpuDeviceCatalogRow? {
   if string_contains(s: gpu_name, pattern: "RTX PRO 6000") {
     match first_where(flex_vast_pro_6000_editions, e => e.gpu_name == gpu_name) {
       Present { value: e } => Present { value: e.catalog }
