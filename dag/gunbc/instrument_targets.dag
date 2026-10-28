@@ -295,7 +295,7 @@ fn v2_native_census_scoped_label() -> Label {
 }
 
 fn v2_native_census_scoped_subject() -> PackageName {
-  PackagePath { segments: ["v2", "test", "claim", "parse", "expression_bodied_fn_decl_parse"] }
+  PackagePath { segments: ["v2", "workflow", "roster_import_sweep"] }
 }
 
 // THE NOMINAL-TYPE PLAN'S M0 (docs/plans/nominal-type-declaration-plan.md section 2): every type
