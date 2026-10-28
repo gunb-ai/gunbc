@@ -322,7 +322,7 @@ jobs:
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
       - name: Sweep the receipt paths with the tree's own import sweep (receipt legs only)
-        if: github.ref_name == 'receipt/base' || github.ref_name == 'receipt/head'
+        if: always() && (github.ref_name == 'receipt/base' || github.ref_name == 'receipt/head')
         run: |
           set -e
           sha256sum target/release/gunbc > "$RUNNER_TEMP"'/instrument-dispatch/binary.txt'
