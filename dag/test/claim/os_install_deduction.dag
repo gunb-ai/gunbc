@@ -2,14 +2,14 @@ module test.claim.os_install_deduction
 
 
 import extdeps.uri { Uri, Https }
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer }
+import extdeps.os.ubuntu_autoinstall { NoCloudLocal, StoragePolicyDirectLayout, UbuntuAutoinstallPayload, AutoinstallSshServer, WithIdentity }
 import std.optional { Present }
 import gunbc.os_install_deduction { AutoinstallIncompleteNotBootable, ForeignOsPresent, KvmOperatorAttestation, LoginPrompt, RequiresStoragePolicy, SubiquityStorageScreen, UnknownDiskState, fold_nbd_proxy_os_install_preflight_verdict, plan_for_os_install_preflight_verdict, runtime_verdict_from_kvm_attestation }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import std.types { Bool }
 import std.live_tree { LiveTreeDisposition }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
-import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall_on_iso }
+import gunbc.os_install { srv3_autoinstall_identity, srv3_ubuntu_autoinstall, srv3_ubuntu_autoinstall_on_iso, srv4_ubuntu_autoinstall_on_iso }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -17,7 +17,7 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: srv3_autoinstall_identity,
+  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -29,7 +29,7 @@ data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoi
   delivery: NoCloudLocal,
   fully_automated: true,
   target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: srv3_autoinstall_identity,
+  identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -111,7 +111,7 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
     },
     fully_automated: true,
     target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: srv3_autoinstall_identity,
+    identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
@@ -148,6 +148,33 @@ test fn direct_layout_emits_storage_yaml() -> Bool {
   }
 }
 
+// THE IDENTITY ROUTE STILL WRITES THE COMMENTED AUTHORIZED-KEY LINE — pinned in bytes, not asserted.
+// gunbc.os_install_emit writes an authorized key two ways and the ENTRY ROUTE decides, because the two routes
+// ship the document somewhere with different rules: the key-only route's document is published on a public
+// NoCloud volume, where the seed contract admits keytype+blob and no comment, while the identity route's goes
+// to a BMC-staged volume and to srv3's seeded ISO. Canonicalizing the identity route too would have stripped
+// the comments off documents LIVE INSTALLS consume, with nothing recording it (DESIGN.md §4b). The three
+// payloads below are the fleet's live autoinstalls; each is a WithIdentity payload with an ssh section, so each
+// is exactly where a silent byte change would have landed. The expected lines are literals on purpose — a
+// witness that calls the renderer to produce its own expectation checks nothing.
+fn renders_identity_route_key_line(payload: UbuntuAutoinstallPayload, line: String) -> Bool {
+  match autoinstall_user_data(payload: payload) {
+    AutoinstallUserDataRefused { reason: _ } => false
+    AutoinstallUserDataRendered { content: ud } => ud.contains(line)
+  }
+}
+
+data macbook_key_line_with_comment: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKgumC/OBjsSgM266FLtgKJpF179Aj/MzEZHQH79QRQF macbook-m4"
+
+data automation_key_line_with_comment: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN fleet-automation@gunbc"
+
+test fn the_identity_route_still_writes_commented_authorized_keys() -> Bool {
+  renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall, line: macbook_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall, line: automation_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv3_ubuntu_autoinstall_on_iso, line: macbook_key_line_with_comment)
+    && renders_identity_route_key_line(payload: srv4_ubuntu_autoinstall_on_iso, line: automation_key_line_with_comment)
+}
+
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
   match runtime_verdict_from_kvm_attestation(
     attestation: KvmOperatorAttestation {
@@ -169,7 +196,7 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
     delivery: NoCloudLocal,
     fully_automated: false,
     target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: srv3_autoinstall_identity,
+    identity_posture: WithIdentity { identity: srv3_autoinstall_identity, user_data: Absent },
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     ssh: Present { value: AutoinstallSshServer { authorized_keys: [], password_auth: false } },
