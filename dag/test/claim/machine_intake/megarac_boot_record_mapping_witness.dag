@@ -63,14 +63,26 @@ import extdeps.bmc.megarac { MegaRacRedirectionStatus, RedirectionStartedConnect
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.endpoint { AmiMegaRac }
 import gunbc.host.boot_attempt {
-  ConsoleReading, ConsoleNotConfigured, ConsoleUnread, ConsoleExceedsBound, NotRetained,
-  AttemptIdentityReading, DiagnosticRetained, DiagnosticNotRetained, DiagnosticUnavailable,
-  run_record_findings, run_record_derived_findings,
+  AttemptIdentityReading,
+  DiagnosticRetained,
+  DiagnosticNotRetained,
+  DiagnosticUnavailable,
+  run_record_findings,
+  run_record_derived_findings,
   boot_attempt_console_reading_decl_ref,
   boot_attempt_console_debt_status,
   boot_attempt_console_debt_refs,
   boot_attempt_console_debt_outstanding,
-  TerminalMarker, TerminalNotObserved, AttemptRunId,
+  TerminalMarker,
+  TerminalNotObserved,
+  AttemptRunId,
+}
+import gunbc.host.boot_console_observation {
+  ConsoleReading,
+  ConsoleNotConfigured,
+  ConsoleUnread,
+  ConsoleExceedsBound,
+  NotRetained,
 }
 import gunbc.machine_intake.megarac_boot_diagnostic_bundle {
   megarac_boot_run_record, MegaRacRunRecord, BootParam5Reading, BootParam5NotTaken,
@@ -888,18 +900,35 @@ test fn harness_findings_come_through_the_same_call() -> Bool {
 // and the trigger for ending it used to live only in `//` prose. It is now a DissolutionCondition; these
 // four claims are what keep the carrier from being a comment wearing a type.
 
-// (a) THE CARRIER NAMES SOMETHING THAT EXISTS TODAY, in this module. Deliberately a retirement trigger,
-// not the forward shape: naming gunbc.host.boot_console_observation before anyone declared it would be a
-// promise about a name someone may still choose not to use -- the fabricated-citation class a runner spec
-// refuses by name.
-test fn the_console_debt_carrier_names_a_declaration_that_exists_in_the_core() -> Bool {
-  boot_attempt_console_reading_decl_ref.module_path == "gunbc.host.boot_attempt"
-    && boot_attempt_console_reading_decl_ref.decl_name == "ConsoleReading"
+// (a) THE CARRIER NAMES WHAT WAS DECLARED WHEN THE DEBT WAS ADMITTED -- a retirement trigger, and
+// it keeps that shape AFTER the re-home (4d-ii, node://adhoc-18598508-4f4). The carrier is not
+// rewritten when the debt discharges: it names the RETIRED homes (this module's own ConsoleReading
+// plus the five borrowings from two machine-named modules), because that is what makes the condition
+// verifiable -- the census lacks them. A carrier repointed at the neutral home would become a forward
+// citation, the class std.dissolution's header refuses; a carrier emptied out would erase the debt's
+// history rather than discharge it. So: exactly one local ref and five machine-named refs from
+// exactly the two retired modules, and NO ref names gunbc.host.boot_console_observation -- the
+// trigger never points at its own successor.
+test fn the_console_debt_carrier_names_the_retired_homes() -> Bool {
+  let census = boot_attempt_console_debt_refs
+  let local = filter(census, r => r.module_path == "gunbc.host.boot_attempt")
+  let machine_named = filter(census, r => r.module_path != "gunbc.host.boot_attempt")
+  declaration_ref_eq(a: boot_attempt_console_reading_decl_ref, b: decl_ref(module_path: "gunbc.host.boot_attempt", decl_name: "ConsoleReading"))
+    && length(xs: local) == 1
+    && length(xs: machine_named) == 5
+    && all(machine_named, r =>
+      r.module_path == "gunbc.machine_intake.mtcollins1_power_on_account"
+        || r.module_path == "gunbc.machine_intake.mtcollins1_console_milestone_observation")
+    && length(xs: filter(census, r => r.module_path == "gunbc.host.boot_console_observation")) == 0
 }
 
-// (b) THE DEBT IS LIVE TODAY, and the carrier says so on a census that actually contains the reading.
-// A witness that asserted the fired arm here would be the decorative carrier in a different costume.
-test fn the_console_debt_is_live_while_the_core_still_declares_the_reading() -> Bool {
+// (b) PENDING IS STILL REACHABLE, so Fired stays a verdict and not a default. The claim this slot
+// carried asserted the PENDING arm as THE STATE OF THE WORLD ("live today while the core still
+// declares the reading"); after the re-home the world says Fired (claim (d) reads that off the real
+// corpus), and the honest residual here is the fold's liveness: given a census that DOES hold the
+// retired refs, the fold answers Pending. A witness that could only ever reach Fired would be the
+// decorative carrier in different clothes (DESIGN §6: the condition is exercised, not described).
+test fn the_console_debt_fold_still_says_live_on_a_census_holding_the_refs() -> Bool {
   match boot_attempt_console_debt_status(present_decls: boot_attempt_console_debt_refs) {
     DissolutionPending => true
     _ => false
@@ -960,22 +989,22 @@ test fn the_console_debt_carrier_fires_when_the_reading_retires() -> Bool {
   while_present && after_retirement && one_left
 }
 
-// (d) THE FOLD READS THE DECLARATION POPULATION IT CLAIMS TO WATCH, not the carrier's own list.
-// (review 86612; DESIGN §6: "a lens nothing gates on is itself a lie", §3c: a witness asserting
-// existence rather than exercising behavior). Claims (b)/(c)/(c2) above hand the fold a census the
-// witness assembled from the carrier itself, so they pin the fold's LOGIC but nobody ever feeds it the
-// corpus the leak sentence talks about -- nothing could ever make the fold read Fired, and the typed
-// carrier was still prose in a type's clothes. This claim is the consumer that closes that: the
-// population handed to the fold is BUILT FROM A CORPUS READ (v2.std.decl_index decl_facts_at, one keyed
-// read of every borrowing's qualified name -- the keyed read because a per-element uncached lookup
-// re-walked the whole pool, measured 91s each), so the fold answers about declarations that exist in
-// `dag`, not about a list it was handed. It also holds the carrier to being a census and not a guess:
-// each borrowed name must resolve to EXACTLY ONE row (zero = the carrier names something the corpus
-// does not declare, i.e. the fabricated-citation class; two = an ambiguous citation nobody can audit),
-// and the population must be non-empty, because std.dissolution's header warns an EMPTY census reads
-// Fired -- "nothing is present" is not a verdict. Today every borrowing resolves, so the fold says
-// PENDING against the real corpus; when the re-home (work item node://adhoc-de73c7a1-87b) retires one,
-// its row disappears from the read, the derived population shrinks, and this claim is what reports it.
+// (d) THE FOLD READS THE DECLARATION POPULATION IT CLAIMS TO WATCH, not the carrier's own list,
+// AND THE DEBT IS DISCHARGED (review 86612; DESIGN §6: "a lens nothing gates on is itself a lie",
+// §3c: a witness asserting existence rather than exercising behavior; the 4d-ii re-home,
+// node://adhoc-18598508-4f4). Claims (b)/(c)/(c2) hand the fold censuses the witness assembles, so
+// they pin its LOGIC; this claim feeds it the CORPUS (v2.std.decl_index decl_facts_at, one keyed read
+// of every borrowing's qualified name -- the keyed read because a per-element uncached lookup re-walked
+// the whole pool, measured 91s each). Before the re-home, each of the six borrowed names resolved to
+// EXACTLY ONE row and the fold read PENDING against the real corpus; the re-home retired all six into
+// gunbc.host.boot_console_observation, so today each must resolve to ZERO rows (the census lacks every
+// borrowing -- an absent ref here means the retirement regressed), the derived population is EMPTY of
+// debt items, and the fold reads FIRED. Fired must not be the empty-census artifact std.dissolution's
+// header warns about ("nothing is present" is not a verdict): the census the fold is handed therefore
+// CARRIES CONTROL DECLARATIONS -- live names from the retired modules' neighbourhood and from the
+// neutral home, which resolve to real rows -- so the census is a populated read and Fired is reached
+// because the debt items are individually absent, not because the read came back empty. The controls
+// also pin the successor: ConsoleReading and span_console_readings ARE declared at the neutral home.
 fn console_debt_qualified_name(ref: DeclarationRef) -> String {
   concat(ref.module_path as String, concat(".", ref.decl_name as String))
 }
@@ -984,27 +1013,46 @@ fn console_debt_present_in_corpus(facts: List<DeclFact>, ref: DeclarationRef) ->
   length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: ref), facts: facts)) > 0
 }
 
-test fn the_console_debt_fold_reads_the_real_declaration_population() -> Bool {
+// The live neighbours the census carries so its Fired is a verdict about ABSENT DEBT ITEMS and not
+// about an empty read: three declarations the core still declares, the three boot-row facts the moved
+// console readers feed, and the neutral home's own successors for two of the retired names.
+fn console_debt_control_decls() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "gunbc.host.boot_attempt", decl_name: "StaleMediumPowerOff"),
+    decl_ref(module_path: "gunbc.host.boot_attempt", decl_name: "MediaAttachRecord"),
+    decl_ref(module_path: "gunbc.host.boot_attempt", decl_name: "BootRunRecord"),
+    decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "ConsoleReading"),
+    decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "span_console_readings"),
+    decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "ConsoleMilestoneObservation"),
+    decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "mtcollins1_console_milestones"),
+    decl_ref(module_path: "gunbc.host.boot_console_observation", decl_name: "console_milestone_sighting_text"),
+  ]
+}
+
+test fn the_console_debt_fold_reads_the_real_corpus_and_reads_discharged() -> Bool {
   let refs = boot_attempt_console_debt_refs
+  let controls = console_debt_control_decls()
   let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_names: map(refs, r => console_debt_qualified_name(ref: r)),
+    qualified_names: map(refs ++ controls, r => console_debt_qualified_name(ref: r)),
     type_names: [],
   )
-  // the carrier cites live declarations: one row each, none missing, none ambiguous.
-  let each_named_once = all(refs, r =>
+  // every RETIRED name resolves to ZERO rows: the census lacks the debt -- and the CONTROLS each
+  // resolve to exactly one, proving the read is a populated census and Fired is not the empty-census
+  // artifact.
+  let retired_all_absent = all(refs, r =>
+    length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: r), facts: facts)) == 0)
+  let controls_live = all(controls, r =>
     length(xs: decl_facts_matching_qualified_name(qn: console_debt_qualified_name(ref: r), facts: facts)) == 1)
-  // the population the fold is asked about comes out of that read.
-  let corpus_decls = filter(refs, r => console_debt_present_in_corpus(facts: facts, ref: r))
-  let read_is_a_population = length(xs: corpus_decls) == length(xs: refs)
-  // and the fold, given THAT, says the debt is live -- Pending rather than the empty-census Fired.
-  let fold_over_corpus = match boot_attempt_console_debt_status(present_decls: corpus_decls) {
-    DissolutionPending => true
+  // the population handed to the fold: controls only (no debt item is present in the corpus).
+  let census = controls
+  // and the fold, given THAT, says the debt is discharged -- Fired, not Pending.
+  let fold_over_corpus = match boot_attempt_console_debt_status(present_decls: census) {
+    DissolutionFired => true
     _ => false
   }
-  let outstanding_matches_corpus =
-    length(xs: boot_attempt_console_debt_outstanding(present_decls: corpus_decls)) == length(xs: corpus_decls)
-  each_named_once && read_is_a_population && fold_over_corpus && outstanding_matches_corpus
+  let nothing_outstanding = length(xs: boot_attempt_console_debt_outstanding(present_decls: census)) == 0
+  retired_all_absent && controls_live && fold_over_corpus && nothing_outstanding
 }
 
 // ── THE DERIVED FINDINGS, READ OUT OF THE FIELDS THE MAPPING FILLS ────────────────────────────────

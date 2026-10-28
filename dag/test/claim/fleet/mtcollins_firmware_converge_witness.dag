@@ -29,7 +29,7 @@ import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.mtcollins1_power_on_account {
   PowerOnAccount, PowerOnEvidence, AttemptConfigurationReceipt, ConsoleRead, HandoffPoweredOn, SelEventsRead, WatchdogUnobserved,
   ExpectedSockets, StimulusRequestNotRecorded, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
-  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback, span_console_readings,
+  FirmwareSetBootReadback, RestartedRepeatedly, mtcollins1_power_on_account, firmware_set_boot_readback,
 }
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.tools.sha256sum { Sha256FileDigest }
@@ -37,7 +37,9 @@ import extdeps.bootloader.grub { grub_console_report }
 import gunbc.machine_intake.pre_os_bringup_verdict { firmware_console_report }
 import gunbc.machine_intake.ampere_dram_console_observation { ampere_dram_console_observation }
 import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_checkpoint_console_observation }
-import gunbc.machine_intake.mtcollins1_console_milestone_observation { mtcollins1_console_milestones }
+import gunbc.host.boot_console_observation { mtcollins1_console_milestones }
+import gunbc.host.boot_console_observation { span_console_readings }
+import gunbc.machine_intake.ampere_checkpoint_console_observation { ampere_console_span_lines }
 import gunbc.machine_intake.ampere_socket_console_observation { ampere_socket_console_observation }
 import gunbc.machine_intake.linux_boot_console_observation { linux_boot_console_observation }
 import gunbc.machine_intake.kernel_module_decompression_observation { kernel_module_decompression_observation }
@@ -927,7 +929,7 @@ test fn whole_set_grounded_asks_for_the_boot_readback() -> Bool {
 // ── THE POST-SET READBACK IS DERIVED FROM A POWER-ON ACCOUNT, never authored (ruling R1) ─────────
 // The accounts below run the real console readers over console text: the 2026-10-03 loop from its
 // committed capture excerpt, and the UEFI cases from the lines the firmware summary and the AMI setup
-// prompt print (gunbc.machine_intake.mtcollins1_console_milestone_observation).
+// prompt print (gunbc.host.boot_console_observation, re-homed from gunbc.machine_intake.mtcollins1_console_milestone_observation in 4d-ii).
 // branch mtcollins1-captures-2026-10-03, mtcollins1/step1-j1j17-20261003T042447Z/sol.raw
 // (sha256 6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1), lines 138-205;
 // excerpt sha256 edbcaabead8194544201251f9a8a5eb26ba3dfbb8da1caec9627487f260d153d.
@@ -955,7 +957,7 @@ fn account_over(lines: List<String>, restarts: List<SelWindowEvent>) -> PowerOnA
       capture: digest, firmware: firmware_console_report(lines: lines), firmware_error_lines: 0,
       dram: ampere_dram_console_observation(lines: lines), checkpoints: ampere_checkpoint_console_observation(lines: lines), relations: [],
       milestones: mtcollins1_console_milestones(lines: lines), sockets: ampere_socket_console_observation(lines: lines),
-      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(lines: lines),
+      loader: grub_console_report(lines: lines), linux: linux_boot_console_observation(lines: lines), modules: kernel_module_decompression_observation(lines: lines), span_readings: span_console_readings(spans: ampere_console_span_lines(lines: lines)),
     },
     sel: SelEventsRead { events: restarts }, watchdog: WatchdogUnobserved { reason: "witness" }, bmc_anomalies: [], census_ended: false, coverage: [],
   })

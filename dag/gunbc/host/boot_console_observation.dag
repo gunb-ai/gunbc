@@ -1,0 +1,572 @@
+module gunbc.host.boot_console_observation
+
+// THE CONSOLE OBSERVATIONS THE NEUTRAL BOOT CORE BORROWS, AT HOME (the 4d-ii re-home;
+// work item node://adhoc-18598508-4f4, the follow-up named by gunbc.host.boot_attempt's
+// admitted-debt paragraphs and carried on its typed carrier boot_attempt_console_debt_refs).
+//
+// WHY THIS MODULE EXISTS. gunbc.host.boot_attempt is the neutral boot core: it declares no
+// machine-named vocabulary and imports no controller-protocol type. That held per-DECLARATION
+// but not per-CLOSURE (review 85832): the core borrowed six console declarations out of two
+// machine-named modules -- SpanConsoleReading and span_console_readings from
+// gunbc.machine_intake.mtcollins1_power_on_account, and the console milestone module's
+// ConsoleMilestoneObservation, mtcollins1_console_milestones and console_milestone_sighting_text
+// from gunbc.machine_intake.mtcollins1_console_milestone_observation -- and those imports dragged
+// the machines' protocol closure (SEL/SDR/Redfish line parsers) into the core's. The debt was
+// admitted with a retirement trigger a program can read (review 81187, DESIGN §5): the fold
+// boot_attempt_console_debt_status over std.dissolution retires_dissolution of those six
+// declarations. This module is the re-home that fires it: the six names are no longer declared
+// where the carrier says they were, so the census lacks every item and the fold reads Fired --
+// discharged, not reworded. The carrier keeps naming the RETIRED homes; that is what a retirement
+// trigger is (std.dissolution's header says so: a trigger naming a not-yet-existing module is the
+// fabricated-citation failure mode, so the carrier names what WAS declared there and this module
+// declares the successors).
+//
+// WHAT MOVED IN, AND WHERE IT CAME FROM.
+// - The console capture and its reading, verbatim from gunbc.host.boot_attempt's CONSOLE READING
+//   AND WRITE block: CaptureContents, capture_digest_of, capture_socket_comparison, ConsoleReading,
+//   the retained-path and capture-size guards (console_path_retained, console_size_of_stat,
+//   console_path_guard, console_size_guard), checkpoint_relations, console_reading, console,
+//   file_capture_contents, the report renderers (bracketed_int, firmware_report_text,
+//   grub_report_text, console_text), and the console_bound policy constant that bounds the
+//   retained capture. They leave the core because they are console facts, not boot-attempt
+//   records: the core now imports NOTHING console-shaped, and a row that wants its console
+//   reading imports it from HERE (the boot_attempt row adapter and the mtcollins1 row do).
+// - SpanConsoleReading and span_console_readings, from gunbc.machine_intake.mtcollins1_power_on_account
+//   (design decision (a)): the pair is protocol-neutral -- a span's lines classified by the firmware,
+//   GRUB and module-decompression readers -- but it lived under an mtcollins1_ root, dragging the
+//   machine's SEL/SDR/memory parsers into the core's closure through it. The neutral fn takes
+//   ALREADY-SPLIT spans (List<AmpereConsoleSpanLines>, the split this module performs over the
+//   capture text with the checkpoint reader's own fold); the Ampere-specific split itself,
+//   ampere_console_span_lines, STAYS in gunbc.machine_intake.ampere_checkpoint_console_observation
+//   -- splitting a platform console stream into checkpoint spans is that platform's grammar, not a
+//   neutral fact. What is neutral is what one span's lines STATE.
+// - The WHOLE console milestone module, verbatim from gunbc.machine_intake.mtcollins1_console_milestone_observation
+//   (design decision (b)): the whole module moved so its siblings are not stranded in an mtcollins1_
+//   home (cut 6b: the cut is only clean when the module's siblings -- the milestone sums, the failure
+//   lines, the sighting text -- come with the three names the core borrowed). ConsoleMilestone,
+//   ConsoleMilestoneObservation, ConsoleMilestoneSighting, ConsoleFailureLine, ConsoleFailureSighting,
+//   the per-milestone sightings, milestone_seen / milestone_first_seen / milestone_absences, the failure
+//   lines and their count, console_milestone_name, console_milestone_sighting_text,
+//   mtcollins1_console_milestones and its fold are all declared here with the names they had there.
+//
+// WHAT THIS MODULE IS NOT. It is not the mtcollins1 boot account, and it is not a receipt store.
+// The facts MEASURED only on mtcollins1 stay as receipts on the mtcollins1 row and its account: the
+// retained-artifact prefix, the expected socket count, the two reference scopes, the census SOL
+// reference path, the checkpoint token sequences the machine actually printed (they are PARAMETERS
+// of console / console_reading / checkpoint_relations, supplied by the row, and the milestone
+// grammar's machine markers -- BIOS Setup Utility, the UEFI shell, the firmware summary's rc line --
+// are what a captured console of THAT firmware looks like; the observation stands for any capture
+// that shows them and says nothing about which machine printed them). It is also not the core:
+// nothing here may name a controller protocol, and a consumer that needs the MegaRAC-shaped bundle
+// still gets it from gunbc.machine_intake.megarac_boot_diagnostic_bundle, which depends on this
+// module, never the reverse (imports point toward the core, never the core on an adapter; this
+// module's closure is the console readers plus std/extdeps -- no bmc, no megarac_*, no ipmi_*, no
+// redfish_* name).
+//
+// THE CARRIED DEBT OF THIS MODULE (DESIGN §5: debt is admitted on a carrier a program can read,
+// not in prose alone). ConsoleReading is NOT console-neutral: it carries the dram, nvparam, socket,
+// kernel-version and checkpoint arms -- one platform's console grammar -- and it therefore imports
+// the gunbc.machine_intake console observation modules, exactly as the core's WHAT-THIS-BLOCK-IS-NOT
+// paragraph stated when the block sat there. Moving it out of the core is the core's fix; the type
+// itself still owes its platform-neutral split, and that split is NOT this module's to make. So the
+// debt travels with the type, on a carrier: boot_console_observation_debt_refs below names what was
+// declared in THIS module's machine-named homes, and boot_console_observation_debt_status folds it
+// the same way the core's does -- DissolutionStatus read over a declaration census, Fired only when
+// the census lacks the item. The core's own fold (boot_attempt_console_debt_status) is what this
+// re-home fires; this module's fold is the rung BELOW it -- the ConsoleReading split, whose trigger
+// is that type no longer declared HERE, which is verifiable the moment it is written.
+//
+// THE MEASURED GRAMMAR IS A RECEIPT, NOT A SPEC. The milestone fold's marker sets were written from
+// the mtcollins1 SOL captures (docs/measurements/) and are only claimed to recognize what those
+// captures show: a capture from other firmware is read with the arms it matches and its unexplained
+// bytes stand unexplained (the milestone module's own header, kept with the code). A machine whose
+// firmware prints a different banner adds its OWN markers beside these (the row's business, per
+// §4a) -- nothing here asserts that these markers are the whole of the firmware world.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.optional { Absent, Present }
+import std.algebra { trim }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.tools.coreutils_stat
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.bootloader.grub {
+  GrubBannerOnly, GrubBootFailed, GrubConsoleReport, GrubNothingStated, GrubStillTrying
+  grub_console_banner_prefix, grub_console_report, grub_error_prefix, grub_error_text
+  grub_failed_default_and_fallback
+}
+import gunbc.machine_intake.pre_os_bringup_verdict {
+  FirmwareConsoleReport, FirmwareErrorStatementUnrecognized, NoTerminalStated, TrainingRefusedByFirmware
+  UndecodedErrorCodesOnly, firmware_console_report, is_firmware_err_code_line, is_firmware_error_line
+}
+import gunbc.machine_intake.host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
+import gunbc.machine_intake.ampere_dram_console_observation {
+  AmpereDramConsoleObservation, ampere_dram_console_line, ampere_dram_console_observation
+  ampere_dram_console_text, ampere_dram_fw_version_marker
+}
+import gunbc.machine_intake.ampere_nvparam_console_observation {
+  NvParamConsoleObservation, ampere_nvparam_console_observation, ampere_nvparam_console_text
+}
+import gunbc.machine_intake.linux_boot_console_observation {
+  LinuxBootConsoleObservation, linux_boot_console_observation, linux_boot_console_text
+}
+import gunbc.machine_intake.kernel_module_decompression_observation {
+  KernelModuleDecompressionObservation, kernel_module_decompression_observation, kernel_module_decompression_text
+}
+import gunbc.machine_intake.ampere_socket_console_observation {
+  AmpereSocketConsoleObservation, AmpereSocketReferenceComparison, ampere_socket_console_observation
+  ampere_socket_console_text, ampere_socket_reference_comparison, ampere_socket_reference_comparison_text
+  ampere_summary_rc_marker
+}
+import gunbc.machine_intake.ampere_checkpoint_console_observation {
+  AmpereCheckpointConsoleObservation, AmpereCheckpointFold, AmpereCheckpointReference, AmpereCheckpointRelation
+  AmpereCheckpointSpan, ampere_checkpoint_console_observation, ampere_checkpoint_console_text
+  ampere_checkpoint_relation, ampere_checkpoint_relation_text, ampere_checkpoint_relation_unread
+  ampere_console_span_lines, checkpoint_fold_step, empty_span
+}
+import extdeps.linux.module_decompress { linux_module_zstd_decompress_failed_stem }
+import extdeps.linux.efi_stub { linux_efi_stub_initrd_load_failed_prefix, linux_efi_stub_line_prefix }
+import extdeps.linux.boot_console { linux_banner_prefix, linux_kernel_panic_end_marker, linux_kernel_panic_prefix }
+
+
+// ── THE CONSOLE BOUND ─────────────────────────────────────────────────────────────
+// the Redfish read budgets belong to the adapter) ──────────────────────────────────────────────────
+// The bound on the retained console capture, a policy row on artifact size (OBSERVED by the console
+// read, which reports an over-bound capture rather than clipping it — the collector does not truncate).
+
+data console_bound: ByteSize = byte_size(count: 16777216)
+
+type CaptureContents
+  = CaptureContentsRead { text: String, digest: Sha256FileDigest }
+  | CaptureContentsUnread { reason: String }
+
+fn capture_digest_of(capture: CaptureContents, path: NonEmptyStr) -> Sha256FileDigest {
+  match capture {
+    CaptureContentsRead { text: _, digest: d } => d
+    CaptureContentsUnread { reason: r } => Sha256FileDigestUnavailable { path: path, reason: r }
+  }
+}
+
+// THE ONE MATCH into the socket comparison. Its API predates CaptureContents and takes the read
+// apart (reference_text / read_ok / read_error); spreading the sum back into three fields is exactly
+// where a success flag and a contradicting error string would reappear, so it happens once, here.
+fn capture_socket_comparison(reference: CaptureContents, reference_path: NonEmptyStr, subject: AmpereSocketConsoleObservation) -> AmpereSocketReferenceComparison {
+  match reference {
+    CaptureContentsRead { text: t, digest: _ } => ampere_socket_reference_comparison(
+      reference_path: reference_path, reference_text: t, read_ok: true, read_error: "", subject: subject)
+    CaptureContentsUnread { reason: r } => ampere_socket_reference_comparison(
+      reference_path: reference_path, reference_text: "", read_ok: false, read_error: r as String, subject: subject)
+  }
+}
+
+// The SOL console capture reading. The retained arm carries the classification of the capture by
+// every host-side console grammar; the other arms are the read's own failure modes.
+type ConsoleReading
+  = ConsoleRetained { path: NonEmptyStr, size: ByteSize, lines: Int, firmware: FirmwareConsoleReport, firmware_error_lines: Int, capture_digest: Sha256FileDigest, dram: AmpereDramConsoleObservation, checkpoints: AmpereCheckpointConsoleObservation, checkpoint_relations: List<AmpereCheckpointRelation>, milestones: ConsoleMilestoneObservation, sockets: AmpereSocketConsoleObservation, against_reference: AmpereSocketReferenceComparison, loader: GrubConsoleReport, linux: LinuxBootConsoleObservation, modules: KernelModuleDecompressionObservation, nvparam: NvParamConsoleObservation, span_readings: List<SpanConsoleReading> }
+  | ConsoleExceedsBound { path: NonEmptyStr, size: ByteSize, bound: ByteSize }
+  | NotRetained { path: NonEmptyStr }
+  | ConsoleUnread { path: NonEmptyStr, detail: String }
+  | ConsoleNotConfigured
+
+// The capture is retained only if its path sits under the row's retained-artifact root (a receipt:
+// where this row keeps its retained artifacts).
+//
+// THE CHECK IS ANCHORED AT PATH SEPARATORS, NOT AT ANYWHERE INSIDE A SEGMENT. An earlier revision
+// accepted a path when the prefix appeared anywhere in it after a slash, so "/tmp/xartifacts/
+// mtcollins1-boot-sol.capture" (a directory whose name merely ends in "artifacts") and
+// "/tmp/evil/artifacts/mtcollins1-boot-sol.capture" alike read as retained, and console_text then
+// told the reader the capture was "retained in this artifact" for a file that is nowhere near the
+// row's artifact root (review 81108; DESIGN §5: a failure arm refuses, never widens). Here the path
+// is compared segment by segment: the root's directory segments must be WHOLE segments of the path
+// immediately before the file name, and only the file name itself may be a prefix-match, because the
+// root name is a prefix by construction (it is "…-boot-", and the attempt suffix follows).
+//
+// What this does NOT claim: the root is workspace-relative, so any path whose parent directory is
+// named "artifacts" and whose file name carries this row's prefix reads as retained. Distinguishing
+// the workspace's own artifacts directory from another one of the same name needs a workspace-root
+// fact, which no row carries today; that is a receipt to add, not something to infer here.
+fn console_path_retained(path: String, prefix: NonEmptyStr) -> Bool {
+  let root = filter(split(s: prefix as String, delimiter: "/"), seg => seg != "")
+  let segs = filter(split(s: path, delimiter: "/"), seg => seg != "")
+  if count(root) == 0 {
+    false
+  } else if count(segs) < count(root) {
+    false
+  } else {
+    // Both ends of the comparison are answered by matching, never by inventing a stand-in (review 81263
+    // F2, §5 "no plausible output is fabricated"). This arm is reached only with a non-empty root and,
+    // because count(segs) >= count(root), a non-empty path, so last() answers both; the Absent arms exist
+    // so that if that shape ever changes the answer is "not retained" rather than a name nobody chose.
+    match last(root) {
+      Absent => false
+      Present { value: root_name } => match last(segs) {
+        Absent => false
+        Present { value: file } => {
+          let dirs = root.take(n: count(root) - 1)
+          let parents = segs.take(n: count(segs) - 1).skip(n: (count(segs) - 1) - count(dirs))
+          starts_with(s: file, prefix: root_name)
+            && (count(dirs) == 0 || join(dirs, "/") == join(parents, "/"))
+        }
+      }
+    }
+  }
+}
+
+// stat(1)'s "%s" field is a byte count as text; parse it to a ByteSize.
+fn console_size_of_stat(size_text: String) -> ByteSize? {
+  match parse_int(s: trim(size_text)) {
+    Absent => none
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => none
+        Present { value: count } => Present { value: byte_size(count: count) }
+      }
+  }
+}
+
+// Build the per-span checkpoint relations against the reference capture. The reference path and
+// the two scopes are receipts (supplied by the row; they describe the reference the row was
+// censused against), so they are parameters, not constants.
+fn checkpoint_relations(checkpoints: AmpereCheckpointConsoleObservation, capture: Sha256FileDigest, reference: CaptureContents, reference_path: NonEmptyStr, firmware_scope: NonEmptyStr, configuration_scope: NonEmptyStr) -> List<AmpereCheckpointRelation> {
+  // Both arms build the same reference identity (path, digest and the row's two scopes) and differ in
+  // exactly one thing: a read reference carries its observation, an unread one carries the reason it
+  // could not be read. The match is on the coproduct itself, so neither arm can claim the other's fact.
+  // Each constructor answers AmpereCheckpointRelation? (a span whose last checkpoint token is
+  // missing has no relation to state). The Optional is turned into a list HERE, by matching it;
+  // handing the Optional itself to flat_map would put an Optional in the list and every reader of
+  // relation.span would be reading a field off the wrong type.
+  flat_map(checkpoints.spans, span => match match reference {
+    CaptureContentsRead { text: t, digest: _ } =>
+      ampere_checkpoint_relation(span: span, capture: capture, reference: AmpereCheckpointReference {
+        path: reference_path, digest: capture_digest_of(capture: reference, path: reference_path),
+        firmware_scope: firmware_scope, configuration_scope: configuration_scope,
+        observation: ampere_checkpoint_console_observation(lines: host_capture_lines(capture: HostCaptureLiveStream { text: t })),
+      })
+    CaptureContentsUnread { reason: r } =>
+      ampere_checkpoint_relation_unread(span: span, capture: capture, path: reference_path,
+        digest: capture_digest_of(capture: reference, path: reference_path),
+        firmware_scope: firmware_scope, configuration_scope: configuration_scope,
+        detail: r as String)
+  } {
+    Absent => []
+    Present { value: relation } => [relation]
+  })
+}
+
+// THE CONSOLE GUARDS, DEFINED ONCE AND ASKED BY BOTH HALVES. Three things stop a capture from being
+// classified at all: the path is empty, the path is not under the row's retained-artifact root, and
+// the capture is bigger than console_bound. An earlier revision stated all three TWICE -- once in the
+// reading, once in the write -- which is the same class of defect the reviewer called out for the
+// capture read (review 81117; DESIGN §5): two copies of a guard are two chances to disagree about
+// whether a capture may be read at all. Now each answer exists once and both halves ask it. They are
+// two functions rather than one because the write half cannot ask the size question until stat has
+// answered, while the path questions must be settled BEFORE any filesystem call: the reading asks
+// both, the write asks each at its own moment. Absent means the guard did not fire.
+fn console_path_guard(path: String, retained_prefix: NonEmptyStr) -> ConsoleReading? {
+  if path == "" {
+    Present { value: ConsoleNotConfigured }
+  } else if !console_path_retained(path: path, prefix: retained_prefix) {
+    Present { value: NotRetained { path: path as NonEmptyStr } }
+  } else {
+    none
+  }
+}
+
+fn console_size_guard(path: String, size: ByteSize) -> ConsoleReading? {
+  if (byte_size_count(b: size) as Int) > (byte_size_count(b: console_bound) as Int) {
+    Present { value: ConsoleExceedsBound { path: path as NonEmptyStr, size: size, bound: console_bound } }
+  } else {
+    none
+  }
+}
+
+// The console reading: classify the capture. The retained-artifact prefix, the census SOL reference
+// path and the two reference scopes are receipts (parameters): mtcollins1's row supplies its own, and
+// any other row supplies its own. The capture and the reference capture arrive as CaptureContents --
+// coproducts, so a capture that could not be read carries its reason and cannot also carry text or a
+// digest. expected_sockets was dropped from this signature: nothing in the console classification
+// reads it (the socket observation is derived from the capture text, and the row's census socket
+// population is consumed where the sensors are read), so it was a parameter that only pretended to
+// decide something.
+fn console_reading(path: String, size: ByteSize, capture: CaptureContents, reference: CaptureContents, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr) -> ConsoleReading {
+  match console_path_guard(path: path, retained_prefix: retained_prefix) {
+    Present { value: refused } => refused
+    Absent => match console_size_guard(path: path, size: size) {
+      Present { value: over_bound } => over_bound
+      Absent => match capture {
+        // The capture could not be read: that is the reading, with its reason. Nothing was seen, so
+        // nothing is classified and no digest is claimed.
+        CaptureContentsUnread { reason: r } => ConsoleUnread { path: path as NonEmptyStr, detail: r }
+        CaptureContentsRead { text: text, digest: capture_digest } => {
+          let lines = host_capture_lines(capture: HostCaptureLiveStream { text: text })
+          let sockets = ampere_socket_console_observation(lines: lines)
+          let checkpoints = ampere_checkpoint_console_observation(lines: lines)
+          ConsoleRetained {
+            path: path as NonEmptyStr, size: size, lines: count(lines), firmware: firmware_console_report(lines: lines),
+            firmware_error_lines: count(filter(lines, l => is_firmware_error_line(line: l) || is_firmware_err_code_line(line: l))),
+            capture_digest: capture_digest,
+            dram: ampere_dram_console_observation(lines: lines),
+            checkpoints: checkpoints,
+            checkpoint_relations: checkpoint_relations(checkpoints: checkpoints, capture: capture_digest, reference: reference, reference_path: census_sol_reference_path, firmware_scope: reference_firmware_scope, configuration_scope: reference_configuration_scope),
+            milestones: mtcollins1_console_milestones(lines: lines),
+            sockets: sockets,
+            against_reference: capture_socket_comparison(reference: reference, reference_path: census_sol_reference_path, subject: sockets),
+            loader: grub_console_report(lines: lines),
+            linux: linux_boot_console_observation(lines: lines),
+            modules: kernel_module_decompression_observation(lines: lines),
+            nvparam: ampere_nvparam_console_observation(lines: lines),
+            span_readings: span_console_readings(spans: ampere_console_span_lines(lines: lines)),
+          }
+        }
+      }
+    }
+  }
+}
+
+// The console write: the IO half. Ask the path guard BEFORE touching the filesystem, stat the
+// capture, ask the size guard, then read both captures as CaptureContents and hand them to the
+// reading -- which asks the same two guards and cannot answer differently, because it asks the same
+// functions. The retained prefix and the census SOL reference path with its two scopes are receipts
+// (parameters).
+fn console(path: String, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr) -> ConsoleReading {
+  match console_path_guard(path: path, retained_prefix: retained_prefix) {
+    Present { value: refused } => refused
+    Absent => {
+      let st = coreutils.Stat.PathSize(path: path as NonEmptyStr)
+      match if st.success { console_size_of_stat(size_text: st.size_text) } else { none } {
+        Absent => ConsoleUnread { path: path as NonEmptyStr, detail: concat("stat -c %s could not size the capture: ", trim(st.size_text)) }
+        Present { value: size } => match console_size_guard(path: path, size: size) {
+          Present { value: over_bound } => over_bound
+          Absent => console_reading(path: path, size: size,
+            capture: file_capture_contents(path: path),
+            reference: file_capture_contents(path: census_sol_reference_path as String),
+            retained_prefix: retained_prefix, census_sol_reference_path: census_sol_reference_path,
+            reference_firmware_scope: reference_firmware_scope,
+            reference_configuration_scope: reference_configuration_scope)
+        }
+      }
+    }
+  }
+}
+
+// A capture read from disk, as CaptureContents: the read arm carries what was read plus the digest of
+// exactly those bytes; the unread arm carries only why the file could not be read. The digest is
+// taken from the READ, not from a separate path argument, so a capture that was never read cannot
+// arrive with a digest of it.
+fn file_capture_contents(path: String) -> CaptureContents {
+  let r = Filesystem.Read(path: path)
+  if r.success {
+    CaptureContentsRead { text: r.content, digest: sha256sum_file_digest_via_shell(path: path as NonEmptyStr) }
+  } else {
+    CaptureContentsUnread { reason: r.error }
+  }
+}
+
+// The report-text helpers (moved from the bundle; they are generic text renderers, no mtcollins1
+// facts).
+fn bracketed_int(label: String, n: Int?) -> String {
+  match n { Present { value: k } => concat(" [", label, " ", to_string(k), "]") Absent => "" }
+}
+
+fn firmware_report_text(report: FirmwareConsoleReport) -> String {
+  match report {
+    NoTerminalStated => "firmware stated no terminal"
+    UndecodedErrorCodesOnly { err_lines: n } => concat("firmware printed ", to_string(n), " undecoded ERR code line(s)")
+    FirmwareErrorStatementUnrecognized { statement: s } => concat("firmware printed an unrecognised statement: ", s as String)
+    TrainingRefusedByFirmware { statement: s, locus: l } =>
+      concat("firmware refused memory training: ", s as String, bracketed_int(label: "socket", n: l.socket), bracketed_int(label: "memory controller", n: l.memory_controller))
+  }
+}
+
+fn grub_report_text(report: GrubConsoleReport) -> String {
+  match report {
+    GrubNothingStated => "GRUB: nothing printed"
+    GrubBannerOnly => "GRUB: banner printed, no error"
+    GrubStillTrying { errors: es } => concat("GRUB: still trying after ", join(map(es, e => grub_error_text(error: e)), "; "))
+    GrubBootFailed { errors: es } => concat("GRUB: boot FAILED: ", join(map(es, e => grub_error_text(error: e)), "; "))
+  }
+}
+
+// The console text: render the reading for the diagnostic bundle. The retained prefix, the census
+// SOL reference path, the two reference scopes, and the expected socket count are receipts
+// (parameters), so the text is row-specific where it must be and neutral where it can be.
+fn console_text(c: ConsoleReading, retained_prefix: NonEmptyStr, census_sol_reference_path: NonEmptyStr, reference_firmware_scope: NonEmptyStr, reference_configuration_scope: NonEmptyStr, expected_sockets: List<Int>) -> String {
+  match c {
+    ConsoleRetained { path: p, size: b, lines: n, firmware: f, firmware_error_lines: e, capture_digest: _, dram: d, checkpoints: cp, checkpoint_relations: rs, milestones: ms, sockets: o, against_reference: cmp, loader: g, linux: l, modules: m, nvparam: nv, span_readings: _ } =>
+      concat("capture ", p as String, " retained in this artifact: ", to_string(byte_size_count(b: b)), " bytes (stat), ", to_string(n), " line(s), within the ", to_string(byte_size_count(b: console_bound)), "-byte bound; ", firmware_report_text(report: f), "; ", to_string(e), " firmware error line(s)\n", ampere_dram_console_text(observation: d, expected_sockets: expected_sockets), "\n-- checkpoints --\n", ampere_checkpoint_console_text(o: cp), "\n", if count(rs) == 0 { "no checkpoint relation" } else { join(map(rs, r => ampere_checkpoint_relation_text(r: r)), "\n") }, "\n-- milestones --\n", if count(ms.sightings) == 0 { "none" } else { join(map(ms.sightings, x => console_milestone_sighting_text(s: x)), "\n") }, "\n", ampere_socket_console_text(o: o), ampere_socket_reference_comparison_text(c: cmp), "\n-- loader and linux --\n", grub_report_text(report: g), "\n", linux_boot_console_text(o: l), "\n", kernel_module_decompression_text(o: m), "\n", ampere_nvparam_console_text(o: nv))
+    ConsoleExceedsBound { path: p, size: b, bound: bound } =>
+      concat("capture ", p as String, " is ", to_string(byte_size_count(b: b)), " bytes (stat), OVER the ", to_string(byte_size_count(b: bound)), "-byte bound; the collector does not truncate, so the artifact carries it whole")
+    NotRetained { path: p } =>
+      concat("capture ", p as String, " is NOT under ", retained_prefix, " and is not uploaded with this artifact")
+    ConsoleUnread { path: p, detail: d } => concat("capture ", p as String, " UNREAD: ", d)
+    ConsoleNotConfigured => "NOT CONFIGURED: the SOL capture path was unset for this attempt"
+  }
+}
+
+// ── WHAT ONE CONSOLE SPAN STATED ────────────────────────────────────────────
+//
+// WHAT ONE CONSOLE SPAN STATED, by the owning readers run over that span's lines alone, so a
+// statement printed in two spans is two statements, each in its own span. Design (a) of the 4d-ii
+// re-home (node://adhoc-18598508-4f4): the NEUTRAL reading takes ALREADY-SPLIT spans. The split
+// itself -- ampere_console_span_lines -- stays in
+// gunbc.machine_intake.ampere_checkpoint_console_observation, because a checkpoint span boundary is
+// that platform's grammar; what is neutral is what one span's lines STATE. A caller holding raw
+// lines splits at its own call site.
+type SpanConsoleReading {
+  span: Int
+  firmware: FirmwareConsoleReport
+  loader: GrubConsoleReport
+  modules: KernelModuleDecompressionObservation
+}
+
+fn span_console_readings(spans: List<AmpereConsoleSpanLines>) -> List<SpanConsoleReading> {
+  map(spans, g => SpanConsoleReading {
+    span: g.span, firmware: firmware_console_report(lines: g.lines), loader: grub_console_report(lines: g.lines), modules: kernel_module_decompression_observation(lines: g.lines),
+  })
+}
+
+// THE CONSOLE MILESTONES ONE mtcollins1 CAPTURE SHOWS, as an observation receipt of this repository
+// (docs/plans/power-on-sequence-model.md, ruling Q1).
+//
+// A MILESTONE IS AN EXACT, COMPONENT-OWNED LINE, AND IT ESTABLISHES ONLY THAT THAT COMPONENT'S CODE
+// RAN FAR ENOUGH TO PRINT IT. It never establishes an extdeps.ampere.scp_diagnostic AmpereBootStage,
+// a stage's completion, the component's health, or a successful handoff to the next one: those come
+// from an SMpro register reading (gunbc.machine_intake.mtcollins1_power_on_account) or not at all.
+// Each milestone carries the exact line, which parser recognised it (the marker it matched), its
+// index in the capture and the console span it falls in, so a later reader can re-derive it.
+//
+// THE MARKERS ARE THE OWNING MODULES' OWN DATA, imported rather than restated: the DRAM firmware
+// banner (gunbc.machine_intake.ampere_dram_console_observation), the firmware summary's first line
+// (gunbc.machine_intake.ampere_socket_console_observation), the GRUB banner (extdeps.bootloader.grub),
+// the EFI stub's prefix and the kernel banner (extdeps.linux.efi_stub, extdeps.linux.boot_console).
+// The two UEFI lines below have no other home in this corpus:
+//
+// - The AMI Aptio setup prompt is transcribed from our own captures (it is AMI product output this
+//   repository observed, not a published specification): run 37069907299's SOL capture and the
+//   committed artifacts/bmc/mtcollins1-hw-census-sol.log both print it verbatim.
+// - The UEFI shell banner is edk2's STR_VER_OUTPUT_MAIN_SHELL, "UEFI %s Shell v%d.%d"
+//   (github.com/tianocore/edk2 ShellPkg/Application/Shell/Shell.uni), which mtcollins1 printed as
+//   "UEFI Interactive Shell v2.2" in eager-gull-22's 2026-10-03 step-3 capture. The prompt is the
+//   weaker milestone (UEFI code ran far enough to offer setup); the shell is the stronger (UEFI
+//   reached its boot manager's shell); neither says anything about the next boot option.
+data ami_aptio_setup_prompt_marker: NonEmptyStr = "Press <DEL> or <ESC> to Entering the Setup."
+
+data edk2_shell_banner_prefix: NonEmptyStr = "UEFI "
+
+data edk2_shell_banner_infix: NonEmptyStr = " Shell v"
+
+type ConsoleMilestone
+  = DramFirmwareBannerObserved
+  | FirmwareSummaryObserved
+  | UefiConsolePromptObserved
+  | UefiShellObserved
+  | GrubBannerObserved
+  | EfiStubLineObserved
+  | KernelBannerObserved
+
+type ConsoleMilestoneSighting {
+  milestone: ConsoleMilestone
+  line: NonEmptyStr
+  marker: NonEmptyStr
+  line_index: Int
+  span: Int
+}
+
+// THE SPAN A MILESTONE FALLS IN IS THE CHECKPOINT READER'S, NOT A SECOND COUNT: the fold below runs
+// gunbc.machine_intake.ampere_checkpoint_console_observation checkpoint_fold_step itself and reads
+// the span index it is in after each line, so a milestone and a checkpoint token in one span are in
+// one span by construction, whatever rule that reader uses for the span before the first banner.
+// WHERE A STATED FAILURE WAS PRINTED. The whole-capture readers (pre_os firmware statements, GRUB, the
+// EFI stub, the kernel, module decompression) decide WHAT a failure is; this reader records EVERY line
+// of each kind, with its index and span, using those modules' own markers and predicates, so
+// the power-on account can bind the failure to a cycle. A failure line is never a milestone.
+type ConsoleFailureLine
+  = FirmwareErrorStatementLine
+  | GrubFailureLine
+  | InitrdLoadFailureLine
+  | KernelPanicLine
+  | ModuleDecompressionRefusalLine
+
+type ConsoleFailureSighting {
+  kind: ConsoleFailureLine
+  line: NonEmptyStr
+  line_index: Int
+  span: Int
+}
+
+
+type ConsoleMilestoneObservation {
+  sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
+}
+
+fn failure_kind_of(line: String) -> ConsoleFailureLine? {
+  if is_firmware_error_line(line: line) || is_firmware_err_code_line(line: line) { Present { value: FirmwareErrorStatementLine } }
+  else if string_contains(s: line, pattern: grub_failed_default_and_fallback as String) || starts_with(s: line, prefix: grub_error_prefix as String) { Present { value: GrubFailureLine } }
+  else if string_contains(s: line, pattern: linux_efi_stub_initrd_load_failed_prefix as String) { Present { value: InitrdLoadFailureLine } }
+  else if string_contains(s: line, pattern: linux_kernel_panic_prefix as String) && !string_contains(s: line, pattern: linux_kernel_panic_end_marker as String) { Present { value: KernelPanicLine } }
+  else if string_contains(s: line, pattern: linux_module_zstd_decompress_failed_stem as String) { Present { value: ModuleDecompressionRefusalLine } }
+  else { none }
+}
+
+fn milestone_marker_of(line: String) -> ConsoleMilestoneSighting? {
+  let banner_shell = starts_with(s: line, prefix: edk2_shell_banner_prefix as String) && string_contains(s: line, pattern: edk2_shell_banner_infix as String)
+  if string_contains(s: line, pattern: ampere_dram_fw_version_marker) { Present { value: sighting(m: DramFirmwareBannerObserved, line: line, marker: ampere_dram_fw_version_marker) } }
+  else if starts_with(s: line, prefix: ampere_summary_rc_marker) { Present { value: sighting(m: FirmwareSummaryObserved, line: line, marker: ampere_summary_rc_marker) } }
+  else if string_contains(s: line, pattern: ami_aptio_setup_prompt_marker as String) { Present { value: sighting(m: UefiConsolePromptObserved, line: line, marker: ami_aptio_setup_prompt_marker as String) } }
+  else if banner_shell { Present { value: sighting(m: UefiShellObserved, line: line, marker: concat(edk2_shell_banner_prefix as String, "%s", edk2_shell_banner_infix as String)) } }
+  else if string_contains(s: line, pattern: grub_console_banner_prefix as String) { Present { value: sighting(m: GrubBannerObserved, line: line, marker: grub_console_banner_prefix as String) } }
+  else if string_contains(s: line, pattern: linux_efi_stub_line_prefix as String) { Present { value: sighting(m: EfiStubLineObserved, line: line, marker: linux_efi_stub_line_prefix as String) } }
+  else if string_contains(s: line, pattern: linux_banner_prefix as String) { Present { value: sighting(m: KernelBannerObserved, line: line, marker: linux_banner_prefix as String) } }
+  else { none }
+}
+
+fn sighting(m: ConsoleMilestone, line: String, marker: String) -> ConsoleMilestoneSighting {
+  ConsoleMilestoneSighting { milestone: m, line: line as NonEmptyStr, marker: marker as NonEmptyStr, line_index: 0, span: 0 }
+}
+
+type MilestoneFold {
+  index: Int
+  spans: AmpereCheckpointFold
+  sightings: List<ConsoleMilestoneSighting>
+  failures: List<ConsoleFailureSighting>
+}
+
+fn milestone_fold_step(acc: MilestoneFold, raw: String) -> MilestoneFold {
+  let spans = checkpoint_fold_step(acc: acc.spans, raw: raw)
+  let line = trim(ampere_dram_console_line(raw: raw))
+  let seen = match milestone_marker_of(line: line) {
+    Absent => acc.sightings
+    Present { value: s } => concat(acc.sightings, [ConsoleMilestoneSighting { milestone: s.milestone, line: s.line, marker: s.marker, line_index: acc.index, span: spans.current.index }])
+  }
+  let failed = match failure_kind_of(line: line) {
+    Absent => acc.failures
+    Present { value: k } => concat(acc.failures, [ConsoleFailureSighting { kind: k, line: line as NonEmptyStr, line_index: acc.index, span: spans.current.index }])
+  }
+  MilestoneFold { index: acc.index + 1, spans: spans, sightings: seen, failures: failed }
+}
+
+fn mtcollins1_console_milestones(lines: List<String>) -> ConsoleMilestoneObservation {
+  let none_seen: List<ConsoleMilestoneSighting> = []
+  let none_failed: List<ConsoleFailureSighting> = []
+  let none_closed: List<AmpereCheckpointSpan> = []
+  let done = fold(lines, init: MilestoneFold { index: 0, spans: AmpereCheckpointFold { closed: none_closed, current: empty_span(index: 0, opened_by_banner: false) }, sightings: none_seen, failures: none_failed }, f: (acc, l) => milestone_fold_step(acc: acc, raw: l))
+  ConsoleMilestoneObservation { sightings: done.sightings, failures: done.failures }
+}
+
+fn console_milestone_name(m: ConsoleMilestone) -> String {
+  match m {
+    DramFirmwareBannerObserved => "DRAM firmware banner"
+    FirmwareSummaryObserved => "firmware boot summary"
+    UefiConsolePromptObserved => "UEFI setup prompt"
+    UefiShellObserved => "UEFI shell"
+    GrubBannerObserved => "GRUB banner"
+    EfiStubLineObserved => "Linux EFI stub line"
+    KernelBannerObserved => "Linux kernel banner"
+  }
+}
+
+fn console_milestone_sighting_text(s: ConsoleMilestoneSighting) -> String {
+  concat(console_milestone_name(m: s.milestone), " at line ", to_string(s.line_index), " (span ", to_string(s.span), "): ", s.line as String)
+}
