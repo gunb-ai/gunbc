@@ -38,9 +38,9 @@ import v1.std.core {
   field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value,
   binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base,
   index_expr, slice_base, slice_start, slice_end, unaryop_operand, expr_has_self_call,
-  expr_has_non_tail_self_call, undeclared_transport_node, is_rest_transport, is_shell_transport,
-  is_file_transport, is_undeclared_transport, TransportKind, RestTransport, ShellTransport,
-  FileTransport, UndeclaredTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
+  expr_has_non_tail_self_call, local_transport_node, is_rest_transport, is_shell_transport,
+  is_file_transport, is_local_transport, TransportKind, RestTransport, ShellTransport,
+  FileTransport, LocalTransport, classify_transport, transport_verb, transport_base_path, transport_has_auth, field_init_operation_modifier,
   operation_modifier_name, with_required_cardinality, tuple_type_name, find_child_named,
   Connective, Conj, Disj, NoConnective, Arrow, Required, CardOptional
 }
@@ -1026,7 +1026,7 @@ fn has_service_items(typed: ResolvedGraph) -> Bool {
 }
 
 fn service_fallback_transport(item: Node) -> Node {
-  if item.transport == none { undeclared_transport_node(occurrence_identity: OccurrenceSynthetic, span: item.span) } else { item.transport.value }
+  if item.transport == none { local_transport_node(occurrence_identity: OccurrenceSynthetic, span: item.span) } else { item.transport.value }
 }
 
 fn effective_operation_transport(op_node: Node, fallback: Node) -> Node {
@@ -1207,7 +1207,7 @@ type TransportBindingRefusal
 type BoundOperation
   = RestBound { transport: Node }
   | ShellBound { transport: Node, result_fields: List<ShellResultField> }
-  | UnboundOperation
+  | LocalBound
   | FileBound {
       verb: FileVerb
       path_template: Node
@@ -1559,7 +1559,7 @@ fn bind_operation_transport(t: Node, op_node: Node, source_indices: Map<String, 
     Present { value: RestTransport } => RestBound { transport: t }
     Present { value: ShellTransport } => bind_shell_operation(t: t, op_node: op_node, source_indices: source_indices)
     Present { value: FileTransport } => bind_file_operation(t: t, op_node: op_node, source_indices: source_indices)
-    Present { value: UndeclaredTransport } => UnboundOperation
+    Present { value: LocalTransport } => LocalBound
     Absent => BindingRefused { cause: TransportMatchesNoRosterMember }
   }
 }
@@ -1645,7 +1645,7 @@ fn bound_operation_transport_kind(bound: BoundOperation) -> TransportKind? {
     RestBound { transport: _ } => Present { value: RestTransport }
     ShellBound { transport: _, result_fields: _ } => Present { value: ShellTransport }
     FileBound { verb: _, path_template: _, result_fields: _ } => Present { value: FileTransport }
-    UnboundOperation => Present { value: UndeclaredTransport }
+    LocalBound => Present { value: LocalTransport }
     BindingRefused { cause: _ } => none
   }
 }
@@ -1790,12 +1790,13 @@ fn emit_unified_transport_dispatch(
   depth: Int,
   target: RenderTarget,
   render_rest: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
-  render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String
+  render_shell: fn(String, Node, Int, Map<String, NewlineIndex>) -> String,
+  render_local: fn(String, Int) -> String
 ) -> String {
   match bound {
     RestBound { transport: t } => render_rest(op_name, t, depth, source_indices)
     ShellBound { transport: t, result_fields: __rsf } => render_shell(op_name, t, depth, source_indices)
-    UnboundOperation => emit_unbound_operation_refusal(op_name: op_name, target: target)
+    LocalBound => render_local(op_name, depth)
     FileBound { verb: _, path_template: __pt, result_fields: __rf } =>
       emit_unmodeled_file_transport_refusal(op_name: op_name, target: target)
     BindingRefused { cause: cz } =>
@@ -2619,11 +2620,9 @@ fn emit_error_expr(message: String, target: RenderTarget) -> String {
 // emit_unmodeled_file_transport_refusal below is the FLOOR beneath the wall, in the generic
 // dispatch arm. It is unreachable for rust while file_emission_refusal and the renderer agree,
 // and is still required -- though NOT for the reason recorded when it was written. That reason
-// was that the transport-less test (then is_local_transport) was DEFINED as "not rest, not shell,
-// not file", so deleting the file arm would route a file transport into the local renderer and
-// fabricate a direct function call by omission (that renderer is deleted too: an undeclared
-// transport now refuses, see emit_unbound_operation_refusal). It is now a positive test over the
-// closed roster, so deleting the file arm would
+// was that is_local_transport was DEFINED as "not rest, not shell, not file", so deleting the
+// file arm would route a file transport into render_local and fabricate a direct function call by
+// omission. Local is now a positive test over the closed roster, so deleting the file arm would
 // no longer do that; it would fail to compile, because the match over TransportKind is
 // exhaustive. The arm is required now because the roster HAS a file member and every member owes
 // the dispatch an answer -- a stronger reason than the one it replaces, and the difference is the
@@ -3171,24 +3170,6 @@ fn emit_unmodeled_file_transport_refusal_with_cause(op_name: String, target: Ren
     message: concat(
       "file transport emission is not modeled for operation '", op_name, "' (target ",
       render_target_name(target: target), ") -- ", file_emission_refusal_fact(refusal: refusal)),
-    target: target)
-}
-
-// AN OPERATION WHOSE SERVICE DECLARES NO TRANSPORT HAS NO REALIZATION, AND ITS EMITTED BODY SAYS
-// SO. DESIGN section 3: extdeps owns an operation's interface and a transport is one of N handlers
-// bound to it, so an operation declared with no transport (extdeps.posix.process posix.Process,
-// gunbc.pr_digests gunbc.PrDigests) is an interface whose realization this target is not given.
-// The parser and emit_transport_node supply a bare node for that absence, and the classifier used
-// to name it LocalTransport and render it as a direct call to a function named after the
-// operation, with no arguments -- a function nothing declares, so every crate reaching
-// posix.Process failed rustc E0425 at start_detached() and reap(). That was fabricated output:
-// absence read as a meaning. The bare node is now UndeclaredTransport, it binds to
-// UnboundOperation, and every target renders one refusal naming the operation, through the same
-// error-expression template the file and binding refusals use. The crate builds; invoking the
-// operation fails loudly with this message.
-fn emit_unbound_operation_refusal(op_name: String, target: RenderTarget) -> String {
-  emit_error_expr(
-    message: concat("operation '", op_name, "' has no realization for target ", render_target_name(target: target), ": its service declares no transport"),
     target: target)
 }
 

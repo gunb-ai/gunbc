@@ -482,7 +482,8 @@ fn emit_go_transport_body(bound: BoundOperation, op_name: String, source_indices
   emit_unified_transport_dispatch(
     bound: bound, op_name: op_name, source_indices: source_indices, depth: depth, target: Go,
     render_rest: (n, t, d, si) => emit_unrealized_rest_result_refusal(op_name: n, target: Go),
-    render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si))
+    render_shell: (n, t, d, si) => emit_go_shell_call(op_name: n, transport: t, depth: d, source_indices: si),
+    render_local: (n, d) => emit_go_local_call(op_name: n, depth: d))
 }
 
 fn emit_go_service_def(item: Node, registry: Map<String, ItemInfo>, env: TypeEnv) -> String {
@@ -519,6 +520,12 @@ fn emit_go_shell_call(op_name: String, transport: Node, depth: Int, source_indic
   )
   let all_lines = concat([cmd_line, dir_line], env_lines, [run_lines])
   all_lines |> join(separator: "\n")
+}
+
+fn emit_go_local_call(op_name: String, depth: Int) -> String {
+  let prefix = make_indent(level: depth)
+  concat(prefix, "// Local binding -- direct function call\n",
+    "return ", go_export_ident(name: op_name), "(), nil")
 }
 
 fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
