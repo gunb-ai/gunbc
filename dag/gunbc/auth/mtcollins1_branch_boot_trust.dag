@@ -221,7 +221,11 @@ fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
     Absent => none
     Present { value: f } =>
-      if !mtcollins1_boot_branch_is_trusted(branch: first_trusted_branch()) {
+      // THE ROSTER IS THE PERMISSION, so this asks the roster what it HOLDS -- not whether one named
+      // entry is trusted, which is true by construction for any entry taken from the roster itself and
+      // would read as a trust check while being an emptiness check. An empty roster means no branch may
+      // federate this identity, so the route is not declared at all and its provider is never converged.
+      if mtcollins1_boot_trusted_branches.length() == 0 {
         none
       } else {
         Present { value: DedicatedFederation {

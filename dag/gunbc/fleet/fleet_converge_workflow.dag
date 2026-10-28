@@ -12,9 +12,9 @@ import gunbc.auth.branch_dispatch_federation {
   branch_run_key_variable, mtcollins1_boot_run_scoped_service_account, select_boot_credential_source,
   BootCredentialSource, BootCredentialStanding, BootCredentialSourceSelected, ReviewedMainDedicatedFederation,
   RunScopedApprovedGrant, BootCredentialSourceRefused, boot_credential_source_emit_refused_poison,
-  TrustedBranchBootIdentity, select_boot_credential_source_at_ref, boot_grant_required_at_ref, mtcollins1_boot_mode_name,
+  TrustedBranchBootIdentity, boot_grant_required_at_ref, mtcollins1_boot_mode_name,
 }
-import gunbc.auth.mtcollins1_branch_boot_trust { mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, first_trusted_branch, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_provider_resource, mtcollins1_boot_branch_service_account }
+import gunbc.auth.mtcollins1_branch_boot_trust { mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_provider_resource, mtcollins1_boot_branch_service_account }
 import gunbc.auth.branch_run_grant { branch_run_grant_approved_output }
 import extdeps.github.actions { workflow_dispatch_max_inputs }
 
@@ -5018,8 +5018,15 @@ fn fleet_converge_mtcollins1_boot_source_account(standing: BootCredentialStandin
 // chooses which of the three admitted sources to ask for. A branch that edits this file and asks for the
 // approval-free account gets a token its provider refuses, because its ref, its repository id and its
 // environment are not what that condition admits.
+// WHICH REFS MAY federate the branch boot identity: each roster entry asked ON ITS OWN -- is this ref
+// trusted, and does the selection at THIS ref name the approval-free source. Never one entry's answer
+// applied to the whole roster: a second entry added later is judged on its own ref, and an entry the
+// selection refuses drops out of the expression instead of borrowing its neighbour's approval.
 fn fleet_converge_mtcollins1_boot_ref_is_trusted_branch() -> Expression {
-  let terms = map(mtcollins1_boot_trusted_branches, b => Equals {
+  let allowed = filter(mtcollins1_boot_trusted_branches, b =>
+    mtcollins1_boot_branch_is_trusted(branch: b as String)
+      && !boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
+  let terms = map(allowed, b => Equals {
     left: ContextAccess { context: Github, path: ["ref"] },
     right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
   })
@@ -5038,7 +5045,10 @@ fn fleet_converge_mtcollins1_boot_wif_provider_resource() -> String {
     right: LogicalOr {
       left: LogicalAnd {
         left: fleet_converge_mtcollins1_boot_ref_is_trusted_branch(),
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source_at_ref(on_reviewed_main: false, branch: first_trusted_branch())) },
+        // THE ROUTE'S OWN IDENTITY, named by the trust module: one pool, provider and account are declared
+        // for this route, so this is not a credential computed from a representative branch. WHICH refs may
+        // ask for it is the ref guard beside it, decided per entry.
+        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: TrustedBranchBootIdentity) },
       },
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_provider(standing: select_boot_credential_source(on_reviewed_main: false)) },
     },
@@ -5054,7 +5064,7 @@ fn fleet_converge_mtcollins1_boot_wif_service_account() -> String {
     right: LogicalOr {
       left: LogicalAnd {
         left: fleet_converge_mtcollins1_boot_ref_is_trusted_branch(),
-        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source_at_ref(on_reviewed_main: false, branch: first_trusted_branch())) },
+        right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: TrustedBranchBootIdentity) },
       },
       right: StringLiteral { value: fleet_converge_mtcollins1_boot_source_account(standing: select_boot_credential_source(on_reviewed_main: false)) },
     },
@@ -5778,24 +5788,26 @@ fn fleet_converge_grant_required(mode: FleetConvergeWorkflowMode, on_reviewed_ma
   }
 }
 
-// DOES THIS MODE, OFF MAIN, SELECT THE APPROVAL-FREE BRANCH BOOT IDENTITY? True for mtcollins1_boot and
-// for nothing else: every other run-scoped mode keeps its per-run grant at every ref, host_reset_return
-// included, because the selection that would have to say TrustedBranchBootIdentity is the boot's own
-// (gunbc.auth.branch_dispatch_federation select_boot_credential_source_at_ref) and the roster opens only
-// that one mode.
-fn fleet_converge_mode_selects_approval_free_branch_boot(mode: FleetConvergeWorkflowMode) -> Bool {
-  (fleet_converge_workflow_mode_wire(mode: mode) == (mtcollins1_boot_mode_name as String))
-    && !boot_grant_required_at_ref(on_reviewed_main: false, branch: first_trusted_branch())
+// IS THIS THE MODE THE ROSTER OPENS? A question about the MODE ALONE -- mtcollins1_boot and nothing else,
+// host_reset_return included. Which REFS of it are approval-free is the per-ref question below; nothing
+// here asks the selection of one branch and applies the answer to the rest, because the roster is a set
+// and a second entry must not inherit the first entry's answer.
+fn fleet_converge_mode_is_the_approval_free_boot(mode: FleetConvergeWorkflowMode) -> Bool {
+  fleet_converge_workflow_mode_wire(mode: mode) == (mtcollins1_boot_mode_name as String)
 }
 
-// IS A GRANT REQUIRED FOR THIS MODE AT THIS EXACT REF? The ref-aware question the wait job answers. A
-// rostered branch dispatch of mtcollins1_boot needs none (operator rulings 2026-10-22/23), and that is
-// also what keeps the boot off the srv1 slot while a grant run waits (the 2026-10-23 deadlock): a boot
-// that never waits cannot hold the only srv1 runner against the job that must converge its grant. Every
-// other ref, and every other mode at every ref, still requires the grant and still waits for it.
-fn fleet_converge_grant_required_at_ref(mode: FleetConvergeWorkflowMode, on_reviewed_main: Bool, branch: String) -> Bool {
-  fleet_converge_grant_required(mode: mode, on_reviewed_main: on_reviewed_main)
-    && !(fleet_converge_mode_selects_approval_free_branch_boot(mode: mode) && mtcollins1_boot_branch_is_trusted(branch: branch))
+// IS A GRANT REQUIRED FOR THIS MODE AT THIS EXACT REF? THE ONE REF-AWARE RULE, and the only consumer of
+// the roster's per-entry selection: the wait-job term below is BUILT from this question, asked once per
+// roster entry, so there is no second copy of the rule beside the one that runs. A rostered branch
+// dispatch of mtcollins1_boot needs no grant (operator rulings 2026-10-22/23), and that is also what keeps
+// the boot off the srv1 slot while a grant run waits (the 2026-10-23 deadlock): a boot that never waits
+// cannot hold the only srv1 runner against the job that must converge its grant. Every other ref, and
+// every other mode at every ref, still requires the grant and still waits for it.
+fn fleet_converge_grant_required_at_ref(mode: FleetConvergeWorkflowMode, branch: String) -> Bool {
+  fleet_converge_grant_required(mode: mode, on_reviewed_main: false)
+    && !(fleet_converge_mode_is_the_approval_free_boot(mode: mode)
+      && mtcollins1_boot_branch_is_trusted(branch: branch)
+      && !boot_grant_required_at_ref(on_reviewed_main: false, branch: branch))
 }
 
 fn fleet_converge_on_branch_expression() -> Expression {
@@ -5810,8 +5822,23 @@ fn fleet_converge_on_branch_expression() -> Expression {
 // grant: a boot that never waits cannot hold the only srv1 runner against the grant run queued for it.
 fn fleet_converge_off_main_grant_required_term(mode: FleetConvergeWorkflowMode) -> Expression? {
   let base = LogicalAnd { left: fleet_converge_dispatch_mode_is(mode: mode), right: fleet_converge_on_branch_expression() }
-  if fleet_converge_mode_selects_approval_free_branch_boot(mode: mode) {
-    Present { value: LogicalAnd { left: base, right: LogicalNot { operand: fleet_converge_mtcollins1_boot_ref_is_trusted_branch() } } }
+  if fleet_converge_mode_is_the_approval_free_boot(mode: mode) {
+    // ONE TERM PER ROSTER ENTRY, each from its own answer to the ref-aware question. Folded, not
+    // represented: an entry's exclusion is dropped exactly when ITS ref still requires a grant, so an
+    // entry added to the roster is judged on its own ref and never inherits another's answer.
+    let excluded = filter(mtcollins1_boot_trusted_branches, b => !fleet_converge_grant_required_at_ref(mode: mode, branch: b as String))
+    if excluded.length() == 0 {
+      Present { value: base }
+    } else {
+      let terms = map(excluded, b => Equals {
+        left: ContextAccess { context: Github, path: ["ref"] },
+        right: StringLiteral { value: mtcollins1_boot_trusted_branch_ref(branch: b as String) },
+      })
+      Present { value: LogicalAnd {
+        left: base,
+        right: LogicalNot { operand: fold(terms.skip(n: 1), init: match terms.first() { Present { value: t } => t  Absent => BooleanLiteral { value: false } }, f: (acc, x) => LogicalOr { left: acc, right: x }) },
+      } }
+    }
   } else {
     Present { value: base }
   }

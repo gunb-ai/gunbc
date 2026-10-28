@@ -33,8 +33,9 @@ import gunbc.auth.branch_dispatch_federation { branch_boot_credential_effect_app
 import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_trusted_branches, mtcollins1_boot_trusted_branch_ref, mtcollins1_boot_trusted_environment,
   mtcollins1_boot_branch_admits, mtcollins1_boot_branch_presented_claims, mtcollins1_boot_branch_is_trusted,
-  mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource,
+  mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource, first_trusted_branch,
 }
+import gunbc.fleet.fleet_converge_workflow { FleetConvergeWorkflowMode, fleet_converge_grant_required_at_ref }
 import gunbc.auth.branch_run_grant {
   BranchRunGrantPlanned, BranchRunGrantHeld, BranchRunGrantRefused,
   plan_branch_run_grant, approved_grant_policy, branch_run_grant_purpose,
@@ -365,11 +366,27 @@ test fn red_a_non_admitted_pattern_is_a_refused_boot_credential_source() -> Bool
 // approval-free" -- a branch can rewrite its own workflow file, so a check on workflow text would pass
 // for a bypass. They ask what the SELECTION returns, and what GCP's provider condition ADMITS.
 
+// A REPRESENTATIVE ENTRY, for the claim-level REDs that must present a concrete claim set. The accessor is
+// the modeled one; nothing here reimplements it. Note which REDs this is legitimate for (a claim set is
+// per-ref, so one entry is a complete example) and which it is NOT: the route's own gating asks every
+// entry, and the next test is the one that pins that.
 fn trusted_boot_branch() -> String {
-  match mtcollins1_boot_trusted_branches.first() {
-    Present { value: b } => b as String
-    Absent => "__gunbc_no_rostered_branch__"
-  }
+  let b = first_trusted_branch()
+  if (b as String).length() > 0 { b } else { "__gunbc_no_rostered_branch__" }
+}
+
+// THE ROSTER IS ANSWERED AS A SET, NOT THROUGH A REPRESENTATIVE. For every entry, the wait-job rule must
+// agree with the credential selection AT THAT SAME REF -- so an entry added to the roster is judged on its
+// own ref and cannot inherit a neighbour's approval, and an entry the selection refuses cannot borrow the
+// route. This is the assertion that would have caught the single-representative version of this code.
+test fn every_roster_entry_is_answered_on_its_own_ref() -> Bool {
+  all(mtcollins1_boot_trusted_branches, b =>
+    fleet_converge_grant_required_at_ref(mode: MtCollins1Boot, branch: b as String)
+      == boot_grant_required_at_ref(on_reviewed_main: false, branch: b as String))
+    // and the boot is the ONLY mode whose grant question can differ by ref
+    && all(mtcollins1_boot_trusted_branches, b =>
+      fleet_converge_grant_required_at_ref(mode: HostResetReturn, branch: b as String)
+        && fleet_converge_grant_required_at_ref(mode: GcpIamConverge, branch: b as String))
 }
 
 fn boot_environment() -> String {
