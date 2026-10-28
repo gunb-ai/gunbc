@@ -712,27 +712,31 @@ fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResou
   }
 }
 
-fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingReading? {
+// The listing's refusal is carried, not dropped: on 2026-10-28 (receipt iam-ceremony-20261028T130224Z)
+// the stage refused "tag bindings unreadable" with the upstream's cause discarded.
+type TagBindingRead = TagBindingReadAnswered { reading: TagBindingReading } | TagBindingReadRefused { cause: String }
+
+fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingRead {
   match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
-    RestRefused { refusal: _ } => none
-    RestAnswered { answer: l } => Present { value: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
+    RestRefused { refusal } => TagBindingReadRefused { cause: rest_refusal_text(o: refusal) }
+    RestAnswered { answer: l } => TagBindingReadAnswered { reading: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
   }
 }
 
 fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token: Secret) -> TrustRootTagsOutcome {
   match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-    Absent => trust_root_tags_refused(reason: concat(parent, ": tag bindings unreadable"))
-    Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
-    Present { value: TagBindingEstablished } => TrustRootTagsBound
-    Present { value: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
+    TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag bindings unreadable: ", cause], ""))
+    TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
+    TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+    TagBindingReadAnswered { reading: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
       RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
       RestAnswered { answer: a } => match a.error {
         Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], ""))
         Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-          Present { value: TagBindingEstablished } => TrustRootTagsBound
-          Present { value: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
-          Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
-          Absent => trust_root_tags_refused(reason: concat(parent, ": tag binding readback unreadable"))
+          TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+          TagBindingReadAnswered { reading: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
+          TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag binding readback unreadable: ", cause], ""))
         }
       }
     }
