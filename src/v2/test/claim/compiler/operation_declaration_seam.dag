@@ -221,8 +221,8 @@ test fn the_six_corpus_fact_operations_keep_known_semantics_and_their_open_dispo
 // requirement text exists nowhere but the row: an arm trusting a builtin table, or one walking the
 // seam's self-call body, could not produce RequiresResources{[std.resources.Filesystem]} from it.
 test fn the_walked_seam_is_matched_by_declaration_path_and_carries_the_rows_requirement_holds() -> Bool {
+  let seam = demand_census_seam_operation_fact(path: seam_path())
   if demand_census_declaration_is_host_seam(path: seam_path()) {
-    let seam = demand_census_seam_operation_fact(path: seam_path())
     seam.path == seam_path()
       && seam.requirement == RequiresResources { resources: [filesystem_resource()] }
   } else {
@@ -326,8 +326,8 @@ test fn the_missing_row_is_absent_from_the_keyed_read_and_carries_no_default_sem
 // census reads its semantics as the host observation, and its reason is ReachesDeclaredResource at its
 // real module-qualified path. Deleting the row reddens this through RequiresUndeclared + Absent.
 test fn the_read_authoritys_fact_carries_its_rows_identity_at_declaration_key_holds() -> Bool {
+  let fact = demand_census_seam_operation_fact(path: read_seam_path())
   if demand_census_declaration_is_host_seam(path: read_seam_path()) {
-    let fact = demand_census_seam_operation_fact(path: read_seam_path())
     fact.requirement == RequiresResources { resources: [filesystem_resource()] }
       && match reach_operation_semantics(op: fact) {
           Present { value: ObservesHost { operation_identity: identity } } =>
