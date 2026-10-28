@@ -293,11 +293,12 @@ fn harness_turn_exit(outcome: HarnessTurnOutcome) -> ProcessExit {
       ExitSuccess
     TurnCompletedByArtifact { path: _, steps_taken: _ } => ExitSuccess
     TurnStepBudgetExhausted { steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
-    // A 503-HELD TURN IS NOT A PROVIDER TERMINAL AND NOT A REFUSAL OF THE REQUEST: it exits 1 with the pool-no-capacity
-    // label (the exit record's reason), and the stream it wrote carries turn.capacity_wait, so the belt's continuation
-    // decision reads AwaitingCapacity, HOLDS while the front reports no TLS card, and RESUMES the same session when it
-    // does -- without spending session_resume_bound, which counts unexplained engine refusals only.
-    TurnPoolNoCapacity { retries: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
+    // A REQUEST THAT DREW NO ANSWER IS NOT A PROVIDER TERMINAL AND NOT A REFUSAL OF THE REQUEST: it exits 1
+    // with the request-pending label (the exit record's reason), and the stream it wrote carries the one
+    // durable turn.request_pending event, so the belt's continuation decision HOLDS until the next
+    // re-delivery is due and then RE-DELIVERS the same round of the same session -- without spending
+    // session_resume_bound, which counts unexplained engine refusals only.
+    TurnRequestPending { re_deliveries: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnTransportRefused { detail: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnResponseUnreadable { cause: _ } => harness_turn_refusal_exit(outcome: outcome)
     TurnBackendRefusedUnexplained { cause: _, resumable: _, steps_taken: _ } => harness_turn_refusal_exit(outcome: outcome)

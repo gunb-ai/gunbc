@@ -1,53 +1,67 @@
 module gunbc.harness.harness_transport_retry_policy
 
-import std.types { String, Int, Bool, List }
+import std.types { String, Int, Bool }
 import std.measure { Second, second, second_count }
 
-// ── WHEN A SESSION TRIES AGAIN AFTER ITS REQUEST DREW NO RESPONSE: the policy, kept apart ─────────────
+// ── WHEN THE BELT RE-DELIVERS A PATIENT REQUEST: the re-delivery schedule, kept apart ────────────────
 //
-// The harness decides WHETHER a request may be retried -- only one that drew no response at all, and
-// never on a hosted route (gunbc.harness.harness_turn harness_post_drew_no_response). This module decides
-// WHEN, and for how long. It is policy, held apart from the mechanism so it can change without touching
-// the request path (operator, 2026-10-12: "keep it sequestered into its own sort of policy area because
-// we'll change it over time"). The harness reads one value, harness_transport_retry_policy_now, and
-// nothing else here.
+// A request on the operator route is a PATIENT REQUEST CONTRACT: it is delivered, and then watched for
+// indefinitely (operator direction 2026-10-27: "i deliver the request, and wait indefinitely for the
+// response (like a patient contract) - that sort of contract can be used in any context, batch,
+// streaming - its orthogonal to latency/throughput"). A client timeout means "stopped watching", never
+// "failed" and never "cancelled". So nothing in this module decides WHETHER a pending request still
+// stands -- while it is recorded pending it always does -- and nothing here can end one. What this
+// module decides is WHEN THE BELT next re-delivers it.
 //
-// The policy is the caller's side of a retry the serving route leaves to its callers
-// (gunbc.serving.caller_retry_contract): it makes the harness come back, and establishes none of that
+// IT REPLACES A BUDGET. This module once carried a total wait budget and a transport_retry_fits
+// predicate that stopped asking once the arithmetic ran out, and the harness slept beside the request
+// until it did: that used a live process and a clock as a queue entry -- the request was alive only
+// while a worker sat next to it, and it died when the arithmetic said so. Both are deleted (companion
+// principle, operator side chat 2026-10-27: "Accept work durably first. Materialize it only when the
+// resources required have been admitted. Never use a live process as a queue entry"). Pending is one
+// durable event in the session's own event stream (gunbc.harness.harness_session_recovery
+// session_event_request_pending), and the belt re-delivers from that record for as long as it stands.
+//
+// The policy stays sequestered from the mechanism so it can change over time (operator, 2026-10-12:
+// "keep it sequestered into its own sort of policy area because we'll change it over time"). The
+// continuation and the worker read one value, harness_transport_retry_policy_now, and nothing else here.
+//
+// This is the caller's side of a retry the serving route leaves to its callers
+// (gunbc.serving.caller_retry_contract); it makes the belt come back, and establishes none of that
 // contract's durability properties by doing so.
-type TransportRetryPolicy {
+type HarnessTransportRetryPolicy {
   first_delay: Second
   max_delay: Second
-  budget: Second
   offset_spread: Int
 }
 
-// THE OPERATOR ENGINE IS EXPECTED TO RESTART AND TO RUN SLOW (operator, 2026-10-12): the srv1 lab's
-// empty replies were the engine reloading under the request, back about 27 s later. So the wait backs
-// off exponentially -- 15 s, doubling, capped at 5 minutes -- inside a 30-minute budget, after which the
-// session stops typed rather than waiting forever. Each wait is offset by up to offset_spread - 1
-// seconds, derived from the session's own request path, so sessions that lost the engine together do not
-// all return the instant it comes back.
-data harness_transport_retry_policy_now: TransportRetryPolicy = TransportRetryPolicy {
+// THE OPERATOR ENGINE IS EXPECTED TO RESTART AND TO RUN SLOW (operator, 2026-10-12): the lab's empty
+// replies were the engine reloading under the request, back about 27 s later. So the first re-delivery
+// comes 15 s after the last delivery, each later one doubles the gap, capped at 5 minutes -- and that is
+// ALL this schedule does: the doubling SPACES the re-deliveries, it never ends one. The 30-minute budget
+// this policy once carried, and the fit test that stopped asking when it ran out, are deleted. Each gap
+// is offset by up to offset_spread - 1 seconds, derived from the session's own key, so sessions that
+// lost capacity together do not all re-deliver the instant the gap has passed.
+data harness_transport_retry_policy_now: HarnessTransportRetryPolicy = HarnessTransportRetryPolicy {
   first_delay: second(count: 15),
   max_delay: second(count: 300),
-  budget: second(count: 1800),
   offset_spread: 7,
 }
 
-// THE nth WAIT, before its offset: first_delay doubled n times, never past max_delay.
-fn transport_retry_delay_seconds(policy: TransportRetryPolicy, retries_so_far: Int) -> Int {
-  if retries_so_far <= 0 {
+// THE GAP BEFORE THE NEXT RE-DELIVERY, before its offset: first_delay doubled once per re-delivery
+// already made, never past max_delay. The count moves the instant; it never ends the request.
+fn transport_retry_delay_seconds(policy: HarnessTransportRetryPolicy, re_deliveries: Int) -> Int {
+  if re_deliveries <= 0 {
     second_count(s: policy.first_delay) as Int
   } else {
-    let doubled = 2 * transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far - 1)
+    let doubled = 2 * transport_retry_delay_seconds(policy: policy, re_deliveries: re_deliveries - 1)
     let cap = second_count(s: policy.max_delay) as Int
     if doubled > cap { cap } else { doubled }
   }
 }
 
 // THE SESSION'S OFFSET: small, stable for one session, different across sessions.
-fn transport_retry_offset_seconds(policy: TransportRetryPolicy, session_key: String) -> Int {
+fn transport_retry_offset_seconds(policy: HarnessTransportRetryPolicy, session_key: String) -> Int {
   if policy.offset_spread <= 1 {
     0
   } else {
@@ -55,8 +69,19 @@ fn transport_retry_offset_seconds(policy: TransportRetryPolicy, session_key: Str
   }
 }
 
-// WHETHER ONE MORE RETRY FITS, given how long this request has already waited: a retry is due only
-// while its whole wait still lands inside the budget.
-fn transport_retry_fits(policy: TransportRetryPolicy, waited_seconds: Int, retries_so_far: Int, offset_seconds: Int) -> Bool {
-  waited_seconds + transport_retry_delay_seconds(policy: policy, retries_so_far: retries_so_far) + offset_seconds <= second_count(s: policy.budget) as Int
+// THE NEXT RE-DELIVERY INSTANT: the instant of the LAST DELIVERY (not of the last hold -- a round that
+// re-pends keeps the schedule it earned, so the gap never restarts under an attempt), plus the gap this
+// many re-deliveries have earned, plus the session's place in the schedule. Pure over clock readings
+// the caller already holds; the belt reads the clock once per sweep and passes it down.
+fn transport_retry_next_delivery_at(policy: HarnessTransportRetryPolicy, last_delivery_at: Int, re_deliveries: Int, session_key: String) -> Int {
+  last_delivery_at
+    + transport_retry_delay_seconds(policy: policy, re_deliveries: re_deliveries)
+    + transport_retry_offset_seconds(policy: policy, session_key: session_key)
+}
+
+// WHETHER THE NEXT RE-DELIVERY IS DUE at the instant the caller holds. No budget, no expiry, no
+// "stopped asking": due means the gap has passed, and nothing else is consulted. A pending request
+// waits ten days or a hundred -- the answer is the same function.
+fn transport_retry_redelivery_due(policy: HarnessTransportRetryPolicy, last_delivery_at: Int, re_deliveries: Int, session_key: String, at: Int) -> Bool {
+  transport_retry_next_delivery_at(policy: policy, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: session_key) <= at
 }
