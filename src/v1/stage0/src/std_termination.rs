@@ -155,7 +155,7 @@ impl PositiveDescentAmount {
 }
 
 pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> i64 {
         match (*steps.clone()).clone() {
             PositiveDescentAmount::OneStep => 1,
             PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
@@ -181,10 +181,12 @@ impl ProportionalDivisor {
 }
 
 pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
-        ProportionalDivisor::DivideByTwo => 2,
-        ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
-            v1_rt::int_add(1, proportional_divisor_to_int(p.clone()))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> i64 {
+        match (*d.clone()).clone() {
+            ProportionalDivisor::DivideByTwo => 2,
+            ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
+                v1_rt::int_add(1, proportional_divisor_to_int(p.clone()))
+            }
         }
     })
 }
@@ -194,49 +196,63 @@ pub fn peano_literal_materialization_cap() -> i64 {
 }
 
 pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (k.clone() <= 0) {
-            std::option::Option::None
-        } else {
-            if (k.clone() > peano_literal_materialization_cap()) {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Option<Rc<PositiveDescentAmount>> {
+            if (k.clone() <= 0) {
                 std::option::Option::None
             } else {
-                if (k.clone() == 1) {
-                    Some(Rc::new(PositiveDescentAmount::OneStep))
+                if (k.clone() > peano_literal_materialization_cap()) {
+                    std::option::Option::None
                 } else {
-                    match positive_descent_amount_from_positive_int(v1_rt::int_sub(k.clone(), 1)) {
-                        Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
-                            previous: prev.clone(),
-                        })),
-                        std::option::Option::None => std::option::Option::None,
+                    if (k.clone() == 1) {
+                        Some(Rc::new(PositiveDescentAmount::OneStep))
+                    } else {
+                        match positive_descent_amount_from_positive_int(v1_rt::int_sub(
+                            k.clone(),
+                            1,
+                        )) {
+                            Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
+                                previous: prev.clone(),
+                            })),
+                            std::option::Option::None => std::option::Option::None,
+                        }
                     }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<ProportionalDivisor>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (k.clone() < 2) {
-            std::option::Option::None
-        } else {
-            if (k.clone() > peano_literal_materialization_cap()) {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Option<Rc<ProportionalDivisor>> {
+            if (k.clone() < 2) {
                 std::option::Option::None
             } else {
-                if (k.clone() == 2) {
-                    Some(Rc::new(ProportionalDivisor::DivideByTwo))
+                if (k.clone() > peano_literal_materialization_cap()) {
+                    std::option::Option::None
                 } else {
-                    match proportional_divisor_from_int_at_least_two(v1_rt::int_sub(k.clone(), 1)) {
-                        Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
-                            inner: prev.clone(),
-                        })),
-                        std::option::Option::None => std::option::Option::None,
+                    if (k.clone() == 2) {
+                        Some(Rc::new(ProportionalDivisor::DivideByTwo))
+                    } else {
+                        match proportional_divisor_from_int_at_least_two(v1_rt::int_sub(
+                            k.clone(),
+                            1,
+                        )) {
+                            Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                                inner: prev.clone(),
+                            })),
+                            std::option::Option::None => std::option::Option::None,
+                        }
                     }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

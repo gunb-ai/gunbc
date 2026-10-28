@@ -3741,7 +3741,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    dying_base_sites: empty_map()
+    dying_base_sites: empty_map(),
+    guard_required: base_info.guard_required
   }
   let registry = typed.item_registry
   let anonymous_record_diags = typed.modules |> flat_map(tm => tm.items |> flat_map(item => ambiguous_anonymous_record_literal_diagnostics(n: item, type_summaries: emit_info.type_summaries, source_indices: tm.type_env.source_indices, module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
@@ -4450,7 +4451,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    dying_base_sites: empty_map()
+    dying_base_sites: empty_map(),
+    guard_required: base_info.guard_required
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -5785,7 +5787,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    dying_base_sites: emit_info.dying_base_sites
+    dying_base_sites: emit_info.dying_base_sites,
+    guard_required: emit_info.guard_required
   }
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
     scoped: build_scoped_data_item_index(typed_module: typed_module, data_items: data_items),
@@ -7971,7 +7974,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
             tco_cursor_params: emit_info.tco_cursor_params,
             tco_cursor_tails: emit_info.tco_cursor_tails,
             trmc_out: false,
-            dying_base_sites: fn_dying_base_sites
+            dying_base_sites: fn_dying_base_sites,
+            guard_required: emit_info.guard_required
           }
 
           let is_effectful = match lookup_item_by_identity(registry: registry, id: DeclaredCallableIdentity { owner_module_path: module_name, decl_name: authored_name(env: env, node: item) }) {
@@ -10201,7 +10205,12 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
   let plain_tco = !realized_seam && is_tco_eligible(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si)
   let use_trmc = !realized_seam && !plain_tco && is_trmc_eligible(body: body, fn_name: name, emit_info: emit_info, si: si)
   let use_tco = plain_tco || use_trmc
-  let needs_stacker = !realized_seam && is_self_recursive(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name }, body: body, registry: registry, source_indices: si) && use_tco == false
+  // The guard verdict is READ, never derived here: v1.compiler.infer build_guard_required_set put
+  // every member of every recursive SCC in this set, mutual groups included. A self-call test here
+  // would be a second authority for one fact, and the narrower one -- a mutually recursive pair has
+  // no self-call and so would go unguarded while still overflowing the stack.
+  let needs_stacker = !realized_seam && set_contains(emit_info.guard_required,
+    callable_identity(id: DeclaredCallableIdentity { owner_module_path: scope.module_name, decl_name: name })) && use_tco == false
   if rust_host_seam_is_unrealized(module_path: scope.module_name, name: name, body: body, source_indices: si) {
     let kw = rust_items().func_keyword
     return concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
@@ -10379,7 +10388,13 @@ fn emit_fn_def_non_tco(name: String, type_params_str: String, params_str: String
     let body_str = emit_rust_fn_body_expr(texpr: body, return_is_unit: return_is_unit, registry: registry, scope: scope, depth: depth + 2, shared_types: shared_types, emit_info: emit_info)
     let kw = rust_items().func_keyword
     concat(rust_visibility_prefix(), kw, " ", emit_ident(name: name, target: Rust), type_params_str, "(", params_str, ")", ret_str, " {\n",
-      make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {\n",
+      // The closure's return type is spelled because the guard changes inference, not semantics:
+      // rustc does not infer a closure's return type from a value consumed OUTSIDE the closure, so a
+      // body whose last expression is `fold(Option::None, ...)` used to compile unguarded and fails
+      // E0282 wrapped (an unannotated `Option::None` seed leaves T unknown). ret_str already carries
+      // its own leading " -> ", and is empty for a unit body, so this reads `|| -> T {` guarded and
+      // plain `|| {` where the function returns unit.
+      make_indent(level: depth + 1), "stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, ||", ret_str, " {\n",
       make_indent(level: depth + 2), body_str, "\n",
       make_indent(level: depth + 1), "})\n}")
   } else {
@@ -14180,7 +14195,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              dying_base_sites: emit_info.dying_base_sites
+              dying_base_sites: emit_info.dying_base_sites,
+              guard_required: emit_info.guard_required
             }
           Absent => emit_info
         }
@@ -14223,7 +14239,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               tco_cursor_params: emit_info.tco_cursor_params,
               tco_cursor_tails: emit_info.tco_cursor_tails,
               trmc_out: emit_info.trmc_out,
-              dying_base_sites: emit_info.dying_base_sites
+              dying_base_sites: emit_info.dying_base_sites,
+              guard_required: emit_info.guard_required
             }
           Absent => emit_info
         }

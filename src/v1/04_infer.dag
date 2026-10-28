@@ -211,8 +211,10 @@ import v1.compiler.infer_items {
   inferred_to_outputs, item_kind, item_is_effectful_callee,
   ResourceRequirement, resource_requirements_of_uses
 }
+import std.graph { CallGraph, GraphEdge, graph_cycle_members }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
+  ModuleCallees, ItemCallees, CalleeEdge, ResolvedCallee, build_module_callees,
   is_typed_service_call_receiver, extract_typed_service_name,
   collect_typed_service_calls,
   expand_transitive_services,
@@ -19264,6 +19266,36 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
   }
 }
 
+// The ONE guard-required verdict: every callable whose stack can grow without bound.
+//
+// A recursive strongly connected component has no interior and no exterior. A member that merely
+// calls INTO the cycle runs out of stack exactly as surely as the member that closes it, so the
+// verdict is MEMBERSHIP and it is not derivable from any per-function spelling: the pair
+// a_even/a_odd, each calling the other and neither calling itself, satisfies every self-call test
+// and guards nothing. That is the recurring failure mode this closes.
+//
+// One authority each side. Edges come from v1.compiler.infer_service build_module_callees, which is
+// already the effects fixpoint's source of callee edges and resolves a call to a
+// DeclaredCallableIdentity rather than matching a name. Components come from the ONE Tarjan in
+// std.graph -- graph_cycle_members is self-loop members union multi-node SCC members, so it covers
+// the old self-only set as well as the mutual one. No emitter may re-derive any of this from source
+// text; the set is computed once here and read by v1.compiler.emit_rust needs_stacker.
+fn build_guard_required_set(modules: List<TypedModule>) -> Set<String> {
+  let edges = build_module_callees(modules: modules)
+    |> flat_map(m => m.items |> flat_map(entry =>
+      entry.called |> flat_map(edge => match edge {
+        ResolvedCallee { identity: callee_identity, call_site: _ } => [GraphEdge {
+          caller: callable_identity(id: entry.item_identity),
+          callee: callable_identity(id: callee_identity)
+        }]
+        _ => []
+      })
+    ))
+  let names = fold(edges, init: [], f: (acc, edge) => concat(acc, [edge.caller, edge.callee]))
+  fold(graph_cycle_members(names: names, graph: CallGraph { edges: edges }),
+    init: empty_set(), f: (acc, member) => set_insert(acc, member))
+}
+
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
@@ -19334,7 +19366,8 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    dying_base_sites: empty_map()
+    dying_base_sites: empty_map(),
+    guard_required: build_guard_required_set(modules: modules)
   }
 }
 

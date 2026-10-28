@@ -28,7 +28,7 @@ pub fn decimal_note() -> String {
 }
 
 pub fn decimal_pow10(exponent: i64) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> i64 {
         if (exponent.clone() <= 0) {
             1
         } else {
@@ -188,7 +188,7 @@ pub enum ExactDecimalDifference {
 }
 
 pub fn checked_decimal_pow10(exponent: i64) -> Rc<CheckedInt> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<CheckedInt> {
         if (exponent.clone() <= 0) {
             Rc::new(CheckedInt::CheckedIntReady { value: 1 })
         } else {
@@ -314,7 +314,7 @@ pub fn decimal_digit_char(ch: String) -> bool {
 }
 
 pub fn decimal_digits_from(s: String, i: i64) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if (i.clone() >= v1_rt::string_length(&s)) {
             true
         } else {

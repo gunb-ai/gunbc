@@ -140,7 +140,7 @@ pub fn dfs_finish_order(
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<DfsFinishAcc> {
         if v1_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {
@@ -173,7 +173,7 @@ pub fn dfs_collect_component(
     adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<SccComponentAcc> {
         if v1_rt::set_contains(&acc.visited.clone(), node.clone()) {
             acc.clone()
         } else {

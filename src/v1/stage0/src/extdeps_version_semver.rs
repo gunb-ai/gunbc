@@ -442,7 +442,7 @@ pub fn semver_is_identifier_char(cp: i64) -> bool {
 }
 
 pub fn semver_index_of(cp: i64, cps: Rc<Vec<i64>>) -> Option<i64> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Option<i64> {
         if ((cps.clone().len() as i64) == 0) {
             std::option::Option::None
         } else {
@@ -533,41 +533,48 @@ pub fn semver_core_fields_parse(
     cps: Rc<Vec<i64>>,
     remaining: i64,
 ) -> Option<Rc<Vec<Rc<SemVerNumericField>>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (remaining.clone() == 0) {
-            if ((cps.clone().len() as i64) == 0) {
-                Some(Rc::new(vec![]))
-            } else {
-                std::option::Option::None
-            }
-        } else {
-            if (remaining.clone() == 1) {
-                match semver_numeric_field(cps.clone()) {
-                    std::option::Option::None => std::option::Option::None,
-                    Some(v) => Some(Rc::new(vec![v.clone()])),
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Option<Rc<Vec<Rc<SemVerNumericField>>>> {
+            if (remaining.clone() == 0) {
+                if ((cps.clone().len() as i64) == 0) {
+                    Some(Rc::new(vec![]))
+                } else {
+                    std::option::Option::None
                 }
             } else {
-                match semver_index_of(46, cps.clone()) {
-                    Some(i) => match semver_numeric_field(Rc::new(v1_rt::list_take(
-                        &cps.clone(),
-                        i.clone(),
-                    ))) {
+                if (remaining.clone() == 1) {
+                    match semver_numeric_field(cps.clone()) {
                         std::option::Option::None => std::option::Option::None,
-                        Some(v) => match semver_core_fields_parse(
-                            Rc::new(v1_rt::list_skip(&cps.clone(), v1_rt::int_add(i.clone(), 1))),
-                            v1_rt::int_sub(remaining.clone(), 1),
-                        ) {
+                        Some(v) => Some(Rc::new(vec![v.clone()])),
+                    }
+                } else {
+                    match semver_index_of(46, cps.clone()) {
+                        Some(i) => match semver_numeric_field(Rc::new(v1_rt::list_take(
+                            &cps.clone(),
+                            i.clone(),
+                        ))) {
                             std::option::Option::None => std::option::Option::None,
-                            Some(rest) => {
-                                Some(v1_rt::concat(Rc::new(vec![v.clone()]), rest.clone()))
-                            }
+                            Some(v) => match semver_core_fields_parse(
+                                Rc::new(v1_rt::list_skip(
+                                    &cps.clone(),
+                                    v1_rt::int_add(i.clone(), 1),
+                                )),
+                                v1_rt::int_sub(remaining.clone(), 1),
+                            ) {
+                                std::option::Option::None => std::option::Option::None,
+                                Some(rest) => {
+                                    Some(v1_rt::concat(Rc::new(vec![v.clone()]), rest.clone()))
+                                }
+                            },
                         },
-                    },
-                    std::option::Option::None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
+                    }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {

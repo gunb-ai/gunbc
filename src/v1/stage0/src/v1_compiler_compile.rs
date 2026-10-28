@@ -643,7 +643,7 @@ pub fn dotted_reference_text(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -679,45 +679,54 @@ pub fn test_references_in_expr(
     visible: Rc<HashMap<String, String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let here =
-            match function_value_target(texpr.clone(), visible.clone(), source_indices.clone()) {
-                Some(key) => {
-                    if v1_rt::map_contains_key(&test_keys, key.clone()) {
-                        Rc::new(vec![Rc::new(TestReferenceOccurrence {
-                            module_name: module_name.clone(),
-                            referrer: referrer.clone(),
-                            target: key.clone(),
-                            span: texpr.span.clone(),
-                        })])
-                    } else {
-                        Rc::new(vec![])
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<TestReferenceOccurrence>>> {
+            {
+                let here = match function_value_target(
+                    texpr.clone(),
+                    visible.clone(),
+                    source_indices.clone(),
+                ) {
+                    Some(key) => {
+                        if v1_rt::map_contains_key(&test_keys, key.clone()) {
+                            Rc::new(vec![Rc::new(TestReferenceOccurrence {
+                                module_name: module_name.clone(),
+                                referrer: referrer.clone(),
+                                target: key.clone(),
+                                span: texpr.span.clone(),
+                            })])
+                        } else {
+                            Rc::new(vec![])
+                        }
                     }
-                }
-                std::option::Option::None => Rc::new(vec![]),
-            };
-        v1_rt::concat(
-            here.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for child in texpr.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*test_references_in_expr(
-                            module_name.clone(),
-                            referrer.clone(),
-                            child.clone(),
-                            test_keys.clone(),
-                            visible.clone(),
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
-    })
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    here.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for child in texpr.children.clone().iter().cloned() {
+                            __result.extend(
+                                (*test_references_in_expr(
+                                    module_name.clone(),
+                                    referrer.clone(),
+                                    child.clone(),
+                                    test_keys.clone(),
+                                    visible.clone(),
+                                    source_indices.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }),
+                )
+            }
+        },
+    )
 }
 
 pub fn declaration_test_references(
@@ -1562,83 +1571,90 @@ pub fn serialize_field_binding(
     binding: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    v1_rt::concat(
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    "{\"field_name\": ".to_string(),
-                    crate::v1_compiler_dag_collect_support::json_quote(
-                        crate::v1_std_core::field_binding_name_at(
-                            binding.clone(),
-                            source_indices.clone(),
+                    v1_rt::concat(
+                        "{\"field_name\": ".to_string(),
+                        crate::v1_compiler_dag_collect_support::json_quote(
+                            crate::v1_std_core::field_binding_name_at(
+                                binding.clone(),
+                                source_indices.clone(),
+                            ),
                         ),
                     ),
+                    ", \"binding\": ".to_string(),
                 ),
-                ", \"binding\": ".to_string(),
+                serialize_match_pattern(
+                    crate::v1_std_core::field_binding_pattern(binding.clone()),
+                    source_indices.clone(),
+                ),
             ),
-            serialize_match_pattern(
-                crate::v1_std_core::field_binding_pattern(binding.clone()),
-                source_indices.clone(),
-            ),
-        ),
-        "}".to_string(),
-    )
+            "}".to_string(),
+        )
+    })
 }
 
 pub fn serialize_match_pattern(
     pattern: Rc<MatchPattern>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match (*pattern.clone()).clone() {
-        MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"Bind\", \"name\": ".to_string(),
-                crate::v1_compiler_dag_collect_support::json_quote(declaration.name.clone()),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        match (*pattern.clone()).clone() {
+            MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            } => v1_rt::concat(
+                v1_rt::concat(
+                    "{\"kind\": \"Bind\", \"name\": ".to_string(),
+                    crate::v1_compiler_dag_collect_support::json_quote(declaration.name.clone()),
+                ),
+                "}".to_string(),
             ),
-            "}".to_string(),
-        ),
-        MatchPattern::LitPattern { value: inner, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"kind\": \"LitPattern\", \"value\": ".to_string(),
-                serialize_literal(inner.clone()),
+            MatchPattern::LitPattern { value: inner, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    "{\"kind\": \"LitPattern\", \"value\": ".to_string(),
+                    serialize_literal(inner.clone()),
+                ),
+                "}".to_string(),
             ),
-            "}".to_string(),
-        ),
-        MatchPattern::VariantPattern {
-            name: inner,
-            parent_enum,
-            field_bindings,
-            ..
-        } => v1_rt::concat(
-            v1_rt::concat(
+            MatchPattern::VariantPattern {
+                name: inner,
+                parent_enum,
+                field_bindings,
+                ..
+            } => v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                "{\"kind\": \"VariantPattern\", \"name\": ".to_string(),
-                                crate::v1_compiler_dag_collect_support::json_quote(inner.clone()),
+                                v1_rt::concat(
+                                    "{\"kind\": \"VariantPattern\", \"name\": ".to_string(),
+                                    crate::v1_compiler_dag_collect_support::json_quote(
+                                        inner.clone(),
+                                    ),
+                                ),
+                                ", \"parent_enum\": ".to_string(),
                             ),
-                            ", \"parent_enum\": ".to_string(),
+                            json_optional_string(parent_enum.clone()),
                         ),
-                        json_optional_string(parent_enum.clone()),
+                        ", \"field_bindings\": ".to_string(),
                     ),
-                    ", \"field_bindings\": ".to_string(),
+                    json_list(Rc::new({
+                        let mut __result = Vec::new();
+                        for fb in field_bindings.iter().cloned() {
+                            __result
+                                .push(serialize_field_binding(fb.clone(), source_indices.clone()));
+                        }
+                        __result
+                    })),
                 ),
-                json_list(Rc::new({
-                    let mut __result = Vec::new();
-                    for fb in field_bindings.iter().cloned() {
-                        __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
-                    }
-                    __result
-                })),
+                "}".to_string(),
             ),
-            "}".to_string(),
-        ),
-        MatchPattern::Wildcard => "{\"kind\": \"Wildcard\"}".to_string(),
-    }
+            MatchPattern::Wildcard => "{\"kind\": \"Wildcard\"}".to_string(),
+        }
+    })
 }
 
 pub fn serialize_field_init(
@@ -1879,7 +1895,7 @@ pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
 }
 
 pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         match (*steps.clone()).clone() {
             PositiveDescentAmount::OneStep => "{\"_variant\": \"OneStep\"}".to_string(),
             PositiveDescentAmount::AdditionalStep { previous: p, .. } => v1_rt::concat(
@@ -1894,15 +1910,17 @@ pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> St
 }
 
 pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
-        ProportionalDivisor::DivideByTwo => "{\"_variant\": \"DivideByTwo\"}".to_string(),
-        ProportionalDivisor::StrictlyLarger { inner: i, .. } => v1_rt::concat(
-            v1_rt::concat(
-                "{\"_variant\": \"StrictlyLarger\", \"inner\": ".to_string(),
-                serialize_proportional_divisor(i.clone()),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        match (*d.clone()).clone() {
+            ProportionalDivisor::DivideByTwo => "{\"_variant\": \"DivideByTwo\"}".to_string(),
+            ProportionalDivisor::StrictlyLarger { inner: i, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    "{\"_variant\": \"StrictlyLarger\", \"inner\": ".to_string(),
+                    serialize_proportional_divisor(i.clone()),
+                ),
+                "}".to_string(),
             ),
-            "}".to_string(),
-        ),
+        }
     })
 }
 
@@ -3255,7 +3273,7 @@ pub fn census_heads_node(
 }
 
 pub fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Node> {
         census_heads_node(
             item.clone(),
             Rc::new({

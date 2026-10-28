@@ -2463,17 +2463,19 @@ pub fn fold_list_right<T: Clone, A: Clone>(
     empty: A,
     snoc: impl Fn(A, T) -> A + Clone,
 ) -> A {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = xs.clone();
-        if __fm.is_empty() {
-            empty.clone()
-        } else {
-            let h = (*__fm)[0].clone();
-            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            snoc(
-                fold_list_right(t.clone(), empty.clone(), snoc.clone()),
-                h.clone(),
-            )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> A {
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                empty.clone()
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                snoc(
+                    fold_list_right(t.clone(), empty.clone(), snoc.clone()),
+                    h.clone(),
+                )
+            }
         }
     })
 }
@@ -2712,25 +2714,29 @@ pub fn sort_keyed_runs<T: Clone, K: Clone>(
     n: i64,
     order: Rc<TotalOrder<K>>,
 ) -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if (n.clone() <= 1) {
-            xs.clone()
-        } else {
-            sort_merge_runs(
-                sort_keyed_runs(
-                    take_prefix(xs.clone(), v1_rt::int_div(n.clone(), 2)),
-                    v1_rt::int_div(n.clone(), 2),
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<FreeMonoid<Rc<SortKeyed<T, K>>>> {
+            if (n.clone() <= 1) {
+                xs.clone()
+            } else {
+                sort_merge_runs(
+                    sort_keyed_runs(
+                        take_prefix(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                        v1_rt::int_div(n.clone(), 2),
+                        order.clone(),
+                    ),
+                    sort_keyed_runs(
+                        skip(xs.clone(), v1_rt::int_div(n.clone(), 2)),
+                        v1_rt::int_sub(n.clone(), v1_rt::int_div(n.clone(), 2)),
+                        order.clone(),
+                    ),
                     order.clone(),
-                ),
-                sort_keyed_runs(
-                    skip(xs.clone(), v1_rt::int_div(n.clone(), 2)),
-                    v1_rt::int_sub(n.clone(), v1_rt::int_div(n.clone(), 2)),
-                    order.clone(),
-                ),
-                order.clone(),
-            )
-        }
-    })
+                )
+            }
+        },
+    )
 }
 
 pub fn int_compare_canonical(a: i64, b: i64) -> Ordering {
@@ -3154,28 +3160,30 @@ pub fn zip_eq<T: Clone>(
     b: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    true
-                } else {
-                    false
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        {
+            let __fm = a.clone();
+            if __fm.is_empty() {
+                {
+                    let __fm = b.clone();
+                    if __fm.is_empty() {
+                        true
+                    } else {
+                        false
+                    }
                 }
-            }
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    false
-                } else {
-                    let hb = (*__fm)[0].clone();
-                    let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+            } else {
+                let ha = (*__fm)[0].clone();
+                let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __fm = b.clone();
+                    if __fm.is_empty() {
+                        false
+                    } else {
+                        let hb = (*__fm)[0].clone();
+                        let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                        (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                    }
                 }
             }
         }
@@ -3259,22 +3267,24 @@ pub fn is_prefix_of<T: Clone>(
     xs: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = prefix.clone();
-        if __fm.is_empty() {
-            true
-        } else {
-            let h_prefix = (*__fm)[0].clone();
-            let t_prefix: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = xs.clone();
-                if __fm.is_empty() {
-                    false
-                } else {
-                    let h_xs = (*__fm)[0].clone();
-                    let t_xs: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(h_prefix.clone(), h_xs.clone())
-                        && is_prefix_of(t_prefix.clone(), t_xs.clone(), eq.clone()))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        {
+            let __fm = prefix.clone();
+            if __fm.is_empty() {
+                true
+            } else {
+                let h_prefix = (*__fm)[0].clone();
+                let t_prefix: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __fm = xs.clone();
+                    if __fm.is_empty() {
+                        false
+                    } else {
+                        let h_xs = (*__fm)[0].clone();
+                        let t_xs: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                        (eq(h_prefix.clone(), h_xs.clone())
+                            && is_prefix_of(t_prefix.clone(), t_xs.clone(), eq.clone()))
+                    }
                 }
             }
         }

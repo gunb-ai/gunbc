@@ -116,7 +116,7 @@ pub fn gi_declaration_key(d: Option<Rc<DeclarationRef>>) -> String {
 }
 
 pub fn gi_type_mentions_parameter(n: Rc<Node>, key: String) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if gi_is_bare(n.clone()) {
             (gi_declaration_is_type_parameter(n.declaration.clone())
                 && (gi_declaration_key(n.declaration.clone()) == key.clone()))
@@ -167,7 +167,7 @@ pub fn gi_type_spells_unmarked(
     name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if gi_is_bare(n.clone()) {
             (!gi_declaration_is_type_parameter(n.declaration.clone())
                 && (crate::v1_compiler_infer::type_node_label(n.clone(), si.clone())
@@ -385,82 +385,86 @@ pub fn gi_type_rows(
     parent_label: String,
     n: Rc<Node>,
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        if gi_is_bare(n.clone()) {
-            gi_node_rows(
-                ctx.clone(),
-                carrier.clone(),
-                path.clone(),
-                parent_label,
-                n.clone(),
-            )
-        } else {
-            {
-                let own_label =
-                    crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
-                let is_arrow = match n.connective.clone() {
-                    Connective::Arrow => true,
-                    _ => false,
-                };
-                let child_rows = Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend(
-                            (*gi_type_rows(
-                                ctx.clone(),
-                                carrier.clone(),
-                                v1_rt::concat(path.clone(), "/arg".to_string()),
-                                own_label.clone(),
-                                c.clone(),
-                            ))
-                            .iter()
-                            .cloned(),
-                        );
-                    }
-                    __result
-                });
-                let param_rows = if is_arrow.clone() {
-                    Rc::new({
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<GenericIdentityRow>>> {
+            if gi_is_bare(n.clone()) {
+                gi_node_rows(
+                    ctx.clone(),
+                    carrier.clone(),
+                    path.clone(),
+                    parent_label,
+                    n.clone(),
+                )
+            } else {
+                {
+                    let own_label =
+                        crate::v1_compiler_infer::type_node_label(n.clone(), ctx.si.clone());
+                    let is_arrow = match n.connective.clone() {
+                        Connective::Arrow => true,
+                        _ => false,
+                    };
+                    let child_rows = Rc::new({
                         let mut __result = Vec::new();
-                        for p in n.params.clone().iter().cloned() {
+                        for c in n.children.clone().iter().cloned() {
                             __result.extend(
                                 (*gi_type_rows(
                                     ctx.clone(),
                                     carrier.clone(),
-                                    v1_rt::concat(path.clone(), "/fn_param".to_string()),
+                                    v1_rt::concat(path.clone(), "/arg".to_string()),
                                     own_label.clone(),
-                                    crate::v1_std_core::param_node_type_expr(p.clone()),
+                                    c.clone(),
                                 ))
                                 .iter()
                                 .cloned(),
                             );
                         }
                         __result
-                    })
-                } else {
-                    Rc::new(vec![])
-                };
-                let return_rows = if is_arrow.clone() {
-                    match n.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
-                            ctx.clone(),
-                            carrier.clone(),
-                            v1_rt::concat(path.clone(), "/fn_return".to_string()),
-                            own_label.clone(),
-                            rt.clone(),
-                        ),
-                        _ => Rc::new(vec![]),
-                    }
-                } else {
-                    Rc::new(vec![])
-                };
-                v1_rt::concat(
-                    v1_rt::concat(child_rows.clone(), param_rows.clone()),
-                    return_rows.clone(),
-                )
+                    });
+                    let param_rows = if is_arrow.clone() {
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result.extend(
+                                    (*gi_type_rows(
+                                        ctx.clone(),
+                                        carrier.clone(),
+                                        v1_rt::concat(path.clone(), "/fn_param".to_string()),
+                                        own_label.clone(),
+                                        crate::v1_std_core::param_node_type_expr(p.clone()),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        })
+                    } else {
+                        Rc::new(vec![])
+                    };
+                    let return_rows = if is_arrow.clone() {
+                        match n.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
+                                ctx.clone(),
+                                carrier.clone(),
+                                v1_rt::concat(path.clone(), "/fn_return".to_string()),
+                                own_label.clone(),
+                                rt.clone(),
+                            ),
+                            _ => Rc::new(vec![]),
+                        }
+                    } else {
+                        Rc::new(vec![])
+                    };
+                    v1_rt::concat(
+                        v1_rt::concat(child_rows.clone(), param_rows.clone()),
+                        return_rows.clone(),
+                    )
+                }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn gi_formal_rows(
@@ -622,43 +626,49 @@ pub fn gi_expr_rows(
     ctx: Rc<GenericIdentityContext>,
     e: Rc<Node>,
 ) -> Rc<Vec<Rc<GenericIdentityRow>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match e.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
-                ctx.clone(),
-                "body_expression_type".to_string(),
-                crate::v1_compiler_infer::type_node_label(e.clone(), ctx.si.clone()),
-                "".to_string(),
-                rt.clone(),
-            ),
-            _ => Rc::new(vec![]),
-        };
-        let child_rows = Rc::new({
-            let mut __result = Vec::new();
-            for c in e.children.clone().iter().cloned() {
-                __result.extend((*gi_expr_rows(ctx.clone(), c.clone())).iter().cloned());
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<GenericIdentityRow>>> {
+            {
+                let own = match e.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => gi_type_rows(
+                        ctx.clone(),
+                        "body_expression_type".to_string(),
+                        crate::v1_compiler_infer::type_node_label(e.clone(), ctx.si.clone()),
+                        "".to_string(),
+                        rt.clone(),
+                    ),
+                    _ => Rc::new(vec![]),
+                };
+                let child_rows = Rc::new({
+                    let mut __result = Vec::new();
+                    for c in e.children.clone().iter().cloned() {
+                        __result.extend((*gi_expr_rows(ctx.clone(), c.clone())).iter().cloned());
+                    }
+                    __result
+                });
+                let param_rows = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in e.params.clone().iter().cloned() {
+                        __result.extend((*gi_expr_rows(ctx.clone(), p.clone())).iter().cloned());
+                    }
+                    __result
+                });
+                let body_rows = match e.body.clone() {
+                    Some(b) => gi_expr_rows(ctx.clone(), b.clone()),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(own.clone(), child_rows.clone()),
+                        param_rows.clone(),
+                    ),
+                    body_rows.clone(),
+                )
             }
-            __result
-        });
-        let param_rows = Rc::new({
-            let mut __result = Vec::new();
-            for p in e.params.clone().iter().cloned() {
-                __result.extend((*gi_expr_rows(ctx.clone(), p.clone())).iter().cloned());
-            }
-            __result
-        });
-        let body_rows = match e.body.clone() {
-            Some(b) => gi_expr_rows(ctx.clone(), b.clone()),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(own.clone(), child_rows.clone()),
-                param_rows.clone(),
-            ),
-            body_rows.clone(),
-        )
-    })
+        },
+    )
 }
 
 pub fn gi_item_body_rows(

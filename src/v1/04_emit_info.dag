@@ -622,6 +622,17 @@ type EmitGraphInfo {
   // analyze_dying_base_sites; empty for a fn that is TCO-lowered.
   dying_base_sites: Map<String, String>
 
+  // EVERY callable whose stack can grow without bound: each member of each recursive strongly
+  // connected component of the .dag call graph, keyed by callable_identity. A component reached by
+  // Tarjan (std.graph) has no interior or exterior -- a member that only calls INTO the cycle
+  // overflows the stack just as surely as the member that closes it -- so membership is the whole
+  // verdict and it is NOT the same set as the self-call test: a mutually recursive pair has no
+  // self-call and was therefore unguarded. Derived ONCE per module by v1.compiler.infer
+  // build_emit_graph_info from the ONE call graph (v1.compiler.infer_service collect_callee_edges
+  // edges over std.graph), and read by v1.compiler.emit_rust needs_stacker. No emitter decides a
+  // guard from a spelling; that is the recurring failure mode this field exists to close.
+  guard_required: Set<String>
+
   item_leaf_owner_modules: Map<String, LeafOwner>
 }
 
@@ -667,7 +678,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     tco_cursor_params: [],
     tco_cursor_tails: empty_map(),
     trmc_out: false,
-    dying_base_sites: empty_map()
+    dying_base_sites: empty_map(),
+    guard_required: empty_set()
   }
 }
 
@@ -703,7 +715,8 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    dying_base_sites: emit_info.dying_base_sites
+    dying_base_sites: emit_info.dying_base_sites,
+    guard_required: emit_info.guard_required
   }
 }
 
@@ -739,7 +752,8 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    dying_base_sites: emit_info.dying_base_sites
+    dying_base_sites: emit_info.dying_base_sites,
+    guard_required: emit_info.guard_required
   }
 }
 
@@ -780,7 +794,8 @@ fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) 
     tco_cursor_params: emit_info.tco_cursor_params,
     tco_cursor_tails: emit_info.tco_cursor_tails,
     trmc_out: emit_info.trmc_out,
-    dying_base_sites: emit_info.dying_base_sites
+    dying_base_sites: emit_info.dying_base_sites,
+    guard_required: emit_info.guard_required
   }
 }
 

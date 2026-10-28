@@ -367,7 +367,7 @@ pub struct NatDecimalSplit {
 }
 
 pub fn nat_decimal_split(value: Nat) -> Rc<NatDecimalSplit> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<NatDecimalSplit> {
         if (value.clone() == 0) {
             Rc::new(NatDecimalSplit {
                 quotient: 0,
@@ -424,15 +424,17 @@ pub fn nat_decimal_split_advance(s: Rc<NatDecimalSplit>) -> Rc<NatDecimalSplit> 
 }
 
 pub fn nat_to_decimal_string(value: Nat) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let q = nat_div_rem_by_succ(value, 9);
-        let digit = decimal_digit_glyph(nat_decimal_split(q.remainder.clone()).units.clone());
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         {
-            let __kernel_grounded_subject = q.quotient.clone();
-            if (__kernel_grounded_subject.clone() == 0) {
-                digit.clone()
-            } else {
-                v1_rt::concat(nat_to_decimal_string(q.quotient.clone()), digit.clone())
+            let q = nat_div_rem_by_succ(value, 9);
+            let digit = decimal_digit_glyph(nat_decimal_split(q.remainder.clone()).units.clone());
+            {
+                let __kernel_grounded_subject = q.quotient.clone();
+                if (__kernel_grounded_subject.clone() == 0) {
+                    digit.clone()
+                } else {
+                    v1_rt::concat(nat_to_decimal_string(q.quotient.clone()), digit.clone())
+                }
             }
         }
     })

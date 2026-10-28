@@ -2884,19 +2884,24 @@ pub fn field_access_spine(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldAccessSpine>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => {
-                let name = expr_var_name_at(texpr.clone(), source_indices.clone());
-                Some(Rc::new(FieldAccessSpine {
-                    root: name.clone(),
-                    dotted: name.clone(),
-                }))
-            }
-            ExprData::ExprFieldAccess { summary: _, .. } => {
-                match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Option<Rc<FieldAccessSpine>> {
+            match (*texpr.expr_data.clone()).clone() {
+                ExprData::ExprVar {
+                    binding_kind: _, ..
+                } => {
+                    let name = expr_var_name_at(texpr.clone(), source_indices.clone());
+                    Some(Rc::new(FieldAccessSpine {
+                        root: name.clone(),
+                        dotted: name.clone(),
+                    }))
+                }
+                ExprData::ExprFieldAccess { summary: _, .. } => match field_access_spine(
+                    field_access_base(texpr.clone()),
+                    source_indices.clone(),
+                ) {
                     Some(base_spine) => Some(Rc::new(FieldAccessSpine {
                         root: base_spine.root.clone(),
                         dotted: v1_rt::concat(
@@ -2905,11 +2910,11 @@ pub fn field_access_spine(
                         ),
                     })),
                     std::option::Option::None => std::option::Option::None,
-                }
+                },
+                _ => std::option::Option::None,
             }
-            _ => std::option::Option::None,
-        }
-    })
+        },
+    )
 }
 
 pub fn expr_call_func_at(
@@ -3484,7 +3489,7 @@ pub fn find_property_string(
 }
 
 pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Option<i64> {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
                 LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
@@ -3894,7 +3899,7 @@ pub fn expr_has_self_call(
     fn_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 if (expr_call_func_at(texpr.clone(), source_indices.clone()) == fn_name.clone()) {
@@ -3936,7 +3941,7 @@ pub fn expr_has_non_tail_self_call(
     in_tail: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 if (expr_call_func_at(texpr.clone(), source_indices.clone()) == fn_name.clone()) {

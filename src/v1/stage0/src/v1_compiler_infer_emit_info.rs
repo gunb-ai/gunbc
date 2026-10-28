@@ -191,7 +191,7 @@ pub fn type_summary_by_leaf(index: Rc<TypeSummaryIndex>, leaf: String) -> Rc<Typ
 }
 
 pub fn type_summary_lookup(index: Rc<TypeSummaryIndex>, key: String) -> Rc<TypeSummaryLookup> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<TypeSummaryLookup> {
         match v1_rt::map_get(&index.by_key.clone(), key.clone()) {
             Some(summary) => Rc::new(TypeSummaryLookup::TypeSummaryFound {
                 summary: summary.clone(),
@@ -329,64 +329,72 @@ pub fn collect_type_node_import_surface_occurrences(
     applied_argument: bool,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypeSurfaceOccurrence>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n);
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
-        let is_tv = if (peeled.inferred.clone() != std::option::Option::None) {
-            is_type_variable(peeled.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        let own = if (((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
-            && !is_tv.clone())
-        {
-            Rc::new(vec![Rc::new(TypeSurfaceOccurrence {
-                name: name.clone(),
-                applied_argument: applied_argument.clone(),
-            })])
-        } else {
-            Rc::new(vec![])
-        };
-        let children_are_applied_arguments = (((name.clone() != "".to_string())
-            && (peeled.connective.clone() == Connective::NoConnective))
-            && ((peeled.children.clone().len() as i64) > 0));
-        let child_names = Rc::new({
-            let mut __result = Vec::new();
-            for ch in peeled.children.clone().iter().cloned() {
-                __result.extend(
-                    (*{
-                        let walked = if children_are_applied_arguments.clone() {
-                            ch.clone()
-                        } else {
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone())
-                        };
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<TypeSurfaceOccurrence>>> {
+            {
+                let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n);
+                let name =
+                    crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
+                let is_tv = if (peeled.inferred.clone() != std::option::Option::None) {
+                    is_type_variable(peeled.inferred.clone().clone().unwrap())
+                } else {
+                    false
+                };
+                let own = if (((name.clone() != "".to_string())
+                    && (name.clone() != "Dynamic".to_string()))
+                    && !is_tv.clone())
+                {
+                    Rc::new(vec![Rc::new(TypeSurfaceOccurrence {
+                        name: name.clone(),
+                        applied_argument: applied_argument.clone(),
+                    })])
+                } else {
+                    Rc::new(vec![])
+                };
+                let children_are_applied_arguments = (((name.clone() != "".to_string())
+                    && (peeled.connective.clone() == Connective::NoConnective))
+                    && ((peeled.children.clone().len() as i64) > 0));
+                let child_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in peeled.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*{
+                                let walked = if children_are_applied_arguments.clone() {
+                                    ch.clone()
+                                } else {
+                                    crate::v1_compiler_infer_types::child_type_node(ch.clone())
+                                };
+                                collect_type_node_import_surface_occurrences(
+                                    walked.clone(),
+                                    children_are_applied_arguments.clone(),
+                                    source_indices.clone(),
+                                )
+                            })
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                });
+                let inferred_names = match peeled.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
                         collect_type_node_import_surface_occurrences(
-                            walked.clone(),
-                            children_are_applied_arguments.clone(),
+                            rt.clone(),
+                            applied_argument.clone(),
                             source_indices.clone(),
                         )
-                    })
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let inferred_names = match peeled.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => {
-                collect_type_node_import_surface_occurrences(
-                    rt.clone(),
-                    applied_argument.clone(),
-                    source_indices.clone(),
+                    }
+                    _ => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    own.clone(),
+                    v1_rt::concat(child_names.clone(), inferred_names.clone()),
                 )
             }
-            _ => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            own.clone(),
-            v1_rt::concat(child_names.clone(), inferred_names.clone()),
-        )
-    })
+        },
+    )
 }
 
 pub fn collect_type_node_import_surface_names(
@@ -1002,6 +1010,7 @@ pub struct EmitGraphInfo {
     pub tco_cursor_tails: Rc<HashMap<String, i64>>,
     pub trmc_out: bool,
     pub dying_base_sites: Rc<HashMap<String, String>>,
+    pub guard_required: Rc<BTreeSet<String>>,
     pub item_leaf_owner_modules: Rc<HashMap<String, Rc<LeafOwner>>>,
 }
 
@@ -1048,6 +1057,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
         trmc_out: false,
         dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
+        guard_required: v1_rt::rc_empty_set::<String>(),
     })
 }
 
@@ -1088,6 +1098,7 @@ pub fn emit_info_with_fn_type_context(
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
         let __rb_29_0 = emit_info.trmc_out.clone();
         let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.guard_required.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1122,6 +1133,7 @@ pub fn emit_info_with_fn_type_context(
                 __rb_r.tco_cursor_tails = __rb_28_0;
                 __rb_r.trmc_out = __rb_29_0;
                 __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.guard_required = __rb_31_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1156,6 +1168,7 @@ pub fn emit_info_with_fn_type_context(
                     tco_cursor_tails: __rb_28_0,
                     trmc_out: __rb_29_0,
                     dying_base_sites: __rb_30_0,
+                    guard_required: __rb_31_0,
                 });
             }
         }
@@ -1199,6 +1212,7 @@ pub fn emit_info_with_fn_return(
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
         let __rb_29_0 = emit_info.trmc_out.clone();
         let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.guard_required.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1233,6 +1247,7 @@ pub fn emit_info_with_fn_return(
                 __rb_r.tco_cursor_tails = __rb_28_0;
                 __rb_r.trmc_out = __rb_29_0;
                 __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.guard_required = __rb_31_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1267,6 +1282,7 @@ pub fn emit_info_with_fn_return(
                     tco_cursor_tails: __rb_28_0,
                     trmc_out: __rb_29_0,
                     dying_base_sites: __rb_30_0,
+                    guard_required: __rb_31_0,
                 });
             }
         }
@@ -1310,6 +1326,7 @@ pub fn emit_info_with_expected_type(
         let __rb_28_0 = emit_info.tco_cursor_tails.clone();
         let __rb_29_0 = emit_info.trmc_out.clone();
         let __rb_30_0 = emit_info.dying_base_sites.clone();
+        let __rb_31_0 = emit_info.guard_required.clone();
         let mut __rb_h = emit_info;
         match Rc::get_mut(&mut __rb_h) {
             Some(__rb_r) => {
@@ -1344,6 +1361,7 @@ pub fn emit_info_with_expected_type(
                 __rb_r.tco_cursor_tails = __rb_28_0;
                 __rb_r.trmc_out = __rb_29_0;
                 __rb_r.dying_base_sites = __rb_30_0;
+                __rb_r.guard_required = __rb_31_0;
             }
             None => {
                 __rb_h = Rc::new(EmitGraphInfo {
@@ -1378,6 +1396,7 @@ pub fn emit_info_with_expected_type(
                     tco_cursor_tails: __rb_28_0,
                     trmc_out: __rb_29_0,
                     dying_base_sites: __rb_30_0,
+                    guard_required: __rb_31_0,
                 });
             }
         }

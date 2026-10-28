@@ -309,7 +309,7 @@ pub fn match_path_tokens(
     tokens: Rc<Vec<Rc<UrlPathToken>>>,
     segs: Rc<Vec<String>>,
 ) -> Rc<PathTemplateMatch> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<PathTemplateMatch> {
         match tokens.clone().first().cloned() {
             std::option::Option::None => match segs.clone().first().cloned() {
                 std::option::Option::None => Rc::new(PathTemplateMatch::PathMatched {

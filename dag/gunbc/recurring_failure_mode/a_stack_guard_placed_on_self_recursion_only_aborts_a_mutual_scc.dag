@@ -1,0 +1,43 @@
+module gunbc.recurring_failure_mode.a_stack_guard_placed_on_self_recursion_only_aborts_a_mutual_scc
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_stack_guard_placed_on_self_recursion_only_aborts_a_mutual_scc: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_stack_guard_placed_on_self_recursion_only_aborts_a_mutual_scc" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "ONE CALL-GRAPH AUTHORITY DECIDING GUARD-REQUIRED: the emitter reads its guard verdict from a single derived per-module set (v1.compiler.infer build_guard_required_set, over v1.compiler.infer_service build_module_callees edges and std.graph graph_cycle_members components), so no emitter site can decide it from a per-function spelling at all, AND that verdict is read on a REQUIRED PATH -- a required control that emits a two-member mutual group and refuses the module unless every member carries the bounded-stack guard, SUFFICIENT FOR a revert of the read at v1.compiler.emit_rust needs_stacker to turn v2-bootstrap red. //gunbc/instruments:recursive-scc-stack-guard would be that control everywhere except that it is not on the required path; today the failing witness is src/v1/stage0/tests/recursive_scc_stack_guard.rs, which no required lane executes (no workflow runs cargo test), so the row sits at mitigatable and the climb is unbuilt, not blocked."
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: the seed emitter wraps a function body in stacker::maybe_grow when the function is SELF-recursive -- its own body names itself -- and wraps it in nothing otherwise. A function whose recursion runs through a neighbour therefore gets no guard at all, and its deep case is not slower, it aborts: `thread ... has overflowed its stack`, SIGABRT, no value returned. The set the self-call test answers 'yes' about is not a conservative approximation of the set that needs a guard; it is a DIFFERENT SET, missing every member of every group of two or more.",
+    "HARM: a mutually recursive group is the ordinary shape of a two-phase recursive walk -- a recursive-descent pair, an emit/emit_child pair, a render/render_children pair, an infer/apply pair -- and none of them is self-recursive, so none of them was guarded. Measured on this corpus at the pre-repair head, 263 of the functions the emitter emits were members of a recursive component while the self-call test called them non-recursive; over src/v1/stage0/src the generated mirrors carried 233 guards where the call graph requires 496.",
+    "SHAPE OF THE DEFECT, STATED AS THE RULE THAT WAS MISSING: a recursive strongly connected component has no interior and no exterior. A member that only calls INTO the cycle runs out of stack exactly as surely as the member that closes it, so 'does this function need a bounded stack' is not a question about the function; it is a question about the component it belongs to, and it cannot be answered by looking at one member. Any per-function spelling of it -- a body scan, a name match, a self-call test -- is the same defect wearing different clothes, which is why this row is keyed on the class of judgment and not on the one emitter that made it.",
+    "THE REPAIR: EmitGraphInfo.guard_required: Set<String>, keyed by callable_identity, filled ONCE per compile by v1.compiler.infer build_guard_required_set and READ by needs_stacker, which no longer derives anything. The self-only judgment was DELETED from the guard decision rather than widened alongside it, so there is no second path that could disagree with the first (DESIGN sections 3 and 5). Edges are taken from the emitter's own resolved callee authority (v1.compiler.infer_service collect_callee_edges, which resolves a call to a DeclaredCallableIdentity rather than matching a name) and components from the ONE Tarjan in std.graph; graph_cycle_members is self-loop members UNION multi-node SCC members, so one call covers the old self-only set and the mutual one and no second scan exists. The same Tarjan already serves v1.complexity build_scc_index; no second SCC implementation was written.",
+    "MEASURED, BEFORE AND AFTER THE REPAIR, AT THIS HEAD: (1) RED -- the pre-repair emitter gave the mutual pair a_even/a_odd ZERO guards and the compiled specimen aborted at 400,000 deep (exit 134, 'has overflowed its stack'), while the self-recursive sibling, guarded, survived. (2) GREEN -- post-repair both members carry stacker::maybe_grow and the same binary answers at 4,000,000 deep. (3) CONTROL -- the non-recursive sibling keeps NO guard before or after, so the verdict is membership-precise and not a blanket. (4) MIRROR DELTA from the heal-regenerated seed, never hand-edited: maybe_grow 233 -> 496.",
+    "A GUARD WRAPPER CHANGES TYPE INFERENCE, NOT MERELY SEMANTICS, and the corpus found that for us: wrapping a body in a closure made 15 previously-compiling guarded functions fail E0282, all of them bodies whose last expression folds over an Option seeded with a bare None, because rustc does not infer a closure's return type from a value consumed OUTSIDE the closure. The guard now spells the closure's return type. An emitter that wraps a body must re-check everything the wrapper makes ambiguous, and 'it only adds a guard' is not a reason not to.",
+    "FORK CENSUS ON THE NEIGHBOURING JUDGMENT, LEFT UNCHANGED BY THIS CHANGE AND DELIBERATELY NOT WIDENED: v1.compiler.emit_rust effectful_self_recursion_diagnostics refuses a non-tail effectful self-recursion only when the function's own body names itself, so a MUTUALLY recursive effectful pair escapes the refusal -- it is now guarded against the abort, but its per-frame effect cloning is still unbounded and still not refused. CENSUSED AT THIS HEAD: 0 of the 263 newly guarded members makes a typed service call, so NO SUCH ESCAPE IS INSTANTIATED anywhere in today's closure and no specimen could be reproduced. FOLLOW-UP, NAMED NOT DONE HERE: the refusal should read the same SCC authority (a non-tail cycle through an effectful member), and its trigger is the first closure member that is both a mutual-SCC member and an effectful caller -- at which point a refusal is due that today would not fire.",
+    "WHY THE WITNESS IS NOT CLAIMED HIGHER THAN MITIGATABLE: it runs and fails-pins on a real fixture by real processes -- rustc compiles the emitted module and it is executed on a 1 MiB thread stack -- but required CI runs gunbc test on instrument targets and the heal regen and executes no cargo test (DESIGN section 4b, gunbc.rung_drop v2_native_route_off_the_merge_path), so an integration test under src/v1/stage0/tests is on-demand evidence. The repair's own green (the heal-converged seed compiling, and the emitted corpus surviving a full compile) is a build gate and not this witness, and is not offered as one.",
+  ],
+
+  evidence: [
+    decl_ref(module_path: "v1.compiler.emit_rust", decl_name: "needs_stacker"),
+    decl_ref(module_path: "v1.compiler.infer", decl_name: "build_guard_required_set"),
+    decl_ref(module_path: "v1.compiler.infer", decl_name: "build_emit_graph_info"),
+    decl_ref(module_path: "v1.compiler.emit_info", decl_name: "EmitGraphInfo"),
+    decl_ref(module_path: "v1.compiler.infer_service", decl_name: "collect_callee_edges"),
+    decl_ref(module_path: "v1.compiler.infer_service", decl_name: "build_module_callees"),
+    decl_ref(module_path: "std.graph", decl_name: "graph_cycle_members"),
+    decl_ref(module_path: "v1.complexity", decl_name: "build_scc_index"),
+  ],
+}

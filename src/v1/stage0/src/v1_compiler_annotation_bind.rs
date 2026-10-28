@@ -330,7 +330,7 @@ pub fn region_structural_key(
     scope: Rc<AnnotationScope>,
     depth: i64,
 ) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         match (*scope.clone()).clone() {
             AnnotationScope::FileScope => "/".to_string(),
             _ => {

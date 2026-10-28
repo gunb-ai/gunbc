@@ -847,38 +847,40 @@ pub fn atomic_factors_growth_in_param(
 }
 
 pub fn cost_bound_growth_in_param(b: Rc<CostBound>, param: String) -> Rc<ParamGrowth> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
-        CostBound::ConstantBound => param_growth_zero(),
-        CostBound::AtomicBound { cost: c, .. } => {
-            if (atomic_cost_param(c.clone()) == param.clone()) {
-                atomic_cost_growth(c.clone())
-            } else {
-                param_growth_zero()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ParamGrowth> {
+        match (*b.clone()).clone() {
+            CostBound::ConstantBound => param_growth_zero(),
+            CostBound::AtomicBound { cost: c, .. } => {
+                if (atomic_cost_param(c.clone()) == param.clone()) {
+                    atomic_cost_growth(c.clone())
+                } else {
+                    param_growth_zero()
+                }
             }
+            CostBound::ProductBound { factors: fs, .. } => {
+                atomic_factors_growth_in_param(fs.clone(), param.clone())
+            }
+            CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
+                param_growth_zero(),
+                |acc: Rc<ParamGrowth>, factors: Rc<Vec<Rc<AtomicCost>>>| {
+                    param_growth_max(
+                        acc,
+                        atomic_factors_growth_in_param(factors.clone(), param.clone()),
+                    )
+                },
+            ),
+            CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
+                param_growth_zero(),
+                |acc: Rc<ParamGrowth>, inner: Rc<CostBound>| {
+                    param_growth_max(
+                        acc,
+                        cost_bound_growth_in_param(inner.clone(), param.clone()),
+                    )
+                },
+            ),
+            CostBound::ForeverBound => param_growth_not_orderable(),
+            CostBound::ErrorBound => param_growth_not_orderable(),
         }
-        CostBound::ProductBound { factors: fs, .. } => {
-            atomic_factors_growth_in_param(fs.clone(), param.clone())
-        }
-        CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
-            param_growth_zero(),
-            |acc: Rc<ParamGrowth>, factors: Rc<Vec<Rc<AtomicCost>>>| {
-                param_growth_max(
-                    acc,
-                    atomic_factors_growth_in_param(factors.clone(), param.clone()),
-                )
-            },
-        ),
-        CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
-            param_growth_zero(),
-            |acc: Rc<ParamGrowth>, inner: Rc<CostBound>| {
-                param_growth_max(
-                    acc,
-                    cost_bound_growth_in_param(inner.clone(), param.clone()),
-                )
-            },
-        ),
-        CostBound::ForeverBound => param_growth_not_orderable(),
-        CostBound::ErrorBound => param_growth_not_orderable(),
     })
 }
 
@@ -901,26 +903,30 @@ pub fn cost_bound_params_of_factors(
 }
 
 pub fn cost_bound_params_into(b: Rc<CostBound>, seen: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*b.clone()).clone() {
-        CostBound::ConstantBound => seen.clone(),
-        CostBound::AtomicBound { cost: c, .. } => {
-            cost_bound_params_of_factors(Rc::new(vec![c.clone()]), seen.clone())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<String>> {
+        match (*b.clone()).clone() {
+            CostBound::ConstantBound => seen.clone(),
+            CostBound::AtomicBound { cost: c, .. } => {
+                cost_bound_params_of_factors(Rc::new(vec![c.clone()]), seen.clone())
+            }
+            CostBound::ProductBound { factors: fs, .. } => {
+                cost_bound_params_of_factors(fs.clone(), seen.clone())
+            }
+            CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
+                seen.clone(),
+                |acc: Rc<Vec<String>>, factors: Rc<Vec<Rc<AtomicCost>>>| {
+                    cost_bound_params_of_factors(factors.clone(), acc)
+                },
+            ),
+            CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
+                seen.clone(),
+                |acc: Rc<Vec<String>>, inner: Rc<CostBound>| {
+                    cost_bound_params_into(inner.clone(), acc)
+                },
+            ),
+            CostBound::ForeverBound => seen.clone(),
+            CostBound::ErrorBound => seen.clone(),
         }
-        CostBound::ProductBound { factors: fs, .. } => {
-            cost_bound_params_of_factors(fs.clone(), seen.clone())
-        }
-        CostBound::SumOfProductsBound { terms: ts, .. } => ts.iter().cloned().fold(
-            seen.clone(),
-            |acc: Rc<Vec<String>>, factors: Rc<Vec<Rc<AtomicCost>>>| {
-                cost_bound_params_of_factors(factors.clone(), acc)
-            },
-        ),
-        CostBound::SumBound { terms: ts, .. } => ts.iter().cloned().fold(
-            seen.clone(),
-            |acc: Rc<Vec<String>>, inner: Rc<CostBound>| cost_bound_params_into(inner.clone(), acc),
-        ),
-        CostBound::ForeverBound => seen.clone(),
-        CostBound::ErrorBound => seen.clone(),
     })
 }
 
@@ -1004,10 +1010,8 @@ pub fn bounded_int_pow_exponent(k: i64) -> Option<i64> {
 }
 
 pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
-    stacker::maybe_grow(
-        512 * 1024,
-        2 * 1024 * 1024,
-        || match bounded_int_pow_exponent(exp.clone()) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Option<i64> {
+        match bounded_int_pow_exponent(exp.clone()) {
             std::option::Option::None => std::option::Option::None,
             Some(e) => {
                 if (e.clone() == 0) {
@@ -1049,8 +1053,8 @@ pub fn int_pow_bounded(base: i64, exp: i64) -> Option<i64> {
                     }
                 }
             }
-        },
-    )
+        }
+    })
 }
 
 pub fn ceil_log(base: i64, argument: i64) -> Option<i64> {

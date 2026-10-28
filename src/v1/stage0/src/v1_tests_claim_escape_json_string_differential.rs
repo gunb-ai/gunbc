@@ -75,7 +75,7 @@ pub fn vej_agrees(cp: i64) -> bool {
 }
 
 pub fn vej_all_from(cp: i64) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if (cp.clone() > 31) {
             true
         } else {

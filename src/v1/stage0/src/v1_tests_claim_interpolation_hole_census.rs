@@ -317,7 +317,7 @@ pub fn ihc_reading(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc
 }
 
 pub fn ihc_hole_text(e: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         match (*e.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -441,7 +441,7 @@ pub fn ihc_is_fusion(ctx: Rc<HoleWalkContext>, h: Rc<Node>) -> bool {
 }
 
 pub fn ihc_unfuse(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<Vec<Rc<IhcHole>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<Rc<IhcHole>>> {
         if ihc_is_fusion(ctx.clone(), h.clone()) {
             Rc::new({
                 let mut __result = Vec::new();
@@ -479,28 +479,30 @@ pub fn ihc_template_observation(
 }
 
 pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = if (n.span.end.clone() > n.span.start.clone()) {
-            n.span.start.clone()
-        } else {
-            v1_rt::int_neg(1)
-        };
-        n.children
-            .clone()
-            .iter()
-            .cloned()
-            .fold(own.clone(), |m: i64, c: Rc<Node>| {
-                let cm = ihc_leftmost_start(c.clone());
-                if (cm.clone() < 0) {
-                    m.clone()
-                } else {
-                    if ((m.clone() < 0) || (cm.clone() < m.clone())) {
-                        cm.clone()
-                    } else {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> i64 {
+        {
+            let own = if (n.span.end.clone() > n.span.start.clone()) {
+                n.span.start.clone()
+            } else {
+                v1_rt::int_neg(1)
+            };
+            n.children
+                .clone()
+                .iter()
+                .cloned()
+                .fold(own.clone(), |m: i64, c: Rc<Node>| {
+                    let cm = ihc_leftmost_start(c.clone());
+                    if (cm.clone() < 0) {
                         m.clone()
+                    } else {
+                        if ((m.clone() < 0) || (cm.clone() < m.clone())) {
+                            cm.clone()
+                        } else {
+                            m.clone()
+                        }
                     }
-                }
-            })
+                })
+        }
     })
 }
 
@@ -520,75 +522,84 @@ pub fn ihc_hole_row(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<Ho
 }
 
 pub fn ihc_walk(ctx: Rc<HoleWalkContext>, n: Rc<Node>) -> Rc<Vec<Rc<ObservedTemplate>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprStringInterp => {
-                Rc::new(vec![ihc_template_observation(ctx.clone(), n.clone())])
-            }
-            _ => Rc::new(vec![]),
-        };
-        let nested = v1_rt::concat(
-            v1_rt::concat(
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for c in n.children.clone().iter().cloned() {
-                        __result.extend((*ihc_walk(ctx.clone(), c.clone())).iter().cloned());
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<ObservedTemplate>>> {
+            {
+                let own = match (*n.expr_data.clone()).clone() {
+                    ExprData::ExprStringInterp => {
+                        Rc::new(vec![ihc_template_observation(ctx.clone(), n.clone())])
                     }
-                    __result
-                }),
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.params.clone().iter().cloned() {
-                        __result.extend((*ihc_walk(ctx.clone(), p.clone())).iter().cloned());
-                    }
-                    __result
-                }),
-            ),
-            v1_rt::concat(
-                match n.body.clone() {
-                    Some(b) => ihc_walk(ctx.clone(), b.clone()),
-                    std::option::Option::None => Rc::new(vec![]),
-                },
-                Rc::new({
-                    let mut __result = Vec::new();
-                    for p in n.properties.clone().iter().cloned() {
-                        __result.extend((*ihc_walk(ctx.clone(), p.clone())).iter().cloned());
-                    }
-                    __result
-                }),
-            ),
-        );
-        let transport = match n.transport.clone() {
-            Some(t) => ihc_walk(
-                Rc::new(HoleWalkContext {
-                    file_decl: v1_rt::concat(
-                        v1_rt::concat(ctx.file_decl.clone(), ".".to_string()),
-                        n.name.clone(),
-                    ),
-                    si: ctx.si.clone(),
-                    site: Rc::new(HoleSite::HoleInTransport {
-                        operation: n.name.clone(),
-                        inputs: Rc::new({
+                    _ => Rc::new(vec![]),
+                };
+                let nested = v1_rt::concat(
+                    v1_rt::concat(
+                        Rc::new({
                             let mut __result = Vec::new();
-                            for p in n.params.clone().iter().cloned() {
-                                __result.push(crate::v1_std_core::param_node_name_at(
-                                    p.clone(),
-                                    ctx.si.clone(),
-                                ));
+                            for c in n.children.clone().iter().cloned() {
+                                __result
+                                    .extend((*ihc_walk(ctx.clone(), c.clone())).iter().cloned());
                             }
                             __result
                         }),
-                    }),
-                }),
-                t.clone(),
-            ),
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            v1_rt::concat(own.clone(), nested.clone()),
-            transport.clone(),
-        )
-    })
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.params.clone().iter().cloned() {
+                                __result
+                                    .extend((*ihc_walk(ctx.clone(), p.clone())).iter().cloned());
+                            }
+                            __result
+                        }),
+                    ),
+                    v1_rt::concat(
+                        match n.body.clone() {
+                            Some(b) => ihc_walk(ctx.clone(), b.clone()),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for p in n.properties.clone().iter().cloned() {
+                                __result
+                                    .extend((*ihc_walk(ctx.clone(), p.clone())).iter().cloned());
+                            }
+                            __result
+                        }),
+                    ),
+                );
+                let transport = match n.transport.clone() {
+                    Some(t) => ihc_walk(
+                        Rc::new(HoleWalkContext {
+                            file_decl: v1_rt::concat(
+                                v1_rt::concat(ctx.file_decl.clone(), ".".to_string()),
+                                n.name.clone(),
+                            ),
+                            si: ctx.si.clone(),
+                            site: Rc::new(HoleSite::HoleInTransport {
+                                operation: n.name.clone(),
+                                inputs: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for p in n.params.clone().iter().cloned() {
+                                        __result.push(crate::v1_std_core::param_node_name_at(
+                                            p.clone(),
+                                            ctx.si.clone(),
+                                        ));
+                                    }
+                                    __result
+                                }),
+                            }),
+                        }),
+                        t.clone(),
+                    ),
+                    std::option::Option::None => Rc::new(vec![]),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(own.clone(), nested.clone()),
+                    transport.clone(),
+                )
+            }
+        },
+    )
 }
 
 pub fn ihc_module_templates(

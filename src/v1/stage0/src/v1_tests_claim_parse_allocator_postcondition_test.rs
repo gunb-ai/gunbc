@@ -72,20 +72,22 @@ pub fn published_ids(parsed: Rc<ParseWithTableResult>) -> Rc<Vec<i64>> {
 }
 
 pub fn sorted_ascending(xs: Rc<Vec<i64>>) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = xs.clone();
-        if __fm.is_empty() {
-            true
-        } else {
-            let h = (*__fm)[0].clone();
-            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = t.clone();
-                if __fm.is_empty() {
-                    true
-                } else {
-                    let h2 = (*__fm)[0].clone();
-                    ((h.clone() < h2.clone()) && sorted_ascending(t.clone()))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                true
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                {
+                    let __fm = t.clone();
+                    if __fm.is_empty() {
+                        true
+                    } else {
+                        let h2 = (*__fm)[0].clone();
+                        ((h.clone() < h2.clone()) && sorted_ascending(t.clone()))
+                    }
                 }
             }
         }
@@ -316,17 +318,19 @@ pub fn category_string(c: OccurrenceCategory) -> String {
 }
 
 pub fn ancestors_string(xs: Rc<Vec<OccurrenceId>>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = xs.clone();
-        if __fm.is_empty() {
-            "".to_string()
-        } else {
-            let h = (*__fm)[0].clone();
-            let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            v1_rt::concat(
-                v1_rt::concat(";".to_string(), (h.value.clone()).to_string()),
-                ancestors_string(t.clone()),
-            )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        {
+            let __fm = xs.clone();
+            if __fm.is_empty() {
+                "".to_string()
+            } else {
+                let h = (*__fm)[0].clone();
+                let t: Rc<Vec<_>> = Rc::new(__fm.skip(1));
+                v1_rt::concat(
+                    v1_rt::concat(";".to_string(), (h.value.clone()).to_string()),
+                    ancestors_string(t.clone()),
+                )
+            }
         }
     })
 }

@@ -118,50 +118,52 @@ pub fn collect_typed_service_calls_into(
     acc: Rc<UniqueAccum>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UniqueAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let this_acc = match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprMethodCall {
-                method_semantics: _,
-                ..
-            } => {
-                let r = crate::v1_std_core::method_receiver(texpr.clone());
-                if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
-                    match extract_typed_service_name(r.clone(), source_indices.clone()) {
-                        Some(service_name) => {
-                            if crate::v1_compiler_infer_types::emit_map_has(
-                                acc.seen.clone(),
-                                service_name.clone(),
-                            ) {
-                                acc.clone()
-                            } else {
-                                Rc::new(UniqueAccum {
-                                    seen: v1_rt::rc_map_insert(
-                                        acc.seen.clone(),
-                                        service_name.clone(),
-                                        true,
-                                    ),
-                                    result: v1_rt::rc_list_push(
-                                        acc.result.clone(),
-                                        service_name.clone(),
-                                    ),
-                                })
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<UniqueAccum> {
+        {
+            let this_acc = match (*texpr.expr_data.clone()).clone() {
+                ExprData::ExprMethodCall {
+                    method_semantics: _,
+                    ..
+                } => {
+                    let r = crate::v1_std_core::method_receiver(texpr.clone());
+                    if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
+                        match extract_typed_service_name(r.clone(), source_indices.clone()) {
+                            Some(service_name) => {
+                                if crate::v1_compiler_infer_types::emit_map_has(
+                                    acc.seen.clone(),
+                                    service_name.clone(),
+                                ) {
+                                    acc.clone()
+                                } else {
+                                    Rc::new(UniqueAccum {
+                                        seen: v1_rt::rc_map_insert(
+                                            acc.seen.clone(),
+                                            service_name.clone(),
+                                            true,
+                                        ),
+                                        result: v1_rt::rc_list_push(
+                                            acc.result.clone(),
+                                            service_name.clone(),
+                                        ),
+                                    })
+                                }
                             }
+                            std::option::Option::None => acc.clone(),
                         }
-                        std::option::Option::None => acc.clone(),
+                    } else {
+                        acc.clone()
                     }
-                } else {
-                    acc.clone()
                 }
-            }
-            _ => acc.clone(),
-        };
-        let result = texpr.children.clone().iter().cloned().fold(
-            this_acc.clone(),
-            |a: Rc<UniqueAccum>, child: Rc<Node>| {
-                collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
-            },
-        );
-        result
+                _ => acc.clone(),
+            };
+            let result = texpr.children.clone().iter().cloned().fold(
+                this_acc.clone(),
+                |a: Rc<UniqueAccum>, child: Rc<Node>| {
+                    collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
+                },
+            );
+            result
+        }
     })
 }
 
@@ -296,42 +298,47 @@ pub fn collect_callee_edges_into(
     acc: Rc<CalleeAccum>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<CalleeAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let this_acc = match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprCall {
-                call_semantics: cs, ..
-            } => {
-                let edge = callee_edge_of_semantics(
-                    cs.clone(),
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone()),
-                    texpr.span.clone(),
-                );
-                match (*callee_edge_dedup_key(edge.clone())).clone() {
-                    CalleeEdgeDedup::NotTracked => acc.clone(),
-                    CalleeEdgeDedup::Tracked { key: key, .. } => {
-                        if crate::v1_compiler_infer_types::emit_map_has(
-                            acc.seen.clone(),
-                            key.clone(),
-                        ) {
-                            acc.clone()
-                        } else {
-                            Rc::new(CalleeAccum {
-                                seen: v1_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
-                                result: v1_rt::rc_list_push(acc.result.clone(), edge.clone()),
-                            })
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<CalleeAccum> {
+        {
+            let this_acc = match (*texpr.expr_data.clone()).clone() {
+                ExprData::ExprCall {
+                    call_semantics: cs, ..
+                } => {
+                    let edge = callee_edge_of_semantics(
+                        cs.clone(),
+                        crate::v1_std_core::expr_call_func_at(
+                            texpr.clone(),
+                            source_indices.clone(),
+                        ),
+                        texpr.span.clone(),
+                    );
+                    match (*callee_edge_dedup_key(edge.clone())).clone() {
+                        CalleeEdgeDedup::NotTracked => acc.clone(),
+                        CalleeEdgeDedup::Tracked { key: key, .. } => {
+                            if crate::v1_compiler_infer_types::emit_map_has(
+                                acc.seen.clone(),
+                                key.clone(),
+                            ) {
+                                acc.clone()
+                            } else {
+                                Rc::new(CalleeAccum {
+                                    seen: v1_rt::rc_map_insert(acc.seen.clone(), key.clone(), true),
+                                    result: v1_rt::rc_list_push(acc.result.clone(), edge.clone()),
+                                })
+                            }
                         }
                     }
                 }
-            }
-            _ => acc.clone(),
-        };
-        let result = texpr.children.clone().iter().cloned().fold(
-            this_acc.clone(),
-            |a: Rc<CalleeAccum>, child: Rc<Node>| {
-                collect_callee_edges_into(child.clone(), a, source_indices.clone())
-            },
-        );
-        result
+                _ => acc.clone(),
+            };
+            let result = texpr.children.clone().iter().cloned().fold(
+                this_acc.clone(),
+                |a: Rc<CalleeAccum>, child: Rc<Node>| {
+                    collect_callee_edges_into(child.clone(), a, source_indices.clone())
+                },
+            );
+            result
+        }
     })
 }
 

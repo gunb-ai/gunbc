@@ -272,36 +272,43 @@ pub fn v1_map_key_head_type_exprs(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
-            .clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<Rc<Node>>> {
         {
-            KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
-                Some(key_child) => Rc::new(vec![crate::v1_compiler_infer_types::child_type_node(
-                    key_child.clone(),
-                )]),
-                std::option::Option::None => Rc::new(vec![]),
-            },
-            KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
-            KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            own.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*v1_map_key_head_type_exprs(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
+            let own =
+                match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
+                    .clone()
+                {
+                    KeyedMapVerdict::KeyedMap => {
+                        match type_expr.children.clone().first().cloned() {
+                            Some(key_child) => {
+                                Rc::new(vec![crate::v1_compiler_infer_types::child_type_node(
+                                    key_child.clone(),
+                                )])
+                            }
+                            std::option::Option::None => Rc::new(vec![]),
+                        }
+                    }
+                    KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
+                    KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
+                };
+            v1_rt::concat(
+                own.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in type_expr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*v1_map_key_head_type_exprs(
+                                crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                                source_indices.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            )
+        }
     })
 }
 
@@ -377,7 +384,7 @@ pub fn v1_type_expr_head_declared_identities(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<String>> {
         v1_rt::concat(
             v1_type_expr_map_key_declared_identities(
                 type_expr.clone(),
@@ -2058,7 +2065,7 @@ pub fn v1_ord_propagated_zip_loop(
     decl_set_affected_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match decl_params.clone().first().cloned() {
             std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
@@ -2549,7 +2556,7 @@ pub fn v1_type_expr_contains_param_name(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if (crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone())
             == param_name.clone())
         {
@@ -2715,7 +2722,7 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match decl_params.clone().first().cloned() {
             std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
@@ -2764,20 +2771,22 @@ pub fn v1_declared_type_app_mentions_param_non_phantom(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    v1_declared_type_app_mentions_param_non_phantom_loop(
-        param_name,
-        decl.params.clone(),
-        type_args,
-        v1_item_phantom_only_param_names(
-            decl_name,
-            decl.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        v1_declared_type_app_mentions_param_non_phantom_loop(
+            param_name,
+            decl.params.clone(),
+            type_args,
+            v1_item_phantom_only_param_names(
+                decl_name,
+                decl.clone(),
+                bounds.clone(),
+                source_indices.clone(),
+            ),
             bounds.clone(),
+            type_decl_items,
             source_indices.clone(),
-        ),
-        bounds.clone(),
-        type_decl_items,
-        source_indices.clone(),
-    )
+        )
+    })
 }
 
 pub fn v1_type_expr_mentions_param_non_phantom(
@@ -2787,7 +2796,7 @@ pub fn v1_type_expr_mentions_param_non_phantom(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if v1_type_expr_is_bare_param(
             param_name.clone(),
             type_expr.clone(),
@@ -2935,7 +2944,7 @@ pub fn v1_type_expr_mentions_type_head(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if (v1_type_expr_declared_identity(
             type_expr.clone(),
             type_decl_items.clone(),
@@ -3446,37 +3455,39 @@ pub fn v1_type_expr_clone_undecided_head(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     item_generic_params: Rc<BTreeSet<String>>,
 ) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let name = crate::v1_std_core::qualified_last_segment(
-            crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone()),
-        );
-        if ((type_expr.children.clone().len() as i64) == 0) {
-            "".to_string()
-        } else {
-            if (v1_type_expr_head_is_known(
-                name.clone(),
-                type_expr.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            ) || v1_rt::set_contains(&item_generic_params, name.clone()))
-            {
-                type_expr.children.clone().iter().cloned().fold(
-                    "".to_string(),
-                    |acc: String, c: Rc<Node>| {
-                        if (acc.clone() != "".to_string()) {
-                            acc.clone()
-                        } else {
-                            v1_type_expr_clone_undecided_head(
-                                crate::v1_compiler_infer_types::child_type_node(c.clone()),
-                                type_decl_items.clone(),
-                                source_indices.clone(),
-                                item_generic_params.clone(),
-                            )
-                        }
-                    },
-                )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        {
+            let name = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(source_indices.clone(), type_expr.clone()),
+            );
+            if ((type_expr.children.clone().len() as i64) == 0) {
+                "".to_string()
             } else {
-                name.clone()
+                if (v1_type_expr_head_is_known(
+                    name.clone(),
+                    type_expr.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                ) || v1_rt::set_contains(&item_generic_params, name.clone()))
+                {
+                    type_expr.children.clone().iter().cloned().fold(
+                        "".to_string(),
+                        |acc: String, c: Rc<Node>| {
+                            if (acc.clone() != "".to_string()) {
+                                acc.clone()
+                            } else {
+                                v1_type_expr_clone_undecided_head(
+                                    crate::v1_compiler_infer_types::child_type_node(c.clone()),
+                                    type_decl_items.clone(),
+                                    source_indices.clone(),
+                                    item_generic_params.clone(),
+                                )
+                            }
+                        },
+                    )
+                } else {
+                    name.clone()
+                }
             }
         }
     })
@@ -3489,7 +3500,7 @@ pub fn v1_type_expr_clone_impl_needs_param(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if v1_type_expr_is_bare_param(
             param_name.clone(),
             type_expr.clone(),
@@ -3581,7 +3592,7 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match decl_params.clone().first().cloned() {
             std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
@@ -3630,20 +3641,22 @@ pub fn v1_declared_type_app_clone_impl_needs_param(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    v1_declared_type_app_clone_impl_needs_param_loop(
-        param_name,
-        decl.params.clone(),
-        type_args,
-        v1_item_phantom_only_param_names(
-            decl_name,
-            decl.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        v1_declared_type_app_clone_impl_needs_param_loop(
+            param_name,
+            decl.params.clone(),
+            type_args,
+            v1_item_phantom_only_param_names(
+                decl_name,
+                decl.clone(),
+                bounds.clone(),
+                source_indices.clone(),
+            ),
             bounds.clone(),
+            type_decl_items,
             source_indices.clone(),
-        ),
-        bounds.clone(),
-        type_decl_items,
-        source_indices.clone(),
-    )
+        )
+    })
 }
 
 pub fn v1_declared_arg_positions_need_clone_param(
@@ -3655,7 +3668,7 @@ pub fn v1_declared_arg_positions_need_clone_param(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match decl_params.clone().first().cloned() {
             std::option::Option::None => false,
             Some(decl_param) => match type_args.clone().first().cloned() {
@@ -3719,7 +3732,7 @@ pub fn v1_type_expr_wf_needs_clone_param(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if ((type_expr.children.clone().len() as i64) == 0) {
             false
         } else {
@@ -3850,33 +3863,35 @@ pub fn v1_item_field_type_expr_wf_needs_clone_param(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
-        if ((callable_components.clone().len() as i64) > 0) {
-            {
-                let mut __found = false;
-                for c in callable_components.iter().cloned() {
-                    if v1_item_field_type_expr_wf_needs_clone_param(
-                        param_name.clone(),
-                        c.clone(),
-                        bounds.clone(),
-                        type_decl_items.clone(),
-                        source_indices.clone(),
-                    ) {
-                        __found = true;
-                        break;
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        {
+            let callable_components = v1_callable_type_expr_component_type_exprs(type_expr.clone());
+            if ((callable_components.clone().len() as i64) > 0) {
+                {
+                    let mut __found = false;
+                    for c in callable_components.iter().cloned() {
+                        if v1_item_field_type_expr_wf_needs_clone_param(
+                            param_name.clone(),
+                            c.clone(),
+                            bounds.clone(),
+                            type_decl_items.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
                     }
+                    __found
                 }
-                __found
+            } else {
+                v1_type_expr_wf_needs_clone_param(
+                    param_name.clone(),
+                    type_expr.clone(),
+                    bounds.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
             }
-        } else {
-            v1_type_expr_wf_needs_clone_param(
-                param_name.clone(),
-                type_expr.clone(),
-                bounds.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )
         }
     })
 }
@@ -3946,34 +3961,38 @@ pub fn v1_type_expr_ambiguous_declared_head(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
-        type_decl_items.clone(),
-        type_expr.clone(),
-        source_indices.clone(),
-    ))
-    .clone()
-    {
-        TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => leaf.clone(),
-        TypeDeclResolution::TypeDeclResolved { .. } => {
-            v1_type_expr_components_ambiguous_declared_head(
-                type_expr.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )
-        }
-        TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
-            v1_type_expr_components_ambiguous_declared_head(
-                type_expr.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )
-        }
-        TypeDeclResolution::TypeDeclNotDeclared => v1_type_expr_components_ambiguous_declared_head(
-            type_expr.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
             type_decl_items.clone(),
+            type_expr.clone(),
             source_indices.clone(),
-        ),
-    }
+        ))
+        .clone()
+        {
+            TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: leaf, .. } => leaf.clone(),
+            TypeDeclResolution::TypeDeclResolved { .. } => {
+                v1_type_expr_components_ambiguous_declared_head(
+                    type_expr.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
+            }
+            TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => {
+                v1_type_expr_components_ambiguous_declared_head(
+                    type_expr.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
+            }
+            TypeDeclResolution::TypeDeclNotDeclared => {
+                v1_type_expr_components_ambiguous_declared_head(
+                    type_expr.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
+            }
+        }
+    })
 }
 
 pub fn v1_type_expr_components_ambiguous_declared_head(
@@ -3981,28 +4000,30 @@ pub fn v1_type_expr_components_ambiguous_declared_head(
     type_decl_items: Rc<TypeDeclIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    v1_rt::concat(
-        Rc::new({
-            let mut __result = Vec::new();
-            for c in type_expr.children.clone().iter().cloned() {
-                __result.push(v1_wf_child_type_node(c.clone(), source_indices.clone()));
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        v1_rt::concat(
+            Rc::new({
+                let mut __result = Vec::new();
+                for c in type_expr.children.clone().iter().cloned() {
+                    __result.push(v1_wf_child_type_node(c.clone(), source_indices.clone()));
+                }
+                __result
+            }),
+            v1_callable_type_expr_component_type_exprs(type_expr.clone()),
+        )
+        .iter()
+        .cloned()
+        .fold("".to_string(), |acc: String, component: Rc<Node>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                v1_type_expr_ambiguous_declared_head(
+                    component.clone(),
+                    type_decl_items.clone(),
+                    source_indices.clone(),
+                )
             }
-            __result
-        }),
-        v1_callable_type_expr_component_type_exprs(type_expr.clone()),
-    )
-    .iter()
-    .cloned()
-    .fold("".to_string(), |acc: String, component: Rc<Node>| {
-        if (acc.clone() != "".to_string()) {
-            acc.clone()
-        } else {
-            v1_type_expr_ambiguous_declared_head(
-                component.clone(),
-                type_decl_items.clone(),
-                source_indices.clone(),
-            )
-        }
+        })
     })
 }
 
@@ -4428,25 +4449,27 @@ pub fn v1_type_expr_all_names(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let node = v1_wf_child_type_node(type_expr, source_indices.clone());
-        v1_rt::concat(
-            Rc::new(vec![crate::v1_std_core::authored_name_at(
-                source_indices.clone(),
-                node.clone(),
-            )]),
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in node.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*v1_type_expr_all_names(c.clone(), source_indices.clone()))
-                            .iter()
-                            .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<String>> {
+        {
+            let node = v1_wf_child_type_node(type_expr, source_indices.clone());
+            v1_rt::concat(
+                Rc::new(vec![crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    node.clone(),
+                )]),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in node.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*v1_type_expr_all_names(c.clone(), source_indices.clone()))
+                                .iter()
+                                .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            )
+        }
     })
 }
 
@@ -4454,36 +4477,41 @@ pub fn v1_map_key_nested_names_in_type_expr(
     type_expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let own = match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
-            .clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<String>> {
         {
-            KeyedMapVerdict::KeyedMap => match type_expr.children.clone().first().cloned() {
-                Some(key_child) => {
-                    v1_type_expr_all_names(key_child.clone(), source_indices.clone())
-                }
-                std::option::Option::None => Rc::new(vec![]),
-            },
-            KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
-            KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
-        };
-        v1_rt::concat(
-            own.clone(),
-            Rc::new({
-                let mut __result = Vec::new();
-                for ch in type_expr.children.clone().iter().cloned() {
-                    __result.extend(
-                        (*v1_map_key_nested_names_in_type_expr(
-                            crate::v1_compiler_infer_types::child_type_node(ch.clone()),
-                            source_indices.clone(),
-                        ))
-                        .iter()
-                        .cloned(),
-                    );
-                }
-                __result
-            }),
-        )
+            let own =
+                match (*v1_type_expr_keyed_map_verdict(type_expr.clone(), source_indices.clone()))
+                    .clone()
+                {
+                    KeyedMapVerdict::KeyedMap => {
+                        match type_expr.children.clone().first().cloned() {
+                            Some(key_child) => {
+                                v1_type_expr_all_names(key_child.clone(), source_indices.clone())
+                            }
+                            std::option::Option::None => Rc::new(vec![]),
+                        }
+                    }
+                    KeyedMapVerdict::NotKeyedMap => Rc::new(vec![]),
+                    KeyedMapVerdict::KeyedMapUndecidable { name: _, .. } => Rc::new(vec![]),
+                };
+            v1_rt::concat(
+                own.clone(),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for ch in type_expr.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*v1_map_key_nested_names_in_type_expr(
+                                crate::v1_compiler_infer_types::child_type_node(ch.clone()),
+                                source_indices.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            )
+        }
     })
 }
 

@@ -776,60 +776,70 @@ pub fn absorbed_subtree_into(
     node: Rc<Node>,
     into: OccurrenceId,
 ) -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let with_self = match (*node.occurrence_identity.clone()).clone() {
-            NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
-                v1_rt::rc_map_insert(acc.clone(), id.clone(), into.clone())
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
+            {
+                let with_self = match (*node.occurrence_identity.clone()).clone() {
+                    NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
+                        v1_rt::rc_map_insert(acc.clone(), id.clone(), into.clone())
+                    }
+                    _ => acc.clone(),
+                };
+                let with_lists = v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(node.children.clone(), node.params.clone()),
+                        node.uses.clone(),
+                    ),
+                    node.properties.clone(),
+                )
+                .iter()
+                .cloned()
+                .fold(
+                    with_self.clone(),
+                    |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                        absorbed_subtree_into(m, c.clone(), into.clone())
+                    },
+                );
+                let with_body =
+                    absorbed_optional_node_into(with_lists, node.body.clone(), into.clone());
+                let with_transport =
+                    absorbed_optional_node_into(with_body, node.transport.clone(), into.clone());
+                let with_annotation = absorbed_optional_node_into(
+                    with_transport,
+                    node.type_annotation.clone(),
+                    into.clone(),
+                );
+                let with_inferred = match node.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: n, .. }) => {
+                        absorbed_subtree_into(with_annotation.clone(), n.clone(), into.clone())
+                    }
+                    Some(InferredNode::CompilerError { .. }) => with_annotation.clone(),
+                    Some(InferredNode::TypeVariable { id: _, .. }) => with_annotation.clone(),
+                    Some(InferredNode::Divergent) => with_annotation.clone(),
+                    std::option::Option::None => with_annotation.clone(),
+                };
+                match node.match_pattern.clone().as_deref().cloned() {
+                    Some(MatchPattern::Bind { declaration: d, .. }) => {
+                        absorbed_subtree_into(with_inferred, d.clone(), into.clone())
+                    }
+                    Some(MatchPattern::VariantPattern {
+                        field_bindings: bindings,
+                        ..
+                    }) => bindings.iter().cloned().fold(
+                        with_inferred.clone(),
+                        |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
+                            absorbed_subtree_into(m, c.clone(), into.clone())
+                        },
+                    ),
+                    Some(MatchPattern::LitPattern { value: _, .. }) => with_inferred.clone(),
+                    Some(MatchPattern::Wildcard) => with_inferred.clone(),
+                    std::option::Option::None => with_inferred.clone(),
+                }
             }
-            _ => acc.clone(),
-        };
-        let with_lists = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(node.children.clone(), node.params.clone()),
-                node.uses.clone(),
-            ),
-            node.properties.clone(),
-        )
-        .iter()
-        .cloned()
-        .fold(
-            with_self.clone(),
-            |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
-                absorbed_subtree_into(m, c.clone(), into.clone())
-            },
-        );
-        let with_body = absorbed_optional_node_into(with_lists, node.body.clone(), into.clone());
-        let with_transport =
-            absorbed_optional_node_into(with_body, node.transport.clone(), into.clone());
-        let with_annotation =
-            absorbed_optional_node_into(with_transport, node.type_annotation.clone(), into.clone());
-        let with_inferred = match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: n, .. }) => {
-                absorbed_subtree_into(with_annotation.clone(), n.clone(), into.clone())
-            }
-            Some(InferredNode::CompilerError { .. }) => with_annotation.clone(),
-            Some(InferredNode::TypeVariable { id: _, .. }) => with_annotation.clone(),
-            Some(InferredNode::Divergent) => with_annotation.clone(),
-            std::option::Option::None => with_annotation.clone(),
-        };
-        match node.match_pattern.clone().as_deref().cloned() {
-            Some(MatchPattern::Bind { declaration: d, .. }) => {
-                absorbed_subtree_into(with_inferred, d.clone(), into.clone())
-            }
-            Some(MatchPattern::VariantPattern {
-                field_bindings: bindings,
-                ..
-            }) => bindings.iter().cloned().fold(
-                with_inferred.clone(),
-                |m: Rc<HashMap<OccurrenceId, OccurrenceId>>, c: Rc<Node>| {
-                    absorbed_subtree_into(m, c.clone(), into.clone())
-                },
-            ),
-            Some(MatchPattern::LitPattern { value: _, .. }) => with_inferred.clone(),
-            Some(MatchPattern::Wildcard) => with_inferred.clone(),
-            std::option::Option::None => with_inferred.clone(),
-        }
-    })
+        },
+    )
 }
 
 pub fn absorbed_optional_node_into(
@@ -837,10 +847,16 @@ pub fn absorbed_optional_node_into(
     node: Option<Rc<Node>>,
     into: OccurrenceId,
 ) -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
-    match node.clone() {
-        Some(n) => absorbed_subtree_into(acc, n.clone(), into),
-        std::option::Option::None => acc.clone(),
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<OccurrenceId, OccurrenceId>> {
+            match node.clone() {
+                Some(n) => absorbed_subtree_into(acc, n.clone(), into),
+                std::option::Option::None => acc.clone(),
+            }
+        },
+    )
 }
 
 pub fn parse_context_with_source_extents(
@@ -3207,53 +3223,55 @@ pub fn literal_width_nat_type_node(
 }
 
 pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<TypeResult> {
-    {
-        let tokens = skip_newlines(tokens.clone());
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        match sh.clone() {
-            Some(TokenShape::ShLitInt) => {
-                let r = parse_int_literal_value(tokens.clone());
-                if has_err(r.err.clone()) {
-                    Rc::new(TypeResult {
-                        type_expr: leaf_type_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "".to_string(),
-                            span.clone(),
-                        ),
-                        tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: r.err.clone(),
-                    })
-                } else {
-                    {
-                        let minted = mint_parsed_node_identity(
-                            ctx.clone(),
-                            Rc::new(ParsedExtentAt::ConsumedWindow {
-                                from: tokens.clone(),
-                                to: r.tokens.clone(),
-                            }),
-                        );
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<TypeResult> {
+        {
+            let tokens = skip_newlines(tokens.clone());
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            match sh.clone() {
+                Some(TokenShape::ShLitInt) => {
+                    let r = parse_int_literal_value(tokens.clone());
+                    if has_err(r.err.clone()) {
                         Rc::new(TypeResult {
-                            type_expr: literal_width_nat_type_node(
-                                minted.identity.clone(),
-                                r.value.clone(),
+                            type_expr: leaf_type_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "".to_string(),
                                 span.clone(),
                             ),
                             tokens: r.tokens.clone(),
-                            ctx: minted.ctx.clone(),
-                            err: std::option::Option::None,
+                            ctx: ctx.clone(),
+                            err: r.err.clone(),
                         })
+                    } else {
+                        {
+                            let minted = mint_parsed_node_identity(
+                                ctx.clone(),
+                                Rc::new(ParsedExtentAt::ConsumedWindow {
+                                    from: tokens.clone(),
+                                    to: r.tokens.clone(),
+                                }),
+                            );
+                            Rc::new(TypeResult {
+                                type_expr: literal_width_nat_type_node(
+                                    minted.identity.clone(),
+                                    r.value.clone(),
+                                    span.clone(),
+                                ),
+                                tokens: r.tokens.clone(),
+                                ctx: minted.ctx.clone(),
+                                err: std::option::Option::None,
+                            })
+                        }
                     }
                 }
+                _ => parse_type_expr(tokens.clone(), ctx.clone()),
             }
-            _ => parse_type_expr(tokens.clone(), ctx.clone()),
         }
-    }
+    })
 }
 
 pub fn is_conj_with_children(n: Rc<Node>) -> bool {
@@ -3456,78 +3474,94 @@ pub fn occurrence_allocator_after_node_list(
     alloc: OccurrenceIdAllocator,
     nodes: Rc<Vec<Rc<Node>>>,
 ) -> OccurrenceIdAllocator {
-    nodes.iter().cloned().fold(
-        alloc.clone(),
-        |current: OccurrenceIdAllocator, node: Rc<Node>| {
-            occurrence_allocator_after_node(current, node.clone())
-        },
-    )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> OccurrenceIdAllocator {
+        nodes.iter().cloned().fold(
+            alloc.clone(),
+            |current: OccurrenceIdAllocator, node: Rc<Node>| {
+                occurrence_allocator_after_node(current, node.clone())
+            },
+        )
+    })
 }
 
 pub fn occurrence_allocator_after_optional_node(
     alloc: OccurrenceIdAllocator,
     node: Option<Rc<Node>>,
 ) -> OccurrenceIdAllocator {
-    match node.clone() {
-        Some(value) => occurrence_allocator_after_node(alloc, value.clone()),
-        std::option::Option::None => alloc.clone(),
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> OccurrenceIdAllocator {
+        match node.clone() {
+            Some(value) => occurrence_allocator_after_node(alloc, value.clone()),
+            std::option::Option::None => alloc.clone(),
+        }
+    })
 }
 
 pub fn occurrence_allocator_after_inferred_node(
     alloc: OccurrenceIdAllocator,
     inferred: Option<Rc<InferredNode>>,
 ) -> OccurrenceIdAllocator {
-    match inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: node, .. }) => {
-            occurrence_allocator_after_node(alloc, node.clone())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> OccurrenceIdAllocator {
+        match inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: node, .. }) => {
+                occurrence_allocator_after_node(alloc, node.clone())
+            }
+            Some(InferredNode::CompilerError { .. }) => alloc.clone(),
+            Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
+            Some(InferredNode::Divergent) => alloc.clone(),
+            std::option::Option::None => alloc.clone(),
         }
-        Some(InferredNode::CompilerError { .. }) => alloc.clone(),
-        Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
-        Some(InferredNode::Divergent) => alloc.clone(),
-        std::option::Option::None => alloc.clone(),
-    }
+    })
 }
 
 pub fn occurrence_allocator_after_match_pattern(
     alloc: OccurrenceIdAllocator,
     pattern: Option<Rc<MatchPattern>>,
 ) -> OccurrenceIdAllocator {
-    match pattern.clone().as_deref().cloned() {
-        Some(MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        }) => occurrence_allocator_after_node(alloc.clone(), declaration.clone()),
-        Some(MatchPattern::VariantPattern {
-            field_bindings: bindings,
-            ..
-        }) => occurrence_allocator_after_node_list(alloc.clone(), bindings.clone()),
-        Some(MatchPattern::LitPattern { value: _, .. }) => alloc.clone(),
-        Some(MatchPattern::Wildcard) => alloc.clone(),
-        std::option::Option::None => alloc.clone(),
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> OccurrenceIdAllocator {
+        match pattern.clone().as_deref().cloned() {
+            Some(MatchPattern::Bind {
+                declaration: declaration,
+                ..
+            }) => occurrence_allocator_after_node(alloc.clone(), declaration.clone()),
+            Some(MatchPattern::VariantPattern {
+                field_bindings: bindings,
+                ..
+            }) => occurrence_allocator_after_node_list(alloc.clone(), bindings.clone()),
+            Some(MatchPattern::LitPattern { value: _, .. }) => alloc.clone(),
+            Some(MatchPattern::Wildcard) => alloc.clone(),
+            std::option::Option::None => alloc.clone(),
+        }
+    })
 }
 
 pub fn occurrence_allocator_after_node(
     alloc: OccurrenceIdAllocator,
     node: Rc<Node>,
 ) -> OccurrenceIdAllocator {
-    {
-        let current = occurrence_allocator_after_identity(alloc, node.occurrence_identity.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.children.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.params.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.uses.clone());
-        let current =
-            occurrence_allocator_after_node_list(current.clone(), node.properties.clone());
-        let current = occurrence_allocator_after_optional_node(current.clone(), node.body.clone());
-        let current =
-            occurrence_allocator_after_optional_node(current.clone(), node.transport.clone());
-        let current =
-            occurrence_allocator_after_optional_node(current.clone(), node.type_annotation.clone());
-        let current =
-            occurrence_allocator_after_inferred_node(current.clone(), node.inferred.clone());
-        occurrence_allocator_after_match_pattern(current.clone(), node.match_pattern.clone())
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> OccurrenceIdAllocator {
+        {
+            let current =
+                occurrence_allocator_after_identity(alloc, node.occurrence_identity.clone());
+            let current =
+                occurrence_allocator_after_node_list(current.clone(), node.children.clone());
+            let current =
+                occurrence_allocator_after_node_list(current.clone(), node.params.clone());
+            let current = occurrence_allocator_after_node_list(current.clone(), node.uses.clone());
+            let current =
+                occurrence_allocator_after_node_list(current.clone(), node.properties.clone());
+            let current =
+                occurrence_allocator_after_optional_node(current.clone(), node.body.clone());
+            let current =
+                occurrence_allocator_after_optional_node(current.clone(), node.transport.clone());
+            let current = occurrence_allocator_after_optional_node(
+                current.clone(),
+                node.type_annotation.clone(),
+            );
+            let current =
+                occurrence_allocator_after_inferred_node(current.clone(), node.inferred.clone());
+            occurrence_allocator_after_match_pattern(current.clone(), node.match_pattern.clone())
+        }
+    })
 }
 
 pub fn parse_context_after_node(ctx: Rc<ParseContext>, node: Rc<Node>) -> Rc<ParseContext> {
@@ -3572,30 +3606,36 @@ pub fn stamp_parsed_node_list(
     ctx: Rc<ParseContext>,
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeListStampResult> {
-    nodes.iter().cloned().fold(
-        Rc::new(ParsedNodeListStampResult {
-            nodes: Rc::new(vec![]),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
-            if has_err(acc.err.clone()) {
-                acc.clone()
-            } else {
-                {
-                    let stamped = stamp_parsed_node(
-                        node.clone(),
-                        ancestors.clone(),
-                        acc.ctx.clone(),
-                        role.clone(),
-                    );
-                    Rc::new(ParsedNodeListStampResult {
-                        nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
-                        ctx: stamped.ctx.clone(),
-                        err: stamped.err.clone(),
-                    })
-                }
-            }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedNodeListStampResult> {
+            nodes.iter().cloned().fold(
+                Rc::new(ParsedNodeListStampResult {
+                    nodes: Rc::new(vec![]),
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
+                }),
+                |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
+                    if has_err(acc.err.clone()) {
+                        acc.clone()
+                    } else {
+                        {
+                            let stamped = stamp_parsed_node(
+                                node.clone(),
+                                ancestors.clone(),
+                                acc.ctx.clone(),
+                                role.clone(),
+                            );
+                            Rc::new(ParsedNodeListStampResult {
+                                nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
+                                ctx: stamped.ctx.clone(),
+                                err: stamped.err.clone(),
+                            })
+                        }
+                    }
+                },
+            )
         },
     )
 }
@@ -3606,21 +3646,27 @@ pub fn stamp_parsed_optional_node(
     ctx: Rc<ParseContext>,
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedOptionalNodeStampResult> {
-    match node.clone() {
-        Some(value) => {
-            let stamped = stamp_parsed_node(value.clone(), ancestors, ctx.clone(), role);
-            Rc::new(ParsedOptionalNodeStampResult {
-                node: Some(stamped.node.clone()),
-                ctx: stamped.ctx.clone(),
-                err: stamped.err.clone(),
-            })
-        }
-        std::option::Option::None => Rc::new(ParsedOptionalNodeStampResult {
-            node: std::option::Option::None,
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedOptionalNodeStampResult> {
+            match node.clone() {
+                Some(value) => {
+                    let stamped = stamp_parsed_node(value.clone(), ancestors, ctx.clone(), role);
+                    Rc::new(ParsedOptionalNodeStampResult {
+                        node: Some(stamped.node.clone()),
+                        ctx: stamped.ctx.clone(),
+                        err: stamped.err.clone(),
+                    })
+                }
+                std::option::Option::None => Rc::new(ParsedOptionalNodeStampResult {
+                    node: std::option::Option::None,
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
+                }),
+            }
+        },
+    )
 }
 
 pub fn stamp_parsed_pattern(
@@ -3628,71 +3674,79 @@ pub fn stamp_parsed_pattern(
     ancestors: Rc<Vec<OccurrenceId>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ParsedPatternStampResult> {
-    match pattern.clone().as_deref().cloned() {
-        Some(MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        }) => {
-            let stamped = stamp_parsed_node(
-                declaration.clone(),
-                ancestors.clone(),
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                    category: OccurrenceCategory::LexicalValueOccurrence,
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedPatternStampResult> {
+            match pattern.clone().as_deref().cloned() {
+                Some(MatchPattern::Bind {
+                    declaration: declaration,
+                    ..
+                }) => {
+                    let stamped = stamp_parsed_node(
+                        declaration.clone(),
+                        ancestors.clone(),
+                        ctx.clone(),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                            category: OccurrenceCategory::LexicalValueOccurrence,
+                        }),
+                    );
+                    Rc::new(ParsedPatternStampResult {
+                        pattern: Some(Rc::new(MatchPattern::Bind {
+                            declaration: stamped.node.clone(),
+                        })),
+                        ctx: stamped.ctx.clone(),
+                        err: stamped.err.clone(),
+                    })
+                }
+                Some(MatchPattern::VariantPattern {
+                    name,
+                    parent_enum,
+                    field_bindings,
+                    parent_identity,
+                    ..
+                }) => {
+                    let stamped = stamp_parsed_node_list(
+                        field_bindings.clone(),
+                        ancestors.clone(),
+                        ctx.clone(),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                            category: OccurrenceCategory::FieldOccurrence,
+                        }),
+                    );
+                    Rc::new(ParsedPatternStampResult {
+                        pattern: Some(Rc::new(MatchPattern::VariantPattern {
+                            name: name.clone(),
+                            parent_enum: parent_enum.clone(),
+                            field_bindings: stamped.nodes.clone(),
+                            parent_identity: parent_identity.clone(),
+                        })),
+                        ctx: stamped.ctx.clone(),
+                        err: stamped.err.clone(),
+                    })
+                }
+                Some(MatchPattern::LitPattern { value: value, .. }) => {
+                    Rc::new(ParsedPatternStampResult {
+                        pattern: Some(Rc::new(MatchPattern::LitPattern {
+                            value: value.clone(),
+                        })),
+                        ctx: ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
+                Some(MatchPattern::Wildcard) => Rc::new(ParsedPatternStampResult {
+                    pattern: Some(Rc::new(MatchPattern::Wildcard)),
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
                 }),
-            );
-            Rc::new(ParsedPatternStampResult {
-                pattern: Some(Rc::new(MatchPattern::Bind {
-                    declaration: stamped.node.clone(),
-                })),
-                ctx: stamped.ctx.clone(),
-                err: stamped.err.clone(),
-            })
-        }
-        Some(MatchPattern::VariantPattern {
-            name,
-            parent_enum,
-            field_bindings,
-            parent_identity,
-            ..
-        }) => {
-            let stamped = stamp_parsed_node_list(
-                field_bindings.clone(),
-                ancestors.clone(),
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                    category: OccurrenceCategory::FieldOccurrence,
+                std::option::Option::None => Rc::new(ParsedPatternStampResult {
+                    pattern: std::option::Option::None,
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
                 }),
-            );
-            Rc::new(ParsedPatternStampResult {
-                pattern: Some(Rc::new(MatchPattern::VariantPattern {
-                    name: name.clone(),
-                    parent_enum: parent_enum.clone(),
-                    field_bindings: stamped.nodes.clone(),
-                    parent_identity: parent_identity.clone(),
-                })),
-                ctx: stamped.ctx.clone(),
-                err: stamped.err.clone(),
-            })
-        }
-        Some(MatchPattern::LitPattern { value: value, .. }) => Rc::new(ParsedPatternStampResult {
-            pattern: Some(Rc::new(MatchPattern::LitPattern {
-                value: value.clone(),
-            })),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-        Some(MatchPattern::Wildcard) => Rc::new(ParsedPatternStampResult {
-            pattern: Some(Rc::new(MatchPattern::Wildcard)),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-        std::option::Option::None => Rc::new(ParsedPatternStampResult {
-            pattern: std::option::Option::None,
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+            }
+        },
+    )
 }
 
 pub fn stamp_parsed_inferred(
@@ -3700,28 +3754,34 @@ pub fn stamp_parsed_inferred(
     ancestors: Rc<Vec<OccurrenceId>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ParsedOptionalNodeStampResult> {
-    match inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: node, .. }) => {
-            let stamped = stamp_parsed_node(
-                node.clone(),
-                ancestors,
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                    category: OccurrenceCategory::TypeOccurrence,
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedOptionalNodeStampResult> {
+            match inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: node, .. }) => {
+                    let stamped = stamp_parsed_node(
+                        node.clone(),
+                        ancestors,
+                        ctx.clone(),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                            category: OccurrenceCategory::TypeOccurrence,
+                        }),
+                    );
+                    Rc::new(ParsedOptionalNodeStampResult {
+                        node: Some(stamped.node.clone()),
+                        ctx: stamped.ctx.clone(),
+                        err: stamped.err.clone(),
+                    })
+                }
+                _ => Rc::new(ParsedOptionalNodeStampResult {
+                    node: std::option::Option::None,
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
                 }),
-            );
-            Rc::new(ParsedOptionalNodeStampResult {
-                node: Some(stamped.node.clone()),
-                ctx: stamped.ctx.clone(),
-                err: stamped.err.clone(),
-            })
-        }
-        _ => Rc::new(ParsedOptionalNodeStampResult {
-            node: std::option::Option::None,
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+            }
+        },
+    )
 }
 
 pub fn parsed_occurrence_role_for_node(
@@ -3826,41 +3886,47 @@ pub fn stamp_parsed_node_list_with_head_role(
     head_role: Rc<ParsedOccurrenceRole>,
     tail_role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeListStampResult> {
-    match nodes.clone().first().cloned() {
-        Some(head) => {
-            let stamped_head =
-                stamp_parsed_node(head.clone(), ancestors.clone(), ctx.clone(), head_role);
-            if has_err(stamped_head.err.clone()) {
-                Rc::new(ParsedNodeListStampResult {
-                    nodes: Rc::new(vec![stamped_head.node.clone()]),
-                    ctx: stamped_head.ctx.clone(),
-                    err: stamped_head.err.clone(),
-                })
-            } else {
-                {
-                    let stamped_tail = stamp_parsed_node_list(
-                        Rc::new(v1_rt::list_skip(&nodes.clone(), 1)),
-                        ancestors.clone(),
-                        stamped_head.ctx.clone(),
-                        tail_role,
-                    );
-                    Rc::new(ParsedNodeListStampResult {
-                        nodes: v1_rt::concat(
-                            Rc::new(vec![stamped_head.node.clone()]),
-                            stamped_tail.nodes.clone(),
-                        ),
-                        ctx: stamped_tail.ctx.clone(),
-                        err: stamped_tail.err.clone(),
-                    })
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedNodeListStampResult> {
+            match nodes.clone().first().cloned() {
+                Some(head) => {
+                    let stamped_head =
+                        stamp_parsed_node(head.clone(), ancestors.clone(), ctx.clone(), head_role);
+                    if has_err(stamped_head.err.clone()) {
+                        Rc::new(ParsedNodeListStampResult {
+                            nodes: Rc::new(vec![stamped_head.node.clone()]),
+                            ctx: stamped_head.ctx.clone(),
+                            err: stamped_head.err.clone(),
+                        })
+                    } else {
+                        {
+                            let stamped_tail = stamp_parsed_node_list(
+                                Rc::new(v1_rt::list_skip(&nodes.clone(), 1)),
+                                ancestors.clone(),
+                                stamped_head.ctx.clone(),
+                                tail_role,
+                            );
+                            Rc::new(ParsedNodeListStampResult {
+                                nodes: v1_rt::concat(
+                                    Rc::new(vec![stamped_head.node.clone()]),
+                                    stamped_tail.nodes.clone(),
+                                ),
+                                ctx: stamped_tail.ctx.clone(),
+                                err: stamped_tail.err.clone(),
+                            })
+                        }
+                    }
                 }
+                std::option::Option::None => Rc::new(ParsedNodeListStampResult {
+                    nodes: Rc::new(vec![]),
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
+                }),
             }
-        }
-        std::option::Option::None => Rc::new(ParsedNodeListStampResult {
-            nodes: Rc::new(vec![]),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+        },
+    )
 }
 
 pub fn parsed_module_item_role(node: Rc<Node>) -> Rc<ParsedOccurrenceRole> {
@@ -3896,14 +3962,18 @@ pub fn stamp_parsed_module_items(
     ancestors: Rc<Vec<OccurrenceId>>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ParsedNodeListStampResult> {
-    nodes.iter().cloned().fold(Rc::new(ParsedNodeListStampResult {
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedNodeListStampResult> {
+            nodes.iter().cloned().fold(Rc::new(ParsedNodeListStampResult {
     nodes: Rc::new(vec![]),
     ctx: ctx.clone(),
     err: std::option::Option::None,
 }), |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| if has_err(acc.err.clone()) {
-        acc.clone()
-    } else {
-        match node.module_item_kind.clone() {
+            acc.clone()
+        } else {
+            match node.module_item_kind.clone() {
     ParsedModuleItemKind::ModuleItemUnrecognized => Rc::new(ParsedNodeListStampResult {
     nodes: acc.nodes.clone(),
     ctx: acc.ctx.clone(),
@@ -3915,7 +3985,7 @@ pub fn stamp_parsed_module_items(
     err: Some(parse_error("node in module-item position was not constructed by an item constructor, so it carries no item kind; the type bucket is not a default".to_string(), node.span.clone())),
 }),
     _ => {
-            let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx.clone(), parsed_module_item_role(node.clone()));
+                let stamped = stamp_parsed_node(node.clone(), ancestors.clone(), acc.ctx.clone(), parsed_module_item_role(node.clone()));
 Rc::new(ParsedNodeListStampResult {
     nodes: v1_rt::rc_list_push(acc.nodes.clone(), stamped.node.clone()),
     ctx: stamped.ctx.clone(),
@@ -3923,7 +3993,9 @@ Rc::new(ParsedNodeListStampResult {
 })
 },
 }
-    })
+        })
+        },
+    )
 }
 
 pub fn stamp_parsed_node_children(
@@ -3932,56 +4004,66 @@ pub fn stamp_parsed_node_children(
     ctx: Rc<ParseContext>,
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeListStampResult> {
-    match (*node.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => stamp_parsed_node_list_with_head_role(
-            node.children.clone(),
-            ancestors.clone(),
-            ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::CallableOccurrence,
-            }),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        ),
-        ExprData::ExprLet => stamp_parsed_node_list(
-            node.children.clone(),
-            ancestors.clone(),
-            ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        ),
-        ExprData::ExprLambda => stamp_parsed_node_list_with_head_role(
-            node.children.clone(),
-            ancestors.clone(),
-            ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::LexicalValueOccurrence,
-            }),
-        ),
-        _ => match (*role.clone()).clone() {
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::LexicalValueOccurrence,
-                ..
-            } => stamp_parsed_node_list_with_head_role(
-                node.children.clone(),
-                ancestors.clone(),
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                    category: OccurrenceCategory::TypeOccurrence,
-                }),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-            ),
-            ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::NamespaceSegmentOccurrence,
-                ..
-            } => stamp_parsed_module_items(node.children.clone(), ancestors.clone(), ctx.clone()),
-            _ => stamp_parsed_node_list(
-                node.children.clone(),
-                ancestors.clone(),
-                ctx.clone(),
-                Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-            ),
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedNodeListStampResult> {
+            match (*node.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => stamp_parsed_node_list_with_head_role(
+                    node.children.clone(),
+                    ancestors.clone(),
+                    ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                        category: OccurrenceCategory::CallableOccurrence,
+                    }),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                ),
+                ExprData::ExprLet => stamp_parsed_node_list(
+                    node.children.clone(),
+                    ancestors.clone(),
+                    ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                ),
+                ExprData::ExprLambda => stamp_parsed_node_list_with_head_role(
+                    node.children.clone(),
+                    ancestors.clone(),
+                    ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::LexicalValueOccurrence,
+                    }),
+                ),
+                _ => match (*role.clone()).clone() {
+                    ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::LexicalValueOccurrence,
+                        ..
+                    } => stamp_parsed_node_list_with_head_role(
+                        node.children.clone(),
+                        ancestors.clone(),
+                        ctx.clone(),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                            category: OccurrenceCategory::TypeOccurrence,
+                        }),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                    ),
+                    ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::NamespaceSegmentOccurrence,
+                        ..
+                    } => stamp_parsed_module_items(
+                        node.children.clone(),
+                        ancestors.clone(),
+                        ctx.clone(),
+                    ),
+                    _ => stamp_parsed_node_list(
+                        node.children.clone(),
+                        ancestors.clone(),
+                        ctx.clone(),
+                        Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                    ),
+                },
+            }
         },
-    }
+    )
 }
 
 pub fn stamp_parsed_node(
@@ -3990,186 +4072,181 @@ pub fn stamp_parsed_node(
     ctx: Rc<ParseContext>,
     role: Rc<ParsedOccurrenceRole>,
 ) -> Rc<ParsedNodeStampResult> {
-    {
-        let occurrence = match (*node.occurrence_identity.clone()).clone() {
-            NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
-            NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
-            NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
-                return Rc::new(ParsedNodeStampResult {
-                    node: node.clone(),
-                    ctx: ctx.clone(),
-                    err: Some(parse_error(
-                        "projected occurrence identity is invalid at the authored parser boundary"
-                            .to_string(),
-                        node.span.clone(),
-                    )),
-                })
-            }
-            NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => {
-                return Rc::new(ParsedNodeStampResult {
-                    node: node.clone(),
-                    ctx: ctx.clone(),
-                    err: Some(parse_error(
-                        "pending occurrence identity is invalid at the authored parser boundary"
-                            .to_string(),
-                        node.span.clone(),
-                    )),
-                })
-            }
-        };
-        let effective_role = parsed_occurrence_role_for_node(node.clone(), role);
-        let indexed_ctx = match occurrence.clone() {
-            Some(id) => {
-                let containment = Rc::new(OccurrenceContainmentPath {
-                    ancestors: ancestors.clone(),
-                    terminal: id.clone(),
-                });
-                let with_index = parse_context_with_occurrence_state(
-                    ctx.clone(),
-                    ctx.occurrence_allocator.clone(),
-                    Some(Rc::new(OccurrenceIndex {
-                        entries: v1_rt::rc_list_push(
-                            parse_context_occurrence_index(ctx.clone()).entries.clone(),
-                            Rc::new(OccurrenceIndexEntry {
-                                projection: Rc::new(OccurrenceProjection {
-                                    occurrence: id.clone(),
-                                    authored_name: node.name.clone(),
-                                    diagnostic_span: node.span.clone(),
-                                }),
-                                containment: containment.clone(),
-                            }),
-                        ),
-                    })),
-                    ctx.declaration_occurrences.clone(),
-                    ctx.reference_occurrences.clone(),
-                );
-                let recorded = ctx.source_extents.clone();
-                let with_extent = match v1_rt::lookup(&recorded.recorded.clone(), id.clone()) {
-                    Some(extent) => parse_context_with_source_extents(
-                        with_index.clone(),
-                        Rc::new(ParseSourceExtentState {
-                            recorded: recorded.recorded.clone(),
-                            published: v1_rt::rc_list_push(
-                                recorded.published.clone(),
-                                Rc::new(ParsedSourceExtent {
-                                    occurrence: id.clone(),
-                                    extent: extent.clone(),
-                                }),
-                            ),
-                            erased_scopes: recorded.erased_scopes.clone(),
-                            absorbed: recorded.absorbed.clone(),
-                        }),
-                    ),
-                    std::option::Option::None => with_index.clone(),
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<ParsedNodeStampResult> {
+            {
+                let occurrence = match (*node.occurrence_identity.clone()).clone() {
+    NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
+    NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
+    NodeOccurrenceIdentity::OccurrenceProjected { .. } => return Rc::new(ParsedNodeStampResult {
+    node: node.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("projected occurrence identity is invalid at the authored parser boundary".to_string(), node.span.clone())),
+}),
+    NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => return Rc::new(ParsedNodeStampResult {
+    node: node.clone(),
+    ctx: ctx.clone(),
+    err: Some(parse_error("pending occurrence identity is invalid at the authored parser boundary".to_string(), node.span.clone())),
+}),
+};
+                let effective_role = parsed_occurrence_role_for_node(node.clone(), role);
+                let indexed_ctx = match occurrence.clone() {
+                    Some(id) => {
+                        let containment = Rc::new(OccurrenceContainmentPath {
+                            ancestors: ancestors.clone(),
+                            terminal: id.clone(),
+                        });
+                        let with_index = parse_context_with_occurrence_state(
+                            ctx.clone(),
+                            ctx.occurrence_allocator.clone(),
+                            Some(Rc::new(OccurrenceIndex {
+                                entries: v1_rt::rc_list_push(
+                                    parse_context_occurrence_index(ctx.clone()).entries.clone(),
+                                    Rc::new(OccurrenceIndexEntry {
+                                        projection: Rc::new(OccurrenceProjection {
+                                            occurrence: id.clone(),
+                                            authored_name: node.name.clone(),
+                                            diagnostic_span: node.span.clone(),
+                                        }),
+                                        containment: containment.clone(),
+                                    }),
+                                ),
+                            })),
+                            ctx.declaration_occurrences.clone(),
+                            ctx.reference_occurrences.clone(),
+                        );
+                        let recorded = ctx.source_extents.clone();
+                        let with_extent =
+                            match v1_rt::lookup(&recorded.recorded.clone(), id.clone()) {
+                                Some(extent) => parse_context_with_source_extents(
+                                    with_index.clone(),
+                                    Rc::new(ParseSourceExtentState {
+                                        recorded: recorded.recorded.clone(),
+                                        published: v1_rt::rc_list_push(
+                                            recorded.published.clone(),
+                                            Rc::new(ParsedSourceExtent {
+                                                occurrence: id.clone(),
+                                                extent: extent.clone(),
+                                            }),
+                                        ),
+                                        erased_scopes: recorded.erased_scopes.clone(),
+                                        absorbed: recorded.absorbed.clone(),
+                                    }),
+                                ),
+                                std::option::Option::None => with_index.clone(),
+                            };
+                        parse_context_record_occurrence(
+                            with_extent,
+                            effective_role.clone(),
+                            id.clone(),
+                            containment.clone(),
+                            node.span.clone(),
+                        )
+                    }
+                    std::option::Option::None => ctx.clone(),
                 };
-                parse_context_record_occurrence(
-                    with_extent,
+                let child_ancestors = match occurrence.clone() {
+                    Some(id) => occurrence_ancestors_push(ancestors.clone(), id.clone()),
+                    std::option::Option::None => ancestors.clone(),
+                };
+                let children = stamp_parsed_node_children(
+                    node.clone(),
+                    child_ancestors.clone(),
+                    indexed_ctx,
                     effective_role.clone(),
-                    id.clone(),
-                    containment.clone(),
-                    node.span.clone(),
-                )
-            }
-            std::option::Option::None => ctx.clone(),
-        };
-        let child_ancestors = match occurrence.clone() {
-            Some(id) => occurrence_ancestors_push(ancestors.clone(), id.clone()),
-            std::option::Option::None => ancestors.clone(),
-        };
-        let children = stamp_parsed_node_children(
-            node.clone(),
-            child_ancestors.clone(),
-            indexed_ctx,
-            effective_role.clone(),
-        );
-        let params = stamp_parsed_node_list(
-            node.params.clone(),
-            child_ancestors.clone(),
-            children.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
-                category: OccurrenceCategory::LexicalValueOccurrence,
-            }),
-        );
-        let uses = stamp_parsed_node_list(
-            node.uses.clone(),
-            child_ancestors.clone(),
-            params.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        );
-        let properties = stamp_parsed_node_list(
-            node.properties.clone(),
-            child_ancestors.clone(),
-            uses.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        );
-        let body = stamp_parsed_optional_node(
-            node.body.clone(),
-            child_ancestors.clone(),
-            properties.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        );
-        let transport = stamp_parsed_optional_node(
-            node.transport.clone(),
-            child_ancestors.clone(),
-            body.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
-        );
-        let annotation = stamp_parsed_optional_node(
-            node.type_annotation.clone(),
-            child_ancestors.clone(),
-            transport.ctx.clone(),
-            Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
-                category: OccurrenceCategory::TypeOccurrence,
-            }),
-        );
-        let inferred = stamp_parsed_inferred(
-            node.inferred.clone(),
-            child_ancestors.clone(),
-            annotation.ctx.clone(),
-        );
-        let pattern = stamp_parsed_pattern(
-            node.match_pattern.clone(),
-            child_ancestors.clone(),
-            inferred.ctx.clone(),
-        );
-        Rc::new(ParsedNodeStampResult {
-            node: node.clone(),
-            ctx: pattern.ctx.clone(),
-            err: if has_err(children.err.clone()) {
-                children.err.clone()
-            } else {
-                if has_err(params.err.clone()) {
-                    params.err.clone()
-                } else {
-                    if has_err(uses.err.clone()) {
-                        uses.err.clone()
+                );
+                let params = stamp_parsed_node_list(
+                    node.params.clone(),
+                    child_ancestors.clone(),
+                    children.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceDeclaration {
+                        category: OccurrenceCategory::LexicalValueOccurrence,
+                    }),
+                );
+                let uses = stamp_parsed_node_list(
+                    node.uses.clone(),
+                    child_ancestors.clone(),
+                    params.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                );
+                let properties = stamp_parsed_node_list(
+                    node.properties.clone(),
+                    child_ancestors.clone(),
+                    uses.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                );
+                let body = stamp_parsed_optional_node(
+                    node.body.clone(),
+                    child_ancestors.clone(),
+                    properties.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                );
+                let transport = stamp_parsed_optional_node(
+                    node.transport.clone(),
+                    child_ancestors.clone(),
+                    body.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceUnclassified),
+                );
+                let annotation = stamp_parsed_optional_node(
+                    node.type_annotation.clone(),
+                    child_ancestors.clone(),
+                    transport.ctx.clone(),
+                    Rc::new(ParsedOccurrenceRole::ParsedOccurrenceReference {
+                        category: OccurrenceCategory::TypeOccurrence,
+                    }),
+                );
+                let inferred = stamp_parsed_inferred(
+                    node.inferred.clone(),
+                    child_ancestors.clone(),
+                    annotation.ctx.clone(),
+                );
+                let pattern = stamp_parsed_pattern(
+                    node.match_pattern.clone(),
+                    child_ancestors.clone(),
+                    inferred.ctx.clone(),
+                );
+                Rc::new(ParsedNodeStampResult {
+                    node: node.clone(),
+                    ctx: pattern.ctx.clone(),
+                    err: if has_err(children.err.clone()) {
+                        children.err.clone()
                     } else {
-                        if has_err(properties.err.clone()) {
-                            properties.err.clone()
+                        if has_err(params.err.clone()) {
+                            params.err.clone()
                         } else {
-                            if has_err(body.err.clone()) {
-                                body.err.clone()
+                            if has_err(uses.err.clone()) {
+                                uses.err.clone()
                             } else {
-                                if has_err(transport.err.clone()) {
-                                    transport.err.clone()
+                                if has_err(properties.err.clone()) {
+                                    properties.err.clone()
                                 } else {
-                                    if has_err(annotation.err.clone()) {
-                                        annotation.err.clone()
+                                    if has_err(body.err.clone()) {
+                                        body.err.clone()
                                     } else {
-                                        if has_err(inferred.err.clone()) {
-                                            inferred.err.clone()
+                                        if has_err(transport.err.clone()) {
+                                            transport.err.clone()
                                         } else {
-                                            pattern.err.clone()
+                                            if has_err(annotation.err.clone()) {
+                                                annotation.err.clone()
+                                            } else {
+                                                if has_err(inferred.err.clone()) {
+                                                    inferred.err.clone()
+                                                } else {
+                                                    pattern.err.clone()
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                }
-            },
-        })
-    }
+                    },
+                })
+            }
+        },
+    )
 }
 
 pub fn occurrence_transport_from_parse_context(ctx: Rc<ParseContext>) -> Rc<OccurrenceTransport> {
@@ -7229,150 +7306,154 @@ pub fn parse_more_variants_acc(
 }
 
 pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<TypeResult> {
-    {
-        let tokens = skip_newlines(tokens.clone());
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        match sh.clone() {
-            Some(TokenShape::ShLBrace) => {
-                let r = parse_field_list(
-                    skip_newlines(token_stream_advance(tokens.clone(), 1)),
-                    ctx.clone(),
-                );
-                if has_err(r.err.clone()) {
-                    return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "".to_string(),
-                            span.clone(),
-                        ),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
-                }
-                let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "".to_string(),
-                            span.clone(),
-                        ),
-                        tokens: r2.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
-                let minted = mint_parsed_node_identity(
-                    r.ctx.clone(),
-                    Rc::new(ParsedExtentAt::FromToken {
-                        start: span.clone(),
-                        to: r2.tokens.clone(),
-                    }),
-                );
-                let te = Rc::new(Node {
-                    occurrence_identity: minted.identity.clone(),
-                    name: "".to_string(),
-                    span: span.clone(),
-                    ident_span: std::option::Option::None,
-                    children: Rc::new({
-                        let mut __result = Vec::new();
-                        for f in r.fields.clone().iter().cloned() {
-                            __result
-                                .push(field_to_child_node(f.clone(), ctx.source_indices.clone()));
-                        }
-                        __result
-                    }),
-                    connective: Connective::Conj,
-                    params: Rc::new(vec![]),
-                    inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: std::option::Option::None,
-                    transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: std::option::Option::None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                    declaration_marker: DeclarationMarker::Unmarked,
-                    declaration: std::option::Option::None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                });
-                Rc::new(TypeResult {
-                    type_expr: te.clone(),
-                    tokens: r2.tokens.clone(),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
-            }
-            Some(TokenShape::ShKeyword) => {
-                if (tok.clone().unwrap().text.clone() == "fn".to_string()) {
-                    parse_callable_type_expr(
-                        token_stream_advance(tokens.clone(), 1),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<TypeResult> {
+        {
+            let tokens = skip_newlines(tokens.clone());
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            match sh.clone() {
+                Some(TokenShape::ShLBrace) => {
+                    let r = parse_field_list(
+                        skip_newlines(token_stream_advance(tokens.clone(), 1)),
                         ctx.clone(),
-                        span.clone(),
-                    )
-                } else {
+                    );
+                    if has_err(r.err.clone()) {
+                        return Rc::new(TypeResult {
+                            type_expr: leaf_type_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "".to_string(),
+                                span.clone(),
+                            ),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let tokens = skip_newlines(r.tokens.clone());
+                    let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(TypeResult {
+                            type_expr: leaf_type_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "".to_string(),
+                                span.clone(),
+                            ),
+                            tokens: r2.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    let minted = mint_parsed_node_identity(
+                        r.ctx.clone(),
+                        Rc::new(ParsedExtentAt::FromToken {
+                            start: span.clone(),
+                            to: r2.tokens.clone(),
+                        }),
+                    );
+                    let te = Rc::new(Node {
+                        occurrence_identity: minted.identity.clone(),
+                        name: "".to_string(),
+                        span: span.clone(),
+                        ident_span: std::option::Option::None,
+                        children: Rc::new({
+                            let mut __result = Vec::new();
+                            for f in r.fields.clone().iter().cloned() {
+                                __result.push(field_to_child_node(
+                                    f.clone(),
+                                    ctx.source_indices.clone(),
+                                ));
+                            }
+                            __result
+                        }),
+                        connective: Connective::Conj,
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        declaration: std::option::Option::None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    });
                     Rc::new(TypeResult {
-                        type_expr: leaf_type_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "".to_string(),
-                            span.clone(),
-                        ),
-                        tokens: tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: Some(parse_error(
-                            "expected type expression".to_string(),
-                            span.clone(),
-                        )),
+                        type_expr: te.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
                     })
                 }
-            }
-            Some(TokenShape::ShIdent) => {
-                let r = parse_dotted_ident(tokens.clone(), ctx.env.clone());
-                if has_err(r.err.clone()) {
-                    return Rc::new(TypeResult {
-                        type_expr: leaf_type_node(
-                            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                            "".to_string(),
+                Some(TokenShape::ShKeyword) => {
+                    if (tok.clone().unwrap().text.clone() == "fn".to_string()) {
+                        parse_callable_type_expr(
+                            token_stream_advance(tokens.clone(), 1),
+                            ctx.clone(),
                             span.clone(),
-                        ),
-                        tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: r.err.clone(),
-                    });
+                        )
+                    } else {
+                        Rc::new(TypeResult {
+                            type_expr: leaf_type_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "".to_string(),
+                                span.clone(),
+                            ),
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: Some(parse_error(
+                                "expected type expression".to_string(),
+                                span.clone(),
+                            )),
+                        })
+                    }
                 }
-                finish_type_expr_from_name(
-                    r.tokens.clone(),
-                    ctx.clone(),
-                    r.name.clone(),
-                    r.span.clone(),
-                )
+                Some(TokenShape::ShIdent) => {
+                    let r = parse_dotted_ident(tokens.clone(), ctx.env.clone());
+                    if has_err(r.err.clone()) {
+                        return Rc::new(TypeResult {
+                            type_expr: leaf_type_node(
+                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                "".to_string(),
+                                span.clone(),
+                            ),
+                            tokens: r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    finish_type_expr_from_name(
+                        r.tokens.clone(),
+                        ctx.clone(),
+                        r.name.clone(),
+                        r.span.clone(),
+                    )
+                }
+                _ => Rc::new(TypeResult {
+                    type_expr: leaf_type_node(
+                        Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                        "".to_string(),
+                        span.clone(),
+                    ),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "expected type expression".to_string(),
+                        span.clone(),
+                    )),
+                }),
             }
-            _ => Rc::new(TypeResult {
-                type_expr: leaf_type_node(
-                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                    "".to_string(),
-                    span.clone(),
-                ),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: Some(parse_error(
-                    "expected type expression".to_string(),
-                    span.clone(),
-                )),
-            }),
         }
-    }
+    })
 }
 
 pub fn parse_callable_type_expr(
@@ -7380,103 +7461,105 @@ pub fn parse_callable_type_expr(
     ctx: Rc<ParseContext>,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
-    {
-        let dummy_te = leaf_type_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "".to_string(),
-            start_span.clone(),
-        );
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
-        if has_err(r.err.clone()) {
-            return Rc::new(TypeResult {
-                type_expr: dummy_te.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<TypeResult> {
+        {
+            let dummy_te = leaf_type_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                "".to_string(),
+                start_span.clone(),
+            );
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
+            if has_err(r.err.clone()) {
+                return Rc::new(TypeResult {
+                    type_expr: dummy_te.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            let params_result = if tok_is_rparen(token_stream_first(tokens.clone())) {
+                Rc::new(ParamsResult {
+                    params: Rc::new(vec![]),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
+                })
+            } else {
+                parse_callable_param_types(tokens.clone(), ctx.clone(), Rc::new(vec![]))
+            };
+            if has_err(params_result.err.clone()) {
+                return Rc::new(TypeResult {
+                    type_expr: dummy_te.clone(),
+                    tokens: params_result.tokens.clone(),
+                    ctx: params_result.ctx.clone(),
+                    err: params_result.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(params_result.tokens.clone());
+            let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+            if has_err(r2.err.clone()) {
+                return Rc::new(TypeResult {
+                    type_expr: dummy_te.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: params_result.ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectArrow));
+            if has_err(r3.err.clone()) {
+                return Rc::new(TypeResult {
+                    type_expr: dummy_te.clone(),
+                    tokens: r3.tokens.clone(),
+                    ctx: params_result.ctx.clone(),
+                    err: r3.err.clone(),
+                });
+            }
+            let ret = parse_type_expr(r3.tokens.clone(), params_result.ctx.clone());
+            if has_err(ret.err.clone()) {
+                return Rc::new(TypeResult {
+                    type_expr: dummy_te.clone(),
+                    tokens: ret.tokens.clone(),
+                    ctx: ret.ctx.clone(),
+                    err: ret.err.clone(),
+                });
+            }
+            let minted =
+                mint_parsed_node_identity(ret.ctx.clone(), Rc::new(ParsedExtentAt::CompletedLater));
+            let te = Rc::new(Node {
+                occurrence_identity: minted.identity.clone(),
+                name: "Callable".to_string(),
+                span: start_span.clone(),
+                ident_span: Some(start_span.clone()),
+                children: Rc::new(vec![]),
+                connective: Connective::Arrow,
+                params: params_result.params.clone(),
+                inferred: Some(Rc::new(InferredNode::Resolved {
+                    node: ret.type_expr.clone(),
+                })),
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
+                properties: Rc::new(vec![]),
+                type_annotation: std::option::Option::None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
             });
+            maybe_optional(
+                ret.tokens.clone(),
+                minted.ctx.clone(),
+                te,
+                start_span.clone(),
+            )
         }
-        let tokens = skip_newlines(r.tokens.clone());
-        let params_result = if tok_is_rparen(token_stream_first(tokens.clone())) {
-            Rc::new(ParamsResult {
-                params: Rc::new(vec![]),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            })
-        } else {
-            parse_callable_param_types(tokens.clone(), ctx.clone(), Rc::new(vec![]))
-        };
-        if has_err(params_result.err.clone()) {
-            return Rc::new(TypeResult {
-                type_expr: dummy_te.clone(),
-                tokens: params_result.tokens.clone(),
-                ctx: params_result.ctx.clone(),
-                err: params_result.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(params_result.tokens.clone());
-        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
-        if has_err(r2.err.clone()) {
-            return Rc::new(TypeResult {
-                type_expr: dummy_te.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: params_result.ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        let r3 = expect(r2.tokens.clone(), Rc::new(ExpectedToken::ExpectArrow));
-        if has_err(r3.err.clone()) {
-            return Rc::new(TypeResult {
-                type_expr: dummy_te.clone(),
-                tokens: r3.tokens.clone(),
-                ctx: params_result.ctx.clone(),
-                err: r3.err.clone(),
-            });
-        }
-        let ret = parse_type_expr(r3.tokens.clone(), params_result.ctx.clone());
-        if has_err(ret.err.clone()) {
-            return Rc::new(TypeResult {
-                type_expr: dummy_te.clone(),
-                tokens: ret.tokens.clone(),
-                ctx: ret.ctx.clone(),
-                err: ret.err.clone(),
-            });
-        }
-        let minted =
-            mint_parsed_node_identity(ret.ctx.clone(), Rc::new(ParsedExtentAt::CompletedLater));
-        let te = Rc::new(Node {
-            occurrence_identity: minted.identity.clone(),
-            name: "Callable".to_string(),
-            span: start_span.clone(),
-            ident_span: Some(start_span.clone()),
-            children: Rc::new(vec![]),
-            connective: Connective::Arrow,
-            params: params_result.params.clone(),
-            inferred: Some(Rc::new(InferredNode::Resolved {
-                node: ret.type_expr.clone(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        maybe_optional(
-            ret.tokens.clone(),
-            minted.ctx.clone(),
-            te,
-            start_span.clone(),
-        )
-    }
+    })
 }
 
 pub fn parse_callable_param_types(
@@ -7558,93 +7641,97 @@ pub fn finish_type_expr_from_name(
     type_name: String,
     start_span: Rc<SourceSpan>,
 ) -> Rc<TypeResult> {
-    {
-        let dummy_te = leaf_type_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            type_name.clone(),
-            start_span.clone(),
-        );
-        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
-            EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return r;
-                }
-                let first_arg = r.type_expr.clone();
-                let type_args = collect_type_args(
-                    r.tokens.clone(),
-                    r.ctx.clone(),
-                    Rc::new(vec![first_arg.clone()]),
-                );
-                if has_err(type_args.err.clone()) {
-                    return Rc::new(TypeResult {
-                        type_expr: dummy_te.clone(),
-                        tokens: type_args.tokens.clone(),
-                        ctx: type_args.ctx.clone(),
-                        err: type_args.err.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<TypeResult> {
+        {
+            let dummy_te = leaf_type_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                type_name.clone(),
+                start_span.clone(),
+            );
+            match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLt))).clone() {
+                EatResult::EatConsumed { tokens: __ec, .. } => {
+                    let r = parse_type_angle_arg(__ec.clone(), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return r;
+                    }
+                    let first_arg = r.type_expr.clone();
+                    let type_args = collect_type_args(
+                        r.tokens.clone(),
+                        r.ctx.clone(),
+                        Rc::new(vec![first_arg.clone()]),
+                    );
+                    if has_err(type_args.err.clone()) {
+                        return Rc::new(TypeResult {
+                            type_expr: dummy_te.clone(),
+                            tokens: type_args.tokens.clone(),
+                            ctx: type_args.ctx.clone(),
+                            err: type_args.err.clone(),
+                        });
+                    }
+                    let r3 = expect(type_args.tokens.clone(), Rc::new(ExpectedToken::ExpectGt));
+                    if has_err(r3.err.clone()) {
+                        return Rc::new(TypeResult {
+                            type_expr: dummy_te.clone(),
+                            tokens: r3.tokens.clone(),
+                            ctx: type_args.ctx.clone(),
+                            err: r3.err.clone(),
+                        });
+                    }
+                    let minted = mint_parsed_node_identity(
+                        type_args.ctx.clone(),
+                        Rc::new(ParsedExtentAt::CompletedLater),
+                    );
+                    let te = Rc::new(Node {
+                        occurrence_identity: minted.identity.clone(),
+                        name: type_name.clone(),
+                        span: start_span.clone(),
+                        ident_span: Some(start_span.clone()),
+                        children: type_args.args.clone(),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: std::option::Option::None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        declaration: std::option::Option::None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
                     });
+                    maybe_optional(
+                        r3.tokens.clone(),
+                        minted.ctx.clone(),
+                        te.clone(),
+                        start_span.clone(),
+                    )
                 }
-                let r3 = expect(type_args.tokens.clone(), Rc::new(ExpectedToken::ExpectGt));
-                if has_err(r3.err.clone()) {
-                    return Rc::new(TypeResult {
-                        type_expr: dummy_te.clone(),
-                        tokens: r3.tokens.clone(),
-                        ctx: type_args.ctx.clone(),
-                        err: r3.err.clone(),
-                    });
+                EatResult::EatUnchanged { tokens: __eu, .. } => {
+                    let minted = mint_parsed_node_identity(
+                        ctx.clone(),
+                        Rc::new(ParsedExtentAt::CompletedLater),
+                    );
+                    let te = leaf_type_node(
+                        minted.identity.clone(),
+                        type_name.clone(),
+                        start_span.clone(),
+                    );
+                    maybe_optional(
+                        tokens.clone(),
+                        minted.ctx.clone(),
+                        te.clone(),
+                        start_span.clone(),
+                    )
                 }
-                let minted = mint_parsed_node_identity(
-                    type_args.ctx.clone(),
-                    Rc::new(ParsedExtentAt::CompletedLater),
-                );
-                let te = Rc::new(Node {
-                    occurrence_identity: minted.identity.clone(),
-                    name: type_name.clone(),
-                    span: start_span.clone(),
-                    ident_span: Some(start_span.clone()),
-                    children: type_args.args.clone(),
-                    connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: std::option::Option::None,
-                    transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: std::option::Option::None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                    declaration_marker: DeclarationMarker::Unmarked,
-                    declaration: std::option::Option::None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                });
-                maybe_optional(
-                    r3.tokens.clone(),
-                    minted.ctx.clone(),
-                    te.clone(),
-                    start_span.clone(),
-                )
-            }
-            EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let minted =
-                    mint_parsed_node_identity(ctx.clone(), Rc::new(ParsedExtentAt::CompletedLater));
-                let te = leaf_type_node(
-                    minted.identity.clone(),
-                    type_name.clone(),
-                    start_span.clone(),
-                );
-                maybe_optional(
-                    tokens.clone(),
-                    minted.ctx.clone(),
-                    te.clone(),
-                    start_span.clone(),
-                )
             }
         }
-    }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -7947,7 +8034,9 @@ pub fn maybe_optional(
 }
 
 pub fn parse_field_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldsResult> {
-    parse_field_list_acc(tokens, ctx, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<FieldsResult> {
+        parse_field_list_acc(tokens, ctx, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_field_list_acc(
@@ -8015,137 +8104,139 @@ pub fn parse_field_list_acc(
 }
 
 pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldResult> {
-    {
-        let entry = tokens.clone();
-        let start_span = token_span(token_stream_first(tokens.clone()));
-        let dummy_field = crate::v1_std_core::make_field_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "".to_string(),
-            leaf_type_node(
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<FieldResult> {
+        {
+            let entry = tokens.clone();
+            let start_span = token_span(token_stream_first(tokens.clone()));
+            let dummy_field = crate::v1_std_core::make_field_node(
                 Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 "".to_string(),
+                leaf_type_node(
+                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                    "".to_string(),
+                    start_span.clone(),
+                ),
+                Cardinality::Required,
+                std::option::Option::None,
+                Rc::new(vec![]),
                 start_span.clone(),
-            ),
-            Cardinality::Required,
-            std::option::Option::None,
-            Rc::new(vec![]),
-            start_span.clone(),
-            start_span.clone(),
-        );
-        let r = expect_name(tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(FieldResult {
-                field: dummy_field.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let tokens = r.tokens.clone();
-        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
-        if has_err(r2.err.clone()) {
-            return Rc::new(FieldResult {
-                field: dummy_field.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
-        if has_err(r3.err.clone()) {
-            return Rc::new(FieldResult {
-                field: dummy_field.clone(),
-                tokens: r3.tokens.clone(),
-                ctx: r3.ctx.clone(),
-                err: r3.err.clone(),
-            });
-        }
-        let wr = try_where_clause(
-            r3.tokens.clone(),
-            r3.ctx.clone(),
-            r3.type_expr.clone(),
-            r2.tokens.clone(),
-            start_span.clone(),
-        );
-        if has_err(wr.err.clone()) {
-            return Rc::new(FieldResult {
-                field: dummy_field.clone(),
-                tokens: wr.tokens.clone(),
-                ctx: wr.ctx.clone(),
-                err: wr.err.clone(),
-            });
-        }
-        let te = wr.type_expr.clone();
-        let tokens = wr.tokens.clone();
-        let ctx = wr.ctx.clone();
-        let from_r = parse_optional_from_key(tokens.clone(), ctx.clone());
-        let from_key_properties = from_r.properties.clone();
-        let tokens = from_r.tokens.clone();
-        let ctx = from_r.ctx.clone();
-        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
-            EatResult::EatConsumed { tokens: __ec, .. } => {
-                let r4 = parse_expr(__ec.clone(), ctx.clone());
-                if has_err(r4.err.clone()) {
-                    return Rc::new(FieldResult {
-                        field: dummy_field.clone(),
+                start_span.clone(),
+            );
+            let r = expect_name(tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(FieldResult {
+                    field: dummy_field.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let name = r.name.clone();
+            let name_span = r.span.clone();
+            let tokens = r.tokens.clone();
+            let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
+            if has_err(r2.err.clone()) {
+                return Rc::new(FieldResult {
+                    field: dummy_field.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            let r3 = parse_type_expr(r2.tokens.clone(), ctx.clone());
+            if has_err(r3.err.clone()) {
+                return Rc::new(FieldResult {
+                    field: dummy_field.clone(),
+                    tokens: r3.tokens.clone(),
+                    ctx: r3.ctx.clone(),
+                    err: r3.err.clone(),
+                });
+            }
+            let wr = try_where_clause(
+                r3.tokens.clone(),
+                r3.ctx.clone(),
+                r3.type_expr.clone(),
+                r2.tokens.clone(),
+                start_span.clone(),
+            );
+            if has_err(wr.err.clone()) {
+                return Rc::new(FieldResult {
+                    field: dummy_field.clone(),
+                    tokens: wr.tokens.clone(),
+                    ctx: wr.ctx.clone(),
+                    err: wr.err.clone(),
+                });
+            }
+            let te = wr.type_expr.clone();
+            let tokens = wr.tokens.clone();
+            let ctx = wr.ctx.clone();
+            let from_r = parse_optional_from_key(tokens.clone(), ctx.clone());
+            let from_key_properties = from_r.properties.clone();
+            let tokens = from_r.tokens.clone();
+            let ctx = from_r.ctx.clone();
+            match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
+                EatResult::EatConsumed { tokens: __ec, .. } => {
+                    let r4 = parse_expr(__ec.clone(), ctx.clone());
+                    if has_err(r4.err.clone()) {
+                        return Rc::new(FieldResult {
+                            field: dummy_field.clone(),
+                            tokens: r4.tokens.clone(),
+                            ctx: r4.ctx.clone(),
+                            err: r4.err.clone(),
+                        });
+                    }
+                    let minted = mint_parsed_node_identity(
+                        r4.ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: entry.clone(),
+                            to: r4.tokens.clone(),
+                        }),
+                    );
+                    let f = crate::v1_std_core::make_field_node(
+                        minted.identity.clone(),
+                        name.clone(),
+                        te.clone(),
+                        te.return_cardinality.clone(),
+                        Some(r4.expr.clone()),
+                        from_key_properties.clone(),
+                        start_span.clone(),
+                        name_span.clone(),
+                    );
+                    Rc::new(FieldResult {
+                        field: f.clone(),
                         tokens: r4.tokens.clone(),
-                        ctx: r4.ctx.clone(),
-                        err: r4.err.clone(),
-                    });
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
                 }
-                let minted = mint_parsed_node_identity(
-                    r4.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: entry.clone(),
-                        to: r4.tokens.clone(),
-                    }),
-                );
-                let f = crate::v1_std_core::make_field_node(
-                    minted.identity.clone(),
-                    name.clone(),
-                    te.clone(),
-                    te.return_cardinality.clone(),
-                    Some(r4.expr.clone()),
-                    from_key_properties.clone(),
-                    start_span.clone(),
-                    name_span.clone(),
-                );
-                Rc::new(FieldResult {
-                    field: f.clone(),
-                    tokens: r4.tokens.clone(),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
-            }
-            EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let minted = mint_parsed_node_identity(
-                    ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: entry.clone(),
-                        to: tokens.clone(),
-                    }),
-                );
-                let f = crate::v1_std_core::make_field_node(
-                    minted.identity.clone(),
-                    name.clone(),
-                    te.clone(),
-                    te.return_cardinality.clone(),
-                    std::option::Option::None,
-                    from_key_properties.clone(),
-                    start_span.clone(),
-                    name_span.clone(),
-                );
-                Rc::new(FieldResult {
-                    field: f.clone(),
-                    tokens: tokens.clone(),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
+                EatResult::EatUnchanged { tokens: __eu, .. } => {
+                    let minted = mint_parsed_node_identity(
+                        ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: entry.clone(),
+                            to: tokens.clone(),
+                        }),
+                    );
+                    let f = crate::v1_std_core::make_field_node(
+                        minted.identity.clone(),
+                        name.clone(),
+                        te.clone(),
+                        te.return_cardinality.clone(),
+                        std::option::Option::None,
+                        from_key_properties.clone(),
+                        start_span.clone(),
+                        name_span.clone(),
+                    );
+                    Rc::new(FieldResult {
+                        field: f.clone(),
+                        tokens: tokens.clone(),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
             }
         }
-    }
+    })
 }
 
 pub fn parse_optional_from_key(
@@ -8903,33 +8994,35 @@ pub fn parse_resource_config_acc(
 }
 
 pub fn parse_optional_inferred(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<OptRetResult> {
-    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectArrow))).clone() {
-        EatResult::EatConsumed { tokens: __ec, .. } => {
-            let r = parse_type_expr(__ec.clone(), ctx.clone());
-            if has_err(r.err.clone()) {
-                return Rc::new(OptRetResult {
-                    inferred: std::option::Option::None,
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<OptRetResult> {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectArrow))).clone() {
+            EatResult::EatConsumed { tokens: __ec, .. } => {
+                let r = parse_type_expr(__ec.clone(), ctx.clone());
+                if has_err(r.err.clone()) {
+                    return Rc::new(OptRetResult {
+                        inferred: std::option::Option::None,
+                        tokens: r.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r.err.clone(),
+                    });
+                }
+                Rc::new(OptRetResult {
+                    inferred: Some(Rc::new(InferredNode::Resolved {
+                        node: r.type_expr.clone(),
+                    })),
                     tokens: r.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: r.err.clone(),
-                });
+                    err: std::option::Option::None,
+                })
             }
-            Rc::new(OptRetResult {
-                inferred: Some(Rc::new(InferredNode::Resolved {
-                    node: r.type_expr.clone(),
-                })),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
+            EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(OptRetResult {
+                inferred: std::option::Option::None,
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
                 err: std::option::Option::None,
-            })
+            }),
         }
-        EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(OptRetResult {
-            inferred: std::option::Option::None,
-            tokens: tokens.clone(),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+    })
 }
 
 pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResult> {
@@ -11545,40 +11638,30 @@ pub fn node_to_name_str(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        let effective_n = if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n.clone())
-        } else {
-            n.clone()
-        };
-        let opt_prefix = if is_optional.clone() {
-            "Optional_".to_string()
-        } else {
-            "".to_string()
-        };
-        let effective_name =
-            crate::v1_std_core::authored_name_at(source_indices.clone(), effective_n.clone());
-        let is_keyed_container = (crate::std_types::is_container_type(effective_name.clone())
-            && ((effective_n.children.clone().len() as i64) == 2));
-        if is_keyed_container.clone() {
-            match effective_n.children.clone().last().cloned() {
-                Some(ch) => v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
-                        "_".to_string(),
-                    ),
-                    node_to_name_str(ch.clone(), source_indices.clone()),
-                ),
-                std::option::Option::None => {
-                    v1_rt::concat(opt_prefix.clone(), effective_name.clone())
-                }
-            }
-        } else {
-            if (effective_n.type_annotation.clone() != std::option::Option::None) {
-                match effective_n.children.clone().first().cloned() {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        {
+            let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
+            let effective_n = if is_optional.clone() {
+                crate::v1_std_core::with_required_cardinality(n.clone())
+            } else {
+                n.clone()
+            };
+            let opt_prefix = if is_optional.clone() {
+                "Optional_".to_string()
+            } else {
+                "".to_string()
+            };
+            let effective_name =
+                crate::v1_std_core::authored_name_at(source_indices.clone(), effective_n.clone());
+            let is_keyed_container = (crate::std_types::is_container_type(effective_name.clone())
+                && ((effective_n.children.clone().len() as i64) == 2));
+            if is_keyed_container.clone() {
+                match effective_n.children.clone().last().cloned() {
                     Some(ch) => v1_rt::concat(
-                        opt_prefix.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
+                            "_".to_string(),
+                        ),
                         node_to_name_str(ch.clone(), source_indices.clone()),
                     ),
                     std::option::Option::None => {
@@ -11586,10 +11669,10 @@ pub fn node_to_name_str(
                     }
                 }
             } else {
-                if crate::std_types::is_container_type(effective_name.clone()) {
+                if (effective_n.type_annotation.clone() != std::option::Option::None) {
                     match effective_n.children.clone().first().cloned() {
                         Some(ch) => v1_rt::concat(
-                            v1_rt::concat(opt_prefix.clone(), "List_".to_string()),
+                            opt_prefix.clone(),
                             node_to_name_str(ch.clone(), source_indices.clone()),
                         ),
                         std::option::Option::None => {
@@ -11597,22 +11680,34 @@ pub fn node_to_name_str(
                         }
                     }
                 } else {
-                    if (effective_n.ident_span.clone() == std::option::Option::None) {
-                        {
-                            let is_conj = (effective_n.connective.clone() == Connective::Conj);
-                            let is_disj = (effective_n.connective.clone() == Connective::Disj);
-                            if is_conj.clone() {
-                                v1_rt::concat(opt_prefix.clone(), "Record".to_string())
-                            } else {
-                                if is_disj.clone() {
-                                    v1_rt::concat(opt_prefix.clone(), "Union".to_string())
-                                } else {
-                                    v1_rt::concat(opt_prefix.clone(), effective_name.clone())
-                                }
+                    if crate::std_types::is_container_type(effective_name.clone()) {
+                        match effective_n.children.clone().first().cloned() {
+                            Some(ch) => v1_rt::concat(
+                                v1_rt::concat(opt_prefix.clone(), "List_".to_string()),
+                                node_to_name_str(ch.clone(), source_indices.clone()),
+                            ),
+                            std::option::Option::None => {
+                                v1_rt::concat(opt_prefix.clone(), effective_name.clone())
                             }
                         }
                     } else {
-                        v1_rt::concat(opt_prefix.clone(), effective_name.clone())
+                        if (effective_n.ident_span.clone() == std::option::Option::None) {
+                            {
+                                let is_conj = (effective_n.connective.clone() == Connective::Conj);
+                                let is_disj = (effective_n.connective.clone() == Connective::Disj);
+                                if is_conj.clone() {
+                                    v1_rt::concat(opt_prefix.clone(), "Record".to_string())
+                                } else {
+                                    if is_disj.clone() {
+                                        v1_rt::concat(opt_prefix.clone(), "Union".to_string())
+                                    } else {
+                                        v1_rt::concat(opt_prefix.clone(), effective_name.clone())
+                                    }
+                                }
+                            }
+                        } else {
+                            v1_rt::concat(opt_prefix.clone(), effective_name.clone())
+                        }
                     }
                 }
             }
@@ -12984,33 +13079,36 @@ pub fn parse_resource_entries(
 }
 
 pub fn skip_until_rbrace(tokens: Rc<TokenStream>) -> Rc<UnitResult> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tokens = skip_newlines(tokens.clone());
-        let tok = token_stream_first(tokens.clone());
-        if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
-            Rc::new(UnitResult {
-                tokens: tokens.clone(),
-                err: std::option::Option::None,
-            })
-        } else {
-            {
-                let sh = match tok.clone() {
-                    Some(t) => Some(t.shape.clone()),
-                    std::option::Option::None => std::option::Option::None,
-                };
-                match sh.clone() {
-                    Some(TokenShape::ShLBrace) => {
-                        let inner = skip_until_rbrace(token_stream_advance(tokens.clone(), 1));
-                        let r = expect(inner.tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-                        if has_err(r.err.clone()) {
-                            return Rc::new(UnitResult {
-                                tokens: r.tokens.clone(),
-                                err: r.err.clone(),
-                            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<UnitResult> {
+        {
+            let tokens = skip_newlines(tokens.clone());
+            let tok = token_stream_first(tokens.clone());
+            if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
+                Rc::new(UnitResult {
+                    tokens: tokens.clone(),
+                    err: std::option::Option::None,
+                })
+            } else {
+                {
+                    let sh = match tok.clone() {
+                        Some(t) => Some(t.shape.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    };
+                    match sh.clone() {
+                        Some(TokenShape::ShLBrace) => {
+                            let inner = skip_until_rbrace(token_stream_advance(tokens.clone(), 1));
+                            let r =
+                                expect(inner.tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
+                            if has_err(r.err.clone()) {
+                                return Rc::new(UnitResult {
+                                    tokens: r.tokens.clone(),
+                                    err: r.err.clone(),
+                                });
+                            }
+                            skip_until_rbrace(r.tokens.clone())
                         }
-                        skip_until_rbrace(r.tokens.clone())
+                        _ => skip_until_rbrace(token_stream_advance(tokens.clone(), 1)),
                     }
-                    _ => skip_until_rbrace(token_stream_advance(tokens.clone(), 1)),
                 }
             }
         }
@@ -14210,73 +14308,77 @@ pub fn parse_item_block_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
 }
 
 pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let dummy_expr = parse_recovery_placeholder();
-        let block_span = token_span(token_stream_first(tokens.clone()));
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(r.tokens.clone());
-        let r = parse_stmts(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let stmts = r.stmts.clone();
-        let ctx = r.ctx.clone();
-        let tokens = skip_newlines(r.tokens.clone());
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        if ((stmts.clone().len() as i64) == 1) {
-            {
-                let sole = stmts.clone().first().cloned().clone().unwrap();
-                Rc::new(ExprResult {
-                    expr: sole.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let dummy_expr = parse_recovery_placeholder();
+            let block_span = token_span(token_stream_first(tokens.clone()));
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
                     tokens: r.tokens.clone(),
-                    ctx: parse_context_record_erased_scope(
-                        ctx.clone(),
-                        ErasedSourceScopeKind::ErasedSingletonBlockScope,
-                        sole.clone(),
-                        entry.clone(),
-                        r.tokens.clone(),
-                    ),
-                    err: std::option::Option::None,
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            let r = parse_stmts(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let stmts = r.stmts.clone();
+            let ctx = r.ctx.clone();
+            let tokens = skip_newlines(r.tokens.clone());
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            if ((stmts.clone().len() as i64) == 1) {
+                {
+                    let sole = stmts.clone().first().cloned().clone().unwrap();
+                    Rc::new(ExprResult {
+                        expr: sole.clone(),
+                        tokens: r.tokens.clone(),
+                        ctx: parse_context_record_erased_scope(
+                            ctx.clone(),
+                            ErasedSourceScopeKind::ErasedSingletonBlockScope,
+                            sole.clone(),
+                            entry.clone(),
+                            r.tokens.clone(),
+                        ),
+                        err: std::option::Option::None,
+                    })
+                }
+            } else {
+                parsed_expr_result(entry.clone(), r.tokens.clone(), ctx.clone(), |identity| {
+                    crate::v1_std_core::make_expr_node(
+                        identity,
+                        Rc::new(ExprData::ExprBlock),
+                        stmts.clone(),
+                        std::option::Option::None,
+                        block_span.clone(),
+                    )
                 })
             }
-        } else {
-            parsed_expr_result(entry.clone(), r.tokens.clone(), ctx.clone(), |identity| {
-                crate::v1_std_core::make_expr_node(
-                    identity,
-                    Rc::new(ExprData::ExprBlock),
-                    stmts.clone(),
-                    std::option::Option::None,
-                    block_span.clone(),
-                )
-            })
         }
-    }
+    })
 }
 
 pub fn parse_stmts(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<StmtsResult> {
-    parse_stmts_acc(tokens, ctx, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<StmtsResult> {
+        parse_stmts_acc(tokens, ctx, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_stmts_acc(
@@ -14327,49 +14429,51 @@ pub fn parse_stmts_acc(
 }
 
 pub fn parse_stmt(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        match sh.clone() {
-            Some(TokenShape::ShKeyword) => {
-                let kw_text = tok_keyword_text(tok.clone());
-                if (kw_text.clone() == "let".to_string()) {
-                    parse_let(tokens.clone(), ctx.clone())
-                } else {
-                    if (kw_text.clone() == "return".to_string()) {
-                        parse_return(tokens.clone(), ctx.clone())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            match sh.clone() {
+                Some(TokenShape::ShKeyword) => {
+                    let kw_text = tok_keyword_text(tok.clone());
+                    if (kw_text.clone() == "let".to_string()) {
+                        parse_let(tokens.clone(), ctx.clone())
+                    } else {
+                        if (kw_text.clone() == "return".to_string()) {
+                            parse_return(tokens.clone(), ctx.clone())
+                        } else {
+                            if peek_is_eq_after_ident(tokens.clone()) {
+                                parse_bare_assignment(tokens.clone(), ctx.clone())
+                            } else {
+                                parse_expr(tokens.clone(), ctx.clone())
+                            }
+                        }
+                    }
+                }
+                Some(TokenShape::ShIdent) => {
+                    if (peek_text_is(tokens.clone(), "node".to_string())
+                        && peek_is_node_decl(tokens.clone(), ctx.env.clone()))
+                    {
+                        parse_node_decl(tokens.clone(), ctx.clone())
                     } else {
                         if peek_is_eq_after_ident(tokens.clone()) {
                             parse_bare_assignment(tokens.clone(), ctx.clone())
                         } else {
-                            parse_expr(tokens.clone(), ctx.clone())
+                            if is_constraint_bracket_after_ident(tokens.clone()) {
+                                parse_constrained_assignment(tokens.clone(), ctx.clone())
+                            } else {
+                                parse_expr(tokens.clone(), ctx.clone())
+                            }
                         }
                     }
                 }
+                _ => parse_expr(tokens.clone(), ctx.clone()),
             }
-            Some(TokenShape::ShIdent) => {
-                if (peek_text_is(tokens.clone(), "node".to_string())
-                    && peek_is_node_decl(tokens.clone(), ctx.env.clone()))
-                {
-                    parse_node_decl(tokens.clone(), ctx.clone())
-                } else {
-                    if peek_is_eq_after_ident(tokens.clone()) {
-                        parse_bare_assignment(tokens.clone(), ctx.clone())
-                    } else {
-                        if is_constraint_bracket_after_ident(tokens.clone()) {
-                            parse_constrained_assignment(tokens.clone(), ctx.clone())
-                        } else {
-                            parse_expr(tokens.clone(), ctx.clone())
-                        }
-                    }
-                }
-            }
-            _ => parse_expr(tokens.clone(), ctx.clone()),
         }
-    }
+    })
 }
 
 pub fn peek_is_eq_after_ident(tokens: Rc<TokenStream>) -> bool {
@@ -14412,70 +14516,72 @@ pub fn parse_constrained_assignment(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
-        if has_err(cr.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: cr.tokens.clone(),
-                ctx: cr.ctx.clone(),
-                err: cr.err.clone(),
-            });
-        }
-        let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
-        if has_err(r2.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: cr.ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        let r3 = parse_expr(r2.tokens.clone(), cr.ctx.clone());
-        if has_err(r3.err.clone()) {
-            return r3.clone();
-        }
-        parsed_expr_result(entry, r3.tokens.clone(), r3.ctx.clone(), |identity| {
-            Rc::new(Node {
-                occurrence_identity: identity.clone(),
-                name: name.clone(),
-                span: span.clone(),
-                ident_span: Some(name_span.clone()),
-                children: Rc::new(vec![r3.expr.clone()]),
-                params: Rc::new(vec![]),
-                inferred: std::option::Option::None,
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: std::option::Option::None,
-                connective: Connective::NoConnective,
-                transport: std::option::Option::None,
-                properties: cr.constraints.clone(),
-                type_annotation: std::option::Option::None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: std::option::Option::None,
-                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                declaration_marker: DeclarationMarker::Unmarked,
-                declaration: std::option::Option::None,
-                expr_data: Rc::new(ExprData::ExprLet),
-                ident: None,
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect_name(tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let name = r.name.clone();
+            let name_span = r.span.clone();
+            let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
+            if has_err(cr.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: cr.tokens.clone(),
+                    ctx: cr.ctx.clone(),
+                    err: cr.err.clone(),
+                });
+            }
+            let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+            if has_err(r2.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: cr.ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            let r3 = parse_expr(r2.tokens.clone(), cr.ctx.clone());
+            if has_err(r3.err.clone()) {
+                return r3.clone();
+            }
+            parsed_expr_result(entry, r3.tokens.clone(), r3.ctx.clone(), |identity| {
+                Rc::new(Node {
+                    occurrence_identity: identity.clone(),
+                    name: name.clone(),
+                    span: span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![r3.expr.clone()]),
+                    params: Rc::new(vec![]),
+                    inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: std::option::Option::None,
+                    connective: Connective::NoConnective,
+                    transport: std::option::Option::None,
+                    properties: cr.constraints.clone(),
+                    type_annotation: std::option::Option::None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                })
             })
-        })
-    }
+        }
+    })
 }
 
 pub fn peek_text_is(tokens: Rc<TokenStream>, expected: String) -> bool {
@@ -14486,158 +14592,164 @@ pub fn peek_text_is(tokens: Rc<TokenStream>, expected: String) -> bool {
 }
 
 pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let tokens = token_stream_advance(tokens.clone(), 1);
-        let r = expect_name(tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
-        if has_err(cr.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: cr.tokens.clone(),
-                ctx: cr.ctx.clone(),
-                err: cr.err.clone(),
-            });
-        }
-        let e_colon = eat(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
-        let tokens = match (*e_colon.clone()).clone() {
-            EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
-            EatResult::EatUnchanged { tokens: _, .. } => {
-                let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r2.tokens.clone(),
-                        ctx: cr.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
-                r2.tokens.clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let tokens = token_stream_advance(tokens.clone(), 1);
+            let r = expect_name(tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
             }
-        };
-        let r3 = parse_expr(tokens.clone(), cr.ctx.clone());
-        if has_err(r3.err.clone()) {
-            return r3.clone();
-        }
-        let ret = parse_optional_inferred(r3.tokens.clone(), r3.ctx.clone());
-        if has_err(ret.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: ret.tokens.clone(),
-                ctx: ret.ctx.clone(),
-                err: ret.err.clone(),
-            });
-        }
-        parsed_expr_result(entry, ret.tokens.clone(), ret.ctx.clone(), |identity| {
-            Rc::new(Node {
-                occurrence_identity: identity.clone(),
-                name: name.clone(),
-                span: span.clone(),
-                ident_span: Some(name_span.clone()),
-                children: Rc::new(vec![r3.expr.clone()]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: ret.inferred.clone(),
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: std::option::Option::None,
-                transport: std::option::Option::None,
-                properties: cr.constraints.clone(),
-                type_annotation: std::option::Option::None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: std::option::Option::None,
-                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                declaration_marker: DeclarationMarker::Unmarked,
-                declaration: std::option::Option::None,
-                expr_data: Rc::new(ExprData::ExprLet),
-                ident: None,
+            let name = r.name.clone();
+            let name_span = r.span.clone();
+            let cr = try_constraint_annotations(r.tokens.clone(), ctx.clone());
+            if has_err(cr.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: cr.tokens.clone(),
+                    ctx: cr.ctx.clone(),
+                    err: cr.err.clone(),
+                });
+            }
+            let e_colon = eat(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectColon));
+            let tokens = match (*e_colon.clone()).clone() {
+                EatResult::EatConsumed { tokens: __ec, .. } => __ec.clone(),
+                EatResult::EatUnchanged { tokens: _, .. } => {
+                    let r2 = expect(cr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r2.tokens.clone(),
+                            ctx: cr.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    r2.tokens.clone()
+                }
+            };
+            let r3 = parse_expr(tokens.clone(), cr.ctx.clone());
+            if has_err(r3.err.clone()) {
+                return r3.clone();
+            }
+            let ret = parse_optional_inferred(r3.tokens.clone(), r3.ctx.clone());
+            if has_err(ret.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: ret.tokens.clone(),
+                    ctx: ret.ctx.clone(),
+                    err: ret.err.clone(),
+                });
+            }
+            parsed_expr_result(entry, ret.tokens.clone(), ret.ctx.clone(), |identity| {
+                Rc::new(Node {
+                    occurrence_identity: identity.clone(),
+                    name: name.clone(),
+                    span: span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![r3.expr.clone()]),
+                    connective: Connective::NoConnective,
+                    params: Rc::new(vec![]),
+                    inferred: ret.inferred.clone(),
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
+                    properties: cr.constraints.clone(),
+                    type_annotation: std::option::Option::None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                })
             })
-        })
-    }
+        }
+    })
 }
 
 pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
-        if has_err(r2.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
-        if has_err(r3.err.clone()) {
-            return r3.clone();
-        }
-        let cr = try_constraint_annotations(r3.tokens.clone(), r3.ctx.clone());
-        if has_err(cr.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: cr.tokens.clone(),
-                ctx: cr.ctx.clone(),
-                err: cr.err.clone(),
-            });
-        }
-        parsed_expr_result(entry, cr.tokens.clone(), cr.ctx.clone(), |identity| {
-            Rc::new(Node {
-                occurrence_identity: identity.clone(),
-                name: name.clone(),
-                span: span.clone(),
-                ident_span: Some(name_span.clone()),
-                children: Rc::new(vec![r3.expr.clone()]),
-                params: Rc::new(vec![]),
-                inferred: std::option::Option::None,
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: std::option::Option::None,
-                connective: Connective::NoConnective,
-                transport: std::option::Option::None,
-                properties: cr.constraints.clone(),
-                type_annotation: std::option::Option::None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: std::option::Option::None,
-                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                declaration_marker: DeclarationMarker::Unmarked,
-                declaration: std::option::Option::None,
-                expr_data: Rc::new(ExprData::ExprLet),
-                ident: None,
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect_name(tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let name = r.name.clone();
+            let name_span = r.span.clone();
+            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+            if has_err(r2.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            let r3 = parse_expr(r2.tokens.clone(), ctx.clone());
+            if has_err(r3.err.clone()) {
+                return r3.clone();
+            }
+            let cr = try_constraint_annotations(r3.tokens.clone(), r3.ctx.clone());
+            if has_err(cr.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: cr.tokens.clone(),
+                    ctx: cr.ctx.clone(),
+                    err: cr.err.clone(),
+                });
+            }
+            parsed_expr_result(entry, cr.tokens.clone(), cr.ctx.clone(), |identity| {
+                Rc::new(Node {
+                    occurrence_identity: identity.clone(),
+                    name: name.clone(),
+                    span: span.clone(),
+                    ident_span: Some(name_span.clone()),
+                    children: Rc::new(vec![r3.expr.clone()]),
+                    params: Rc::new(vec![]),
+                    inferred: std::option::Option::None,
+                    return_cardinality: Cardinality::Required,
+                    uses: Rc::new(vec![]),
+                    body: std::option::Option::None,
+                    connective: Connective::NoConnective,
+                    transport: std::option::Option::None,
+                    properties: cr.constraints.clone(),
+                    type_annotation: std::option::Option::None,
+                    is_self_recursive: false,
+                    has_non_tail_self_call: false,
+                    match_pattern: std::option::Option::None,
+                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                    declaration_marker: DeclarationMarker::Unmarked,
+                    declaration: std::option::Option::None,
+                    expr_data: Rc::new(ExprData::ExprLet),
+                    ident: None,
+                })
             })
-        })
-    }
+        }
+    })
 }
 
 pub fn parse_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    parse_expr_bp(tokens, ctx, 0)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        parse_expr_bp(tokens, ctx, 0)
+    })
 }
 
 pub fn parse_expr_bp(
@@ -14645,14 +14757,16 @@ pub fn parse_expr_bp(
     ctx: Rc<ParseContext>,
     min_bp: i64,
 ) -> Rc<ExprResult> {
-    {
-        let r = parse_prefix(tokens.clone(), ctx);
-        if has_err(r.err.clone()) {
-            return r;
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let r = parse_prefix(tokens.clone(), ctx);
+            if has_err(r.err.clone()) {
+                return r;
+            }
+            let lhs = r.expr.clone();
+            parse_expr_loop(r.tokens.clone(), r.ctx.clone(), lhs, tokens.clone(), min_bp)
         }
-        let lhs = r.expr.clone();
-        parse_expr_loop(r.tokens.clone(), r.ctx.clone(), lhs, tokens.clone(), min_bp)
-    }
+    })
 }
 
 pub fn parse_expr_loop(
@@ -15028,90 +15142,129 @@ pub fn parse_pipe_rhs(
     receiver_to: Rc<TokenStream>,
     span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
-    {
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect_name(tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let dotted = parse_pipe_callee_rest(
-            r.tokens.clone(),
-            ctx.clone(),
-            std::option::Option::None,
-            r.name.clone(),
-            r.span.clone(),
-            r.span.clone(),
-        );
-        if has_err(dotted.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: dotted.tokens.clone(),
-                ctx: ctx.clone(),
-                err: dotted.err.clone(),
-            });
-        }
-        let callee = if pipe_callee_path_is_applied(dotted.clone()) {
-            dotted.clone()
-        } else {
-            Rc::new(PipeCalleeResult {
-                spine: std::option::Option::None,
-                method: r.name.clone(),
-                method_span: r.span.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            })
-        };
-        let method = callee.method.clone();
-        let leading_result = match callee.spine.clone() {
-            std::option::Option::None => Rc::new(ParsedNodesResult {
-                nodes: Rc::new(vec![receiver.clone()]),
-                ctx: callee.ctx.clone(),
-            }),
-            Some(qualifier) => {
-                let wrapper_mint = mint_parsed_node_identity(
-                    callee.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: receiver_from.clone(),
-                        to: receiver_to.clone(),
-                    }),
-                );
-                Rc::new(ParsedNodesResult {
-                    nodes: Rc::new(vec![
-                        qualifier.clone(),
-                        crate::v1_std_core::make_arg_node(
-                            wrapper_mint.identity.clone(),
-                            std::option::Option::None,
-                            receiver.clone(),
-                            receiver.span.clone(),
-                            receiver.span.clone(),
-                        ),
-                    ]),
-                    ctx: wrapper_mint.ctx.clone(),
-                })
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect_name(tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
             }
-        };
-        let tokens = skip_newlines(callee.tokens.clone());
-        if tok_is_lparen(token_stream_first(tokens.clone())) {
-            {
-                let r2 = parse_call_args(tokens.clone(), leading_result.ctx.clone());
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r2.tokens.clone(),
-                        ctx: r2.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
+            let dotted = parse_pipe_callee_rest(
+                r.tokens.clone(),
+                ctx.clone(),
+                std::option::Option::None,
+                r.name.clone(),
+                r.span.clone(),
+                r.span.clone(),
+            );
+            if has_err(dotted.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: dotted.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: dotted.err.clone(),
+                });
+            }
+            let callee = if pipe_callee_path_is_applied(dotted.clone()) {
+                dotted.clone()
+            } else {
+                Rc::new(PipeCalleeResult {
+                    spine: std::option::Option::None,
+                    method: r.name.clone(),
+                    method_span: r.span.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: std::option::Option::None,
+                })
+            };
+            let method = callee.method.clone();
+            let leading_result = match callee.spine.clone() {
+                std::option::Option::None => Rc::new(ParsedNodesResult {
+                    nodes: Rc::new(vec![receiver.clone()]),
+                    ctx: callee.ctx.clone(),
+                }),
+                Some(qualifier) => {
+                    let wrapper_mint = mint_parsed_node_identity(
+                        callee.ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: receiver_from.clone(),
+                            to: receiver_to.clone(),
+                        }),
+                    );
+                    Rc::new(ParsedNodesResult {
+                        nodes: Rc::new(vec![
+                            qualifier.clone(),
+                            crate::v1_std_core::make_arg_node(
+                                wrapper_mint.identity.clone(),
+                                std::option::Option::None,
+                                receiver.clone(),
+                                receiver.span.clone(),
+                                receiver.span.clone(),
+                            ),
+                        ]),
+                        ctx: wrapper_mint.ctx.clone(),
+                    })
                 }
+            };
+            let tokens = skip_newlines(callee.tokens.clone());
+            if tok_is_lparen(token_stream_first(tokens.clone())) {
+                {
+                    let r2 = parse_call_args(tokens.clone(), leading_result.ctx.clone());
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r2.tokens.clone(),
+                            ctx: r2.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(
+                        receiver_from.clone(),
+                        r2.tokens.clone(),
+                        r2.ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_named_expr_node(
+                                identity,
+                                method.clone(),
+                                Rc::new(ExprData::ExprMethodCall {
+                                    method_semantics: std::option::Option::None,
+                                }),
+                                v1_rt::concat(
+                                    leading_result.nodes.clone(),
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for na in r2.args.clone().iter().cloned() {
+                                            __result.push(crate::v1_std_core::make_arg_node(
+                                                na.occurrence_identity.clone(),
+                                                crate::v1_std_core::arg_name_at(
+                                                    na.clone(),
+                                                    ctx.source_indices.clone(),
+                                                ),
+                                                crate::v1_std_core::arg_value(na.clone()),
+                                                na.span.clone(),
+                                                crate::v1_std_core::node_name_span(na.clone()),
+                                            ));
+                                        }
+                                        __result
+                                    }),
+                                ),
+                                std::option::Option::None,
+                                span.clone(),
+                                callee.method_span.clone(),
+                            )
+                        },
+                    )
+                }
+            } else {
                 parsed_expr_result(
                     receiver_from.clone(),
-                    r2.tokens.clone(),
-                    r2.ctx.clone(),
+                    tokens.clone(),
+                    leading_result.ctx.clone(),
                     |identity| {
                         crate::v1_std_core::make_named_expr_node(
                             identity,
@@ -15119,25 +15272,7 @@ pub fn parse_pipe_rhs(
                             Rc::new(ExprData::ExprMethodCall {
                                 method_semantics: std::option::Option::None,
                             }),
-                            v1_rt::concat(
-                                leading_result.nodes.clone(),
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for na in r2.args.clone().iter().cloned() {
-                                        __result.push(crate::v1_std_core::make_arg_node(
-                                            na.occurrence_identity.clone(),
-                                            crate::v1_std_core::arg_name_at(
-                                                na.clone(),
-                                                ctx.source_indices.clone(),
-                                            ),
-                                            crate::v1_std_core::arg_value(na.clone()),
-                                            na.span.clone(),
-                                            crate::v1_std_core::node_name_span(na.clone()),
-                                        ));
-                                    }
-                                    __result
-                                }),
-                            ),
+                            leading_result.nodes.clone(),
                             std::option::Option::None,
                             span.clone(),
                             callee.method_span.clone(),
@@ -15145,295 +15280,291 @@ pub fn parse_pipe_rhs(
                     },
                 )
             }
-        } else {
-            parsed_expr_result(
-                receiver_from.clone(),
-                tokens.clone(),
-                leading_result.ctx.clone(),
-                |identity| {
-                    crate::v1_std_core::make_named_expr_node(
-                        identity,
-                        method.clone(),
-                        Rc::new(ExprData::ExprMethodCall {
-                            method_semantics: std::option::Option::None,
-                        }),
-                        leading_result.nodes.clone(),
-                        std::option::Option::None,
-                        span.clone(),
-                        callee.method_span.clone(),
-                    )
-                },
-            )
         }
-    }
+    })
 }
 
 pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        let text = match tok.clone() {
-            Some(t) => t.text.clone(),
-            std::option::Option::None => "".to_string(),
-        };
-        match sh.clone() {
-            Some(TokenShape::ShBang) => match find_prefix_binding_power(
-                ctx.env.syntax_spec.prefix_operators.clone(),
-                text.clone(),
-            ) {
-                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
-                Some(bp) => {
-                    let r = parse_expr_bp(
-                        token_stream_advance(tokens.clone(), 1),
-                        ctx.clone(),
-                        bp.clone(),
-                    );
-                    if has_err(r.err.clone()) {
-                        return Rc::new(ExprResult {
-                            expr: r.expr.clone(),
-                            tokens: r.tokens.clone(),
-                            ctx: r.ctx.clone(),
-                            err: r.err.clone(),
-                        });
-                    }
-                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprUnaryOp {
-                                op: UnaryOpKind::Not,
-                            }),
-                            Rc::new(vec![r.expr.clone()]),
-                            std::option::Option::None,
-                            span.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            let text = match tok.clone() {
+                Some(t) => t.text.clone(),
+                std::option::Option::None => "".to_string(),
+            };
+            match sh.clone() {
+                Some(TokenShape::ShBang) => match find_prefix_binding_power(
+                    ctx.env.syntax_spec.prefix_operators.clone(),
+                    text.clone(),
+                ) {
+                    std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                    Some(bp) => {
+                        let r = parse_expr_bp(
+                            token_stream_advance(tokens.clone(), 1),
+                            ctx.clone(),
+                            bp.clone(),
+                        );
+                        if has_err(r.err.clone()) {
+                            return Rc::new(ExprResult {
+                                expr: r.expr.clone(),
+                                tokens: r.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r.err.clone(),
+                            });
+                        }
+                        parsed_expr_result(
+                            entry.clone(),
+                            r.tokens.clone(),
+                            r.ctx.clone(),
+                            |identity| {
+                                crate::v1_std_core::make_expr_node(
+                                    identity,
+                                    Rc::new(ExprData::ExprUnaryOp {
+                                        op: UnaryOpKind::Not,
+                                    }),
+                                    Rc::new(vec![r.expr.clone()]),
+                                    std::option::Option::None,
+                                    span.clone(),
+                                )
+                            },
                         )
-                    })
-                }
-            },
-            Some(TokenShape::ShMinus) => match find_prefix_binding_power(
-                ctx.env.syntax_spec.prefix_operators.clone(),
-                text.clone(),
-            ) {
-                std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
-                Some(bp) => {
-                    let r = parse_expr_bp(
-                        token_stream_advance(tokens.clone(), 1),
-                        ctx.clone(),
-                        bp.clone(),
-                    );
-                    if has_err(r.err.clone()) {
-                        return Rc::new(ExprResult {
-                            expr: r.expr.clone(),
-                            tokens: r.tokens.clone(),
-                            ctx: r.ctx.clone(),
-                            err: r.err.clone(),
-                        });
                     }
-                    parsed_expr_result(entry.clone(), r.tokens.clone(), r.ctx.clone(), |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprUnaryOp {
-                                op: UnaryOpKind::Neg,
-                            }),
-                            Rc::new(vec![r.expr.clone()]),
-                            std::option::Option::None,
-                            span.clone(),
+                },
+                Some(TokenShape::ShMinus) => match find_prefix_binding_power(
+                    ctx.env.syntax_spec.prefix_operators.clone(),
+                    text.clone(),
+                ) {
+                    std::option::Option::None => parse_primary(tokens.clone(), ctx.clone()),
+                    Some(bp) => {
+                        let r = parse_expr_bp(
+                            token_stream_advance(tokens.clone(), 1),
+                            ctx.clone(),
+                            bp.clone(),
+                        );
+                        if has_err(r.err.clone()) {
+                            return Rc::new(ExprResult {
+                                expr: r.expr.clone(),
+                                tokens: r.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r.err.clone(),
+                            });
+                        }
+                        parsed_expr_result(
+                            entry.clone(),
+                            r.tokens.clone(),
+                            r.ctx.clone(),
+                            |identity| {
+                                crate::v1_std_core::make_expr_node(
+                                    identity,
+                                    Rc::new(ExprData::ExprUnaryOp {
+                                        op: UnaryOpKind::Neg,
+                                    }),
+                                    Rc::new(vec![r.expr.clone()]),
+                                    std::option::Option::None,
+                                    span.clone(),
+                                )
+                            },
                         )
-                    })
-                }
-            },
-            _ => parse_primary(tokens.clone(), ctx.clone()),
+                    }
+                },
+                _ => parse_primary(tokens.clone(), ctx.clone()),
+            }
         }
-    }
+    })
 }
 
 pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let after_caret = token_stream_advance(tokens.clone(), 1);
-        let next = token_stream_first(after_caret.clone());
-        let next_shape = match next.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        match next_shape.clone() {
-            Some(TokenShape::ShIdent) => {
-                let spelling = next.clone().unwrap().text.clone();
-                let end_span = token_span(next.clone());
-                let lit_span = crate::v1_std_core::make_file_span(
-                    span.file.clone(),
-                    span.start.clone(),
-                    end_span.end.clone(),
-                );
-                parsed_expr_result(
-                    tokens.clone(),
-                    token_stream_advance(after_caret.clone(), 1),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprLiteral {
-                                value: Rc::new(LiteralValue::LitSymbol {
-                                    value: spelling.clone(),
-                                }),
-                            }),
-                            Rc::new(vec![]),
-                            std::option::Option::None,
-                            lit_span.clone(),
-                        )
-                    },
-                )
-            }
-            Some(TokenShape::ShLParen) => {
-                let r = parse_expr(token_stream_advance(after_caret.clone(), 1), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
-                }
-                let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r2.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
-                let call_span = crate::v1_std_core::make_file_span(
-                    span.file.clone(),
-                    span.start.clone(),
-                    r2.token.span.end.clone(),
-                );
-                let callee_mint = mint_parsed_node_identity(
-                    r.ctx.clone(),
-                    Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
-                );
-                let callee = crate::v1_std_core::make_named_expr_node(
-                    callee_mint.identity.clone(),
-                    "discriminant".to_string(),
-                    Rc::new(ExprData::ExprVar {
-                        binding_kind: std::option::Option::None,
-                    }),
-                    Rc::new(vec![]),
-                    std::option::Option::None,
-                    call_span.clone(),
-                    crate::v1_std_core::kernel_span("discriminant".to_string()),
-                );
-                let call_mint = mint_parsed_node_identity(
-                    callee_mint.ctx.clone(),
-                    Rc::new(ParsedExtentAt::FromToken {
-                        start: span.clone(),
-                        to: r2.tokens.clone(),
-                    }),
-                );
-                let call = make_call_expr(
-                    call_mint.identity.clone(),
-                    callee,
-                    Rc::new(vec![r.expr.clone()]),
-                    call_span.clone(),
-                    ctx.source_indices.clone(),
-                );
-                Rc::new(ExprResult {
-                    expr: call.clone(),
-                    tokens: r2.tokens.clone(),
-                    ctx: call_mint.ctx.clone(),
-                    err: std::option::Option::None,
-                })
-            }
-            _ => {
-                let found = match next_shape.clone() {
-                    Some(shape) => shape_display_name(shape.clone()),
-                    std::option::Option::None => "EOF".to_string(),
-                };
-                Rc::new(ExprResult {
-                    expr: parse_recovery_expr(
-                        span.clone(),
-                        format!(
-                            "expected identifier or `(` after `^`, found {}",
-                            found.clone()
-                        ),
-                    ),
-                    tokens: after_caret.clone(),
-                    ctx: ctx.clone(),
-                    err: Some(parse_error(
-                        format!(
-                            "expected identifier or `(` after `^`, found {}",
-                            found.clone()
-                        ),
-                        span.clone(),
-                    )),
-                })
-            }
-        }
-    }
-}
-
-pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        match sh.clone() {
-            Some(TokenShape::ShKeyword) => {
-                let kw_text = tok.clone().unwrap().text.clone();
-                let lit_val = v1_rt::lookup(
-                    &ctx.env.syntax_spec.keyword_literals.clone(),
-                    kw_text.clone(),
-                );
-                match lit_val.clone() {
-                    Some(lv) => parsed_expr_result(
-                        entry.clone(),
-                        token_stream_advance(tokens.clone(), 1),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let after_caret = token_stream_advance(tokens.clone(), 1);
+            let next = token_stream_first(after_caret.clone());
+            let next_shape = match next.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            match next_shape.clone() {
+                Some(TokenShape::ShIdent) => {
+                    let spelling = next.clone().unwrap().text.clone();
+                    let end_span = token_span(next.clone());
+                    let lit_span = crate::v1_std_core::make_file_span(
+                        span.file.clone(),
+                        span.start.clone(),
+                        end_span.end.clone(),
+                    );
+                    parsed_expr_result(
+                        tokens.clone(),
+                        token_stream_advance(after_caret.clone(), 1),
                         ctx.clone(),
                         |identity| {
                             crate::v1_std_core::make_expr_node(
                                 identity,
-                                Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitSymbol {
+                                        value: spelling.clone(),
+                                    }),
+                                }),
                                 Rc::new(vec![]),
                                 std::option::Option::None,
-                                span.clone(),
+                                lit_span.clone(),
                             )
                         },
-                    ),
-                    std::option::Option::None => {
-                        if (kw_text.clone() == "match".to_string()) {
-                            parse_match(tokens.clone(), ctx.clone())
-                        } else {
-                            if (kw_text.clone() == "if".to_string()) {
-                                parse_if(tokens.clone(), ctx.clone())
+                    )
+                }
+                Some(TokenShape::ShLParen) => {
+                    let r = parse_expr(token_stream_advance(after_caret.clone(), 1), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let tokens = skip_newlines(r.tokens.clone());
+                    let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r2.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    let call_span = crate::v1_std_core::make_file_span(
+                        span.file.clone(),
+                        span.start.clone(),
+                        r2.token.span.end.clone(),
+                    );
+                    let callee_mint = mint_parsed_node_identity(
+                        r.ctx.clone(),
+                        Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
+                    );
+                    let callee = crate::v1_std_core::make_named_expr_node(
+                        callee_mint.identity.clone(),
+                        "discriminant".to_string(),
+                        Rc::new(ExprData::ExprVar {
+                            binding_kind: std::option::Option::None,
+                        }),
+                        Rc::new(vec![]),
+                        std::option::Option::None,
+                        call_span.clone(),
+                        crate::v1_std_core::kernel_span("discriminant".to_string()),
+                    );
+                    let call_mint = mint_parsed_node_identity(
+                        callee_mint.ctx.clone(),
+                        Rc::new(ParsedExtentAt::FromToken {
+                            start: span.clone(),
+                            to: r2.tokens.clone(),
+                        }),
+                    );
+                    let call = make_call_expr(
+                        call_mint.identity.clone(),
+                        callee,
+                        Rc::new(vec![r.expr.clone()]),
+                        call_span.clone(),
+                        ctx.source_indices.clone(),
+                    );
+                    Rc::new(ExprResult {
+                        expr: call.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: call_mint.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
+                _ => {
+                    let found = match next_shape.clone() {
+                        Some(shape) => shape_display_name(shape.clone()),
+                        std::option::Option::None => "EOF".to_string(),
+                    };
+                    Rc::new(ExprResult {
+                        expr: parse_recovery_expr(
+                            span.clone(),
+                            format!(
+                                "expected identifier or `(` after `^`, found {}",
+                                found.clone()
+                            ),
+                        ),
+                        tokens: after_caret.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            format!(
+                                "expected identifier or `(` after `^`, found {}",
+                                found.clone()
+                            ),
+                            span.clone(),
+                        )),
+                    })
+                }
+            }
+        }
+    })
+}
+
+pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            match sh.clone() {
+                Some(TokenShape::ShKeyword) => {
+                    let kw_text = tok.clone().unwrap().text.clone();
+                    let lit_val = v1_rt::lookup(
+                        &ctx.env.syntax_spec.keyword_literals.clone(),
+                        kw_text.clone(),
+                    );
+                    match lit_val.clone() {
+                        Some(lv) => parsed_expr_result(
+                            entry.clone(),
+                            token_stream_advance(tokens.clone(), 1),
+                            ctx.clone(),
+                            |identity| {
+                                crate::v1_std_core::make_expr_node(
+                                    identity,
+                                    Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
+                                    Rc::new(vec![]),
+                                    std::option::Option::None,
+                                    span.clone(),
+                                )
+                            },
+                        ),
+                        std::option::Option::None => {
+                            if (kw_text.clone() == "match".to_string()) {
+                                parse_match(tokens.clone(), ctx.clone())
                             } else {
-                                if (kw_text.clone() == "for".to_string()) {
-                                    parse_for(tokens.clone(), ctx.clone())
+                                if (kw_text.clone() == "if".to_string()) {
+                                    parse_if(tokens.clone(), ctx.clone())
                                 } else {
-                                    if (kw_text.clone() == "let".to_string()) {
-                                        parse_let(tokens.clone(), ctx.clone())
+                                    if (kw_text.clone() == "for".to_string()) {
+                                        parse_for(tokens.clone(), ctx.clone())
                                     } else {
-                                        if (kw_text.clone() == "return".to_string()) {
-                                            parse_return(tokens.clone(), ctx.clone())
+                                        if (kw_text.clone() == "let".to_string()) {
+                                            parse_let(tokens.clone(), ctx.clone())
                                         } else {
-                                            if (kw_text.clone() == "fn".to_string()) {
-                                                parse_fn_lambda(tokens.clone(), ctx.clone())
+                                            if (kw_text.clone() == "return".to_string()) {
+                                                parse_return(tokens.clone(), ctx.clone())
                                             } else {
-                                                {
-                                                    let kw_name = tok_keyword_to_name(
-                                                        tok.clone(),
-                                                        ctx.env.clone(),
-                                                    );
-                                                    match kw_name.clone() {
+                                                if (kw_text.clone() == "fn".to_string()) {
+                                                    parse_fn_lambda(tokens.clone(), ctx.clone())
+                                                } else {
+                                                    {
+                                                        let kw_name = tok_keyword_to_name(
+                                                            tok.clone(),
+                                                            ctx.env.clone(),
+                                                        );
+                                                        match kw_name.clone() {
     Some(n) => parse_ident_expr(tokens.clone(), ctx.clone(), n.clone()),
     std::option::Option::None => Rc::new(ExprResult {
     expr: parse_recovery_expr(span.clone(), format!("expected expression, found keyword '{}'", kw_text.clone())),
@@ -15442,6 +15573,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
     err: Some(parse_error(format!("expected expression, found keyword '{}'", kw_text.clone()), span.clone())),
 }),
 }
+                                                    }
                                                 }
                                             }
                                         }
@@ -15451,160 +15583,161 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                         }
                     }
                 }
-            }
-            Some(TokenShape::ShLitInt) => {
-                let n_opt = v1_rt::parse_int(tok.clone().unwrap().text.clone());
-                let n = match n_opt.clone() {
-                    Some(v) => v.clone(),
-                    std::option::Option::None => {
-                        return Rc::new(ExprResult {
-                            expr: crate::v1_std_core::make_expr_error_node(
-                                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                                ExprErrorKind::InternalExprError,
-                                v1_rt::concat(
+                Some(TokenShape::ShLitInt) => {
+                    let n_opt = v1_rt::parse_int(tok.clone().unwrap().text.clone());
+                    let n =
+                        match n_opt.clone() {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => return Rc::new(ExprResult {
+                                expr: crate::v1_std_core::make_expr_error_node(
+                                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                                    ExprErrorKind::InternalExprError,
                                     v1_rt::concat(
-                                        "internal: ShLitInt token text not parseable as int: '"
-                                            .to_string(),
-                                        tok.clone().unwrap().text.clone(),
+                                        v1_rt::concat(
+                                            "internal: ShLitInt token text not parseable as int: '"
+                                                .to_string(),
+                                            tok.clone().unwrap().text.clone(),
+                                        ),
+                                        "'".to_string(),
                                     ),
-                                    "'".to_string(),
+                                    span.clone(),
                                 ),
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: std::option::Option::None,
+                            }),
+                        };
+                    parsed_expr_result(
+                        entry.clone(),
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
+                                }),
+                                Rc::new(vec![]),
+                                std::option::Option::None,
                                 span.clone(),
-                            ),
-                            tokens: tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: std::option::Option::None,
-                        })
-                    }
-                };
-                parsed_expr_result(
-                    entry.clone(),
-                    token_stream_advance(tokens.clone(), 1),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprLiteral {
-                                value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
-                            }),
-                            Rc::new(vec![]),
-                            std::option::Option::None,
+                            )
+                        },
+                    )
+                }
+                Some(TokenShape::ShLitFloat) => {
+                    let f = tok.clone().unwrap().text.clone();
+                    parsed_expr_result(
+                        entry.clone(),
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitFloat { value: f.clone() }),
+                                }),
+                                Rc::new(vec![]),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        },
+                    )
+                }
+                Some(TokenShape::ShLitStr) => {
+                    let s = tok.clone().unwrap().text.clone();
+                    parsed_expr_result(
+                        entry.clone(),
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprLiteral {
+                                    value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
+                                }),
+                                Rc::new(vec![]),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        },
+                    )
+                }
+                Some(TokenShape::ShStrBegin) => parse_string_interp(tokens.clone(), ctx.clone()),
+                Some(TokenShape::ShCaret) => parse_caret_expr(tokens.clone(), ctx.clone()),
+                Some(TokenShape::ShIdent) => {
+                    let n = tok.clone().unwrap().text.clone();
+                    parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
+                }
+                Some(TokenShape::ShLParen) => parse_paren_expr(tokens.clone(), ctx.clone()),
+                Some(TokenShape::ShLBracket) => parse_list_literal(tokens.clone(), ctx.clone()),
+                Some(TokenShape::ShLBrace) => parse_brace_expr(tokens.clone(), ctx.clone()),
+                _ => {
+                    let tag = match sh.clone() {
+                        Some(shape) => shape_display_name(shape.clone()),
+                        std::option::Option::None => "EOF".to_string(),
+                    };
+                    Rc::new(ExprResult {
+                        expr: parse_recovery_expr(
                             span.clone(),
-                        )
-                    },
-                )
-            }
-            Some(TokenShape::ShLitFloat) => {
-                let f = tok.clone().unwrap().text.clone();
-                parsed_expr_result(
-                    entry.clone(),
-                    token_stream_advance(tokens.clone(), 1),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprLiteral {
-                                value: Rc::new(LiteralValue::LitFloat { value: f.clone() }),
-                            }),
-                            Rc::new(vec![]),
-                            std::option::Option::None,
+                            format!("expected expression, found {}", tag.clone()),
+                        ),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: Some(parse_error(
+                            format!("expected expression, found {}", tag.clone()),
                             span.clone(),
-                        )
-                    },
-                )
-            }
-            Some(TokenShape::ShLitStr) => {
-                let s = tok.clone().unwrap().text.clone();
-                parsed_expr_result(
-                    entry.clone(),
-                    token_stream_advance(tokens.clone(), 1),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprLiteral {
-                                value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
-                            }),
-                            Rc::new(vec![]),
-                            std::option::Option::None,
-                            span.clone(),
-                        )
-                    },
-                )
-            }
-            Some(TokenShape::ShStrBegin) => parse_string_interp(tokens.clone(), ctx.clone()),
-            Some(TokenShape::ShCaret) => parse_caret_expr(tokens.clone(), ctx.clone()),
-            Some(TokenShape::ShIdent) => {
-                let n = tok.clone().unwrap().text.clone();
-                parse_ident_expr(tokens.clone(), ctx.clone(), n.clone())
-            }
-            Some(TokenShape::ShLParen) => parse_paren_expr(tokens.clone(), ctx.clone()),
-            Some(TokenShape::ShLBracket) => parse_list_literal(tokens.clone(), ctx.clone()),
-            Some(TokenShape::ShLBrace) => parse_brace_expr(tokens.clone(), ctx.clone()),
-            _ => {
-                let tag = match sh.clone() {
-                    Some(shape) => shape_display_name(shape.clone()),
-                    std::option::Option::None => "EOF".to_string(),
-                };
-                Rc::new(ExprResult {
-                    expr: parse_recovery_expr(
-                        span.clone(),
-                        format!("expected expression, found {}", tag.clone()),
-                    ),
-                    tokens: tokens.clone(),
-                    ctx: ctx.clone(),
-                    err: Some(parse_error(
-                        format!("expected expression, found {}", tag.clone()),
-                        span.clone(),
-                    )),
-                })
+                        )),
+                    })
+                }
             }
         }
-    }
+    })
 }
 
 pub fn parse_lambda_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let tokens = skip_newlines(tokens.clone());
-        let tok = token_stream_first(tokens.clone());
-        let is_block = (tok_is_keyword(tok.clone(), "let".to_string())
-            || tok_is_keyword(tok.clone(), "return".to_string()));
-        if is_block.clone() {
-            {
-                let r = parse_lambda_stmts(tokens.clone(), ctx.clone(), Rc::new(vec![]));
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: parse_recovery_placeholder(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let tokens = skip_newlines(tokens.clone());
+            let tok = token_stream_first(tokens.clone());
+            let is_block = (tok_is_keyword(tok.clone(), "let".to_string())
+                || tok_is_keyword(tok.clone(), "return".to_string()));
+            if is_block.clone() {
+                {
+                    let r = parse_lambda_stmts(tokens.clone(), ctx.clone(), Rc::new(vec![]));
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: parse_recovery_placeholder(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let span = token_span(token_stream_first(tokens.clone()));
+                    if ((r.stmts.clone().len() as i64) == 1) {
+                        Rc::new(ExprResult {
+                            expr: r.stmts.clone().first().cloned().clone().unwrap(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: std::option::Option::None,
+                        })
+                    } else {
+                        parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprBlock),
+                                r.stmts.clone(),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        })
+                    }
                 }
-                let span = token_span(token_stream_first(tokens.clone()));
-                if ((r.stmts.clone().len() as i64) == 1) {
-                    Rc::new(ExprResult {
-                        expr: r.stmts.clone().first().cloned().clone().unwrap(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                } else {
-                    parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprBlock),
-                            r.stmts.clone(),
-                            std::option::Option::None,
-                            span.clone(),
-                        )
-                    })
-                }
+            } else {
+                parse_expr(tokens.clone(), ctx.clone())
             }
-        } else {
-            parse_expr(tokens.clone(), ctx.clone())
         }
-    }
+    })
 }
 
 pub fn parse_lambda_stmts(
@@ -15660,70 +15793,72 @@ pub fn parse_ident_expr(
     ctx: Rc<ParseContext>,
     name: String,
 ) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let tokens = token_stream_advance(tokens.clone(), 1);
-        if tok_is_fat_arrow(token_stream_first(tokens.clone())) {
-            {
-                let r = parse_lambda_body(token_stream_advance(tokens.clone(), 1), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return r.clone();
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let tokens = token_stream_advance(tokens.clone(), 1);
+            if tok_is_fat_arrow(token_stream_first(tokens.clone())) {
+                {
+                    let r = parse_lambda_body(token_stream_advance(tokens.clone(), 1), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return r.clone();
+                    }
+                    let param_mint = mint_parsed_node_identity(
+                        r.ctx.clone(),
+                        Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
+                    );
+                    parsed_expr_result(
+                        entry.clone(),
+                        r.tokens.clone(),
+                        param_mint.ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprLambda),
+                                v1_rt::concat(
+                                    Rc::new(vec![r.expr.clone()]),
+                                    Rc::new(vec![parsed_name_leaf(
+                                        param_mint.identity.clone(),
+                                        name.clone(),
+                                        span.clone(),
+                                    )]),
+                                ),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        },
+                    )
                 }
-                let param_mint = mint_parsed_node_identity(
-                    r.ctx.clone(),
-                    Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
-                );
-                parsed_expr_result(
-                    entry.clone(),
-                    r.tokens.clone(),
-                    param_mint.ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
+            } else {
+                if (is_uppercase_start(name.clone())
+                    && tok_is_lbrace(token_stream_first(tokens.clone())))
+                {
+                    parse_record_literal(
+                        tokens.clone(),
+                        ctx.clone(),
+                        name.clone(),
+                        span.clone(),
+                        entry.clone(),
+                    )
+                } else {
+                    parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
+                        crate::v1_std_core::make_named_expr_node(
                             identity,
-                            Rc::new(ExprData::ExprLambda),
-                            v1_rt::concat(
-                                Rc::new(vec![r.expr.clone()]),
-                                Rc::new(vec![parsed_name_leaf(
-                                    param_mint.identity.clone(),
-                                    name.clone(),
-                                    span.clone(),
-                                )]),
-                            ),
+                            name.clone(),
+                            Rc::new(ExprData::ExprVar {
+                                binding_kind: std::option::Option::None,
+                            }),
+                            Rc::new(vec![]),
                             std::option::Option::None,
                             span.clone(),
+                            span.clone(),
                         )
-                    },
-                )
-            }
-        } else {
-            if (is_uppercase_start(name.clone())
-                && tok_is_lbrace(token_stream_first(tokens.clone())))
-            {
-                parse_record_literal(
-                    tokens.clone(),
-                    ctx.clone(),
-                    name.clone(),
-                    span.clone(),
-                    entry.clone(),
-                )
-            } else {
-                parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
-                    crate::v1_std_core::make_named_expr_node(
-                        identity,
-                        name.clone(),
-                        Rc::new(ExprData::ExprVar {
-                            binding_kind: std::option::Option::None,
-                        }),
-                        Rc::new(vec![]),
-                        std::option::Option::None,
-                        span.clone(),
-                        span.clone(),
-                    )
-                })
+                    })
+                }
             }
         }
-    }
+    })
 }
 
 pub fn is_uppercase_start(name: String) -> bool {
@@ -15846,72 +15981,19 @@ pub fn try_postfix(
     lhs_from: Rc<TokenStream>,
     min_bp: i64,
 ) -> Rc<PostfixResult> {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        match sh.clone() {
-            Some(TokenShape::ShLParen) => {
-                if !declared_postfix_gate_admits(
-                    ctx.env.syntax_spec.postfix_operators.clone(),
-                    "(".to_string(),
-                    min_bp.clone(),
-                ) {
-                    Rc::new(PostfixResult {
-                        expr: lhs.clone(),
-                        changed: false,
-                        tokens: tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                } else {
-                    {
-                        let r = parse_call_args(tokens.clone(), ctx.clone());
-                        if has_err(r.err.clone()) {
-                            return Rc::new(PostfixResult {
-                                expr: lhs.clone(),
-                                changed: false,
-                                tokens: r.tokens.clone(),
-                                ctx: r.ctx.clone(),
-                                err: r.err.clone(),
-                            });
-                        }
-                        let minted = mint_parsed_node_identity(
-                            r.ctx.clone(),
-                            Rc::new(ParsedExtentAt::ConsumedWindow {
-                                from: lhs_from.clone(),
-                                to: r.tokens.clone(),
-                            }),
-                        );
-                        let call_expr = make_call_expr(
-                            minted.identity.clone(),
-                            lhs.clone(),
-                            r.args.clone(),
-                            span.clone(),
-                            ctx.source_indices.clone(),
-                        );
-                        Rc::new(PostfixResult {
-                            expr: call_expr.clone(),
-                            changed: true,
-                            tokens: r.tokens.clone(),
-                            ctx: parse_context_record_absorbed(
-                                minted.ctx.clone(),
-                                lhs.clone(),
-                                minted.identity.clone(),
-                            ),
-                            err: std::option::Option::None,
-                        })
-                    }
-                }
-            }
-            Some(TokenShape::ShIdent) => {
-                if (tok.clone().unwrap().text.clone() == "as".to_string()) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<PostfixResult> {
+        {
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            match sh.clone() {
+                Some(TokenShape::ShLParen) => {
                     if !declared_postfix_gate_admits(
                         ctx.env.syntax_spec.postfix_operators.clone(),
-                        "as".to_string(),
+                        "(".to_string(),
                         min_bp.clone(),
                     ) {
                         Rc::new(PostfixResult {
@@ -15923,10 +16005,7 @@ pub fn try_postfix(
                         })
                     } else {
                         {
-                            let r = parse_type_expr(
-                                token_stream_advance(tokens.clone(), 1),
-                                ctx.clone(),
-                            );
+                            let r = parse_call_args(tokens.clone(), ctx.clone());
                             if has_err(r.err.clone()) {
                                 return Rc::new(PostfixResult {
                                     expr: lhs.clone(),
@@ -15943,24 +16022,34 @@ pub fn try_postfix(
                                     to: r.tokens.clone(),
                                 }),
                             );
+                            let call_expr = make_call_expr(
+                                minted.identity.clone(),
+                                lhs.clone(),
+                                r.args.clone(),
+                                span.clone(),
+                                ctx.source_indices.clone(),
+                            );
                             Rc::new(PostfixResult {
-                                expr: crate::v1_std_core::make_expr_node(
-                                    minted.identity.clone(),
-                                    Rc::new(ExprData::ExprCast),
-                                    Rc::new(vec![lhs.clone(), r.type_expr.clone()]),
-                                    std::option::Option::None,
-                                    span.clone(),
-                                ),
+                                expr: call_expr.clone(),
                                 changed: true,
                                 tokens: r.tokens.clone(),
-                                ctx: minted.ctx.clone(),
+                                ctx: parse_context_record_absorbed(
+                                    minted.ctx.clone(),
+                                    lhs.clone(),
+                                    minted.identity.clone(),
+                                ),
                                 err: std::option::Option::None,
                             })
                         }
                     }
-                } else {
-                    if (tok.clone().unwrap().text.clone() == "is".to_string()) {
-                        if (13 < min_bp.clone()) {
+                }
+                Some(TokenShape::ShIdent) => {
+                    if (tok.clone().unwrap().text.clone() == "as".to_string()) {
+                        if !declared_postfix_gate_admits(
+                            ctx.env.syntax_spec.postfix_operators.clone(),
+                            "as".to_string(),
+                            min_bp.clone(),
+                        ) {
                             Rc::new(PostfixResult {
                                 expr: lhs.clone(),
                                 changed: false,
@@ -15969,91 +16058,78 @@ pub fn try_postfix(
                                 err: std::option::Option::None,
                             })
                         } else {
-                            parse_is_arm_test(
-                                tokens.clone(),
-                                ctx.clone(),
-                                lhs.clone(),
-                                lhs_from.clone(),
-                                span.clone(),
-                            )
+                            {
+                                let r = parse_type_expr(
+                                    token_stream_advance(tokens.clone(), 1),
+                                    ctx.clone(),
+                                );
+                                if has_err(r.err.clone()) {
+                                    return Rc::new(PostfixResult {
+                                        expr: lhs.clone(),
+                                        changed: false,
+                                        tokens: r.tokens.clone(),
+                                        ctx: r.ctx.clone(),
+                                        err: r.err.clone(),
+                                    });
+                                }
+                                let minted = mint_parsed_node_identity(
+                                    r.ctx.clone(),
+                                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                                        from: lhs_from.clone(),
+                                        to: r.tokens.clone(),
+                                    }),
+                                );
+                                Rc::new(PostfixResult {
+                                    expr: crate::v1_std_core::make_expr_node(
+                                        minted.identity.clone(),
+                                        Rc::new(ExprData::ExprCast),
+                                        Rc::new(vec![lhs.clone(), r.type_expr.clone()]),
+                                        std::option::Option::None,
+                                        span.clone(),
+                                    ),
+                                    changed: true,
+                                    tokens: r.tokens.clone(),
+                                    ctx: minted.ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
                         }
                     } else {
-                        Rc::new(PostfixResult {
-                            expr: lhs.clone(),
-                            changed: false,
-                            tokens: tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: std::option::Option::None,
-                        })
-                    }
-                }
-            }
-            Some(TokenShape::ShLBracket) => {
-                if !declared_postfix_gate_admits(
-                    ctx.env.syntax_spec.postfix_operators.clone(),
-                    "[".to_string(),
-                    min_bp.clone(),
-                ) {
-                    Rc::new(PostfixResult {
-                        expr: lhs.clone(),
-                        changed: false,
-                        tokens: tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                } else {
-                    if is_constraint_bracket(tokens.clone()) {
-                        Rc::new(PostfixResult {
-                            expr: lhs.clone(),
-                            changed: false,
-                            tokens: tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: std::option::Option::None,
-                        })
-                    } else {
-                        {
-                            let r = parse_index_or_slice(
-                                tokens.clone(),
-                                ctx.clone(),
-                                lhs.clone(),
-                                lhs_from.clone(),
-                                span.clone(),
-                            );
-                            if has_err(r.err.clone()) {
-                                return Rc::new(PostfixResult {
+                        if (tok.clone().unwrap().text.clone() == "is".to_string()) {
+                            if (13 < min_bp.clone()) {
+                                Rc::new(PostfixResult {
                                     expr: lhs.clone(),
                                     changed: false,
-                                    tokens: r.tokens.clone(),
-                                    ctx: r.ctx.clone(),
-                                    err: r.err.clone(),
-                                });
+                                    tokens: tokens.clone(),
+                                    ctx: ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            } else {
+                                parse_is_arm_test(
+                                    tokens.clone(),
+                                    ctx.clone(),
+                                    lhs.clone(),
+                                    lhs_from.clone(),
+                                    span.clone(),
+                                )
                             }
+                        } else {
                             Rc::new(PostfixResult {
-                                expr: r.expr.clone(),
-                                changed: true,
-                                tokens: r.tokens.clone(),
-                                ctx: r.ctx.clone(),
+                                expr: lhs.clone(),
+                                changed: false,
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
                                 err: std::option::Option::None,
                             })
                         }
                     }
                 }
-            }
-            Some(TokenShape::ShLBrace) => match (*lhs.expr_data.clone()).clone() {
-                ExprData::ExprVar {
-                    binding_kind: _, ..
-                } => {
-                    let n = crate::v1_std_core::expr_var_name_at(
-                        lhs.clone(),
-                        ctx.source_indices.clone(),
-                    );
-                    if (is_uppercase_start(n.clone())
-                        && !declared_postfix_gate_admits(
-                            ctx.env.syntax_spec.postfix_operators.clone(),
-                            "{".to_string(),
-                            min_bp.clone(),
-                        ))
-                    {
+                Some(TokenShape::ShLBracket) => {
+                    if !declared_postfix_gate_admits(
+                        ctx.env.syntax_spec.postfix_operators.clone(),
+                        "[".to_string(),
+                        min_bp.clone(),
+                    ) {
                         Rc::new(PostfixResult {
                             expr: lhs.clone(),
                             changed: false,
@@ -16062,14 +16138,22 @@ pub fn try_postfix(
                             err: std::option::Option::None,
                         })
                     } else {
-                        if is_uppercase_start(n.clone()) {
+                        if is_constraint_bracket(tokens.clone()) {
+                            Rc::new(PostfixResult {
+                                expr: lhs.clone(),
+                                changed: false,
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: std::option::Option::None,
+                            })
+                        } else {
                             {
-                                let r = parse_record_literal(
+                                let r = parse_index_or_slice(
                                     tokens.clone(),
                                     ctx.clone(),
-                                    n.clone(),
-                                    lhs.span.clone(),
+                                    lhs.clone(),
                                     lhs_from.clone(),
+                                    span.clone(),
                                 );
                                 if has_err(r.err.clone()) {
                                     return Rc::new(PostfixResult {
@@ -16084,15 +16168,28 @@ pub fn try_postfix(
                                     expr: r.expr.clone(),
                                     changed: true,
                                     tokens: r.tokens.clone(),
-                                    ctx: parse_context_record_absorbed(
-                                        r.ctx.clone(),
-                                        lhs.clone(),
-                                        r.expr.occurrence_identity.clone(),
-                                    ),
+                                    ctx: r.ctx.clone(),
                                     err: std::option::Option::None,
                                 })
                             }
-                        } else {
+                        }
+                    }
+                }
+                Some(TokenShape::ShLBrace) => match (*lhs.expr_data.clone()).clone() {
+                    ExprData::ExprVar {
+                        binding_kind: _, ..
+                    } => {
+                        let n = crate::v1_std_core::expr_var_name_at(
+                            lhs.clone(),
+                            ctx.source_indices.clone(),
+                        );
+                        if (is_uppercase_start(n.clone())
+                            && !declared_postfix_gate_admits(
+                                ctx.env.syntax_spec.postfix_operators.clone(),
+                                "{".to_string(),
+                                min_bp.clone(),
+                            ))
+                        {
                             Rc::new(PostfixResult {
                                 expr: lhs.clone(),
                                 changed: false,
@@ -16100,41 +16197,14 @@ pub fn try_postfix(
                                 ctx: ctx.clone(),
                                 err: std::option::Option::None,
                             })
-                        }
-                    }
-                }
-                ExprData::ExprFieldAccess { summary: _, .. } => {
-                    let last_seg = crate::v1_std_core::field_access_field_at(
-                        lhs.clone(),
-                        ctx.source_indices.clone(),
-                    );
-                    if (is_uppercase_start(last_seg.clone())
-                        && !declared_postfix_gate_admits(
-                            ctx.env.syntax_spec.postfix_operators.clone(),
-                            "{".to_string(),
-                            min_bp.clone(),
-                        ))
-                    {
-                        Rc::new(PostfixResult {
-                            expr: lhs.clone(),
-                            changed: false,
-                            tokens: tokens.clone(),
-                            ctx: ctx.clone(),
-                            err: std::option::Option::None,
-                        })
-                    } else {
-                        if is_uppercase_start(last_seg.clone()) {
-                            match crate::v1_std_core::field_access_spine(
-                                lhs.clone(),
-                                ctx.source_indices.clone(),
-                            ) {
-                                Some(spine) => {
-                                    let r = parse_record_literal_named(
+                        } else {
+                            if is_uppercase_start(n.clone()) {
+                                {
+                                    let r = parse_record_literal(
                                         tokens.clone(),
                                         ctx.clone(),
-                                        spine.dotted.clone(),
-                                        field_access_chain_span(lhs.clone()),
-                                        crate::v1_std_core::kernel_span(spine.dotted.clone()),
+                                        n.clone(),
+                                        lhs.span.clone(),
                                         lhs_from.clone(),
                                     );
                                     if has_err(r.err.clone()) {
@@ -16158,15 +16228,29 @@ pub fn try_postfix(
                                         err: std::option::Option::None,
                                     })
                                 }
-                                std::option::Option::None => Rc::new(PostfixResult {
+                            } else {
+                                Rc::new(PostfixResult {
                                     expr: lhs.clone(),
                                     changed: false,
                                     tokens: tokens.clone(),
                                     ctx: ctx.clone(),
                                     err: std::option::Option::None,
-                                }),
+                                })
                             }
-                        } else {
+                        }
+                    }
+                    ExprData::ExprFieldAccess { summary: _, .. } => {
+                        let last_seg = crate::v1_std_core::field_access_field_at(
+                            lhs.clone(),
+                            ctx.source_indices.clone(),
+                        );
+                        if (is_uppercase_start(last_seg.clone())
+                            && !declared_postfix_gate_admits(
+                                ctx.env.syntax_spec.postfix_operators.clone(),
+                                "{".to_string(),
+                                min_bp.clone(),
+                            ))
+                        {
                             Rc::new(PostfixResult {
                                 expr: lhs.clone(),
                                 changed: false,
@@ -16174,9 +16258,69 @@ pub fn try_postfix(
                                 ctx: ctx.clone(),
                                 err: std::option::Option::None,
                             })
+                        } else {
+                            if is_uppercase_start(last_seg.clone()) {
+                                match crate::v1_std_core::field_access_spine(
+                                    lhs.clone(),
+                                    ctx.source_indices.clone(),
+                                ) {
+                                    Some(spine) => {
+                                        let r = parse_record_literal_named(
+                                            tokens.clone(),
+                                            ctx.clone(),
+                                            spine.dotted.clone(),
+                                            field_access_chain_span(lhs.clone()),
+                                            crate::v1_std_core::kernel_span(spine.dotted.clone()),
+                                            lhs_from.clone(),
+                                        );
+                                        if has_err(r.err.clone()) {
+                                            return Rc::new(PostfixResult {
+                                                expr: lhs.clone(),
+                                                changed: false,
+                                                tokens: r.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r.err.clone(),
+                                            });
+                                        }
+                                        Rc::new(PostfixResult {
+                                            expr: r.expr.clone(),
+                                            changed: true,
+                                            tokens: r.tokens.clone(),
+                                            ctx: parse_context_record_absorbed(
+                                                r.ctx.clone(),
+                                                lhs.clone(),
+                                                r.expr.occurrence_identity.clone(),
+                                            ),
+                                            err: std::option::Option::None,
+                                        })
+                                    }
+                                    std::option::Option::None => Rc::new(PostfixResult {
+                                        expr: lhs.clone(),
+                                        changed: false,
+                                        tokens: tokens.clone(),
+                                        ctx: ctx.clone(),
+                                        err: std::option::Option::None,
+                                    }),
+                                }
+                            } else {
+                                Rc::new(PostfixResult {
+                                    expr: lhs.clone(),
+                                    changed: false,
+                                    tokens: tokens.clone(),
+                                    ctx: ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
                         }
                     }
-                }
+                    _ => Rc::new(PostfixResult {
+                        expr: lhs.clone(),
+                        changed: false,
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: std::option::Option::None,
+                    }),
+                },
                 _ => Rc::new(PostfixResult {
                     expr: lhs.clone(),
                     changed: false,
@@ -16184,16 +16328,9 @@ pub fn try_postfix(
                     ctx: ctx.clone(),
                     err: std::option::Option::None,
                 }),
-            },
-            _ => Rc::new(PostfixResult {
-                expr: lhs.clone(),
-                changed: false,
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            }),
+            }
         }
-    }
+    })
 }
 
 pub fn is_constraint_bracket(tokens: Rc<TokenStream>) -> bool {
@@ -16221,35 +16358,37 @@ pub fn parse_constraint_annotations(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
-    match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket))).clone() {
-        EatResult::EatConsumed { tokens: __ec, .. } => {
-            let r = parse_constraint_list(__ec.clone(), ctx.clone(), Rc::new(vec![]));
-            if has_err(r.err.clone()) {
-                return r;
-            }
-            let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
-            if has_err(r2.err.clone()) {
-                return Rc::new(ConstraintsResult {
-                    constraints: Rc::new(vec![]),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ConstraintsResult> {
+        match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket))).clone() {
+            EatResult::EatConsumed { tokens: __ec, .. } => {
+                let r = parse_constraint_list(__ec.clone(), ctx.clone(), Rc::new(vec![]));
+                if has_err(r.err.clone()) {
+                    return r;
+                }
+                let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
+                if has_err(r2.err.clone()) {
+                    return Rc::new(ConstraintsResult {
+                        constraints: Rc::new(vec![]),
+                        tokens: r2.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: r2.err.clone(),
+                    });
+                }
+                Rc::new(ConstraintsResult {
+                    constraints: r.constraints.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: r2.err.clone(),
-                });
+                    err: std::option::Option::None,
+                })
             }
-            Rc::new(ConstraintsResult {
-                constraints: r.constraints.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: r.ctx.clone(),
+            EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(ConstraintsResult {
+                constraints: Rc::new(vec![]),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
                 err: std::option::Option::None,
-            })
+            }),
         }
-        EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(ConstraintsResult {
-            constraints: Rc::new(vec![]),
-            tokens: tokens.clone(),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        }),
-    }
+    })
 }
 
 pub fn parse_constraint_list(
@@ -16335,16 +16474,18 @@ pub fn try_constraint_annotations(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConstraintsResult> {
-    if is_constraint_bracket(tokens.clone()) {
-        parse_constraint_annotations(tokens.clone(), ctx.clone())
-    } else {
-        Rc::new(ConstraintsResult {
-            constraints: Rc::new(vec![]),
-            tokens: tokens.clone(),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ConstraintsResult> {
+        if is_constraint_bracket(tokens.clone()) {
+            parse_constraint_annotations(tokens.clone(), ctx.clone())
+        } else {
+            Rc::new(ConstraintsResult {
+                constraints: Rc::new(vec![]),
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: std::option::Option::None,
+            })
+        }
+    })
 }
 
 pub fn make_call_expr(
@@ -16405,144 +16546,150 @@ pub fn parse_index_or_slice(
     base_from: Rc<TokenStream>,
     span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
-    {
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r = parse_expr(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: r.expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let first_expr = r.expr.clone();
-        let tokens = r.tokens.clone();
-        let ctx = parse_context_after_node(r.ctx.clone(), first_expr.clone());
-        if tok_is_dot_dot(token_stream_first(tokens.clone())) {
-            {
-                let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: r.expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
-                }
-                let end_expr = r.expr.clone();
-                let ctx = parse_context_after_node(r.ctx.clone(), end_expr.clone());
-                let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: r.err.clone(),
-                    });
-                }
-                parsed_expr_result(
-                    base_from.clone(),
-                    r.tokens.clone(),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprSlice),
-                            Rc::new(vec![base.clone(), first_expr.clone(), end_expr.clone()]),
-                            std::option::Option::None,
-                            span.clone(),
-                        )
-                    },
-                )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
             }
-        } else {
-            {
-                let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: r.err.clone(),
-                    });
+            let r = parse_expr(r.tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: r.expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let first_expr = r.expr.clone();
+            let tokens = r.tokens.clone();
+            let ctx = parse_context_after_node(r.ctx.clone(), first_expr.clone());
+            if tok_is_dot_dot(token_stream_first(tokens.clone())) {
+                {
+                    let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: r.expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let end_expr = r.expr.clone();
+                    let ctx = parse_context_after_node(r.ctx.clone(), end_expr.clone());
+                    let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(
+                        base_from.clone(),
+                        r.tokens.clone(),
+                        ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprSlice),
+                                Rc::new(vec![base.clone(), first_expr.clone(), end_expr.clone()]),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        },
+                    )
                 }
-                parsed_expr_result(
-                    base_from.clone(),
-                    r.tokens.clone(),
-                    ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprIndex),
-                            Rc::new(vec![base.clone(), first_expr.clone()]),
-                            std::option::Option::None,
-                            span.clone(),
-                        )
-                    },
-                )
+            } else {
+                {
+                    let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    parsed_expr_result(
+                        base_from.clone(),
+                        r.tokens.clone(),
+                        ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprIndex),
+                                Rc::new(vec![base.clone(), first_expr.clone()]),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        },
+                    )
+                }
             }
         }
-    }
+    })
 }
 
 pub fn parse_call_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
-    {
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
-        if has_err(r.err.clone()) {
-            return Rc::new(ArgsResult {
-                args: Rc::new(vec![]),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(r.tokens.clone());
-        if tok_is_rparen(token_stream_first(tokens.clone())) {
-            Rc::new(ArgsResult {
-                args: Rc::new(vec![]),
-                tokens: token_stream_advance(tokens.clone(), 1),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            })
-        } else {
-            {
-                let r = parse_arg_list(tokens.clone(), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return r;
-                }
-                let tokens = skip_newlines(r.tokens.clone());
-                let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ArgsResult {
-                        args: Rc::new(vec![]),
-                        tokens: r2.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ArgsResult> {
+        {
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
+            if has_err(r.err.clone()) {
+                return Rc::new(ArgsResult {
+                    args: Rc::new(vec![]),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            if tok_is_rparen(token_stream_first(tokens.clone())) {
                 Rc::new(ArgsResult {
-                    args: r.args.clone(),
-                    tokens: r2.tokens.clone(),
-                    ctx: r.ctx.clone(),
+                    args: Rc::new(vec![]),
+                    tokens: token_stream_advance(tokens.clone(), 1),
+                    ctx: ctx.clone(),
                     err: std::option::Option::None,
                 })
+            } else {
+                {
+                    let r = parse_arg_list(tokens.clone(), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return r;
+                    }
+                    let tokens = skip_newlines(r.tokens.clone());
+                    let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ArgsResult {
+                            args: Rc::new(vec![]),
+                            tokens: r2.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    Rc::new(ArgsResult {
+                        args: r.args.clone(),
+                        tokens: r2.tokens.clone(),
+                        ctx: r.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
             }
         }
-    }
+    })
 }
 
 pub fn parse_arg_list(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArgsResult> {
-    parse_arg_list_acc(tokens, ctx, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ArgsResult> {
+        parse_arg_list_acc(tokens, ctx, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_arg_list_acc(
@@ -16606,90 +16753,23 @@ pub fn parse_arg_list_acc(
 }
 
 pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArgResult> {
-    {
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_arg = crate::v1_std_core::make_arg_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            std::option::Option::None,
-            parse_recovery_placeholder(),
-            span.clone(),
-            span.clone(),
-        );
-        let tok = token_stream_first(tokens.clone());
-        let is_name_token =
-            (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone(), ctx.env.clone()));
-        if is_name_token.clone() {
-            {
-                let name_r = expect_name(tokens.clone(), ctx.env.clone());
-                if has_err(name_r.err.clone()) {
-                    {
-                        let r = parse_expr(tokens.clone(), ctx.clone());
-                        if has_err(r.err.clone()) {
-                            return Rc::new(ArgResult {
-                                arg: dummy_arg.clone(),
-                                tokens: r.tokens.clone(),
-                                ctx: r.ctx.clone(),
-                                err: r.err.clone(),
-                            });
-                        }
-                        let minted = mint_parsed_node_identity(
-                            r.ctx.clone(),
-                            Rc::new(ParsedExtentAt::ConsumedWindow {
-                                from: tokens.clone(),
-                                to: r.tokens.clone(),
-                            }),
-                        );
-                        let arg = crate::v1_std_core::make_arg_node(
-                            minted.identity.clone(),
-                            std::option::Option::None,
-                            r.expr.clone(),
-                            span.clone(),
-                            span.clone(),
-                        );
-                        Rc::new(ArgResult {
-                            arg: arg.clone(),
-                            tokens: r.tokens.clone(),
-                            ctx: minted.ctx.clone(),
-                            err: std::option::Option::None,
-                        })
-                    }
-                } else {
-                    if tok_is_colon(token_stream_first(name_r.tokens.clone())) {
-                        {
-                            let r = parse_expr(
-                                token_stream_advance(name_r.tokens.clone(), 1),
-                                ctx.clone(),
-                            );
-                            if has_err(r.err.clone()) {
-                                return Rc::new(ArgResult {
-                                    arg: dummy_arg.clone(),
-                                    tokens: r.tokens.clone(),
-                                    ctx: r.ctx.clone(),
-                                    err: r.err.clone(),
-                                });
-                            }
-                            let minted = mint_parsed_node_identity(
-                                r.ctx.clone(),
-                                Rc::new(ParsedExtentAt::ConsumedWindow {
-                                    from: tokens.clone(),
-                                    to: r.tokens.clone(),
-                                }),
-                            );
-                            let arg = crate::v1_std_core::make_arg_node(
-                                minted.identity.clone(),
-                                Some(name_r.name.clone()),
-                                r.expr.clone(),
-                                span.clone(),
-                                name_r.span.clone(),
-                            );
-                            Rc::new(ArgResult {
-                                arg: arg.clone(),
-                                tokens: r.tokens.clone(),
-                                ctx: minted.ctx.clone(),
-                                err: std::option::Option::None,
-                            })
-                        }
-                    } else {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ArgResult> {
+        {
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_arg = crate::v1_std_core::make_arg_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                std::option::Option::None,
+                parse_recovery_placeholder(),
+                span.clone(),
+                span.clone(),
+            );
+            let tok = token_stream_first(tokens.clone());
+            let is_name_token =
+                (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone(), ctx.env.clone()));
+            if is_name_token.clone() {
+                {
+                    let name_r = expect_name(tokens.clone(), ctx.env.clone());
+                    if has_err(name_r.err.clone()) {
                         {
                             let r = parse_expr(tokens.clone(), ctx.clone());
                             if has_err(r.err.clone()) {
@@ -16721,119 +16801,192 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 err: std::option::Option::None,
                             })
                         }
+                    } else {
+                        if tok_is_colon(token_stream_first(name_r.tokens.clone())) {
+                            {
+                                let r = parse_expr(
+                                    token_stream_advance(name_r.tokens.clone(), 1),
+                                    ctx.clone(),
+                                );
+                                if has_err(r.err.clone()) {
+                                    return Rc::new(ArgResult {
+                                        arg: dummy_arg.clone(),
+                                        tokens: r.tokens.clone(),
+                                        ctx: r.ctx.clone(),
+                                        err: r.err.clone(),
+                                    });
+                                }
+                                let minted = mint_parsed_node_identity(
+                                    r.ctx.clone(),
+                                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                                        from: tokens.clone(),
+                                        to: r.tokens.clone(),
+                                    }),
+                                );
+                                let arg = crate::v1_std_core::make_arg_node(
+                                    minted.identity.clone(),
+                                    Some(name_r.name.clone()),
+                                    r.expr.clone(),
+                                    span.clone(),
+                                    name_r.span.clone(),
+                                );
+                                Rc::new(ArgResult {
+                                    arg: arg.clone(),
+                                    tokens: r.tokens.clone(),
+                                    ctx: minted.ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
+                        } else {
+                            {
+                                let r = parse_expr(tokens.clone(), ctx.clone());
+                                if has_err(r.err.clone()) {
+                                    return Rc::new(ArgResult {
+                                        arg: dummy_arg.clone(),
+                                        tokens: r.tokens.clone(),
+                                        ctx: r.ctx.clone(),
+                                        err: r.err.clone(),
+                                    });
+                                }
+                                let minted = mint_parsed_node_identity(
+                                    r.ctx.clone(),
+                                    Rc::new(ParsedExtentAt::ConsumedWindow {
+                                        from: tokens.clone(),
+                                        to: r.tokens.clone(),
+                                    }),
+                                );
+                                let arg = crate::v1_std_core::make_arg_node(
+                                    minted.identity.clone(),
+                                    std::option::Option::None,
+                                    r.expr.clone(),
+                                    span.clone(),
+                                    span.clone(),
+                                );
+                                Rc::new(ArgResult {
+                                    arg: arg.clone(),
+                                    tokens: r.tokens.clone(),
+                                    ctx: minted.ctx.clone(),
+                                    err: std::option::Option::None,
+                                })
+                            }
+                        }
                     }
                 }
-            }
-        } else {
-            {
-                let r = parse_expr(tokens.clone(), ctx.clone());
-                if has_err(r.err.clone()) {
-                    return Rc::new(ArgResult {
-                        arg: dummy_arg.clone(),
+            } else {
+                {
+                    let r = parse_expr(tokens.clone(), ctx.clone());
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ArgResult {
+                            arg: dummy_arg.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let minted = mint_parsed_node_identity(
+                        r.ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: tokens.clone(),
+                            to: r.tokens.clone(),
+                        }),
+                    );
+                    let arg = crate::v1_std_core::make_arg_node(
+                        minted.identity.clone(),
+                        std::option::Option::None,
+                        r.expr.clone(),
+                        span.clone(),
+                        span.clone(),
+                    );
+                    Rc::new(ArgResult {
+                        arg: arg.clone(),
                         tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
                 }
-                let minted = mint_parsed_node_identity(
-                    r.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: tokens.clone(),
-                        to: r.tokens.clone(),
-                    }),
-                );
-                let arg = crate::v1_std_core::make_arg_node(
-                    minted.identity.clone(),
-                    std::option::Option::None,
-                    r.expr.clone(),
-                    span.clone(),
-                    span.clone(),
-                );
-                Rc::new(ArgResult {
-                    arg: arg.clone(),
-                    tokens: r.tokens.clone(),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
             }
         }
-    }
+    })
 }
 
 pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "match".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "match".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return r;
+            }
+            let scrutinee = r.expr.clone();
+            let ctx = parse_context_after_node(r.ctx.clone(), scrutinee.clone());
+            let r = expect(
+                skip_newlines(r.tokens.clone()),
+                Rc::new(ExpectedToken::ExpectLBrace),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = parse_match_arms(skip_newlines(r.tokens.clone()), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let arms = r.arms.clone();
+            let ctx = parse_context_after_node_list(r.ctx.clone(), arms.clone());
+            let r = expect(
+                skip_newlines(r.tokens.clone()),
+                Rc::new(ExpectedToken::ExpectRBrace),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            parsed_expr_result(entry, r.tokens.clone(), ctx.clone(), |identity| {
+                crate::v1_std_core::make_expr_node(
+                    identity,
+                    Rc::new(ExprData::ExprMatch),
+                    v1_rt::concat(Rc::new(vec![scrutinee.clone()]), arms.clone()),
+                    std::option::Option::None,
+                    span.clone(),
+                )
+            })
         }
-        let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return r;
-        }
-        let scrutinee = r.expr.clone();
-        let ctx = parse_context_after_node(r.ctx.clone(), scrutinee.clone());
-        let r = expect(
-            skip_newlines(r.tokens.clone()),
-            Rc::new(ExpectedToken::ExpectLBrace),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r = parse_match_arms(skip_newlines(r.tokens.clone()), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let arms = r.arms.clone();
-        let ctx = parse_context_after_node_list(r.ctx.clone(), arms.clone());
-        let r = expect(
-            skip_newlines(r.tokens.clone()),
-            Rc::new(ExpectedToken::ExpectRBrace),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        parsed_expr_result(entry, r.tokens.clone(), ctx.clone(), |identity| {
-            crate::v1_std_core::make_expr_node(
-                identity,
-                Rc::new(ExprData::ExprMatch),
-                v1_rt::concat(Rc::new(vec![scrutinee.clone()]), arms.clone()),
-                std::option::Option::None,
-                span.clone(),
-            )
-        })
-    }
+    })
 }
 
 pub fn parse_expr_no_brace(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    parse_expr_bp_no_brace(tokens, ctx, 0)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        parse_expr_bp_no_brace(tokens, ctx, 0)
+    })
 }
 
 pub fn parse_expr_bp_no_brace(
@@ -16841,64 +16994,66 @@ pub fn parse_expr_bp_no_brace(
     ctx: Rc<ParseContext>,
     min_bp: i64,
 ) -> Rc<ExprResult> {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let next = token_stream_first(token_stream_advance(tokens.clone(), 1));
-        let r = parse_prefix(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return r;
-        }
-        let parsed = parse_expr_loop_no_brace(
-            r.tokens.clone(),
-            r.ctx.clone(),
-            r.expr.clone(),
-            tokens.clone(),
-            min_bp.clone(),
-        );
-        let leading_ident_brace = (match tok.clone() {
-            Some(t) => is_ident_shape(t.shape.clone()),
-            std::option::Option::None => false,
-        } && tok_is_lbrace(next));
-        let stopped_at_infix = match infix_bp(parsed.tokens.clone(), ctx.env.clone()) {
-            Some(_) => true,
-            std::option::Option::None => false,
-        };
-        if (((leading_ident_brace.clone() && !has_err(parsed.err.clone()))
-            && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
-            && !stopped_at_infix.clone())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
         {
-            {
-                let span = token_span(tok.clone());
-                let minted = mint_parsed_node_identity(
-                    ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: tokens.clone(),
-                        to: token_stream_advance(tokens.clone(), 1),
-                    }),
-                );
-                let lhs = crate::v1_std_core::make_named_expr_node(
-                    minted.identity.clone(),
-                    tok.clone().unwrap().text.clone(),
-                    Rc::new(ExprData::ExprVar {
-                        binding_kind: std::option::Option::None,
-                    }),
-                    Rc::new(vec![]),
-                    std::option::Option::None,
-                    span.clone(),
-                    span.clone(),
-                );
-                parse_expr_loop_no_brace(
-                    token_stream_advance(tokens.clone(), 1),
-                    minted.ctx.clone(),
-                    lhs,
-                    tokens.clone(),
-                    min_bp.clone(),
-                )
+            let tok = token_stream_first(tokens.clone());
+            let next = token_stream_first(token_stream_advance(tokens.clone(), 1));
+            let r = parse_prefix(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return r;
             }
-        } else {
-            parsed
+            let parsed = parse_expr_loop_no_brace(
+                r.tokens.clone(),
+                r.ctx.clone(),
+                r.expr.clone(),
+                tokens.clone(),
+                min_bp.clone(),
+            );
+            let leading_ident_brace = (match tok.clone() {
+                Some(t) => is_ident_shape(t.shape.clone()),
+                std::option::Option::None => false,
+            } && tok_is_lbrace(next));
+            let stopped_at_infix = match infix_bp(parsed.tokens.clone(), ctx.env.clone()) {
+                Some(_) => true,
+                std::option::Option::None => false,
+            };
+            if (((leading_ident_brace.clone() && !has_err(parsed.err.clone()))
+                && !tok_is_lbrace(token_stream_first(parsed.tokens.clone())))
+                && !stopped_at_infix.clone())
+            {
+                {
+                    let span = token_span(tok.clone());
+                    let minted = mint_parsed_node_identity(
+                        ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: tokens.clone(),
+                            to: token_stream_advance(tokens.clone(), 1),
+                        }),
+                    );
+                    let lhs = crate::v1_std_core::make_named_expr_node(
+                        minted.identity.clone(),
+                        tok.clone().unwrap().text.clone(),
+                        Rc::new(ExprData::ExprVar {
+                            binding_kind: std::option::Option::None,
+                        }),
+                        Rc::new(vec![]),
+                        std::option::Option::None,
+                        span.clone(),
+                        span.clone(),
+                    );
+                    parse_expr_loop_no_brace(
+                        token_stream_advance(tokens.clone(), 1),
+                        minted.ctx.clone(),
+                        lhs,
+                        tokens.clone(),
+                        min_bp.clone(),
+                    )
+                }
+            } else {
+                parsed
+            }
         }
-    }
+    })
 }
 
 pub fn parse_expr_loop_no_brace(
@@ -17216,7 +17371,9 @@ pub fn parse_expr_loop_no_brace(
 }
 
 pub fn parse_match_arms(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArmsResult> {
-    parse_match_arms_acc(tokens, ctx, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ArmsResult> {
+        parse_match_arms_acc(tokens, ctx, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_match_arms_acc(
@@ -17272,127 +17429,131 @@ pub fn parse_match_arms_acc(
 }
 
 pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ArmResult> {
-    {
-        let entry = tokens.clone();
-        let arm_span = token_span(token_stream_first(tokens.clone()));
-        let dummy_arm = crate::v1_std_core::make_arm_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            Rc::new(MatchPattern::Wildcard),
-            std::option::Option::None,
-            parse_recovery_placeholder(),
-            crate::v1_std_core::no_span(),
-        );
-        let r = parse_pattern(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ArmResult {
-                arm: dummy_arm.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ArmResult> {
+        {
+            let entry = tokens.clone();
+            let arm_span = token_span(token_stream_first(tokens.clone()));
+            let dummy_arm = crate::v1_std_core::make_arm_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                Rc::new(MatchPattern::Wildcard),
+                std::option::Option::None,
+                parse_recovery_placeholder(),
+                crate::v1_std_core::no_span(),
+            );
+            let r = parse_pattern(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ArmResult {
+                    arm: dummy_arm.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let pat = r.pattern.clone();
+            let tokens = r.tokens.clone();
+            let ctx = r.ctx.clone();
+            let guard_r = parse_optional_guard(tokens.clone(), ctx.clone());
+            if has_err(guard_r.err.clone()) {
+                return Rc::new(ArmResult {
+                    arm: dummy_arm.clone(),
+                    tokens: guard_r.tokens.clone(),
+                    ctx: guard_r.ctx.clone(),
+                    err: guard_r.err.clone(),
+                });
+            }
+            let guard = guard_r.guard.clone();
+            let tokens = guard_r.tokens.clone();
+            let ctx = guard_r.ctx.clone();
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
+            if has_err(r.err.clone()) {
+                return Rc::new(ArmResult {
+                    arm: dummy_arm.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            let r = if tok_is_lbrace(token_stream_first(tokens.clone())) {
+                parse_block(tokens.clone(), ctx.clone())
+            } else {
+                parse_match_arm_body(tokens.clone(), ctx.clone())
+            };
+            if has_err(r.err.clone()) {
+                return Rc::new(ArmResult {
+                    arm: dummy_arm.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let minted = mint_parsed_node_identity(
+                r.ctx.clone(),
+                Rc::new(ParsedExtentAt::ConsumedWindow {
+                    from: entry.clone(),
+                    to: r.tokens.clone(),
+                }),
+            );
+            let arm = crate::v1_std_core::make_arm_node(
+                minted.identity.clone(),
+                pat,
+                guard,
+                r.expr.clone(),
+                arm_span,
+            );
+            Rc::new(ArmResult {
+                arm: arm.clone(),
                 tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
+                ctx: minted.ctx.clone(),
+                err: std::option::Option::None,
+            })
         }
-        let pat = r.pattern.clone();
-        let tokens = r.tokens.clone();
-        let ctx = r.ctx.clone();
-        let guard_r = parse_optional_guard(tokens.clone(), ctx.clone());
-        if has_err(guard_r.err.clone()) {
-            return Rc::new(ArmResult {
-                arm: dummy_arm.clone(),
-                tokens: guard_r.tokens.clone(),
-                ctx: guard_r.ctx.clone(),
-                err: guard_r.err.clone(),
-            });
-        }
-        let guard = guard_r.guard.clone();
-        let tokens = guard_r.tokens.clone();
-        let ctx = guard_r.ctx.clone();
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));
-        if has_err(r.err.clone()) {
-            return Rc::new(ArmResult {
-                arm: dummy_arm.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(r.tokens.clone());
-        let r = if tok_is_lbrace(token_stream_first(tokens.clone())) {
-            parse_block(tokens.clone(), ctx.clone())
-        } else {
-            parse_match_arm_body(tokens.clone(), ctx.clone())
-        };
-        if has_err(r.err.clone()) {
-            return Rc::new(ArmResult {
-                arm: dummy_arm.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let minted = mint_parsed_node_identity(
-            r.ctx.clone(),
-            Rc::new(ParsedExtentAt::ConsumedWindow {
-                from: entry.clone(),
-                to: r.tokens.clone(),
-            }),
-        );
-        let arm = crate::v1_std_core::make_arm_node(
-            minted.identity.clone(),
-            pat,
-            guard,
-            r.expr.clone(),
-            arm_span,
-        );
-        Rc::new(ArmResult {
-            arm: arm.clone(),
-            tokens: r.tokens.clone(),
-            ctx: minted.ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
+    })
 }
 
 pub fn parse_match_arm_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let tok = token_stream_first(tokens.clone());
-        let is_block = (tok_is_keyword(tok.clone(), "let".to_string())
-            || tok_is_keyword(tok.clone(), "return".to_string()));
-        if is_block.clone() {
-            {
-                let r = parse_match_arm_stmts(tokens.clone(), ctx.clone(), Rc::new(vec![]));
-                if has_err(r.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: parse_recovery_placeholder(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let tok = token_stream_first(tokens.clone());
+            let is_block = (tok_is_keyword(tok.clone(), "let".to_string())
+                || tok_is_keyword(tok.clone(), "return".to_string()));
+            if is_block.clone() {
+                {
+                    let r = parse_match_arm_stmts(tokens.clone(), ctx.clone(), Rc::new(vec![]));
+                    if has_err(r.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: parse_recovery_placeholder(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let span = token_span(token_stream_first(tokens.clone()));
+                    if ((r.stmts.clone().len() as i64) == 1) {
+                        Rc::new(ExprResult {
+                            expr: r.stmts.clone().first().cloned().clone().unwrap(),
+                            tokens: r.tokens.clone(),
+                            ctx: r.ctx.clone(),
+                            err: std::option::Option::None,
+                        })
+                    } else {
+                        parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
+                            crate::v1_std_core::make_expr_node(
+                                identity,
+                                Rc::new(ExprData::ExprBlock),
+                                r.stmts.clone(),
+                                std::option::Option::None,
+                                span.clone(),
+                            )
+                        })
+                    }
                 }
-                let span = token_span(token_stream_first(tokens.clone()));
-                if ((r.stmts.clone().len() as i64) == 1) {
-                    Rc::new(ExprResult {
-                        expr: r.stmts.clone().first().cloned().clone().unwrap(),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                } else {
-                    parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
-                        crate::v1_std_core::make_expr_node(
-                            identity,
-                            Rc::new(ExprData::ExprBlock),
-                            r.stmts.clone(),
-                            std::option::Option::None,
-                            span.clone(),
-                        )
-                    })
-                }
+            } else {
+                parse_expr(tokens.clone(), ctx.clone())
             }
-        } else {
-            parse_expr(tokens.clone(), ctx.clone())
         }
-    }
+    })
 }
 
 pub fn parse_match_arm_stmts(
@@ -17452,27 +17613,30 @@ pub fn parse_match_arm_stmts(
 }
 
 pub fn looks_like_arm_start(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> bool {
-    {
-        let pattern = parse_pattern(tokens.clone(), ctx);
-        if has_err(pattern.err.clone()) {
-            false
-        } else {
-            if (token_stream_position(pattern.tokens.clone())
-                == token_stream_position(tokens.clone()))
-            {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
+        {
+            let pattern = parse_pattern(tokens.clone(), ctx);
+            if has_err(pattern.err.clone()) {
                 false
             } else {
+                if (token_stream_position(pattern.tokens.clone())
+                    == token_stream_position(tokens.clone()))
                 {
-                    let guard = parse_optional_guard(pattern.tokens.clone(), pattern.ctx.clone());
-                    if has_err(guard.err.clone()) {
-                        false
-                    } else {
-                        peek_is_fat_arrow_at(guard.tokens.clone(), 0)
+                    false
+                } else {
+                    {
+                        let guard =
+                            parse_optional_guard(pattern.tokens.clone(), pattern.ctx.clone());
+                        if has_err(guard.err.clone()) {
+                            false
+                        } else {
+                            peek_is_fat_arrow_at(guard.tokens.clone(), 0)
+                        }
                     }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn peek_is_fat_arrow_at(tokens: Rc<TokenStream>, offset: i64) -> bool {
@@ -17483,112 +17647,74 @@ pub fn peek_is_fat_arrow_at(tokens: Rc<TokenStream>, offset: i64) -> bool {
 }
 
 pub fn parse_optional_guard(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<GuardResult> {
-    if tok_is_keyword(token_stream_first(tokens.clone()), "if".to_string()) {
-        {
-            let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
-            if has_err(r.err.clone()) {
-                return Rc::new(GuardResult {
-                    guard: std::option::Option::None,
-                    tokens: r.tokens.clone(),
-                    ctx: r.ctx.clone(),
-                    err: r.err.clone(),
-                });
-            }
-            Rc::new(GuardResult {
-                guard: Some(r.expr.clone()),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: std::option::Option::None,
-            })
-        }
-    } else {
-        Rc::new(GuardResult {
-            guard: std::option::Option::None,
-            tokens: tokens.clone(),
-            ctx: ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
-}
-
-pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<PatternResult> {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        let span = token_span(tok.clone());
-        match sh.clone() {
-            Some(TokenShape::ShIdent) => {
-                let r = parse_dotted_ident(tokens.clone(), ctx.env.clone());
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<GuardResult> {
+        if tok_is_keyword(token_stream_first(tokens.clone()), "if".to_string()) {
+            {
+                let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
                 if has_err(r.err.clone()) {
-                    return Rc::new(PatternResult {
-                        pattern: Rc::new(MatchPattern::Wildcard),
+                    return Rc::new(GuardResult {
+                        guard: std::option::Option::None,
                         tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
+                        ctx: r.ctx.clone(),
                         err: r.err.clone(),
                     });
                 }
-                let n = r.name.clone();
-                if (n.clone() == "_".to_string()) {
-                    Rc::new(PatternResult {
-                        pattern: Rc::new(MatchPattern::Wildcard),
-                        tokens: r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                } else {
-                    if is_variant_pattern_start(n.clone()) {
-                        parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
-                    } else {
-                        {
-                            let minted = mint_parsed_node_identity(
-                                ctx.clone(),
-                                Rc::new(ParsedExtentAt::ConsumedWindow {
-                                    from: tokens.clone(),
-                                    to: r.tokens.clone(),
-                                }),
-                            );
-                            Rc::new(PatternResult {
-                                pattern: Rc::new(MatchPattern::Bind {
-                                    declaration:
-                                        crate::v1_std_core::make_pattern_binder_declaration_node(
-                                            minted.identity.clone(),
-                                            n.clone(),
-                                            r.span.clone(),
-                                        ),
-                                }),
-                                tokens: r.tokens.clone(),
-                                ctx: minted.ctx.clone(),
-                                err: std::option::Option::None,
-                            })
-                        }
-                    }
-                }
+                Rc::new(GuardResult {
+                    guard: Some(r.expr.clone()),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: std::option::Option::None,
+                })
             }
-            Some(TokenShape::ShKeyword) => {
-                let kw_text = tok.clone().unwrap().text.clone();
-                let lit_val = v1_rt::lookup(
-                    &ctx.env.syntax_spec.keyword_literals.clone(),
-                    kw_text.clone(),
-                );
-                match lit_val.clone() {
-                    Some(lv) => Rc::new(PatternResult {
-                        pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
-                        tokens: token_stream_advance(tokens.clone(), 1),
-                        ctx: ctx.clone(),
-                        err: std::option::Option::None,
-                    }),
-                    std::option::Option::None => {
-                        if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone()) {
+        } else {
+            Rc::new(GuardResult {
+                guard: std::option::Option::None,
+                tokens: tokens.clone(),
+                ctx: ctx.clone(),
+                err: std::option::Option::None,
+            })
+        }
+    })
+}
+
+pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<PatternResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<PatternResult> {
+        {
+            let tok = token_stream_first(tokens.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let span = token_span(tok.clone());
+            match sh.clone() {
+                Some(TokenShape::ShIdent) => {
+                    let r = parse_dotted_ident(tokens.clone(), ctx.env.clone());
+                    if has_err(r.err.clone()) {
+                        return Rc::new(PatternResult {
+                            pattern: Rc::new(MatchPattern::Wildcard),
+                            tokens: r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: r.err.clone(),
+                        });
+                    }
+                    let n = r.name.clone();
+                    if (n.clone() == "_".to_string()) {
+                        Rc::new(PatternResult {
+                            pattern: Rc::new(MatchPattern::Wildcard),
+                            tokens: r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: std::option::Option::None,
+                        })
+                    } else {
+                        if is_variant_pattern_start(n.clone()) {
+                            parse_variant_pattern(r.tokens.clone(), ctx.clone(), n.clone())
+                        } else {
                             {
-                                let rest = token_stream_advance(tokens.clone(), 1);
                                 let minted = mint_parsed_node_identity(
                                     ctx.clone(),
                                     Rc::new(ParsedExtentAt::ConsumedWindow {
                                         from: tokens.clone(),
-                                        to: rest.clone(),
+                                        to: r.tokens.clone(),
                                     }),
                                 );
                                 Rc::new(PatternResult {
@@ -17596,80 +17722,116 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                                         declaration:
                                             crate::v1_std_core::make_pattern_binder_declaration_node(
                                                 minted.identity.clone(),
-                                                kw_text.clone(),
-                                                span.clone(),
+                                                n.clone(),
+                                                r.span.clone(),
                                             ),
                                     }),
-                                    tokens: rest.clone(),
+                                    tokens: r.tokens.clone(),
                                     ctx: minted.ctx.clone(),
                                     err: std::option::Option::None,
                                 })
                             }
-                        } else {
-                            Rc::new(PatternResult {
-                                pattern: Rc::new(MatchPattern::Wildcard),
-                                tokens: tokens.clone(),
-                                ctx: ctx.clone(),
-                                err: Some(reserved_keyword_pattern_binder_error(
-                                    kw_text.clone(),
-                                    span.clone(),
-                                )),
-                            })
                         }
                     }
                 }
-            }
-            Some(TokenShape::ShLitInt) => {
-                let n_opt = v1_rt::parse_int(tok.clone().unwrap().text.clone());
-                let n = match n_opt.clone() {
-                    Some(v) => v.clone(),
-                    std::option::Option::None => {
-                        return Rc::new(PatternResult {
-                            pattern: Rc::new(MatchPattern::Wildcard),
-                            tokens: tokens.clone(),
+                Some(TokenShape::ShKeyword) => {
+                    let kw_text = tok.clone().unwrap().text.clone();
+                    let lit_val = v1_rt::lookup(
+                        &ctx.env.syntax_spec.keyword_literals.clone(),
+                        kw_text.clone(),
+                    );
+                    match lit_val.clone() {
+                        Some(lv) => Rc::new(PatternResult {
+                            pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
+                            tokens: token_stream_advance(tokens.clone(), 1),
                             ctx: ctx.clone(),
-                            err: Some(parse_error(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        "internal: ShLitInt token text not parseable as int: '"
-                                            .to_string(),
-                                        tok.clone().unwrap().text.clone(),
-                                    ),
-                                    "'".to_string(),
-                                ),
-                                span.clone(),
-                            )),
-                        })
+                            err: std::option::Option::None,
+                        }),
+                        std::option::Option::None => {
+                            if keyword_may_bind_as_pattern_name(kw_text.clone(), ctx.env.clone()) {
+                                {
+                                    let rest = token_stream_advance(tokens.clone(), 1);
+                                    let minted = mint_parsed_node_identity(
+                                        ctx.clone(),
+                                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                                            from: tokens.clone(),
+                                            to: rest.clone(),
+                                        }),
+                                    );
+                                    Rc::new(PatternResult {
+    pattern: Rc::new(MatchPattern::Bind {
+    declaration: crate::v1_std_core::make_pattern_binder_declaration_node(minted.identity.clone(), kw_text.clone(), span.clone()),
+}),
+    tokens: rest.clone(),
+    ctx: minted.ctx.clone(),
+    err: std::option::Option::None,
+})
+                                }
+                            } else {
+                                Rc::new(PatternResult {
+                                    pattern: Rc::new(MatchPattern::Wildcard),
+                                    tokens: tokens.clone(),
+                                    ctx: ctx.clone(),
+                                    err: Some(reserved_keyword_pattern_binder_error(
+                                        kw_text.clone(),
+                                        span.clone(),
+                                    )),
+                                })
+                            }
+                        }
                     }
-                };
-                Rc::new(PatternResult {
-                    pattern: Rc::new(MatchPattern::LitPattern {
-                        value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
-                    }),
-                    tokens: token_stream_advance(tokens.clone(), 1),
+                }
+                Some(TokenShape::ShLitInt) => {
+                    let n_opt = v1_rt::parse_int(tok.clone().unwrap().text.clone());
+                    let n =
+                        match n_opt.clone() {
+                            Some(v) => v.clone(),
+                            std::option::Option::None => return Rc::new(PatternResult {
+                                pattern: Rc::new(MatchPattern::Wildcard),
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: Some(parse_error(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "internal: ShLitInt token text not parseable as int: '"
+                                                .to_string(),
+                                            tok.clone().unwrap().text.clone(),
+                                        ),
+                                        "'".to_string(),
+                                    ),
+                                    span.clone(),
+                                )),
+                            }),
+                        };
+                    Rc::new(PatternResult {
+                        pattern: Rc::new(MatchPattern::LitPattern {
+                            value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
+                        }),
+                        tokens: token_stream_advance(tokens.clone(), 1),
+                        ctx: ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
+                Some(TokenShape::ShLitStr) => {
+                    let s = tok.clone().unwrap().text.clone();
+                    Rc::new(PatternResult {
+                        pattern: Rc::new(MatchPattern::LitPattern {
+                            value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
+                        }),
+                        tokens: token_stream_advance(tokens.clone(), 1),
+                        ctx: ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
+                _ => Rc::new(PatternResult {
+                    pattern: Rc::new(MatchPattern::Wildcard),
+                    tokens: tokens.clone(),
                     ctx: ctx.clone(),
                     err: std::option::Option::None,
-                })
+                }),
             }
-            Some(TokenShape::ShLitStr) => {
-                let s = tok.clone().unwrap().text.clone();
-                Rc::new(PatternResult {
-                    pattern: Rc::new(MatchPattern::LitPattern {
-                        value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
-                    }),
-                    tokens: token_stream_advance(tokens.clone(), 1),
-                    ctx: ctx.clone(),
-                    err: std::option::Option::None,
-                })
-            }
-            _ => Rc::new(PatternResult {
-                pattern: Rc::new(MatchPattern::Wildcard),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: std::option::Option::None,
-            }),
         }
-    }
+    })
 }
 
 pub fn parse_variant_pattern(
@@ -17677,52 +17839,15 @@ pub fn parse_variant_pattern(
     ctx: Rc<ParseContext>,
     name: String,
 ) -> Rc<PatternResult> {
-    {
-        let span = token_span(token_stream_first(tokens.clone()));
-        if tok_is_lbrace(token_stream_first(tokens.clone())) {
-            {
-                let r = parse_variant_bindings_brace(
-                    skip_newlines(token_stream_advance(tokens.clone(), 1)),
-                    ctx.clone(),
-                );
-                if has_err(r.err.clone()) {
-                    return Rc::new(PatternResult {
-                        pattern: Rc::new(MatchPattern::Wildcard),
-                        tokens: r.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r.err.clone(),
-                    });
-                }
-                let r2 = expect(
-                    skip_newlines(r.tokens.clone()),
-                    Rc::new(ExpectedToken::ExpectRBrace),
-                );
-                if has_err(r2.err.clone()) {
-                    return Rc::new(PatternResult {
-                        pattern: Rc::new(MatchPattern::Wildcard),
-                        tokens: r2.tokens.clone(),
-                        ctx: r.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
-                Rc::new(PatternResult {
-                    pattern: Rc::new(MatchPattern::VariantPattern {
-                        name: name.clone(),
-                        parent_enum: std::option::Option::None,
-                        field_bindings: r.field_bindings.clone(),
-                        parent_identity: Rc::new(
-                            VariantParentIdentity::VariantParentBeforeInference,
-                        ),
-                    }),
-                    tokens: r2.tokens.clone(),
-                    ctx: r.ctx.clone(),
-                    err: std::option::Option::None,
-                })
-            }
-        } else {
-            if tok_is_lparen(token_stream_first(tokens.clone())) {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<PatternResult> {
+        {
+            let span = token_span(token_stream_first(tokens.clone()));
+            if tok_is_lbrace(token_stream_first(tokens.clone())) {
                 {
-                    let r = parse_pattern(token_stream_advance(tokens.clone(), 1), ctx.clone());
+                    let r = parse_variant_bindings_brace(
+                        skip_newlines(token_stream_advance(tokens.clone(), 1)),
+                        ctx.clone(),
+                    );
                     if has_err(r.err.clone()) {
                         return Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Wildcard),
@@ -17731,7 +17856,10 @@ pub fn parse_variant_pattern(
                             err: r.err.clone(),
                         });
                     }
-                    let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                    let r2 = expect(
+                        skip_newlines(r.tokens.clone()),
+                        Rc::new(ExpectedToken::ExpectRBrace),
+                    );
                     if has_err(r2.err.clone()) {
                         return Rc::new(PatternResult {
                             pattern: Rc::new(MatchPattern::Wildcard),
@@ -17740,58 +17868,96 @@ pub fn parse_variant_pattern(
                             err: r2.err.clone(),
                         });
                     }
-                    let minted = mint_parsed_node_identity(
-                        r.ctx.clone(),
-                        Rc::new(ParsedExtentAt::ConsumedWindow {
-                            from: token_stream_advance(tokens.clone(), 1),
-                            to: r.tokens.clone(),
-                        }),
-                    );
-                    let fb = crate::v1_std_core::make_field_binding_node(
-                        minted.identity.clone(),
-                        "0".to_string(),
-                        r.pattern.clone(),
-                        span,
-                        crate::v1_std_core::kernel_span("0".to_string()),
-                    );
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
                             name: name.clone(),
                             parent_enum: std::option::Option::None,
-                            field_bindings: Rc::new(vec![fb.clone()]),
+                            field_bindings: r.field_bindings.clone(),
                             parent_identity: Rc::new(
                                 VariantParentIdentity::VariantParentBeforeInference,
                             ),
                         }),
                         tokens: r2.tokens.clone(),
-                        ctx: minted.ctx.clone(),
+                        ctx: r.ctx.clone(),
                         err: std::option::Option::None,
                     })
                 }
             } else {
-                Rc::new(PatternResult {
-                    pattern: Rc::new(MatchPattern::VariantPattern {
-                        name: name.clone(),
-                        parent_enum: std::option::Option::None,
-                        field_bindings: Rc::new(vec![]),
-                        parent_identity: Rc::new(
-                            VariantParentIdentity::VariantParentBeforeInference,
-                        ),
-                    }),
-                    tokens: tokens.clone(),
-                    ctx: ctx.clone(),
-                    err: std::option::Option::None,
-                })
+                if tok_is_lparen(token_stream_first(tokens.clone())) {
+                    {
+                        let r = parse_pattern(token_stream_advance(tokens.clone(), 1), ctx.clone());
+                        if has_err(r.err.clone()) {
+                            return Rc::new(PatternResult {
+                                pattern: Rc::new(MatchPattern::Wildcard),
+                                tokens: r.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r.err.clone(),
+                            });
+                        }
+                        let r2 = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                        if has_err(r2.err.clone()) {
+                            return Rc::new(PatternResult {
+                                pattern: Rc::new(MatchPattern::Wildcard),
+                                tokens: r2.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r2.err.clone(),
+                            });
+                        }
+                        let minted = mint_parsed_node_identity(
+                            r.ctx.clone(),
+                            Rc::new(ParsedExtentAt::ConsumedWindow {
+                                from: token_stream_advance(tokens.clone(), 1),
+                                to: r.tokens.clone(),
+                            }),
+                        );
+                        let fb = crate::v1_std_core::make_field_binding_node(
+                            minted.identity.clone(),
+                            "0".to_string(),
+                            r.pattern.clone(),
+                            span,
+                            crate::v1_std_core::kernel_span("0".to_string()),
+                        );
+                        Rc::new(PatternResult {
+                            pattern: Rc::new(MatchPattern::VariantPattern {
+                                name: name.clone(),
+                                parent_enum: std::option::Option::None,
+                                field_bindings: Rc::new(vec![fb.clone()]),
+                                parent_identity: Rc::new(
+                                    VariantParentIdentity::VariantParentBeforeInference,
+                                ),
+                            }),
+                            tokens: r2.tokens.clone(),
+                            ctx: minted.ctx.clone(),
+                            err: std::option::Option::None,
+                        })
+                    }
+                } else {
+                    Rc::new(PatternResult {
+                        pattern: Rc::new(MatchPattern::VariantPattern {
+                            name: name.clone(),
+                            parent_enum: std::option::Option::None,
+                            field_bindings: Rc::new(vec![]),
+                            parent_identity: Rc::new(
+                                VariantParentIdentity::VariantParentBeforeInference,
+                            ),
+                        }),
+                        tokens: tokens.clone(),
+                        ctx: ctx.clone(),
+                        err: std::option::Option::None,
+                    })
+                }
             }
         }
-    }
+    })
 }
 
 pub fn parse_variant_bindings_brace(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<BindingsResult> {
-    parse_variant_bindings_brace_acc(tokens, ctx, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<BindingsResult> {
+        parse_variant_bindings_brace_acc(tokens, ctx, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_variant_bindings_brace_acc(
@@ -17963,134 +18129,136 @@ pub fn parse_variant_bindings_brace_acc(
 }
 
 pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "if".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let condition = r.expr.clone();
-        let r = parse_block(
-            skip_newlines(r.tokens.clone()),
-            parse_context_after_node(r.ctx.clone(), condition.clone()),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let then_branch = r.expr.clone();
-        let tokens = skip_newlines(r.tokens.clone());
-        let ctx = parse_context_after_node_list(
-            r.ctx.clone(),
-            Rc::new(vec![condition.clone(), then_branch.clone()]),
-        );
-        match (*eat(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "else".to_string(),
-            }),
-        ))
-        .clone()
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
         {
-            EatResult::EatConsumed { tokens: __ec, .. } => {
-                let tokens = skip_newlines(__ec.clone());
-                if tok_is_keyword(token_stream_first(tokens.clone()), "if".to_string()) {
-                    {
-                        let r2 = parse_if(tokens.clone(), ctx.clone());
-                        if has_err(r2.err.clone()) {
-                            return Rc::new(ExprResult {
-                                expr: r2.expr.clone(),
-                                tokens: r2.tokens.clone(),
-                                ctx: r2.ctx.clone(),
-                                err: r2.err.clone(),
-                            });
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "if".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = parse_expr_no_brace(r.tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let condition = r.expr.clone();
+            let r = parse_block(
+                skip_newlines(r.tokens.clone()),
+                parse_context_after_node(r.ctx.clone(), condition.clone()),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let then_branch = r.expr.clone();
+            let tokens = skip_newlines(r.tokens.clone());
+            let ctx = parse_context_after_node_list(
+                r.ctx.clone(),
+                Rc::new(vec![condition.clone(), then_branch.clone()]),
+            );
+            match (*eat(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "else".to_string(),
+                }),
+            ))
+            .clone()
+            {
+                EatResult::EatConsumed { tokens: __ec, .. } => {
+                    let tokens = skip_newlines(__ec.clone());
+                    if tok_is_keyword(token_stream_first(tokens.clone()), "if".to_string()) {
+                        {
+                            let r2 = parse_if(tokens.clone(), ctx.clone());
+                            if has_err(r2.err.clone()) {
+                                return Rc::new(ExprResult {
+                                    expr: r2.expr.clone(),
+                                    tokens: r2.tokens.clone(),
+                                    ctx: r2.ctx.clone(),
+                                    err: r2.err.clone(),
+                                });
+                            }
+                            parsed_expr_result(
+                                entry.clone(),
+                                r2.tokens.clone(),
+                                parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                                |identity| {
+                                    crate::v1_std_core::make_expr_node(
+                                        identity,
+                                        Rc::new(ExprData::ExprIf),
+                                        Rc::new(vec![
+                                            condition.clone(),
+                                            then_branch.clone(),
+                                            r2.expr.clone(),
+                                        ]),
+                                        std::option::Option::None,
+                                        span.clone(),
+                                    )
+                                },
+                            )
                         }
-                        parsed_expr_result(
-                            entry.clone(),
-                            r2.tokens.clone(),
-                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
-                            |identity| {
-                                crate::v1_std_core::make_expr_node(
-                                    identity,
-                                    Rc::new(ExprData::ExprIf),
-                                    Rc::new(vec![
-                                        condition.clone(),
-                                        then_branch.clone(),
-                                        r2.expr.clone(),
-                                    ]),
-                                    std::option::Option::None,
-                                    span.clone(),
-                                )
-                            },
-                        )
-                    }
-                } else {
-                    {
-                        let r2 = parse_block(tokens.clone(), ctx.clone());
-                        if has_err(r2.err.clone()) {
-                            return Rc::new(ExprResult {
-                                expr: r2.expr.clone(),
-                                tokens: r2.tokens.clone(),
-                                ctx: r2.ctx.clone(),
-                                err: r2.err.clone(),
-                            });
+                    } else {
+                        {
+                            let r2 = parse_block(tokens.clone(), ctx.clone());
+                            if has_err(r2.err.clone()) {
+                                return Rc::new(ExprResult {
+                                    expr: r2.expr.clone(),
+                                    tokens: r2.tokens.clone(),
+                                    ctx: r2.ctx.clone(),
+                                    err: r2.err.clone(),
+                                });
+                            }
+                            parsed_expr_result(
+                                entry.clone(),
+                                r2.tokens.clone(),
+                                parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                                |identity| {
+                                    crate::v1_std_core::make_expr_node(
+                                        identity,
+                                        Rc::new(ExprData::ExprIf),
+                                        Rc::new(vec![
+                                            condition.clone(),
+                                            then_branch.clone(),
+                                            r2.expr.clone(),
+                                        ]),
+                                        std::option::Option::None,
+                                        span.clone(),
+                                    )
+                                },
+                            )
                         }
-                        parsed_expr_result(
-                            entry.clone(),
-                            r2.tokens.clone(),
-                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
-                            |identity| {
-                                crate::v1_std_core::make_expr_node(
-                                    identity,
-                                    Rc::new(ExprData::ExprIf),
-                                    Rc::new(vec![
-                                        condition.clone(),
-                                        then_branch.clone(),
-                                        r2.expr.clone(),
-                                    ]),
-                                    std::option::Option::None,
-                                    span.clone(),
-                                )
-                            },
-                        )
                     }
                 }
-            }
-            EatResult::EatUnchanged { tokens: __eu, .. } => {
-                parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity,
-                        Rc::new(ExprData::ExprIf),
-                        Rc::new(vec![condition.clone(), then_branch.clone()]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                })
+                EatResult::EatUnchanged { tokens: __eu, .. } => {
+                    parsed_expr_result(entry.clone(), tokens.clone(), ctx.clone(), |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity,
+                            Rc::new(ExprData::ExprIf),
+                            Rc::new(vec![condition.clone(), then_branch.clone()]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    })
+                }
             }
         }
     })
@@ -18100,268 +18268,282 @@ pub fn parse_required_expression_after_separator(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ExprResult> {
-    parse_expr(skip_newlines(tokens), ctx)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        parse_expr(skip_newlines(tokens), ctx)
+    })
 }
 
 pub fn parse_required_expression_no_brace_after_separator(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ExprResult> {
-    parse_expr_no_brace(skip_newlines(tokens), ctx)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        parse_expr_no_brace(skip_newlines(tokens), ctx)
+    })
 }
 
 pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "let".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r = expect_name(r.tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let name = r.name.clone();
-        let name_span = r.span.clone();
-        match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
-            EatResult::EatConsumed { tokens: __ec, .. } => {
-                let tr = parse_type_expr(__ec.clone(), ctx.clone());
-                if has_err(tr.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: tr.tokens.clone(),
-                        ctx: tr.ctx.clone(),
-                        err: tr.err.clone(),
-                    });
-                }
-                let r2 = expect(tr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r2.tokens.clone(),
-                        ctx: tr.ctx.clone(),
-                        err: r2.err.clone(),
-                    });
-                }
-                let r3 =
-                    parse_required_expression_after_separator(r2.tokens.clone(), tr.ctx.clone());
-                if has_err(r3.err.clone()) {
-                    return r3.clone();
-                }
-                let minted = mint_parsed_node_identity(
-                    r3.ctx.clone(),
-                    Rc::new(ParsedExtentAt::ConsumedWindow {
-                        from: tokens.clone(),
-                        to: r3.tokens.clone(),
-                    }),
-                );
-                let node = Rc::new(Node {
-                    occurrence_identity: minted.identity.clone(),
-                    name: name.clone(),
-                    span: span.clone(),
-                    ident_span: Some(name_span.clone()),
-                    children: Rc::new(vec![r3.expr.clone()]),
-                    connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: std::option::Option::None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: std::option::Option::None,
-                    transport: std::option::Option::None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: Some(tr.type_expr.clone()),
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: std::option::Option::None,
-                    module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-                    declaration_marker: DeclarationMarker::Unmarked,
-                    declaration: std::option::Option::None,
-                    expr_data: Rc::new(ExprData::ExprLet),
-                    ident: None,
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "let".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
                 });
-                Rc::new(ExprResult {
-                    expr: node.clone(),
-                    tokens: r3.tokens.clone(),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
             }
-            EatResult::EatUnchanged { tokens: __eu, .. } => {
-                let r2 = expect(__eu.clone(), Rc::new(ExpectedToken::ExpectEq));
-                if has_err(r2.err.clone()) {
-                    return Rc::new(ExprResult {
-                        expr: dummy_expr.clone(),
-                        tokens: r2.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: r2.err.clone(),
+            let r = expect_name(r.tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let name = r.name.clone();
+            let name_span = r.span.clone();
+            match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectColon))).clone() {
+                EatResult::EatConsumed { tokens: __ec, .. } => {
+                    let tr = parse_type_expr(__ec.clone(), ctx.clone());
+                    if has_err(tr.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: tr.tokens.clone(),
+                            ctx: tr.ctx.clone(),
+                            err: tr.err.clone(),
+                        });
+                    }
+                    let r2 = expect(tr.tokens.clone(), Rc::new(ExpectedToken::ExpectEq));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r2.tokens.clone(),
+                            ctx: tr.ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    let r3 = parse_required_expression_after_separator(
+                        r2.tokens.clone(),
+                        tr.ctx.clone(),
+                    );
+                    if has_err(r3.err.clone()) {
+                        return r3.clone();
+                    }
+                    let minted = mint_parsed_node_identity(
+                        r3.ctx.clone(),
+                        Rc::new(ParsedExtentAt::ConsumedWindow {
+                            from: tokens.clone(),
+                            to: r3.tokens.clone(),
+                        }),
+                    );
+                    let node = Rc::new(Node {
+                        occurrence_identity: minted.identity.clone(),
+                        name: name.clone(),
+                        span: span.clone(),
+                        ident_span: Some(name_span.clone()),
+                        children: Rc::new(vec![r3.expr.clone()]),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: std::option::Option::None,
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: Some(tr.type_expr.clone()),
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: std::option::Option::None,
+                        module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                        declaration_marker: DeclarationMarker::Unmarked,
+                        declaration: std::option::Option::None,
+                        expr_data: Rc::new(ExprData::ExprLet),
+                        ident: None,
                     });
+                    Rc::new(ExprResult {
+                        expr: node.clone(),
+                        tokens: r3.tokens.clone(),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    })
                 }
-                let r3 = parse_required_expression_after_separator(r2.tokens.clone(), ctx.clone());
-                if has_err(r3.err.clone()) {
-                    return r3.clone();
+                EatResult::EatUnchanged { tokens: __eu, .. } => {
+                    let r2 = expect(__eu.clone(), Rc::new(ExpectedToken::ExpectEq));
+                    if has_err(r2.err.clone()) {
+                        return Rc::new(ExprResult {
+                            expr: dummy_expr.clone(),
+                            tokens: r2.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: r2.err.clone(),
+                        });
+                    }
+                    let r3 =
+                        parse_required_expression_after_separator(r2.tokens.clone(), ctx.clone());
+                    if has_err(r3.err.clone()) {
+                        return r3.clone();
+                    }
+                    parsed_expr_result(
+                        tokens.clone(),
+                        r3.tokens.clone(),
+                        r3.ctx.clone(),
+                        |identity| {
+                            crate::v1_std_core::make_named_expr_node(
+                                identity,
+                                name.clone(),
+                                Rc::new(ExprData::ExprLet),
+                                Rc::new(vec![r3.expr.clone()]),
+                                std::option::Option::None,
+                                span.clone(),
+                                name_span.clone(),
+                            )
+                        },
+                    )
                 }
-                parsed_expr_result(
-                    tokens.clone(),
-                    r3.tokens.clone(),
-                    r3.ctx.clone(),
-                    |identity| {
-                        crate::v1_std_core::make_named_expr_node(
-                            identity,
-                            name.clone(),
-                            Rc::new(ExprData::ExprLet),
-                            Rc::new(vec![r3.expr.clone()]),
-                            std::option::Option::None,
-                            span.clone(),
-                            name_span.clone(),
-                        )
-                    },
-                )
             }
         }
-    }
+    })
 }
 
 pub fn parse_return(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "return".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "return".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = parse_required_expression_after_separator(r.tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return r.clone();
+            }
+            parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
+                crate::v1_std_core::make_expr_node(
+                    identity,
+                    Rc::new(ExprData::ExprReturn),
+                    Rc::new(vec![r.expr.clone()]),
+                    std::option::Option::None,
+                    span.clone(),
+                )
+            })
         }
-        let r = parse_required_expression_after_separator(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return r.clone();
-        }
-        parsed_expr_result(entry, r.tokens.clone(), r.ctx.clone(), |identity| {
-            crate::v1_std_core::make_expr_node(
-                identity,
-                Rc::new(ExprData::ExprReturn),
-                Rc::new(vec![r.expr.clone()]),
-                std::option::Option::None,
-                span.clone(),
-            )
-        })
-    }
+    })
 }
 
 pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "for".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "for".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = expect_name(r.tokens.clone(), ctx.env.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let var_name = r.name.clone();
+            let var_name_span = r.span.clone();
+            let r = expect(
+                r.tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "in".to_string(),
+                }),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r =
+                parse_required_expression_no_brace_after_separator(r.tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: r.expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let collection = r.expr.clone();
+            let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: r.expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let body = r.expr.clone();
+            let minted = mint_parsed_node_identity(
+                r.ctx.clone(),
+                Rc::new(ParsedExtentAt::ConsumedWindow {
+                    from: tokens.clone(),
+                    to: r.tokens.clone(),
+                }),
+            );
+            let for_expr = crate::v1_std_core::make_named_expr_node(
+                minted.identity.clone(),
+                var_name,
+                Rc::new(ExprData::ExprForEach),
+                Rc::new(vec![collection.clone(), body.clone()]),
+                std::option::Option::None,
+                span,
+                var_name_span,
+            );
+            Rc::new(ExprResult {
+                expr: for_expr.clone(),
                 tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+                ctx: minted.ctx.clone(),
+                err: std::option::Option::None,
+            })
         }
-        let r = expect_name(r.tokens.clone(), ctx.env.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let var_name = r.name.clone();
-        let var_name_span = r.span.clone();
-        let r = expect(
-            r.tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "in".to_string(),
-            }),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r = parse_required_expression_no_brace_after_separator(r.tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: r.expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let collection = r.expr.clone();
-        let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: r.expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let body = r.expr.clone();
-        let minted = mint_parsed_node_identity(
-            r.ctx.clone(),
-            Rc::new(ParsedExtentAt::ConsumedWindow {
-                from: tokens.clone(),
-                to: r.tokens.clone(),
-            }),
-        );
-        let for_expr = crate::v1_std_core::make_named_expr_node(
-            minted.identity.clone(),
-            var_name,
-            Rc::new(ExprData::ExprForEach),
-            Rc::new(vec![collection.clone(), body.clone()]),
-            std::option::Option::None,
-            span,
-            var_name_span,
-        );
-        Rc::new(ExprResult {
-            expr: for_expr.clone(),
-            tokens: r.tokens.clone(),
-            ctx: minted.ctx.clone(),
-            err: std::option::Option::None,
-        })
-    }
+    })
 }
 
 pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<SourceSpan> {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let base_span =
@@ -18388,7 +18570,9 @@ pub fn parse_record_literal(
     span: Rc<SourceSpan>,
     from: Rc<TokenStream>,
 ) -> Rc<ExprResult> {
-    parse_record_literal_named(tokens, ctx, name, span.clone(), span.clone(), from)
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        parse_record_literal_named(tokens, ctx, name, span.clone(), span.clone(), from)
+    })
 }
 
 pub fn parse_record_literal_named(
@@ -18399,63 +18583,67 @@ pub fn parse_record_literal_named(
     name_span: Rc<SourceSpan>,
     from: Rc<TokenStream>,
 ) -> Rc<ExprResult> {
-    {
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBrace));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            let r = parse_field_init_list(tokens.clone(), ctx.clone());
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
+            if has_err(r2.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            parsed_expr_result(from, r2.tokens.clone(), r.ctx.clone(), |identity| {
+                crate::v1_std_core::make_named_expr_node(
+                    identity,
+                    name.clone(),
+                    Rc::new(ExprData::ExprRecordLit {
+                        parent_enum: std::option::Option::None,
+                    }),
+                    r.fields.clone(),
+                    std::option::Option::None,
+                    span.clone(),
+                    name_span.clone(),
+                )
+            })
         }
-        let tokens = skip_newlines(r.tokens.clone());
-        let r = parse_field_init_list(tokens.clone(), ctx.clone());
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(r.tokens.clone());
-        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-        if has_err(r2.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        parsed_expr_result(from, r2.tokens.clone(), r.ctx.clone(), |identity| {
-            crate::v1_std_core::make_named_expr_node(
-                identity,
-                name.clone(),
-                Rc::new(ExprData::ExprRecordLit {
-                    parent_enum: std::option::Option::None,
-                }),
-                r.fields.clone(),
-                std::option::Option::None,
-                span.clone(),
-                name_span.clone(),
-            )
-        })
-    }
+    })
 }
 
 pub fn parse_field_init_list(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<FieldInitsResult> {
-    parse_field_init_list_acc(
-        tokens,
-        ctx,
-        Rc::new(vec![]),
-        v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
-    )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<FieldInitsResult> {
+        parse_field_init_list_acc(
+            tokens,
+            ctx,
+            Rc::new(vec![]),
+            v1_rt::rc_empty_map::<String, Rc<SourceSpan>>(),
+        )
+    })
 }
 
 pub fn parse_field_init_list_acc(
@@ -18576,33 +18764,116 @@ pub fn field_init_position(ctx: Rc<ParseContext>, span: Rc<SourceSpan>) -> Strin
 }
 
 pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldInitResult> {
-    {
-        let zero_span = crate::v1_std_core::no_span();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_fi = crate::v1_std_core::make_field_init_node(
-            Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            "".to_string(),
-            parse_recovery_placeholder(),
-            zero_span.clone(),
-            zero_span.clone(),
-        );
-        let tok = token_stream_first(tokens.clone());
-        if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone(), ctx.env.clone())) {
-            {
-                let name_r = expect_name(tokens.clone(), ctx.env.clone());
-                if has_err(name_r.err.clone()) {
-                    return Rc::new(FieldInitResult {
-                        field: dummy_fi.clone(),
-                        tokens: name_r.tokens.clone(),
-                        ctx: ctx.clone(),
-                        err: name_r.err.clone(),
-                    });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<FieldInitResult> {
+        {
+            let zero_span = crate::v1_std_core::no_span();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_fi = crate::v1_std_core::make_field_init_node(
+                Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                "".to_string(),
+                parse_recovery_placeholder(),
+                zero_span.clone(),
+                zero_span.clone(),
+            );
+            let tok = token_stream_first(tokens.clone());
+            if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone(), ctx.env.clone())) {
+                {
+                    let name_r = expect_name(tokens.clone(), ctx.env.clone());
+                    if has_err(name_r.err.clone()) {
+                        return Rc::new(FieldInitResult {
+                            field: dummy_fi.clone(),
+                            tokens: name_r.tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: name_r.err.clone(),
+                        });
+                    }
+                    let n = name_r.name.clone();
+                    if tok_is_colon(token_stream_first(name_r.tokens.clone())) {
+                        {
+                            let r = parse_expr(
+                                token_stream_advance(name_r.tokens.clone(), 1),
+                                ctx.clone(),
+                            );
+                            if has_err(r.err.clone()) {
+                                return Rc::new(FieldInitResult {
+                                    field: dummy_fi.clone(),
+                                    tokens: r.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: r.err.clone(),
+                                });
+                            }
+                            let minted = mint_parsed_node_identity(
+                                r.ctx.clone(),
+                                Rc::new(ParsedExtentAt::ConsumedWindow {
+                                    from: tokens.clone(),
+                                    to: r.tokens.clone(),
+                                }),
+                            );
+                            let fi = crate::v1_std_core::make_field_init_node(
+                                minted.identity.clone(),
+                                n.clone(),
+                                r.expr.clone(),
+                                span.clone(),
+                                name_r.span.clone(),
+                            );
+                            Rc::new(FieldInitResult {
+                                field: fi.clone(),
+                                tokens: r.tokens.clone(),
+                                ctx: minted.ctx.clone(),
+                                err: std::option::Option::None,
+                            })
+                        }
+                    } else {
+                        {
+                            let value_mint = mint_parsed_node_identity(
+                                ctx.clone(),
+                                Rc::new(ParsedExtentAt::ConsumedWindow {
+                                    from: tokens.clone(),
+                                    to: name_r.tokens.clone(),
+                                }),
+                            );
+                            let value = crate::v1_std_core::make_named_expr_node(
+                                value_mint.identity.clone(),
+                                n.clone(),
+                                Rc::new(ExprData::ExprVar {
+                                    binding_kind: std::option::Option::None,
+                                }),
+                                Rc::new(vec![]),
+                                std::option::Option::None,
+                                span.clone(),
+                                name_r.span.clone(),
+                            );
+                            let field_mint = mint_parsed_node_identity(
+                                value_mint.ctx.clone(),
+                                Rc::new(ParsedExtentAt::ConsumedWindow {
+                                    from: tokens.clone(),
+                                    to: name_r.tokens.clone(),
+                                }),
+                            );
+                            let fi = crate::v1_std_core::make_field_init_node(
+                                field_mint.identity.clone(),
+                                n.clone(),
+                                value,
+                                span.clone(),
+                                name_r.span.clone(),
+                            );
+                            Rc::new(FieldInitResult {
+                                field: fi.clone(),
+                                tokens: name_r.tokens.clone(),
+                                ctx: field_mint.ctx.clone(),
+                                err: std::option::Option::None,
+                            })
+                        }
+                    }
                 }
-                let n = name_r.name.clone();
-                if tok_is_colon(token_stream_first(name_r.tokens.clone())) {
+            } else {
+                if (tok_is_lit_str(tok.clone()) && peek_is_colon_after_ident(tokens.clone())) {
                     {
-                        let r =
-                            parse_expr(token_stream_advance(name_r.tokens.clone(), 1), ctx.clone());
+                        let str_name = match tok.clone() {
+                            Some(t) => t.text.clone(),
+                            std::option::Option::None => "_".to_string(),
+                        };
+                        let r = parse_expr(token_stream_advance(tokens.clone(), 2), ctx.clone());
                         if has_err(r.err.clone()) {
                             return Rc::new(FieldInitResult {
                                 field: dummy_fi.clone(),
@@ -18620,10 +18891,10 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         );
                         let fi = crate::v1_std_core::make_field_init_node(
                             minted.identity.clone(),
-                            n.clone(),
+                            str_name,
                             r.expr.clone(),
                             span.clone(),
-                            name_r.span.clone(),
+                            crate::v1_std_core::no_span(),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
@@ -18634,170 +18905,93 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                     }
                 } else {
                     {
-                        let value_mint = mint_parsed_node_identity(
-                            ctx.clone(),
+                        let r = parse_expr(tokens.clone(), ctx.clone());
+                        if has_err(r.err.clone()) {
+                            return Rc::new(FieldInitResult {
+                                field: dummy_fi.clone(),
+                                tokens: r.tokens.clone(),
+                                ctx: r.ctx.clone(),
+                                err: r.err.clone(),
+                            });
+                        }
+                        let minted = mint_parsed_node_identity(
+                            r.ctx.clone(),
                             Rc::new(ParsedExtentAt::ConsumedWindow {
                                 from: tokens.clone(),
-                                to: name_r.tokens.clone(),
-                            }),
-                        );
-                        let value = crate::v1_std_core::make_named_expr_node(
-                            value_mint.identity.clone(),
-                            n.clone(),
-                            Rc::new(ExprData::ExprVar {
-                                binding_kind: std::option::Option::None,
-                            }),
-                            Rc::new(vec![]),
-                            std::option::Option::None,
-                            span.clone(),
-                            name_r.span.clone(),
-                        );
-                        let field_mint = mint_parsed_node_identity(
-                            value_mint.ctx.clone(),
-                            Rc::new(ParsedExtentAt::ConsumedWindow {
-                                from: tokens.clone(),
-                                to: name_r.tokens.clone(),
+                                to: r.tokens.clone(),
                             }),
                         );
                         let fi = crate::v1_std_core::make_field_init_node(
-                            field_mint.identity.clone(),
-                            n.clone(),
-                            value,
+                            minted.identity.clone(),
+                            "_".to_string(),
+                            r.expr.clone(),
                             span.clone(),
-                            name_r.span.clone(),
+                            crate::v1_std_core::no_span(),
                         );
                         Rc::new(FieldInitResult {
                             field: fi.clone(),
-                            tokens: name_r.tokens.clone(),
-                            ctx: field_mint.ctx.clone(),
+                            tokens: r.tokens.clone(),
+                            ctx: minted.ctx.clone(),
                             err: std::option::Option::None,
                         })
                     }
                 }
             }
-        } else {
-            if (tok_is_lit_str(tok.clone()) && peek_is_colon_after_ident(tokens.clone())) {
-                {
-                    let str_name = match tok.clone() {
-                        Some(t) => t.text.clone(),
-                        std::option::Option::None => "_".to_string(),
-                    };
-                    let r = parse_expr(token_stream_advance(tokens.clone(), 2), ctx.clone());
-                    if has_err(r.err.clone()) {
-                        return Rc::new(FieldInitResult {
-                            field: dummy_fi.clone(),
-                            tokens: r.tokens.clone(),
-                            ctx: r.ctx.clone(),
-                            err: r.err.clone(),
-                        });
-                    }
-                    let minted = mint_parsed_node_identity(
-                        r.ctx.clone(),
-                        Rc::new(ParsedExtentAt::ConsumedWindow {
-                            from: tokens.clone(),
-                            to: r.tokens.clone(),
-                        }),
-                    );
-                    let fi = crate::v1_std_core::make_field_init_node(
-                        minted.identity.clone(),
-                        str_name,
-                        r.expr.clone(),
-                        span.clone(),
-                        crate::v1_std_core::no_span(),
-                    );
-                    Rc::new(FieldInitResult {
-                        field: fi.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: minted.ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                }
-            } else {
-                {
-                    let r = parse_expr(tokens.clone(), ctx.clone());
-                    if has_err(r.err.clone()) {
-                        return Rc::new(FieldInitResult {
-                            field: dummy_fi.clone(),
-                            tokens: r.tokens.clone(),
-                            ctx: r.ctx.clone(),
-                            err: r.err.clone(),
-                        });
-                    }
-                    let minted = mint_parsed_node_identity(
-                        r.ctx.clone(),
-                        Rc::new(ParsedExtentAt::ConsumedWindow {
-                            from: tokens.clone(),
-                            to: r.tokens.clone(),
-                        }),
-                    );
-                    let fi = crate::v1_std_core::make_field_init_node(
-                        minted.identity.clone(),
-                        "_".to_string(),
-                        r.expr.clone(),
-                        span.clone(),
-                        crate::v1_std_core::no_span(),
-                    );
-                    Rc::new(FieldInitResult {
-                        field: fi.clone(),
-                        tokens: r.tokens.clone(),
-                        ctx: minted.ctx.clone(),
-                        err: std::option::Option::None,
-                    })
-                }
-            }
         }
-    }
+    })
 }
 
 pub fn parse_list_literal(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLBracket));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r = parse_expr_list_until(
+                skip_newlines(r.tokens.clone()),
+                ctx.clone(),
+                Rc::new(ExpectedToken::ExpectRBracket),
+            );
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let r2 = expect(
+                skip_newlines(r.tokens.clone()),
+                Rc::new(ExpectedToken::ExpectRBracket),
+            );
+            if has_err(r2.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: r.ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            parsed_expr_result(entry, r2.tokens.clone(), r.ctx.clone(), |identity| {
+                crate::v1_std_core::make_expr_node(
+                    identity,
+                    Rc::new(ExprData::ExprListLit),
+                    r.exprs.clone(),
+                    std::option::Option::None,
+                    span.clone(),
+                )
+            })
         }
-        let r = parse_expr_list_until(
-            skip_newlines(r.tokens.clone()),
-            ctx.clone(),
-            Rc::new(ExpectedToken::ExpectRBracket),
-        );
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r.err.clone(),
-            });
-        }
-        let r2 = expect(
-            skip_newlines(r.tokens.clone()),
-            Rc::new(ExpectedToken::ExpectRBracket),
-        );
-        if has_err(r2.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: r.ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        parsed_expr_result(entry, r2.tokens.clone(), r.ctx.clone(), |identity| {
-            crate::v1_std_core::make_expr_node(
-                identity,
-                Rc::new(ExprData::ExprListLit),
-                r.exprs.clone(),
-                std::option::Option::None,
-                span.clone(),
-            )
-        })
-    }
+    })
 }
 
 pub fn parse_expr_list_until(
@@ -18805,7 +18999,9 @@ pub fn parse_expr_list_until(
     ctx: Rc<ParseContext>,
     end_expected: Rc<ExpectedToken>,
 ) -> Rc<ExprsResult> {
-    parse_expr_list_until_acc(tokens, ctx, end_expected, Rc::new(vec![]))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprsResult> {
+        parse_expr_list_until_acc(tokens, ctx, end_expected, Rc::new(vec![]))
+    })
 }
 
 pub fn parse_expr_list_until_acc(
@@ -18868,193 +19064,199 @@ pub fn parse_expr_list_until_acc(
 }
 
 pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
-        if has_err(r.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy_expr.clone(),
-                tokens: r.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r.err.clone(),
-            });
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
+            if has_err(r.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy_expr.clone(),
+                    tokens: r.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r.tokens.clone());
+            if tok_is_rparen(token_stream_first(tokens.clone())) {
+                parsed_expr_result(
+                    entry.clone(),
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity,
+                            Rc::new(ExprData::ExprRecordLit {
+                                parent_enum: std::option::Option::None,
+                            }),
+                            Rc::new(vec![]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    },
+                )
+            } else {
+                {
+                    let lambda_r = try_lambda_params(tokens.clone(), ctx.clone());
+                    if lambda_r.is_lambda.clone() {
+                        {
+                            let r =
+                                parse_lambda_body(lambda_r.tokens.clone(), lambda_r.ctx.clone());
+                            if has_err(r.err.clone()) {
+                                return Rc::new(ExprResult {
+                                    expr: r.expr.clone(),
+                                    tokens: r.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: r.err.clone(),
+                                });
+                            }
+                            parsed_expr_result(
+                                entry.clone(),
+                                r.tokens.clone(),
+                                r.ctx.clone(),
+                                |identity| {
+                                    crate::v1_std_core::make_expr_node(
+                                        identity,
+                                        Rc::new(ExprData::ExprLambda),
+                                        v1_rt::concat(
+                                            Rc::new(vec![r.expr.clone()]),
+                                            Rc::new({
+                                                let mut __result = Vec::new();
+                                                for p in lambda_r.params.clone().iter().cloned() {
+                                                    __result.push(parsed_name_leaf(
+                                                        p.occurrence_identity.clone(),
+                                                        p.name.clone(),
+                                                        p.span.clone(),
+                                                    ));
+                                                }
+                                                __result
+                                            }),
+                                        ),
+                                        std::option::Option::None,
+                                        span.clone(),
+                                    )
+                                },
+                            )
+                        }
+                    } else {
+                        {
+                            let r = parse_expr(lambda_r.tokens.clone(), lambda_r.ctx.clone());
+                            if has_err(r.err.clone()) {
+                                return Rc::new(ExprResult {
+                                    expr: r.expr.clone(),
+                                    tokens: r.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: r.err.clone(),
+                                });
+                            }
+                            let tokens = skip_newlines(r.tokens.clone());
+                            let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
+                            if has_err(r2.err.clone()) {
+                                return Rc::new(ExprResult {
+                                    expr: dummy_expr.clone(),
+                                    tokens: r2.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: r2.err.clone(),
+                                });
+                            }
+                            Rc::new(ExprResult {
+                                expr: r.expr.clone(),
+                                tokens: r2.tokens.clone(),
+                                ctx: parse_context_record_erased_scope(
+                                    r.ctx.clone(),
+                                    ErasedSourceScopeKind::ErasedParenScope,
+                                    r.expr.clone(),
+                                    entry.clone(),
+                                    r2.tokens.clone(),
+                                ),
+                                err: std::option::Option::None,
+                            })
+                        }
+                    }
+                }
+            }
         }
-        let tokens = skip_newlines(r.tokens.clone());
-        if tok_is_rparen(token_stream_first(tokens.clone())) {
+    })
+}
+
+pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy = parse_recovery_placeholder();
+            let r1 = expect(
+                tokens.clone(),
+                Rc::new(ExpectedToken::ExpectKeyword {
+                    text: "fn".to_string(),
+                }),
+            );
+            if has_err(r1.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy.clone(),
+                    tokens: r1.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r1.err.clone(),
+                });
+            }
+            let r2 = expect(r1.tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
+            if has_err(r2.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy.clone(),
+                    tokens: r2.tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: r2.err.clone(),
+                });
+            }
+            let params_r =
+                collect_fn_lambda_params(r2.tokens.clone(), ctx.clone(), Rc::new(vec![]));
+            let r3 = expect(
+                params_r.tokens.clone(),
+                Rc::new(ExpectedToken::ExpectRParen),
+            );
+            if has_err(r3.err.clone()) {
+                return Rc::new(ExprResult {
+                    expr: dummy.clone(),
+                    tokens: r3.tokens.clone(),
+                    ctx: params_r.ctx.clone(),
+                    err: r3.err.clone(),
+                });
+            }
+            let tokens = skip_newlines(r3.tokens.clone());
+            let body_r = parse_brace_expr(tokens.clone(), params_r.ctx.clone());
+            if has_err(body_r.err.clone()) {
+                return body_r.clone();
+            }
             parsed_expr_result(
-                entry.clone(),
-                token_stream_advance(tokens.clone(), 1),
-                ctx.clone(),
+                entry,
+                body_r.tokens.clone(),
+                body_r.ctx.clone(),
                 |identity| {
                     crate::v1_std_core::make_expr_node(
                         identity,
-                        Rc::new(ExprData::ExprRecordLit {
-                            parent_enum: std::option::Option::None,
-                        }),
-                        Rc::new(vec![]),
+                        Rc::new(ExprData::ExprLambda),
+                        v1_rt::concat(
+                            Rc::new(vec![body_r.expr.clone()]),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for p in params_r.params.clone().iter().cloned() {
+                                    __result.push(parsed_name_leaf(
+                                        p.occurrence_identity.clone(),
+                                        p.name.clone(),
+                                        p.span.clone(),
+                                    ));
+                                }
+                                __result
+                            }),
+                        ),
                         std::option::Option::None,
                         span.clone(),
                     )
                 },
             )
-        } else {
-            {
-                let lambda_r = try_lambda_params(tokens.clone(), ctx.clone());
-                if lambda_r.is_lambda.clone() {
-                    {
-                        let r = parse_lambda_body(lambda_r.tokens.clone(), lambda_r.ctx.clone());
-                        if has_err(r.err.clone()) {
-                            return Rc::new(ExprResult {
-                                expr: r.expr.clone(),
-                                tokens: r.tokens.clone(),
-                                ctx: r.ctx.clone(),
-                                err: r.err.clone(),
-                            });
-                        }
-                        parsed_expr_result(
-                            entry.clone(),
-                            r.tokens.clone(),
-                            r.ctx.clone(),
-                            |identity| {
-                                crate::v1_std_core::make_expr_node(
-                                    identity,
-                                    Rc::new(ExprData::ExprLambda),
-                                    v1_rt::concat(
-                                        Rc::new(vec![r.expr.clone()]),
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for p in lambda_r.params.clone().iter().cloned() {
-                                                __result.push(parsed_name_leaf(
-                                                    p.occurrence_identity.clone(),
-                                                    p.name.clone(),
-                                                    p.span.clone(),
-                                                ));
-                                            }
-                                            __result
-                                        }),
-                                    ),
-                                    std::option::Option::None,
-                                    span.clone(),
-                                )
-                            },
-                        )
-                    }
-                } else {
-                    {
-                        let r = parse_expr(lambda_r.tokens.clone(), lambda_r.ctx.clone());
-                        if has_err(r.err.clone()) {
-                            return Rc::new(ExprResult {
-                                expr: r.expr.clone(),
-                                tokens: r.tokens.clone(),
-                                ctx: r.ctx.clone(),
-                                err: r.err.clone(),
-                            });
-                        }
-                        let tokens = skip_newlines(r.tokens.clone());
-                        let r2 = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRParen));
-                        if has_err(r2.err.clone()) {
-                            return Rc::new(ExprResult {
-                                expr: dummy_expr.clone(),
-                                tokens: r2.tokens.clone(),
-                                ctx: r.ctx.clone(),
-                                err: r2.err.clone(),
-                            });
-                        }
-                        Rc::new(ExprResult {
-                            expr: r.expr.clone(),
-                            tokens: r2.tokens.clone(),
-                            ctx: parse_context_record_erased_scope(
-                                r.ctx.clone(),
-                                ErasedSourceScopeKind::ErasedParenScope,
-                                r.expr.clone(),
-                                entry.clone(),
-                                r2.tokens.clone(),
-                            ),
-                            err: std::option::Option::None,
-                        })
-                    }
-                }
-            }
         }
-    }
-}
-
-pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy = parse_recovery_placeholder();
-        let r1 = expect(
-            tokens.clone(),
-            Rc::new(ExpectedToken::ExpectKeyword {
-                text: "fn".to_string(),
-            }),
-        );
-        if has_err(r1.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy.clone(),
-                tokens: r1.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r1.err.clone(),
-            });
-        }
-        let r2 = expect(r1.tokens.clone(), Rc::new(ExpectedToken::ExpectLParen));
-        if has_err(r2.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy.clone(),
-                tokens: r2.tokens.clone(),
-                ctx: ctx.clone(),
-                err: r2.err.clone(),
-            });
-        }
-        let params_r = collect_fn_lambda_params(r2.tokens.clone(), ctx.clone(), Rc::new(vec![]));
-        let r3 = expect(
-            params_r.tokens.clone(),
-            Rc::new(ExpectedToken::ExpectRParen),
-        );
-        if has_err(r3.err.clone()) {
-            return Rc::new(ExprResult {
-                expr: dummy.clone(),
-                tokens: r3.tokens.clone(),
-                ctx: params_r.ctx.clone(),
-                err: r3.err.clone(),
-            });
-        }
-        let tokens = skip_newlines(r3.tokens.clone());
-        let body_r = parse_brace_expr(tokens.clone(), params_r.ctx.clone());
-        if has_err(body_r.err.clone()) {
-            return body_r.clone();
-        }
-        parsed_expr_result(
-            entry,
-            body_r.tokens.clone(),
-            body_r.ctx.clone(),
-            |identity| {
-                crate::v1_std_core::make_expr_node(
-                    identity,
-                    Rc::new(ExprData::ExprLambda),
-                    v1_rt::concat(
-                        Rc::new(vec![body_r.expr.clone()]),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in params_r.params.clone().iter().cloned() {
-                                __result.push(parsed_name_leaf(
-                                    p.occurrence_identity.clone(),
-                                    p.name.clone(),
-                                    p.span.clone(),
-                                ));
-                            }
-                            __result
-                        }),
-                    ),
-                    std::option::Option::None,
-                    span.clone(),
-                )
-            },
-        )
-    }
+    })
 }
 
 pub fn collect_fn_lambda_params(
@@ -19269,48 +19471,50 @@ pub fn interp_body_error_message(err: Option<Rc<ErrorNode>>) -> String {
 }
 
 pub fn parse_string_interp(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let tok = token_stream_first(tokens.clone());
-        let span = token_span(tok.clone());
-        let sh = match tok.clone() {
-            Some(t) => Some(t.shape.clone()),
-            std::option::Option::None => std::option::Option::None,
-        };
-        match sh.clone() {
-            Some(TokenShape::ShStrBegin) => {
-                let prefix = tok.clone().unwrap().text.clone();
-                let parts_init = if (v1_rt::string_length(&prefix) > 0) {
-                    Rc::new(vec![Rc::new(ParsedStringPart {
-                        part: Rc::new(StringPart::Text {
-                            value: prefix.clone(),
-                        }),
-                        at: Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
-                    })])
-                } else {
-                    Rc::new(vec![])
-                };
-                parse_interp_parts(
-                    tokens.clone(),
-                    token_stream_advance(tokens.clone(), 1),
-                    ctx.clone(),
-                    parts_init,
-                    span.clone(),
-                )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let tok = token_stream_first(tokens.clone());
+            let span = token_span(tok.clone());
+            let sh = match tok.clone() {
+                Some(t) => Some(t.shape.clone()),
+                std::option::Option::None => std::option::Option::None,
+            };
+            match sh.clone() {
+                Some(TokenShape::ShStrBegin) => {
+                    let prefix = tok.clone().unwrap().text.clone();
+                    let parts_init = if (v1_rt::string_length(&prefix) > 0) {
+                        Rc::new(vec![Rc::new(ParsedStringPart {
+                            part: Rc::new(StringPart::Text {
+                                value: prefix.clone(),
+                            }),
+                            at: Rc::new(ParsedExtentAt::AtToken { span: span.clone() }),
+                        })])
+                    } else {
+                        Rc::new(vec![])
+                    };
+                    parse_interp_parts(
+                        tokens.clone(),
+                        token_stream_advance(tokens.clone(), 1),
+                        ctx.clone(),
+                        parts_init,
+                        span.clone(),
+                    )
+                }
+                _ => Rc::new(ExprResult {
+                    expr: parse_recovery_expr(
+                        span.clone(),
+                        "expected string interpolation".to_string(),
+                    ),
+                    tokens: tokens.clone(),
+                    ctx: ctx.clone(),
+                    err: Some(parse_error(
+                        "expected string interpolation".to_string(),
+                        span.clone(),
+                    )),
+                }),
             }
-            _ => Rc::new(ExprResult {
-                expr: parse_recovery_expr(
-                    span.clone(),
-                    "expected string interpolation".to_string(),
-                ),
-                tokens: tokens.clone(),
-                ctx: ctx.clone(),
-                err: Some(parse_error(
-                    "expected string interpolation".to_string(),
-                    span.clone(),
-                )),
-            }),
         }
-    }
+    })
 }
 
 pub fn parse_interp_parts(
@@ -19479,263 +19683,42 @@ pub fn parse_interp_parts(
 }
 
 pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult> {
-    {
-        let entry = tokens.clone();
-        let span = token_span(token_stream_first(tokens.clone()));
-        let dummy_expr = parse_recovery_placeholder();
-        let tokens = skip_newlines(token_stream_advance(tokens.clone(), 1));
-        let tok = token_stream_first(tokens.clone());
-        if tok_is_rbrace(tok.clone()) {
-            parsed_expr_result(
-                entry.clone(),
-                token_stream_advance(tokens.clone(), 1),
-                ctx.clone(),
-                |identity| {
-                    crate::v1_std_core::make_expr_node(
-                        identity,
-                        Rc::new(ExprData::ExprRecordLit {
-                            parent_enum: std::option::Option::None,
-                        }),
-                        Rc::new(vec![]),
-                        std::option::Option::None,
-                        span.clone(),
-                    )
-                },
-            )
-        } else {
-            {
-                let sh = match tok.clone() {
-                    Some(t) => Some(t.shape.clone()),
-                    std::option::Option::None => std::option::Option::None,
-                };
-                match sh.clone() {
-                    Some(TokenShape::ShKeyword) => {
-                        let brace_kw = tok_keyword_text(tok.clone());
-                        if ((brace_kw.clone() == "let".to_string())
-                            || (brace_kw.clone() == "return".to_string()))
-                        {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<ExprResult> {
+        {
+            let entry = tokens.clone();
+            let span = token_span(token_stream_first(tokens.clone()));
+            let dummy_expr = parse_recovery_placeholder();
+            let tokens = skip_newlines(token_stream_advance(tokens.clone(), 1));
+            let tok = token_stream_first(tokens.clone());
+            if tok_is_rbrace(tok.clone()) {
+                parsed_expr_result(
+                    entry.clone(),
+                    token_stream_advance(tokens.clone(), 1),
+                    ctx.clone(),
+                    |identity| {
+                        crate::v1_std_core::make_expr_node(
+                            identity,
+                            Rc::new(ExprData::ExprRecordLit {
+                                parent_enum: std::option::Option::None,
+                            }),
+                            Rc::new(vec![]),
+                            std::option::Option::None,
+                            span.clone(),
+                        )
+                    },
+                )
+            } else {
+                {
+                    let sh = match tok.clone() {
+                        Some(t) => Some(t.shape.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    };
+                    match sh.clone() {
+                        Some(TokenShape::ShKeyword) => {
+                            let brace_kw = tok_keyword_text(tok.clone());
+                            if ((brace_kw.clone() == "let".to_string())
+                                || (brace_kw.clone() == "return".to_string()))
                             {
-                                let r = parse_stmts(tokens.clone(), ctx.clone());
-                                if has_err(r.err.clone()) {
-                                    return Rc::new(ExprResult {
-                                        expr: dummy_expr.clone(),
-                                        tokens: r.tokens.clone(),
-                                        ctx: r.ctx.clone(),
-                                        err: r.err.clone(),
-                                    });
-                                }
-                                let tokens = skip_newlines(r.tokens.clone());
-                                let r2 =
-                                    expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-                                if has_err(r2.err.clone()) {
-                                    return Rc::new(ExprResult {
-                                        expr: dummy_expr.clone(),
-                                        tokens: r2.tokens.clone(),
-                                        ctx: r.ctx.clone(),
-                                        err: r2.err.clone(),
-                                    });
-                                }
-                                if ((r.stmts.clone().len() as i64) == 1) {
-                                    Rc::new(ExprResult {
-                                        expr: r.stmts.clone().first().cloned().clone().unwrap(),
-                                        tokens: r2.tokens.clone(),
-                                        ctx: parse_context_record_erased_scope(
-                                            r.ctx.clone(),
-                                            ErasedSourceScopeKind::ErasedSingletonBlockScope,
-                                            r.stmts.clone().first().cloned().clone().unwrap(),
-                                            entry.clone(),
-                                            r2.tokens.clone(),
-                                        ),
-                                        err: std::option::Option::None,
-                                    })
-                                } else {
-                                    parsed_expr_result(
-                                        entry.clone(),
-                                        r2.tokens.clone(),
-                                        r.ctx.clone(),
-                                        |identity| {
-                                            crate::v1_std_core::make_expr_node(
-                                                identity,
-                                                Rc::new(ExprData::ExprBlock),
-                                                r.stmts.clone(),
-                                                std::option::Option::None,
-                                                span.clone(),
-                                            )
-                                        },
-                                    )
-                                }
-                            }
-                        } else {
-                            if (tok_is_keyword_name(tok.clone(), ctx.env.clone())
-                                && peek_is_colon_after_ident(tokens.clone()))
-                            {
-                                {
-                                    let r = parse_field_init_list(tokens.clone(), ctx.clone());
-                                    if has_err(r.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r.err.clone(),
-                                        });
-                                    }
-                                    let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(
-                                        tokens.clone(),
-                                        Rc::new(ExpectedToken::ExpectRBrace),
-                                    );
-                                    if has_err(r2.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r2.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r2.err.clone(),
-                                        });
-                                    }
-                                    parsed_expr_result(
-                                        entry.clone(),
-                                        r2.tokens.clone(),
-                                        r.ctx.clone(),
-                                        |identity| {
-                                            crate::v1_std_core::make_expr_node(
-                                                identity,
-                                                Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: std::option::Option::None,
-                                                }),
-                                                r.fields.clone(),
-                                                std::option::Option::None,
-                                                span.clone(),
-                                            )
-                                        },
-                                    )
-                                }
-                            } else {
-                                {
-                                    let r = parse_expr(tokens.clone(), ctx.clone());
-                                    if has_err(r.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r.err.clone(),
-                                        });
-                                    }
-                                    let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(
-                                        tokens.clone(),
-                                        Rc::new(ExpectedToken::ExpectRBrace),
-                                    );
-                                    if has_err(r2.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r2.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r2.err.clone(),
-                                        });
-                                    }
-                                    Rc::new(ExprResult {
-                                        expr: r.expr.clone(),
-                                        tokens: r2.tokens.clone(),
-                                        ctx: parse_context_record_erased_scope(
-                                            r.ctx.clone(),
-                                            ErasedSourceScopeKind::ErasedSingletonBlockScope,
-                                            r.expr.clone(),
-                                            entry.clone(),
-                                            r2.tokens.clone(),
-                                        ),
-                                        err: std::option::Option::None,
-                                    })
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        let ident_or_keyword = (tok_is_ident(tok.clone())
-                            || tok_is_keyword_name(tok.clone(), ctx.env.clone()));
-                        if (ident_or_keyword.clone() && peek_is_colon_after_ident(tokens.clone())) {
-                            {
-                                let r = parse_field_init_list(tokens.clone(), ctx.clone());
-                                if has_err(r.err.clone()) {
-                                    return Rc::new(ExprResult {
-                                        expr: dummy_expr.clone(),
-                                        tokens: r.tokens.clone(),
-                                        ctx: r.ctx.clone(),
-                                        err: r.err.clone(),
-                                    });
-                                }
-                                let tokens = skip_newlines(r.tokens.clone());
-                                let r2 =
-                                    expect(tokens.clone(), Rc::new(ExpectedToken::ExpectRBrace));
-                                if has_err(r2.err.clone()) {
-                                    return Rc::new(ExprResult {
-                                        expr: dummy_expr.clone(),
-                                        tokens: r2.tokens.clone(),
-                                        ctx: r.ctx.clone(),
-                                        err: r2.err.clone(),
-                                    });
-                                }
-                                parsed_expr_result(
-                                    entry.clone(),
-                                    r2.tokens.clone(),
-                                    r.ctx.clone(),
-                                    |identity| {
-                                        crate::v1_std_core::make_expr_node(
-                                            identity,
-                                            Rc::new(ExprData::ExprRecordLit {
-                                                parent_enum: std::option::Option::None,
-                                            }),
-                                            r.fields.clone(),
-                                            std::option::Option::None,
-                                            span.clone(),
-                                        )
-                                    },
-                                )
-                            }
-                        } else {
-                            if (tok_is_lit_str(tok.clone())
-                                && peek_is_colon_after_ident(tokens.clone()))
-                            {
-                                {
-                                    let r = parse_field_init_list(tokens.clone(), ctx.clone());
-                                    if has_err(r.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r.err.clone(),
-                                        });
-                                    }
-                                    let tokens = skip_newlines(r.tokens.clone());
-                                    let r2 = expect(
-                                        tokens.clone(),
-                                        Rc::new(ExpectedToken::ExpectRBrace),
-                                    );
-                                    if has_err(r2.err.clone()) {
-                                        return Rc::new(ExprResult {
-                                            expr: dummy_expr.clone(),
-                                            tokens: r2.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r2.err.clone(),
-                                        });
-                                    }
-                                    parsed_expr_result(
-                                        entry.clone(),
-                                        r2.tokens.clone(),
-                                        r.ctx.clone(),
-                                        |identity| {
-                                            crate::v1_std_core::make_expr_node(
-                                                identity,
-                                                Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: std::option::Option::None,
-                                                }),
-                                                r.fields.clone(),
-                                                std::option::Option::None,
-                                                span.clone(),
-                                            )
-                                        },
-                                    )
-                                }
-                            } else {
                                 {
                                     let r = parse_stmts(tokens.clone(), ctx.clone());
                                     if has_err(r.err.clone()) {
@@ -19789,13 +19772,236 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         )
                                     }
                                 }
+                            } else {
+                                if (tok_is_keyword_name(tok.clone(), ctx.env.clone())
+                                    && peek_is_colon_after_ident(tokens.clone()))
+                                {
+                                    {
+                                        let r = parse_field_init_list(tokens.clone(), ctx.clone());
+                                        if has_err(r.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r.err.clone(),
+                                            });
+                                        }
+                                        let tokens = skip_newlines(r.tokens.clone());
+                                        let r2 = expect(
+                                            tokens.clone(),
+                                            Rc::new(ExpectedToken::ExpectRBrace),
+                                        );
+                                        if has_err(r2.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r2.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r2.err.clone(),
+                                            });
+                                        }
+                                        parsed_expr_result(
+                                            entry.clone(),
+                                            r2.tokens.clone(),
+                                            r.ctx.clone(),
+                                            |identity| {
+                                                crate::v1_std_core::make_expr_node(
+                                                    identity,
+                                                    Rc::new(ExprData::ExprRecordLit {
+                                                        parent_enum: std::option::Option::None,
+                                                    }),
+                                                    r.fields.clone(),
+                                                    std::option::Option::None,
+                                                    span.clone(),
+                                                )
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    {
+                                        let r = parse_expr(tokens.clone(), ctx.clone());
+                                        if has_err(r.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r.err.clone(),
+                                            });
+                                        }
+                                        let tokens = skip_newlines(r.tokens.clone());
+                                        let r2 = expect(
+                                            tokens.clone(),
+                                            Rc::new(ExpectedToken::ExpectRBrace),
+                                        );
+                                        if has_err(r2.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r2.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r2.err.clone(),
+                                            });
+                                        }
+                                        Rc::new(ExprResult {
+                                            expr: r.expr.clone(),
+                                            tokens: r2.tokens.clone(),
+                                            ctx: parse_context_record_erased_scope(
+                                                r.ctx.clone(),
+                                                ErasedSourceScopeKind::ErasedSingletonBlockScope,
+                                                r.expr.clone(),
+                                                entry.clone(),
+                                                r2.tokens.clone(),
+                                            ),
+                                            err: std::option::Option::None,
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            let ident_or_keyword = (tok_is_ident(tok.clone())
+                                || tok_is_keyword_name(tok.clone(), ctx.env.clone()));
+                            if (ident_or_keyword.clone()
+                                && peek_is_colon_after_ident(tokens.clone()))
+                            {
+                                {
+                                    let r = parse_field_init_list(tokens.clone(), ctx.clone());
+                                    if has_err(r.err.clone()) {
+                                        return Rc::new(ExprResult {
+                                            expr: dummy_expr.clone(),
+                                            tokens: r.tokens.clone(),
+                                            ctx: r.ctx.clone(),
+                                            err: r.err.clone(),
+                                        });
+                                    }
+                                    let tokens = skip_newlines(r.tokens.clone());
+                                    let r2 = expect(
+                                        tokens.clone(),
+                                        Rc::new(ExpectedToken::ExpectRBrace),
+                                    );
+                                    if has_err(r2.err.clone()) {
+                                        return Rc::new(ExprResult {
+                                            expr: dummy_expr.clone(),
+                                            tokens: r2.tokens.clone(),
+                                            ctx: r.ctx.clone(),
+                                            err: r2.err.clone(),
+                                        });
+                                    }
+                                    parsed_expr_result(
+                                        entry.clone(),
+                                        r2.tokens.clone(),
+                                        r.ctx.clone(),
+                                        |identity| {
+                                            crate::v1_std_core::make_expr_node(
+                                                identity,
+                                                Rc::new(ExprData::ExprRecordLit {
+                                                    parent_enum: std::option::Option::None,
+                                                }),
+                                                r.fields.clone(),
+                                                std::option::Option::None,
+                                                span.clone(),
+                                            )
+                                        },
+                                    )
+                                }
+                            } else {
+                                if (tok_is_lit_str(tok.clone())
+                                    && peek_is_colon_after_ident(tokens.clone()))
+                                {
+                                    {
+                                        let r = parse_field_init_list(tokens.clone(), ctx.clone());
+                                        if has_err(r.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r.err.clone(),
+                                            });
+                                        }
+                                        let tokens = skip_newlines(r.tokens.clone());
+                                        let r2 = expect(
+                                            tokens.clone(),
+                                            Rc::new(ExpectedToken::ExpectRBrace),
+                                        );
+                                        if has_err(r2.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r2.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r2.err.clone(),
+                                            });
+                                        }
+                                        parsed_expr_result(
+                                            entry.clone(),
+                                            r2.tokens.clone(),
+                                            r.ctx.clone(),
+                                            |identity| {
+                                                crate::v1_std_core::make_expr_node(
+                                                    identity,
+                                                    Rc::new(ExprData::ExprRecordLit {
+                                                        parent_enum: std::option::Option::None,
+                                                    }),
+                                                    r.fields.clone(),
+                                                    std::option::Option::None,
+                                                    span.clone(),
+                                                )
+                                            },
+                                        )
+                                    }
+                                } else {
+                                    {
+                                        let r = parse_stmts(tokens.clone(), ctx.clone());
+                                        if has_err(r.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r.err.clone(),
+                                            });
+                                        }
+                                        let tokens = skip_newlines(r.tokens.clone());
+                                        let r2 = expect(
+                                            tokens.clone(),
+                                            Rc::new(ExpectedToken::ExpectRBrace),
+                                        );
+                                        if has_err(r2.err.clone()) {
+                                            return Rc::new(ExprResult {
+                                                expr: dummy_expr.clone(),
+                                                tokens: r2.tokens.clone(),
+                                                ctx: r.ctx.clone(),
+                                                err: r2.err.clone(),
+                                            });
+                                        }
+                                        if ((r.stmts.clone().len() as i64) == 1) {
+                                            Rc::new(ExprResult {
+    expr: r.stmts.clone().first().cloned().clone().unwrap(),
+    tokens: r2.tokens.clone(),
+    ctx: parse_context_record_erased_scope(r.ctx.clone(), ErasedSourceScopeKind::ErasedSingletonBlockScope, r.stmts.clone().first().cloned().clone().unwrap(), entry.clone(), r2.tokens.clone()),
+    err: std::option::Option::None,
+})
+                                        } else {
+                                            parsed_expr_result(
+                                                entry.clone(),
+                                                r2.tokens.clone(),
+                                                r.ctx.clone(),
+                                                |identity| {
+                                                    crate::v1_std_core::make_expr_node(
+                                                        identity,
+                                                        Rc::new(ExprData::ExprBlock),
+                                                        r.stmts.clone(),
+                                                        std::option::Option::None,
+                                                        span.clone(),
+                                                    )
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn peek_is_colon_after_ident(tokens: Rc<TokenStream>) -> bool {

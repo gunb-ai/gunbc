@@ -249,7 +249,7 @@ pub fn uint8_channel_inclusive_max_value_derived() -> Option<i64> {
 }
 
 pub fn decimal_digit_of_units(value: i64) -> DecimalDigit {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> DecimalDigit {
         if (value.clone() >= 10) {
             decimal_digit_of_units(v1_rt::int_sub(value.clone(), 10))
         } else {
@@ -289,16 +289,17 @@ pub fn int_to_decimal_string(value: i64) -> String {
 }
 
 pub fn int_digits_to_decimal_string(value: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let rest = v1_rt::int_div(value.clone(), 10);
-        let digit = crate::std_nat::decimal_digit_glyph(decimal_digit_of_units(v1_rt::int_sub(
-            value.clone(),
-            v1_rt::int_mul(rest.clone(), 10),
-        )));
-        if (rest.clone() == 0) {
-            digit.clone()
-        } else {
-            v1_rt::concat(int_digits_to_decimal_string(rest.clone()), digit.clone())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        {
+            let rest = v1_rt::int_div(value.clone(), 10);
+            let digit = crate::std_nat::decimal_digit_glyph(decimal_digit_of_units(
+                v1_rt::int_sub(value.clone(), v1_rt::int_mul(rest.clone(), 10)),
+            ));
+            if (rest.clone() == 0) {
+                digit.clone()
+            } else {
+                v1_rt::concat(int_digits_to_decimal_string(rest.clone()), digit.clone())
+            }
         }
     })
 }

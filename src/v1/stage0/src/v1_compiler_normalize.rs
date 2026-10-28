@@ -32,167 +32,169 @@ pub fn check_bare_containers(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let has_structure = ((match n.body.clone() {
-            Some(_) => true,
-            std::option::Option::None => false,
-        } || ((n.uses.clone().len() as i64) > 0))
-            || ((n.properties.clone().len() as i64) > 0));
-        let is_expr = match (*n.expr_data.clone()).clone() {
-            ExprData::NoExprData => false,
-            _ => true,
-        };
-        let nname = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        let self_diags = if is_expr.clone() {
-            Rc::new(vec![])
-        } else {
-            match (*crate::v1_std_core::authored_container_spelling_verdict(
-                n.clone(),
-                source_indices.clone(),
-            ))
-            .clone()
-            {
-                ContainerSpellingVerdict::ContainerSpellingDeclared {
-                    arity: expected, ..
-                } => {
-                    if (((((n.children.clone().len() as i64) == 0)
-                        && ((n.params.clone().len() as i64) == 0))
-                        && (n.connective.clone() == Connective::NoConnective))
-                        && !has_structure.clone())
-                    {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::ArityMismatch {
-                                name: nname.clone(),
-                                expected: expected.clone(),
-                                got: 0,
-                                span: n.span.clone(),
-                            }),
-                            module_name.clone(),
-                        )])
-                    } else {
-                        Rc::new(vec![])
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<Rc<ErrorNode>>> {
+        {
+            let has_structure = ((match n.body.clone() {
+                Some(_) => true,
+                std::option::Option::None => false,
+            } || ((n.uses.clone().len() as i64) > 0))
+                || ((n.properties.clone().len() as i64) > 0));
+            let is_expr = match (*n.expr_data.clone()).clone() {
+                ExprData::NoExprData => false,
+                _ => true,
+            };
+            let nname = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+            let self_diags = if is_expr.clone() {
+                Rc::new(vec![])
+            } else {
+                match (*crate::v1_std_core::authored_container_spelling_verdict(
+                    n.clone(),
+                    source_indices.clone(),
+                ))
+                .clone()
+                {
+                    ContainerSpellingVerdict::ContainerSpellingDeclared {
+                        arity: expected, ..
+                    } => {
+                        if (((((n.children.clone().len() as i64) == 0)
+                            && ((n.params.clone().len() as i64) == 0))
+                            && (n.connective.clone() == Connective::NoConnective))
+                            && !has_structure.clone())
+                        {
+                            Rc::new(vec![crate::v1_std_core::make_error_node(
+                                Rc::new(CompilerDiagnostic::ArityMismatch {
+                                    name: nname.clone(),
+                                    expected: expected.clone(),
+                                    got: 0,
+                                    span: n.span.clone(),
+                                }),
+                                module_name.clone(),
+                            )])
+                        } else {
+                            Rc::new(vec![])
+                        }
                     }
+                    ContainerSpellingVerdict::ContainerSpellingUnknown {
+                        container_leaf: leaf,
+                        ..
+                    } => Rc::new(vec![crate::v1_std_core::make_error_node(
+                        Rc::new(CompilerDiagnostic::ContainerSpellingUnrecognized {
+                            name: nname.clone(),
+                            container_leaf: leaf.clone(),
+                            span: n.span.clone(),
+                        }),
+                        module_name.clone(),
+                    )]),
+                    ContainerSpellingVerdict::NotAContainerSpelling => Rc::new(vec![]),
                 }
-                ContainerSpellingVerdict::ContainerSpellingUnknown {
-                    container_leaf: leaf,
-                    ..
-                } => Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::ContainerSpellingUnrecognized {
-                        name: nname.clone(),
-                        container_leaf: leaf.clone(),
-                        span: n.span.clone(),
-                    }),
-                    module_name.clone(),
-                )]),
-                ContainerSpellingVerdict::NotAContainerSpelling => Rc::new(vec![]),
-            }
-        };
-        let child_diags = Rc::new({
-            let mut __result = Vec::new();
-            for c in n.children.clone().iter().cloned() {
-                __result.extend(
-                    (*check_bare_containers(
-                        c.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let param_diags = Rc::new({
-            let mut __result = Vec::new();
-            for p in n.params.clone().iter().cloned() {
-                __result.extend(
-                    (*check_bare_containers(
-                        p.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let type_ann_diags = match n.type_annotation.clone() {
-            Some(ta) => {
-                check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
-            }
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        let body_diags = match n.body.clone() {
-            Some(b) => {
-                check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
-            }
-            std::option::Option::None => Rc::new(vec![]),
-        };
-        let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
-            Rc::new(vec![])
-        } else {
-            match n.inferred.clone() {
-                Some(inf) => match (*inf.clone()).clone() {
-                    InferredNode::Resolved { node: rn, .. } => check_bare_containers(
-                        rn.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ),
-                    _ => Rc::new(vec![]),
-                },
+            };
+            let child_diags = Rc::new({
+                let mut __result = Vec::new();
+                for c in n.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*check_bare_containers(
+                            c.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            let param_diags = Rc::new({
+                let mut __result = Vec::new();
+                for p in n.params.clone().iter().cloned() {
+                    __result.extend(
+                        (*check_bare_containers(
+                            p.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            let type_ann_diags = match n.type_annotation.clone() {
+                Some(ta) => {
+                    check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
+                }
                 std::option::Option::None => Rc::new(vec![]),
-            }
-        };
-        let uses_diags = Rc::new({
-            let mut __result = Vec::new();
-            for u in n.uses.clone().iter().cloned() {
-                __result.extend(
-                    (*check_bare_containers(
-                        u.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let prop_diags = Rc::new({
-            let mut __result = Vec::new();
-            for p in n.properties.clone().iter().cloned() {
-                __result.extend(
-                    (*check_bare_containers(
-                        p.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        Rc::new({
-            let mut __result = Vec::new();
-            for d in Rc::new(vec![
-                self_diags.clone(),
-                child_diags.clone(),
-                param_diags.clone(),
-                type_ann_diags.clone(),
-                inferred_diags.clone(),
-                body_diags.clone(),
-                uses_diags.clone(),
-                prop_diags.clone(),
-            ])
-            .iter()
-            .cloned()
-            {
-                __result.extend((*d.clone()).iter().cloned());
-            }
-            __result
-        })
+            };
+            let body_diags = match n.body.clone() {
+                Some(b) => {
+                    check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
+                }
+                std::option::Option::None => Rc::new(vec![]),
+            };
+            let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
+                Rc::new(vec![])
+            } else {
+                match n.inferred.clone() {
+                    Some(inf) => match (*inf.clone()).clone() {
+                        InferredNode::Resolved { node: rn, .. } => check_bare_containers(
+                            rn.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ),
+                        _ => Rc::new(vec![]),
+                    },
+                    std::option::Option::None => Rc::new(vec![]),
+                }
+            };
+            let uses_diags = Rc::new({
+                let mut __result = Vec::new();
+                for u in n.uses.clone().iter().cloned() {
+                    __result.extend(
+                        (*check_bare_containers(
+                            u.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            let prop_diags = Rc::new({
+                let mut __result = Vec::new();
+                for p in n.properties.clone().iter().cloned() {
+                    __result.extend(
+                        (*check_bare_containers(
+                            p.clone(),
+                            module_name.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            Rc::new({
+                let mut __result = Vec::new();
+                for d in Rc::new(vec![
+                    self_diags.clone(),
+                    child_diags.clone(),
+                    param_diags.clone(),
+                    type_ann_diags.clone(),
+                    inferred_diags.clone(),
+                    body_diags.clone(),
+                    uses_diags.clone(),
+                    prop_diags.clone(),
+                ])
+                .iter()
+                .cloned()
+                {
+                    __result.extend((*d.clone()).iter().cloned());
+                }
+                __result
+            })
+        }
     })
 }
 

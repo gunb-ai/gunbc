@@ -285,7 +285,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
 }
 
 pub fn make_indent(level: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         if (level.clone() <= 0) {
             "".to_string()
         } else {
@@ -320,7 +320,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 }
 
 pub fn to_string(value: i64) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         if (value.clone() < 0) {
             v1_rt::concat("-".to_string(), to_string(v1_rt::int_sub(0, value.clone())))
         } else {
@@ -643,7 +643,7 @@ pub fn apply_named_template_nested(
     bindings: Rc<HashMap<String, String>>,
     keys: Rc<Vec<String>>,
 ) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
         match keys.clone().first().cloned() {
             std::option::Option::None => template.clone(),
             Some(key) => {

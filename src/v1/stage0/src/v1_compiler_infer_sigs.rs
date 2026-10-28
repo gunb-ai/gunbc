@@ -584,40 +584,47 @@ pub fn collect_calls_in_expr(
     local_func_set: Rc<HashMap<String, bool>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<CallEdge>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let this_edges = match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprCall { .. } => {
-                let f =
-                    crate::v1_std_core::expr_call_func_at(texpr.clone(), source_indices.clone());
-                if crate::v1_compiler_infer_types::emit_map_has(local_func_set.clone(), f.clone()) {
-                    Rc::new(vec![Rc::new(CallEdge {
-                        caller: caller.clone(),
-                        callee: f.clone(),
-                    })])
-                } else {
-                    Rc::new(vec![])
-                }
-            }
-            _ => Rc::new(vec![]),
-        };
-        let child_edges = Rc::new({
-            let mut __result = Vec::new();
-            for child in texpr.children.clone().iter().cloned() {
-                __result.extend(
-                    (*collect_calls_in_expr(
-                        caller.clone(),
-                        child.clone(),
-                        local_func_set.clone(),
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<Rc<CallEdge>>> {
+        {
+            let this_edges = match (*texpr.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    let f = crate::v1_std_core::expr_call_func_at(
+                        texpr.clone(),
                         source_indices.clone(),
-                    ))
-                    .iter()
-                    .cloned(),
-                );
-            }
-            __result
-        });
-        let result = v1_rt::concat(this_edges.clone(), child_edges.clone());
-        result
+                    );
+                    if crate::v1_compiler_infer_types::emit_map_has(
+                        local_func_set.clone(),
+                        f.clone(),
+                    ) {
+                        Rc::new(vec![Rc::new(CallEdge {
+                            caller: caller.clone(),
+                            callee: f.clone(),
+                        })])
+                    } else {
+                        Rc::new(vec![])
+                    }
+                }
+                _ => Rc::new(vec![]),
+            };
+            let child_edges = Rc::new({
+                let mut __result = Vec::new();
+                for child in texpr.children.clone().iter().cloned() {
+                    __result.extend(
+                        (*collect_calls_in_expr(
+                            caller.clone(),
+                            child.clone(),
+                            local_func_set.clone(),
+                            source_indices.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            });
+            let result = v1_rt::concat(this_edges.clone(), child_edges.clone());
+            result
+        }
     })
 }
 
@@ -627,7 +634,7 @@ pub fn func_reaches_self(
     call_edges: Rc<Vec<Rc<CallEdge>>>,
     visited: Rc<HashMap<String, bool>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         if crate::v1_compiler_infer_types::emit_map_has(visited.clone(), current.clone()) {
             false
         } else {

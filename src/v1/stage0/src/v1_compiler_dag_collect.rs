@@ -129,10 +129,16 @@ pub fn dag_collect_nodes_list(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    nodes.iter().cloned().fold(
-        slots.clone(),
-        |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
-            dag_collect_insert_slots(n.clone(), s, collision_errors.clone())
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            nodes.iter().cloned().fold(
+                slots.clone(),
+                |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
+                    dag_collect_insert_slots(n.clone(), s, collision_errors.clone())
+                },
+            )
         },
     )
 }
@@ -142,10 +148,16 @@ pub fn dag_collect_optional_node(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match value.clone() {
-        Some(inner) => dag_collect_insert_slots(inner.clone(), slots, collision_errors),
-        std::option::Option::None => slots.clone(),
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            match value.clone() {
+                Some(inner) => dag_collect_insert_slots(inner.clone(), slots, collision_errors),
+                std::option::Option::None => slots.clone(),
+            }
+        },
+    )
 }
 
 pub fn dag_collect_inferred(
@@ -153,12 +165,18 @@ pub fn dag_collect_inferred(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match value.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: n, .. }) => {
-            dag_collect_insert_slots(n.clone(), slots, collision_errors)
-        }
-        _ => slots.clone(),
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            match value.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: n, .. }) => {
+                    dag_collect_insert_slots(n.clone(), slots, collision_errors)
+                }
+                _ => slots.clone(),
+            }
+        },
+    )
 }
 
 pub fn dag_collect_match_pattern(
@@ -166,18 +184,24 @@ pub fn dag_collect_match_pattern(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match pattern.clone().as_deref().cloned() {
-        Some(MatchPattern::Bind { declaration: d, .. }) => {
-            dag_collect_insert_slots(d.clone(), slots.clone(), collision_errors.clone())
-        }
-        Some(MatchPattern::VariantPattern {
-            field_bindings: fbs,
-            ..
-        }) => dag_collect_nodes_list(fbs.clone(), slots.clone(), collision_errors.clone()),
-        Some(MatchPattern::LitPattern { value: _, .. }) => slots.clone(),
-        Some(MatchPattern::Wildcard) => slots.clone(),
-        std::option::Option::None => slots.clone(),
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            match pattern.clone().as_deref().cloned() {
+                Some(MatchPattern::Bind { declaration: d, .. }) => {
+                    dag_collect_insert_slots(d.clone(), slots.clone(), collision_errors.clone())
+                }
+                Some(MatchPattern::VariantPattern {
+                    field_bindings: fbs,
+                    ..
+                }) => dag_collect_nodes_list(fbs.clone(), slots.clone(), collision_errors.clone()),
+                Some(MatchPattern::LitPattern { value: _, .. }) => slots.clone(),
+                Some(MatchPattern::Wildcard) => slots.clone(),
+                std::option::Option::None => slots.clone(),
+            }
+        },
+    )
 }
 
 pub fn dag_collect_call_formals(
@@ -185,39 +209,45 @@ pub fn dag_collect_call_formals(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    match (*expr_data.clone()).clone() {
-        ExprData::ExprCall { call_semantics, .. } => match call_semantics.clone() {
-            Some(semantics) => match (*semantics.clone()).clone() {
-                CallSemantics::ResolvedDirectCallSemantics {
-                    application_plan: plan,
-                    ..
-                } => plan.iter().cloned().fold(
-                    slots.clone(),
-                    |acc: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-                     application: Rc<ResolvedCallFormal>| {
-                        let acc = dag_collect_insert_slots(
-                            application.formal.declared_type.clone(),
-                            acc.clone(),
-                            collision_errors.clone(),
-                        );
-                        let acc = dag_collect_insert_slots(
-                            application.formal.declaration_bound_conformance.clone(),
-                            acc.clone(),
-                            collision_errors.clone(),
-                        );
-                        dag_collect_insert_slots(
-                            application.formal.substitution_basis.clone(),
-                            acc.clone(),
-                            collision_errors.clone(),
-                        )
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            match (*expr_data.clone()).clone() {
+                ExprData::ExprCall { call_semantics, .. } => match call_semantics.clone() {
+                    Some(semantics) => match (*semantics.clone()).clone() {
+                        CallSemantics::ResolvedDirectCallSemantics {
+                            application_plan: plan,
+                            ..
+                        } => plan.iter().cloned().fold(
+                            slots.clone(),
+                            |acc: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+                             application: Rc<ResolvedCallFormal>| {
+                                let acc = dag_collect_insert_slots(
+                                    application.formal.declared_type.clone(),
+                                    acc.clone(),
+                                    collision_errors.clone(),
+                                );
+                                let acc = dag_collect_insert_slots(
+                                    application.formal.declaration_bound_conformance.clone(),
+                                    acc.clone(),
+                                    collision_errors.clone(),
+                                );
+                                dag_collect_insert_slots(
+                                    application.formal.substitution_basis.clone(),
+                                    acc.clone(),
+                                    collision_errors.clone(),
+                                )
+                            },
+                        ),
+                        _ => slots.clone(),
                     },
-                ),
+                    std::option::Option::None => slots.clone(),
+                },
                 _ => slots.clone(),
-            },
-            std::option::Option::None => slots.clone(),
+            }
         },
-        _ => slots.clone(),
-    }
+    )
 }
 
 pub fn dag_collect_node_tree(
@@ -225,52 +255,68 @@ pub fn dag_collect_node_tree(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    {
-        let slots = dag_collect_nodes_list(
-            node.children.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        let slots = if is_module_shell_node(node.clone()) {
-            slots.clone()
-        } else {
-            dag_collect_nodes_list(node.params.clone(), slots.clone(), collision_errors.clone())
-        };
-        let slots =
-            dag_collect_nodes_list(node.uses.clone(), slots.clone(), collision_errors.clone());
-        let slots =
-            dag_collect_optional_node(node.body.clone(), slots.clone(), collision_errors.clone());
-        let slots = dag_collect_optional_node(
-            node.transport.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        let slots = dag_collect_nodes_list(
-            node.properties.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        let slots = dag_collect_optional_node(
-            node.type_annotation.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        let slots = dag_collect_match_pattern(
-            node.match_pattern.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        let slots = dag_collect_call_formals(
-            node.expr_data.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        );
-        dag_collect_inferred(
-            node.inferred.clone(),
-            slots.clone(),
-            collision_errors.clone(),
-        )
-    }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            {
+                let slots = dag_collect_nodes_list(
+                    node.children.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = if is_module_shell_node(node.clone()) {
+                    slots.clone()
+                } else {
+                    dag_collect_nodes_list(
+                        node.params.clone(),
+                        slots.clone(),
+                        collision_errors.clone(),
+                    )
+                };
+                let slots = dag_collect_nodes_list(
+                    node.uses.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_optional_node(
+                    node.body.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_optional_node(
+                    node.transport.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_nodes_list(
+                    node.properties.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_optional_node(
+                    node.type_annotation.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_match_pattern(
+                    node.match_pattern.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                let slots = dag_collect_call_formals(
+                    node.expr_data.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                );
+                dag_collect_inferred(
+                    node.inferred.clone(),
+                    slots.clone(),
+                    collision_errors.clone(),
+                )
+            }
+        },
+    )
 }
 
 pub fn dag_collect_insert_slots(
@@ -278,36 +324,45 @@ pub fn dag_collect_insert_slots(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    {
-        let anchor = dag_node_collection_anchor(node);
-        let key = dag_node_key(anchor.clone());
-        match v1_rt::map_get(&slots, key.clone()) {
-            Some(_) => slots.clone(),
-            std::option::Option::None => {
-                let fp = if ((anchor.span.start.clone() == 0) && (anchor.span.end.clone() == 0)) {
-                    v1_rt::substring(&key, 6, v1_rt::string_length(&key))
-                } else {
-                    dag_node_fingerprint(anchor.clone())
-                };
-                let seq =
-                    crate::v1_compiler_dag_collect_support::dag_collect_slot_seq(slots.clone());
-                dag_collect_node_tree(
-                    anchor.clone(),
-                    v1_rt::rc_map_insert(
-                        slots.clone(),
-                        key.clone(),
-                        Rc::new(DagCollectSlot {
-                            key: key.clone(),
-                            fp: fp.clone(),
-                            node: anchor.clone(),
-                            seq: seq.clone(),
-                        }),
-                    ),
-                    collision_errors,
-                )
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+            {
+                let anchor = dag_node_collection_anchor(node);
+                let key = dag_node_key(anchor.clone());
+                match v1_rt::map_get(&slots, key.clone()) {
+                    Some(_) => slots.clone(),
+                    std::option::Option::None => {
+                        let fp = if ((anchor.span.start.clone() == 0)
+                            && (anchor.span.end.clone() == 0))
+                        {
+                            v1_rt::substring(&key, 6, v1_rt::string_length(&key))
+                        } else {
+                            dag_node_fingerprint(anchor.clone())
+                        };
+                        let seq = crate::v1_compiler_dag_collect_support::dag_collect_slot_seq(
+                            slots.clone(),
+                        );
+                        dag_collect_node_tree(
+                            anchor.clone(),
+                            v1_rt::rc_map_insert(
+                                slots.clone(),
+                                key.clone(),
+                                Rc::new(DagCollectSlot {
+                                    key: key.clone(),
+                                    fp: fp.clone(),
+                                    node: anchor.clone(),
+                                    seq: seq.clone(),
+                                }),
+                            ),
+                            collision_errors,
+                        )
+                    }
+                }
             }
-        }
-    }
+        },
+    )
 }
 
 pub fn dag_collect_from_module(

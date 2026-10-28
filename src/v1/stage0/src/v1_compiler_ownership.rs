@@ -423,7 +423,7 @@ pub fn walk_expr(
     in_tail: bool,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UsageAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<UsageAccum> {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: bk, ..
@@ -826,20 +826,24 @@ pub fn walk_call_argument(
     arg: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UsageAccum> {
-    match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: bk, ..
-        } => record_use_at(
-            accum.clone(),
-            crate::v1_std_core::expr_var_name_at(arg.clone(), si.clone()),
-            EdgeKind::PassedByValue,
-            "argument".to_string(),
-            bk.clone(),
-            arg.span.start.clone(),
-            crate::std_occurrence_identity::authored_occurrence_of(arg.occurrence_identity.clone()),
-        ),
-        _ => walk_expr(accum.clone(), arg.clone(), false, si.clone()),
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<UsageAccum> {
+        match (*arg.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: bk, ..
+            } => record_use_at(
+                accum.clone(),
+                crate::v1_std_core::expr_var_name_at(arg.clone(), si.clone()),
+                EdgeKind::PassedByValue,
+                "argument".to_string(),
+                bk.clone(),
+                arg.span.start.clone(),
+                crate::std_occurrence_identity::authored_occurrence_of(
+                    arg.occurrence_identity.clone(),
+                ),
+            ),
+            _ => walk_expr(accum.clone(), arg.clone(), false, si.clone()),
+        }
+    })
 }
 
 pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
@@ -1068,7 +1072,7 @@ pub fn collect_callable_refs(
     texpr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<BTreeSet<String>> {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: bk, ..
@@ -1276,7 +1280,7 @@ pub fn summarize_fold_acc_uses(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     inside_nested: bool,
 ) -> Rc<FoldAccUseSummary> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<FoldAccUseSummary> {
         match (*node.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: _, ..
@@ -1484,7 +1488,7 @@ pub fn fold_branch_ends_move_acc(
     acc_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> bool {
         match (*node.expr_data.clone()).clone() {
             ExprData::ExprIf => {
                 let cond = summarize_fold_acc_uses(
@@ -1615,7 +1619,7 @@ pub fn analyze_single_fold(
 }
 
 pub fn terminal_record_literals(body: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Vec<Rc<Node>>> {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(inner) => terminal_record_literals(inner.clone()),

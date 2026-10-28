@@ -150,51 +150,14 @@ pub fn expand_scrut_from_decl(
     name: String,
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
-    {
-        let decl_is_disj = (decl.connective.clone() == Connective::Disj);
-        let has_inferred_alias = (((decl.inferred.clone() != std::option::Option::None)
-            && (decl.connective.clone() == Connective::NoConnective))
-            && ((decl.children.clone().len() as i64) == 0));
-        if decl_is_disj.clone() {
-            if (((decl.params.clone().len() as i64) > 0)
-                && ((scrut_node.children.clone().len() as i64) > 0))
-            {
-                {
-                    let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                    crate::v1_compiler_infer_env::substitute_type_slots_scoped(
-                        decl.clone(),
-                        subst.clone(),
-                        crate::v1_std_core::authored_name_at(
-                            env.source_indices.clone(),
-                            decl.clone(),
-                        ),
-                        env.source_indices.clone(),
-                        true,
-                    )
-                }
-            } else {
-                decl.clone()
-            }
-        } else {
-            if has_inferred_alias.clone() {
-                match decl.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                        let substituted =
-                            crate::v1_compiler_infer_env::substitute_type_slots_scoped(
-                                target.clone(),
-                                subst.clone(),
-                                name,
-                                env.source_indices.clone(),
-                                true,
-                            );
-                        expand_scrut_type_for_variant_lookup(substituted, env.clone())
-                    }
-                    _ => scrut_node.clone(),
-                }
-            } else {
-                if (((decl.connective.clone() == Connective::Conj)
-                    && ((decl.params.clone().len() as i64) > 0))
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Node> {
+        {
+            let decl_is_disj = (decl.connective.clone() == Connective::Disj);
+            let has_inferred_alias = (((decl.inferred.clone() != std::option::Option::None)
+                && (decl.connective.clone() == Connective::NoConnective))
+                && ((decl.children.clone().len() as i64) == 0));
+            if decl_is_disj.clone() {
+                if (((decl.params.clone().len() as i64) > 0)
                     && ((scrut_node.children.clone().len() as i64) > 0))
                 {
                     {
@@ -211,81 +174,126 @@ pub fn expand_scrut_from_decl(
                         )
                     }
                 } else {
-                    scrut_node.clone()
+                    decl.clone()
+                }
+            } else {
+                if has_inferred_alias.clone() {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                            let substituted =
+                                crate::v1_compiler_infer_env::substitute_type_slots_scoped(
+                                    target.clone(),
+                                    subst.clone(),
+                                    name,
+                                    env.source_indices.clone(),
+                                    true,
+                                );
+                            expand_scrut_type_for_variant_lookup(substituted, env.clone())
+                        }
+                        _ => scrut_node.clone(),
+                    }
+                } else {
+                    if (((decl.connective.clone() == Connective::Conj)
+                        && ((decl.params.clone().len() as i64) > 0))
+                        && ((scrut_node.children.clone().len() as i64) > 0))
+                    {
+                        {
+                            let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                            crate::v1_compiler_infer_env::substitute_type_slots_scoped(
+                                decl.clone(),
+                                subst.clone(),
+                                crate::v1_std_core::authored_name_at(
+                                    env.source_indices.clone(),
+                                    decl.clone(),
+                                ),
+                                env.source_indices.clone(),
+                                true,
+                            )
+                        }
+                    } else {
+                        scrut_node.clone()
+                    }
                 }
             }
         }
-    }
+    })
 }
 
 pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
-    {
-        let name =
-            crate::v1_std_core::authored_name_at(env.source_indices.clone(), scrut_node.clone());
-        let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
-            && ((scrut_node.children.clone().len() as i64) > 0))
-            && crate::v1_compiler_infer_resolve::is_user_generic_use_site(
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<Node> {
+        {
+            let name = crate::v1_std_core::authored_name_at(
+                env.source_indices.clone(),
                 scrut_node.clone(),
-                env.clone(),
-            ));
-        match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
-            Some(decl) => {
-                if is_generic_use.clone() {
-                    expand_scrut_from_decl(
-                        decl.clone(),
-                        scrut_node.clone(),
-                        name.clone(),
-                        env.clone(),
-                    )
-                } else {
-                    {
-                        let def_is_disj = (decl.connective.clone() == Connective::Disj);
-                        let has_inferred_body = ((decl.inferred.clone()
-                            != std::option::Option::None)
-                            && (decl.connective.clone() == Connective::NoConnective));
-                        if def_is_disj.clone() {
-                            decl.clone()
-                        } else {
-                            if has_inferred_body.clone() {
-                                match decl.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved { node: target, .. }) => {
-                                        let target_is_disj =
-                                            (target.connective.clone() == Connective::Disj);
-                                        let target_is_generic_use = ((target.connective.clone()
-                                            == Connective::NoConnective)
-                                            && ((target.children.clone().len() as i64) > 0));
-                                        if target_is_disj.clone() {
-                                            target.clone()
-                                        } else {
-                                            if target_is_generic_use.clone() {
-                                                {
-                                                    let subst = generic_use_slot_bindings(
-                                                        scrut_node.clone(),
-                                                        env.clone(),
-                                                    );
-                                                    let substituted = crate::v1_compiler_infer_env::substitute_type_slots_scoped(target.clone(), subst, name.clone(), env.source_indices.clone(), true);
-                                                    expand_scrut_type_for_variant_lookup(
-                                                        substituted,
-                                                        env.clone(),
-                                                    )
-                                                }
+            );
+            let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
+                && ((scrut_node.children.clone().len() as i64) > 0))
+                && crate::v1_compiler_infer_resolve::is_user_generic_use_site(
+                    scrut_node.clone(),
+                    env.clone(),
+                ));
+            match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
+                Some(decl) => {
+                    if is_generic_use.clone() {
+                        expand_scrut_from_decl(
+                            decl.clone(),
+                            scrut_node.clone(),
+                            name.clone(),
+                            env.clone(),
+                        )
+                    } else {
+                        {
+                            let def_is_disj = (decl.connective.clone() == Connective::Disj);
+                            let has_inferred_body = ((decl.inferred.clone()
+                                != std::option::Option::None)
+                                && (decl.connective.clone() == Connective::NoConnective));
+                            if def_is_disj.clone() {
+                                decl.clone()
+                            } else {
+                                if has_inferred_body.clone() {
+                                    match decl.inferred.clone().as_deref().cloned() {
+                                        Some(InferredNode::Resolved { node: target, .. }) => {
+                                            let target_is_disj =
+                                                (target.connective.clone() == Connective::Disj);
+                                            let target_is_generic_use = ((target
+                                                .connective
+                                                .clone()
+                                                == Connective::NoConnective)
+                                                && ((target.children.clone().len() as i64) > 0));
+                                            if target_is_disj.clone() {
+                                                target.clone()
                                             } else {
-                                                scrut_node.clone()
+                                                if target_is_generic_use.clone() {
+                                                    {
+                                                        let subst = generic_use_slot_bindings(
+                                                            scrut_node.clone(),
+                                                            env.clone(),
+                                                        );
+                                                        let substituted = crate::v1_compiler_infer_env::substitute_type_slots_scoped(target.clone(), subst, name.clone(), env.source_indices.clone(), true);
+                                                        expand_scrut_type_for_variant_lookup(
+                                                            substituted,
+                                                            env.clone(),
+                                                        )
+                                                    }
+                                                } else {
+                                                    scrut_node.clone()
+                                                }
                                             }
                                         }
+                                        _ => scrut_node.clone(),
                                     }
-                                    _ => scrut_node.clone(),
+                                } else {
+                                    scrut_node.clone()
                                 }
-                            } else {
-                                scrut_node.clone()
                             }
                         }
                     }
                 }
+                std::option::Option::None => scrut_node.clone(),
             }
-            std::option::Option::None => scrut_node.clone(),
         }
-    }
+    })
 }
 
 pub fn expand_scrut_type_for_variant_lookup(
@@ -561,31 +569,33 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_error = if (n.inferred.clone() != std::option::Option::None) {
-            crate::v1_std_core::is_compiler_error(n.inferred.clone().clone().unwrap())
-        } else {
-            false
-        };
-        if is_error.clone() {
-            Rc::new(PatternSubject::PatternLookupBlocked)
-        } else {
-            if ((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-            {
-                match n.inferred.clone().as_deref().cloned() {
-                    Some(InferredNode::Resolved { node: target, .. }) => {
-                        match (*pattern_subject_from_node(target.clone())).clone() {
-                            PatternSubject::PatternLookupBlocked => {
-                                Rc::new(PatternSubject::PatternLookupBlocked)
-                            }
-                            _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
-                        }
-                    }
-                    _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
-                }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> Rc<PatternSubject> {
+        {
+            let is_error = if (n.inferred.clone() != std::option::Option::None) {
+                crate::v1_std_core::is_compiler_error(n.inferred.clone().clone().unwrap())
             } else {
-                Rc::new(PatternSubject::PatternResolved { node: n.clone() })
+                false
+            };
+            if is_error.clone() {
+                Rc::new(PatternSubject::PatternLookupBlocked)
+            } else {
+                if ((n.connective.clone() == Connective::NoConnective)
+                    && ((n.children.clone().len() as i64) > 0))
+                {
+                    match n.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            match (*pattern_subject_from_node(target.clone())).clone() {
+                                PatternSubject::PatternLookupBlocked => {
+                                    Rc::new(PatternSubject::PatternLookupBlocked)
+                                }
+                                _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
+                            }
+                        }
+                        _ => Rc::new(PatternSubject::PatternResolved { node: n.clone() }),
+                    }
+                } else {
+                    Rc::new(PatternSubject::PatternResolved { node: n.clone() })
+                }
             }
         }
     })
@@ -1356,170 +1366,176 @@ pub fn exhaustiveness_witnesses(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Vec<Rc<PatternWitnessRow>>> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match columns.clone().first().cloned() {
-            std::option::Option::None => {
-                if ((rows.clone().len() as i64) > 0) {
-                    Rc::new(vec![])
-                } else {
-                    Rc::new(vec![Rc::new(PatternWitnessRow {
-                        cells: Rc::new(vec![]),
-                    })])
-                }
-            }
-            Some(head_type) => {
-                let rest_columns = Rc::new(v1_rt::list_skip(&columns.clone(), 1));
-                match (*constructor_roster_for(head_type.clone(), env.clone())).clone() {
-                    ConstructorRoster::ConstructorsOpen => {
-                        let defaulted = default_pattern_rows(rows.clone());
-                        if (((defaulted.clone().len() as i64) == 0)
-                            && ((rows.clone().len() as i64) > 0))
-                        {
-                            Rc::new(vec![])
-                        } else {
-                            Rc::new({
-                                let mut __result = Vec::new();
-                                for w in exhaustiveness_witnesses(
-                                    defaulted.clone(),
-                                    rest_columns.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                )
-                                .iter()
-                                .cloned()
-                                {
-                                    __result.push(Rc::new(PatternWitnessRow {
-                                        cells: v1_rt::concat(
-                                            Rc::new(vec!["_".to_string()]),
-                                            w.cells.clone(),
-                                        ),
-                                    }));
-                                }
-                                __result
-                            })
-                        }
+    stacker::maybe_grow(
+        512 * 1024,
+        2 * 1024 * 1024,
+        || -> Rc<Vec<Rc<PatternWitnessRow>>> {
+            match columns.clone().first().cloned() {
+                std::option::Option::None => {
+                    if ((rows.clone().len() as i64) > 0) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![Rc::new(PatternWitnessRow {
+                            cells: Rc::new(vec![]),
+                        })])
                     }
-                    ConstructorRoster::ConstructorsClosed { names: ctors, .. } => {
-                        let absent_ctors = Rc::new({
-                            let mut __result = Vec::new();
-                            for c in ctors.iter().cloned() {
-                                if (constructor_appears_at_row_head(rows.clone(), c.clone())
-                                    == false)
-                                {
-                                    __result.push(c);
-                                }
-                            }
-                            __result
-                        });
-                        if ((absent_ctors.clone().len() as i64) > 0) {
+                }
+                Some(head_type) => {
+                    let rest_columns = Rc::new(v1_rt::list_skip(&columns.clone(), 1));
+                    match (*constructor_roster_for(head_type.clone(), env.clone())).clone() {
+                        ConstructorRoster::ConstructorsOpen => {
+                            let defaulted = default_pattern_rows(rows.clone());
+                            if (((defaulted.clone().len() as i64) == 0)
+                                && ((rows.clone().len() as i64) > 0))
                             {
-                                let sub = exhaustiveness_witnesses(
-                                    default_pattern_rows(rows.clone()),
-                                    rest_columns.clone(),
-                                    env.clone(),
-                                    module_name.clone(),
-                                );
+                                Rc::new(vec![])
+                            } else {
                                 Rc::new({
                                     let mut __result = Vec::new();
-                                    for c in absent_ctors.iter().cloned() {
-                                        __result.extend(
-                                            (*Rc::new({
+                                    for w in exhaustiveness_witnesses(
+                                        defaulted.clone(),
+                                        rest_columns.clone(),
+                                        env.clone(),
+                                        module_name.clone(),
+                                    )
+                                    .iter()
+                                    .cloned()
+                                    {
+                                        __result.push(Rc::new(PatternWitnessRow {
+                                            cells: v1_rt::concat(
+                                                Rc::new(vec!["_".to_string()]),
+                                                w.cells.clone(),
+                                            ),
+                                        }));
+                                    }
+                                    __result
+                                })
+                            }
+                        }
+                        ConstructorRoster::ConstructorsClosed { names: ctors, .. } => {
+                            let absent_ctors = Rc::new({
+                                let mut __result = Vec::new();
+                                for c in ctors.iter().cloned() {
+                                    if (constructor_appears_at_row_head(rows.clone(), c.clone())
+                                        == false)
+                                    {
+                                        __result.push(c);
+                                    }
+                                }
+                                __result
+                            });
+                            if ((absent_ctors.clone().len() as i64) > 0) {
+                                {
+                                    let sub = exhaustiveness_witnesses(
+                                        default_pattern_rows(rows.clone()),
+                                        rest_columns.clone(),
+                                        env.clone(),
+                                        module_name.clone(),
+                                    );
+                                    Rc::new({
+                                        let mut __result = Vec::new();
+                                        for c in absent_ctors.iter().cloned() {
+                                            __result.extend(
+                                                (*Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for w in sub.iter().cloned() {
+                                                        __result.push(Rc::new(PatternWitnessRow {
+                                                            cells: v1_rt::concat(
+                                                                Rc::new(vec![
+                                                                    variant_pattern_coverage_key(
+                                                                        c.clone(),
+                                                                    ),
+                                                                ]),
+                                                                w.cells.clone(),
+                                                            ),
+                                                        }));
+                                                    }
+                                                    __result
+                                                }))
+                                                .iter()
+                                                .cloned(),
+                                            );
+                                        }
+                                        __result
+                                    })
+                                }
+                            } else {
+                                ctors.iter().cloned().fold(
+                                    Rc::new(vec![]),
+                                    |acc: Rc<Vec<Rc<PatternWitnessRow>>>, c: String| {
+                                        let fields = constructor_fields(
+                                            head_type.clone(),
+                                            c.clone(),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        let field_count = (fields.clone().len() as i64);
+                                        let sub = exhaustiveness_witnesses(
+                                            Rc::new({
+                                                let mut __result = Vec::new();
+                                                for r in rows.iter().cloned() {
+                                                    __result.extend(
+                                                        (*specialize_pattern_row(
+                                                            r.clone(),
+                                                            c.clone(),
+                                                            fields.clone(),
+                                                            env.source_indices.clone(),
+                                                        ))
+                                                        .iter()
+                                                        .cloned(),
+                                                    );
+                                                }
+                                                __result
+                                            }),
+                                            v1_rt::concat(
+                                                Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for f in fields.iter().cloned() {
+                                                        __result.push(f.type_node.clone());
+                                                    }
+                                                    __result
+                                                }),
+                                                rest_columns.clone(),
+                                            ),
+                                            env.clone(),
+                                            module_name.clone(),
+                                        );
+                                        v1_rt::concat(
+                                            acc,
+                                            Rc::new({
                                                 let mut __result = Vec::new();
                                                 for w in sub.iter().cloned() {
                                                     __result.push(Rc::new(PatternWitnessRow {
                                                         cells: v1_rt::concat(
                                                             Rc::new(vec![
-                                                                variant_pattern_coverage_key(
+                                                                render_constructor_witness(
                                                                     c.clone(),
+                                                                    fields.clone(),
+                                                                    Rc::new(v1_rt::list_take(
+                                                                        &w.cells.clone(),
+                                                                        field_count.clone(),
+                                                                    )),
                                                                 ),
                                                             ]),
-                                                            w.cells.clone(),
+                                                            Rc::new(v1_rt::list_skip(
+                                                                &w.cells.clone(),
+                                                                field_count.clone(),
+                                                            )),
                                                         ),
                                                     }));
                                                 }
                                                 __result
-                                            }))
-                                            .iter()
-                                            .cloned(),
-                                        );
-                                    }
-                                    __result
-                                })
-                            }
-                        } else {
-                            ctors.iter().cloned().fold(
-                                Rc::new(vec![]),
-                                |acc: Rc<Vec<Rc<PatternWitnessRow>>>, c: String| {
-                                    let fields = constructor_fields(
-                                        head_type.clone(),
-                                        c.clone(),
-                                        env.clone(),
-                                        module_name.clone(),
-                                    );
-                                    let field_count = (fields.clone().len() as i64);
-                                    let sub = exhaustiveness_witnesses(
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for r in rows.iter().cloned() {
-                                                __result.extend(
-                                                    (*specialize_pattern_row(
-                                                        r.clone(),
-                                                        c.clone(),
-                                                        fields.clone(),
-                                                        env.source_indices.clone(),
-                                                    ))
-                                                    .iter()
-                                                    .cloned(),
-                                                );
-                                            }
-                                            __result
-                                        }),
-                                        v1_rt::concat(
-                                            Rc::new({
-                                                let mut __result = Vec::new();
-                                                for f in fields.iter().cloned() {
-                                                    __result.push(f.type_node.clone());
-                                                }
-                                                __result
                                             }),
-                                            rest_columns.clone(),
-                                        ),
-                                        env.clone(),
-                                        module_name.clone(),
-                                    );
-                                    v1_rt::concat(
-                                        acc,
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for w in sub.iter().cloned() {
-                                                __result.push(Rc::new(PatternWitnessRow {
-                                                    cells: v1_rt::concat(
-                                                        Rc::new(vec![render_constructor_witness(
-                                                            c.clone(),
-                                                            fields.clone(),
-                                                            Rc::new(v1_rt::list_take(
-                                                                &w.cells.clone(),
-                                                                field_count.clone(),
-                                                            )),
-                                                        )]),
-                                                        Rc::new(v1_rt::list_skip(
-                                                            &w.cells.clone(),
-                                                            field_count.clone(),
-                                                        )),
-                                                    ),
-                                                }));
-                                            }
-                                            __result
-                                        }),
-                                    )
-                                },
-                            )
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn witness_row_missing_name(w: Rc<PatternWitnessRow>) -> String {

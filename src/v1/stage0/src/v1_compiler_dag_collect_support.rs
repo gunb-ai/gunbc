@@ -222,74 +222,78 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
 }
 
 pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> String {
-    match pattern.clone().as_deref().cloned() {
-        std::option::Option::None => {
-            v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string())
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        match pattern.clone().as_deref().cloned() {
+            std::option::Option::None => {
+                v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string())
+            }
+            Some(MatchPattern::Bind { declaration: d, .. }) => v1_rt::hash_combine(
+                v1_rt::atom_identity_hash("Bind".to_string()),
+                dag_node_surface_fingerprint_rec(d.clone()),
+            ),
+            Some(MatchPattern::LitPattern { value: v, .. }) => {
+                v1_rt::atom_identity_hash(v1_rt::concat(
+                    "LitPattern:".to_string(),
+                    literal_value_fingerprint(v.clone()),
+                ))
+            }
+            Some(MatchPattern::VariantPattern {
+                name: n,
+                parent_enum: pe,
+                field_bindings: fbs,
+                ..
+            }) => {
+                let base = v1_rt::atom_identity_hash(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat("VariantPattern:".to_string(), n.clone()),
+                        "|".to_string(),
+                    ),
+                    match pe.clone() {
+                        Some(p) => p.clone(),
+                        std::option::Option::None => "".to_string(),
+                    },
+                ));
+                let field_hashes = Rc::new({
+                    let mut __result = Vec::new();
+                    for f in fbs.iter().cloned() {
+                        __result.push(dag_node_surface_fingerprint_rec(f.clone()));
+                    }
+                    __result
+                });
+                v1_rt::hash_combine(base, dag_node_seq_hash(field_hashes))
+            }
+            Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
         }
-        Some(MatchPattern::Bind { declaration: d, .. }) => v1_rt::hash_combine(
-            v1_rt::atom_identity_hash("Bind".to_string()),
-            dag_node_surface_fingerprint_rec(d.clone()),
-        ),
-        Some(MatchPattern::LitPattern { value: v, .. }) => {
-            v1_rt::atom_identity_hash(v1_rt::concat(
-                "LitPattern:".to_string(),
-                literal_value_fingerprint(v.clone()),
-            ))
-        }
-        Some(MatchPattern::VariantPattern {
-            name: n,
-            parent_enum: pe,
-            field_bindings: fbs,
-            ..
-        }) => {
-            let base = v1_rt::atom_identity_hash(v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat("VariantPattern:".to_string(), n.clone()),
-                    "|".to_string(),
-                ),
-                match pe.clone() {
-                    Some(p) => p.clone(),
-                    std::option::Option::None => "".to_string(),
-                },
-            ));
-            let field_hashes = Rc::new({
-                let mut __result = Vec::new();
-                for f in fbs.iter().cloned() {
-                    __result.push(dag_node_surface_fingerprint_rec(f.clone()));
-                }
-                __result
-            });
-            v1_rt::hash_combine(base, dag_node_seq_hash(field_hashes))
-        }
-        Some(MatchPattern::Wildcard) => v1_rt::atom_identity_hash("Wildcard".to_string()),
-    }
+    })
 }
 
 pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let child_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(c.clone()));
-            }
-            __result
-        });
-        let param_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(p.clone()));
-            }
-            __result
-        });
-        let with_children = v1_rt::hash_combine(
-            dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
-        );
-        let with_params = v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes));
-        v1_rt::hash_combine(
-            with_params,
-            match_pattern_fingerprint_rec(node.match_pattern.clone()),
-        )
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || -> String {
+        {
+            let child_hashes = Rc::new({
+                let mut __result = Vec::new();
+                for c in node.children.clone().iter().cloned() {
+                    __result.push(dag_node_surface_fingerprint_rec(c.clone()));
+                }
+                __result
+            });
+            let param_hashes = Rc::new({
+                let mut __result = Vec::new();
+                for p in node.params.clone().iter().cloned() {
+                    __result.push(dag_node_surface_fingerprint_rec(p.clone()));
+                }
+                __result
+            });
+            let with_children = v1_rt::hash_combine(
+                dag_node_surface_leaf_mix(node.clone()),
+                child_subtree_hash(node.connective.clone(), child_hashes),
+            );
+            let with_params = v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes));
+            v1_rt::hash_combine(
+                with_params,
+                match_pattern_fingerprint_rec(node.match_pattern.clone()),
+            )
+        }
     })
 }
 
