@@ -158,3 +158,16 @@ type UbuntuAutoinstallLiveCommands {
   autoinstall_version: Int
   early_commands: List<NonEmptyStr>
 }
+
+// THE INSTALLER'S RECORD ON THE INSTALLED SYSTEM. Subiquity's "Creating an autoinstall configuration" tutorial: "When
+// any system is installed using the Ubuntu installer, an autoinstall file for repeating the installation is created at
+// /var/log/installer/autoinstall-user-data". The file is the installer's output on the target, written when it installs
+// a system; the live session's own /var/log/installer is the live root's, not the target's.
+data subiquity_installed_record_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/tutorial/creating-autoinstall-configuration.html"
+  }
+}
+
+data subiquity_installed_autoinstall_record_path: NonEmptyStr = "/var/log/installer/autoinstall-user-data"

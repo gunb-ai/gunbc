@@ -642,6 +642,35 @@ test fn the_qwen_start_source_is_derived_from_its_placement() -> Bool {
     })
 }
 
+// THE ARM #15222 OWED ITS SIBLINGS (2026-10-27 main break, review protocol §6b). A recipe that STARTS
+// from placed weights but carries the HUB-PINNED weights source has nothing placed — the answer is
+// StartSourcePlacementMissing, spelled as its own arm (not folded into a wildcard, so a future variant
+// of ServingWeightsSource is refused by the compiler rather than absorbed silently). Without this arm
+// the closure through product.fabric.serving_recipe refuses to resolve as non-exhaustive — which is how
+// main broke: this file's fixtures all pair StartFromHubPinned with WeightsPinnedAtHub, so no EXISTING
+// row ever drove the StartFromPlacedWeights arm with a pinned source. This is that driving row.
+test fn a_placed_weights_start_over_a_hub_pinned_source_reports_placement_missing() -> Bool {
+  match serving_start_source(
+    recipe: ServingRecipe {
+      id: serving_recipe_flash_next_lab_vllm.id,
+      model: serving_recipe_flash_next_lab_vllm.model,  // WeightsPinnedAtHub — the variant under test
+      engine: serving_recipe_flash_next_lab_vllm.engine,
+      catalog_unit: none,
+      published_tcp_port: 8000,
+      cards: [],
+      driver_floor: serving_recipe_flash_next_lab_vllm.driver_floor,
+      disk: serving_recipe_flash_next_lab_vllm.disk,
+      cache: serving_recipe_flash_next_lab_vllm.cache,
+      start: StartFromPlacedWeights,
+      throughput: ThroughputUnread,
+      settings: serving_recipe_flash_next_lab_vllm.settings,
+    },
+  ) {
+    StartSourcePlacementMissing => true
+    _ => false
+  }
+}
+
 test fn bare_flash_settings_carry_standing() -> Bool {
   qwen_settings_cite_ruling(ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2"))
 }
