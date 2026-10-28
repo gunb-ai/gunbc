@@ -694,8 +694,7 @@ fn census_witness_checks() -> List<Check> {
     why: "the join reaches the allocation and the enrollment roster THROUGH the identity; without this the census is a device list with extra steps",
   )
   let c32 = check(
-    name: "an identity with no declared binding says WHICH identity lacked one"
-    ,
+    name: "an identity with no declared binding says WHICH identity lacked one",
     holds: match census_member(
       member: "srv2" as NonEmptyStr,
       observations: [srv2_status],
