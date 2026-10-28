@@ -74,6 +74,7 @@ import gunbc.host.host_name_resolution {
   NameSpace,
   Lan,
   lan_name_space,
+  lan_name_space_under,
   tailnet_name_space,
   ResolutionObservation,
   HostNameResolution,
@@ -83,6 +84,8 @@ import gunbc.host.host_name_resolution {
   NameOffZone,
   ReplyDoesNotResolve,
   NoReaderForSpace,
+  ZoneUnconfigured,
+  TailnetDomainUnconfigured,
   ConsumerReach,
   same_space,
   AnswerMovedUnderName,
@@ -101,7 +104,9 @@ import gunbc.host.host_name_resolution {
   megarac_bmc_tailnet_membership,
   router_address,
   srv2_lan_name,
+  srv2_lan_name_under,
   srv2_tailnet_name_refused,
+  srv2_tailnet_name_refused_under,
 }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
@@ -1171,6 +1176,71 @@ test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bo
     HostNameResolutionRefused { host: h, refusal: NoReaderForSpace { space: _ } } => host_identity_eq(a: h, b: "srv2")
     HostNameResolutionAdmitted { resolution: _ } => false
   }
+}
+
+// A ZONE SPELLING THAT DOES NOT PARSE REFUSES, AND CARRIES THE SPELLING IT FAILED (review 87221).
+//
+// WHY THIS CLAIM EXISTS: `ZoneUnconfigured { zone_spelling }` was an arm no call could reach and no claim
+// matched — §3c's red, one comment deep. So the spelling is now a parameter (`srv2_lan_name_under`), which
+// makes the arm reachable AND makes the field a thing that gets read: the refusal must report the very
+// string it failed to parse, not a constant it could silently disagree with.
+//
+// THE SPELLING HERE IS NOT AN ARBITRARY JUNK STRING. `_` is not a letter, digit or hyphen, so the first
+// label fails the LDH rule at `extdeps.dns.domain_name is_ldh_leading_code_point` — the same rule that
+// earlier rejected `srv_2.mynetworksettings.com` when the firmware predicate was run over candidate names.
+// It has dots and looks like a zone, which is the point: a malformed zone is refused for the grammar, and
+// the refusal is the arm that says so.
+test fn a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed() -> Bool {
+  match srv2_lan_name_under(zone_wire: "srv2_local.example") {
+    HostNameResolutionRefused { host: h, refusal: ZoneUnconfigured { zone_spelling: s } } =>
+      host_identity_eq(a: h, b: "srv2")
+        // The refused spelling, verbatim: a consumer can render it, or re-admit it after fixing it.
+        && s == "srv2_local.example"
+    HostNameResolutionAdmitted { resolution: _ } => false
+  }
+    // THE CONTROL, from the same function one line later: with the zone the fleet actually records, the row
+    // is filed. Without this pair the claim above cannot distinguish "the gate noticed a bad zone" from "the
+    // gate refuses srv2".
+    && (match srv2_lan_name() {
+      HostNameResolutionAdmitted { resolution: _ } => true
+      HostNameResolutionRefused { host: _, refusal: _ } => false
+    })
+    // And the zone this module records really does parse — otherwise the control above would be false and
+    // the refusal arm would be the only behaviour, which is what the reviewer found.
+    && (match lan_name_space_under(zone_wire: lan_zone_wire) {
+      Present { value: _ } => true
+      Absent => false
+    })
+}
+
+// "NOT CONFIGURED" IS NOT "REFUSED BY THE GRAMMAR" (review 87221). One field, `zone_spelling`, used to hold
+// a zone spelling at one site and the English sentence "the fleet tailnet domain is not configured" at
+// another, so a consumer that rendered or re-admitted it got prose (§3 one name / two meanings, §4c a String
+// carrying commentary). The no-fields arm is the fix, and this claim reaches it by passing what the fleet
+// would pass if the row were absent — a state the production constant cannot produce, which is exactly why
+// both arms were unreachable before.
+test fn an_unconfigured_tailnet_domain_refuses_with_no_spelling_to_misread() -> Bool {
+  match srv2_tailnet_name_refused_under(domain: Absent) {
+    // No fields, on purpose: nothing is configured, so there is no spelling to carry and nothing to render
+    // as a zone. The remedy this arm licenses — edit `fleet_tailnet_domain` — is not the remedy arm 4
+    // licenses (run a probe) nor arm 3's (fix the spelling).
+    HostNameResolutionRefused { host: h, refusal: TailnetDomainUnconfigured } => host_identity_eq(a: h, b: "srv2")
+    HostNameResolutionAdmitted { resolution: _ } => false
+  }
+    // A CONFIGURED BUT UNPARSEABLE domain under the same function takes the OTHER arm and carries the
+    // spelling — the two facts stay two arms however the domain is supplied.
+    && (match srv2_tailnet_name_refused_under(domain: Present { value: "bad_domain" as NonEmptyStr }) {
+      HostNameResolutionRefused { host: _, refusal: ZoneUnconfigured { zone_spelling: s } } => s == "bad_domain"
+      HostNameResolutionAdmitted { resolution: _ } => false
+      _ => false
+    })
+    // AND THE PRODUCTION ROW, which is configured and parses: the fleet's own domain yields the
+    // missing-reader arm, not either configuration arm. This is what makes the two above counterfactuals a
+    // consumer can actually distinguish from the real behaviour.
+    && (match srv2_tailnet_name_refused() {
+      HostNameResolutionRefused { host: _, refusal: NoReaderForSpace { space: _ } } => true
+      _ => false
+    })
 }
 
 // THE BMC'S TAILNET MEMBERSHIP IS A READ RECEIPT, NOT A SENTENCE (review 87164, §4c). The old `why` field

@@ -192,19 +192,44 @@ fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
 // cited below, not invented.
 data lan_zone_wire: String = "mynetworksettings.com"
 
-fn lan_zone() -> Zone? {
-  match zone_admit(raw: lan_zone_wire) {
+// THE LAN ZONE FROM A SPELLING, written once and read by both the zone and the space builder.
+fn lan_zone_from(zone_wire: String) -> Zone? {
+  match zone_admit(raw: zone_wire) {
     ZoneAdmitted { zone: z } => Present { value: z }
     ZoneRefused { raw: _ } => Absent
   }
+}
+
+fn lan_zone() -> Zone? {
+  lan_zone_from(zone_wire: lan_zone_wire)
+}
+
+// THE LAN SPACE, BUILT FROM A SPELLING THE CALLER SUPPLIES. Production passes `lan_zone_wire`; the spelling
+// is a parameter rather than a constant read inside so that "this module's zone configuration is corrupt"
+// has a PRODUCER anyone can point at, and `ZoneUnconfigured { zone_spelling }` a reader that reads it. The
+// alternative — a refusal arm no call can ever reach and no claim matches — is the §3c red, and the earlier
+// draft of this module had exactly one such arm.
+fn lan_name_space_under(zone_wire: String) -> NameSpace? {
+  match lan_zone_from(zone_wire: zone_wire) {
+    Present { value: z } => Present { value: Lan { zone: z } }
+    Absent => Absent
+  }
+}
+
+fn lan_name_space() -> NameSpace? {
+  lan_name_space_under(zone_wire: lan_zone_wire)
 }
 
 // THE TAILNET'S ZONE, READ FROM THE FLEET AUTHORITY RATHER THAN RESTATED HERE. The authority is optional
 // — a fleet with no tailnet domain configured has no tailnet zone, and this returns Absent for exactly
 // that reason rather than defaulting to some spelling. That is the honest shape: a name space nobody can
 // answer for is unavailable, not quietly empty.
-fn tailnet_zone() -> Zone? {
-  match fleet_tailnet_domain {
+// THE TAILNET ZONE FROM A DOMAIN SPELLING, written ONCE and read twice — by `tailnet_zone` (production, from
+// the fleet's own row) and by `tailnet_name_space_under` (review 87221's parameterized form). Two copies of
+// this five-line match would be the §2 duplication the previous review round already caught once in this
+// module.
+fn tailnet_zone_from(domain: NonEmptyStr?) -> Zone? {
+  match domain {
     Absent => Absent
     Present { value: d } =>
       match zone_admit(raw: d as String) {
@@ -212,6 +237,10 @@ fn tailnet_zone() -> Zone? {
         ZoneRefused { raw: _ } => Absent
       }
   }
+}
+
+fn tailnet_zone() -> Zone? {
+  tailnet_zone_from(domain: fleet_tailnet_domain)
 }
 
 // ── THE NAME SPACE ───────────────────────────────────────────────────────────────────────────
@@ -250,18 +279,19 @@ fn space_zone(space: NameSpace) -> Zone {
 
 // THE TWO SPACES THE FLEET HAS, built here because `Zone` is sealed and a consumer may not write its labels
 // by hand. Each reads its zone from the ONE place the fleet records that domain — nothing is spelled here.
-fn lan_name_space() -> NameSpace? {
-  match lan_zone() {
-    Present { value: z } => Present { value: Lan { zone: z } }
+// (`lan_name_space` is defined above, beside `lan_name_space_under`, the spelling-parameterized form.)
+// THE TAILNET SPACE, BUILT UNDER A DOMAIN SPELLING THE CALLER SUPPLIES. Production passes the fleet's own
+// `fleet_tailnet_domain`; the parameter is what makes "the domain is not configured" and "the configured
+// domain does not parse" separately reachable, instead of two facts collapsed into one unreachable Absent.
+fn tailnet_name_space_under(domain: NonEmptyStr?) -> NameSpace? {
+  match tailnet_zone_from(domain: domain) {
+    Present { value: z } => Present { value: Tailnet { zone: z } }
     Absent => Absent
   }
 }
 
 fn tailnet_name_space() -> NameSpace? {
-  match tailnet_zone() {
-    Present { value: z } => Present { value: Tailnet { zone: z } }
-    Absent => Absent
-  }
+  tailnet_name_space_under(domain: fleet_tailnet_domain)
 }
 
 // IS THIS CONSUMER ON THE TAILNET? A typed receipt, not a sentence — §4c puts a citation and a status in a
@@ -347,9 +377,19 @@ type HostNameResolutionRefusal
   //    the question was asked and answered "no"; here nobody can ask it. Its remedy is a probe, not an
   //    edit. Carrying the space means a consumer can tell the operator which network to attach to.
   | NoReaderForSpace { space: NameSpace }
-  // 5. The space's own zone spelling does not parse. A defect in THIS module's configuration — a name that
-  //    is perfectly good cannot be filed, and the author must not be sent looking at the name.
+  // 5. The space's own zone spelling does not parse — a defect in THIS module's configuration. A name that
+  //    is perfectly good cannot be filed, and the author must not be sent looking at the name. Carries the
+  //    spelling that failed, so it can be rendered or re-admitted after it is fixed. It carries a SPELLING
+  //    and nothing else: an earlier draft put the sentence "the fleet tailnet domain is not configured" in
+  //    this field too, which made one name mean two materially different things (§3) and handed a consumer
+  //    that renders or re-admits `zone_spelling` a piece of English (§4c). "Nothing is configured" is a
+  //    different fact and has its own arm below.
   | ZoneUnconfigured { zone_spelling: String }
+  // 5b. The fleet has not configured a tailnet domain at all, so the tailnet space has no zone to check a
+  //    name against. No fields: there is no spelling to carry, which is precisely the fact. Distinguished
+  //    from arm 4 (`NoReaderForSpace`) and arm 3 (`ReplyDoesNotResolve`) by what must change — here it is
+  //    the fleet's `fleet_tailnet_domain` row, not a probe and not an edit to the name.
+  | TailnetDomainUnconfigured
   // 6. The spelling this module was configured to file is not a name at all. Carries the resolver module's
   //    refusal, so "you wrote an address where a name belongs" is distinguishable from "this label has a
   //    bad character" — different fixes, and the earlier prose version blended them.
@@ -714,10 +754,15 @@ data router_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3
 // container's cache, answered srv2.mynetworksettings.com with rcode 0 and one A record, 192.168.1.201. The
 // same query for srv2 returned the same address, and for srv2-asoc returned rcode 3 — the observations that
 // decide which arms of this module can be filled at all.
-fn srv2_lan_name() -> HostNameResolutionAdmission {
+// srv2's LAN ROW, BUILT UNDER A ZONE SPELLING THE CALLER SUPPLIES. Production calls `srv2_lan_name`, which
+// passes `lan_zone_wire`; the spelling is a parameter so that arm 5 is a state a caller can actually put the
+// module into and `zone_spelling` is a field something reads — the refusal must carry the very spelling it
+// just failed to parse, not a constant it could disagree with. An arm no call can reach and no claim matches
+// is the §3c red; `a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed` reaches this one.
+fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
   match resolvable_name_admit(spelling: "srv2.mynetworksettings.com") {
     ResolvableNameAdmitted { name: n } =>
-      match lan_name_space() {
+      match lan_name_space_under(zone_wire: zone_wire) {
         Present { value: space } => host_name_resolution_admit(
           host: "srv2" as HostIdentity,
           space: space,
@@ -728,8 +773,9 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
         )
         Absent => HostNameResolutionRefused {
           host: "srv2" as HostIdentity,
-          // Arm 5: this module's own configuration failed. The name is fine; the zone is not.
-          refusal: ZoneUnconfigured { zone_spelling: lan_zone_wire },
+          // Arm 5: this module's own configuration failed. The name is fine; the zone is not, and the
+          // refusal carries the spelling that failed rather than a copy of a constant.
+          refusal: ZoneUnconfigured { zone_spelling: zone_wire },
         }
       }
     ResolvableNameRefused { refusal: r } => HostNameResolutionRefused {
@@ -739,6 +785,11 @@ fn srv2_lan_name() -> HostNameResolutionAdmission {
       refusal: ConfiguredSpellingIsNotAName { refusal: r },
     }
   }
+}
+
+// THE PRODUCTION ROW: srv2's LAN name, under the zone this module records. This is the call a boot makes.
+fn srv2_lan_name() -> HostNameResolutionAdmission {
+  srv2_lan_name_under(zone_wire: lan_zone_wire)
 }
 
 // THE PRODUCTION CUT-OVER, AS A TYPED FRONTIER WITH A MACHINE-READABLE TRIGGER.
@@ -819,19 +870,40 @@ data media_share_name_cutover: MediaShareNameCutover = MediaShareNameCutover {
 // tailnet name (the router's NXDOMAIN for srv2.tailecbe08.ts.net is cited in this file's header, and the BMC
 // is not a tailnet member), while we cannot yet prove fleet operations resolve it. The first is a fact with
 // an observation behind it; the second is an obligation. Only the first is allowed to gate a boot.
-fn srv2_tailnet_name_refused() -> HostNameResolutionAdmission {
-  match tailnet_name_space() {
-    Present { value: space } => HostNameResolutionRefused {
-      host: "srv2" as HostIdentity,
-      // Arm 4: nobody can ask. The remedy is a probe on a tailnet member, not an edit to the spelling —
-      // and a consumer that can match this arm will not be tempted to "fix" a name that may be perfect.
-      refusal: NoReaderForSpace { space: space },
-    }
+// THE srv2 TAILNET ROW, UNDER A DOMAIN THE CALLER SUPPLIES. Production calls `srv2_tailnet_name_refused`,
+// which passes the fleet's row. The parameter exists so the two tailnet refusals are both states a caller can
+// reach and a claim can match: with the domain read from the row inside the function, only one of them was
+// ever constructible, and the other was the §3c red wearing a comment.
+fn srv2_tailnet_name_refused_under(domain: NonEmptyStr?) -> HostNameResolutionAdmission {
+  // The domain is read here rather than funnelled through `tailnet_name_space_under` alone, because that
+  // helper answers one question ("give me a Zone") and answers it Absent for TWO different facts: nothing is
+  // configured, and something is configured that does not parse. Collapsing them is the exact defect review
+  // 87221 found — one name, two meanings — so the refusal branches on the domain itself.
+  match domain {
     Absent => HostNameResolutionRefused {
       host: "srv2" as HostIdentity,
-      // Arm 5: the fleet has no tailnet domain configured at all, which is a different fact from "the
-      // domain is configured and nobody probed it".
-      refusal: ZoneUnconfigured { zone_spelling: "the fleet tailnet domain is not configured" },
+      // Arm 5b, no fields: there is no spelling to carry, because nothing is configured. The fix is the
+      // fleet's `fleet_tailnet_domain` row.
+      refusal: TailnetDomainUnconfigured,
     }
+    Present { value: d } =>
+      match tailnet_name_space_under(domain: domain) {
+        Present { value: space } => HostNameResolutionRefused {
+          host: "srv2" as HostIdentity,
+          // Arm 4: nobody can ask. The remedy is a probe on a tailnet member, not an edit to the spelling —
+          // and a consumer that can match this arm will not be tempted to "fix" a name that may be perfect.
+          refusal: NoReaderForSpace { space: space },
+        }
+        // Arm 5, and it carries the spelling that failed: here there IS a configured domain, and the defect
+        // is that it does not parse. A consumer renders or re-admits exactly this string.
+        Absent => HostNameResolutionRefused {
+          host: "srv2" as HostIdentity,
+          refusal: ZoneUnconfigured { zone_spelling: d as String },
+        }
+      }
   }
+}
+
+fn srv2_tailnet_name_refused() -> HostNameResolutionAdmission {
+  srv2_tailnet_name_refused_under(domain: fleet_tailnet_domain)
 }
