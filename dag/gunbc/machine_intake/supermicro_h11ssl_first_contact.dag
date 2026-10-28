@@ -139,7 +139,7 @@ type H11sslFirstContactReceipt {
 
 data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11sslFirstContactReceipt {
   board: supermicro_h11ssl_board_authority,
-  bmc_firmware: firmware_semantic_version(major: 1, minor: 52, patch: 0),
+  bmc_firmware: supermicro_h11ssl_bmc_reported_identity.manager_firmware_version,
   bmc_address: "192.168.1.252",
   bmc_mac: mac_address(octet1: 172, octet2: 31, octet3: 107, octet4: 227, octet5: 245, octet6: 123),
   observations: [
@@ -355,7 +355,7 @@ fn supermicro_h11ssl_power_on_refusal(h: H11sslAttestedHardware) -> H11sslPowerO
 // Identity the BMC reported; BoardID and the variant are not resolved by this read (FRU owed).
 type H11sslBmcReportedIdentity {
   manager_model: NonEmptyStr
-  manager_firmware_version: NonEmptyStr
+  manager_firmware_version: FirmwareSemanticVersion
   bios_version: NonEmptyStr
   board_id: NonEmptyStr
   graphical_console: NonEmptyStr
@@ -363,7 +363,7 @@ type H11sslBmcReportedIdentity {
 
 data supermicro_h11ssl_bmc_reported_identity: H11sslBmcReportedIdentity = H11sslBmcReportedIdentity {
   manager_model: "ASPEED",
-  manager_firmware_version: "1.52.00",
+  manager_firmware_version: firmware_semantic_version(major: 1, minor: 52, patch: 0),
   bios_version: "2.6a",
   board_id: "0x1a03",
   graphical_console: "KVMIP",
