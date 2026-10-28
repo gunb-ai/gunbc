@@ -3981,7 +3981,6 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
     bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
     bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE")]),
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-    bcmd(words: [bl(text: "mkdir"), bl(text: "-p"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts")])]),
     bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
   ]
 }
