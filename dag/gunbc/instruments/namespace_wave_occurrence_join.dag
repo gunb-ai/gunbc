@@ -85,6 +85,15 @@ type JoinDelta
   | JoinRefused { cause: String, coordinate: String, detail: String }
   | JoinUnobserved { coordinate: String, detail: String }
 
+// THE THREE ANSWERS of the controls run, as a sum — the wire matches on it; nothing reads a report prefix to tell an
+// unobserved run from a failed control (review 87079; DESIGN §5 "every degradation is typed, located and countable").
+// The fixture's own standing (site count, generator stuck, no edits) answers no observation: JoinControlsUnobserved.
+// A per-control verdict is a located control failure: JoinControlsFailed. Both carry their report.
+type JoinControlsOutcome
+  = JoinControlsHeld
+  | JoinControlsFailed { report: String }
+  | JoinControlsUnobserved { report: String }
+
 fn join_field(line: String, index: Int) -> String {
   match list_at_optional(xs: split(s: line, delimiter: "\t"), index: index) {
     Present { value: f } => f
@@ -887,7 +896,7 @@ fn join_control_verdict(name: String, deltas: List<JoinDelta>, want_admitted: In
   }
 }
 
-fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
+fn occurrence_join_controls_outcome(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> JoinControlsOutcome {
   let base_text = join_control_base_text()
   let generated = recompute_wave_text(path: "m", base_text: base_text, prepared: prepared, lex: lex, scopes: rows_proof_scopes(rows: join_control_rows()), closures: closures)
   let head_text = generated.text
@@ -895,7 +904,8 @@ fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexR
   let base_rows = join_control_base_rows()
   let site_count = count(base_rows)
   if (site_count != 3) || (head_text == base_text) || (!generated.done) {
-    Present { value: "occurrence-join control fixture: " + to_string(site_count) + " base sites, generator " + (if generated.done { "converged" } else { "stuck: " + generated.stuck }) + (if head_text == base_text { ", no edits made" } else { "" }) + "\n" }
+    // The fixture's own standing is broken: no observation was made, so no control gets to hold or fail.
+    JoinControlsUnobserved { report: "occurrence-join control fixture: " + to_string(site_count) + " base sites, generator " + (if generated.done { "converged" } else { "stuck: " + generated.stuck }) + (if head_text == base_text { ", no edits made" } else { "" }) + "\n" }
   } else {
     let admit_rows = join_control_head_rows(head_text: head_text, wrong_index: 0 - 1, shifted_index: 0 - 1)
     let report = join_control_case(name: "admit", base_rows: base_rows, head_rows: admit_rows, evidence: evidence, prepared: prepared, lex: lex, want_admitted: 3, want_refused: [], closures: closures)
@@ -908,7 +918,19 @@ fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexR
       + generated_controls()
       + rename_controls()
       + pipe_end_to_end_control(prepared: prepared, lex: lex, closures: closures)
-    if report == "" { Absent } else { Present { value: report } }
+    if report == "" { JoinControlsHeld } else { JoinControlsFailed { report: report } }
+  }
+}
+
+// THE OPTIONAL PROJECTION, for the sibling instrument that composes this gate's controls with its own (its
+// first_control_failure list wants Optional<String>). It FAILS on either non-held arm, exactly as before the sum
+// existed: a broken fixture standing and a failed control are both "the gate did not say held". Only THIS file's
+// wire distinguishes their answers, by matching the sum; nothing outside may read the report to tell them apart.
+fn occurrence_join_controls_failure(prepared: PreparedGrammar, lex: PreparedLexRules, closures: List<RosterHomeClosure>) -> Optional<String> {
+  match occurrence_join_controls_outcome(prepared: prepared, lex: lex, closures: closures) {
+    JoinControlsHeld => Absent
+    JoinControlsFailed { report: report } => Present { value: report }
+    JoinControlsUnobserved { report: report } => Present { value: report }
   }
 }
 
@@ -1101,9 +1123,10 @@ fn pipe_end_to_end_control(prepared: PreparedGrammar, lex: PreparedLexRules, clo
 // THE GATED ENTRY: `gunbc test //gunbc/instruments:namespace-wave-occurrence-join-controls`
 // (gunbc.instrument_targets namespace_wave_occurrence_join_controls_binding, a CliWireProgramProducer row). The gate's
 // controls run HERE, not only inside the binding-diff instrument, so a broken join is caught at the join's own label.
-// The bytes are the CONTROL REPORT, not a count copied from the tree: occurrence_join_controls_failure concatenates the
-// per-control verdicts, and an EMPTY report is the only evidence of standing -- so the held line claims nothing beyond
-// "every verdict was empty" (DESIGN section 5: completeness is the identity join inside each verdict, never a number).
+// The bytes are the CONTROL REPORT, not a count copied from the tree: occurrence_join_controls_outcome concatenates
+// the per-control verdicts, and an EMPTY report is the only evidence of standing -- so the held line claims nothing
+// beyond "every verdict was empty" (DESIGN section 5: completeness is the identity join inside each verdict, never a
+// number). WHICH ANSWER IT IS comes from matching the sum, never from reading the report's opening text (review 87079).
 // THE EXIT IS THE STANDING, THREE-WAY like every instrument wire: 0 the join admits what it should and refuses what it
 // should; 1 a located control failure (the report names the controls); 2 UNOBSERVED -- the grammar cannot be prepared or
 // the fixture's own standing is broken (site count, generator convergence), so the gate answers nothing about a
@@ -1113,24 +1136,16 @@ fn namespace_wave_occurrence_join_controls_wire() -> CliWireResponse {
     Rejected { diagnostics: _ } =>
       CliWirePrintable { bytes: "occurrence-join controls UNOBSERVED: grammar-unprepared\n", exit: ExitFailure { code: 2, reason: "occurrence-join controls UNOBSERVED: grammar-unprepared" } }
     Accepted { value: prepared, diagnostics: _ } =>
-      match occurrence_join_controls_failure(prepared: prepared, lex: dag_prepared_lex(), closures: wave_roster_closures(scopes: rows_proof_scopes(rows: join_control_rows()))) {
-        Absent =>
+      match occurrence_join_controls_outcome(prepared: prepared, lex: dag_prepared_lex(), closures: wave_roster_closures(scopes: rows_proof_scopes(rows: join_control_rows()))) {
+        JoinControlsHeld =>
           CliWirePrintable { bytes: "occurrence-join controls: every verdict empty\n", exit: ExitSuccess }
-        Present { value: report } =>
-          // THE FIXTURE-STANDING REFUSALS (site count, generator stuck, no edits) answer no observation; a per-control
-          // verdict names its control. Both carry their report; the exit says which kind of answer it is.
-          if fixture_standing_failure(report: report) {
-            CliWirePrintable { bytes: report, exit: ExitFailure { code: 2, reason: report } }
-          } else {
-            CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
-          }
+        JoinControlsFailed { report: report } =>
+          // A located control failure: the report names its control, the exit says a control did not hold.
+          CliWirePrintable { bytes: report, exit: exit_failure(reason: report) }
+        JoinControlsUnobserved { report: report } =>
+          // The fixture's own standing is broken (site count, generator stuck, no edits): no observation was
+          // made, so this is Refused (exit 2), never an ordinary control failure.
+          CliWirePrintable { bytes: report, exit: ExitFailure { code: 2, reason: report } }
       }
   }
-}
-
-// WHICH UNOBSERVED: the fixture's own standing (the one report occurrence_join_controls_failure emits OUTSIDE the
-// per-control verdicts) begins with this prefix; a per-control verdict begins with the control's name. Read off the
-// report text, not a parallel flag.
-fn fixture_standing_failure(report: String) -> Bool {
-  starts_with(s: report, prefix: "occurrence-join control fixture:")
 }
