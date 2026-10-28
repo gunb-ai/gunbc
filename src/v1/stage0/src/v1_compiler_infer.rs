@@ -36000,7 +36000,7 @@ pub fn equality_synth_fields(
                 .cloned()
                 .fold(
                     cmps.clone().first().cloned().clone().unwrap(),
-                    |acc: _, c: Rc<Node>| {
+                    |acc: Rc<Node>, c: Rc<Node>| {
                         equality_synth_binop(m.clone(), BinOp::And, acc, c.clone())
                     },
                 )

@@ -72,12 +72,6 @@ pub struct EqualityPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct EqualityRouteRow {
-    pub carrier: Rc<DeclarationRef>,
-    pub function: Rc<DeclarationRef>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OperandRealization {
     HostNumericOperand,
