@@ -49,16 +49,28 @@ module gunbc.host.host_name_resolution
 // to re-match anyway to say WHY — the predicate is a detour through information-losing territory. They are
 // replaced by functions that hand back the thing itself: `resolvable_name_qualification` returns the
 // `NameQualification`, `host_part_of` returns the labels that belong to the host or nothing, and
-// resolvability is DATA on the consumer (`ConsumerReach.reaches`, `observed`) rather than a hard-coded
-// match on the space, so a second consumer adds a row instead of a branch (§6b, "a new ordinary case is
-// data, not control flow").
+// resolvability is DATA on the consumer (`ConsumerReach.reaches`, read by the space test, and `observed`,
+// read by `first_cited_address_disagreement`) rather than a hard-coded match on the space, so a second
+// consumer adds a row instead of a branch (§6b, "a new ordinary case is data, not control flow"). Each of
+// those two fields now names the code that reads it; an earlier draft named `observed` here and read it
+// nowhere, which is the §3c red rather than a modelling choice.
 
 import std.types { String, Bool, List, Int, NonEmptyStr, Present, Absent, list_length }
-import std.algebra { Cons, Empty, FreeSemigroup, non_empty_singleton, take_prefix, list_reverse, skip, zip_eq }
+import std.algebra {
+  Cons,
+  Empty,
+  FreeSemigroup,
+  non_empty_singleton,
+  take_prefix,
+  list_reverse,
+  skip,
+  zip_eq,
+  non_empty_to_list,
+}
 import std.error_primitives { Ok, Err }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
 import extdeps.dns.domain_name {
   DnsLabel,
   HostName,
@@ -459,25 +471,12 @@ fn zone_eq(a: Zone, b: Zone) -> Bool {
   zip_eq(a: a.labels, b: b.labels, eq: fn(x, y) { dns_label_eq(a: x, b: y) })
 }
 
-// WHAT THAT CONSUMER'S RESOLVER WAS OBSERVED TO ANSWER FOR THIS NAME, or Absent when nothing was observed.
-// ONE WALK, NOT TWO (DESIGN §2: the minimal process; §6: a proven cost-shape defect is always fixed). The
-// body used to be written here arm-for-arm as well as in `first_matching_observation`, so the two could
-// drift — a fix to the search would land in one and silently not the other.
-fn observed_for(reach: ConsumerReach, name: ResolvableName) -> ResolutionObservation? {
-  first_matching_observation(xs: reach.observed, name: name)
-}
-
-fn first_matching_observation(xs: List<ResolutionObservation>, name: ResolvableName) -> ResolutionObservation? {
-  match xs {
-    Empty => Absent
-    Cons { head: o, tail: rest } =>
-      if observed_names_this(outcome: o.outcome, name: name) {
-        Present { value: o }
-      } else {
-        first_matching_observation(xs: rest, name: name)
-      }
-  }
-}
+// WHAT WAS OBSERVED, AND WHO READS IT (review 87196, finding 1, option (b) for the dead half). This module
+// once carried `observed_for` and `first_matching_observation`, which no code called: the §3c red is a row
+// no fold reads, and a public helper with no call site is that, however tidy it looks. The fold that needs
+// the observations is `first_cited_address_disagreement` below, and it needs ALL the citations for a name,
+// not the first one — an earlier draft had the gate refuse on the first citation it found, which would have
+// let a stale receipt hide behind a fresh one. The two helpers that fold does use are the ones that remain.
 
 // DOES THIS OBSERVATION ANSWER FOR THIS NAME, by the labels the parser settled — compared with `zip_eq` and
 // the named label equality, not by rendering both sides and comparing strings at a call site.
@@ -538,6 +537,23 @@ type MediaShareAddressStanding
   // it at that moment, through the resolver module's one renderer.
   | NamesAnotherHost { host: HostIdentity, share: NonEmptyStr, row: ResolvableName }
   | ShareNameUnresolved { host: HostIdentity, cause: ResolutionCause }
+  // THE ANSWER MOVED UNDER THE NAME. The incident this module exists for: `srv2.mynetworksettings.com`
+  // answered 192.168.1.188 for as long as the 10G NIC held it, kept answering — rcode 0, one A record —
+  // after the operator moved srv2 to the 1G NIC and the address died, and the BMC happily mounted a share
+  // at an address that no longer served anything. A gate that only asks "does the name resolve?" passes
+  // that boot, because the name DID resolve. This arm fires when the live reply disagrees with a citation
+  // this gate is holding: resolvability is necessary, not sufficient, and the difference between "unheard
+  // of" and "the lease moved" is the difference between fixing a name and fixing a binding.
+  //
+  // Both sides are carried as the ANSWERS, not renderings: a consumer that must show the drift renders at
+  // that moment, and a consumer that must re-bind matches the two lists. Empty on the cited side is a real
+  // fact (the citation says the name did not resolve), not a missing value.
+  | AnswerMovedUnderName {
+    host: HostIdentity,
+    name: ResolvableName,
+    cited: List<Ipv4Address>,
+    live: List<Ipv4Address>,
+  }
   | Usable { host: HostIdentity, name: ResolvableName, address: Ipv4Address }
 
 // THE CONSUMER'S OWN FIELD RULE, as data. `minimum_labels: 2` is not a rule this module invented: it is the
@@ -587,11 +603,79 @@ fn media_share_address_gate(
               // `addresses` is a FreeSemigroup, so there is always one to hand back and this arm cannot
               // invent a failure: no fallback cause, no placeholder, no "shouldn't happen" branch (§5).
               Resolved { name: _, addresses: addrs } =>
-                Usable { host: row.host, name: share_name, address: addrs.head }
+                match citations_disagree_with_live(name: share_name, reach: reach, row: row, live: addrs) {
+                  // A citation this gate is holding says the name answered something else. Do not attach.
+                  Present { value: c } => AnswerMovedUnderName {
+                    host: row.host,
+                    name: share_name,
+                    cited: c,
+                    live: non_empty_to_list(xs: addrs),
+                  }
+                  // Either every citation agrees, or this name has never been cited — in which case the
+                  // live reply is the only evidence there is, and the boot proceeds on it. Deliberately ONE
+                  // arm: a consumer acts identically on both, and splitting them would be modelling a
+                  // distinction nothing reads (§2).
+                  Absent => Usable { host: row.host, name: share_name, address: addrs.head }
+                }
               Unresolved { name: _, cause: c } => ShareNameUnresolved { host: row.host, cause: c }
             }
         }
       }
+  }
+}
+
+// DOES THE LIVE REPLY AGREE WITH WHAT THIS CONSUMER WAS TOLD? The question the .188 boot never got asked.
+//
+// A fold over the consumer's cited observations for THIS name, keeping the first one whose addresses differ
+// from the reply being acted on. Absent means either there is no citation for this name — in which case the
+// live reply is the only evidence, and the boot proceeds on it — or every citation agrees.
+//
+// An observation that carried NO addresses (an NXDOMAIN receipt) is not treated as a disagreement about the
+// address, because it never made one: it is a receipt about what a server said at a moment, and the live
+// reply is a fresher observation from the same resolver. What must match is a claim about which address the
+// name answers, and only the address-carrying observations make one. The row's own citation is folded in
+// alongside the consumer's, and it always carries addresses — the admission refuses a row whose reply does
+// not resolve — so this check is never vacuous for a real row.
+fn first_cited_address_disagreement(
+  name: ResolvableName,
+  citations: List<ResolutionObservation>,
+  live: FreeSemigroup<Ipv4Address>,
+) -> List<Ipv4Address>? {
+  match citations {
+    Empty => Absent
+    Cons { head: o, tail: rest } =>
+      if !observed_names_this(outcome: o.outcome, name: name) {
+        first_cited_address_disagreement(name: name, citations: rest, live: live)
+      } else {
+        match o.outcome {
+          Unresolved { name: _, cause: _ } => first_cited_address_disagreement(name: name, citations: rest, live: live)
+          Resolved { name: _, addresses: cited } =>
+            if zip_eq(a: non_empty_to_list(xs: cited), b: non_empty_to_list(xs: live), eq: ipv4_address_eq) {
+              first_cited_address_disagreement(name: name, citations: rest, live: live)
+            } else {
+              Present { value: non_empty_to_list(xs: cited) }
+            }
+        }
+      }
+  }
+}
+
+// OBSERVED, BUT ONLY WHERE IT DECIDES SOMETHING. `ConsumerReach.observed` is read here, and nowhere else;
+// an earlier draft carried the field, documented it in the header as load-bearing, and never read it — the
+// §3c red (a row no fold reads), which is the only kind of dangling this repo calls red. The `asked_name`
+// and `observed_names_this` helpers above are used by this fold; the two list-walk helpers that were left
+// over with no call site were deleted rather than kept as a public surface nothing calls.
+fn citations_disagree_with_live(
+  name: ResolvableName,
+  reach: ConsumerReach,
+  row: HostNameResolution,
+  live: FreeSemigroup<Ipv4Address>,
+) -> List<Ipv4Address>? {
+  // The row's own citation FIRST: it is the one the share row is filed under, so a drift it shows is the
+  // drift that matters, and it is reported before any older receipt the consumer happens to hold.
+  match first_cited_address_disagreement(name: name, citations: [row.grounded], live: live) {
+    Present { value: c } => Present { value: c }
+    Absent => first_cited_address_disagreement(name: name, citations: reach.observed, live: live)
   }
 }
 
