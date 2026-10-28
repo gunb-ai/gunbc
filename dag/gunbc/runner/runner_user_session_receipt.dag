@@ -21,19 +21,26 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv4 }
 // workflow run that reported it.
 //
 // WHY THIS IS A GATE AND NOT A COMMENT. gunbc.runner.runner_registration_labels
-// runner_user_session_labels_for derives the capability label only for a host that is BOTH in the roster
-// and has a complete row here -- every reading present and holding. Adding a host to the roster therefore
-// does not by itself grant it the label; the population the runs-on selector selects over is the
-// population with evidence. Two String rows beside the list would not do that: nothing but a literal
-// comparison could read them (reviews 87051 and 87054; DESIGN 4c "a String declaration whose only purpose
-// is commentary is misplaced or dead data", DESIGN 2 "a String leaf hiding named parts is anemic
-// modeling", and one global scalar left a second rostered host eligible with no receipt at all).
+// runner_user_session_grant_of_roster derives the capability from these rows: Granted only for a host
+// BOTH on the roster AND covered by a complete holding row here -- every reading present and holding; the
+// mismatches answer RosteredUnconverged / ReceiptedUnrostered / Unadmitted by name, never a silent [].
+// Adding a host to the roster therefore does not by itself grant it the label; the population the runs-on
+// selector selects over is the population with evidence. Two String rows beside the list would not do
+// that: nothing but a literal comparison could read them (reviews 87051 and 87054; DESIGN 4c "a String
+// declaration whose only purpose is commentary is misplaced or dead data", DESIGN 2 "a String leaf hiding
+// named parts is anemic modeling", and one global scalar left a second rostered host eligible with no
+// receipt at all).
 //
-// WHAT A ROW IS. It records the result of a past converge run -- transcribed from the run the fleet
-// cites -- so its fields are named readings, not a sentence. That a user manager is up RIGHT NOW is a
-// live fact no row can carry; the live check stays where it belongs, in the converge's own holds
-// (gunbc.runner.runner_user_session runner_user_session_converge_ci_wet). The row is what makes a host
-// eligible to advertise the capability in the meantime.
+// WHAT A ROW IS, AND WHAT IT CANNOT BE. It records the result of a past converge run -- so its fields are
+// named readings, not a sentence -- and it cites the run that produced them by id. That a user manager is
+// up RIGHT NOW is a live fact no row can carry: between converge runs nothing re-observes the host, and
+// that freshness gap is a DECLARED rung drop, not a secret (gunbc.rung_drop
+// .runner_user_session_label_has_no_live_receipt_reread; review 87136, DESIGN 6 "name the instrument,
+// never transcribe its output" -- the row names its producer leg, and the drop declares that no one runs
+// it again for the label's freshness; its restoration trigger is exactly that). The live check itself
+// stays where it belongs, in the converge's own holds (gunbc.runner.runner_user_session
+// runner_user_session_converge_ci_wet). The row is what makes a host eligible to advertise the capability
+// between convergence runs.
 
 // loginctl enable-linger's outcome, as the converge records it: the step either ran clean or reported a
 // cause (the converge's observed_or_cause renders the failure form into exactly this line shape).
@@ -92,11 +99,15 @@ type RunnerUserSessionConvergeReceiptRow {
   bus: UserSessionAnswer,
 }
 
-// THE RECEIPT ROWS, THE PROVENANCE OF THE USER-SESSION ROSTER. srv4's row is what its roster entry rests
-// on: fleet-converge run 40270496735 (host=srv4, mode=runner_user_session_converge, at 8353c21c84a,
-// 2026-10-26) reported enable_linger=ok, Linger=yes and an answering user manager, and wrote
-// /srv/gunbc/converge/runner-user-session-srv4.json. A host enters the label's population by EARNING a
-// row here, which is why adding one to the roster list alone gets it nothing.
+// THE RECEIPT ROWS, THE PROVENANCE OF THE USER-SESSION ROSTER. A host enters the label's population by
+// EARNING a row here, which is why adding one to the roster list alone gets it nothing. Each row cites
+// its PRODUCER, not its print-out (DESIGN 6): the fleet-converge runner_user_session_converge leg
+// (gunbc.runner.runner_user_session runner_user_session_converge_cli) run for that host, by run id and by
+// the receipt path that leg wrote -- srv4's row is run 40270496735 (host=srv4,
+// mode=runner_user_session_converge, at 8353c21c84a, 2026-10-26;
+// /srv/gunbc/converge/runner-user-session-srv4.json). The three readings are the row's typed fields, not
+// a sentence; the freshness gap on them is declared at gunbc.rung_drop
+// .runner_user_session_label_has_no_live_receipt_reread.
 data runner_user_session_converge_receipt_rows: List<RunnerUserSessionConvergeReceiptRow> = [
   RunnerUserSessionConvergeReceiptRow {
     host: operator_host_srv4,

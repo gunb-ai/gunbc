@@ -58,6 +58,12 @@ import gunbc.runner.runner_slot_job_role { srv1_deploy_slot }
 import gunbc.ci.ci_fleet { srv4_offer }
 import gunbc.runner.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner.runner_slot_allocation { runner_labels_satisfy_selector }
+import std.algebra { string_contains }
+import gunbc.rung_drop { Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_drop.runner_user_session_label_has_no_live_receipt_reread {
+  runner_user_session_label_has_no_live_receipt_reread,
+}
 import extdeps.github.workflow_runs { github_workflow_run_id_is_positive }
 import extdeps.github.actions { SelfHosted }
 
@@ -86,8 +92,10 @@ fn srv4_ci_slot() -> RunnerSlotIdentity {
 // The Granted arm is no decoration: a gate that always refused would fail it.
 test fn the_grant_states_who_holds_the_label_and_why_the_others_do_not() -> Bool {
   match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: runner_job_user_session_hosts) {
-    RunnerUserSessionGranted { row: _ } =>
-      match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) {
+    RunnerUserSessionGranted { row: row } =>
+      github_workflow_run_id_is_positive(id: row.run_id)
+        && runner_user_session_converge_receipt_row_holds(row: row)
+        && match runner_user_session_grant_of_roster(host: operator_host_srv1, roster: concat(runner_job_user_session_hosts, [operator_host_srv1])) {
         RunnerUserSessionRosteredUnconverged { host: forged } =>
           match runner_user_session_grant_of_roster(host: operator_host_srv4, roster: []) {
             RunnerUserSessionReceiptedUnrostered { host: stranded } =>
@@ -247,6 +255,28 @@ test fn the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else() -> 
   }
 }
 
+// THE STALENESS WINDOW IS DECLARED, NOT ASSUMED (DESIGN 4b, DESIGN 6). The grant trusts a RECORDED
+// receipt row: nothing re-observes the host's user manager between converge runs (review 87136). That gap
+// is a rung drop, not a secret -- gunbc.rung_drop.runner_user_session_label_has_no_live_receipt_reread
+// declares previous=MechanicallyPreventable, temporary=Mitigatable, the bounded population, and a
+// restoration trigger naming the capability (the label derived from a converge readback an instrument
+// re-derives). This control makes the declaration load-bearing: the row must be Standing with the declared
+// rungs, and every host the roster carries must be named in its population. Adding a second host to the
+// roster without declaring it here goes red -- the staleness window grows only on purpose. Deleting the
+// row or its population goes red too (an undeclared silent-wrong-answer is DESIGN 5's hard reject).
+test fn the_recorded_receipt_gap_is_declared_for_every_rostered_host() -> Bool {
+  match runner_user_session_label_has_no_live_receipt_reread.standing {
+    Standing { declaration: TypedDeclaration { previous: MechanicallyPreventable, temporary: Mitigatable, reason: ReplacementStaged { replacement: _ }, population: Enumerated { members: members }, restoration_trigger: trigger } } =>
+      all(runner_job_user_session_hosts, h => any(concat([members.head], members.tail), w => string_contains(s: w, pattern: (h as String))))
+        && string_contains(s: trigger, pattern: "re-derive")
+        && string_contains(s: members.head, pattern: (operator_host_srv4 as String))
+    Standing { declaration: _ } => false
+    Retired { trigger_fired: _, declaration: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _, declaration: _ } => false
+    Dissolved { removal: _, declaration: _ } => false
+  }
+}
+
 // THE CONTROL CENSUS, IN THE ORDER THE FOLD READS THEM. Each control above answers Bool (the claim lane's
 // shape); this vocabulary names them so the fold below can carry the FIRST failing control's name into
 // the refusal -- DESIGN 5: every path fails with a typed, located diagnostic, so a red receipt says where
@@ -264,6 +294,7 @@ type WitnessControl
   | StripComposesWithGrantStep
   | SlotGrainStep
   | ConsumerSelectorStep
+  | DeclaredStalenessStep
 
 fn witness_control_order() -> List<WitnessControl> {
   [
@@ -276,6 +307,7 @@ fn witness_control_order() -> List<WitnessControl> {
     StripComposesWithGrantStep,
     SlotGrainStep,
     ConsumerSelectorStep,
+    DeclaredStalenessStep,
   ]
 }
 
@@ -290,6 +322,7 @@ fn witness_control_name(step: WitnessControl) -> String {
     StripComposesWithGrantStep => "the_strip_does_not_disable_the_grant"
     SlotGrainStep => "a_ci_slot_label_set_follows_its_host_gate_and_the_deploy_slot_stays_out"
     ConsumerSelectorStep => "the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else"
+    DeclaredStalenessStep => "the_recorded_receipt_gap_is_declared_for_every_rostered_host"
   }
 }
 
@@ -304,6 +337,7 @@ fn witness_control_holds(step: WitnessControl) -> Bool {
     StripComposesWithGrantStep => the_strip_does_not_disable_the_grant()
     SlotGrainStep => a_ci_slot_label_set_follows_its_host_gate_and_the_deploy_slot_stays_out()
     ConsumerSelectorStep => the_consumer_selector_is_satisfied_by_the_gate_and_by_nothing_else()
+    DeclaredStalenessStep => the_recorded_receipt_gap_is_declared_for_every_rostered_host()
   }
 }
 
