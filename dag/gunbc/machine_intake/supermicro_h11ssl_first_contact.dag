@@ -9,7 +9,6 @@ import extdeps.time.rfc3339 { Rfc3339Timestamp, rfc3339_compare, Rfc3339Precedes
 import extdeps.bmc.supermicro {
   SupermicroFactoryCredentialForm, SupermicroDefaultAdminCredential, SupermicroUniqueStickerCredential,
 }
-import gunbc.machine_intake.supermicro_release_observation { supermicro_licence_activation_accepted_basis, SupermicroRowBasis }
 import extdeps.bmc.types {
   RedfishServiceRootMember, ServiceRootSystems, ServiceRootChassis, ServiceRootManagers, ServiceRootTasks,
   ServiceRootSessionService, ServiceRootAccountService, ServiceRootEventService, ServiceRootUpdateService,
@@ -168,7 +167,7 @@ data supermicro_h11ssl_first_contact_receipt: H11sslFirstContactReceipt = H11ssl
 // gunbc.machine_intake.supermicro_bmc_reading (SupermicroIdentityRead). bmc_firmware above is the
 // release these observations were made on, as the BMC reported it on 2026-10-17
 // (supermicro_h11ssl_bmc_reported_identity); what each code means on that release is
-// gunbc.machine_intake.supermicro_release_observation's (no Supermicro document states it yet).
+// gunbc.machine_intake.supermicro_release_observation's, derived from this receipt (no Supermicro document states it yet).
 
 fn rejects_factory_default(o: H11sslObservation) -> Bool {
   match o {
@@ -215,31 +214,50 @@ fn is_root_refused(o: H11sslObservation) -> Bool {
   }
 }
 
-// Licence activation CGI that changed the unit, timed on the transcript; the CHECK it answered is read
-// through the release's row in gunbc.machine_intake.supermicro_release_observation, whose basis (scope and receipt) comes back with it. A CHECK with
-// no row on this release has no reading, so the step is not an activation.
-fn activation_check_basis(o: H11sslObservation, firmware: FirmwareSemanticVersion) -> SupermicroRowBasis? {
+// Licence activation CGI that changed the unit, timed on the transcript, and the CHECK it answered.
+// What that CHECK means is not asserted here: the transition below observes what followed it, and
+// gunbc.machine_intake.supermicro_release_observation derives its per-release reading FROM that
+// transition, so the meaning is never read back through a row resting on this same receipt.
+fn activation_check(o: H11sslObservation) -> Nat? {
   match o {
     LicenceActivationObservation { credential: _, instant: _, observed_by: _, check_attribute: c, unit_state_changed: ch } =>
-      if ch && on_transcript_basis(o: o) { supermicro_licence_activation_accepted_basis(firmware: firmware, check: c) } else { none }
+      if ch && on_transcript_basis(o: o) { Present { value: c } } else { none }
     _ => none
   }
 }
 
-fn is_activation(o: H11sslObservation, firmware: FirmwareSemanticVersion) -> Bool {
-  match activation_check_basis(o: o, firmware: firmware) {
+fn is_activation(o: H11sslObservation) -> Bool {
+  match activation_check(o: o) {
     Absent => false
     Present { value: _ } => true
   }
 }
 
-// The transition is observed only together with the basis of the CHECK reading it rests on: the
-// refusal, the state change and the answer are this receipt's observations, but that the CHECK meant
-// acceptance is gunbc.machine_intake.supermicro_release_observation's row, and while that row is SupermicroSeenOnOneUnit the
-// transition is a one-unit bet, never a firmware rule.
+// What the ordered transition shows: the CHECK the activation answered, when it was issued, and the
+// ServiceRoot answered after it. The figures are this receipt's observations, carried out unchanged.
+type H11sslActivationTransitionReading {
+  check: Nat
+  activated_at: Rfc3339Timestamp
+  answered_at: Rfc3339Timestamp
+  redfish_version: NonEmptyStr
+  root_schema: NonEmptyStr
+  members: List<RedfishServiceRootMember>
+}
+
 type H11sslActivationTransition
-  = ActivationTransitionObserved { check_basis: SupermicroRowBasis }
+  = ActivationTransitionObserved { reading: H11sslActivationTransitionReading }
   | ActivationTransitionNotObserved
+
+fn transition_reading(act: H11sslObservation, ans: H11sslObservation) -> H11sslActivationTransitionReading? {
+  match activation_check(o: act) {
+    Absent => none
+    Present { value: c } => match ans {
+      RedfishRootObservation { instant: i, observed_by: _, outcome: ServiceRootAnswered { redfish_version: v, root_schema: sc, uuid: _, members: ms }, unit_state_changed: _ } =>
+        Present { value: H11sslActivationTransitionReading { check: c, activated_at: observed_instant(o: act).at, answered_at: i.at, redfish_version: v, root_schema: sc, members: ms } }
+      _ => none
+    }
+  }
+}
 
 // Redfish root, answered, no state change.
 fn is_root_answered(o: H11sslObservation) -> Bool {
@@ -250,15 +268,22 @@ fn is_root_answered(o: H11sslObservation) -> Bool {
 }
 
 // Observed only for the ordered transition on this BMC: a refused Redfish root, then a licence
-// activation (a CHECK the release reads as accepted, state changed), then an answered Redfish root, all three timed on the
-// observer's transcript and each strictly later (RFC 3339) than the one before. A reordered,
-// deleted or differently-timed step is not observed. Consumed by the witness now; the arrival-intake
-// Redfish path is the same declared frontier as the module header.
+// activation (state changed), then an answered Redfish root, all three timed on the observer's
+// transcript and each strictly later (RFC 3339) than the one before. A reordered, deleted or
+// differently-timed step is not observed. Consumed by gunbc.machine_intake.supermicro_release_observation
+// (the per-release rows) and the witness; the arrival-intake Redfish path is the same declared frontier
+// as the module header.
 fn supermicro_h11ssl_redfish_root_answered_after_activation(r: H11sslFirstContactReceipt) -> H11sslActivationTransition {
-  let ordered = filter(r.observations, act => is_activation(o: act, firmware: r.bmc_firmware) && any(r.observations, refused => is_root_refused(o: refused) && instant_precedes(a: observed_instant(o: refused).at, b: observed_instant(o: act).at)) && any(r.observations, ans => is_root_answered(o: ans) && instant_precedes(a: observed_instant(o: act).at, b: observed_instant(o: ans).at)))
-  match first(flat_map(ordered, act => match activation_check_basis(o: act, firmware: r.bmc_firmware) { Absent => []  Present { value: st } => [st] })) {
+  let readings = flat_map(r.observations, act =>
+    if is_activation(o: act) && any(r.observations, refused => is_root_refused(o: refused) && instant_precedes(a: observed_instant(o: refused).at, b: observed_instant(o: act).at)) {
+      flat_map(r.observations, ans =>
+        if is_root_answered(o: ans) && instant_precedes(a: observed_instant(o: act).at, b: observed_instant(o: ans).at) {
+          match transition_reading(act: act, ans: ans) { Absent => []  Present { value: t } => [t] }
+        } else { [] })
+    } else { [] })
+  match first(readings) {
     Absent => ActivationTransitionNotObserved
-    Present { value: st } => ActivationTransitionObserved { check_basis: st }
+    Present { value: t } => ActivationTransitionObserved { reading: t }
   }
 }
 
