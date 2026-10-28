@@ -26241,11 +26241,30 @@ pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
     if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
         match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
-                if is_unsolved_type_variable(r.clone()) {
+                let result = if is_unsolved_type_variable(r.clone()) {
                     slot.clone()
                 } else {
                     crate::v1_compiler_infer_types::child_type_node(slot.clone())
+                };
+                if slot.name.clone() == "Qn".to_string() || result.name.clone() == "tail".to_string() {
+                    eprintln!(
+                        "BK381-ARM slot.name={} slot.conn={:?} slot.children={} slot.params={} r.name={} r.conn={:?} r.children={} r.params={} out.name={} out.conn={:?} out.children={} out.params={} unsolved={}",
+                        slot.name.clone(),
+                        slot.connective.clone(),
+                        slot.children.clone().len(),
+                        slot.params.clone().len(),
+                        r.name.clone(),
+                        r.connective.clone(),
+                        r.children.clone().len(),
+                        r.params.clone().len(),
+                        result.name.clone(),
+                        result.connective.clone(),
+                        result.children.clone().len(),
+                        result.params.clone().len(),
+                        is_unsolved_type_variable(r.clone()),
+                    );
                 }
+                result
             }
             _ => slot.clone(),
         }
