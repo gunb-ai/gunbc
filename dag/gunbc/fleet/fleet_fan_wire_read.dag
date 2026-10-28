@@ -22,7 +22,7 @@ import extdeps.languages.json.parse {
   parse_json_document,
 }
 import gunbc.machine_intake.megarac_media_attach { images_array_elements, json_number_member }
-import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import product.fleet_fan_policy { FirmwareAutomatic, HeldAtDutyFloor }
 import gunbc.fleet.fleet_fan_converge { FleetFanControlObserved, FleetFanControlUnobservable, FleetFanReading }
 
@@ -198,6 +198,7 @@ fn megarac_fan_decode(family: BmcFirmwareFamily, manager_response: String?, fan_
   match family {
     AmiMegaRac => megarac_decode_responses(manager_response: manager_response, fan_info_response: fan_info_response)
     OpenBmc => MegaRacFanWrongFamily { family: family }
+    SupermicroAten => MegaRacFanWrongFamily { family: family }
   }
 }
 

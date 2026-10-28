@@ -446,10 +446,9 @@ test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
 // above, because those join options to wires and never reach a job. This joins the job's own
 // condition to the same derivation, so the two cannot drift apart silently.
 test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
-  fleet_converge_approval_broker_dark_install_step_if
-    == fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
-    && fleet_converge_approval_broker_dark_install_step_if
-      == "github.event.inputs.mode == 'approval_broker_dark_install'"
+  string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall))
+    && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.mode == 'approval_broker_dark_install'")
+    && string_contains(s: fleet_converge_approval_broker_dark_install_step_if, pattern: "github.event.inputs.host == 'srv1'")
 }
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
@@ -634,6 +633,12 @@ test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Boo
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
+test fn the_gpu_container_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+  let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
+  any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerGpuContainerToolchainConverge))
+    && unique(xs: wires, eq: (a, b) => a == b)
+}
+
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
@@ -659,7 +664,8 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
 
 test fn srv1_root_mutation_jobs_name_the_protected_environment() -> Bool {
   let env = fleet_converge_srv1_root_mutation_environment as String
-  fleet_converge_dashboard_deploy_step_if == "github.event.inputs.mode == 'dashboard_deploy'"
+  string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.mode == 'dashboard_deploy'")
+    && string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.event.inputs.host == 'srv1'")
     && !string_contains(s: fleet_converge_dashboard_deploy_step_if, pattern: "github.ref")
     && (match fleet_converge_dashboard_deploy_job().environment { Present { value: v } => v == env  Absent => false })
     && (match fleet_converge_approval_broker_dark_install_job().environment { Present { value: v } => v == env  Absent => false })

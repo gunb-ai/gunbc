@@ -4863,7 +4863,7 @@ fn dag_add_param_binding_ids() -> List<Symbol> {
 // A SPELLING ROW IS A SEPARATE FACT FROM BEING A KERNEL ATOM. `spelling` and `declarations` say that
 // v2.compiler.resolve binds that authored name, where it resolves to one of those declarations or
 // to nothing, to the kernel type. Int and Bool carry them. Int's two declarations stand until its
-// de-fork lane consolidates them (docs/plans/dag-v2-defork-audit.md), and its row follows that lane
+// de-fork lane consolidates them (`gunbc.plans.dag_v2_defork_audit`), and its row follows that lane
 // rather than choosing. Bool's lane has landed: std.types Bool is its one declaration, and its row
 // names that declaration as what the v2 carrier bool_node carries, keyed by identity rather than by
 // bool_node's module.
@@ -8251,11 +8251,13 @@ fn qualified_name_from_emit_shaped_module_root(root: Node) -> Outcome<QualifiedN
   }
 }
 
+// No qualified-name production under the module root is its own fact, not a child lookup: it refuses
+// with its own reason rather than borrowing v2.std.node_query's named_child_missing.
 fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> {
   match parse_subtree_find_production_captured(root: root, emitted: ^dag_surface_qualified_name) {
     ParseSubtreeAbsent =>
       outcome_rejected(Diagnostic {
-        reason: ^named_child_missing,
+        reason: ^module_root_qualified_name_production_absent,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
       })

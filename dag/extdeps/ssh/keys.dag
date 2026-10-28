@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.encoding { base64_decode_canonical, Standard }
-import std.algebra { list_at_optional }
+import std.algebra { list_at_optional, skip }
 import std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -105,6 +105,77 @@ fn ssh_ed25519_key_identity(material: NonEmptyStr) -> SshEd25519KeyIdentity? {
       })
       if !scan.header_matches || count(scan.key_reversed) != 32 { none }
       else { Present { value: SshEd25519KeyIdentity { key_octets: reverse(scan.key_reversed), canonical_material: material } } }
+    }
+  }
+}
+
+// RFC 4253 section 6.6: a public key blob begins with its key format identifier as an SSH string (RFC 4251 section 5:
+// a uint32 length, then that many octets of the name), and an authorized_keys line names the same identifier as its
+// keytype field (sshd(8), this module's anchor). So a blob whose decoded name is not the line's algorithm is not that
+// algorithm's key. The blob must also be canonical base64 (one spelling per blob).
+data ssh_public_key_format_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc4253#section-6.6"
+  }
+}
+
+fn ssh_ascii_octets_from(text: String, i: Int, len: Int) -> List<Int> {
+  if i >= len { [] } else { concat([code_point(ch: char_at(text, i))], ssh_ascii_octets_from(text: text, i: i + 1, len: len)) }
+}
+
+fn ssh_ascii_octets(text: String) -> List<Int> {
+  ssh_ascii_octets_from(text: text, i: 0, len: length(text))
+}
+
+fn ssh_public_key_blob_names(material: NonEmptyStr, algorithm: SshKeyAlgorithm) -> Bool {
+  match base64_decode_canonical(s: material as String, variant: Standard) {
+    Absent => false
+    Present { value: octets } => {
+      let name = ssh_ascii_octets(text: ssh_key_algorithm_token(a: algorithm) as String)
+      let n = count(name)
+      count(octets) > 4 + n && octets.take(n: 4) == [0, 0, n / 256, n % 256] && skip(xs: octets, n: 4).take(n: n) == name
+    }
+  }
+}
+
+// THE CANONICAL LINE: keytype and base64 key, and NO comment. sshd(8) treats the comment as free text it never
+// interprets, so a consumer that must not carry caller text (a public install seed) renders keys this way.
+fn ssh_public_key_canonical_line(k: SshPublicKey) -> String {
+  concat(concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "), k.material as String)
+}
+
+// The per-algorithm exact parse where this module has one: ssh-ed25519 (RFC 8709). The other keytypes are held to
+// the RFC 4253 name check above.
+fn ssh_key_blob_parses_for(material: NonEmptyStr, algorithm: SshKeyAlgorithm) -> Bool {
+  match algorithm {
+    Ed25519 => match ssh_ed25519_key_identity(material: material) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Rsa => true
+    EcdsaP256 => true
+  }
+}
+
+// A LINE IS A CANONICAL PUBLIC KEY when it is exactly two fields -- a keytype this module names and a canonical
+// base64 blob that names the same keytype -- and, for ssh-ed25519, the blob parses as an exact RFC 8709 key
+// (ssh_ed25519_key_identity). A comment, an option field, or any third word refuses.
+fn ssh_canonical_public_key_line_admitted(line: String) -> Bool {
+  let words = split(s: line, delimiter: " ")
+  if count(words) != 2 { false } else {
+    match list_at_optional(xs: words, index: 0) {
+      Absent => false
+      Present { value: keytype } =>
+        match list_at_optional(xs: words, index: 1) {
+          Absent => false
+          Present { value: blob } =>
+            if blob == "" { false } else {
+              any([Ed25519, Rsa, EcdsaP256], a => (ssh_key_algorithm_token(a: a) as String) == keytype
+                && ssh_public_key_blob_names(material: blob as NonEmptyStr, algorithm: a)
+                && ssh_key_blob_parses_for(material: blob as NonEmptyStr, algorithm: a))
+            }
+        }
     }
   }
 }

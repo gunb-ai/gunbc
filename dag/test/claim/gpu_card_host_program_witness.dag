@@ -1,0 +1,211 @@
+module test.claim.gpu_card_host_program_witness
+
+import std.types { Bool, Int, List, String }
+import std.optional { Present, Absent }
+import v2.std.decl_index { DeclFact }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { string_contains }
+import std.markdown { MarkdownDocument }
+import gunbc.plan { plan_projects_committed_markdown }
+import gunbc.plan_registry { all_plans }
+import extdeps.languages.markdown { serialize_markdown_source }
+import gunbc.plans.gpu_card_host_program {
+  gpu_card_host_program_plan,
+  gpu_card_graph_rows,
+  GpuCardGraphRow,
+  GpuCardNodeId,
+  GpuCardNodeHome,
+  GcExtends,
+  GcCreates,
+  GcOwnedElsewhere,
+  GcOperatorDecides,
+  GcUnstarted,
+  GpuCardBoundMembership,
+  InstalledInFleetHost,
+  CommittedToFleetHost,
+  OutsideBound,
+  gpu_card_in_bound,
+  gpu_card_working_census,
+  GcD0,
+  GcN0a,
+  GcN1,
+  GcGoal,
+  gc_node_label
+}
+import test.claim.plan_citation_census {
+  plan_citation_has_positional_citation,
+  plan_citation_citation_roster,
+  plan_citation_occurrences,
+  plan_citation_census_read,
+  plan_citation_census_rows_in
+}
+
+// Guards on the GPU-card hosting CARRIER (DESIGN.md preamble: a plan's authority is its .dag carrier).
+// The graph claims fold over the typed rows. Only the claims about what the projected text says
+// (no line number, citations resolve) read the serialized body. No claim compares a population with
+// a literal: edges are joined against row ids (DESIGN section 5, completeness is an identity join).
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn carrier_text() -> String {
+  serialize_markdown_source(doc: MarkdownDocument { blocks: gpu_card_host_program_plan.body })
+}
+
+fn carrier_is_registered() -> Bool {
+  fold(all_plans, init: false, f: (acc, p) => acc || p.slug == "gpu-card-host-program")
+}
+
+fn citation_resolves(facts: List<DeclFact>, cite: String) -> Bool {
+  plan_citation_census_rows_in(facts: facts, cite: cite).length() >= 1
+}
+
+// RED: switching the projection to PlanProjectsCommittedMarkdown, or dropping the plan from the
+// registry, turns this red; the import alone does not satisfy it.
+test fn the_carrier_is_registered_and_is_the_only_authority() -> Bool {
+  carrier_is_registered()
+    && plan_projects_committed_markdown(p: gpu_card_host_program_plan) == false
+}
+
+// Positive conjunct first, so an empty body cannot satisfy the negative ones.
+test fn the_carrier_cites_symbols_and_never_a_line_number() -> Bool {
+  let t = carrier_text()
+  string_contains(s: t, pattern: "product.fleet_fan_policy::FleetFanPolicy")
+    && !(string_contains(s: t, pattern: ".dag:")
+      || string_contains(s: t, pattern: ".rs:")
+      || string_contains(s: t, pattern: "DESIGN.md:")
+      || plan_citation_has_positional_citation(t: t))
+}
+
+// Every `::` in the projected text is covered by the derived roster, and every roster entry
+// resolves in the declaration census. The rows' existing homes are rendered in the table, so this
+// one read also resolves every GcExtends symbol; the next claim checks that each one is rendered.
+test fn the_citations_in_the_plan_resolve_against_the_declaration_census() -> Bool {
+  let t = carrier_text()
+  let roster = plan_citation_citation_roster(t: t)
+  let covered = fold(roster, init: 0, f: (n, cite) => n + plan_citation_occurrences(t: t, cite: cite))
+  let facts = plan_citation_census_read(cites: concat(roster, ["gunbc.plans.no_such_module::NoSuchSymbol"]))
+  roster.length() >= 1
+    && covered == t.split(delimiter: "::").length() - 1
+    && !citation_resolves(facts: facts, cite: "gunbc.plans.no_such_module::NoSuchSymbol")
+    && all(roster, cite => citation_resolves(facts: facts, cite: cite))
+}
+
+fn extends_symbol(h: GpuCardNodeHome) -> List<String> {
+  match h {
+    GcExtends { symbol } => [symbol]
+    GcCreates { module: _ } => []
+    GcOwnedElsewhere { owner, obligation: _ } => [owner]
+    GcOperatorDecides => []
+  }
+}
+
+test fn every_existing_home_is_a_rendered_citation() -> Bool {
+  let roster = plan_citation_citation_roster(t: carrier_text())
+  let homes = flat_map(gpu_card_graph_rows, r => extends_symbol(h: r.home))
+  homes.length() >= 1
+    && all(homes, s => any(roster, c => c == s))
+    && !any(roster, c => c == "gunbc.plans.no_such_module::NoSuchSymbol")
+}
+
+// ── Row identity and edges.
+fn same_node(a: GpuCardNodeId, b: GpuCardNodeId) -> Bool {
+  gc_node_label(id: a) == gc_node_label(id: b)
+}
+
+fn carries(rows: List<GpuCardGraphRow>, id: GpuCardNodeId) -> Bool {
+  any(rows, r => same_node(a: r.id, b: id))
+}
+
+fn fixture_row(id: GpuCardNodeId, needs: List<GpuCardNodeId>) -> GpuCardGraphRow {
+  GpuCardGraphRow { id: id, what: "w", home: GcOperatorDecides, done: "d", needs: needs, standing: GcUnstarted }
+}
+
+test fn every_node_is_carried_once_and_every_edge_names_a_node() -> Bool {
+  let rows = gpu_card_graph_rows
+  rows.length() >= 1
+    && any(rows, r => r.needs.length() >= 1)
+    && all(rows, r => filter(rows, q => same_node(a: q.id, b: r.id)).length() == 1)
+    && all(rows, r => all(r.needs, d => carries(rows: rows, id: d)))
+    && !carries(rows: [fixture_row(id: GcN0a, needs: [])], id: GcN1)
+}
+
+// Row prose names no node, so every relation is a typed edge and the graph claims see all of them.
+fn names_a_node(rows: List<GpuCardGraphRow>, text: String) -> Bool {
+  any(rows, q => string_contains(s: text, pattern: join([" ", gc_node_label(id: q.id), " "], ""))
+    || string_contains(s: text, pattern: join([" ", gc_node_label(id: q.id), "."], ""))
+    || string_contains(s: text, pattern: join([" ", gc_node_label(id: q.id), ","], "")))
+}
+
+fn row_prose_names_no_node(rows: List<GpuCardGraphRow>, r: GpuCardGraphRow) -> Bool {
+  !names_a_node(rows: rows, text: join([" ", r.what, " ", r.done, " "], ""))
+}
+
+test fn row_prose_names_no_node_so_every_relation_is_typed() -> Bool {
+  let rows = gpu_card_graph_rows
+  rows.length() >= 1
+    && all(rows, r => row_prose_names_no_node(rows: rows, r: r))
+    && !row_prose_names_no_node(rows: rows, r: GpuCardGraphRow {
+      id: GcN0a, what: "w", home: GcOperatorDecides, done: "after D0 lands.", needs: [], standing: GcUnstarted
+    })
+}
+
+// ── Acyclicity. Each round admits every row whose prerequisites are all admitted; after as many
+// rounds as there are rows, the graph is acyclic exactly when every row is admitted.
+fn dependency_graph_is_acyclic(rows: List<GpuCardGraphRow>) -> Bool {
+  let none_admitted: List<GpuCardGraphRow> = []
+  let admitted = fold(rows, init: none_admitted, f: (done, round) =>
+    filter(rows, r => any(done, d => same_node(a: d.id, b: r.id))
+      || all(r.needs, p => any(done, d => same_node(a: d.id, b: p)))))
+  admitted.length() == rows.length()
+}
+
+test fn the_dependency_graph_is_acyclic() -> Bool {
+  rows_ok(rows: gpu_card_graph_rows)
+    && dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0a, needs: [GcN1]), fixture_row(id: GcN1, needs: [])])
+    && !dependency_graph_is_acyclic(rows: [fixture_row(id: GcN0a, needs: [GcN1]), fixture_row(id: GcN1, needs: [GcN0a])])
+}
+
+fn rows_ok(rows: List<GpuCardGraphRow>) -> Bool {
+  rows.length() >= 1 && dependency_graph_is_acyclic(rows: rows)
+}
+
+// ── THE BOUND (section 0). Every node is an ancestor of G, or G itself, so the graph carries no work
+// the goal does not need. Each round adds the prerequisites of everything reached so far; after as
+// many rounds as there are rows the reached set is closed.
+fn reached_from(rows: List<GpuCardGraphRow>, goal: GpuCardNodeId) -> List<GpuCardNodeId> {
+  let start: List<GpuCardNodeId> = [goal]
+  fold(rows, init: start, f: (reached, round) =>
+    map(filter(rows, r => any(reached, x => same_node(a: x, b: r.id))
+      || any(rows, q => any(reached, x => same_node(a: x, b: q.id)) && any(q.needs, n => same_node(a: n, b: r.id)))), r => r.id))
+}
+
+fn every_node_serves(rows: List<GpuCardGraphRow>, goal: GpuCardNodeId) -> Bool {
+  let reached = reached_from(rows: rows, goal: goal)
+  all(rows, r => any(reached, x => same_node(a: x, b: r.id)))
+}
+
+test fn every_node_is_an_ancestor_of_the_goal() -> Bool {
+  carries(rows: gpu_card_graph_rows, id: GcGoal)
+    && every_node_serves(rows: gpu_card_graph_rows, goal: GcGoal)
+    && every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0a]), fixture_row(id: GcN0a, needs: [GcD0])], goal: GcGoal)
+    && !every_node_serves(rows: [fixture_row(id: GcGoal, needs: [GcN0a]), fixture_row(id: GcN0a, needs: []), fixture_row(id: GcN1, needs: [])], goal: GcGoal)
+}
+
+// ── THE BOUND PREDICATE. Installed and committed cards are in bound, and a card outside names why;
+// the fixtures pin each arm, and section 0 must cite the predicate it is derived from. A row outside
+// the bound carries its reason in OutsideBound and no host, so a reason cannot pose as a host. Whether
+// every in-bound row names its host is NOT claimed here: an unconfirmed host is Absent, and D0 supplies it.
+test fn the_bound_is_one_predicate_over_the_census() -> Bool {
+  let census = gpu_card_working_census
+  any(census, r => gpu_card_in_bound(m: r.membership))
+    && any(census, r => !gpu_card_in_bound(m: r.membership))
+    && gpu_card_in_bound(m: InstalledInFleetHost)
+    && gpu_card_in_bound(m: CommittedToFleetHost)
+    && !gpu_card_in_bound(m: OutsideBound { because: "rented" })
+    && all(census, r => match r.membership {
+      OutsideBound { because } => because != "" && match r.host { Absent => true  Present { value: _ } => false }
+      InstalledInFleetHost => true
+      CommittedToFleetHost => true
+    })
+    && string_contains(s: carrier_text(), pattern: "gunbc.plans.gpu_card_host_program::gpu_card_in_bound")
+}

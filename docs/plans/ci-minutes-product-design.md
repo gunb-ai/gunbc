@@ -1,6 +1,6 @@
 # CI minutes as a product: GitHub-native runner SKUs over the fabric
 
-**Status: design note. No code lands from this document.** It records the product shape, the boundary between fabric / provider binding / execution cell, and the decisions that are the operator's rather than the author's. Its terminal shapes become obligations on the fabric contract and the execution-cell lane; its sequencing is subordinate to the replacement-cut doctrine of the day (DESIGN §3 — an existing design is quarry, never authority over the cut).
+**Status: design note. No code lands from this document.** It defines the product, fabric / provider binding / execution-cell boundaries, and open operator decisions. Its terminal shapes oblige the fabric and execution-cell lanes; sequencing remains subordinate to DESIGN §3's replacement-cut doctrine.
 
 Doctrine anchors: DESIGN §3 (single authority; external upstream decomposition; replacement migrations cut at the root), §4b (guarantee ladder — construction over validation), §5 (fail-closed; a failure arm refuses, never widens), §6 (denominate the benefit in displaced cost).
 
@@ -18,15 +18,13 @@ runs-on: gunbai-8c32g-short
 
 Their existing workflow, Actions UI, logs, artifacts, secrets, checks and rerun controls keep working. A customer never sees Demand, Work, Attempt, Offer, ExecutionGrant, lease generation, reservation price, or which host won.
 
-**The interface is deliberately narrow, and the narrowness is the load-bearing asset:** a job goes in, artifacts come out, egress is outbound-only, nothing persists — no inbound connection, no service discovery, no customer-visible topology, no state surviving the job. That is why per-cell isolation is tractable here and not for general hosting or a long-lived serving surface.
+**The narrow interface makes per-cell isolation tractable:** jobs in, artifacts out, outbound-only egress, no inbound connection, service discovery, customer-visible topology or surviving state. General hosting and long-lived serving lack that boundary.
 
 ## 2. Three programs, three owners
 
-The word "runner" names three different things; conflating them is the first available modeling error.
-
-- **The fabric** (`product.fabric.*`) decides admission, allocation, budget and settlement. It does not know GitHub exists. **If `AcquireJobs`, `runnerRequestId` or `scale set` appears anywhere in `product.fabric.*`, a provider has been fused into the core** — the §3 violation this decomposition exists to prevent, doubly wrong because the scale-set surface is public preview and will churn.
-- **The GitHub binding** — one long-lived listener process per scale set, holding the App credentials, speaking the scale-set protocol and calling `AcquireJobs`. Provider-specific by construction. A GitLab product is a second binding, never a core enum arm.
-- **The execution cell** — our host agent materializes an ephemeral VM, injects a JIT runner configuration, and starts GitHub's stock runner binary unmodified. The runner is GitHub's program; the fabric leases the *cell*, not the runner — which is what lets a GitLab product reuse the same cell with a different agent inside and change no fabric carrier.
+- **The fabric** (`product.fabric.*`) owns admission, allocation, budget and settlement. `AcquireJobs`, `runnerRequestId` and `scale set` do not belong there: they would fuse a provider's preview interface into the core (DESIGN §3).
+- **The GitHub binding** owns one long-lived listener per scale set, App credentials, the scale-set protocol and `AcquireJobs`. GitLab would add a binding, never a core enum arm.
+- **The execution cell** is an ephemeral VM materialized by our host agent, with a JIT configuration and GitHub's unmodified stock runner. The fabric leases the cell; another provider can replace the guest agent without changing a fabric carrier.
 
 ## 3. The sequence
 
@@ -43,9 +41,9 @@ JobAvailable observed            binding, from the scale-set session
   -> SettlementReceipt
 ```
 
-**Acquire is last, and the ordering is fail-safe, not stylistic.** A booted cell with no acquired job idles and costs us a little; an acquired job with no cell hangs the customer's build. So nothing is acquired until we can certainly serve it.
+**Acquire only when the cell can serve the job.** An idle cell costs us; an acquired job without a cell hangs the customer's build.
 
-**What GitHub still decides.** Within one scale set, GitHub pairs any acquired job with any idle runner. This is not a scheduler to defeat: we create the scale sets, so we choose the partition. **One scale set per `customer scope x execution class x duration class x isolation profile x network profile x pricing basis`** makes every job in a queue identical in every respect the grant depends on, so GitHub's choice is a distinction without a difference; heterogeneity inside one scale set is what would let its choice violate a grant.
+**GitHub pairs any acquired job with any idle runner in its scale set.** Partition by `customer scope x execution class x duration class x isolation profile x network profile x pricing basis`: every job then agrees on every grant-relevant fact, so any pairing is valid. A heterogeneous scale set could violate a grant.
 
 **Unverified by this repository:** the scale-set message fields, `AcquireJobs`, and the absence of a job-timeout field in `JobAvailable` come from external research recorded in the side review, not from execution here. The binding must establish them against the live API before anything depends on them, and must pin the preview surface.
 
@@ -64,17 +62,17 @@ One class name resolves to one typed requirement record — environment, CPU and
 
 ## 5. Isolation: the terminal construction
 
-**This section deliberately does not design around the fleet's current configuration** — that would premise the product on assumptions already scheduled for death (DESIGN §3, the consequence catalogue). Current state is recorded in §9 as migration debt only.
+Current fleet configuration is migration debt (§9), not a premise of the terminal design (DESIGN §3).
 
 Terminal: **one execution cell per job, VM-grade boundary, its own network namespace and attachment, an explicit outbound-only egress allow-list, and no route to management, BMC, host services, the operator tailnet, or another cell.**
 
-The construction claim, stated precisely: with a per-cell namespace and an explicit allow-list, *cannot reach the BMC* is **structural — no route exists** — not a firewall rule someone maintains. That is a climb from validation to construction on the §4b ladder, and why a global reachability answer is the wrong shape, not merely the wrong values.
+With a per-cell namespace and explicit allow-list, *cannot reach the BMC* means **no route exists**, rather than a maintained firewall denial (DESIGN §4b). A global reachability answer cannot express this construction.
 
 Three things stay hard at any boundary strength:
 
 - **Memory bandwidth and LLC are shared silicon.** No namespace, VLAN or cgroup partitions them. The entitlement-versus-variance question in §7 therefore SURVIVES perfect isolation; the two are orthogonal axes.
 - **Egress cannot be literally air-gapped.** The cell must reach GitHub and package registries, so that one channel is both the exfiltration path and the abuse path (mining, DDoS source, spam relay). Rate caps, byte caps and a declared destination set are design items, not footnotes — it is the one place a customer can cost real money without running long.
-- **Teardown is a proof obligation, not a cleanup step.** A cell not actually destroyed is a persistent, invisible foothold — the boundary meant to protect the tenant now protects it. Destroy-and-proceed is the absorbing fallback: the honest form observes the attachment absent, the disk gone and the registration deregistered, and **anything unproven holds the reservation** — the rule settlement already applies to money, applied to hardware. A host with an unverified teardown is not available capacity.
+- **Teardown must be proved.** An undestroyed cell is a persistent, invisible foothold. Observe the attachment absent, disk gone and registration deregistered; **anything unproven holds the reservation**, for hardware as for settlement. A host with unverified teardown is unavailable.
 
 Two smaller declared facts: the JIT runner configuration is the one secret crossing into the cell (short-lived, scoped, never landing on a persistent customer-visible filesystem), and artifacts and caches are a declared outbound data path with their own integrity question.
 
@@ -89,7 +87,7 @@ The question "how do we defragment mixed job sizes across hosts" decomposes into
 3. **Placement** — where.
 4. **Fragmentation** — free capacity in aggregate, none of it usable by one large job.
 
-**Ephemeral single-job cells make fragmentation self-healing:** every allocation releases within one job duration, so a fragmented host is empty soon by construction; capacity is not lost. The real hazard is **starvation** — CI job sizes skew heavily small and short, so small jobs keep filling gaps and a large job never gets a window while the fleet looks busy and healthy.
+**Ephemeral single-job allocations release within one job duration.** Fragmentation therefore heals when admission stops, but small, short jobs can keep filling gaps and **starve** a large job while the fleet looks healthy.
 
 The mechanism against starvation is a **draining reservation**: stop admitting to a chosen host, hold it, and **backfill** only jobs that provably finish before the drain completes. The safety arithmetic covers the whole cell lifecycle, not just execution:
 
@@ -97,13 +95,13 @@ The mechanism against starvation is a **draining reservation**: stop admitting t
 now + provisioning_bound + declared_max_runtime + teardown_bound  <=  drain_deadline
 ```
 
-**Maximum runtime belongs to the ExecutionClass, not to a per-job prediction.** A declared bound makes the arithmetic exact and fail-closed; overrun is a typed kill (`CustomerRuntimeBoundExceeded`, carrying declared and elapsed), never a silent widening. A handful of bounded duration classes — short / standard / long — gives the allocator exact arithmetic without one scale set per unique number, and **duration class must be part of scale-set homogeneity**, or GitHub may pair a long job with a cell on a draining host.
+**ExecutionClass declares maximum runtime.** Overrun is a typed kill (`CustomerRuntimeBoundExceeded`, carrying declared and elapsed). Short / standard / long duration classes keep the arithmetic exact without a scale set per unique number. Include duration in scale-set homogeneity, or GitHub could pair a long job with a cell on a draining host.
 
-**Historical duration ranks; it never authorizes.** A distribution may order backfill candidates, estimate queue time, plan capacity and recommend a class to a customer. It cannot admit a non-preemptible job into a deadline-constrained hole while preserving an exact claim. This is §5 for scheduling: a heuristic may optimize, never authorize.
+**Historical duration ranks; it never authorizes.** Distributions may order backfill, estimate queues, plan capacity and recommend classes. They cannot authorize a non-preemptible job in a deadline-constrained hole under an exact claim (DESIGN §5).
 
-**At four hosts, do not build a scheduler — enumerate.** NP-hard bin packing is irrelevant at n=4; exhaustive placement search is microseconds. Get the cost shape right (no quadratic fold, no copied accumulator) and let the algorithm be exact. Heuristics become interesting at tens-to-hundreds of hosts, by which time the binding pressure will have been measured rather than guessed.
+**At four hosts, enumerate placements exactly.** Exhaustive search is microseconds; avoid quadratic folds and copied accumulators. Consider heuristics at tens-to-hundreds of hosts only against measured pressure.
 
-Fragmentation reasoning is **impossible against a scalar supply bound**: 64 free cores split 8+8+48 across NUMA domains is not 64 contiguous, and a scalar cannot tell the difference — hence exact resource member sets are a prerequisite for this section, not an adjacent nicety. `std.machine_shape` `ExecutionDomain` already models the NUMA axis and is consumed by nothing.
+Fragmentation needs **exact resource member sets**: a scalar cannot distinguish 64 contiguous free cores from 8+8+48 across NUMA domains. `std.machine_shape` `ExecutionDomain` models NUMA but has no consumer.
 
 ## 7. What a SKU promises: entitlement, or a variance bound
 
@@ -112,7 +110,7 @@ An unresolved product decision with direct technical consequences, recorded rath
 - **Entitlement** — you get 8 vCPU and 32 GiB. A resource-access promise. Variance unbounded. Packing is nearly free and tight packing is honest.
 - **Entitlement plus a variance bound** — and additionally it performs within X% of a dedicated machine of that size. Requires headroom, contention-aware placement, lower density, higher cost per sellable minute.
 
-**Wall-clock performance is not promisable for arbitrary customer code** — the customer's own program determines runtime — so "performance" can only mean a *variance* bound relative to dedicated hardware, never an absolute time. And a variance bound is sayable only once measured per host and per co-tenancy state; promising an unmeasured one is fabricated plausible output at the product layer.
+Arbitrary customer code admits no absolute runtime promise. A *variance* bound relative to dedicated hardware is honest only after measurement per host and co-tenancy state.
 
 Utilization is the wrong KPI (DESIGN §6, do not anchor on one): tighter packing raises utilization and contention, which slows jobs, which lowers sellable-minutes-delivered-at-promised-quality per hour. The optimum is interior.
 

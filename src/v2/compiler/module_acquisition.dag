@@ -13,11 +13,11 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse { ParseArtifact, PreparedGrammar, parse_module_prepared, prepare_grammar }
 import v2.compiler.test_marker_capture { test_marker_content }
 import v2.compiler.reference_site_collector { HeadBindingUndecided, HeadBoundAtRootValue, HeadBoundInFrame, HeadLexicallyUnbound, ScopedReferenceSite, ScopedReferenceSiteCollection, SiteHeadBinding, collect_scoped_module_reference_sites, scoped_reference_site_collection_is_total }
-import v2.compiler.source_authority { DerivedRosterRowMisplaced, DerivedRosterSelected, DerivedRosterSibling, StorageDerivedRoster, derived_roster_module, derived_roster_named, derived_roster_row_module, derived_roster_select, derived_roster_sibling_of, derived_roster_stem, derived_roster_text, ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of }
+import v2.compiler.source_authority { DerivedRosterRowMisplaced, DerivedRosterSelected, DerivedRosterSibling, StorageDerivedRoster, derived_roster_module, derived_roster_named, derived_roster_row_module, derived_roster_select, derived_roster_sibling_of, derived_roster_stem, derived_roster_text, ModuleFileAbsent, ModuleFileDerived, ModuleFilePresent, ModuleFileProbe, ModuleFileRef, ModuleFileRefused, ModuleNameUnderivable, DagSourceReadWitness, ReferenceContinue, ReferenceCrossTreeDenied, ReferenceDecided, ReferenceLookup, ReferenceModuleHeaderRefused, ReferenceModuleLineDisagrees, ReferenceModuleLineMissing, ReferenceNextReadDenied, ReferenceNextReadFile, ReferenceNextReadNone, ReferenceRefused, ReferenceResolved, ReferenceUnknownModule, SourceRootIngest, SourceStorageLayout, module_file, module_file_key, reference_after_probe, reference_next_read, reference_prefixes, source_root_ref_label, text_set_has, text_set_of, module_namespace }
 import v2.compiler.tokenize { PreparedLexRules, prepare_lex_rules, tokenize_prepared }
 import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
 import v2.lens.reference_deps { admission_from_module_root }
-import v2.std.cross_tree.import_model { SourceRootRef }
+import v2.std.cross_tree.import_model { CrossTreeDenialReason, CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, SourceRootRef, namespace_declared }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected, bind_outcome, diagnostics_fatal_reason, outcome_accepted }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
@@ -1766,8 +1766,19 @@ fn acquisition_lookup_text(lookup: ReferenceLookup) -> String {
       concat("the file at ", module_file_key(file: file), " declares module ", declared, " where the layout stores ", name)
     ReferenceModuleHeaderRefused { module: name, file: file, cause: cause } =>
       concat("the file at ", module_file_key(file: file), " holds no readable module header, so it is not module ", name, ": ", cause)
-    ReferenceCrossTreeDenied { module: name, file: file, reason: _ } =>
-      concat("module ", name, " at ", module_file_key(file: file), " lies in a tree the requesting tree may not import")
+    ReferenceCrossTreeDenied { module: name, file: file, reason: reason } =>
+      concat("module ", name, " at ", module_file_key(file: file), " ", cross_tree_denial_text(reason: reason))
+  }
+}
+
+// The reason a crossing was refused, said as what it is: there is no tree direction, so a refusal is either
+// an inactive root or a namespace with no row (v2.std.cross_tree.import_model cross_tree_import_admitted).
+fn cross_tree_denial_text(reason: CrossTreeDenialReason) -> String {
+  match reason {
+    CrossTreeNamespaceUndeclared =>
+      "is across a tree crossing from or to a namespace with no row in the declared layout"
+    CrossTreeToTreeNotInRootSet => "lies in a tree that is not an active source root"
+    CrossTreeFromTreeNotInRootSet => "is requested from a tree that is not an active source root"
   }
 }
 
@@ -1933,6 +1944,13 @@ fn namespace_walk_under(namespace: String, root: String, relative: String) -> Na
 // the layout check (NamespaceRowWithoutModules), and every bound root must itself be a listable
 // directory, so an unreadable or missing tree refuses here instead of reading as empty. Any other
 // listing that fails refuses the whole enumeration, never a partial population.
+//
+// A LISTED MODULE WHOSE NAMESPACE HAS NO ROW REFUSES, located at the module. The walk descends a declared
+// top-level namespace's whole directory, so a file in an undeclared sub-namespace (dag/test/zzz/m.dag,
+// namespace test.zzz) would otherwise enter the population. This route reads by path and never through the
+// storage lookup, so the membership judgment the lookup asks before a crossing
+// (v2.std.cross_tree.import_model namespace_declared over the layout's namespace_rows, the one read both make) is asked here, of every
+// member: a file outside gunbc.source_layout is not compilable on either route (DESIGN section 3).
 type BoundModules
   = BoundModulesListed { modules: List<String> }
   | BoundModulesRefused { subject: String, cause: String }
@@ -1983,6 +2001,18 @@ fn top_level_namespaces(namespaces: List<String>) -> List<String> {
   top_level_namespaces_go(pending: namespaces, seen: empty_map(), acc: [])
 }
 
+// One walk's listing, admitted to the population or refused at its first member whose namespace has no row.
+fn bound_modules_admitted(layout: SourceStorageLayout, listed: List<String>) -> BoundModules {
+  match list_find_first(xs: listed, predicate: fn(name) { !namespace_declared(rows: layout.namespace_rows, namespace: module_namespace(name: name)) }) {
+    Present { value: undeclared } =>
+      BoundModulesRefused {
+        subject: undeclared,
+        cause: concat("namespace ", module_namespace(name: undeclared), " has no row in the declared layout, so its modules are not compilable")
+      }
+    Absent => BoundModulesListed { modules: listed }
+  }
+}
+
 fn enumerate_bound_modules_go(
   layout: SourceStorageLayout,
   bindings: List<SourceRootBinding>,
@@ -2003,24 +2033,28 @@ fn enumerate_bound_modules_go(
                 NamespaceWalkAbsent { namespace: _, directory: _ } =>
                   enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: skip(xs: pending, n: 1), acc: acc)
                 NamespaceWalkListed { namespace: _, modules: listed } =>
-                  enumerate_bound_modules_go(
-                    layout: layout,
-                    bindings: bindings,
-                    pending: skip(xs: pending, n: 1),
-                    acc: bound_modules_prepended(listed: listed, acc: acc)
-                  )
+                  match bound_modules_admitted(layout: layout, listed: listed) {
+                    BoundModulesRefused { subject: subject, cause: cause } => BoundModulesRefused { subject: subject, cause: cause }
+                    BoundModulesListed { modules: admitted } =>
+                      enumerate_bound_modules_go(
+                        layout: layout,
+                        bindings: bindings,
+                        pending: skip(xs: pending, n: 1),
+                        acc: bound_modules_prepended(listed: admitted, acc: acc)
+                      )
+                  }
               }
           }
       }
   }
 }
 
-fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>, namespaces: List<String>) -> BoundModules {
+fn enumerate_bound_modules(layout: SourceStorageLayout, bindings: List<SourceRootBinding>) -> BoundModules {
   match bound_roots_listing(pending: bindings) {
     BoundRootUnlistable { tree: tree, path: path, kind: kind, cause: cause } =>
       BoundModulesRefused { subject: concat("tree ", tree), cause: concat(path, ": ", kind, ": ", cause) }
     BoundRootsListable =>
-      match enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: top_level_namespaces(namespaces: namespaces), acc: []) {
+      match enumerate_bound_modules_go(layout: layout, bindings: bindings, pending: top_level_namespaces(namespaces: layout.namespace_rows), acc: []) {
         BoundModulesRefused { subject: subject, cause: cause } => BoundModulesRefused { subject: subject, cause: cause }
         BoundModulesListed { modules: modules } => bound_modules_with_derived(rosters: layout.derived_rosters, modules: modules)
       }

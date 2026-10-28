@@ -10,6 +10,8 @@ import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import std.nat { Nat }
+import extdeps.units.iso8601_calendar { iso8601_seconds_per_day, iso8601_utc_text }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 
 // THE NATIVE EMISSION CONTROLS: one small carrier per Rust-emitter rule, EMITTED, BUILT AND RUN as a
@@ -683,6 +685,12 @@ fn rc_match_clone_cases() -> List<NativeEmissionCase> {
 }
 
 data native_emission_expected_identities: List<String> = [
+  "nat_as_int_inclusion_is_the_operand",
+  "nat_as_int_inclusion_seconds_per_day",
+  "nat_as_int_inclusion_utc_text",
+  "nat_as_int_inclusion_red_utc_text_is_not_the_next_second",
+  "empty_list_cast_seeds_a_fold",
+  "empty_list_cast_red_seed_is_empty",
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
   "set_struct_eq_red_set_member_differs",
@@ -856,8 +864,43 @@ fn alias_empty_map_seed_cases() -> List<NativeEmissionCase> {
   ]
 }
 
+// RULE: a grounded natural cast onto the kernel Int is realized from the grounding rows' declarations,
+// never from rendered names (v1.compiler.emit cast_source_grounded_onto_target_carrier). std.nat Nat
+// renders in Rust as its alias `Nat` and the kernel Int as `i64`; both are the kernel integer. Compared as rendered names the inclusion read as an
+// unsupported cast and was emitted as a runtime panic, so extdeps.units.iso8601_calendar -- whose
+// constants are Nat and whose arithmetic is Int -- aborted on its first call. The red is the next
+// second: an inclusion that changed a value, or a calendar that ignored its argument, does not
+// answer the decided text.
+fn control_nat_as_int(n: Nat) -> Int {
+  n as Int
+}
+
+fn nat_as_int_inclusion_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "nat_as_int_inclusion_is_the_operand", held: control_nat_as_int(n: 7) == 7 },
+    NativeEmissionCase { identity: "nat_as_int_inclusion_seconds_per_day", held: iso8601_seconds_per_day() == 86400 },
+    NativeEmissionCase { identity: "nat_as_int_inclusion_utc_text", held: iso8601_utc_text(unix: 1700000000) == "2023-11-14T22:13:20Z" },
+    NativeEmissionCase { identity: "nat_as_int_inclusion_red_utc_text_is_not_the_next_second", held: iso8601_utc_text(unix: 1700000001) != "2023-11-14T22:13:20Z" }
+  ]
+}
+
+// RULE: an empty list literal cast to a list type is typed by the cast (v1.compiler.infer, ExprCast
+// arm). Inferred alone it was List<empty_list_element>, and `init: [] as List<Int>` -- the fold
+// seed extdeps.linux.cgroup_v2 writes -- emitted a panic in place of the seed. The red is the seed
+// itself: a fold over nothing returns it, and it must be empty.
+fn control_above_two(xs: List<Int>) -> List<Int> {
+  fold(xs, init: [] as List<Int>, f: (acc, x) => if x > 2 { concat(acc, [x]) } else { acc })
+}
+
+fn empty_list_cast_cases() -> List<NativeEmissionCase> {
+  [
+    NativeEmissionCase { identity: "empty_list_cast_seeds_a_fold", held: (control_above_two(xs: [1, 2, 3, 4]) |> count) == 2 },
+    NativeEmissionCase { identity: "empty_list_cast_red_seed_is_empty", held: (control_above_two(xs: []) |> count) == 0 }
+  ]
+}
+
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases())
+  concat(concat(nat_as_int_inclusion_cases(), empty_list_cast_cases()), concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases()), optional_data_row_cases()), effectful_generic_return_cases()), generic_empty_map_turbofish_cases()), data_literal_tree_cases()), variant_literal_application_cases()), rc_match_clone_cases()), optional_type_parameter_cases()), algebra_length_on_string_cases()), nested_variant_match_cases()), alias_empty_map_seed_cases()), bare_variant_fold_init_cases()))
 }
 
 fn case_row(c: NativeEmissionCase) -> String {
