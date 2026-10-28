@@ -79,6 +79,7 @@ fn length_scale_is_decimal(s: Scale) -> Bool {
     Nano  => true
     Micro => true
     Milli => true
+    Centi => true
     One   => true
     Kilo  => true
     Mega  => true

@@ -17,7 +17,7 @@ import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnos
 // A mean number of resident requests is a COUNT at a scale — the same quantity TokenCount and
 // CpuCoreCount carry — and "mean" says how the reading was AGGREGATED (Little's law over an uptime
 // window), which is a property of the observation carrying it, not of the unit. So the aliases moved
-// onto Count at their scale: ConcurrentRequestHundredths is Measure<Count, One, Nat>,
+// onto Count at their scale: ConcurrentRequestHundredths is Measure<Count, Centi, Nat>,
 // ConcurrentRequestThousandths is Measure<Count, Milli, Nat>. Percent, BasisPoint, Permille and
 // PartsPerMillion STAY on Dimensionless — one ratio concept at four scales, aliases by the declared
 // route, exactly as the brief permits. No new Quantity arm: a second name for Count would be the
@@ -99,13 +99,14 @@ test fn a_hundredth_of_concurrency_is_admitted_at_its_own_parameter() -> Bool {
   census_ran(c: c) && blocking_total(c: c) == 0
 }
 
-// TokenCount is Measure<Count, One, Nat> and ConcurrentRequestHundredths is now Measure<Count, One,
-// Nat> too — the same structural type, because a number of resident requests IS a number of things.
-// This admits, and it is what proves the refusals above came from the RATIO side and not from a
-// brand or a tag: the moved aliases are ordinary counts, interchangeable with the count family at
-// the same scale, and only Dimensionless turns a value away.
-test fn a_token_count_is_admitted_at_a_concurrency_hundredths_parameter() -> Bool {
-  blocking_total(c: compile_dag_diagnostic_census(count_at_hundredths_source)) == 0
+// TokenCount is Measure<Count, One, Nat> and ConcurrentRequestHundredths is Measure<Count, Centi,
+// Nat>: the same Quantity, a DIFFERENT Scale, and Scale is an alias type argument (measured above:
+// Percent at a Permille formal blocks on the scale argument alone). So a bare token count — where a
+// hundredth-of-a-request is not nameable and the count means WHOLE requests — must not pass for a
+// printed hundredths figure (review 87106 on #15301). Had the hundredths alias stayed at One, this
+// row would admit, which is exactly the magnitude collapse the Centi scale exists to refuse.
+test fn a_token_count_refuses_at_a_concurrency_hundredths_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(count_at_hundredths_source)) > 0
 }
 
 test fn a_byte_size_refuses_at_a_percent_parameter() -> Bool {
@@ -121,7 +122,7 @@ test fn a_byte_size_refuses_at_a_percent_parameter() -> Bool {
 // Permille is Measure<Dimensionless, Milli, Nat> and PartsPerMillion is Measure<Dimensionless,
 // Micro, Nat> — a different Scale, which is an alias type argument, so those already refuse each
 // other and refused before this change. The same holds for the two concurrency siblings after the
-// move: Measure<Count, One, Nat> against Measure<Count, Milli, Nat>. Recorded as refusals so the
+// move: Measure<Count, Centi, Nat> against Measure<Count, Milli, Nat>. Recorded as refusals so the
 // boundary this change draws is the CONCEPT boundary and nothing else is claimed about scale.
 data percent_at_permille_source: String = "module probe_ratio_vs_countmean_percent_at_permille\nimport std.measure { Permille, Percent, percent }\nfn parity_share(p: Permille) -> Int { 0 }\nfn call() -> Int { parity_share(p: percent(count: 100)) }\n"
 
