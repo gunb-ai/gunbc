@@ -5,7 +5,7 @@ import v2.compiler.target_serialize { translate_project_transform_in_arrow_scope
 import v2.extdeps.languages.dag { dag_value_expression_projection }
 import v2.extdeps.languages.typescript { ts_binding_spellings, ts_source_text_authority, ts_fn_add_lex_rules }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal, node_locus }
-import v2.std.node {
+import v2.std.node { node_same_occurrence,
   Arrow,
   Atom,
   ComputationNode,
@@ -225,9 +225,9 @@ test fn loop_body_bound_param_projects_as_its_binding_ref() -> Bool {
     handle_transform: fn(a, b, t) { translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t) }
   ) {
     Accepted { value: expr, diagnostics: _ } =>
-      expr.node == target_value_expression_loop(
+      node_same_occurrence(a: expr.node, b: target_value_expression_loop(
         body: target_value_expression_binding_ref(binding: ^fold_call_closure_acc)
-      ).node
+      ).node)
     Rejected { diagnostics: _ } => false
   }
 }

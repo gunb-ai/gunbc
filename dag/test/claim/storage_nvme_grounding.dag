@@ -11,6 +11,8 @@ data sample_wd_device: StorageDevice = nvme_storage_device(
 test fn wd_black_sn850x_pcie_link_grounds_gen4_x4() -> Bool {
   match wd_black_sn850x_2tb_catalog.pcie_link.generation {
     Gen4 => true
+    Gen1 => false
+    Gen2 => false
     Gen3 => false
     Gen5 => false
   }
@@ -21,6 +23,8 @@ test fn wd_black_sn850x_pcie_link_grounds_gen4_x4() -> Bool {
 test fn samsung_970_evo_plus_pcie_link_grounds_gen3_x4() -> Bool {
   match samsung_970_evo_plus_2tb_catalog.pcie_link.generation {
     Gen3 => true
+    Gen1 => false
+    Gen2 => false
     Gen4 => false
     Gen5 => false
   }

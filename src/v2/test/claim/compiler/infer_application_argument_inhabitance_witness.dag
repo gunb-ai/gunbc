@@ -449,7 +449,7 @@ fn iaai_resolved_with_optional(root: Node) -> Outcome<ResolvedTree> {
       ).resolved {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: t, diagnostics: ds } =>
-          Accepted { value: ResolvedTree { root: root, symbol_index: t.symbol_index, resolved_declarations: t.resolved_declarations, occurrence_bindings: t.occurrence_bindings, duplicate_binding_records: t.duplicate_binding_records, module_outcomes: t.module_outcomes, outcome_index: t.outcome_index, member_kinds: t.member_kinds, type_declaration_modifiers: t.type_declaration_modifiers, constructing_module: t.constructing_module }, diagnostics: ds }
+          Accepted { value: ResolvedTree { root: root, symbol_index: t.symbol_index, resolved_declarations: t.resolved_declarations, occurrence_resolutions: t.occurrence_resolutions, duplicate_binding_records: t.duplicate_binding_records, module_outcomes: t.module_outcomes, outcome_index: t.outcome_index, member_kinds: t.member_kinds, type_declaration_modifiers: t.type_declaration_modifiers, constructing_module: t.constructing_module }, diagnostics: ds }
       }
   }
 }

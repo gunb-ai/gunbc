@@ -59,7 +59,7 @@ pub fn module_to_filename(name: String) -> String {
 
 pub fn rust_module_emit_filename(module_name: String) -> String {
     {
-        let raw = module_to_filename(module_name.clone());
+        let raw = module_to_filename(module_name);
         if (raw.clone() == "main".to_string()) {
             "main_mod".to_string()
         } else {

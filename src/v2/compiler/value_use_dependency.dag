@@ -3,8 +3,8 @@ module v2.compiler.value_use_dependency
 // WHAT A NAME USE WAITS ON. Authority: gunbc.plans.demand_engine_program section 2.4 (operator ruling
 // 2026-10-18): a use of a let-bound name depends on that binding's VALUE, and on nothing else in the
 // let's body; textual position creates no dependency. resolve already decided which binder answered
-// each reference and recorded it in ResolvedTree.occurrence_bindings (v2.compiler.resolve
-// OccurrenceBindingRecord); this module READS that record and turns its valued arm into a demand
+// each reference and recorded it in ResolvedTree.occurrence_resolutions (v2.compiler.resolve
+// OccurrenceResolutionRecord); this module READS that record and turns its valued arm into a demand
 // relation. It decides nothing about scope: no name lookup, no frame walk, no second scope table.
 //
 // BESIDE Contains, never instead of it. v2.std.dependency dependency_lens emits only parent->child
@@ -35,7 +35,7 @@ module v2.compiler.value_use_dependency
 // consumed (DESIGN section 3).
 //
 // ONE DISPOSITION PER ENTRY, NEVER A SILENT SKIP (DESIGN section 5). The fold's domain is
-// map_support_keys(tree.occurrence_bindings) — the records' own support — and every arm of
+// map_support_keys(tree.occurrence_resolutions) — the records' own support — and every arm of
 // value_use_dispose returns a population, so no key is dropped. The three lengths therefore sum to
 // the domain's length, which is the totaliser a claim states over each fixture.
 //
@@ -50,7 +50,7 @@ import std.occurrence_identity { OccurrenceId }
 import std.optional { Absent, Optional, Present }
 import std.types { List, Map }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.node { Node, NodeOccurrenceIdentity, node_subtree_nodes }
+import v2.std.node { Node, node_same_occurrence, NodeOccurrenceIdentity, node_subtree_nodes }
 import v2.std.provenance { node_occurrence_id_optional, occurrence_identity_id_optional }
 import v2.compiler.lexical_scope { bind_binder, bind_value }
 import v2.compiler.resolve {
@@ -66,8 +66,8 @@ import v2.compiler.resolve {
   LexicalOwedFormal,
   LexicalUntyped,
   LexicalValued,
-  OccurrenceBinding,
-  OccurrenceBindingRecord,
+  OccurrenceResolution,
+  OccurrenceResolutionRecord,
   ResolvedTree
 }
 
@@ -114,16 +114,16 @@ type ValueUseNotDerived {
 // INPUT, NOT AN IN-BODY PRODUCER. A parameter, a type parameter, a corpus declaration, an ambient
 // stopgap, an expected-type stopgap or a compiler-generated reference: the producer is not a value node
 // in a lexical body, so there is no use->value edge here. The row carries resolve's OWN
-// OccurrenceBinding, which already says which of the six it is — a string naming it would be a second
+// OccurrenceResolution, which already says which of the six it is — a string naming it would be a second
 // representation of one fact (DESIGN section 3). Returned rather than dropped, so its absence from the
 // relation list is a disposition and not a silent skip.
 type ValueUseInput {
   occurrence: OccurrenceId
-  binding: OccurrenceBinding
+  binding: OccurrenceResolution
 }
 
 // THE ONE RESULT: the three populations and nothing else. Every entry of the input tree's
-// occurrence_bindings is in exactly one of them.
+// occurrence_resolutions is in exactly one of them.
 type ValueUseDependencies {
   relations: List<ValueUseRelation>
   not_derived: List<ValueUseNotDerived>
@@ -178,7 +178,7 @@ fn value_use_index_slot(prior: Optional<OccurrenceInTree>, node: Node) -> Occurr
   match prior {
     Absent => OccurrenceAt { node: node }
     Present { value: OccurrenceAt { node: seen } } =>
-      if seen == node {
+      if node_same_occurrence(a: seen, b: node) {
         OccurrenceAt { node: seen }
       } else {
         OccurrenceUnlocatable { why: OccurrenceConflicting }
@@ -208,7 +208,7 @@ fn value_use_dispositions(tree: ResolvedTree) -> ValueUseDependencies {
 
 fn value_use_ordered_keys(tree: ResolvedTree) -> List<OccurrenceId> {
   list_sort_by_key(
-    xs: map_support_keys(m: tree.occurrence_bindings),
+    xs: map_support_keys(m: tree.occurrence_resolutions),
     key: fn(id) { id.value },
     order: int_total_order()
   )
@@ -223,7 +223,7 @@ fn value_use_dispose(
   index: ValueUseIndex,
   key: OccurrenceId
 ) -> ValueUseDependencies {
-  match map_lookup(m: tree.occurrence_bindings, key: key) {
+  match map_lookup(m: tree.occurrence_resolutions, key: key) {
     Present { value: record } => value_use_dispose_record(acc: acc, index: index, key: key, record: record)
     Absent => value_use_not_derived(acc: acc, key: key, reason: RecordAbsent)
   }
@@ -234,7 +234,7 @@ fn value_use_dispose_record(
   acc: ValueUseDependencies,
   index: ValueUseIndex,
   key: OccurrenceId,
-  record: OccurrenceBindingRecord
+  record: OccurrenceResolutionRecord
 ) -> ValueUseDependencies {
   match record.binding {
     BoundByLexicalBinder { binding: lexical } =>
@@ -331,12 +331,12 @@ fn value_use_not_derived(
   }
 }
 
-// AN INPUT, NOT AN IN-BODY PRODUCER: the row carries resolve's own OccurrenceBinding, which already
+// AN INPUT, NOT AN IN-BODY PRODUCER: the row carries resolve's own OccurrenceResolution, which already
 // names which of the six it is.
 fn value_use_as_input(
   acc: ValueUseDependencies,
   key: OccurrenceId,
-  binding: OccurrenceBinding
+  binding: OccurrenceResolution
 ) -> ValueUseDependencies {
   ValueUseDependencies {
     relations: acc.relations,

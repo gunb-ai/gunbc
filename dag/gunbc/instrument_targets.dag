@@ -52,8 +52,9 @@ import gunbc.target_binding {
   DifferentialReadingExecutionRefused, DifferentialObservationAssemblyRefused,
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
-  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceBindingReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
+  V2NativeCensusProducer, RefusalCensusReading, ScopedRefusalCensusReading, TypeDeclarationUseReading, OccurrenceResolutionReading, AmbientOperationDispositionReading, BindingDiffReading, NativeProcessMemoryReading,
   NativeCensusVerbProducer,
+  SelfHostFrontierProducer,
   GenericIdentityCensusProducer,
   InterpolationHoleCensusProducer,
   SharedTypeLeafCollisionCensusProducer,
@@ -309,7 +310,7 @@ fn type_declaration_use_census_label() -> Label {
 // THE OCCURRENCE-BINDING CENSUS THE NAMESPACE-XL WAVES ARE DRIVEN FROM (operator ruling 2026-10-15:
 // every name the corpus uses is an ordinary declaration reached by import). One row per module-level
 // reference occurrence of `dag` + `src/v2`, read off resolve's one binding record
-// (v2.compiler.occurrence_binding_census) by the same native census-infer walk; the ambient rows are
+// (v2.compiler.occurrence_resolution_census) by the same native census-infer walk; the ambient rows are
 // the names a wave has left to move, grouped by spelling and table by the reader
 // (gunbc.instruments.ambient_name_census_reading), which also refuses when any module recorded one
 // occurrence twice. `gunbc test //gunbc/instruments:ambient-name-census`. A report: its numbers are a
@@ -697,6 +698,20 @@ fn self_host_behavioral_equivalence_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "self-host-behavioral-equivalence" } }
 }
 
+// THE DERIVED SELF-HOST FRONTIER (v2.compiler.self_host.seed_retention_frontier self_host_frontier, the
+// emitted driver's `self-host-frontier` mode): every observed .rs file of the stage0 crate is SelfEmitted
+// (emitted and its module in the executed closure whose controls passed), EmittedUnexecuted, SeedRetained
+// by a declared row, or Unclassified -- the only refusal. Judged by the seed-emitted driver built by the
+// self-host step; no CI job of its own.
+// `gunbc test //gunbc/instruments:self-host-frontier`.
+fn self_host_frontier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "self-host-frontier" } }
+}
+
+fn self_host_frontier_binding() -> TargetBinding {
+  TargetBinding { target: self_host_frontier_label() producer: SelfHostFrontierProducer {} }
+}
+
 // D13 DEPENDENCY-DEMAND CENSUS (v2.compiler.source_root_eval native_demand_census_output, the emitted compiler's
 // `demand-census` verb): one row per fn that authors a `uses` clause, pairing the authored rows with
 // the demand derived over the whole closure and a verdict scoped to the audited vocabulary (Network).
@@ -899,6 +914,27 @@ fn regen_round_cost_binding() -> TargetBinding {
   TargetBinding { target: regen_round_cost_label() producer: RegenRoundCostProducer {} }
 }
 
+// THE CREDENTIAL ACQUISITION ROWS THAT NEED A USER SYSTEMD MANAGER. test.claim.dispatch_credential_acquisition_witness
+// starts real transient units through `systemd-run --user` in fourteen rows, which no session container or remote
+// build runner can host. The wire function probes the manager first (a refusal is no observation, exit 2), then runs
+// those rows and answers 0 only if all held. Dispatched to the fleet's self-hosted runners (instrument_dispatch_labels),
+// never a merge gate. Kept beyond gunbc#14972: it is the only route that executes these rows at all.
+fn credential_acquisition_systemd_rows_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "credential-acquisition-systemd-rows" } }
+}
+
+fn credential_acquisition_systemd_rows_entry() -> String {
+  "dag/test/claim/dispatch_credential_acquisition_witness.dag"
+}
+
+fn credential_acquisition_systemd_rows_function() -> String {
+  "credential_acquisition_systemd_rows_wire"
+}
+
+fn credential_acquisition_systemd_rows_binding() -> TargetBinding {
+  TargetBinding { target: credential_acquisition_systemd_rows_label() producer: CliWireProgramProducer { entry: credential_acquisition_systemd_rows_entry() function: credential_acquisition_systemd_rows_function() } }
+}
+
 fn roster_import_sweep_controls_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-controls" } }
 }
@@ -928,6 +964,27 @@ fn append_chain_ladder_entry() -> String {
 // over its timing rows extends this same label (one instrument, not two).
 fn append_chain_ladder_binding() -> TargetBinding {
   TargetBinding { target: append_chain_ladder_label() producer: NativeClaimProgramProducer { entry: append_chain_ladder_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+fn last_use_move_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "last-use-move" } }
+}
+
+// The move-at-last-use fixtures on the emitted path: every shape compiles and agrees with its reference
+// (gunbc.recurring_failure_mode a_last_use_argument_is_cloned_into_a_by_value_parameter).
+fn last_use_move_binding() -> TargetBinding {
+  TargetBinding { target: last_use_move_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/last_use_move_native.dag" deadline: native_claim_policy_child_deadline() } }
+}
+
+fn cons_tail_recursion_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "cons-tail-recursion" } }
+}
+
+// The tail-recursion-modulo-cons fixtures on the emitted path: a lowered tail Cons step is linear and
+// correct, and the shapes the rule must refuse stay correct on the ordinary lowering
+// (gunbc.recurring_failure_mode a_cons_around_a_self_call_rebuilds_the_result_per_element).
+fn cons_tail_recursion_binding() -> TargetBinding {
+  TargetBinding { target: cons_tail_recursion_label() producer: NativeClaimProgramProducer { entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag" deadline: native_claim_policy_child_deadline() } }
 }
 
 fn member_home_cost_label() -> Label {
@@ -1173,6 +1230,51 @@ fn brand_mark_assets_binding() -> TargetBinding {
   TargetBinding { target: brand_mark_assets_label() producer: NativeClaimProgramProducer { entry: brand_mark_assets_entry() deadline: native_claim_policy_child_deadline() } }
 }
 
+// THE ROUTER PROXY FALSIFIER (plan gunbc.plans.fabric_serving_router, S1b): the pinned OpenResty run
+// with gunbc.serving.router_proxy_config's emitted configuration by the NativeClaimDriver program
+// gunbc.instruments.router_proxy_falsifier, through extdeps.docker.cli_service DockerCli (ruling
+// gunbc.design_ruling native_claim_route_admits_the_docker_cli). It needs a docker daemon, so it is not a
+// merge gate; it is dispatched on the fleet (gunbc.instruments.instrument_dispatch_workflow) at the head
+// under test, and a runner with no daemon answers no observation.
+// `gunbc test //gunbc/instruments:router-proxy-falsifier`.
+fn router_proxy_falsifier_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "router-proxy-falsifier" } }
+}
+
+fn router_proxy_falsifier_entry() -> String {
+  "dag/gunbc/instruments/router_proxy_falsifier.dag"
+}
+
+fn router_proxy_falsifier_binding() -> TargetBinding {
+  TargetBinding { target: router_proxy_falsifier_label() producer: NativeClaimProgramProducer { entry: router_proxy_falsifier_entry() deadline: native_claim_policy_child_deadline() } }
+}
+
+// ONE RUN OF THE SERVING BENCHMARK ON ITS CELL (work item node://adhoc-ffb4b5c7-4a5): the NativeClaimDriver
+// program gunbc.instruments.serving_benchmark_run starts the engine, the gpu-bench kit and the nvidia-smi
+// samplers through extdeps.docker.cli_service DockerCli (ruling gunbc.design_ruling
+// native_claim_route_admits_the_docker_cli) and admits the run against its version. It needs the cell's
+// GPUs and a GPU-capable docker daemon, so it is dispatched on the fleet and never a merge gate; every
+// missing capability answers no observation. `gunbc test //gunbc/instruments:serving-benchmark-run`.
+fn serving_benchmark_run_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "serving-benchmark-run" } }
+}
+
+fn serving_benchmark_run_entry() -> String {
+  "dag/gunbc/instruments/serving_benchmark_run.dag"
+}
+
+// Wall budget for one short run on the srv3 pair, from calm-crab-645's estimate for that cell: the engine
+// loading its weights (minutes), four cold ~200k-token primes at ~2 min each, one warm-up and two measured
+// rounds of four 1,024-token turns at ~2.3 min each. About 25 min of work; the budget is 60 min so that a
+// slow load reads as a run that finished late, not one that was cut, and a stalled one is still cut.
+fn serving_benchmark_run_deadline() -> Millisecond {
+  millisecond(count: 3600000)
+}
+
+fn serving_benchmark_run_binding() -> TargetBinding {
+  TargetBinding { target: serving_benchmark_run_label() producer: NativeClaimProgramProducer { entry: serving_benchmark_run_entry() deadline: serving_benchmark_run_deadline() } }
+}
+
 fn value_position_block_nests_label() -> Label {
   Label { package: instruments_package() target: TargetName { name: "value-position-block-nests" } }
 }
@@ -1185,6 +1287,27 @@ fn value_position_block_nests_binding() -> TargetBinding {
   TargetBinding { target: value_position_block_nests_label() producer: NativeClaimProgramProducer { entry: value_position_block_nests_entry() deadline: value_position_block_nests_child_deadline() } }
 }
 
+fn roster_import_sweep_native_label() -> Label {
+  Label { package: instruments_package() target: TargetName { name: "roster-import-sweep-native" } }
+}
+
+fn roster_import_sweep_native_entry() -> String {
+  "dag/gunbc/instruments/roster_import_sweep_native.dag"
+}
+
+// Wall budget for //gunbc/instruments:roster-import-sweep-native. The interpreted front end of one
+// node.dag pass measured about 16m (sunny-bee-153), and the whole point of the native route is that
+// the child does NOT pay that front end; this starts at the policy ceiling and is tightened to
+// 2x the measured child wall -- the instrument's own rows print child_wall_ms per case, so the
+// tightening number comes from the instrument, not from a transcription (DESIGN section 5).
+fn roster_import_sweep_native_child_deadline() -> Millisecond {
+  millisecond(count: 600000)
+}
+
+fn roster_import_sweep_native_binding() -> TargetBinding {
+  TargetBinding { target: roster_import_sweep_native_label() producer: NativeClaimProgramProducer { entry: roster_import_sweep_native_entry() deadline: roster_import_sweep_native_child_deadline() } }
+}
+
 fn type_declaration_use_census_binding() -> TargetBinding {
   TargetBinding { target: type_declaration_use_census_label() producer: V2NativeCensusProducer { reading: TypeDeclarationUseReading } }
 }
@@ -1194,7 +1317,7 @@ fn ambient_operation_disposition_census_binding() -> TargetBinding {
 }
 
 fn ambient_name_census_binding() -> TargetBinding {
-  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceBindingReading } }
+  TargetBinding { target: ambient_name_census_label() producer: V2NativeCensusProducer { reading: OccurrenceResolutionReading } }
 }
 
 fn namespace_wave_binding_diff_binding() -> TargetBinding {
@@ -1351,16 +1474,17 @@ fn instrument_targets() -> List<Label> {
     primitive_egress_census_v2_label(), primitive_egress_census_dag_label(),
     primitive_egress_census_seed_label(), typed_graph_exclusive_bytes_label(), typed_graph_exclusive_bytes_floor_subject_label(),
     required_lane_resolution_census_label(), bare_reference_channel_outcome_label(),
-    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
+    self_host_behavioral_equivalence_label(), dependency_demand_census_label(), self_host_frontier_label(), decl_ref_census_label(), effect_pair_census_label(), generic_identity_census_label(), interpolation_hole_census_label(),
     shared_type_leaf_collision_census_label(),
     cardinality_realization_label(),
     regen_round_cost_label(),
-    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
+    credential_acquisition_systemd_rows_label(),
+    known_red_derivation_label(), roster_reach_inhabitance_label(), witness_deferral_freeze_population_label(), claim_coverage_census_label(), append_chain_ladder_label(), last_use_move_label(), member_home_cost_label(), cons_tail_recursion_label(), roster_import_sweep_controls_label(), compute_run_unit_cold_label(), compute_run_unit_sccache_probe_label(), compute_run_unit_cold_same_path_label(), compute_wrong_capture_label(),
     compute_dependency_wrong_capture_label(),
     emitted_crate_workspace_label(),
     native_crypto_vectors_label(), rfm_rung_census_label(), native_app_attest_label(), dag_emit_real_grammar_round_trips_label(),
     native_materialization_store_closure_label(),
-    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label()
+    native_emission_controls_label(), fleet_convergence_verdict_route_label(), native_allocation_observation_label(), native_xl2_rehearsal_label(), value_position_block_nests_label(), roster_import_sweep_native_label(), native_serve_label(), native_serve_device_crypto_label(), native_serve_startup_refusal_label(), native_serve_startup_slow_label(), native_serve_startup_overrun_label(), brand_mark_assets_label(), router_proxy_falsifier_label(), serving_benchmark_run_label()
   ]
 }
 
@@ -1373,16 +1497,17 @@ fn instrument_bindings() -> List<TargetBinding> {
     primitive_egress_census_v2_binding(), primitive_egress_census_dag_binding(),
     primitive_egress_census_seed_binding(), typed_graph_exclusive_bytes_binding(), typed_graph_exclusive_bytes_floor_subject_binding(),
     required_lane_resolution_census_binding(), bare_reference_channel_outcome_binding(),
-    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
+    self_host_behavioral_equivalence_binding(), dependency_demand_census_binding(), self_host_frontier_binding(), decl_ref_census_binding(), effect_pair_census_binding(), generic_identity_census_binding(), interpolation_hole_census_binding(),
     shared_type_leaf_collision_census_binding(),
     cardinality_realization_binding(),
     regen_round_cost_binding(),
-    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
+    credential_acquisition_systemd_rows_binding(),
+    known_red_derivation_binding(), roster_reach_inhabitance_binding(), witness_deferral_freeze_population_binding(), claim_coverage_census_binding(), append_chain_ladder_binding(), last_use_move_binding(), cons_tail_recursion_binding(), member_home_cost_binding(), roster_import_sweep_controls_binding(), compute_run_unit_cold_binding(), compute_run_unit_sccache_probe_binding(), compute_run_unit_cold_same_path_binding(), compute_wrong_capture_binding(),
     compute_dependency_wrong_capture_binding(),
     emitted_crate_workspace_binding(),
     native_crypto_vectors_binding(), rfm_rung_census_binding(), native_app_attest_binding(), dag_emit_real_grammar_round_trips_binding(),
     native_materialization_store_closure_binding(),
-    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding()
+    native_emission_controls_binding(), fleet_convergence_verdict_route_binding(), native_allocation_observation_binding(), native_xl2_rehearsal_binding(), value_position_block_nests_binding(), roster_import_sweep_native_binding(), native_serve_binding(), native_serve_device_crypto_binding(), native_serve_startup_refusal_binding(), native_serve_startup_slow_binding(), native_serve_startup_overrun_binding(), brand_mark_assets_binding(), router_proxy_falsifier_binding(), serving_benchmark_run_binding()
   ]
 }
 

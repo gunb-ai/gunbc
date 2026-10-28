@@ -18,7 +18,7 @@ pub use crate::std_algebra::{
     collection_concat_shape, collection_count_shape, collection_map_shape,
 };
 pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq, DeclarationRef};
-pub use crate::std_host_text::chars;
+pub use crate::std_host_text::{chars, text_of_chars};
 use crate::std_literal_elaboration::LiteralSourceKind::*;
 pub use crate::std_literal_elaboration::{LiteralHomomorphism, LiteralSourceKind};
 pub use crate::std_optional::Optional;
@@ -492,13 +492,9 @@ pub fn judge_conversion_plan(
                         })
                     }
                     Some(plan) => {
-                        if (conversion_endpoint_eq(
-                            conversion_plan_source(plan.clone()),
-                            source.clone(),
-                        ) && conversion_endpoint_eq(
-                            conversion_plan_target(plan.clone()),
-                            target.clone(),
-                        )) {
+                        if (conversion_endpoint_eq(conversion_plan_source(plan.clone()), source)
+                            && conversion_endpoint_eq(conversion_plan_target(plan.clone()), target))
+                        {
                             Rc::new(ConversionPlanJudgment::ConversionPlanAdmitted {
                                 plan: plan.clone(),
                             })
@@ -587,7 +583,7 @@ pub fn judge_text_conversion_plan(
                     })
                 }
                 TextPlanEndpoint::TextPlanEndpointKeyed { endpoint: te, .. } => {
-                    judge_conversion_plan(rows.clone(), route.clone(), se.clone(), te.clone())
+                    judge_conversion_plan(rows, route, se.clone(), te.clone())
                 }
             }
         }
@@ -682,7 +678,7 @@ pub fn unicode_scalar_unfold(s: String) -> Rc<Vec<i64>> {
 }
 
 pub fn unicode_scalar_fold(xs: Rc<Vec<i64>>) -> String {
-    v1_rt::chars_to_string(&xs, 0, (xs.clone().len() as i64))
+    crate::std_host_text::text_of_chars(xs)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

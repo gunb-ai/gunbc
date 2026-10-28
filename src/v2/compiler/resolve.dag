@@ -25,7 +25,7 @@ import v2.std.qualified_name { QualifiedName, optional_declaration_identity, qua
 import v2.std.resolution_policy { ImportScoped, NameResolutionPolicy, NamespaceOnlyY, default_name_resolution_policy }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations, symbol_index_edge_introduces_no_declarations }
 import v2.std.symbol_index { ExcludedCandidate, symbol_index_enclosing_declaration_paths, symbol_index_entry_at, LexicalAmbiguous, LexicalBindingCandidate, LexicalHit, LexicalLookup, LexicalUnbound, SymbolIndex, empty_symbol_index, GlobalBareHit, GlobalBareLookupAmbiguous, GlobalBareLookupUnbound, symbol_index_absolute_candidates, RecordTypePayload, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declares_resource_at, symbol_index_global_unique_lookup, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, symbol_index_declaring_path_of, symbol_index_lexical_eligible, symbol_index_lexical_eligible_declared_payload, symbol_index_lexical_lookup, symbol_index_lexical_lookup_for, symbol_index_lexical_lookup_for_declared_payload, symbol_index_declared_binders_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_lookup, symbol_index_renaming_alias_at, type_decl_member_shape, type_decl_member_child_walk, TypeDeclChildrenInherited, TypeDeclChildrenTypeOccurrence, TypeDeclChildWalk, symbol_index_owning_module_of, EligibleLookup, ExcludedByCategory, LexicalEligibility, symbol_index_lexical_eligibility }
-import v2.std.node { positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
+import v2.std.node { node_same_occurrence, node_equal_ignoring_provenance, positional_child_target_nodes, BinderTypeEdge, core_edge, MapLiteralEntriesEdge, labeled_core_is, named_edges, positional_child_count, positional_edges, Arrow, Atom, Bind, Branch, Instantiation, Loop, Value, ComputationNode, Conj, Disj, Edge, Match, Authored, Node, NodeFold, Positional, Symbol, Transform, TypeNode, fold_node, LoopCarrierBinder, LoopRealizedDeclaration, loop_edge_role, symbol_intern_lexeme, symbol_lexeme, arrow_domain_binds_a_name, AdmitCallersEdge, edge_label_of, node_with_occurrence_id, symbol_eq, labeled_named_is, well_formed, LoopBoundMeasure, MatchArmPatternEdge, MatchArmScopeExitEdge, ArrowSignatureOrderEdge, edge_is_core, StructuralLabel, label_sort_key, ConstructTagEdge, ArrowBodyEdge, BinderDefaultEdge, BindBinderSlot, BindBodySlot, BindValueSlot, ChildSlot, LabeledChild, MatchArmSlot, MatchScrutineeSlot, PositionalOrdinal, bind_positional_slot, match_positional_slot, node_child_slots }
 import v2.std.type_binder { ArgumentInhabitsKind, ArgumentLiteralUnjudged, ArgumentOutsideKind, ArgumentForwardedKindDiffers, ArgumentForwardedUnkinded, ArgumentForwardedUnresolved, KindInhabitance, KindUnresolved, TypeApplicationArityMismatch, TypeApplicationConformance, TypeApplicationConforms, TypeApplicationKindNotInhabited, TypeApplicationKindUnresolved, TypeApplicationForwardedParameterUnkinded, TypeApplicationForwardedParameterKindDiffers, TypeApplicationForwardedParameterUnresolved, TypeApplicationBinderOrderMalformed, type_application_conformance, type_binder_atom_identity_optional, type_param_kind_optional, GenericTypeDecl, PlainTypeDecl, type_decl_view, edge_is_cast_target, edge_is_type_annotation, edge_is_type_alias, edge_is_type_body, edge_is_type_params, type_binder_first_mislabelled, type_binder_labels_conform, type_param_names, binder_conj_names, kinded_type_param_names, type_binder_target_of }
 import v2.std.node_query { declared_field_list, node_is_coproduct, field_projection_edge_field_optional, field_projection_optional, binder_node_edge, binder_node_parts, declared_field_from_edge, member_edge_type_node, NamedChildAmbiguous, NamedChildFound, NamedChildMissing, named_child_lookup, construct_tag_reading, ConstructTagAuthored, ConstructTagElided, NotAConstruct, construct_tag_optional, field_projection_node, construct_tag_path_optional, declared_field_named, find_named_child, is_wildcard_pattern, pattern_wildcard_name, find_core_child }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -54,8 +54,8 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // carrier `Int` is the kernel binding, a carrier naming a corpus type is its declaration reference. A
 // reader that needs a body's resolved type reads resolved_declarations; nothing reads symbol_index for
 // a body type (neat-boar-16 ruling), so the two never answer the same question.
-// occurrence_bindings is WHAT ANSWERED EACH REFERENCE, keyed by the reference's own minted occurrence:
-// the record resolve's frames and doors made while walking (OccurrenceBinding). Its lexical arm is
+// occurrence_resolutions is WHAT ANSWERED EACH REFERENCE, keyed by the reference's own minted occurrence:
+// the record resolve's frames and doors made while walking (OccurrenceResolution). Its lexical arm is
 // the lexical counterpart of resolved_declarations for a parameter reference, which infer reads
 // (resolved_tree_lexical_binding) and never re-derives scope from; its other arms say whether a
 // module-level name came from a declaration the author reached or from a stopgap table.
@@ -63,7 +63,7 @@ type ResolvedTree {
   root: Node
   symbol_index: SymbolIndex
   resolved_declarations: SymbolIndex
-  occurrence_bindings: Map<OccurrenceId, OccurrenceBindingRecord>
+  occurrence_resolutions: Map<OccurrenceId, OccurrenceResolutionRecord>
   // An occurrence the walk recorded MORE THAN ONCE, which is a resolver defect: the map above keeps
   // the last write, so this is where the second record stays visible. Empty in a sound walk; read by
   // the exactly-one-source control and by the ambient-name census, never by a binding decision.
@@ -279,14 +279,14 @@ fn resolved_tree_of(
   outcome_index: ModuleOutcomeIndex,
   member_kinds: MemberKindChannel,
   type_declaration_modifiers: TypeDeclarationModifierChannel,
-  bindings: List<OccurrenceBindingEntry>
+  bindings: List<OccurrenceResolutionEntry>
 ) -> ResolvedTree {
   ResolvedTree {
     root: root,
     symbol_index: symbol_index,
     resolved_declarations: resolved_declarations_over(closure: closure_declarations, subject: root),
-    occurrence_bindings: fold(bindings, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.record) }),
-    duplicate_binding_records: occurrence_binding_duplicates(entries: bindings),
+    occurrence_resolutions: fold(bindings, init: empty_map(), f: fn(m, e) { map_insert(m, e.reference, e.record) }),
+    duplicate_binding_records: occurrence_resolution_duplicates(entries: bindings),
     module_outcomes: module_outcomes,
     outcome_index: outcome_index,
     member_kinds: member_kinds,
@@ -374,7 +374,7 @@ fn type_declaration_modifier_channel_of_trees(trees: FreeMonoid<NormalizedTree>)
 // The binding that answered a lexical reference node, read through its own occurrence. Absent for a
 // node that is not a lexical reference this tree's resolve recorded.
 fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optional<LexicalBinding> {
-  match resolved_tree_occurrence_binding(tree: tree, reference: reference) {
+  match resolved_tree_occurrence_resolution(tree: tree, reference: reference) {
     Present { value: BoundByLexicalBinder { binding: b } } => optional_present(value: b)
     Present { value: _ } => optional_absent()
     Absent => optional_absent()
@@ -382,10 +382,10 @@ fn resolved_tree_lexical_binding(tree: ResolvedTree, reference: Node) -> Optiona
 }
 
 // The binding resolve recorded for a reference node, read through its own occurrence.
-fn resolved_tree_occurrence_binding(tree: ResolvedTree, reference: Node) -> Optional<OccurrenceBinding> {
+fn resolved_tree_occurrence_resolution(tree: ResolvedTree, reference: Node) -> Optional<OccurrenceResolution> {
   let found = match reference.occurrence_id {
-    OccurrenceMinted { id: id } => map_lookup(m: tree.occurrence_bindings, key: id)
-    OccurrenceProjected { id: id, caused_by: _ } => map_lookup(m: tree.occurrence_bindings, key: id)
+    OccurrenceMinted { id: id } => map_lookup(m: tree.occurrence_resolutions, key: id)
+    OccurrenceProjected { id: id, caused_by: _ } => map_lookup(m: tree.occurrence_resolutions, key: id)
     OccurrenceSynthetic => optional_absent()
     OccurrencePending { caused_by: _ } => optional_absent()
   }
@@ -401,15 +401,85 @@ fn resolved_tree_occurrence_binding(tree: ResolvedTree, reference: Node) -> Opti
 // slots hold the same node, so the walk records that one occurrence's one binding twice. Only a record
 // that disagrees with the first is a breach of exactly one source per occurrence.
 type BindingDuplicateScan {
-  seen: Map<OccurrenceId, OccurrenceBindingRecord>
+  seen: Map<OccurrenceId, OccurrenceResolutionRecord>
   duplicates: List<OccurrenceId>
 }
 
-fn occurrence_binding_duplicates(entries: List<OccurrenceBindingEntry>) -> List<OccurrenceId> {
+fn lexical_binder_standing_equal(a: LexicalBinderStanding, b: LexicalBinderStanding) -> Bool {
+  match a {
+    LexicalDeclared { node: na } =>
+      match b {
+        LexicalDeclared { node: nb } => node_equal_ignoring_provenance(a: na, b: nb)
+        _ => false
+      }
+    LexicalValued { node: na } =>
+      match b {
+        LexicalValued { node: nb } => node_equal_ignoring_provenance(a: na, b: nb)
+        _ => false
+      }
+    LexicalOwedFormal { field_type: na } =>
+      match b {
+        LexicalOwedFormal { field_type: nb } => node_equal_ignoring_provenance(a: na, b: nb)
+        _ => false
+      }
+    LexicalUntyped =>
+      match b {
+        LexicalUntyped => true
+        _ => false
+      }
+  }
+}
+
+fn occurrence_resolution_equal(a: OccurrenceResolution, b: OccurrenceResolution) -> Bool {
+  match a {
+    BoundByLexicalBinder { binding: la } =>
+      match b {
+        BoundByLexicalBinder { binding: lb } =>
+          (la.binder_site == lb.binder_site) && lexical_binder_standing_equal(a: la.standing, b: lb.standing)
+        _ => false
+      }
+    BoundToParameter { path: pa } =>
+      match b {
+        BoundToParameter { path: pb } => pa == pb
+        _ => false
+      }
+    BoundToTypeParameter { canonical: ca } =>
+      match b {
+        BoundToTypeParameter { canonical: cb } => ca == cb
+        _ => false
+      }
+    BoundToDeclaration { identity: ia } =>
+      match b {
+        BoundToDeclaration { identity: ib } => ia == ib
+        _ => false
+      }
+    BoundAmbient { table: ta, identity: ia } =>
+      match b {
+        BoundAmbient { table: tb, identity: ib } => (ta == tb) && (ia == ib)
+        _ => false
+      }
+    BoundByExpectedType { identity: ia } =>
+      match b {
+        BoundByExpectedType { identity: ib } => ia == ib
+        _ => false
+      }
+    BoundByGeneratedReference { identity: ia } =>
+      match b {
+        BoundByGeneratedReference { identity: ib } => ia == ib
+        _ => false
+      }
+  }
+}
+
+fn occurrence_resolution_record_equal(a: OccurrenceResolutionRecord, b: OccurrenceResolutionRecord) -> Bool {
+  (a.authored == b.authored) && occurrence_resolution_equal(a: a.binding, b: b.binding)
+}
+
+fn occurrence_resolution_duplicates(entries: List<OccurrenceResolutionEntry>) -> List<OccurrenceId> {
   let scan = fold(entries, init: BindingDuplicateScan { seen: empty_map(), duplicates: [] }, f: fn(acc, e) {
     match map_lookup(m: acc.seen, key: e.reference) {
       Present { value: first } =>
-        if first == e.record {
+        if occurrence_resolution_record_equal(a: first, b: e.record) {
           acc
         } else {
           BindingDuplicateScan { seen: acc.seen, duplicates: list_append(left: acc.duplicates, right: [e.reference]) }
@@ -482,7 +552,7 @@ type Scope
 // path-keyed parameter reference (resolve_frame_bound_reference). A `let`, a match arm and a
 // lambda's own Arrow are Lexical: their binders are not declarations (see the match-arm frame below),
 // so a reference they answer is minted as a lexical reference keyed by its own occurrence, with the
-// binder that answered it recorded in ResolvedTree.occurrence_bindings (LexicalBinding). A type-parameter
+// binder that answered it recorded in ResolvedTree.occurrence_resolutions (LexicalBinding). A type-parameter
 // frame is TypeParameterFrame: it binds a type, not a value, and a name it answers stays the bare
 // canonical atom, which is how v2.compiler.infer recognizes a type variable (type_param_names).
 // Every consumer of a value reference therefore reads which binder answered it from resolve, and
@@ -503,7 +573,7 @@ type FrameKind
 // v2.std.node_query member_edge_type_node), LexicalValued at a let, LexicalOwedFormal at a
 // match-payload formal, LexicalUntyped otherwise.
 // A reference this frame answers is minted as v2.std.qualified_name lexical_reference_node and its
-// binding is recorded in ResolvedTree.occurrence_bindings under the REFERENCE's own occurrence, so a
+// binding is recorded in ResolvedTree.occurrence_resolutions under the REFERENCE's own occurrence, so a
 // consumer reads which binder answered and never searches scope again: resolve decided it here.
 //
 // A lexical binder's standing is ONE case, not a bag of independent Optionals: a declared type, a
@@ -552,7 +622,7 @@ type AmbientBindingTable
 //   BoundToDeclaration    a module-level declaration the author reached (own, imported, or a
 //                         qualified path), by what resolved_reference_identity minted.
 //   BoundAmbient          a stopgap table answered; the census the waves are driven from reads these.
-type OccurrenceBinding
+type OccurrenceResolution
   = BoundByLexicalBinder { binding: LexicalBinding }
   | BoundToParameter { path: QualifiedName }
   | BoundToTypeParameter { canonical: Symbol }
@@ -573,9 +643,9 @@ type OccurrenceBinding
 // walk accumulates these beside the tree it builds (ResolveWalkAccepted.bindings). A reference with no
 // minted occurrence has no key and records nothing; a lexical one refuses instead
 // (resolve_lexical_reference), because infer must read its binder back.
-type OccurrenceBindingEntry {
+type OccurrenceResolutionEntry {
   reference: OccurrenceId
-  record: OccurrenceBindingRecord
+  record: OccurrenceResolutionRecord
 }
 
 // THE RECORD UNDER ONE OCCURRENCE: what answered it, and the spelling the author wrote there. The
@@ -583,12 +653,12 @@ type OccurrenceBindingEntry {
 // resolved node no longer carries it (a declaration reference carries the declaring path, a kernel
 // atom the canonical symbol). Absent only for a reference node whose spine does not read as a
 // qualified name, which the census reports rather than guesses.
-type OccurrenceBindingRecord {
+type OccurrenceResolutionRecord {
   authored: Optional<QualifiedName>
-  binding: OccurrenceBinding
+  binding: OccurrenceResolution
 }
 
-fn occurrence_binding_authored(n: Node) -> Optional<QualifiedName> {
+fn occurrence_resolution_authored(n: Node) -> Optional<QualifiedName> {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } => optional_present(value: Cons { head: id, tail: Empty })
     _ =>
@@ -600,11 +670,11 @@ fn occurrence_binding_authored(n: Node) -> Optional<QualifiedName> {
 }
 
 // THE ENTRY FOR A NODE'S OWN OCCURRENCE, or none when the node carries no minted key.
-fn occurrence_binding_entries(n: Node, binding: OccurrenceBinding) -> List<OccurrenceBindingEntry> {
-  let record = OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: binding }
+fn occurrence_resolution_entries(n: Node, binding: OccurrenceResolution) -> List<OccurrenceResolutionEntry> {
+  let record = OccurrenceResolutionRecord { authored: occurrence_resolution_authored(n: n), binding: binding }
   match n.occurrence_id {
-    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
-    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceMinted { id: id } => [OccurrenceResolutionEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceResolutionEntry { reference: id, record: record }]
     OccurrenceSynthetic => []
     OccurrencePending { caused_by: _ } => []
   }
@@ -612,14 +682,14 @@ fn occurrence_binding_entries(n: Node, binding: OccurrenceBinding) -> List<Occur
 
 // THE GENERATED REFERENCE'S ENTRY. No author wrote it, so its spelling is the declaring path it carries:
 // the key the binding census reads it under, distinct from any authored spelling of the same name.
-fn generated_reference_binding_entries(n: Node, path: QualifiedName) -> List<OccurrenceBindingEntry> {
-  let record = OccurrenceBindingRecord {
+fn generated_reference_binding_entries(n: Node, path: QualifiedName) -> List<OccurrenceResolutionEntry> {
+  let record = OccurrenceResolutionRecord {
     authored: optional_present(value: path),
     binding: BoundByGeneratedReference { identity: ResolvedToDeclaration { path: path } }
   }
   match n.occurrence_id {
-    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
-    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceMinted { id: id } => [OccurrenceResolutionEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceResolutionEntry { reference: id, record: record }]
     OccurrenceSynthetic => []
     OccurrencePending { caused_by: _ } => []
   }
@@ -629,24 +699,24 @@ fn generated_reference_binding_entries(n: Node, path: QualifiedName) -> List<Occ
 // head as the author wrote it: the name the binding census keys the occurrence by. Its target is the
 // declaration the expectation reached, alias-unfolded, which can differ from what that spelling's own
 // occurrence binds -- the reason it is a census row of its own.
-fn elided_head_binding_entries(elided: Node, x: ResolveExpectation, path: QualifiedName) -> List<OccurrenceBindingEntry> {
-  let record = OccurrenceBindingRecord {
+fn elided_head_binding_entries(elided: Node, x: ResolveExpectation, path: QualifiedName) -> List<OccurrenceResolutionEntry> {
+  let record = OccurrenceResolutionRecord {
     authored: match resolve_expected_head_node_optional(t: x.expected) {
-      Present { value: head } => occurrence_binding_authored(n: head)
+      Present { value: head } => occurrence_resolution_authored(n: head)
       Absent => optional_absent()
     },
     binding: BoundByExpectedType { identity: ResolvedToDeclaration { path: path } }
   }
   match elided.occurrence_id {
-    OccurrenceMinted { id: id } => [OccurrenceBindingEntry { reference: id, record: record }]
-    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceBindingEntry { reference: id, record: record }]
+    OccurrenceMinted { id: id } => [OccurrenceResolutionEntry { reference: id, record: record }]
+    OccurrenceProjected { id: id, caused_by: _ } => [OccurrenceResolutionEntry { reference: id, record: record }]
     OccurrenceSynthetic => []
     OccurrencePending { caused_by: _ } => []
   }
 }
 
-fn resolved_atom_recorded(node: Node, at: Node, binding: OccurrenceBinding) -> ResolvedAtom {
-  ResolvedAtom { node: node, bindings: occurrence_binding_entries(n: at, binding: binding) }
+fn resolved_atom_recorded(node: Node, at: Node, binding: OccurrenceResolution) -> ResolvedAtom {
+  ResolvedAtom { node: node, bindings: occurrence_resolution_entries(n: at, binding: binding) }
 }
 
 // type_scope IS THE TYPE-ROLE FRAME: the scope a name in a TYPE position resolves in. It is the
@@ -1237,7 +1307,7 @@ fn resolve_declaring_entering(declaring: DeclaringPosition, n: Node) -> Declarin
         _ => declaring
       }
     DeclaringInSpine { path: path, body: body } =>
-      if n == body { DeclaringAt { path: path } } else { declaring }
+      if node_same_occurrence(a: n, b: body) { DeclaringAt { path: path } } else { declaring }
     NotDeclaring => declaring
   }
 }
@@ -2118,7 +2188,7 @@ type ModuleBindingRoute
   = DeclaredRoute
   | AmbientRoute { table: AmbientBindingTable }
 
-fn module_binding_of(route: ModuleBindingRoute, identity: ResolvedReferenceIdentity) -> OccurrenceBinding {
+fn module_binding_of(route: ModuleBindingRoute, identity: ResolvedReferenceIdentity) -> OccurrenceResolution {
   match route {
     DeclaredRoute => BoundToDeclaration { identity: identity }
     AmbientRoute { table: table } => BoundAmbient { table: table, identity: identity }
@@ -2358,7 +2428,7 @@ fn resolve_frame_bound_reference(
 }
 
 // A LEXICAL REFERENCE IS MINTED UNDER ITS MARKER AND ITS BINDING RECORDED BY THE REFERENCE'S OWN
-// OCCURRENCE (ResolvedTree.occurrence_bindings). A reference with no minted occurrence has no key a
+// OCCURRENCE (ResolvedTree.occurrence_resolutions). A reference with no minted occurrence has no key a
 // consumer could read its binding back by, so it refuses, typed and located, rather than becoming a
 // lexical reference whose binder nobody can find. A frame that answers a name its binders do not
 // record is a resolver defect, and refuses as one.
@@ -2397,9 +2467,9 @@ fn resolve_lexical_reference_keyed(
   Accepted {
     value: ResolvedAtom {
       node: lexical_reference_node(label: canonical, occurrence_id: n.occurrence_id),
-      bindings: [OccurrenceBindingEntry {
+      bindings: [OccurrenceResolutionEntry {
         reference: id,
-        record: OccurrenceBindingRecord { authored: occurrence_binding_authored(n: n), binding: BoundByLexicalBinder { binding: binding } }
+        record: OccurrenceResolutionRecord { authored: occurrence_resolution_authored(n: n), binding: BoundByLexicalBinder { binding: binding } }
       }]
     },
     diagnostics: pending
@@ -2410,7 +2480,7 @@ fn resolve_lexical_reference_keyed(
 // for a reference that bound (by whatever frame, door or table answered), none for a literal.
 type ResolvedAtom {
   node: Node
-  bindings: List<OccurrenceBindingEntry>
+  bindings: List<OccurrenceResolutionEntry>
 }
 
 // A CHECK OVER AN ATOM'S NODE THAT KEEPS THE ATOM'S BINDING RECORD: the check answers the node, and
@@ -2733,16 +2803,16 @@ type InstantiationKinds
 // changes nothing else. `first` is therefore the one the old short-circuiting walk would have
 // stopped at, which is what makes the legacy projection below answer exactly what it answered.
 type ResolveNodeWalk
-  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics, bindings: List<OccurrenceBindingEntry> }
+  = ResolveWalkAccepted { value: Node, diagnostics: Diagnostics, bindings: List<OccurrenceResolutionEntry> }
   | ResolveWalkRefused {
       first: NonEmptyDiagnostics
       rest: List<NonEmptyDiagnostics>
       observation: ObservationCompleteness
       // THE PARTIAL RECORD: the binding entries the walk's ACCEPTED sites recorded before and beside
       // the refusals. A refused tree is never returned, and this does not make it accepted: it is read
-      // only by the binding census as binding_partial rows (v2.compiler.occurrence_binding_census),
+      // only by the binding census as binding_partial rows (v2.compiler.occurrence_resolution_census),
       // so a wave that moves one name of a still-refused module is judged at occurrence grain.
-      partial: List<OccurrenceBindingEntry>
+      partial: List<OccurrenceResolutionEntry>
     }
 
 fn resolve_walk_refused_one(chain: NonEmptyDiagnostics) -> ResolveNodeWalk {
@@ -2813,7 +2883,7 @@ type ChildWalk {
   failures: List<NonEmptyDiagnostics>
   observation: ObservationCompleteness
   scope_prerequisite_refused: Bool
-  bindings: List<OccurrenceBindingEntry>
+  bindings: List<OccurrenceResolutionEntry>
 }
 
 fn child_walk_init() -> ChildWalk {
@@ -2837,7 +2907,7 @@ fn child_walk_refused(
   first: NonEmptyDiagnostics,
   rest: List<NonEmptyDiagnostics>,
   observation: ObservationCompleteness,
-  partial: List<OccurrenceBindingEntry>
+  partial: List<OccurrenceResolutionEntry>
 ) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
@@ -2853,7 +2923,7 @@ fn child_walk_refused(
   }
 }
 
-fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics, bindings: List<OccurrenceBindingEntry>) -> ChildWalk {
+fn child_walk_accepted(w: ChildWalk, edge: Edge, d: Diagnostics, bindings: List<OccurrenceResolutionEntry>) -> ChildWalk {
   ChildWalk {
     ordinal: w.ordinal + 1,
     edges: list_snoc_item(xs: w.edges, item: edge),
@@ -4628,7 +4698,7 @@ fn resolve_scope_binds_type_parameter(s: Scope, name: Symbol) -> Bool {
 
 fn resolve_path_declares_node(ctx: ResolveContext, path: QualifiedName, declared: Node) -> Bool {
   match symbol_index_lookup(index: ctx.namespace.symbol_index, qualified_path: path) {
-    Present { value: n } => n == declared
+    Present { value: n } => node_same_occurrence(a: n, b: declared)
     Absent => false
   }
 }

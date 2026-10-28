@@ -1,6 +1,6 @@
 module gunbc.spark.managed_access_apply
 
-import std.types { String, Bool, List, NonEmptyStr, Int, Secret }
+import std.types { String, Bool, List, NonEmptyStr, Int, Secret, PathSegment }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { ContentHash, serialize_content_hash }
@@ -15,7 +15,13 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
 }
-import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
+import gunbc.auth.private_secret_file {
+  with_private_secret_file,
+  PrivateSecretFileCompleted,
+  PrivateSecretFileCompletedResidueRemains,
+  PrivateSecretFileNotEntered,
+  PrivateSecretFileNotEnteredResidueRemains,
+}
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -83,6 +89,23 @@ type SparkApplyStep {
 type SparkApplyReport
   = ApplyAttempted { first: SparkApplyStep, more: List<SparkApplyStep> }
   | ApplyNotAttempted { cause: String }
+
+// A CREDENTIAL FILE THAT OUTLIVED THE LEGS IS A STEP THAT FAILED, not a reason to report that nothing
+// ran: the privileged legs have already acted, so their steps stay and the removal is appended as a
+// refused step. Reporting ApplyNotAttempted here would hide applied changes behind a false "no".
+fn report_with_credential_residue(report: SparkApplyReport) -> SparkApplyReport {
+  match report {
+    ApplyAttempted { first: f, more: m } => ApplyAttempted {
+      first: f,
+      more: concat(m, [SparkApplyStep {
+        effect_label: "remove-administrator-credential-file",
+        outcome: ApplyRefused { cause: "the administrator credential file could not be removed after the legs ran, so it may remain on disk and requires cleanup" },
+      }]),
+    }
+    ApplyNotAttempted { cause: c } =>
+      ApplyNotAttempted { cause: join([c, "; and the administrator credential file could not be removed, so it may remain on disk and requires cleanup"], "") }
+  }
+}
 
 fn spark_apply_steps(report: SparkApplyReport) -> List<SparkApplyStep> {
   match report {
@@ -165,8 +188,8 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // not by itself PREVENT a future caller putting the credential in argv -- `as String` is still
 // writable -- so this is mitigatable, not structural; what it buys is that the wrong move now
 // requires an explicit unwrap at the site that makes it, where a reader and a lens can both see it.
-fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> NonEmptyStr {
-  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as NonEmptyStr
+fn spark_admin_credential_file_name(attempt: FleetSshAttemptIdentity) -> PathSegment {
+  join(["gunbc-spark-attempt-", attempt as String, "-admin-password"], "") as PathSegment
 }
 
 // THE PASSWORD SESSION IS NO LONGER CHOSEN HERE, IT IS DERIVED. This leg was already correct --
@@ -422,9 +445,9 @@ fn spark_managed_access_apply_with_resolved_credentials(
             Absent => ApplyNotAttempted { cause: "the inference login is not a portable word, so no script may name it" }
             Present { value: inference_word } => {
           let admin_principal = fleet_bootstrap_principal_login() as String
-          match with_materialized_ssh_key_file(
-            identity_file_name: spark_admin_credential_file_name(attempt: attempt),
-            secret_bytes: admin_credential,
+          match with_private_secret_file(
+            file_name: spark_admin_credential_file_name(attempt: attempt),
+            content: admin_credential,
             use: fn(admin_credential_file) {
           let create = privileged_leg(
             context: context, host: host, admin_principal: admin_principal,
@@ -454,9 +477,12 @@ fn spark_managed_access_apply_with_resolved_credentials(
           }
             },
           ) {
-            MaterializedSshKeyFileBracketCompleted { value: report } => report
-            MaterializedSshKeyFileBracketRefused { cause: cause } =>
+            PrivateSecretFileCompleted { value: report } => report
+            PrivateSecretFileCompletedResidueRemains { value: report } => report_with_credential_residue(report: report)
+            PrivateSecretFileNotEntered { cause: cause } =>
               ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran: ", cause as String], "") }
+            PrivateSecretFileNotEnteredResidueRemains { cause: cause } =>
+              ApplyNotAttempted { cause: join(["the administrator credential could not be materialized owner-only, so no privileged leg ran, and material may remain on disk: ", cause as String], "") }
           }
             }
           }

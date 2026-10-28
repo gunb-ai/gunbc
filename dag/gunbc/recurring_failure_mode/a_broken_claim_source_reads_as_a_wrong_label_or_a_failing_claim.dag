@@ -1,0 +1,24 @@
+module gunbc.recurring_failure_mode.a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_broken_claim_source_reads_as_a_wrong_label_or_a_failing_claim" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of the module index returning a typed result for an unreadable or header-less claim source instead of exiting or classifying it as ModuleBindingUnclassified" } },
+
+  receipts: [
+    "INVALID STATE: a .dag under the claim root that the module index cannot read, selected by `gunbc test //test/claim/x:c`. HARM: the verdict names the wrong cause. A header-bearing file that fails to parse stopped the whole process with `module index refused` and exit 1 (`did not hold`, a claim ran and failed) for EVERY label, healthy or misspelled; a file with no recognized `module` header was silently dropped by the index and the label read `the pattern selected no discovered claim` (exit 2), indistinguishable from a typo. Paths follow names (DESIGN section 3), so a file whose declaration cannot be read cannot be selected.",
+
+    "DISTINGUISHING FACTS, measured at 6ae9b3b9591 (task C4-A, 2026-10-19): empty selection was already exit 2 (`claim_route_termination`); the unparseable arm exited 1 from `refuse_unparseable_module_sources`; the header-less arm exited 2 with the typo message. C4-B (swift-deer-150) measured the same exit 1 for claim_batch and claim_executor --required-regen, which this row does not repair.",
+
+    "RUNG FOUND AT: mitigatable for the header-less arm (loud only as a misleading message), below the ladder's intent for the unparseable arm (right loudness, wrong exit class). REPAIR: the one module-index walk (`cli_run::for_each_parsed_module_binding`) returns every unbindable source as a typed, located `ModuleIndexRefusal` and no longer exits; the claim route reads the set through `try_with_module_path_index` (exit 2, no observation) while the infallible consumers (floor, claim_batch, claim_executor, census, compile) keep their standing exit 1 via `refuse_module_index`; `gunbc.target_invocation` `ClaimSourceRefusalCause` models the six causes (unparseable, header absent, file unreadable, root unreadable, directory named like a .dag, two files declaring one module); the Rust renderer is a hand-written mirror pinned to the .dag witness's literals by tests/claim_route_unreadable_source.rs, a seed-retained mirror whose trigger is the gunbc.target_invocation_seed_growth emission of the carrier. Rung reached: mitigatable (typed exit 2 on the claim route); not mechanically preventable, because the Rust tests run off the merge path (`gunbc.rung_drop rust_unit_tests_off_the_merge_path`) and nothing compares the Rust renderer with the .dag carrier, so the two renderings are each pinned only to literals. The refusal is typed in one walk for every consumer; only the `gunbc test` route reports it as no observation, the other consumers' exit class (1) is unchanged by decision of the manager ruling.",
+
+    "CEILING AND NEXT TRIGGER: structurally guaranteed once the module index returns a typed result instead of exiting and classifies a header-less file as a refusal rather than `ModuleBindingUnclassified`; that is the seed index's seam (parse gate, C4-B) and is the trigger. RECOGNITION RULE: a harness verdict that conflates `no such label` with `a source I could not read` is a fail-open of the cause even when its exit code is right; vary only the file's readability and compare the messages.",
+  ],
+
+  evidence: [],
+}
