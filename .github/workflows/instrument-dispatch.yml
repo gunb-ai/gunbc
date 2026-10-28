@@ -321,6 +321,17 @@ jobs:
         shell: bash
         env:
           INSTRUMENT_LABEL: ${{ inputs.label }}
+      - name: Sweep the receipt paths with the tree's own import sweep (receipt legs only)
+        if: always() && (github.ref_name == 'receipt/base' || github.ref_name == 'receipt/head' || github.ref_name == 'receipt/red')
+        run: |
+          set -e
+          sha256sum target/release/gunbc > "$RUNNER_TEMP"'/instrument-dispatch/binary.txt'
+          status='0'
+          'set' '-o' 'pipefail'
+          ('target/release/gunbc' 'run' '--source-root' 'dag' '--source-root' 'src/v2' '--entry' 'src/v2/workflow/roster_import_sweep.dag' '--function' 'roster_import_sweep_for_paths' '--arg' 'paths_csv=dag/std/checked_arithmetic.dag,dag/std/prefixed_line.dag,dag/extdeps/gpu_bench/kit_log.dag,dag/extdeps/ninfer/replayed_tokens_total.dag' > "$RUNNER_TEMP"'/instrument-dispatch/sweep-stdout.txt') 2>&1 | 'tee' "$RUNNER_TEMP"'/instrument-dispatch/sweep-stderr.txt' >&2 || status="$?"
+          'cat' "$RUNNER_TEMP"'/instrument-dispatch/sweep-stdout.txt'
+          'echo' 'exit='"$status" > "$RUNNER_TEMP"'/instrument-dispatch/sweep-exit.txt'
+        shell: bash
       - name: Upload the run's receipt and output
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
