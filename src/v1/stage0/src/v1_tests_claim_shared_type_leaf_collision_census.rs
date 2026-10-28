@@ -316,7 +316,15 @@ pub fn diagnostic_names_class(diagnostic: String, class: String) -> bool {
     v1_rt::string_contains(&diagnostic, class)
 }
 
-pub fn refuse_control_holds(report: Rc<SubjectCollisionReport>) -> bool {
+pub fn rc_twin_regression_holds(report: Rc<SubjectCollisionReport>) -> bool {
+    match (*report.build.clone()).clone() {
+        SubjectBuild::BuildAccepted => report_has_different_sharing(report.clone()),
+        SubjectBuild::BuildRefused { diagnostic: _, .. } => false,
+        SubjectBuild::BuildNotAttempted => false,
+    }
+}
+
+pub fn refuse_red_holds(report: Rc<SubjectCollisionReport>) -> bool {
     match (*report.build.clone()).clone() {
         SubjectBuild::BuildRefused { diagnostic: d, .. } => {
             (report_has_different_sharing(report.clone())
@@ -494,10 +502,10 @@ pub fn fixture_standing(
     green_report: Rc<SubjectCollisionReport>,
 ) -> String {
     {
-        let refuse_held = refuse_control_holds(refuse_report);
+        let regression_held = rc_twin_regression_holds(refuse_report.clone());
         let silent_held = silent_control_holds(silent_report);
         let green_held = green_control_holds(green_report);
-        let held = ((refuse_held.clone() && silent_held.clone()) && green_held.clone());
+        let held = ((regression_held.clone() && silent_held.clone()) && green_held.clone());
         Rc::new(vec![
             v1_rt::concat(
                 "STANDING ".to_string(),
@@ -508,8 +516,8 @@ pub fn fixture_standing(
                 },
             ),
             control_line(
-                "refuse_different_sharing_rustc_e0204".to_string(),
-                refuse_held.clone(),
+                "rc_twin_no_copy_no_rustc_e0204".to_string(),
+                regression_held.clone(),
             ),
             control_line(
                 "silent_different_sharing_rustc_accepted".to_string(),
@@ -518,6 +526,10 @@ pub fn fixture_standing(
             control_line(
                 "green_no_collision_rustc_accepted".to_string(),
                 green_held.clone(),
+            ),
+            control_line(
+                "refuse_different_sharing_rustc_e0204_red_enrolled".to_string(),
+                refuse_red_holds(refuse_report.clone()),
             ),
         ])
         .join(&"\n".to_string())
@@ -529,7 +541,7 @@ pub fn fixture_controls_hold(
     silent_report: Rc<SubjectCollisionReport>,
     green_report: Rc<SubjectCollisionReport>,
 ) -> bool {
-    ((refuse_control_holds(refuse_report) && silent_control_holds(silent_report))
+    ((rc_twin_regression_holds(refuse_report) && silent_control_holds(silent_report))
         && green_control_holds(green_report))
 }
 
