@@ -126,7 +126,6 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
     StartFromPlacedWeights =>
       match recipe.model.source {
         WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
-        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
         WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
         // A recipe that STARTS from placed weights but carries a HUB PIN has no placement to resolve:
         // the pin is the bytes, and there is no object-store placement to fetch them from. Same answer

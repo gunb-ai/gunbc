@@ -22,7 +22,7 @@ import extdeps.systemd.systemd_run {
   SystemdSummaryPrintingWait, SystemdSummaryPrintingWaitReady, SystemdSummaryPrintingWaitRefused,
   systemd_run_transient_wait_pipe_summary_command,
 }
-import extdeps.systemd { User, DelegateProperty }
+import extdeps.systemd { User, DelegateProperty, PartOf, AfterProperty }
 import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
 import extdeps.posix.sh_invocation { posix_sh_export_from_stdin_then_exec_command, PosixShExportExecReady, PosixShExportExecEmitRefused }
 import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels, ephemeral_slot_properties }
@@ -134,17 +134,36 @@ type HostUnitListenerWait
   = HostUnitListenerReady { wait: SystemdSummaryPrintingWait }
   | HostUnitListenerUnbuilt { cause: NonEmptyStr }
 
-fn host_unit_listener_properties(user: NonEmptyStr) -> List<SystemdRunProperty> {
+// WHO ENDS THE LISTENER'S LIFE (gunbc.plans.mtcollins1_ci_service_legs F3). A service slot's listener is a separate
+// transient unit its controller unit waits on, so a stop of the controller -- a unit stop or the host's shutdown --
+// must reach the listener FIRST: PartOf= propagates the controller's stop to the listener, and After= orders the
+// listener's stop before the controller's, so the controller's ExecStop runs only once the listener has ended. The
+// attempt slot's listener has no owning unit on the host; its driver ends it and tears it down.
+type HostUnitListenerLifetime
+  = ListenerOwnLifetime
+  | ListenerPartOf { unit: NonEmptyStr }
+
+fn host_unit_listener_lifetime_properties(lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
+  match lifetime {
+    ListenerOwnLifetime => []
+    ListenerPartOf { unit: u } => [NamedUnitSetting { property: PartOf, value: u }, NamedUnitSetting { property: AfterProperty, value: u }]
+  }
+}
+
+fn host_unit_listener_properties(user: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> List<SystemdRunProperty> {
   concat(
     ephemeral_slot_properties(desired: gunbc_runner_slot_desired()),
-    [
-      NamedUnitSetting { property: User, value: user },
-      NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
-    ],
+    concat(
+      [
+        NamedUnitSetting { property: User, value: user },
+        NamedUnitSetting { property: DelegateProperty, value: "yes" as NonEmptyStr },
+      ],
+      host_unit_listener_lifetime_properties(lifetime: lifetime),
+    ),
   )
 }
 
-fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: NonEmptyStr) -> HostUnitListenerWait {
+fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: NonEmptyStr, lifetime: HostUnitListenerLifetime) -> HostUnitListenerWait {
   match admit_posix_shell_name(spelling: actions_runner_jitconfig_env_name()) {
     PosixShellNameRefused { spelling: sp } =>
       HostUnitListenerUnbuilt { cause: join(["the listener's JIT environment name is not a shell name: ", sp], "") as NonEmptyStr }
@@ -152,7 +171,7 @@ fn host_unit_listener_wait(listener_unit: NonEmptyStr, user: NonEmptyStr, root: 
       match posix_sh_export_from_stdin_then_exec_command(name: n, command: host_unit_slot_listener_argv(root: root)) {
         PosixShExportExecEmitRefused { name: _ } => HostUnitListenerUnbuilt { cause: "the stdin export wrapper did not emit" as NonEmptyStr }
         PosixShExportExecReady { command: wrapper } =>
-          match systemd_run_transient_wait_pipe_summary_command(unit: listener_unit, properties: host_unit_listener_properties(user: user), command_argv: argv_words(command: wrapper)) {
+          match systemd_run_transient_wait_pipe_summary_command(unit: listener_unit, properties: host_unit_listener_properties(user: user, lifetime: lifetime), command_argv: argv_words(command: wrapper)) {
             SystemdSummaryPrintingWaitRefused { cause: _ } => HostUnitListenerUnbuilt { cause: "systemd-run refused the listener unit" as NonEmptyStr }
             SystemdSummaryPrintingWaitReady { wait: w } => HostUnitListenerReady { wait: w }
           }
