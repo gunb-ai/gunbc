@@ -3,7 +3,6 @@ module gunbc.instruments.self_host_logic_behavioral_transport
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
-import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.filesystem.filesystem_io
 import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build

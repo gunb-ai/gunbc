@@ -1,7 +1,6 @@
 module gunbc.instruments.self_host_logic_seed_unavailable_transport
 
 import extdeps.shell
-import extdeps.rust.cargo { cargo_default_target_dir }
 import extdeps.filesystem.filesystem_io
 import extdeps.rust.cargo { cargo_default_release_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
