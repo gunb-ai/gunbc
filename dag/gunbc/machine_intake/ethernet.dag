@@ -159,12 +159,13 @@ fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
   }
 }
 
-// A CONTROLLER FUNCTION IS A POSITIVE CLASSIFICATION, NOT THE ABSENCE OF A HOST ONE. The second
-// clause is the whole point: FunctionUnobserved is not a BMC function that happens to be unread, and
-// an inventory that counted it as one would report an interface as managed on nothing at all.
-fn ethernet_function_is_controller(f: EthernetFunction) -> Bool {
-  !(ethernet_function_is_unobserved(f: f)) && (f == BmcDedicated || f == BmcNcsi)
-}
+// `ethernet_function_is_controller` USED TO SIT HERE. It was `(f == BmcDedicated || f == BmcNcsi)` ANDed
+// with `!is_unobserved(f)` -- a Bool over a coproduct whose first clause already made the second
+// unfalsifiable (review 38602 finding 3; ctrl review policy: such a predicate dissolves into the
+// match). Dissolving it left no predicate at all, because the single consumer, host_interface_inventory's
+// `host_controller_interfaces`, wants the arms themselves: it now matches `BmcDedicated | BmcNcsi` and
+// states there why `FunctionUnobserved` -- a function of its own, not a BMC function that happens to be
+// unread -- is refused rather than counted.
 
 fn ethernet_function_identity(a: EthernetFunction, b: EthernetFunction) -> FunctionIdentityStanding {
   if ethernet_function_is_unobserved(f: a) || ethernet_function_is_unobserved(f: b) {

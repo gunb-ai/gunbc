@@ -31,8 +31,7 @@ import gunbc.host.host_primary_network_observed { srv1_bmc_usb_nic_mac, srv1_i21
 import gunbc.machine_intake.host_interface_inventory {
   host_controller_dedicated_interface,
   host_interface_addresses_are_disjoint,
-  host_interface_gaps_are_specific,
-  host_interface_provenance_is_stated,
+  host_interface_gaps_name_a_function,
   host_interface_rows,
   host_operating_system_interface,
 }
@@ -92,11 +91,14 @@ test fn no_address_is_claimed_twice() -> Bool {
   host_interface_addresses_are_disjoint()
 }
 
-// EVERY ROW CAN SAY WHERE ITS ADDRESS CAME FROM, and every gap can say what is missing. A row with an
-// empty provenance field is an assertion about a network wearing the costume of a reading; a gap whose
-// function is unobserved is an empty list with a carrier bolted on.
-test fn nothing_is_reported_without_provenance() -> Bool {
-  host_interface_provenance_is_stated() && host_interface_gaps_are_specific()
+// EVERY GAP NAMES THE FUNCTION IT DECLARES UNREAD. The other half of what used to be checked here --
+// that each provenance field is non-empty -- was deleted: instrument, channel, artifact, moment and
+// reading are all `NonEmptyStr` (or, for the moment, a carrier whose arms each state what they hold),
+// so a Bool asking the same question was a second representation of the type's own refinement and could
+// only ever return true (review 38602 finding 2; DESIGN.md §5). What the types do NOT decide is whether
+// a gap picks a function or hides behind `FunctionUnobserved`, and that is the one thing left to check.
+test fn every_gap_names_a_function() -> Bool {
+  host_interface_gaps_name_a_function()
 }
 
 // THE GAP IS THE POINT: mtjade1's CONTROLLER IS REACHABLE AND ITS HOST IS NOT READ, so the inventory

@@ -27,7 +27,7 @@ module gunbc.machine_intake.host_interface_inventory
 // and why there is no row for it, because an empty list for a host is indistinguishable, at any fold
 // over hosts, from a host nobody ever looked at.
 
-import std.types { Bool, List, String }
+import std.types { Bool, List }
 import std.list { first_where }
 import std.algebra { count_where, for_all, non_empty }
 import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
@@ -35,10 +35,9 @@ import gunbc.machine_intake.ethernet {
   BmcDedicated,
   BmcNcsi,
   HostData,
+  PrebootNetwork,
   FunctionUnobserved,
   InterfaceReadingProvenance,
-  ethernet_function_is_controller,
-  ethernet_function_is_unobserved,
   lan_link_address,
 }
 import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_mac }
@@ -338,10 +337,20 @@ fn host_operating_system_interface(host: HostIdentity) -> Eui48Address? {
 // THE CONTROLLER INTERFACES OF A HOST, dedicated and shared together. A reachability anchor has to
 // consider both and has to know which is which: a dedicated port answers while the host is off, while a
 // shared port can answer with the host's own traffic and be mistaken for it -- the mistake this plan was
-// written to close. A gap never joins this list: FunctionUnobserved is not a controller function, and
-// ethernet_function_is_controller refuses it rather than reading "not unobserved" as "therefore BMC".
+// written to close. THE ARMS ARE LISTED RATHER THAN EXCLUDED: a former `ethernet_function_is_controller`
+// asked "not unobserved, and one of the two", and the first clause could never decide anything the
+// second had not (review 38602 finding 3). What the enumeration carries that a negation does not is the
+// refusal stated where it is used -- `FunctionUnobserved` and `PrebootNetwork` are functions of their
+// own, so a gap and a preboot interface never join this list, and a reach check never runs against an
+// address nobody read as a controller's.
 fn host_controller_interfaces(host: HostIdentity) -> List<HostNetworkInterface> {
-  filter(xs: host_interface_rows(host: host), predicate: row => ethernet_function_is_controller(f: row.function))
+  filter(xs: host_interface_rows(host: host), predicate: row => match row.function {
+    BmcDedicated => true
+    BmcNcsi => true
+    HostData => false
+    PrebootNetwork => false
+    FunctionUnobserved { discriminator: _ } => false
+  })
 }
 
 // ONE ADDRESS, ONE INTERFACE, ACROSS THE WHOLE TABLE. Two rows claiming the same address is the shape
@@ -355,30 +364,24 @@ fn host_interface_addresses_are_disjoint() -> Bool {
         mac_addresses_are_equal(left: row.permanent_address, right: other.permanent_address)) == 1)
 }
 
-// A ROW IS ONLY AS GOOD AS ITS PROVENANCE: instrument, channel, artifact, moment and the reading itself
-// all stated. S2's witness asserts this for every row it binds an anchor through -- a row that cannot
-// say where its address came from is an assertion, and the plan refuses assertions.
-fn host_interface_provenance_is_stated() -> Bool {
-  for_all(xs: host_network_interfaces, predicate: row =>
-    text_is_stated(s: row.provenance.instrument as String)
-      && text_is_stated(s: row.provenance.channel as String)
-      && text_is_stated(s: row.provenance.artifact as String)
-      && text_is_stated(s: row.provenance.observed_at as String)
-      && text_is_stated(s: row.provenance.reading as String))
-}
-
-// A GAP IS ONLY WORTH READING IF IT NAMES WHAT IS MISSING. A gap whose function is unobserved would be
-// an empty list wearing a carrier, which is the exact failure this section was written to close; and
-// its reason has to be stated in the same five fields a row's is, so a gap is reported in the same
-// currency as a reading rather than as an excuse.
-fn host_interface_gaps_are_specific() -> Bool {
-  for_all(xs: host_interface_gaps, predicate: gap =>
-    !(ethernet_function_is_unobserved(f: gap.function))
-      && !(ethernet_function_is_controller(f: gap.function))
-      && text_is_stated(s: gap.reason.reading as String)
-      && text_is_stated(s: gap.reason.artifact as String))
-}
-
-fn text_is_stated(s: String) -> Bool {
-  s != ""
+// A GAP IS ONLY WORTH READING IF IT NAMES WHAT IS MISSING. A gap whose function is itself unobserved
+// would be an empty list wearing a carrier -- the exact failure this section was written to close, and
+// the one fact here that the types do NOT already guarantee, since `HostInterfaceGap.function` is the
+// whole `EthernetFunction` coproduct and `FunctionUnobserved` inhabits it.
+//
+// THE FIVE-STATED-FIELDS CHECK USED TO SIT HERE TOO (`host_interface_provenance_is_stated`, plus two
+// clauses here over `gap.reason`), and it was deleted rather than repaired (review 38602 finding 2;
+// DESIGN.md §5: a check restating a constraint the model already carries is a second representation of
+// it). Every one of those fields is a `NonEmptyStr`, whose refinement IS `s != ""`: the check could
+// only ever return true, so its witness proved the type checker works and nothing about this model.
+// A row that cannot say where its address came from is not expressible here at all -- the field is
+// required and its type forbids empty -- which is the stronger version of the same claim.
+fn host_interface_gaps_name_a_function() -> Bool {
+  for_all(xs: host_interface_gaps, predicate: gap => match gap.function {
+    FunctionUnobserved { discriminator: _ } => false
+    BmcDedicated => true
+    BmcNcsi => true
+    HostData => true
+    PrebootNetwork => true
+  })
 }
