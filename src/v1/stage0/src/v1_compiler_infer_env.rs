@@ -3710,15 +3710,15 @@ pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
         match slot.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: r, .. }) => {
                 if is_unsolved_type_variable(r.clone()) {
-                    slot.clone()
+                    slot
                 } else {
-                    r
+                    r.clone()
                 }
             }
-            _ => slot.clone(),
+            _ => slot,
         }
     } else {
-        slot.clone()
+        slot
     }
 }
 

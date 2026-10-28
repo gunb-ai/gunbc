@@ -17384,70 +17384,28 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                 {
                     let exp = expected.clone().unwrap();
                     if ((exp.params.clone().len() as i64) > 0) {
-                        Rc::new(
-                            lam_params
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .enumerate()
-                                .map(|(i, v)| (i as i64, v))
-                                .collect::<Vec<_>>(),
-                        )
-                        .iter()
-                        .cloned()
-                        .fold(
-                            scope.clone(),
-                            |acc: Rc<InferScope>, pair: (i64, String)| {
-                                let param_prov = if (pair.0.clone()
-                                    == v1_rt::int_sub((lam_params.clone().len() as i64), 1))
-                                {
-                                    elem_prov.clone()
+                        Rc::new(lam_params.clone().iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()).iter().cloned().fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
+                        let param_prov = if (pair.0.clone() == v1_rt::int_sub((lam_params.clone().len() as i64), 1)) {
+                            elem_prov.clone()
+                        } else {
+                            Rc::new(SubValueRelation::SubValueUnknown)
+                        };
+match exp.params.clone().get((pair.0.clone()) as usize).cloned() {
+    Some(cp) => {
+                            let cpt = crate::v1_std_core::param_node_type_expr(cp.clone());
+if type_node_is_established(cpt.clone(), scope.type_env.source_indices.clone()) {
+                                extend_scope(acc.clone(), pair.1.clone(), cpt.clone(), param_prov.clone())
+                            } else {
+                                if crate::v1_compiler_infer_env::is_unsolved_type_variable(cpt.clone()) {
+                                    extend_scope(acc.clone(), pair.1.clone(), cpt.clone(), param_prov.clone())
                                 } else {
-                                    Rc::new(SubValueRelation::SubValueUnknown)
-                                };
-                                match exp.params.clone().get((pair.0.clone()) as usize).cloned() {
-                                    Some(cp) => {
-                                        let cpt =
-                                            crate::v1_std_core::param_node_type_expr(cp.clone());
-                                        if type_node_is_established(
-                                            cpt.clone(),
-                                            scope.type_env.source_indices.clone(),
-                                        ) {
-                                            extend_scope(
-                                                acc.clone(),
-                                                pair.1.clone(),
-                                                cpt.clone(),
-                                                param_prov.clone(),
-                                            )
-                                        } else {
-                                            if is_unsolved_type_variable(cpt.clone()) {
-                                                extend_scope(
-                                                    acc.clone(),
-                                                    pair.1.clone(),
-                                                    cpt.clone(),
-                                                    param_prov.clone(),
-                                                )
-                                            } else {
-                                                extend_scope(
-                                                    acc.clone(),
-                                                    pair.1.clone(),
-                                                    type_variable_node(
-                                                        "callable_param".to_string(),
-                                                    ),
-                                                    param_prov.clone(),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    std::option::Option::None => extend_scope(
-                                        acc.clone(),
-                                        pair.1.clone(),
-                                        type_variable_node("callable_param".to_string()),
-                                        param_prov.clone(),
-                                    ),
+                                    extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), param_prov.clone())
                                 }
-                            },
-                        )
+                            }
+},
+    std::option::Option::None => extend_scope(acc.clone(), pair.1.clone(), type_variable_node("callable_param".to_string()), param_prov.clone()),
+}
+})
                     } else {
                         if ((lam_params.clone().len() as i64) == 1) {
                             match lam_params.clone().first().cloned() {
@@ -18307,6 +18265,7 @@ pub fn unsolved_type_variable_ids(n: Rc<Node>, depth: i64) -> Rc<Vec<String>> {
         }
     })
 }
+
 pub fn is_never_constrained_enclosing_generic_base(
     n: Rc<Node>,
     base_expr: Rc<Node>,
@@ -26607,6 +26566,7 @@ pub fn unify_generics(
         }
     }
 }
+
 pub fn unify_generic_child_pairs(
     mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
@@ -26635,7 +26595,7 @@ pub fn unify_generic_child_pairs(
                         let __tco_3 = source_indices.clone();
                         let __tco_4 = unify_generics(
                             f.clone(),
-                            generic_actual_position_type(a.clone()),
+                            crate::v1_compiler_infer_env::generic_actual_position_type(a.clone()),
                             generic_names.clone(),
                             source_indices.clone(),
                             acc,
