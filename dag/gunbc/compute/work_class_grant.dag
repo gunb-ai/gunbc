@@ -41,11 +41,25 @@ import std.algebra { Cons, Empty }
 // WorkOperation: work_class_of never yields it, and gunbc.roadmap.roadmap_session_placement names it
 // directly. It has no rows today, so it reserves the ceiling, which is the amount the worker unit's
 // MemoryMax already carried.
+// THE REVIEWER SESSION IS A CLASS TOO (still-hawk-558, 2026-10-28). A review criterion's unit is a
+// second role's session, not an operation: it holds memory for its lifetime and now reserves from
+// its own pool (gunbc.compute.host_capacity ReviewerSessionPool), so it resolves by the same grant
+// rule. Its samples are produced BY THE ROUTE, not transcribed: the reviewer settle pass reads the
+// terminal unit's MemoryPeak (extdeps.systemd SystemdUnitProperty, the same instrument
+// work_class_summary_peak_upper folds) and appends the sample to the host's peak-sample ledger under
+// the compute root. The row is authored from recorded samples, citing that instrument and ledger
+// path -- an instrument whose resolution must match the field derived from it (DESIGN 6), and a peak
+// is an upper bound, so the sizing stays conservative.
+//
+// NO ROW SHIPS WITH THIS CHANGE and none is guessed: with no row the class resolves to the ceiling
+// (the current cap figure) and admission by the pool's slice leg serializes reviewers instead of
+// OOM-killing 17 at once (gunbc.roadmap.roadmap_session_placement reviewer arm).
 type WorkClass
   = WorkClassBuild { profile: CargoProfile }
   | WorkClassCompile
   | WorkClassClaims
   | WorkClassAgentSession
+  | WorkClassReviewerSession
 
 fn work_class_of(op: WorkOperation) -> WorkClass {
   match op {
@@ -61,6 +75,32 @@ fn work_class_wire(c: WorkClass) -> String {
     WorkClassCompile => "compile"
     WorkClassClaims => "claims"
     WorkClassAgentSession => "agent-session"
+    WorkClassReviewerSession => "reviewer-session"
+  }
+}
+
+// THE REVIEWER CLASS'S SAMPLE FLOOR IS AN EXPLICIT POLICY BUDGET (DESIGN 5: an oracle-grounded
+// number is admissible as a named policy budget when its rationale and owner are stated).
+// RATIONALE: a per-criterion reviewer runs the repo typecheck among other model-coupled work, and
+// a grant sized from fewer than this many runs would be sized by one head's one criterion -- the
+// sampled-grain failure gunbc.recurring_failure_mode a_sampled_grant_is_discovered_below_worst_case
+// rosters, whose detector (a non-zero grant-exceeded count for the class) needs several runs of
+// VARIATION before silence means anything. Twenty-five is one order of magnitude above that floor
+// of significance: enough to cover several heads x the per-head criteria without one head's
+// distribution standing in for the fleet's. OWNER: the lab operator (bright-moth-475) as the
+// authority on srv1 reviewer traffic; this value sizes WorkClassReviewerSession ONLY.
+//
+// SCOPED BY RULING (bright-moth-475, 2026-10-28): the other classes keep
+// work_class_minimum_samples. Extending a floor this tall to them would silently disable their
+// rows until a fleet's worth of samples existed, and that is a separate decision, not a side
+// effect of this change.
+data work_class_reviewer_session_sample_floor: Int = 25
+
+// THE FLOOR IS PER CLASS, resolved here so no caller re-spells which class gets which.
+fn work_class_sample_floor(c: WorkClass) -> Int {
+  match c {
+    WorkClassReviewerSession => work_class_reviewer_session_sample_floor
+    _ => work_class_minimum_samples
   }
 }
 
@@ -186,7 +226,7 @@ fn work_class_grant_wire(g: WorkClassGrant) -> String {
       join(["class ", work_class_wire(c: class), " reserves the ceiling ", to_string(value: kibibyte_count(k: amount)), " KiB (",
         match reason {
           ClassUnmeasured => "no grant row"
-          ClassTooFewSamples { samples } => join([to_string(value: samples), " sample(s), fewer than ", to_string(value: work_class_minimum_samples)], "")
+          ClassTooFewSamples { samples } => join([to_string(value: samples), " sample(s), fewer than ", to_string(value: work_class_sample_floor(c: class)), ""], "")
           ClassRetryAfterGrantExceeded { exceeded } => join(["this attempt's grant of ", to_string(value: kibibyte_count(k: exceeded)), " KiB was exceeded, so it is retried at the ceiling"], "")
           ClassRowsAmbiguous { rows } => join([to_string(value: rows), " grant rows name this class, so none of them decides"], "")
           ClassSizedAtOrAboveCeiling { samples, sized } => join(["sized ", to_string(value: kibibyte_count(k: sized)), " KiB from ", to_string(value: samples), " samples, not below the ceiling"], "")
@@ -218,7 +258,7 @@ fn work_class_grant(class: WorkClass, rows: List<WorkClassGrantRow>, ceiling: Ki
         Cons { head: _, tail: _ } => GrantAtCeiling { class: class, amount: ceiling, reason: ClassRowsAmbiguous { rows: length(work_class_rows_for(rows: rows, class: class)) } }
         Empty {} => {
           let n = length(row.samples)
-          if n < work_class_minimum_samples {
+          if n < work_class_sample_floor(c: class) {
             GrantAtCeiling { class: class, amount: ceiling, reason: ClassTooFewSamples { samples: n } }
           } else {
             let peak = work_class_samples_peak(samples: row.samples)
