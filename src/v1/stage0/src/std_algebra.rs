@@ -3166,37 +3166,74 @@ pub fn bag_eq<T: Clone>(
     }
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "T: Clone + serde::Serialize",
+    deserialize = "T: Clone + serde::Deserialize<'de>"
+))]
+pub struct ZipEqWalk<T> {
+    pub rest: Rc<FreeMonoid<T>>,
+    pub agreed: bool,
+    pub _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for ZipEqWalk<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZipEqWalk")
+            .field("rest", &self.rest)
+            .field("agreed", &self.agreed)
+            .finish()
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for ZipEqWalk<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.rest == other.rest && self.agreed == other.agreed
+    }
+}
+
 pub fn zip_eq<T: Clone>(
     a: Rc<FreeMonoid<T>>,
     b: Rc<FreeMonoid<T>>,
     eq: impl Fn(T, T) -> bool + Clone,
 ) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let __fm = a.clone();
-        if __fm.is_empty() {
-            {
-                let __fm = b.clone();
+    {
+        let walk = fold_list(
+            a,
+            Rc::new(ZipEqWalk {
+                rest: b.clone(),
+                agreed: true,
+                _phantom: std::marker::PhantomData,
+            }),
+            |acc, item| {
+                let __fm = acc.rest.clone();
                 if __fm.is_empty() {
-                    true
-                } else {
-                    false
-                }
-            }
-        } else {
-            let ha = (*__fm)[0].clone();
-            let ta: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-            {
-                let __fm = b.clone();
-                if __fm.is_empty() {
-                    false
+                    Rc::new(ZipEqWalk {
+                        rest: Rc::new(vec![]),
+                        agreed: false,
+                        _phantom: std::marker::PhantomData,
+                    })
                 } else {
                     let hb = (*__fm)[0].clone();
                     let tb: Rc<Vec<_>> = Rc::new(__fm.skip(1));
-                    (eq(ha.clone(), hb.clone()) && zip_eq(ta.clone(), tb.clone(), eq.clone()))
+                    if acc.agreed.clone() {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: eq(item, hb.clone()),
+                            _phantom: std::marker::PhantomData,
+                        })
+                    } else {
+                        Rc::new(ZipEqWalk {
+                            rest: tb.clone(),
+                            agreed: false,
+                            _phantom: std::marker::PhantomData,
+                        })
+                    }
                 }
-            }
-        }
-    })
+            },
+        );
+        (walk.agreed.clone() && is_empty(walk.rest.clone()))
+    }
 }
 
 pub fn zip_map<A: Clone, B: Clone, C: Clone>(
