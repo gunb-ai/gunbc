@@ -468,10 +468,14 @@ type CloudflareR2CustomDomainStatus {
   ssl: R2SslStatus
 }
 
+// zone_id is Optional (review 87415): the vendor's list response carries it ONLY once the binding
+// exists, so "the read has not happened" has exactly one spelling — Absent — and no in-band value can
+// pretend to be a zone nobody read. The §3b absence ruling (dag_absence_is_one_meaning) with
+// std.optional::Optional as the existing authority; the type, not a comment, is the protection.
 type CloudflareR2CustomDomainBinding {
   domain: HostName
   bucket: NonEmptyStr
-  zone_id: CloudflareZoneId
+  zone_id: Optional<CloudflareZoneId>
   enabled: Bool
   status: CloudflareR2CustomDomainStatus
 }
@@ -491,8 +495,13 @@ fn cloudflare_r2_custom_domain_is_serving(binding: CloudflareR2CustomDomainBindi
        }
 }
 
+// A readback matches a zone only when it CARRIES a zone identity to match: Absent fails through the
+// arms, not through an inequality against a made-up id.
 fn cloudflare_r2_custom_domain_matches(binding: CloudflareR2CustomDomainBinding, zone: CloudflareZone, bucket: NonEmptyStr) -> Bool {
-  cloudflare_zone_id_eq(a: binding.zone_id, b: zone.zone_id) && (binding.bucket as String) == (bucket as String)
+  match binding.zone_id {
+    Present { value: zone_id } => cloudflare_zone_id_eq(a: zone_id, b: zone.zone_id) && (binding.bucket as String) == (bucket as String)
+    Absent => false
+  }
 }
 
 // THE ADMISSIBILITY RULE, written once so no fold re-derives it: same account, not paused, active
@@ -508,24 +517,34 @@ type R2CustomDomainZoneStanding
   | ZoneRefusedPaused { zone: CloudflareZone, basis: FactCitation }
   | ZoneRefusedHold { zone: CloudflareZone, basis: FactCitation }
   | ZoneRefusedHoldUnobserved { zone: CloudflareZone, basis: FactCitation }
+  // The bucket's owning account is itself an observation (review 87415): when it has not been read, the
+  // same-account rule CANNOT be evaluated, and inventing an id to compare against would turn "unknown"
+  // into "wrong account" or, worse, into a match. Its own arm, its own next action (read it).
+  | ZoneRefusedBucketAccountUnobserved { zone: CloudflareZone, basis: FactCitation }
   | ZoneMissingForHostname { hostname: HostName, reason: NonEmptyStr, basis: FactCitation }
 
-fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: CloudflareAccountId) -> R2CustomDomainZoneStanding {
+fn r2_custom_domain_zone_admissible(zone: CloudflareZone, bucket_account: Optional<CloudflareAccountId>) -> R2CustomDomainZoneStanding {
   let basis = r2_custom_domain_requires_zone_citation
-  if !cloudflare_account_id_eq(a: zone.account, b: bucket_account) {
-    ZoneRefusedWrongAccount { zone: zone, bucket_account: bucket_account, basis: basis }
-  } else if zone.paused {
-    ZoneRefusedPaused { zone: zone, basis: basis }
-  } else if !cloudflare_zone_status_is_active(status: zone.status) {
-    ZoneRefusedNotActive { zone: zone, basis: basis }
-  } else {
-    // The hold is matched, not asked about: a hold and an unread hold differ in the NEXT action
-    // (release it, or read it), so neither collapses into the other nor into a Bool.
-    match zone.hold {
-      ZoneUnderHold => ZoneRefusedHold { zone: zone, basis: basis }
-      ZoneHoldUnobserved => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
-      ZoneNotUnderHold => ZoneAdmissible { zone: zone, basis: basis }
-    }
+  match bucket_account {
+    // No identity read means no rule to evaluate: this refuses FIRST, for its own reason, rather than
+    // comparing the zone against anything.
+    Absent => ZoneRefusedBucketAccountUnobserved { zone: zone, basis: basis }
+    Present { value: account } =>
+      if !cloudflare_account_id_eq(a: zone.account, b: account) {
+        ZoneRefusedWrongAccount { zone: zone, bucket_account: account, basis: basis }
+      } else if zone.paused {
+        ZoneRefusedPaused { zone: zone, basis: basis }
+      } else if !cloudflare_zone_status_is_active(status: zone.status) {
+        ZoneRefusedNotActive { zone: zone, basis: basis }
+      } else {
+        // The hold is matched, not asked about: a hold and an unread hold differ in the NEXT action
+        // (release it, or read it), so neither collapses into the other nor into a Bool.
+        match zone.hold {
+          ZoneUnderHold => ZoneRefusedHold { zone: zone, basis: basis }
+          ZoneHoldUnobserved => ZoneRefusedHoldUnobserved { zone: zone, basis: basis }
+          ZoneNotUnderHold => ZoneAdmissible { zone: zone, basis: basis }
+        }
+      }
   }
 }
 

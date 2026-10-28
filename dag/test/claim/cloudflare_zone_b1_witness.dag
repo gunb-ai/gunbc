@@ -12,6 +12,8 @@ module test.claim.cloudflare_zone_b1_witness
 // under test.
 
 import std.types { Bool, List, NonEmptyStr, String }
+import std.error_primitives { pure_dag_seam_unreachable_string }
+import std.optional { Absent, Optional, Present }
 import extdeps.dns.domain_name { host_name_eq }
 import extdeps.cloudflare.zone {
   CloudflareAccountId, CloudflareZoneId, CloudflareZone, CloudflareDnsRecord, ProxyNotApplicable,
@@ -20,11 +22,11 @@ import extdeps.cloudflare.zone {
   ZoneNotUnderHold, ZoneUnderHold, ZoneHoldUnobserved,
   r2_custom_domain_zone_admissible, ZoneAdmissible,
   ZoneRefusedWrongAccount, ZoneRefusedNotActive, ZoneRefusedPaused, ZoneRefusedHold, ZoneRefusedHoldUnobserved,
+  ZoneRefusedBucketAccountUnobserved,
   r2_custom_domain_requires_zone_reading, cloudflare_r2_custom_domain_is_serving,
   cloudflare_r2_custom_domain_matches, cloudflare_record_type_admits_proxy, cloudflare_dns_record_key,
   cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
   CloudflareR2CustomDomainStatus,
-  R2OwnershipStatus, R2SslStatus, OwnershipActive, SslActive,
   OwnershipStatusUnknown, SslStatusUnknown,
   r2_ownership_status_of_text, r2_ssl_status_of_text,
   r2_ownership_status_wire, r2_ssl_status_wire,
@@ -43,31 +45,44 @@ import gunbc.cloudflare.zone {
 }
 
 // Witness ids are MINTED, never cast (review 38602: a cast walks straight through a `where brand`
-// alias). Each minter below fails loudly if its literal stops satisfying the vendor's 32-hex shape; the
-// Absent arm exists only because an initializer needs a total Optional, and the all-zero fallback is the
-// witness's own "no such identity" value, never something a real read could produce.
-fn account_of(text: String) -> CloudflareAccountId {
+// alias), and NOTHING fabricates an id any more (review 87415). Where the concept admits "no identity
+// has been read", the minter returns Optional and the checked constructor's own answer stands — Absent
+// stays Absent. Where a FIXTURE genuinely needs a bare id (an observed zone always carries one), a
+// literal that failed the vendor's 32-hex shape is a bug in this file, and the arm diverges through the
+// audited never-projection instead of returning a plausible placeholder: pure_dag_seam_unreachable_string
+// never yields a value, so no zero id can ever be compared against a real read.
+fn account_fixture(text: String) -> CloudflareAccountId {
   match cloudflare_account_id_from_text(text: text) {
     Present { value: account } => account
-    Absent =>
-      CloudflareAccountId {
-        value: "00000000000000000000000000000000" as NonEmptyStr,
-      }
+    Absent => CloudflareAccountId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
   }
 }
 
-fn zone_id_of(text: String) -> CloudflareZoneId {
+fn zone_id_fixture(text: String) -> CloudflareZoneId {
   match cloudflare_zone_id_from_text(text: text) {
     Present { value: zone_id } => zone_id
-    Absent =>
-      CloudflareZoneId {
-        value: "00000000000000000000000000000000" as NonEmptyStr,
-      }
+    Absent => CloudflareZoneId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
   }
 }
 
-data same_account: CloudflareAccountId = gunb_ai_bucket_account
-data other_account: CloudflareAccountId = account_of(text: "00000000000000000000000000000001")
+// THE PRODUCT FACT, unmodified: the same-account tests run against what the module actually carries, so
+// if its cited id ever became Absent, admissible_zone_admits would fail through the unobserved-account
+// arm rather than quietly passing against a placeholder.
+data same_account: Optional<CloudflareAccountId> = gunb_ai_bucket_account
+
+// The bare form of the same id, for the fixtures that build an OBSERVED zone (whose account is required).
+fn bucket_account_or_die() -> CloudflareAccountId {
+  match gunb_ai_bucket_account {
+    Present { value: account } => account
+    Absent => CloudflareAccountId { value: pure_dag_seam_unreachable_string() as NonEmptyStr }
+  }
+}
+
+data same_account_id: CloudflareAccountId = bucket_account_or_die()
+// A fixture account that MUST differ from the product's; its own checked mint, and a distinct 32-hex.
+data wrong_account: Optional<CloudflareAccountId> =
+  cloudflare_account_id_from_text(text: "00000000000000000000000000000001")
+data wrong_account_id: CloudflareAccountId = account_fixture(text: "00000000000000000000000000000001")
 
 fn zone_in(account: CloudflareAccountId, active: Bool, paused: Bool) -> CloudflareZone {
   zone_with_hold(account: account, active: active, paused: paused, hold: ZoneNotUnderHold)
@@ -79,7 +94,7 @@ fn zone_with_hold(account: CloudflareAccountId, active: Bool, paused: Bool, hold
   CloudflareZone {
     apex: gunb_ai_apex,
     account: account,
-    zone_id: zone_id_of(text: "0123456789abcdef0123456789abcdef"),
+    zone_id: zone_id_fixture(text: "0123456789abcdef0123456789abcdef"),
     status: if active { ZoneStatusActive } else { ZoneStatusPending },
     paused: paused,
     hold: hold,
@@ -90,28 +105,28 @@ fn zone_with_hold(account: CloudflareAccountId, active: Bool, paused: Bool, hold
 // condition refuses for its OWN reason. A fold that ignored the account, or treated the pause switch as
 // cosmetic, would fail exactly one of these four.
 test fn admissible_zone_admits() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: true, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: same_account) {
     ZoneAdmissible { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn wrong_account_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: other_account, active: true, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account) {
     ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn inactive_zone_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: false, paused: false), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: false, paused: false), bucket_account: same_account) {
     ZoneRefusedNotActive { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn paused_zone_refuses() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account, active: true, paused: true), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: true), bucket_account: same_account) {
     ZoneRefusedPaused { zone: _, basis: _ } => true
     _ => false
   }
@@ -129,21 +144,21 @@ test fn cited_reading_names_the_same_account_rule() -> Bool {
 // DIFFERENT reason, because the next action differs (release it vs read it). Both must be distinct from
 // every other refusal, and only the not-under-hold arm admits.
 test fn held_zone_refuses_even_when_active_in_account() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account, active: true, paused: false, hold: ZoneUnderHold), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneUnderHold), bucket_account: same_account) {
     ZoneRefusedHold { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn unobserved_hold_refuses_for_its_own_reason() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account, active: true, paused: false, hold: ZoneHoldUnobserved), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneHoldUnobserved), bucket_account: same_account) {
     ZoneRefusedHoldUnobserved { zone: _, basis: _ } => true
     _ => false
   }
 }
 
 test fn a_hold_refusal_is_not_any_other_refusal() -> Bool {
-  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: other_account, active: false, paused: true, hold: ZoneUnderHold), bucket_account: same_account) {
+  match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: wrong_account_id, active: false, paused: true, hold: ZoneUnderHold), bucket_account: same_account) {
     ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
     _ => false
   }
@@ -284,7 +299,43 @@ test fn boot_hostname_is_absent_from_the_served_set() -> Bool {
 // would satisfy the arm.
 test fn pending_readback_neither_serves_nor_matches_the_zone() -> Bool {
   !cloudflare_r2_custom_domain_is_serving(binding: boot_origin_binding_readback_pending)
-    && !cloudflare_r2_custom_domain_matches(binding: boot_origin_binding_readback_pending, zone: zone_in(account: same_account, active: true, paused: false), bucket: boot_origin_bucket)
+    && !cloudflare_r2_custom_domain_matches(binding: boot_origin_binding_readback_pending, zone: zone_in(account: same_account_id, active: true, paused: false), bucket: boot_origin_bucket)
+}
+
+// ABSENCE IS NOT AN ID THAT HAPPENS TO BE WRONG (review 87415). The pending readback carries Absent, and
+// Absent fails the match against EVERY zone — including the one whose id this witness could otherwise
+// have fabricated. A real read carrying the right id matches it, so the failure above is the absence and
+// not a broken rule: the two directions together are what make an in-band placeholder impossible.
+test fn an_unread_zone_identity_matches_no_zone_but_a_read_one_matches_its_own() -> Bool {
+  let right_zone = zone_in(account: same_account_id, active: true, paused: false)
+  let read_binding = binding_with(ownership: "active", ssl: "active", enabled: true)
+  cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: boot_origin_bucket)
+    && !cloudflare_r2_custom_domain_matches(binding: read_binding, zone: right_zone, bucket: "some-other-bucket" as NonEmptyStr)
+    && match boot_origin_binding_readback_pending.zone_id {
+         Absent => true
+         Present { value: _ } => false
+       }
+}
+
+// THE BUCKET'S ACCOUNT IS ITSELF AN OBSERVATION (review 87415): when it has not been read, admissibility
+// refuses for THAT reason, first, rather than comparing the zone against any placeholder. The arm is
+// distinct from every other refusal, so "we never read the bucket's owner" cannot be misread as "wrong
+// account" (which would send the next actor to the wrong remedy).
+test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
+  match r2_custom_domain_zone_admissible(zone: zone_in(account: same_account_id, active: true, paused: false), bucket_account: Absent) {
+    ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
+    _ => false
+  }
+    // Even a zone that is otherwise perfectly admissible refuses: active, unpaused, no hold.
+    && match r2_custom_domain_zone_admissible(zone: zone_with_hold(account: same_account_id, active: true, paused: false, hold: ZoneNotUnderHold), bucket_account: Absent) {
+         ZoneRefusedBucketAccountUnobserved { zone: _, basis: _ } => true
+         _ => false
+       }
+    // And it is NOT the wrong-account refusal: the two arms must not collapse.
+    && match r2_custom_domain_zone_admissible(zone: zone_in(account: wrong_account_id, active: true, paused: false), bucket_account: same_account) {
+         ZoneRefusedWrongAccount { zone: _, bucket_account: _, basis: _ } => true
+         _ => false
+       }
 }
 
 // THE VERDICT SITS ON THE GAP IT REPORTS, and the current truth is awaiting-zone-identity. A gap that
@@ -319,7 +370,8 @@ fn binding_with(ownership: String, ssl: String, enabled: Bool) -> CloudflareR2Cu
   CloudflareR2CustomDomainBinding {
     domain: boot_origin_hostname,
     bucket: boot_origin_bucket,
-    zone_id: zone_id_of(text: "0123456789abcdef0123456789abcdef"),
+    // A binding the vendor has RETURNED carries its zone id; Present is what a real read yields.
+    zone_id: Present { value: zone_id_fixture(text: "0123456789abcdef0123456789abcdef") },
     enabled: enabled,
     status: CloudflareR2CustomDomainStatus {
       ownership: r2_ownership_status_of_text(text: ownership),

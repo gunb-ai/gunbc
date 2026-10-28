@@ -23,18 +23,18 @@ module gunbc.cloudflare.zone
 // authorization pattern (WIF / ntfy approval / explicit refusal), and no token ever passes through here.
 
 import std.types { Bool, Duration, Int, List, NonEmptyStr }
-import std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
 import extdeps.cloudflare.zone {
-  CloudflareAccountId, CloudflareZoneId, CloudflareZone, ZoneHoldState, ZoneNotUnderHold,
+  CloudflareAccountId, CloudflareZone,
   CloudflareDnsRecord, RecordTypeA, RecordTypeAAAA, RecordTypeCNAME,
   RecordTypeTXT, RecordTypeMX, RecordTypeNS, RecordTypeSOA, Proxied, Direct, ProxyNotApplicable,
   cloudflare_dns_record_key, cloudflare_record_type_admits_proxy, cloudflare_record_type_wire_eq,
-  cloudflare_account_id_from_text, cloudflare_zone_id_from_text,
+  cloudflare_account_id_from_text,
   CloudflareR2CustomDomainBinding, CloudflareR2CustomDomainStatus,
-  R2OwnershipStatus, R2SslStatus, OwnershipStatusUnknown, SslStatusUnknown,
+  OwnershipStatusUnknown, SslStatusUnknown,
   cloudflare_r2_custom_domain_is_serving,
   r2_custom_domain_requires_zone_citation, dns_record_api_citation,
 }
@@ -42,21 +42,14 @@ import extdeps.cloudflare.zone {
 // The account the fleet's R2 storage lives in, and the bucket the boot origin publishes from — both read
 // from where they are already pinned (gunbc.cloudflare.r2_origin), restated here under their vendor-model
 // types because a comparison against an observed binding must name the account and bucket the fleet MEANS,
-// not compare a free string to whatever a read happens to carry. The account id is MINTED through
-// cloudflare_account_id_from_text (the checked constructor) rather than cast, so this pinned value is
-// itself proof the vendor's 32-hex shape was satisfied; the Absent arm is unreachable for the literal
-// below and exists only because an initializer needs a total Optional.
-fn gunb_ai_bucket_account_mint() -> CloudflareAccountId {
-  match cloudflare_account_id_from_text(text: "5f71db675ad3e94c16a3d5c159d16298") {
-    Present { value: account } => account
-    Absent =>
-      CloudflareAccountId {
-        value: "00000000000000000000000000000000" as NonEmptyStr,
-      }
-  }
-}
-
-data gunb_ai_bucket_account: CloudflareAccountId = gunb_ai_bucket_account_mint()
+// not compare a free string to whatever a read happens to carry. The id is ONLY obtainable through
+// cloudflare_account_id_from_text (the checked constructor) — and the result is Optional (review 87415):
+// a refused literal must stay Absent, a typed absence consumers are forced to handle, never be replaced
+// by a placeholder that wears the vendor's 32-hex shape and would pass every same-account check against
+// a zero account. DESIGN §5: no plausible output is fabricated. The literal here is cited from the
+// fleet's own roster value; if it ever stops parsing, the gap surfaces as Absent, not as a match.
+data gunb_ai_bucket_account: Optional<CloudflareAccountId> =
+  cloudflare_account_id_from_text(text: "5f71db675ad3e94c16a3d5c159d16298")
 data boot_origin_bucket: NonEmptyStr = "gunbai-fabric-boot"
 
 // The three names this carrier is about, in the vendor's own absolute spelling.
@@ -426,22 +419,14 @@ fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
 // The readback the bind will eventually produce, in the vendor's own field spellings. Nothing is claimed
 // about it: the two Unknown { wire: "unobserved" } arms are what an unperformed read looks like — a value
 // the reader has not seen, which the typed status sums already distinguish from any vendor vocabulary word
-// — and the only way out of them is a read that happened. The zone id is the account id's zero witness,
-// also unreachable-as-a-truth: it says "no zone identity has been read", and nothing reads it as a zone.
-fn boot_origin_unobserved_zone_id() -> CloudflareZoneId {
-  match cloudflare_zone_id_from_text(text: "00000000000000000000000000000000") {
-    Present { value: zone_id } => zone_id
-    Absent =>
-      CloudflareZoneId {
-        value: "00000000000000000000000000000000" as NonEmptyStr,
-      }
-  }
-}
-
+// — and the only way out of them is a read that happened. The zone id is Absent (review 87415): the
+// vendor's list response carries a zone id ONLY once a binding exists, so "the read has not happened" is
+// std.optional::Optional's Absent — §3b, dag_absence_is_one_meaning — not an in-band id that a real read
+// could collide with. The matches rule requires Present on both sides, so absence can never match a zone.
 data boot_origin_binding_readback_pending: CloudflareR2CustomDomainBinding = CloudflareR2CustomDomainBinding {
   domain: boot_origin_hostname,
   bucket: boot_origin_bucket,
-  zone_id: boot_origin_unobserved_zone_id(),
+  zone_id: Absent,
   enabled: false,
   status: CloudflareR2CustomDomainStatus {
     ownership: OwnershipStatusUnknown { wire: "unobserved" as NonEmptyStr },
