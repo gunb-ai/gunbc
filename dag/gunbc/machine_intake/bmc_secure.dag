@@ -30,8 +30,7 @@ import extdeps.cloud.gcp.secret_manager {
 }
 import gunbc.clock_read { ObserverClockInstant, observer_clock_modeled, observer_instant_millis, observer_instant_precedes }
 import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
-import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
-import std.scoped_authorization { AttemptIdentity }
+import std.scoped_authorization { AttemptIdentity, ScopedAuthorization, AuthorizationGranted, AuthorizationPending, AuthorizationDenied }
 import gunbc.auth.secret_ref_credential {
   SecretCredentialFetch,
   SecretCredentialReady,
@@ -52,16 +51,15 @@ import gunbc.machine_intake.bmc_rotation_route {
   RotationApplyRouteForAnotherController,
   RotationApplyRouteForAnotherBuild,
   RotationApplyApprovalRefused,
-  RotationApplyApprovalDenied,
-  RotationApplyApprovalForAnotherAuthority,
-  RotationApplyApprovalForAnotherRequest,
   RotationApplyRouteForAnotherOperation,
   RotationApplyRouteEffectUnobserved,
   RotationApplyWouldLeaveNoAdministrator,
   IpmiSetUserPrivilegeLimit,
   ManagedAdministratorReadback,
   managed_administrator_readback_projected,
-  rotation_route_request_identity,
+  BmcAccountWriteApproval,
+  route_subject_of,
+  route_subject_identity,
   account_write_request_text,
   admit_rotation_apply,
 }
@@ -1848,7 +1846,7 @@ fn admitted_account_write(
   route: BmcRotationRouteStanding,
   endpoint: BmcControllerEndpoint,
   firmware: BmcFirmwareReleaseIdentity,
-  approval: Redemption,
+  approval: ScopedAuthorization<BmcAccountWriteApproval>,
   generation: ManagedCredentialGenerationFetched,
   planned_at: ObserverClockInstant,
 ) -> PlannedAccountWriteAdmission {
@@ -1875,9 +1873,6 @@ fn admitted_account_write(
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyApprovalRefused { cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalDenied => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalForAnotherAuthority { authority: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
-    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyRouteEffectUnobserved { standing: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
     RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => PlannedAccountWriteRefused { cause: AccountWriteNotAdmitted { target: target, admission: admission } }
@@ -1902,7 +1897,7 @@ type PlannedChannelAccessWrite {
 
 type ChannelCloseInput {
   route: BmcRotationRouteStanding
-  approvals: List<Redemption>
+  approvals: List<ScopedAuthorization<BmcAccountWriteApproval>>
 }
 
 fn census_member_channel(m: IpmiChannelCensusMember) -> IpmiChannelNumber {
@@ -1967,16 +1962,20 @@ fn managed_probe_instant(probe: ObservedCredentialProbe, fallback: ObserverClock
   }
 }
 
-fn approval_for_request(route: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approvals: List<Redemption>) -> Redemption? {
-  let wanted = rotation_route_request_identity(standing: route, request: request)
-  let none_yet: Redemption? = none
+// The supplied grant whose approved subject is this write. Its purpose and intent are read by the
+// admission (read_bmc_write_approval), so a grant selected here for its subject is still refused
+// there if it approves another purpose.
+fn approval_for_request(route: BmcRotationRouteStanding, request: BmcAccountWriteRequest, approvals: List<ScopedAuthorization<BmcAccountWriteApproval>>) -> ScopedAuthorization<BmcAccountWriteApproval>? {
+  let wanted = route_subject_identity(subject: route_subject_of(standing: route, request: request))
+  let none_yet: ScopedAuthorization<BmcAccountWriteApproval>? = none
   fold(approvals, init: none_yet, f: (acc, a) =>
     match acc {
       Present { value: _ } => acc
       Absent =>
         match a {
-          RedemptionAdmitted { claims: cl, decided_by: _ } => if cl.request_revision == wanted { Present { value: a } } else { acc }
-          RedemptionRefused { cause: _ } => acc
+          AuthorizationGranted { grant: g, claim: _ } => if route_subject_identity(subject: g.subject.subject) == wanted { Present { value: a } } else { acc }
+          AuthorizationPending { request: _ } => acc
+          AuthorizationDenied { escalation_id: _, denied_by: _, denied_at: _, reason: _ } => acc
         }
     })
 }
@@ -2019,9 +2018,6 @@ fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelC
                     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
                     RotationApplyRouteEffectUnobserved { standing: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
                     RotationApplyApprovalRefused { cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalDenied => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalForAnotherAuthority { authority: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
-                    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
                     RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => ChannelWritesRefused { cause: ChannelWriteNotAdmitted { channel: ch, admission: admission } }
                   }
                 }
@@ -2044,10 +2040,10 @@ fn plan_bmc_account_action(
   reading: BmcAccountStateObservation,
   managed_user: IpmiUserId,
   managed_route: BmcRotationRouteStanding,
-  managed_approval: Redemption,
+  managed_approval: ScopedAuthorization<BmcAccountWriteApproval>,
   managed_generation: ManagedCredentialGenerationFetched,
   published_route: BmcRotationRouteStanding,
-  published_approval: Redemption,
+  published_approval: ScopedAuthorization<BmcAccountWriteApproval>,
   published_generation: ManagedCredentialGenerationFetched,
   channel_close: ChannelCloseInput?,
   planned_at: ObserverClockInstant,
@@ -2467,7 +2463,7 @@ data bmc_secure_state_live_read_frontier: DissolutionCondition = unbound_dissolu
 )
 
 data bmc_secure_state_live_apply_frontier: DissolutionCondition = unbound_dissolution(
-  description: "dissolves when a live realization of BmcAccountActionPlan mints BmcAccountApplication beside dry_apply_bmc_account_plan, materializing each write's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential over that write's pinned generation reference, under the controller's own operator go-ahead redeemed through gunbc.auth.approval_broker; NOT satisfied by the dry realization, by a workflow entry that has not executed, or by a write whose bytes were supplied out of band" as NonEmptyStr,
+  description: "dissolves when a live realization of BmcAccountActionPlan mints BmcAccountApplication beside dry_apply_bmc_account_plan, materializing each write's bytes through gunbc.auth.secret_ref_credential fetch_secret_ref_credential over that write's pinned generation reference, under the controller's own operator go-ahead admitted through gunbc.auth.approval_gate (gunbc.machine_intake.bmc_rotation_route read_bmc_write_approval); NOT satisfied by the dry realization, by a workflow entry that has not executed, or by a write whose bytes were supplied out of band" as NonEmptyStr,
 )
 
 // THE HELD TRANSITION (operator ruling C, 2026-10-04). Its rung drop is

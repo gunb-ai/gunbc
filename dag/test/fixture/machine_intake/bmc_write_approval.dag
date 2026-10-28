@@ -1,0 +1,62 @@
+module test.fixture.machine_intake.bmc_write_approval
+
+import std.types { NonEmptyStr }
+import std.scoped_authorization {
+  AttemptIdentity, AuthorizationRequest, ScopedAuthorization, OperatorGrant,
+  AuthorizationGranted, AuthorizationDenied, Unclaimed,
+}
+import gunbc.machine_intake.bmc_rotation_route {
+  BmcRotationRouteStanding, BmcAccountWriteRequest, BmcAccountWriteApproval, BmcAccountWritePurpose,
+  RouteQualificationSubject, bmc_account_write_authorization_request, route_subject_of,
+}
+
+// THE OPERATOR'S GO AT THE APPROVAL BOUNDARY, SUPPLIED. The machine-intake witnesses discriminate
+// what the BMC admissions read from a grant; the grant's own producer -- filing, the device-redeemed
+// decision and the revision join -- is gunbc.auth.approval_gate's and is witnessed there
+// (test.claim.approval_broker_witness, test.claim.fleet.srv1_root_mutation_approval_witness). Every
+// grant here is built from the production request (bmc_account_write_authorization_request), so its
+// intent hash is the one the gate would have joined; only the decision is supplied. The escalation id
+// is the attempt, as the request builder makes it.
+
+fn granted_bmc_write(request: AuthorizationRequest<BmcAccountWriteApproval>) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  AuthorizationGranted {
+    grant: OperatorGrant {
+      escalation_id: request.escalation_id,
+      scopes: request.scopes,
+      subject: request.subject,
+      purpose: request.purpose,
+      attempt: request.attempt,
+      intent_hash: request.intent_hash,
+      granted_by: "operator" as NonEmptyStr,
+      granted_at: "2026-10-03T00:00:00Z",
+      expires_at: "2026-10-03T00:15:00Z",
+    },
+    claim: Unclaimed,
+  }
+}
+
+// An approved go for one subject and purpose, filed by `attempt`.
+fn approved_bmc_write_for(subject: RouteQualificationSubject, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  granted_bmc_write(
+    request: bmc_account_write_authorization_request(
+      escalation_id: attempt,
+      approval: BmcAccountWriteApproval { subject: subject, purpose: purpose },
+      scopes: [],
+    ),
+  )
+}
+
+// The common case: the go for `request` on the route's own controller and build.
+fn approved_bmc_write(standing: BmcRotationRouteStanding, request: BmcAccountWriteRequest, purpose: BmcAccountWritePurpose, attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_write_for(subject: route_subject_of(standing: standing, request: request), purpose: purpose, attempt: attempt)
+}
+
+// The operator's refusal of a request.
+fn denied_bmc_write(attempt: NonEmptyStr) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  AuthorizationDenied {
+    escalation_id: attempt,
+    denied_by: "operator" as NonEmptyStr,
+    denied_at: "2026-10-03T00:01:00Z",
+    reason: "not this controller today" as NonEmptyStr,
+  }
+}

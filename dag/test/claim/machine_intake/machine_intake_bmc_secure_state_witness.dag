@@ -43,9 +43,8 @@ import gunbc.deployment_risk { ProdRisk, TestRisk }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.machine_intake.receipt { EvidenceRef }
 import std.scoped_authorization { AttemptIdentity }
-import extdeps.crypto.mac { MacKeyId }
-import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
-import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
+import std.scoped_authorization { ScopedAuthorization }
+import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
 import gunbc.machine_intake.bmc_rotation_route {
@@ -66,13 +65,15 @@ import gunbc.machine_intake.bmc_rotation_route {
   RotationApplyRouteForAnotherController,
   RotationApplyRouteForAnotherBuild,
   RotationApplyApprovalRefused,
-  RotationApplyApprovalDenied,
-  RotationApplyApprovalForAnotherAuthority,
-  RotationApplyApprovalForAnotherRequest,
+  BmcAccountWriteApproval,
+  RotateCredential,
+  BmcWriteApprovalNotGranted,
+  BmcWriteApprovalDenied,
+  BmcWriteApprovalForAnotherPurpose,
+  BmcWriteApprovalForAnotherSubject,
+  BmcWriteApprovalIntentNotItsSubject,
   rotation_route_ungrounded,
   rotation_route_from_citation,
-  rotation_apply_authority,
-  rotation_route_request_identity,
 }
 import gunbc.machine_intake.bmc_secure {
   ChannelCloseInput, ChannelCloseRouteNotSupplied, ChannelCloseApprovalAbsent, ChannelWriteNotAdmitted,
@@ -158,8 +159,8 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // from a gunbc.bmc_model BmcWorld by dry_read_bmc_account_state after the world was written (or not)
 // by dry_apply_bmc_account_plan, so the claims discriminate the decision, the secret order, the plan
 // admission and the domain receipt on the realization's own route, not on hand-authored readings. The
-// SUPPLIED boundaries are the operator approval (an admitted Redemption, whose producer is witnessed in
-// test.claim.approval_broker_witness) and the Secret Manager fetch result (whose producer is
+// SUPPLIED boundaries are the operator approval (test.fixture.machine_intake.bmc_write_approval, a grant
+// built from the production request; its producer, gunbc.auth.approval_gate, is witnessed there) and the Secret Manager fetch result (whose producer is
 // gunbc.auth.secret_ref_credential fetch_secret_ref_credential, live only). Routes are grounded through
 // the real qualification effect over the same world, never minted.
 
@@ -371,27 +372,8 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
 
 // ── approvals and routes ────────────────────────────────────────────────────────────────────────
 
-fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
-  RedemptionAdmitted {
-    claims: ApprovalCapabilityClaims {
-      protocol: approval_capability_protocol,
-      issuer: "gunbc-approval-broker" as NonEmptyStr,
-      audience: "srv1" as NonEmptyStr,
-      authority: authority,
-      escalation_id: "o1b-witness-1" as NonEmptyStr,
-      request_revision: revision,
-      decision: ProposeApprove,
-      attempt: "attempt-1" as AttemptIdentity,
-      issued_at: "2026-10-04T00:00:00Z",
-      expires_at: "2026-10-04T00:15:00Z",
-      key_id: "broker-2026-10" as MacKeyId,
-    },
-    decided_by: "operator" as NonEmptyStr,
-  }
-}
-
-fn rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> Redemption {
-  approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: s, request: IpmiSetUserPassword { user: user }))
+fn rotation_approval(s: BmcRotationRouteStanding, user: IpmiUserId) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_write(standing: s, request: IpmiSetUserPassword { user: user }, purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)
 }
 
 // The approval names the route's own request: the operator approves what the route grounds.
@@ -608,10 +590,14 @@ fn admission_label(a: RotationApplyAdmission) -> String {
     RotationApplyRouteNotGrounded { standing: _ } => "route-not-grounded"
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
-    RotationApplyApprovalRefused { cause: _ } => "approval-refused"
-    RotationApplyApprovalDenied => "approval-denied"
-    RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
-    RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+    RotationApplyApprovalRefused { cause: c } =>
+      match c {
+        BmcWriteApprovalNotGranted { escalation_id: _ } => "approval-not-granted"
+        BmcWriteApprovalDenied { reason: _ } => "approval-denied"
+        BmcWriteApprovalForAnotherPurpose { approved: _, required: _ } => "another-purpose"
+        BmcWriteApprovalForAnotherSubject { approved: _, requested: _ } => "another-subject"
+        BmcWriteApprovalIntentNotItsSubject { approved: _ } => "intent-not-its-subject"
+      }
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
     RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
     RotationApplyWouldLeaveNoAdministrator { channel: _, cause: c } =>
@@ -885,7 +871,7 @@ test fn the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading() -
   plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: break_glass_generation(i: i), i: i)) == "generation-another-account"
     && plan_label(o: plan_with(reading: read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "2", epoch: 2), managed_password: managed_password_v1, closed: true, at: t_read), goal: stale_goal, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), i: i)) == "generation-not-advanced"
     && plan_label(o: plan_default(reading: foreign, i: i)) == "unobserved"
-    && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: published_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), i: i)) == "not-admitted:another-request"
+    && plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: published_user), managed_generation_value: managed_generation(version: "2", i: i, fetch_at: i.fetch), i: i)) == "not-admitted:another-subject"
 }
 
 // ── blocker controls (side-chat review of 07423d29de) ───────────────────────────────────────────
@@ -1027,7 +1013,7 @@ test fn an_open_channel_is_closed_only_over_a_grounded_channel_access_route() ->
   let close = IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess) }
   let route = rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: close, citation: lab_route_fixture_citation)
   let candidate = rotation_route_candidate(endpoint: lab_endpoint, firmware: lab_firmware(), request: close, evidence: PublicStandardOperation { authority: lab_route_fixture_citation })
-  let exact = [approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: close))]
+  let exact = [approved_bmc_write(standing: route, request: close, purpose: RotateCredential, attempt: "attempt-1" as NonEmptyStr)]
   let with_admin = secured_read(census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired)
   let without_admin = secured_read(census_value: census_with_managed_row(managed_on_2: false), account: PublishedAccountRetired)
   channel_plan_label(o: plan_closing(reading: with_admin, channel_close: none, i: i)) == "channel-close-route-not-supplied"
@@ -1125,23 +1111,8 @@ fn close_ch2() -> BmcAccountWriteRequest {
   IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess) }
 }
 
-fn close_approval_in(route: BmcRotationRouteStanding, attempt: String) -> Redemption {
-  RedemptionAdmitted {
-    claims: ApprovalCapabilityClaims {
-      protocol: approval_capability_protocol,
-      issuer: "gunbc-approval-broker" as NonEmptyStr,
-      audience: "srv1" as NonEmptyStr,
-      authority: rotation_apply_authority,
-      escalation_id: "o1a2-close" as NonEmptyStr,
-      request_revision: rotation_route_request_identity(standing: route, request: close_ch2()),
-      decision: ProposeApprove,
-      attempt: attempt as AttemptIdentity,
-      issued_at: "2026-10-05T00:00:00Z",
-      expires_at: "2026-10-05T00:15:00Z",
-      key_id: "broker-2026-10" as MacKeyId,
-    },
-    decided_by: "operator" as NonEmptyStr,
-  }
+fn close_approval_in(route: BmcRotationRouteStanding, attempt: String) -> ScopedAuthorization<BmcAccountWriteApproval> {
+  approved_bmc_write(standing: route, request: close_ch2(), purpose: RotateCredential, attempt: attempt as NonEmptyStr)
 }
 
 // On the REAL plan path, with the published account open on channel 2: read A (attempt-1) with an

@@ -3,6 +3,7 @@ module gunbc.machine_intake.arrival_converge
 import std.optional { Absent, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { content_hash_equal }
+import std.scoped_authorization { ScopedAuthorization }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.goal_assessment {
   ObservationAttempt,
@@ -93,8 +94,12 @@ import gunbc.machine_intake.bmc_rotation_route {
   ObservedSurfaceRead,
   rotation_route_candidate,
   redfish_account_password_write,
-  rotation_apply_authority,
-  rotation_route_request_identity,
+  BmcAccountWriteApproval,
+  RotateCredential,
+  BmcWriteApproved,
+  BmcWriteApprovalRefused,
+  read_bmc_write_approval,
+  route_subject_of,
 }
 import gunbc.machine_intake.bmc_rotation_route_evidence { manager_read_receipt, mtjade1_observed_endpoint }
 import gunbc.machine_intake.bmc_recovery_route { RecoveryRouteUnavailable, recovery_route_unavailability, InBandRecoveryStanding }
@@ -143,8 +148,6 @@ import gunbc.auth.standing_operator_grant {
 import gunbc.auth.privileged_effect_census { ruling_interlock_is_rostered }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_named, operator_host_mtjade1 }
-import gunbc.auth.approval_capability { ProposeApprove, ProposeDeny }
-import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted, RedemptionRefused }
 import gunbc.fleet.convergence_fold {
   ConvergenceRunId,
   StepSubjectKey,
@@ -771,7 +774,7 @@ type BmcSecureInputs {
   goal: BmcSecureGoal
   reading: BmcAccountStateObservation
   grant: StandingOperatorGrant?
-  capability: Redemption?
+  capability: ScopedAuthorization<BmcAccountWriteApproval>?
   apply: BmcSecureApplyInputs?
 }
 
@@ -792,22 +795,18 @@ fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: Hos
     }
 }
 
+// The operator's go for this write, read once (read_bmc_write_approval), and bound to this run: the
+// grant's attempt is the run that filed the request, so a grant another run claimed discharges nothing.
 fn capability_discharges_bmc_secure_account_write(
-  r: Redemption,
+  r: ScopedAuthorization<BmcAccountWriteApproval>,
   standing: BmcRotationRouteStanding,
   request: BmcAccountWriteRequest,
   key: StepInstanceKey,
-) -> Bool {
-  match r {
-    RedemptionRefused { cause: _ } => false
-    RedemptionAdmitted { claims: cl, decided_by: _ } =>
-      match cl.decision {
-        ProposeDeny => false
-        ProposeApprove =>
-          cl.authority == rotation_apply_authority
-            && (cl.attempt as NonEmptyStr) == (key.run as NonEmptyStr)
-            && (cl.request_revision as String) == (rotation_route_request_identity(standing: standing, request: request) as String)
-      }
+) -> NonEmptyStr? {
+  match read_bmc_write_approval(approval: r, subject: route_subject_of(standing: standing, request: request), required: RotateCredential) {
+    BmcWriteApprovalRefused { cause: _ } => none
+    BmcWriteApproved { attempt: a, granted_by: by } =>
+      if (a as NonEmptyStr) == (key.run as NonEmptyStr) { Present { value: by } } else { none }
   }
 }
 
@@ -847,13 +846,9 @@ fn capability_discharge(
 {
   match inputs.capability {
     Present { value: r } =>
-      if capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
-        match r {
-          RedemptionAdmitted { claims: _, decided_by: by } => Present { value: instance_authorization(key: key, principal: by) }
-          RedemptionRefused { cause: _ } => none
-        }
-      } else {
-        none
+      match capability_discharges_bmc_secure_account_write(r: r, standing: standing, request: request, key: key) {
+        Present { value: by } => Present { value: instance_authorization(key: key, principal: by) }
+        Absent => none
       }
     Absent => none
   }
