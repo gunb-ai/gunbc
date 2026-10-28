@@ -68,7 +68,6 @@ import std.algebra {
   zip_eq,
   non_empty_to_list,
 }
-import std.error_primitives { Ok, Err }
 import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
@@ -78,7 +77,6 @@ import extdeps.dns.domain_name {
   NameQualification,
   FullyQualified,
   PartiallyQualified,
-  parse_host_name,
   dns_label_eq,
   domain_name_eq,
   host_name_eq,
@@ -104,8 +102,21 @@ import extdeps.dns.resolver {
   resolution_from_answer,
 }
 import product.host_identity { HostIdentity }
+import extdeps.network.address { IpAddress }
+import extdeps.network.endpoint {
+  parse_network_host,
+  NetworkHostParsed,
+  NetworkHostRefused,
+  NetworkHostParseRefusal,
+  HostByAddress,
+  HostByName,
+}
+import extdeps.uri { Uri, File }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.dns.domain_name { host_name_joined_with_zone, domain_name_wire }
 import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 
 // ── THE ZONE A NAME SPACE ANSWERS FOR ────────────────────────────────────────────────────────
 
@@ -125,18 +136,52 @@ type Zone sole_constructor {
   suffix: DomainName
 }
 
+// WHY THE REFUSAL CARRIES A CAUSE AND NOT JUST THE TEXT. "You configured an address as a zone" and "you
+// configured something the grammar rejects" are different facts with different remedies: the first is the
+// operator ruling being violated (a zone must be a name, and someone reached for an IP), the second is a typo
+// in a domain. Flattening them to one `ZoneRefused { raw }` would make a reader re-derive which happened
+// (§5), which is what the witness `a_zone_configured_as_an_ip_literal_is_refused` caught: the module claimed
+// an IP literal was refused, and it was not — `parse_host_name` happily accepts "192.168.1.1", because four
+// all-numeric labels are valid LDH labels. That is not a quirk to document; it is the rule being enforced by
+// the wrong function.
+type ZoneRefusalCause
+  // The spelling is an ADDRESS, not a name. Named separately because it is the exact case the operator ruling
+  // forbids, and a consumer that reports "the fleet is relying on an IP" needs to know that, not merely that
+  // parsing failed.
+  = ConfiguredSpellingIsAnAddress { raw: String, address: IpAddress }
+  // The spelling is neither an address nor a name the grammar accepts. Carries the grammar's own refusal
+  // rather than a sentence about it.
+  | SpellingIsNotAName { raw: String, refusal: NetworkHostParseRefusal }
+
 type ZoneAdmission
   = ZoneAdmitted { zone: Zone }
-  | ZoneRefused { raw: String }
+  | ZoneRefused { raw: String, cause: ZoneRefusalCause }
 
-// THE ONE WAY TO CONFIGURE A ZONE: parse it. A spelling the grammar refuses (an IP literal, an empty label,
-// a bad character) yields a refusal rather than a zone, so a name space can never be handed something its
-// own resolver could not answer for. The qualification is dropped deliberately: a zone is a suffix, and
-// whether it was written with a trailing dot is not a fact about the zone.
+// THE ONE WAY TO CONFIGURE A ZONE: parse it, through the authority that decides NAME VERSUS ADDRESS.
+//
+// It used to call `parse_host_name` directly, which is the defect the witness found: that function answers
+// "is this a syntactically valid host name?", and "192.168.1.1" is one — four numeric labels are legal LDH
+// labels — so a zone could be configured as an IP address while this module's comment claimed the opposite.
+// `extdeps.network.endpoint parse_network_host` is the module that already owns the question this has to
+// answer (§2: the concept must not be re-invented here, and §3: one source), so `zone_admit` asks IT, accepts
+// only the `HostByName` arm, and refuses the `HostByAddress` arm by name. The address arm is not folded into
+// the grammar refusal, because it is a different fact (§3: a materially different contract needs a materially
+// different name).
+//
+// The qualification is dropped deliberately: a zone is a suffix, and whether it was written with a trailing
+// dot is not a fact about the zone.
 fn zone_admit(raw: String) -> ZoneAdmission {
-  match parse_host_name(raw: raw) {
-    Ok { value: h } => ZoneAdmitted { zone: Zone { suffix: h.name } }
-    Err { value: _ } => ZoneRefused { raw: raw }
+  match parse_network_host(raw: raw) {
+    NetworkHostRefused { refusal: r } => ZoneRefused { raw: raw, cause: SpellingIsNotAName { raw: raw, refusal: r } }
+    NetworkHostParsed { host: h } =>
+      match h {
+        // An address is not a suffix anything can be matched against. Refused, and said so.
+        HostByAddress { address: a } => ZoneRefused {
+          raw: raw,
+          cause: ConfiguredSpellingIsAnAddress { raw: raw, address: a },
+        }
+        HostByName { name: n } => ZoneAdmitted { zone: Zone { suffix: n.name } }
+      }
   }
 }
 
@@ -169,23 +214,52 @@ fn names_are_the_same_name(a: ResolvableName, b: ResolvableName) -> Bool {
 //   - the name has no label of its own beyond the zone. `mynetworksettings.com` is the zone, not a machine
 //     in it; admitting the bare zone as a host name would let a row vouch for a name that can never resolve
 //     to a host. So a name must be strictly longer than its zone.
+// THE PREFIX, WITH ITS ELEMENT TYPE PINNED BY THE SIGNATURE. One line, and it exists only so the generic
+// `take_prefix` gets `T = DnsLabel` from a declaration rather than from inference the checker cannot do here.
+fn dns_labels_prefix(xs: List<DnsLabel>, n: Int) -> List<DnsLabel> {
+  take_prefix(xs: xs, n: n)
+}
+
+// THE TWO ANSWERS `host_part_of` can give, each behind a signature that names the element type. A bare
+// `Absent` in an `if` branch has nothing to infer its payload from and defaults to String, so it will not
+// unify with a sibling `Present { value: List<DnsLabel> }` — the checker reports the pair as
+// `Optional(Node(FreeMonoid<Primitive(String)>))` against `Container(List, Product(DnsLabel))`. Neither a
+// cast (`Absent as Optional<List<DnsLabel>>`: "a cast does not eliminate the absence, it re-types the
+// wrapper") nor an explicit generic call (`optional_absent<List<DnsLabel>>()`: no dialect precedent, recorded
+// at gunbc.approve_ios_swift_protocol_vector_tests) is available. Naming the type once, in a declaration, is
+// how this dialect says it. They read as the two answers they are, so the indirection costs nothing a reader
+// pays twice.
+fn no_host_part() -> List<DnsLabel>? {
+  Absent
+}
+
+fn host_part_is(labels: List<DnsLabel>) -> List<DnsLabel>? {
+  Present { value: labels }
+}
+
 fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
   let name_labels = resolvable_name_labels(name: name)
   let zone_labels = zone.suffix.labels
   let name_count = list_length(items: name_labels)
   let zone_count = list_length(items: zone_labels)
-  // Hoisted rather than bound inside the else-branch: a `let` as the first statement of a branch makes that
-  // branch a statement block, and the two branches then fail to unify (`Container(List,DnsLabel)` against
-  // `Optional(...)`), which is what the checker reported here. Guarded to zero on the short-name path so no
-  // caller ever sees a negative count, even though the value is unused there.
+  // Guarded to zero rather than allowed negative: the suffix test below is correct either way (a zone at
+  // least as long as the name can never be a proper suffix of it, and `zip_eq` against a prefix of length
+  // <= 0 is only ever true against an empty name), but a negative label count is not a value any callee
+  // should have to reason about. Hoisted out of the else-branch because a `let` opening a branch makes it a
+  // statement block, and the branches then fail to unify.
   let host_count =
     if zone_count >= name_count {
       0
     } else {
       name_count - zone_count
     }
+  // The guard is LOAD-BEARING, not just a guard against a negative count. Without it, a name whose labels are
+  // exactly the zone ("mynetworksettings.com" filed under the zone "mynetworksettings.com") would pass the
+  // suffix test and return an EMPTY host part, which the caller reads as "this name belongs to a host in this
+  // zone" — when in truth the name IS the zone and names no host at all. A name must be the zone plus at
+  // least one label to have a host part.
   if zone_count >= name_count {
-    Absent
+    no_host_part()
   } else if zip_eq(
     // `dns_label_eq` is the grammar module's own (extdeps.dns.domain_name), not one written here: what two
     // labels being equal means is settled where `DnsLabel` is branded, and this is a consumer of that rule.
@@ -193,9 +267,17 @@ fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
     b: list_reverse(xs: zone_labels),
     eq: dns_label_eq,
   ) {
-    Present { value: take_prefix(name_labels, host_count) }
+    // Through `dns_labels_prefix`, not `take_prefix` directly: `take_prefix` is generic over
+    // `FreeMonoid<T>`, and inside an `if` whose sibling arm is a bare `Absent` the checker cannot pin `T` and
+    // defaults it to String, so the two branches refuse to unify
+    // (`Optional(Node(FreeMonoid<Primitive(String)>))` against the `List<DnsLabel>` branch). Naming the
+    // element type ONCE, in a signature, is what fixes it — the dialect has no precedent for calling a
+    // generic with explicit type arguments (gunbc.approve_ios_swift_protocol_vector_tests records the same
+    // limitation for `optional_absent<T>()`), and a cast cannot do it either ("a cast does not eliminate the
+    // absence, it re-types the wrapper").
+    host_part_is(labels: dns_labels_prefix(xs: name_labels, n: host_count))
   } else {
-    Absent
+    no_host_part()
   }
 }
 
@@ -317,17 +399,15 @@ fn tailnet_name_space() -> NameSpace? {
 // honest instead of arbitrary, which is why the witness reads it: delete the observation and its claim goes
 // red, while a sentence in a field could rot unread.
 //
-// THE CITATION: observed 2026-10-27 on the controller at 192.168.1.228 — the BMC answers the tailnet zone
-// with rcode 3 (NXDOMAIN) and runs no tailnet client, while a tailnet member on the same LAN resolves that
-// zone. Both were read over the LAN, from the same machine, minutes apart.
+// THE CITATION, TYPED: observed 2026-10-27 on the controller at 192.168.1.228 — the BMC answers the tailnet
+// zone with rcode 3 (NXDOMAIN) and runs no tailnet client, while a tailnet member on the same LAN resolves
+// that zone. Both were read over the LAN, from the same machine, minutes apart. The receipt names the server
+// it asked (`bmc_membership_receipt` below), not a sentence describing it.
 type TailnetMembership
-  = NotOnTailnet { observed_on: NonEmptyStr, reader: NonEmptyStr }
-  | TailnetMember { observed_on: NonEmptyStr, reader: NonEmptyStr }
+  = NotOnTailnet { receipt: ObservationReceipt }
+  | TailnetMember { receipt: ObservationReceipt }
 
-data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet {
-  observed_on: "2026-10-27",
-  reader: "read-only probe, direct UDP to 192.168.1.1:53 from a tailnet member (docs/probes/bmc_media_share_naming_2026-10-27.md)",
-}
+data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet { receipt: bmc_membership_receipt }
 
 // ── A RESOLUTION THAT CAN BE CITED ───────────────────────────────────────────────────────────
 
@@ -339,11 +419,74 @@ data megarac_bmc_tailnet_membership: TailnetMembership = NotOnTailnet {
 //
 // `reader` is not decoration: a resolution claim with no named probe behind it is exactly the thing §4d
 // refuses to accept as fact, and a blank is visible in a review where "true" is not.
+// HOW A PROBE WAS RUN, TYPED (review 87319, §4c). The field used to be one `reader: NonEmptyStr` holding
+// "read-only probe, direct UDP to 192.168.1.1:53 (see docs/probes/...)" — three facts in a sentence, none of
+// them readable by the substrate. The server in particular was RE-SPELLED as text while `router_address` two
+// lines above was its one typed home, so changing the router would silently age every receipt and nothing
+// would notice; now `asked` is an `Ipv4Address` that production fills from `router_address` itself, and a
+// claim compares the two, so drift turns the witness red instead of turning it stale.
+//
+// THE TRANSPORT IS AN ARM, NOT A WORD: "UDP" and "TCP" are different questions to a resolver (UDP is the
+// default and truncates at 512 bytes; TCP answers in full), so which one was used changes what the receipt
+// proves. An arm pair, not a `String`.
+type ObservationTransport = UdpQuery | TcpQuery
+
+// THE CITATION, IN THE CORPUS'S OWN CARRIER. `extdeps.uri.Uri` with a scheme and a locator is how this repo
+// already points at a probe document (precedent: `extdeps.external_authority.ExternalAuthority`, which cites
+// a docs/probes file exactly this way), so the path is a typed reference rather than prose inside prose.
+type ObservationCitation sole_constructor {
+  uri: Uri
+}
+
+type ObservationReceipt sole_constructor {
+  // WHICH SERVER WAS ASKED. The same fact as the replying server in a `ResolverAnswer` for every real reply;
+  // `a_receipt_names_the_same_server_as_the_answer_it_cites` is the drift witness that keeps them agreeing
+  // rather than trusting it.
+  asked: Ipv4Address
+  transport: ObservationTransport
+  // THE DATE, TYPED. `extdeps.units.iso8601_calendar.Iso8601CivilDate` (year/month/day as Ints) rather than
+  // a `"2026-10-27"` string: the corpus already owns a civil-date type and the arithmetic beside it, so an
+  // untyped date would be a second spelling of a fact the repo can already compute on.
+  on: Iso8601CivilDate
+  citation: ObservationCitation
+}
+
+// THE PROBE THAT ESTABLISHED THIS MODULE'S FACTS, in the corpus's citation carrier. One row, referenced by
+// every receipt this module files, so the document is named once and an address is never re-spelled inside
+// prose (review 87319). `extdeps.external_authority` cites a docs/probes file the same way.
+data naming_probe_citation: ObservationCitation = ObservationCitation {
+  uri: Uri {
+    scheme: File,
+    locator: "docs/probes/bmc_media_share_naming_2026-10-27.md" as NonEmptyStr,
+  },
+}
+
+// THE DATE EVERY READ IN THAT PROBE WAS TAKEN, as one typed value rather than a string repeated per row.
+data naming_probe_date: Iso8601CivilDate = Iso8601CivilDate { year: 2026, month: 10, day: 27 }
+
+// THE LAN READ: a UDP query to the router, which is the BMC's DNS server and the only resolver on the LAN.
+// `asked` is `router_address` — the module's own typed row — so if the router moves, the receipt moves with
+// it and a claim that compares the two goes red rather than the receipt quietly ageing.
+data lan_probe_receipt: ObservationReceipt = ObservationReceipt {
+  asked: router_address,
+  transport: UdpQuery,
+  on: naming_probe_date,
+  citation: naming_probe_citation,
+}
+
+// THE SAME READ, EVIDENCE FOR THE BMC'S MEMBERSHIP: asked of the router from a tailnet member, which is what
+// distinguishes "the BMC is not on the tailnet" from "nobody can ask".
+data bmc_membership_receipt: ObservationReceipt = ObservationReceipt {
+  asked: router_address,
+  transport: UdpQuery,
+  on: naming_probe_date,
+  citation: naming_probe_citation,
+}
+
 type ResolutionObservation {
   outcome: NameResolution
   answer: ResolverAnswer
-  observed_on: NonEmptyStr
-  reader: NonEmptyStr
+  receipt: ObservationReceipt
 }
 
 // A HOST'S NAME, FILED UNDER A NAME SPACE, WITH ITS OBSERVATION. The record a consumer consults to decide
@@ -380,10 +523,16 @@ type HostNameResolutionRefusal
   //    which two things disagree to choose. Carries the labels rather than a rendering — a rendering would
   //    re-introduce the string comparison this module deleted.
   = NameOffZone { name: ResolvableName, filed_under: NameSpace }
-  // 2. The name is not fully qualified, so whether it resolves depends on a search list this row does not
-  //    own. Carries the qualification itself, which is the fact that made it unusable, and which the
-  //    consumer may already have a search-domain answer for.
-  | NameNotFullyQualified { name: ResolvableName, qualification: NameQualification }
+  // 2. (DELETED — was `NameNotFullyQualified`.) An earlier draft refused a name that was not spelled with a
+  //    trailing dot. That was never measured (§4d), and the measurement contradicts it: the controller's own
+  //    `cd_remote_server_address` validator ACCEPTS "srv2.mynetworksettings.com" and REFUSES
+  //    "srv2.mynetworksettings.com." (docs/probes/bmc_media_share_naming_2026-10-27.md, predicate read from
+  //    the served firmware bundle). Demanding the trailing dot would have refused the only spelling the
+  //    device accepts and demanded the one it rejects. The arm is deleted rather than kept unreachable —
+  //    §3c makes a declaration no producer can reach the one kind of dangling this repo calls red, and an
+  //    arm in a refusal coproduct that no path constructs is exactly that, however plausible it reads.
+  //    Qualification remains visible where it belongs: as DATA on the name
+  //    (`extdeps.dns.resolver resolvable_name_qualification`), for any consumer whose question needs it.
   // 3. The cited reply does not give addresses. Carries the resolver module's OWN cause type: whether the
   //    server was silent, the name is absent from the zone, or the name is live with no address record
   //    decides between "fix the server", "fix the name" and "fix the record", and that decision must be a
@@ -429,8 +578,7 @@ fn host_name_resolution_admit(
   space: NameSpace,
   name: ResolvableName,
   answer: ResolverAnswer,
-  observed_on: NonEmptyStr,
-  reader: NonEmptyStr,
+  receipt: ObservationReceipt,
 ) -> HostNameResolutionAdmission {
   let zone = space_zone(space: space)
   let conclusion = resolution_from_answer(name: name, answer: answer)
@@ -441,31 +589,53 @@ fn host_name_resolution_admit(
     }
     Present { value: _ } =>
       match resolvable_name_qualification(name: name) {
-        PartiallyQualified => HostNameResolutionRefused {
-          host: host,
-          refusal: NameNotFullyQualified { name: name, qualification: PartiallyQualified },
-        }
+        // BOTH QUALIFICATION ARMS ARE ACCEPTED HERE, and that is a measured correction, not a loosening
+        // (§4d). An earlier draft refused `PartiallyQualified`, which would have refused
+        // "srv2.mynetworksettings.com" — the exact spelling the controller's own field validator ACCEPTS —
+        // and demanded the trailing-dot form, which the same validator REFUSES (probe 2026-10-27,
+        // docs/probes/bmc_media_share_naming_2026-10-27.md, predicate read from the served firmware bundle).
+        // The trailing dot means "ask exactly this, no search list"; whether that is required is a property
+        // of the consumer's question, not of the row's trustworthiness, so it stays visible as DATA on the
+        // name (`resolvable_name_qualification`) for any consumer that needs it, and this gate does not
+        // decide it. What this gate DOES require is that the name sit under the space's zone and carry a
+        // host part — the arm above — which is the property that makes it a name for THIS host.
         FullyQualified =>
-          match conclusion {
-            Resolved { name: _, addresses: _ } => HostNameResolutionAdmitted {
-              resolution: HostNameResolution {
-                host: host,
-                space: space,
-                name: name,
-                grounded: ResolutionObservation {
-                  outcome: conclusion,
-                  answer: answer,
-                  observed_on: observed_on,
-                  reader: reader,
-                },
-              },
-            }
-            Unresolved { name: _, cause: c } => HostNameResolutionRefused {
-              host: host,
-              refusal: ReplyDoesNotResolve { cause: c },
-            }
-          }
+          host_name_resolution_accept(host: host, space: space, name: name, conclusion: conclusion, answer: answer, receipt: receipt)
+        PartiallyQualified =>
+          host_name_resolution_accept(host: host, space: space, name: name, conclusion: conclusion, answer: answer, receipt: receipt)
       }
+  }
+}
+
+// THE ACCEPTANCE PATH, written once and reached from both qualification arms. It used to be inlined under
+// `FullyQualified` only, which is how the unmeasured trailing-dot requirement stayed invisible: the shape of
+// the match made one arm look like the normal case, and a reader never saw that the other arm simply had no
+// case at all.
+fn host_name_resolution_accept(
+  host: HostIdentity,
+  space: NameSpace,
+  name: ResolvableName,
+  conclusion: NameResolution,
+  answer: ResolverAnswer,
+  receipt: ObservationReceipt,
+) -> HostNameResolutionAdmission {
+  match conclusion {
+    Resolved { name: _, addresses: _ } => HostNameResolutionAdmitted {
+      resolution: HostNameResolution {
+        host: host,
+        space: space,
+        name: name,
+        grounded: ResolutionObservation {
+          outcome: conclusion,
+          answer: answer,
+          receipt: receipt,
+        },
+      },
+    }
+    Unresolved { name: _, cause: c } => HostNameResolutionRefused {
+      host: host,
+      refusal: ReplyDoesNotResolve { cause: c },
+    }
   }
 }
 
@@ -775,31 +945,55 @@ data router_address: Ipv4Address = ipv4_address(octet1: 192, octet2: 168, octet3
 // module into and `zone_spelling` is a field something reads — the refusal must carry the very spelling it
 // just failed to parse, not a constant it could disagree with. An arm no call can reach and no claim matches
 // is the §3c red; `a_zone_spelling_that_does_not_parse_refuses_with_the_spelling_it_failed` reaches this one.
+// THE NAME IS JOINED FROM THE ZONE, NOT SPELLING IT AGAIN (review 87319, finding 2). The zone was a
+// parameter and the name was still the literal "srv2.mynetworksettings.com", so the parameter moved the
+// suffix test but not the name the resolver is asked about: re-configure the zone and this row keeps filing
+// a name under a zone it no longer sits in, and only the `host_part_of` check catches it — after the name
+// itself has already drifted. `host_name_joined_with_zone` composes the host's own label with the zone the
+// caller supplied, so one input decides both. The host label comes from `operator_host_srv2`, the fleet's
+// single authority for what srv2 is called (gunbc.fleet.fleet_host_identity), rather than a fourth spelling
+// of "srv2" in this module.
 fn srv2_lan_name_under(zone_wire: String) -> HostNameResolutionAdmission {
-  match resolvable_name_admit(spelling: "srv2.mynetworksettings.com") {
-    ResolvableNameAdmitted { name: n } =>
-      match lan_name_space_under(zone_wire: zone_wire) {
-        Present { value: space } => host_name_resolution_admit(
-          host: "srv2" as HostIdentity,
-          space: space,
-          name: n,
-          answer: Addresses { server: router_address, addresses: non_empty_singleton(item: srv2_lan_ipv4) },
-          observed_on: "2026-10-27",
-          reader: "read-only probe, direct UDP to 192.168.1.1:53 (see docs/probes/bmc_media_share_naming_2026-10-27.md)",
-        )
-        Absent => HostNameResolutionRefused {
-          host: "srv2" as HostIdentity,
-          // Arm 5: this module's own configuration failed. The name is fine; the zone is not, and the
-          // refusal carries the spelling that failed rather than a copy of a constant.
-          refusal: ZoneUnconfigured { zone_spelling: zone_wire },
+  match lan_zone_from(zone_wire: zone_wire) {
+    Absent => HostNameResolutionRefused {
+      host: operator_host_srv2,
+      // Arm 5: this module's own configuration failed. The name is fine — it cannot even be formed yet — and
+      // the refusal carries the spelling that failed rather than a copy of a constant.
+      refusal: ZoneUnconfigured { zone_spelling: zone_wire },
+    }
+    Present { value: zone } =>
+      // JOINED, THEN ADMITTED THROUGH THE SPELLING. The join is typed (`host_name_joined_with_zone`), but
+      // admission still goes through `resolvable_name_admit`, whose contract is a spelling: that is
+      // deliberate, because `ResolvableName` is sealed to the resolver module and its admission is the gate
+      // that refuses an IP literal (§3c: the seal is the point, so this must not be handed a bypass). The
+      // round trip through text is the boundary, not an oversight.
+      match resolvable_name_admit(spelling: domain_name_wire(name: host_name_joined_with_zone(
+        host: (operator_host_srv2 as String) as DnsLabel,
+        zone: zone.suffix,
+      ).name)) {
+        ResolvableNameAdmitted { name: n } =>
+          match lan_name_space_under(zone_wire: zone_wire) {
+            Present { value: space } => host_name_resolution_admit(
+              host: operator_host_srv2,
+              space: space,
+              name: n,
+              answer: Addresses { server: router_address, addresses: non_empty_singleton(item: srv2_lan_ipv4) },
+              receipt: lan_probe_receipt,
+            )
+            // Unreachable in practice — the zone parsed a moment ago, and `lan_name_space_under` parses the
+            // same string — but it is stated rather than assumed, and it is the same arm 5 fact.
+            Absent => HostNameResolutionRefused {
+              host: operator_host_srv2,
+              refusal: ZoneUnconfigured { zone_spelling: zone_wire },
+            }
+          }
+        ResolvableNameRefused { refusal: r } => HostNameResolutionRefused {
+          host: operator_host_srv2,
+          // Arm 6: carries the resolver module's refusal unchanged, so an IPv4 literal stays distinguishable
+          // from a malformed label. The earlier draft flattened all three into sentences that read alike.
+          refusal: ConfiguredSpellingIsNotAName { refusal: r },
         }
       }
-    ResolvableNameRefused { refusal: r } => HostNameResolutionRefused {
-      host: "srv2" as HostIdentity,
-      // Arm 6: carries the resolver module's refusal unchanged, so an IPv4 literal stays distinguishable
-      // from a malformed label. The earlier draft flattened all three into sentences that read alike.
-      refusal: ConfiguredSpellingIsNotAName { refusal: r },
-    }
   }
 }
 
@@ -897,7 +1091,7 @@ fn srv2_tailnet_name_refused_under(domain: NonEmptyStr?) -> HostNameResolutionAd
   // 87221 found — one name, two meanings — so the refusal branches on the domain itself.
   match domain {
     Absent => HostNameResolutionRefused {
-      host: "srv2" as HostIdentity,
+      host: operator_host_srv2,
       // Arm 5b, no fields: there is no spelling to carry, because nothing is configured. The fix is the
       // fleet's `fleet_tailnet_domain` row.
       refusal: TailnetDomainUnconfigured,
@@ -905,7 +1099,7 @@ fn srv2_tailnet_name_refused_under(domain: NonEmptyStr?) -> HostNameResolutionAd
     Present { value: d } =>
       match tailnet_name_space_under(domain: domain) {
         Present { value: space } => HostNameResolutionRefused {
-          host: "srv2" as HostIdentity,
+          host: operator_host_srv2,
           // Arm 4: nobody can ask. The remedy is a probe on a tailnet member, not an edit to the spelling —
           // and a consumer that can match this arm will not be tempted to "fix" a name that may be perfect.
           refusal: NoReaderForSpace { space: space },
@@ -913,7 +1107,7 @@ fn srv2_tailnet_name_refused_under(domain: NonEmptyStr?) -> HostNameResolutionAd
         // Arm 5, and it carries the spelling that failed: here there IS a configured domain, and the defect
         // is that it does not parse. A consumer renders or re-admits exactly this string.
         Absent => HostNameResolutionRefused {
-          host: "srv2" as HostIdentity,
+          host: operator_host_srv2,
           refusal: ZoneUnconfigured { zone_spelling: d as String },
         }
       }

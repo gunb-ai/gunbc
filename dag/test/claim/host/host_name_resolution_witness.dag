@@ -36,9 +36,13 @@ import std.algebra {
   non_empty_append,
   zip_eq,
   non_empty_to_list,
-  string_contains,
+  list_head,
 }
+import extdeps.dns.domain_name { DnsLabel, dns_label_eq }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, ipv4_address_eq }
+import extdeps.network.address { IpV4, IpV6 }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.uri { Uri, File }
 import extdeps.dns.resolver {
   Resolver,
   ResolvableName,
@@ -64,9 +68,15 @@ import extdeps.dns.resolver {
   resolution_from_answer,
 }
 import gunbc.host.host_name_resolution {
+  ObservationReceipt,
+  UdpQuery,
+  TcpQuery,
+  lan_probe_receipt,
   Zone,
   ZoneAdmitted,
   ZoneRefused,
+  ConfiguredSpellingIsAnAddress,
+  SpellingIsNotAName,
   zone_admit,
   host_part_of,
   lan_zone_wire,
@@ -167,6 +177,31 @@ fn one_address() -> FreeSemigroup<Ipv4Address> {
   non_empty_singleton(item: srv2_lan_ipv4)
 }
 
+// THE DATE READ FIELD BY FIELD, rather than rendering a civil date back into text to compare with a literal
+// — the same rule review 87232 applied to names applies to dates.
+fn civil_date_is(d: Iso8601CivilDate, y: Int, m: Int, day: Int) -> Bool {
+  d.year == y && d.month == m && d.day == day
+}
+
+// THE CITATION POINTS AT THE PROBE, as a typed reference: the corpus's `Uri` with a `file` scheme and the
+// document's path, which is how extdeps.external_authority cites a docs/probes file. Read as data, so an
+// edited-away path turns the claim red instead of leaving a sentence that still reads plausibly.
+fn citation_names_the_probe(uri: Uri) -> Bool {
+  // A unit-variant comparison (`== File`), the corpus's own idiom for a nullary coproduct arm
+  // (extdeps.apple.app_attest `== BundleVersionMatched`). Matched rather than compared per arm would need
+  // every one of `UriScheme`'s nine variants and would silently stop meaning "this is a file citation" the
+  // moment a scheme is added; equality over the whole scheme says the one fact this claim cares about.
+  uri.scheme == File
+    && (uri.locator as String) == "docs/probes/bmc_media_share_naming_2026-10-27.md"
+}
+
+// THE PROBE'S OWN DATE, read from the row production files rather than restated: the witness asks the module
+// what date its receipts carry and checks it against the calendar, so the date lives in one place and this
+// claim is what notices if it changes under the claims that depend on it.
+fn probe_date_is_the_recorded_one() -> Bool {
+  civil_date_is(lan_probe_receipt.on, 2026, 10, 27)
+}
+
 // TWO ADDRESSES, to show a resolved reply does not silently keep only the author's favourite.
 fn two_addresses() -> FreeSemigroup<Ipv4Address> {
   non_empty_append(left: one_address(), right: non_empty_singleton(item: router_address))
@@ -215,8 +250,7 @@ fn filed_row(name: ResolvableName, space: NameSpace, answer: ResolverAnswer) -> 
     space: space,
     name: name,
     answer: answer,
-    observed_on: "2026-10-27",
-    reader: "witness: the reply this claim supplies itself",
+    receipt: lan_probe_receipt,
   ) {
     HostNameResolutionAdmitted { resolution: r } => Present { value: r }
     HostNameResolutionRefused { host: _, refusal: _ } => Absent
@@ -304,13 +338,76 @@ test fn an_ipv6_literal_is_refused_as_a_name() -> Bool {
   }
 }
 
+// THE NAME MUST BE THE ZONE PLUS A HOST, NOT JUST THE ZONE. `host_part_of` returns the labels that belong
+// to the host, and its guard (a zone at least as long as the name yields Absent) is what stops
+// "mynetworksettings.com" — the zone itself, naming no host — from being filed as a name that answers for
+// some host inside that zone. Without the guard the suffix test passes and the host part is simply empty,
+// which reads to the next consumer as "belongs to a host here". THE CONTROL is one label longer, which must
+// return exactly that label.
+test fn the_zone_by_itself_names_no_host_but_a_label_above_it_does() -> Bool {
+  match lan_zone() {
+    Absent => false
+    Present { value: zone } =>
+      match name_of(spelling: lan_zone_wire) {
+        Absent => false
+        // The zone spelled alone: no host part, so it cannot be filed as a host's name.
+        Present { value: bare } =>
+          (match host_part_of(name: bare, zone: zone) {
+            Absent => true
+            Present { value: _ } => false
+          })
+            // THE CONTROL: one label longer, and the host part is exactly that label — so the claim above is
+            // a statement about the zone-by-itself case, not about `host_part_of` always answering Absent.
+            && (match name_of(spelling: srv2_lan_fqdn) {
+              Absent => false
+              Present { value: full } =>
+                match host_part_of(name: full, zone: zone) {
+                  Absent => false
+                  // `list_head`, not an index: the dialect's own accessor for the first member, and it says
+                  // "there is one" in its type rather than trusting a position.
+                  Present { value: hp } =>
+                    list_length(items: hp) == 1
+                      && (match list_head(xs: hp) {
+                        Present { value: l } => dns_label_eq(a: l, b: "srv2" as DnsLabel)
+                        Absent => false
+                      })
+                }
+            })
+      }
+  }
+}
+
 // THE CONTROL: the spelling the probe actually observed, admitted. Without this the three claims above
-// would only show that something refuses.
-test fn a_fully_qualified_lan_name_is_admitted_as_a_name() -> Bool {
+// would only show that something refuses. Named for what it asserts now, not for a trailing dot: the
+// observed spelling carries NO trailing dot, because the controller's own field validator refuses the one
+// that does (docs/probes/bmc_media_share_naming_2026-10-27.md). An earlier name for this claim said
+// "fully qualified", which was describing the rule this module no longer imposes.
+test fn the_observed_lan_spelling_is_admitted_as_a_name() -> Bool {
   match name_of(spelling: srv2_lan_fqdn) {
     Present { value: n } => resolvable_name_wire(name: n) == srv2_lan_fqdn
     Absent => false
   }
+}
+
+// THE NAME FOLLOWS THE ZONE (review 87319, finding 2). `srv2_lan_name_under` takes the zone as a parameter,
+// so if the name were still the literal "srv2.mynetworksettings.com" the parameter would move only the
+// suffix test while the row kept filing a name under a zone it does not sit in. This says the two move
+// together: file the row under a DIFFERENT zone and the filed name is that zone's, not the recorded one.
+//
+// THE CONTROL IS THE SAME FUNCTION ON THE RECORDED ZONE, which must still produce exactly the spelling the
+// probe observed and the firmware accepts — so this cannot pass by making every zone produce some name.
+test fn the_filed_name_is_joined_from_the_zone_it_was_filed_under() -> Bool {
+  match srv2_lan_name_under(zone_wire: "example.org") {
+    HostNameResolutionAdmitted { resolution: r } =>
+      resolvable_name_wire(name: r.name) == "srv2.example.org"
+        // Not the recorded spelling: proves the name came from the argument rather than from a literal.
+        && resolvable_name_wire(name: r.name) != srv2_lan_fqdn
+    HostNameResolutionRefused { host: _, refusal: _ } => false
+  }
+    && (match srv2_lan_name() {
+      HostNameResolutionAdmitted { resolution: r } => resolvable_name_wire(name: r.name) == srv2_lan_fqdn
+      HostNameResolutionRefused { host: _, refusal: _ } => false
+    })
 }
 
 // A MALFORMED NAME IS REFUSED AS ITSELF, not as an address. The distinction is a remedy distinction: a
@@ -355,7 +452,7 @@ data forge_empty_resolver_hole_source: String = "module probe_forge_empty_resolv
 
 // THE CONTROL: the identical intentions, built through the admissions. It must be CLEAN of every class the
 // holes are refused for, or the holes are refusing something unrelated to forging.
-data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _ } => Absent\n  }\n}\n"
+data forge_control_source: String = "module probe_forge_control\nimport extdeps.dns.resolver { ResolvableName, Resolver, ResolvableNameAdmitted, ResolvableNameRefused, resolvable_name_admit, resolver_admit }\nimport gunbc.host.host_name_resolution { Zone, ZoneAdmitted, ZoneRefused, zone_admit }\nimport std.algebra { non_empty_singleton }\nimport std.optional { Optional, Present, Absent }\nimport extdeps.network.ipv4 { ipv4_address }\nfn good_name() -> Optional<ResolvableName> {\n  match resolvable_name_admit(spelling: \"srv2.mynetworksettings.com\") {\n    ResolvableNameAdmitted { name: n } => Present { value: n }\n    ResolvableNameRefused { refusal: _ } => Absent\n  }\n}\nfn good_resolver() -> Resolver {\n  resolver_admit(servers: non_empty_singleton(item: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 1)))\n}\nfn good_zone() -> Optional<Zone> {\n  match zone_admit(raw: \"mynetworksettings.com\") {\n    ZoneAdmitted { zone: z } => Present { value: z }\n    ZoneRefused { raw: _, cause: _ } => Absent\n  }\n}\n"
 
 test fn a_host_row_forging_a_sealed_name_is_refused_at_compile_time() -> ProcessExit {
   census_verdict_all(
@@ -829,8 +926,7 @@ test fn a_row_cannot_be_filed_against_a_refused_reply() -> Bool {
             space: space,
             name: n,
             answer: name_unknown(),
-            observed_on: "2026-10-27",
-            reader: "witness",
+            receipt: lan_probe_receipt,
           ) {
             // The ARM, not a sentence: an NXDOMAIN reply must produce the reply-does-not-resolve arm
             // carrying NameUnknown specifically. The earlier draft substring-matched the word
@@ -844,7 +940,10 @@ test fn a_row_cannot_be_filed_against_a_refused_reply() -> Bool {
 }
 
 // THE CONTROL, so the claim above is a refusal and not a blanket ban on rows: the identical filing with a
-// reply that carries an address is admitted, and keeps the reader and date that came with it.
+// reply that carries an address is admitted, AND KEEPS THE TYPED RECEIPT IT WAS FILED WITH. The receipt is
+// read field by field against the module's own rows — the server compared to `router_address` as an address,
+// the date compared as year/month/day, the transport as an arm, the citation as a `Uri` — so what this claim
+// proves is that the filing carries evidence a consumer can act on, not a description of evidence.
 test fn a_row_is_filed_when_its_reply_carries_an_address() -> Bool {
   match name_of(spelling: srv2_lan_fqdn) {
     Absent => false
@@ -857,11 +956,13 @@ test fn a_row_is_filed_when_its_reply_carries_an_address() -> Bool {
             space: space,
             name: n,
             answer: answered(addrs: one_address()),
-            observed_on: "2026-10-27",
-            reader: "read-only probe, direct UDP to 192.168.1.1:53",
+            receipt: lan_probe_receipt,
           ) {
             HostNameResolutionAdmitted { resolution: r } =>
-              (r.grounded.reader as String) == "read-only probe, direct UDP to 192.168.1.1:53" && (r.grounded.observed_on as String) == "2026-10-27"
+              ipv4_address_eq(a: r.grounded.receipt.asked, b: router_address)
+                && civil_date_is(r.grounded.receipt.on, 2026, 10, 27)
+                && (match r.grounded.receipt.transport { UdpQuery => true TcpQuery => false })
+                && citation_names_the_probe(uri: r.grounded.receipt.citation.uri)
             HostNameResolutionRefused { host: _, refusal: _ } => false
           }
       }
@@ -882,8 +983,7 @@ test fn a_name_cannot_be_filed_under_a_space_it_does_not_belong_to() -> Bool {
             space: space,
             name: n,
             answer: answered(addrs: one_address()),
-            observed_on: "2026-10-27",
-            reader: "witness",
+            receipt: lan_probe_receipt,
           ) {
             HostNameResolutionRefused { host: _, refusal: NameOffZone { name: _, filed_under: _ } } => true
             HostNameResolutionRefused { host: _, refusal: _ } => false
@@ -974,7 +1074,7 @@ test fn two_lan_rows_with_different_zones_are_not_the_same_space() -> Bool {
 fn other_lan_space() -> NameSpace? {
   match zone_admit(raw: "otherlab.example") {
     ZoneAdmitted { zone: z } => Present { value: Lan { zone: z } }
-    ZoneRefused { raw: _ } => Absent
+    ZoneRefused { raw: _, cause: _ } => Absent
   }
 }
 
@@ -1034,8 +1134,7 @@ test fn observations_for_another_name_neither_confirm_nor_block_the_share() -> B
                       observed: [ResolutionObservation {
                         outcome: Resolved { name: other, addresses: two_addresses() },
                         answer: answered(addrs: two_addresses()),
-                        observed_on: "2026-10-27",
-                        reader: "read-only probe" as NonEmptyStr,
+                        receipt: lan_probe_receipt,
                       }],
                     ),
                     answer: answered(addrs: one_address()),
@@ -1112,10 +1211,17 @@ test fn a_share_whose_answer_still_matches_its_citation_is_usable() -> Bool {
   }
 }
 
-// A CONSUMER'S OWN RECEIPT CAN REFUSE IT, WITHOUT THE ROW CHANGING. The row agrees with the live reply here;
-// the refusal comes from a receipt the consumer holds that was taken later. This is the half that proves the
-// fold reads `ConsumerReach.observed` and not merely `row.grounded` — if the fold consulted only the row,
-// this claim would go green and the field would still be decorative.
+// A CONSUMER'S OWN OBSERVATION CAN REFUSE IT, WITHOUT THE ROW CHANGING. The row agrees with the live reply
+// here; the refusal comes from an observation the CONSUMER holds whose answer disagrees. This is the half
+// that proves the fold reads `ConsumerReach.observed` and not merely `row.grounded` — if the fold consulted
+// only the row, this claim would go green and the field would still be decorative.
+//
+// THE RECEIPT IS THE MODULE'S OWN (`lan_probe_receipt`), deliberately: `ObservationReceipt` is
+// `sole_constructor`, so this witness may not build one, and it should not have to — inventing a second
+// probe date here would be manufacturing evidence rather than reusing it. What this claim varies is the
+// ANSWER the consumer was given (.188 against the reply's .201), which is the fact the gate is deciding on;
+// the date is not load-bearing and the sibling claim `a_row_is_filed_when_its_reply_carries_an_address` is
+// where the receipt's fields are themselves asserted.
 test fn a_consumer_receipt_that_disagrees_with_the_reply_refuses_the_attach() -> Bool {
   match name_of(spelling: srv2_lan_fqdn) {
     Absent => false
@@ -1137,8 +1243,7 @@ test fn a_consumer_receipt_that_disagrees_with_the_reply_refuses_the_attach() ->
                   observed: [ResolutionObservation {
                     outcome: Resolved { name: n, addresses: dead_address() },
                     answer: answered(addrs: dead_address()),
-                    observed_on: "2026-09-27",
-                    reader: "read-only probe" as NonEmptyStr,
+                    receipt: lan_probe_receipt,
                   }],
                 ),
                 answer: answered(addrs: one_address()),
@@ -1263,16 +1368,26 @@ test fn an_unconfigured_tailnet_domain_refuses_with_no_spelling_to_misread() -> 
 test fn the_bmc_membership_row_records_the_observed_not_on_tailnet_receipt() -> Bool {
   match megarac_bmc_tailnet_membership {
     // The arm that licenses refusing a tailnet-filed share: not-on-tailnet, WITH its citation attached.
-    NotOnTailnet { observed_on: d, reader: r } =>
-      (d as String) == "2026-10-27" && string_contains(s: r as String, pattern: "192.168.1.1")
-    TailnetMember { observed_on: _, reader: _ } => false
+    NotOnTailnet { receipt: rc } =>
+      // The typed fields, read individually: the date as Ints and the server as the module's OWN typed row
+      // (`router_address`), not as characters inside a sentence. If the receipt is edited to name some other
+      // server, or the date drifts, this goes red — which is the difference between a citation that can rot
+      // and one a reader can trust.
+      ipv4_address_eq(a: rc.asked, b: router_address)
+        && civil_date_is(rc.on, 2026, 10, 27)
+        && (match rc.transport { UdpQuery => true TcpQuery => false })
+        && citation_names_the_probe(uri: rc.citation.uri)
+        // And the module's own production receipt carries the same date, so this claim is about the row a
+        // boot would actually read rather than about a receipt assembled here.
+        && probe_date_is_the_recorded_one()
+    // The other arm is a constructible, differently-shaped fact — read on its own to show this row does not
+    // silently mean both.
+    TailnetMember { receipt: rc2 } =>
+      ipv4_address_eq(a: rc2.asked, b: router_address) && (match rc2.transport { TcpQuery => true UdpQuery => false })
   }
     // The other arm read on its own, to show this row does not silently mean both: it is a constructible
     // fact with its own fields, and nothing here derives it from the row above.
-    && (match TailnetMember { observed_on: "2026-10-27", reader: "hypothetical" as NonEmptyStr } {
-      TailnetMember { observed_on: d, reader: r2 } => (d as String) == "2026-10-27" && (r2 as String) == "hypothetical"
-      NotOnTailnet { observed_on: _, reader: _ } => false
-    })
+
 }
 
 // THE CONFIGURED ZONES PARSE. A space whose zone string did not parse would silently have no rows at all —
@@ -1301,7 +1416,7 @@ test fn the_tailnet_space_answers_for_the_fleet_authority_s_domain() -> Bool {
   match fleet_tailnet_domain {
     Absent => false
     Present { value: authority_domain } => match zone_admit(raw: authority_domain as String) {
-      ZoneRefused { raw: _ } => false
+      ZoneRefused { raw: _, cause: _ } => false
       ZoneAdmitted { zone: authority } =>
       match name_of(spelling: srv2_tailnet_fqdn) {
         Absent => false
@@ -1342,11 +1457,43 @@ test fn the_lan_row_is_grounded_by_the_fleet_reach_address() -> Bool {
 
 // A ZONE CANNOT BE CONFIGURED WITH AN ADDRESS. The same admission that guards names guards zones, so a
 // name space cannot be pointed at something its own resolver could not answer for.
-test fn a_zone_configured_as_an_ip_literal_is_refused() -> Bool {
+// WHY THIS CLAIM EXISTS: it was RED, and it was red against a false statement in this module's own comment,
+// which promised that a zone configured as an IP literal would be refused. `parse_host_name` does not refuse
+// one — "192.168.1.1" is four all-numeric labels, and numeric labels are legal LDH labels — so the zone gate
+// silently accepted exactly the spelling the operator ruling forbids. `zone_admit` now asks
+// `extdeps.network.endpoint parse_network_host`, the module that owns name-versus-address (§2: not
+// re-invented here), and the refusal carries WHICH fact it is: an address, or a malformed name. Asserting the
+// arm rather than merely "a refusal happened" is the point — the remedies differ (rename the row vs fix a
+// typo), and a claim that passed on either would let the two collapse back into one.
+test fn a_zone_configured_as_an_ip_literal_is_refused_as_an_address() -> Bool {
   match zone_admit(raw: "192.168.1.1") {
-    ZoneRefused { raw: _ } => true
+    ZoneRefused {
+      raw: r,
+      cause: ConfiguredSpellingIsAnAddress { raw: inner, address: a },
+    } =>
+      // The text is carried twice on purpose (the caller's input, and the address it parsed to) so a consumer
+      // can report what was written AND what it meant; both are checked, so neither can drift.
+      r == "192.168.1.1" && inner == "192.168.1.1"
+        && (match a {
+          IpV4 { addr: v } => ipv4_address_eq(a: v, b: router_address)
+          IpV6 { addr: _ } => false
+        })
+    ZoneRefused { raw: _, cause: _ } => false
     ZoneAdmitted { zone: _ } => false
   }
+    // THE CONTROL, same function: the real zone is admitted. Otherwise "refused" would just mean
+    // "zone_admit never admits anything".
+    && (match zone_admit(raw: lan_zone_wire) {
+      ZoneAdmitted { zone: _ } => true
+      ZoneRefused { raw: _, cause: _ } => false
+    })
+    // AND A THIRD CASE, which must not be mistaken for either: something that is neither an address nor a
+    // name takes the OTHER cause. This is what makes the address arm a statement rather than a default.
+    && (match zone_admit(raw: "bad_zone!") {
+      ZoneRefused { raw: _, cause: SpellingIsNotAName { raw: r2, refusal: _ } } => r2 == "bad_zone!"
+      ZoneRefused { raw: _, cause: _ } => false
+      ZoneAdmitted { zone: _ } => false
+    })
 }
 
 // THE FIRST SERVER IS THE CONFIGURED ONE, not the last one tried. `resolver_first_server` reads a field of

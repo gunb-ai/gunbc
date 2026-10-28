@@ -49,6 +49,15 @@ fully-qualified name. Three consequences, all modelled in gunbc/host/host_name_r
    `megarac_media_address_rule` and its `minimum_labels`, which the share gate consults.
 3. The firmware accepts IPs too, so firmware behaviour cannot enforce the ruling. Enforcement belongs
    on the authorable side — which is what `ResolvableName` is.
+4. **The trailing-dot form is refused, so nothing may demand it.** This is worth its own number because the
+   module got it wrong first: an early draft of `host_name_resolution_admit` refused any name whose
+   qualification was not `FullyQualified`, i.e. any name *without* a trailing dot. Read against this table,
+   that rule would have refused `srv2.mynetworksettings.com` — the only hostname spelling the controller
+   accepts — and demanded `srv2.mynetworksettings.com.`, which the controller rejects. The arm
+   (`NameNotFullyQualified`) has been deleted rather than left unreachable, and qualification stays available
+   as data (`resolvable_name_qualification`) for any consumer whose own question needs the no-search-list
+   meaning. `parse_host_name` sets `FullyQualified` only for the trailing-dot spelling, so this is a trap the
+   type system will not catch on its own: the wrong rule type-checks.
 
 ## The DNS question, and why the switch is still blocked
 

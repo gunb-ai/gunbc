@@ -220,6 +220,23 @@ fn qualify(host: DnsLabel, zone: DomainName) -> HostName {
   }
 }
 
+// A HOST'S LABEL JOINED TO A ZONE, with the qualification the composition actually has. `qualify` above
+// asserts `FullyQualified`, which is the trailing-dot claim — "ask exactly this" — and a name assembled from
+// a host and a zone was never written with a trailing dot, so claiming it would make the composed name a
+// DIFFERENT name from the one `parse_host_name` returns for the same labels (`host_name_eq` checks
+// qualification). This is the arm that agrees with the parser: same labels, same qualification, one answer.
+//
+// WHY THIS EXISTS RATHER THAN A CALLER SPELLING THE WIRE: a host row whose zone is a parameter must derive
+// its name FROM that zone, or the two can drift the moment the zone is re-configured (review 87319, finding
+// 2 — the zone was a parameter and the name was still the literal "srv2.mynetworksettings.com", so the
+// parameter only moved the suffix test and not the name the resolver is asked about).
+fn host_name_joined_with_zone(host: DnsLabel, zone: DomainName) -> HostName {
+  HostName {
+    name: DomainName { labels: [host] |> concat(zone.labels) },
+    qualification: PartiallyQualified,
+  }
+}
+
 // ONE LABEL, COMPARED. The widening cast is the corpus's idiom for comparing a branded string (precedent:
 // gunbc.serving.caller_backlog logical_work_eq compares branded LogicalWorkIds the same way, and
 // gunbc.design.reference_instrument citation_is_contained widens branded module paths), and it belongs HERE,
