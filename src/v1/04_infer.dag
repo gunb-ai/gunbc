@@ -133,7 +133,7 @@ import v1.compiler.infer_method {
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
-import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
+import v1.compiler.infer_env { generic_actual_position_type, is_unsolved_type_variable, settled_type, settled_type_of_declaration, declaration_named_by_type_name, kernel_settled_name, transparent_alias_rhs, alias_rhs_head_of_declaration,  overlay_skips_kernel_name,
   text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -11404,22 +11404,6 @@ fn unsolved_type_variable_ids(n: Node, depth: Int) -> List<String> {
   }
 }
 
-// AN UNSOLVED TYPE VARIABLE: the node's type is a variable nothing has grounded -- the empty list's
-// element, an unbound generic parameter, any deferred identity. A type read that DESCENDS into one
-// trades a named slot for an ungroundable node whose spelling the field lookup refuses; keeping the
-// node's own identity is what lets deferral proceed. Both guards over unsolved reads -- the
-// lambda-parameter binding below and generic_actual_position_type in the unify arm -- share THIS one
-// predicate; it was formerly keyed on the empty_list_element id alone (the only instance the corpus
-// surfaced), which made the same defect invisible at the arm (work item adhoc-b5f23a5d-052 re-measure
-// on 14750 head 9706e5b48ea: descending into an empty-list element slot refused m.declarations,
-// m.path, d.label, d.target at ten corpus sites).
-fn is_unsolved_type_variable(n: Node) -> Bool {
-  match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
-    _ => false
-  }
-}
-
 fn is_never_constrained_enclosing_generic_base(n: Node, base_expr: Node, scope: InferScope) -> Bool {
   match n.inferred {
     Present { value: TypeVariable { id: id } } =>
@@ -15564,41 +15548,6 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
 // answers error_type for anything not Resolved, so reading it through that would drop the very
 // binding site (measured: heal refused source_annotation.dag, list_at_optional(xs: List<T>) left T
 // unbound). First-wins binding is unchanged.
-//
-// THE ACTUAL IS NOT THE FORMAL, AND ONLY THE FORMAL IS READ RAW. An actual child in this position is the
-// application's ELEMENT SLOT: resolve_node_bounded and the kernel container builders name it by the
-// CONTAINER DECLARATION'S OWN PARAMETER (FreeMonoid's `T`) and carry the argument's type in its inferred.
-// Bound raw, the substitution handed every reader a node NAMED `T`, so a reader keyed on the bound node's
-// name or spelling saw an unbound `T` although the slot's resolution was established: `fn(h) { h.digest }`
-// over `xs: List<Hash>` (`type Hash = Payload`) refused "no field 'digest' on type 'T'", because the
-// field-access alias chain looks its next declaration up by that name, and `skip(split(..), n: 1) |> first`
-// left its Present arm undecided, because a kernel-built slot is also SPELLED `T`. A record element only
-// escaped by accident: its slot's inferred is the record itself, which the field read finds structurally
-// before it reaches the name. So the actual position is read through child_type_node, the total read of a
-// type position that unify_callable_generics already applies to both sides, and only where it IS a leaf
-// position (no children, its type in inferred): an application such as `List<X>` keeps its own node, since
-// its inferred is its EXPANSION and binding that would trade the nominal type for its structure.
-// (gunbc.recurring_failure_mode type_alias_identity_decided_by_spelling_at_each_check; work item
-// adhoc-b5f23a5d-052, with smart-tern-402's kernel-container RED.)
-// THE DESCENT IS INTO AN ESTABLISHED READ ONLY. Descending trades the slot for its resolution, so the
-// resolution must be something a reader can act on. When the resolved node is an UNSOLVED TYPE VARIABLE
-// -- the empty list's element (the corpus instance), an ungrounded parameter, any deferred identity --
-// the trade loses: the slot carried the container-declared name a reader can key on, the resolution is
-// an ungroundable node the field lookup refuses (measured on 14750 head 9706e5b48ea before this guard:
-// fold_list element readers m.declarations, m.path at source_root_eval.dag and d.label, d.target at
-// type_declaration_use_census.dag over an empty [] refused 'no field on type empty_list_element', ten
-// sites). Keep the slot then, as the pre-arm code did for every shape, and let deferral proceed; the
-// is_unsolved_type_variable guard is the SAME predicate the lambda-parameter binding uses for the same
-// purpose, so one rule governs both unsolved reads (DESIGN 6b, no second leaf).
-fn generic_actual_position_type(slot: Node) -> Node {
-  if (slot.children |> count == 0 && slot.connective == NoConnective) {
-    match slot.inferred {
-      Present { value: Resolved { node: r } } =>
-        if is_unsolved_type_variable(n: r) { slot } else { child_type_node(ch: slot) }
-      _ => slot
-    }
-  } else { slot }
-}
 
 fn unify_generic_child_pairs(formals: List<Node>, actuals: List<Node>, generic_names: List<String>, source_indices: Map<String, NewlineIndex>, acc: Map<String, Node>) -> Map<String, Node> {
   match formals |> first {

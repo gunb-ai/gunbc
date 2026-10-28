@@ -4,7 +4,9 @@ module test.claim.generic_element_slot_binding_witness
 // the actual application's ELEMENT SLOT rather than to the type the slot holds. The slot is named by the
 // container declaration's own parameter (FreeMonoid's `T`) and carries the argument's type in its inferred, so
 // every reader of the substitution that keys on the bound node's name or spelling saw an unbound `T`. Two
-// shapes, one link (v1.compiler.infer generic_actual_position_type):
+// shapes, one link (generic_actual_position_type, moved from v1.compiler.infer to v1.compiler.infer_env
+// when the settle family below needed the same read -- v1.compiler.types imports infer_env, so the read
+// could not live above either consumer):
 //
 //   bold-koi-381 (work item adhoc-b5f23a5d-052): `fn(h) { h.digest }` keyed through a generic over
 //   `xs: List<Hash>`, `type Hash = Payload`, refused "no field 'digest' on type 'T'" -- the field-access alias

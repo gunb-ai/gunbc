@@ -3577,7 +3577,12 @@ pub fn settled_type(
                 ) {
                     std::option::Option::None => Some(Rc::new(SettledType {
                         head: d.clone(),
-                        args: n.children.clone(),
+                        args: n
+                            .children
+                            .iter()
+                            .cloned()
+                            .map(|ch| generic_actual_position_type(ch))
+                            .collect::<Vec<_>>(),
                     })),
                     Some(pa) => match settled_parameterized_alias(
                         pa.clone(),
@@ -3589,7 +3594,12 @@ pub fn settled_type(
                         Some(through) => Some(through.clone()),
                         std::option::Option::None => Some(Rc::new(SettledType {
                             head: d.clone(),
-                            args: n.children.clone(),
+                            args: n
+                                .children
+                                .iter()
+                                .cloned()
+                                .map(|ch| generic_actual_position_type(ch))
+                                .collect::<Vec<_>>(),
                         })),
                     },
                 },
@@ -3684,6 +3694,32 @@ pub fn parameterized_alias_of_declaration(
     }
 }
 
+pub fn is_unsolved_type_variable(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        _ => false,
+    }
+}
+
+pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    if (((slot.children.clone().len() as i64) == 0)
+        && (slot.connective.clone() == Connective::NoConnective))
+    {
+        match slot.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => {
+                if is_unsolved_type_variable(r.clone()) {
+                    slot.clone()
+                } else {
+                    r
+                }
+            }
+            _ => slot.clone(),
+        }
+    } else {
+        slot.clone()
+    }
+}
+
 pub fn settled_parameterized_alias(
     alias: Rc<ParameterizedAlias>,
     use_args: Rc<Vec<Rc<Node>>>,
@@ -3717,7 +3753,11 @@ pub fn settled_parameterized_alias(
                     .get((pair.0.clone()) as usize)
                     .cloned()
                 {
-                    Some(arg) => v1_rt::rc_map_insert(acc.clone(), pair.1.clone(), arg.clone()),
+                    Some(arg) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        pair.1.clone(),
+                        generic_actual_position_type(arg.clone()),
+                    ),
                     std::option::Option::None => acc.clone(),
                 },
             );
@@ -3992,7 +4032,12 @@ pub fn settled_rhs(
                         std::option::Option::None => {
                             break Some(Rc::new(SettledType {
                                 head: head.clone(),
-                                args: rhs.children.clone(),
+                                args: rhs
+                                    .children
+                                    .iter()
+                                    .cloned()
+                                    .map(|ch| generic_actual_position_type(ch))
+                                    .collect::<Vec<_>>(),
                             }));
                         }
                         Some(pa) => {
@@ -4012,7 +4057,12 @@ pub fn settled_rhs(
                                     std::option::Option::None => {
                                         break Some(Rc::new(SettledType {
                                             head: head.clone(),
-                                            args: rhs.children.clone(),
+                                            args: rhs
+                                                .children
+                                                .iter()
+                                                .cloned()
+                                                .map(|ch| generic_actual_position_type(ch))
+                                                .collect::<Vec<_>>(),
                                         }));
                                     }
                                 }

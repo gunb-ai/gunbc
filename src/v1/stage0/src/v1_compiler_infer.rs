@@ -207,16 +207,17 @@ pub use crate::v1_compiler_infer_env::{
     declaration_named_by_type_name, declaration_node_of_ref, declaration_provenance_of_ref,
     declaration_ref_of_declaration_node, declaration_ref_of_type_node,
     declaration_substitution_basis, effective_visible_binding, empty_symbol_index,
-    empty_type_env_cache, env_with_type_variable_bindings, global_bare_is_ambiguous,
-    global_bare_strict_ambiguity_candidates, host_text_into_structural_sequence,
-    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, kernel_settled_name, listed_import_required_bare_call_blocked,
-    lookup_binding_by_name, lookup_binding_on_chain, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_is_kernel_mint_named, node_with_children, node_with_inferred, overlay_skips_kernel_name,
-    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    settled_type, settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
+    empty_type_env_cache, env_with_type_variable_bindings, generic_actual_position_type,
+    global_bare_is_ambiguous, global_bare_strict_ambiguity_candidates,
+    host_text_into_structural_sequence, inductive_fields_for, inductive_fields_list_to_map,
+    is_recursive_type, is_recursive_type_by_name, is_unsolved_type_variable, kernel_settled_name,
+    listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_on_chain,
+    lookup_type, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, node_is_kernel_mint_named,
+    node_with_children, node_with_inferred, overlay_skips_kernel_name, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, settled_type,
+    settled_type_of_declaration, str_bindings_from_bindings, symbol_index_insert,
     symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
     text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, transparent_alias_rhs,
@@ -18306,15 +18307,6 @@ pub fn unsolved_type_variable_ids(n: Rc<Node>, depth: i64) -> Rc<Vec<String>> {
         }
     })
 }
-
-
-pub fn is_unsolved_type_variable(n: Rc<Node>) -> bool {
-    match n.inferred.clone().as_deref().cloned() {
-        Some(InferredNode::TypeVariable { id: _, .. }) => true,
-        _ => false,
-    }
-}
-
 pub fn is_never_constrained_enclosing_generic_base(
     n: Rc<Node>,
     base_expr: Rc<Node>,
@@ -26615,24 +26607,6 @@ pub fn unify_generics(
         }
     }
 }
-
-pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
-    if (((slot.children.clone().len() as i64) == 0) && (slot.connective.clone() == Connective::NoConnective)) {
-        match slot.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: r, .. }) => {
-                if is_unsolved_type_variable(r.clone()) {
-                    slot.clone()
-                } else {
-                    crate::v1_compiler_infer_types::child_type_node(slot.clone())
-                }
-            }
-            _ => slot.clone(),
-        }
-    } else {
-        slot.clone()
-    }
-}
-
 pub fn unify_generic_child_pairs(
     mut __tco_loop_formals: Rc<Vec<Rc<Node>>>,
     mut __tco_loop_actuals: Rc<Vec<Rc<Node>>>,
