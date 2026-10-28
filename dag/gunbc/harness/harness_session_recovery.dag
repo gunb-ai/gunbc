@@ -713,7 +713,11 @@ fn session_recovery_of_read_events(events: List<SessionRecoveryEvent>) -> Sessio
 // sentinel: zero is a real instant (the epoch), so no Int value may stand in for "no window".
 fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: Int) -> EpochSecs? {
   let sinces = events |> flat_map(e => match e {
-    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since] } else { [] as List<EpochSecs> }
+    // The read-back `since` arrives as a plain integer reading; the fold carries instants, so it is
+    // admitted to the carrier here -- the same `as EpochSecs` admission the stream parse performs. A
+    // comparison-join downstream (an if picking between a read-back instant and the clock's reading)
+    // cannot unify the two shapes on its own; admitting at the source makes every fold EpochSecs.
+    RecoveryEventRequestPending { cause: _, round: r, interrupted_calls: _, since, resumable: _ } => if r == round { [since as EpochSecs] } else { [] as List<EpochSecs> }
     _ => [] as List<EpochSecs>
   })
   fold(sinces, init: none, f: fn(acc, x) {
@@ -729,7 +733,7 @@ fn session_request_pending_since_for(events: List<SessionRecoveryEvent>, round: 
 // live nowhere else.
 fn session_request_redelivery_stamps_for(events: List<SessionRecoveryEvent>, round: Int) -> List<EpochSecs> {
   events |> flat_map(e => match e {
-    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at] } else { [] as List<EpochSecs> }
+    RecoveryEventRequestRedelivered { round: r, at } => if r == round { [at as EpochSecs] } else { [] as List<EpochSecs> }
     _ => [] as List<EpochSecs>
   })
 }
