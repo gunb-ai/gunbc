@@ -296,4 +296,3 @@ test fn the_stopped_boot_observation_records_each_undecoded_thermal_row() -> Boo
     && string_contains(s: render_round_block(round: r), pattern: "round=0 thermal_undecoded_row=[Watchdog2        | D7h | ok  | 33.0 | ]")
     && string_contains(s: render_round_block(round: r), pattern: "undecoded=2")
 }
-}
