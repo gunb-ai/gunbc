@@ -363,6 +363,8 @@ fn is_dag_cast_domain_type(name: String) -> Bool {
 type ConversionPhase
   = UnfoldPhase { row: LiteralHomomorphism }
   | InverseUnfoldPhase { row: LiteralHomomorphism }
+  | SupportToEntriesPhase
+  | EntriesToSupportPhase
 
 // A PLAN ENDPOINT IS A CARRIER, AND THE KERNEL'S HOST TEXT IS NOT A CORPUS DECLARATION. The kernel
 // String is minted by the seed with no declaring module (TypeDeclarationProvenance KernelMinted
@@ -410,6 +412,8 @@ fn conversion_plan_source(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
     InverseUnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
+    SupportToEntriesPhase => kernel_map_endpoint()
+    EntriesToSupportPhase => finitely_supported_function_endpoint()
   }
 }
 
@@ -417,7 +421,23 @@ fn conversion_plan_target(plan: ConversionPlan) -> ConversionEndpoint {
   match plan.phase {
     UnfoldPhase { row: r } => literal_homomorphism_destination(row: r)
     InverseUnfoldPhase { row: r } => kernel_carrier_of_literal_source(kind: r.source_kind)
+    SupportToEntriesPhase => finitely_supported_function_endpoint()
+    EntriesToSupportPhase => kernel_map_endpoint()
   }
+}
+
+// THE TWO CARRIERS OF THE MAP CROSSING, DERIVED NOT SPELLED (same rule as the text endpoints above:
+// each side has exactly one carrier, so the endpoint follows from the reading). The kernel Map is a
+// minted container, named the way the kernel Int and String above are named; the declared side is
+// std.algebra's own FinitelySupportedFunction declaration, compared by declaration identity so a
+// user-declared look-alike of the same name is not it (ruling gunbc.design_ruling
+// kernel_map_is_the_host_realization_of_the_finitely_supported_function).
+fn kernel_map_endpoint() -> ConversionEndpoint {
+  KernelMintedCarrier { minted_name: "Map" as NonEmptyStr }
+}
+
+fn finitely_supported_function_endpoint() -> ConversionEndpoint {
+  DeclaredCarrier { declaration: decl_ref(module_path: "std.algebra", decl_name: "FinitelySupportedFunction"), element: Absent }
 }
 
 // HOW A SITE NAMES A PLAN (operator ruling O5, 2026-10-03, applied by sharp-raven-357): with no

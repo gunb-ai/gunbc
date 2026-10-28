@@ -1644,38 +1644,58 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
       }
       render_rust_shared_type_if_needed(type_name: base_name, rendered: bare, shared_types: shared_types)
       }
-      ClosedAliasHasParams => {
-    let base = match rust_seed_host_container_base(name: base_name) {
-      Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
-    }
-    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
-    let args = n.children |> map(arg =>
-      if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      }
-    ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
-      }
-      ClosedAliasBindingAbsent => {
-    let base = match rust_seed_host_container_base(name: base_name) {
-      Present { value: host } => host
-      Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
-    }
-    let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
-    let args = n.children |> map(arg =>
-      if peel {
-        render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      } else {
-        render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
-      }
-    ) |> join(separator: ", ")
-    concat(base, "<", args, ">")
-      }
+      ClosedAliasHasParams => render_rust_applied_nonpeeling_type(n: n, base_name: base_name, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+      ClosedAliasBindingAbsent => render_rust_applied_nonpeeling_type(n: n, base_name: base_name, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     }
     }
+  }
+}
+
+// THE APPLIED-TYPE ARMS THAT SPELL base<key, value>, IN ONE PLACE. render_rust_applied_type's
+// closed-alias verdict fork has three arms; ClosedAliasPeelZeroParam renders a bare name (no
+// arguments to key), while ClosedAliasHasParams and ClosedAliasBindingAbsent render the SAME
+// base<args> shape and so carry the SAME keyed decision -- one answer, not two (DESIGN 6b).
+// WHY THE PREDICATE BELONGS HERE. This renderer is the terminal applied-type arm of two paths
+// that reach a corpus fn's DECLARED RETURN TYPE and its closure-parameter annotations:
+//   fn signature: emit_inferred's concat(rust_items().return_arrow, ...) -> render_rust_fn_sig_type
+//     -> render_rust_fn_sig_type_applied_binding -> render_rust_type_with_applied_binding
+//     -> render_rust_applied_type_shared -> render_rust_applied_type -> here
+//   lambda parameter: render_rust_type -> render_rust_applied_via_emit_info
+//     -> render_rust_applied_type_shared -> render_rust_applied_type -> here
+// The file's sibling applied-type renderers -- render_rust_type_without_applied_binding,
+// render_rust_decl_type, rust_alias_rhs_applied_container_or_base -- each ask
+// node_is_keyed_collection before spelling base<key, value> and lower the host shape through
+// emit_keyed_container_type. These two arms asked nothing and spelled base<args> unconditionally,
+// so a retyped std.algebra fn's declared return type emitted Rc<FinitelySupportedFunction<K, V>>
+// beside the Rc<HashMap<K, V>> its callers pass to v1_rt::map_get / rc_map_insert /
+// sorted_map_keys (the 26 E0308/E0282 in v1-stage0-std-core). Same predicate, same lowering,
+// same fallback_base shape as the sibling -- no new mechanism
+// (gunbc.recurring_failure_mode
+// one_name_two_representations_kernel_map_and_finitely_supported_function, rung
+// keyed_lowering_asked_by_every_render_path).
+fn render_rust_applied_nonpeeling_type(n: Node, base_name: String, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  let base = match rust_seed_host_container_base(name: base_name) {
+    Present { value: host } => host
+    Absent => rust_applied_type_base(name: base_name, decision: type_reference_realization(n: n, dag_name: base_name, target: Rust))
+  }
+  let peel = is_parametric_opaque_type_by_name(env: env, type_name: base_name)
+  let args = n.children |> map(arg =>
+    if peel {
+      render_rust_phantom_opaque_applied_decl_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+    } else {
+      render_rust_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env, width_position: applied_arg_is_width_resolution_position(applied: n, arg: arg, env: env))
+    }
+  )
+  if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    match args |> first {
+      Present { value: k } => match args |> skip(1) |> first {
+        Present { value: v } => emit_keyed_container_type(container_name: base_name, key_type: k, val_type: v, fallback_base: base, target: Rust)
+        Absent => concat(base, "<", args |> join(separator: ", "), ">")
+      }
+      Absent => concat(base, "<", args |> join(separator: ", "), ">")
+    }
+  } else {
+    concat(base, "<", args |> join(separator: ", "), ">")
   }
 }
 

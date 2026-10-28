@@ -282,6 +282,26 @@ fn map_entry_insert<K, V>(acc: FinitelySupportedFunction<K, V>, entry: MapIntrod
   map_insert(acc, entry.key, entry.value)
 }
 
+// THE OTHER HALF OF THE CROSSING ROUTE PAIR (gunbc.structural_realization_bindings
+// conversion_plan_rows, ruling gunbc.design_ruling
+// kernel_map_is_the_host_realization_of_the_finitely_supported_function). A kernel `Map<K, V>` and
+// std.algebra's FinitelySupportedFunction<K, V> are ONE concept with two carriers, and the crossing
+// between them is named by a declared route, never performed implicitly: map_from_entries runs
+// entries -> support (above) and this runs support -> entries. Both are declared HERE, in the module
+// that owns the declaration, because std.algebra imports std.coercion -- a route homed in
+// std.coercion would be an import cycle, and a crossing row naming a route that does not exist is the
+// emit_bridge_without_runtime_body class this ruling exists to refuse.
+//
+// The support is read through the map_keys primitive contract and the values through map_values, the
+// two method surfaces the FinitelySupportedFunction declaration already carries; zipping them is the
+// same `map_support_keys` realization the corpus already uses, so this adds no new host operation and
+// the emitted body stays over the v1_rt map helpers the *_primitive_delegate seams already mint.
+fn map_to_entries<K, V>(m: FinitelySupportedFunction<K, V>) -> FreeMonoid<MapIntroductionEntry<K, V>> {
+  let keys = m |> map_keys
+  let values = m |> map_values
+  zip_map(a: keys, b: values, f: fn(k, v) { MapIntroductionEntry { key: k, value: v } })
+}
+
 // MOVED HERE from `v2.std.collection` by the change that split `PartialFunction`. They are the
 // total corner of the family above, and leaving them in a different module from their own axis is
 // where a fork starts. `TotalPolicy` travels with `TotalMap` rather than staying behind: it is the
