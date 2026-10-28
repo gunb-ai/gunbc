@@ -7,7 +7,8 @@ import gunbc.roadmap.roadmap_attempt_continuation {
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
-import gunbc.harness.harness_session_recovery { SessionRecoveryNone, CapacityNotAsked }
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import std.optional { Present }
 import gunbc.roadmap.roadmap_lineage_retire { LineageRetireRecord }
 import gunbc.roadmap.roadmap_lineage_retire_record {
   LineageRetireDecoded, LineageRetireUndecodable, lineage_retire_json, lineage_retire_decode,
@@ -45,7 +46,7 @@ fn pri(
     goal_audit: goal_audit,
     recovery: SessionRecoveryNone,
     verification_retry: RefusedRetryOperatorOnly,
-    capacity: CapacityNotAsked,
+    now: Present { value: 1700000000 },
   }
 }
 
@@ -179,7 +180,7 @@ fn running_prior() -> PriorAttemptFacts {
     goal_audit: none,
     recovery: SessionRecoveryNone,
     verification_retry: RefusedRetryOperatorOnly,
-    capacity: CapacityNotAsked,
+    now: Present { value: 1700000000 },
   }
 }
 
@@ -255,7 +256,7 @@ test fn retire_claim_2_record_for_another_attempt_is_refused_as_stale() -> Bool 
 // CLAIM 3 (control): a record over an active, held or complete lineage, or over no lineage, is refused.
 test fn retire_claim_3_record_over_a_non_ended_lineage_is_refused() -> Bool {
   let active = PriorAttemptFacts { node_id: "n1", attempt_key: "a1", branch: "roadmap/n1/a1", worker_terminal: false, capture: CaptureAbsent, verification: none, review: none, goal_audit: none, verification_retry: RefusedRetryOperatorOnly,
-    capacity: CapacityNotAsked, recovery: SessionRecoveryNone }
+    now: Present { value: 1700000000 }, recovery: SessionRecoveryNone }
   let held = pri(capture: ready_capture(), verification: none, review: none, goal_audit: none)
   let green = segment(kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "ok")
   let approved = segment(kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "approved")

@@ -659,16 +659,13 @@ import gunbc.roadmap.roadmap_lineage_retire_record {
 }
 import gunbc.roadmap.roadmap_attempt_continuation {
   PriorAttemptFacts,
-  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume, ContinuationCapacityExpired,
+  ContinuationDecision, ContinuationSpawnFresh, ContinuationRefused, ContinuationHold, ContinuationComplete, ContinuationEnded, ContinuationResume,
   continuation_decision, continuation_decision_with_retirement,
   LineageRetireAdmission, LineageRetireAdmitted, LineageRetireRefused, lineage_retire_admission,
 }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryAwaitingCapacity, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events,
-  PoolCapacityObservation, CapacityNotAsked, CapacityServing, CapacityNotServing, CapacityUnobserved,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, session_recovery_of_events,
 }
-import gunbc.harness.harness_backend { harness_observe_operator_reading }
-import gunbc.harness.harness_operator_route { harness_operator_route, operator_route_standing, OperatorRouteServing, OperatorRouteModelNotAdmitted, OperatorRouteUnreachable, OperatorRouteUnreadable, OperatorModelsRefused, OperatorFrontUnanswered, OperatorModelsAnswered, OperatorFrontCertificateRefused, OperatorProbeNotSent }
 import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import gunbc.roadmap.roadmap_provider_events { ProviderEventsRefused, ProviderFailed, ProviderBudgetSpent, ProviderRunning, ProviderStarting, ProviderAwaitingSeat, ProviderNotStarted, ProviderExecutionState, ProviderCompleted, provider_execution_activity, provider_execution_terminality, TerminalityCompleted, TerminalityRefused, TerminalityEventsRefused, TerminalityNotStarted, TerminalityWorking, ProviderAwaitingAcceptance }
 import extdeps.version { VersionIdentity }
@@ -2558,7 +2555,6 @@ fn belt_spawn_attempt_key(instance: HostDashboardInstance, node: RoadmapNode, pr
     ContinuationHold { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationComplete { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
     ContinuationEnded { reason: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
-    ContinuationCapacityExpired { reason: _, waited_seconds: _, budget_seconds: _ } => belt_spawn_minted_key(instance: instance, node: node, probed_at: probed_at)
   }
 }
 
@@ -2725,7 +2721,6 @@ fn belt_spawn_route_for_decision(decision: ContinuationDecision) -> BeltSpawnRou
     ContinuationHold { reason } => SpawnRouteNone { step: "continuation-hold", detail: reason }
     ContinuationComplete { reason } => SpawnRouteNone { step: "continuation-complete", detail: reason }
     ContinuationEnded { reason } => SpawnRouteNone { step: "lineage-ended", detail: reason }
-    ContinuationCapacityExpired { reason, waited_seconds: _, budget_seconds: _ } => SpawnRouteNone { step: "capacity-wait-expired", detail: reason }
   }
 }
 
@@ -2849,7 +2844,10 @@ fn belt_prior_attempt_facts(instance: HostDashboardInstance, node_id: RoadmapNod
     review: workflow_segment_of_kind(segments: progress.segments, kind: ReviewWorkflowSegment),
     goal_audit: workflow_segment_of_kind(segments: progress.segments, kind: GoalAuditWorkflowSegment),
     recovery: recovery,
-    capacity: belt_prior_attempt_capacity(recovery: recovery),
+    // THE CLOCK THE RE-DELIVERY SCHEDULE IS READ AGAINST, read once for the sweep's facts. No /models wake
+    // probe remains: a patient request needs no observation that a card is serving -- the re-delivery IS
+    // the probe, and the front's answer to it is the only reading that counts.
+    now: now_epoch_seconds(),
     verification_retry: belt_verify_retry_standing(instance: instance, progress: progress),
   }
 }
@@ -2901,42 +2899,8 @@ fn belt_lineage_retire_panel_for_instance(instance: HostDashboardInstance, node_
             ContinuationHold { reason: _ } => LineageRetirePanelNone
             ContinuationComplete { reason: _ } => LineageRetirePanelNone
             ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageRetirePanelNone
-            ContinuationCapacityExpired { reason: _, waited_seconds: _, budget_seconds: _ } => LineageRetirePanelNone
           }
       }
-  }
-}
-
-// THE CAPACITY OBSERVATION A CAPACITY WAIT IS WOKEN BY. The belt asks the front only for a session that is waiting
-// for capacity (every other recovery reads NotAsked, so no tick of an unrelated lineage probes the pool), and the
-// reading is the lab's own models probe over the pinned certificate (harness_observe_operator_reading), the one
-// observation the roster already uses: the front lists the model for this client exactly when a TLS card serves.
-// A reading that is neither (the key rejected, a different certificate, an unreadable body, no clock) is
-// Unobserved with the reason, never NotServing, so an outage of the probe cannot be read as an outage of capacity.
-fn belt_prior_attempt_capacity(recovery: SessionRecovery) -> PoolCapacityObservation {
-  match recovery {
-    SessionRecoveryAwaitingCapacity { cause: _, since: _, budget_seconds: _, resumes_made: _, capacity_resumes: _, interrupted_calls: _, resume_round: _ } =>
-      match now_epoch_seconds() {
-        Absent => CapacityUnobserved { reason: "the clock could not be read as epoch seconds" }
-        Present { value: at } =>
-          match harness_observe_operator_reading(route: harness_operator_route) {
-            OperatorModelsRefused { url: _, status: status } =>
-              if status == "503" { CapacityNotServing { at: at } } else { CapacityUnobserved { reason: join(["the pool front answered its models listing with HTTP status ", status], "") } }
-            OperatorFrontUnanswered { url: u } => CapacityUnobserved { reason: join(["the pool front at ", u, " did not answer"], "") }
-            OperatorFrontCertificateRefused { url: u, detail: d } => CapacityUnobserved { reason: join(["the certificate ", u, " presented is not the pinned one (", d, ")"], "") }
-            OperatorProbeNotSent { url: u, detail: d } => CapacityUnobserved { reason: join(["the probe of ", u, " was not sent: ", d], "") }
-            OperatorModelsAnswered { body: b } =>
-              match operator_route_standing(route: harness_operator_route, reading: OperatorModelsAnswered { body: b }) {
-                OperatorRouteServing { model: _ } => CapacityServing { at: at }
-                OperatorRouteModelNotAdmitted { advertised: _ } => CapacityNotServing { at: at }
-                OperatorRouteUnreachable { url: u } => CapacityUnobserved { reason: join(["the pool front at ", u, " did not answer"], "") }
-                OperatorRouteUnreadable { cause: c } => CapacityUnobserved { reason: c }
-              }
-          }
-      }
-    SessionRecoveryNone => CapacityNotAsked
-    SessionRecoveryPending { causes: _, resumes_made: _, interrupted_calls: _, resume_round: _ } => CapacityNotAsked
-    SessionRecoveryMalformed { mismatch: _ } => CapacityNotAsked
   }
 }
 

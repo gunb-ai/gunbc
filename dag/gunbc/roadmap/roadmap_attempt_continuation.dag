@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_attempt_continuation
 
-import std.types { String, Bool, Int, List, NonEmptyStr, list_length }
+import std.types { String, Bool, Int, List, NonEmptyStr, EpochSecs, list_length }
 import gunbc.roadmap.roadmap_refused_retry {
   RefusedRetryStanding, RefusedRetryOwed, RefusedRetryExhausted, RefusedRetryOperatorOnly, refused_retry_exhausted_reason,
 }
@@ -9,8 +9,10 @@ import gunbc.roadmap.roadmap_submission {
   SubmissionReady, SubmissionBlocked, SubmissionNeedsContext,
 }
 import gunbc.harness.harness_session_recovery {
-  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryAwaitingCapacity, session_resume_bound,
-  PoolCapacityObservation, CapacityNotAsked, CapacityServing, CapacityNotServing, CapacityUnobserved,
+  SessionRecovery, SessionRecoveryNone, SessionRecoveryPending, SessionRecoveryMalformed, SessionRecoveryRequestPending, session_resume_bound,
+}
+import gunbc.harness.harness_transport_retry_policy {
+  harness_transport_retry_policy_now, transport_retry_next_delivery_at, transport_retry_redelivery_due,
 }
 import gunbc.roadmap.roadmap_workflow_stage {
   WorkflowSegment,
@@ -41,7 +43,11 @@ type PriorAttemptFacts {
   review: WorkflowSegment?
   goal_audit: WorkflowSegment?
   recovery: SessionRecovery
-  capacity: PoolCapacityObservation
+  // THE CLOCK THE SCHEDULE IS READ AGAINST, supplied by the belt as a supplied reading: one epoch-second
+  // instant per sweep, passed down -- the std.types carrier, so it cannot be confused with a count or an
+  // offset. Absent means the sweep could not read the clock, which is refused where a re-delivery instant
+  // is to be named -- never guessed at, and never an ending.
+  now: EpochSecs?
   verification_retry: RefusedRetryStanding
 }
 
@@ -60,7 +66,6 @@ type ContinuationDecision
   | ContinuationComplete { reason: String }
   | ContinuationEnded { reason: String }
   | ContinuationResume { reason: String, attempt_key: String, ordinal: Int, causes: List<String> }
-  | ContinuationCapacityExpired { reason: String, waited_seconds: Int, budget_seconds: Int }
 
 fn continuation_decision(prior: PriorAttemptFacts?) -> ContinuationDecision {
   match prior {
@@ -125,9 +130,9 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
       ContinuationRefused {
         reason: join(["the prior attempt ", prior.attempt_key, "'s recovery record is unreadable, so neither a resume nor an ending is established: ", mismatch], ""),
       }
-    SessionRecoveryAwaitingCapacity { cause: cause, since: since, budget_seconds: budget, resumes_made: made, capacity_resumes: capacity_resumes, interrupted_calls: interrupted, resume_round: _ } =>
-      continuation_from_capacity_wait(prior: prior, cause: cause, since: since, budget: budget, made: made, capacity_resumes: capacity_resumes, interrupted: interrupted)
-    SessionRecoveryPending { causes: causes, resumes_made: made, interrupted_calls: interrupted, resume_round: _ } =>
+    SessionRecoveryRequestPending { cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, resumable: _, interrupted_calls: interrupted, resume_round: _ } =>
+      continuation_from_request_pending(prior: prior, cause: cause, since: since, re_deliveries: re_deliveries, wakes_made: wakes, last_delivery_at: last_delivery_at, interrupted: interrupted)
+    SessionRecoveryPending { causes: causes, resumes_made: made, wakes_made: wakes, interrupted_calls: interrupted, resume_round: _ } =>
       if list_length(items: interrupted) > 0 {
         ContinuationHold {
           reason: join([
@@ -144,55 +149,51 @@ fn continuation_from_absent_capture(prior: PriorAttemptFacts) -> ContinuationDec
         ContinuationResume {
           reason: join(["the prior attempt ", prior.attempt_key, " stopped at a validated state and is resumed in its own session, resume ", to_string(value: made + 1), " of ", to_string(value: session_resume_bound), "; cause: ", join(causes, " | ")], ""),
           attempt_key: prior.attempt_key,
-          ordinal: made + 1,
+          ordinal: wakes + 1,
           causes: causes,
         }
       }
   }
 }
 
-// A SESSION HELD FOR CAPACITY IS WAITING, NOT REFUSED. The front said no TLS card serves, so the request had no
-// effect and no resume count is spent: Hold while the observation says capacity is still absent, Resume (the SAME
-// attempt, so the same conversation and x-pool-session) when it says a card serves, and the lineage's own typed
-// terminal, CapacityExpired, only when capacity is still absent past the wait's recorded budget. A capacity that
-// is serving resumes whatever the wait lasted: the budget judges continued absence, never a card that came back.
-// An observation that could not be made refuses with its reason, because neither answer is established.
-// The wake is the belt's own tick reading the front; no timer is declared here because none is needed.
-fn continuation_from_capacity_wait(prior: PriorAttemptFacts, cause: String, since: Int, budget: Int, made: Int, capacity_resumes: Int, interrupted: List<String>) -> ContinuationDecision {
+// A SESSION WHOSE REQUEST STANDS PENDING IS WAITING, NOT REFUSED, AND NOTHING ENDS THE WAIT. The front
+// answered 503/502/429 or the post drew no response, so nothing was served and the request had no
+// effect: it stands (operator direction 2026-10-27: "i deliver the request, and wait indefinitely for the
+// response (like a patient contract)"). The belt re-delivers the SAME attempt -- same session, same
+// conversation, same x-pool-session -- when the next re-delivery is DUE by
+// gunbc.harness.harness_transport_retry_policy, and Holds with the named instant until then. THE
+// CONTINUATION HAS NO TERMINAL FOR THIS STATE: no expiry, no budget, no "waited too long"; a request
+// pending ten days gets the same two answers as one pending ten seconds (a ten-day pending that produced
+// an ending would fail the witness that says so). An interrupted tool effect keeps the unchanged rule:
+// Hold, until that effect's outcome is established. A sweep that could not read the clock Holds naming
+// that -- a re-delivery instant cannot be guessed at, and refusing the instant is not ending the request.
+fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, since: EpochSecs, re_deliveries: Int, wakes_made: Int, last_delivery_at: EpochSecs, interrupted: List<String>) -> ContinuationDecision {
   if list_length(items: interrupted) > 0 {
     ContinuationHold {
       reason: join([
-        "the prior attempt ", prior.attempt_key, " is waiting for capacity but not resumable: tool calls ", join(interrupted, ", "),
-        " have no recorded result, so their effects are not established; the wait began: ", cause,
+        "the prior attempt ", prior.attempt_key, " is request-pending but not resumable: tool calls ", join(interrupted, ", "),
+        " have no recorded result, so their effects are not established; the request stands pending: ", cause,
       ], ""),
     }
   } else {
-    match prior.capacity {
-      CapacityNotAsked =>
-        ContinuationRefused { reason: join(["the prior attempt ", prior.attempt_key, " is waiting for capacity but the front was not asked, so neither a wake nor a hold is established"], "") }
-      CapacityUnobserved { reason: why } =>
-        ContinuationRefused { reason: join(["the prior attempt ", prior.attempt_key, " is waiting for capacity and the front's capacity could not be observed: ", why], "") }
-      CapacityServing { at: _ } =>
-        ContinuationResume {
-          reason: join(["the prior attempt ", prior.attempt_key, " was waiting for capacity and the front now has a TLS card serving: resumed in its own session, wake ", to_string(value: capacity_resumes + 1), " (the S3 resume count of ", to_string(value: made), " of ", to_string(value: session_resume_bound), " is not spent); the wait began: ", cause], ""),
-          attempt_key: prior.attempt_key,
-          ordinal: made + capacity_resumes + 1,
-          causes: [cause],
+    match prior.now {
+      Absent =>
+        ContinuationHold {
+          reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and this sweep could not read the clock, so the next re-delivery instant cannot be named; the request still stands and the belt re-delivers it on a sweep that can read the clock; the request began pending: ", cause], ""),
         }
-      CapacityNotServing { at: at } =>
-        if at - since > budget {
-          ContinuationCapacityExpired {
-            reason: join([
-              "the lineage ending at attempt ", prior.attempt_key, " (branch ", prior.branch, ") waited ", to_string(value: at - since),
-              " seconds for the pool front to serve a TLS card, past its recorded budget of ", to_string(value: budget),
-              " seconds, and none served: the wait ended, the session was not refused by the engine, and its work stays on that branch; the wait began: ", cause,
-            ], ""),
-            waited_seconds: at - since,
-            budget_seconds: budget,
+      Present { value: now } =>
+        if transport_retry_redelivery_due(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key, at: now) {
+          ContinuationResume {
+            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is due: the same round of its own session is RE-DELIVERED (re-delivery ", to_string(value: re_deliveries + 1),
+              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending ", to_string(value: now - since), " seconds ago: ", cause], ""),
+            attempt_key: prior.attempt_key,
+            ordinal: wakes_made + 1,
+            causes: [cause],
           }
         } else {
           ContinuationHold {
-            reason: join(["the prior attempt ", prior.attempt_key, " is waiting for capacity (", to_string(value: at - since), " of ", to_string(value: budget), " seconds); no TLS card serves yet, so no resume is spent; the wait began: ", cause], ""),
+            reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is not due until ", to_string(value: transport_retry_next_delivery_at(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key)),
+              "; next re-delivery at that instant, no resume is spent; the request began pending: ", cause], ""),
           }
         }
     }
@@ -314,7 +315,6 @@ fn continuation_decision_with_retirement(prior: PriorAttemptFacts?, retire: Line
             ContinuationHold { reason: r } => continuation_retire_over_non_ended(record: record, state: "held or active", reason: r)
             ContinuationComplete { reason: r } => continuation_retire_over_non_ended(record: record, state: "complete", reason: r)
             ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => continuation_retire_over_non_ended(record: record, state: "recovery-needed and resumable", reason: r)
-            ContinuationCapacityExpired { reason: r, waited_seconds: _, budget_seconds: _ } => continuation_retire_over_non_ended(record: record, state: "expired waiting for capacity", reason: r)
           }
       }
   }
@@ -356,7 +356,6 @@ fn lineage_retire_admission(prior: PriorAttemptFacts?, attempt_key: String, reas
           ContinuationHold { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (held or active): ", r], "") }
           ContinuationComplete { reason: r } => LineageRetireRefused { reason: join(["the lineage is not Ended (complete): ", r], "") }
           ContinuationResume { reason: r, attempt_key: _, ordinal: _, causes: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (recovery-needed, resumable): ", r], "") }
-          ContinuationCapacityExpired { reason: r, waited_seconds: _, budget_seconds: _ } => LineageRetireRefused { reason: join(["the lineage is not Ended (expired waiting for capacity, which the operator re-opens rather than retires): ", r], "") }
         }
     }
   }
