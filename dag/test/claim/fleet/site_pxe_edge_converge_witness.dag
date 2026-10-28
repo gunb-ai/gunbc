@@ -1159,19 +1159,19 @@ test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
   }
 }
 
-// The edge's own known-client rows, not a supplied list: every row parses, and the rendered daemon config tags
-// each measured host NIC as known. Dropping srv14's row (or mistyping it) turns this red.
+// The edge's own known-client rows, not a supplied list. Inputs are Present only when every row parses
+// (site_pxe_edge_parsed_macs), and the rendered daemon config tags each named host NIC as known, by identity
+// rather than by count. Dropping srv14's row (or mistyping it) turns this red.
 test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -> Bool {
   let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
   match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
     Absent => false
     Present { value: i } =>
-      length(i.roster.known_client_macs) == 2
-        && (match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
-          Absent => false
-          Present { value: cfg } =>
-            contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
-              && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
-        })
+      match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
+        Absent => false
+        Present { value: cfg } =>
+          contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+            && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
+      }
   }
 }
