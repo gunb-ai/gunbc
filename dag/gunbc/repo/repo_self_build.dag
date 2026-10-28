@@ -224,11 +224,12 @@ fn repo_self_build_partition_crate_packages() -> List<String> {
 // makes it an ON-DEMAND INSTRUMENT, not an enrolled gate -- rung "mitigatable", exactly one rung
 // above "exposed" -- and the rung recorded on
 // gunbc.recurring_failure_mode.seed_sha256_is_runner_relative is the authority on that, not this
-// comment. What IS enforced on every pull is the cheap half: the falsifier's structural arms
-// (pairs read from repo_self_seed_build_remaps, present in the committed step, variable assigned and
-// exported) run in the same test function, so they cost nothing when the test is run, and the
-// release-bins key carries the preamble digest as an axis so a preamble change cannot restore stale
-// cached binaries. THE CAPABILITY THAT WOULD RAISE THE RUNG: the native compiler/gate executing this
+// comment. NOTHING IS ENFORCED ON A PULL BY THAT CONTROL: its structural arms (pairs read from
+// repo_self_seed_build_remaps, present in the committed step, variable assigned and exported) live in
+// the SAME #[ignore]d test function, so they are part of the same on-demand instrument rather than a
+// cheap gate -- they are cheap when someone runs the test, and absent when nobody does. The only
+// preamble-related thing a pull does get is the release-bins key carrying the preamble digest as an
+// axis, which stops a preamble change restoring stale cached binaries; it does not check the pairs. THE CAPABILITY THAT WOULD RAISE THE RUNG: the native compiler/gate executing this
 // label as a gunbc test row, or a cheaper witness -- e.g. each seed-build step reading
 // GUNBC_MATERIALIZED_TREE_IDENTITY plus its preamble digest back into its own floor receipt, which
 // would make a fallback visible in CI without three cold builds.
@@ -280,8 +281,9 @@ fn repo_self_build_partition_crate_packages() -> List<String> {
 // location-naming environment variables (CARGO_HOME, RUSTUP_HOME, CARGO_BIN in
 // gunbc.fleet.fleet_release_bins_key release_bins_unkeyed_environment_pattern) for exactly this
 // reason. The prefixes differ per runner, so keying them would re-fragment the cache per checkout
-// depth and defeat the repair's purpose; what makes that sound is not an assertion but the falsifier
-// below, which goes red if any one prefix is dropped. The key step also runs in its own process
+// depth and defeat the repair's purpose. That exclusion is justified by the prefix NAMES being
+// location-only, and it is checked by the falsifier below, pair by pair -- which, per the rung note
+// above, is a hand-run control and not a gate anyone can rely on being green. The key step also runs in its own process
 // before the build step, so the RUSTFLAGS exported here never reaches its `env -0` probe: the
 // ambient value it keys is the toolchain step's, unchanged.
 //
@@ -346,8 +348,11 @@ fn repo_self_build_env_stmts() -> List<Node> {
         why: "the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build"
       ),
       // The two defaults the grammar has no word kind for (a shell `${VAR:-default}`) are modeled
-      // the grammar's way instead: an if/else over the variable itself, which is also what a reader
-      // of the emitted YAML can check. Manager ruling 2026-10-27 approved this shape.
+      // the grammar's way instead: an if/else over the variable itself, tested for emptiness. That is
+      // the only route v2.extdeps.languages.bash_build offers -- its word kinds are lit, var, concat
+      // and cmdsubst -- and it is what a reader of the emitted YAML can check line by line. (The
+      // alternative was spelling `${VAR:-default}` as text, which puts shell syntax back in a string;
+      // a prose note naming who approved this shape would be an untyped ruling, so it is not here.)
       default_from(name: "GUNBC_SEED_TARGET", source: "CARGO_TARGET_DIR", fallback: [
         bash_build_word_var(name: "GUNBC_SEED_CHECKOUT"),
         bash_build_word_lit(text: "/target"),
