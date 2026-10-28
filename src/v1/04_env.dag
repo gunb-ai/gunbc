@@ -2262,7 +2262,7 @@ fn settled_parameterized_alias(alias: ParameterizedAlias, use_args: List<Node>, 
     // SettledType arguments the join comparator compares -- a node NAMED `T`, and a reader keyed on that
     // name settled an established argument to an unbound parameter (measured: a branch over a rebuilt
     // alias list joined List<FreeMonoid<String>> against FreeMonoid<FreeMonoid<String>> and refused,
-    // dependency_demand_census.dag:1352, because the THEN element settled args=[T]). The same one
+    // recurring failure mode type_alias_identity_decided_by_spelling_at_each_check, because the THEN element settled args=[T]). The same one
     // function unify_generics applies at its actual position; see that function's comment above for when
     // a position is a slot and when it must stay the node itself.
     let slot_bindings = alias.params |> enumerate |> fold(init: slot_seed, f: (acc, pair) =>

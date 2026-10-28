@@ -82,13 +82,13 @@ fn child_type_node(ch: Node) -> Node {
 // (one authority for the subject; DESIGN 6b). An element of a container is read by its SHAPE. A bare leaf slot
 // (no children) only NAMES a type: read it through child_type_node to what it resolves to. An unsolved one --
 // the empty list's element -- then arrives as its type variable, and node_type_compatible defers on a type
-// variable, so the empty list joins any List<X> (the corpus shapes materialization_ladder.dag:428 and
-// native_route_progress_guard.dag:1407, which a blanket nominal read refused by handing back the bare slot,
+// variable, so the empty list joins any List<X> (the corpus shapes std.materialization_ladder's
+// ladder_distinct_identities and v2.workflow.native_route_progress_guard's native_progress_report, which a blanket nominal read refused by handing back the bare slot,
 // whose inferred is a resolution, not a type variable, so nothing deferred). A resolved leaf arrives as the
 // use node it names. An APPLIED element (children) is compared by its head, so it is kept as its own nominal
 // node -- reading it through child_type_node handed back the declaration-body expansion (FreeMonoid<Symbol>
 // -> Disj Empty | Cons), and the join refused a pair both authors wrote as List<QualifiedName>
-// (dependency_demand_census.dag:1352). This matches child_type_node on every leaf and generic on every
+// (recurring failure mode type_alias_identity_decided_by_spelling_at_each_check). This matches child_type_node on every leaf and generic on every
 // application: it changes behaviour only where each was individually wrong at the join.
 fn join_element_type(slot: Node) -> Node {
   if slot.children |> count == 0 { child_type_node(ch: slot) } else { slot }

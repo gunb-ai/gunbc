@@ -205,7 +205,8 @@ test fn a_two_branch_join_over_a_rebuilt_alias_list_without_the_rebuild_compiles
 }
 
 // POSITIVE CONTROL FOR THE EMPTY-ELEMENT JOIN (regression guard for the join_element_type narrowing).
-// This mirrors corpus/dependency_demand_census.dag:428 and workflow/native_route_progress_guard.dag:1407:
+// This mirrors std.materialization_ladder's ladder_distinct_identities and
+// v2.workflow.native_route_progress_guard's native_progress_report:
 // a two-branch if whose rebuild arm is a concrete List<String> and whose other arm is the [] literal -- an
 // EMPTY list whose element slot is still an unsolved type variable. The join must accept: the empty side's
 // element stays unsolved (a type variable) and defers at node_type_compatible's own type-variable rule, so
