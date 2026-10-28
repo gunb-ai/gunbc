@@ -6,7 +6,7 @@ import std.scoped_authorization { AttemptIdentity }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { length }
 import extdeps.crypto.mac { MacKeyId }
-import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, BmcControllerEndpoint }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcControllerEndpoint }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
@@ -148,7 +148,7 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
           AccessDiscoverReceipt { receipt: a } =>
             (a.access.endpoint.host as String) == "192.168.1.246"
               && (a.access.firmware.raw_version as String) == "2.11.104000"
-              && (match a.access.family { AmiMegaRac => true  OpenBmc => false })
+              && (match a.access.family { AmiMegaRac => true  OpenBmc => false  SupermicroAten => false })
               && (match a.access.controller_clock { ControllerClockRendered { rendering: t } => (t as String) == "2000-03-02T10:39:54-05:00"  ControllerClockUnread { cause: _ } => false })
               && (a.route.endpoint.host as String) == "192.168.1.246"
               && route_is_redfish_write_candidate_on_manager_read(route: a.route)

@@ -1,0 +1,151 @@
+module gunbc.serving.serving_benchmark_telemetry
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat, nat_max, nat_min }
+import std.optional { Present, Absent }
+import std.decimal { ExactDecimal }
+import std.measure {
+  Microsecond, microsecond, microsecond_count, Milliwatt, milliwatt, milliwatt_count, Hertz, hertz, hertz_count,
+  Celsius, celsius, celsius_count, Bandwidth, bandwidth, bandwidth_count,
+}
+import extdeps.storage.types { PcieLink, PcieGeneration, Gen3, Gen4, Gen5 }
+import extdeps.nvidia.management_library { nvml_clocks_event_mask }
+import extdeps.nvidia.system_management_interface { NvidiaSmiGpuIdentity, NvidiaSmiGpuSample, NvidiaSmiPcieSample }
+import extdeps.gpu_bench.request_v4 { GpuBenchRequestV4 }
+import gunbc.serving.serving_benchmark { ServingBenchmarkVersion }
+import gunbc.serving.serving_benchmark_run_receipt {
+  ObservedGpu, GpuLevelTelemetry, LevelTelemetry, WallPowerReading, TimedRequest,
+  timed_requests, earliest_start, micros_of_seconds, measured_round_numbers, round_requests, round_submission, round_last_completion,
+}
+
+// THE TELEMETRY OF A SERVING-BENCHMARK RUN, folded onto the levels the run's own rows define. The kit
+// writes epoch-second timestamps per request (extdeps.gpu_bench.request_v4); nvidia-smi writes a UTC
+// timestamp per sample (extdeps.nvidia.system_management_interface, the sampler pinned to TZ=UTC). Both are
+// read as Unix microseconds on one host clock, so a sample belongs to a level when it falls inside one of
+// that level's round windows (common submission to last completion). A sample outside every window --
+// priming, the gaps between rounds -- belongs to no level and is not averaged into one.
+
+type Window {
+  start: Nat
+  end: Nat
+}
+
+fn in_windows(at: Nat, windows: List<Window>) -> Bool {
+  any(windows, w => at >= w.start && at <= w.end)
+}
+
+// The absolute windows of one level's measured rounds (warm-up rounds excluded, as from its quantities):
+// each round's relative window shifted by the run's origin.
+fn level_windows(timed: List<TimedRequest>, origin: Nat, active: Nat, warmup: Nat) -> List<Window> {
+  map(measured_round_numbers(requests: timed, active: active, warmup: warmup), k => {
+    let rs = round_requests(requests: timed, round: k)
+    Window { start: origin + microsecond_count(m: round_submission(rs: rs)), end: origin + microsecond_count(m: round_last_completion(rs: rs)) }
+  })
+}
+
+fn pcie_generation_of(n: Nat) -> PcieGeneration? {
+  if n == 3 { Present { value: Gen3 } } else if n == 4 { Present { value: Gen4 } } else if n == 5 { Present { value: Gen5 } } else { none }
+}
+
+// A GPU as the driver reports it, from the identity query. The link the slot can train to is read as
+// pcie.link.gen.max / pcie.link.width.max ("possible with this GPU and system configuration"); a generation
+// outside Gen3-Gen5 is not read as a link here, so the GPU has no observation rather than a guessed one.
+// That is this reader's policy, not the type's limit: PcieGeneration names Gen1 and Gen2 (cards fused to
+// them exist), but the driver reports gen-1 for an idle link that power management has downtrained, so a
+// sample below Gen3 is not a reading of the link the slot trains to.
+fn observed_gpu(row: NvidiaSmiGpuIdentity) -> ObservedGpu? {
+  match pcie_generation_of(n: row.link_generation_max) {
+    Absent => none
+    Present { value: g } => Present {
+      value: ObservedGpu {
+        name: row.name, uuid: row.uuid, vbios: row.vbios, driver: row.driver, memory: row.memory_total,
+        power_limit: row.power_limit, link_max: PcieLink { generation: g, lane_count: row.link_width_max },
+      }
+    }
+  }
+}
+
+fn mean_of(xs: List<Nat>) -> Nat {
+  if count(xs) == 0 { 0 } else { fold(xs, init: 0, f: (a, x) => a + x) / count(xs) }
+}
+
+fn max_of(xs: List<Nat>) -> Nat {
+  fold(xs, init: 0, f: (a, x) => nat_max(a: a, b: x))
+}
+
+// The OR of the clocks event masks seen, bit by bit up to 2^59: the sample reader refuses a mask wider than
+// fifteen hex digits, so no read mask has a higher bit.
+fn mask_or(xs: List<Nat>) -> Nat {
+  mask_or_from(xs: xs, bit: 1, acc: 0)
+}
+
+fn mask_or_from(xs: List<Nat>, bit: Nat, acc: Nat) -> Nat {
+  if bit > 576460752303423488 { acc } else {
+    mask_or_from(xs: xs, bit: bit * 2, acc: if any(xs, x => (x / bit) - ((x / bit) / 2) * 2 == 1) { acc + bit } else { acc })
+  }
+}
+
+// One GPU over one level. A GPU with no sample in the level's windows, or whose link never trained to a
+// generation PcieLink holds, has no telemetry for that level, and admission names the gap. The link
+// reported is the widest the GPU trained to while the level ran: an idle link drops to gen 1, so the
+// narrowest reading would describe the pauses between requests, not the load.
+fn gpu_level_telemetry(gpu: NvidiaSmiGpuIdentity, samples: List<NvidiaSmiGpuSample>, pcie: List<NvidiaSmiPcieSample>, windows: List<Window>) -> GpuLevelTelemetry? {
+  let own = samples |> filter(s => (s.uuid as String) == (gpu.uuid as String) && in_windows(at: microsecond_count(m: s.at_unix), windows: windows))
+  let own_pcie = pcie |> filter(p => p.index == gpu.index && in_windows(at: microsecond_count(m: p.at_unix), windows: windows))
+  if count(own) == 0 || count(own_pcie) == 0 { none } else {
+    match pcie_generation_of(n: max_of(xs: map(own, s => s.link_generation))) {
+      Absent => none
+      Present { value: g } => Present {
+        value: GpuLevelTelemetry {
+          uuid: gpu.uuid,
+          power_mean: milliwatt(count: mean_of(xs: map(own, s => milliwatt_count(w: s.power_draw)))),
+          power_peak: milliwatt(count: max_of(xs: map(own, s => milliwatt_count(w: s.power_draw)))),
+          sm_clock_mean: hertz(count: mean_of(xs: map(own, s => hertz_count(h: s.sm_clock)))),
+          memory_clock_mean: hertz(count: mean_of(xs: map(own, s => hertz_count(h: s.memory_clock)))),
+          temperature_peak: celsius(count: fold(own, init: celsius_count(c: first_temperature(own: own)), f: (a, s) => if celsius_count(c: s.temperature) > a { celsius_count(c: s.temperature) } else { a })),
+          clocks_events: nvml_clocks_event_mask(mask: mask_or(xs: map(own, s => s.clocks_event_mask))),
+          link_observed: PcieLink { generation: g, lane_count: max_of(xs: map(own, s => s.link_width)) },
+          pcie_rx_mean: bandwidth(count: mean_of(xs: map(own_pcie, p => bandwidth_count(b: p.rx)))),
+          pcie_tx_mean: bandwidth(count: mean_of(xs: map(own_pcie, p => bandwidth_count(b: p.tx)))),
+        }
+      }
+    }
+  }
+}
+
+fn first_temperature(own: List<NvidiaSmiGpuSample>) -> Celsius {
+  match first(own) { Present { value: s } => s.temperature, Absent => celsius(count: 0) }
+}
+
+// Every level of the version that has windows in the rows gets one entry, holding the GPUs that have
+// telemetry in it; a level with no windows gets none. Admission (gunbc.serving.serving_benchmark_run_receipt
+// telemetry_gaps) refuses a level whose entry is missing or does not cover every GPU of the cell, so this
+// fold never fills a gap: it reports what was sampled.
+fn serving_benchmark_level_telemetry(
+  version: ServingBenchmarkVersion,
+  requests: List<GpuBenchRequestV4>,
+  gpus: List<NvidiaSmiGpuIdentity>,
+  samples: List<NvidiaSmiGpuSample>,
+  pcie: List<NvidiaSmiPcieSample>,
+  wall_power: WallPowerReading,
+) -> List<LevelTelemetry> {
+  match earliest_start(requests: requests) {
+    Absent => [] as List<LevelTelemetry>
+    Present { value: t0 } => match micros_of_seconds(d: t0) {
+      Absent => [] as List<LevelTelemetry>
+      Present { value: origin } => {
+        let timed = timed_requests(requests: requests).requests
+        flat_map(version.workload.active_levels, n => {
+          let windows = level_windows(timed: timed, origin: microsecond_count(m: origin), active: n, warmup: version.workload.warmup_rounds_per_level)
+          if count(windows) == 0 { [] as List<LevelTelemetry> } else {
+            [LevelTelemetry {
+              active: n,
+              gpus: flat_map(gpus, g => match gpu_level_telemetry(gpu: g, samples: samples, pcie: pcie, windows: windows) { Absent => [] as List<GpuLevelTelemetry>, Present { value: t } => [t] }),
+              wall_power: wall_power,
+            }]
+          }
+        })
+      }
+    }
+  }
+}

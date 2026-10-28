@@ -1,0 +1,110 @@
+module gunbc.plans.mtcollins1_ci_service_legs
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import gunbc.design_ruling { project_documentation_projections_are_not_checkout_artifacts }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, p, li, ul }
+
+// THE DESIGN FOR THE LAST TWO LEGS OF mtcollins1 INTO CI SERVICE (session quiet-gull-101, node
+// adhoc-2ae53679-074, 2026-10-27): F, the stateless service-slot lifecycle (dispatch, collect,
+// deregister, lost-boot sweep), and G, the first qualification run. Each leg is mapped onto the
+// authority that already owns it. Most of both legs exists as implemented authorities that still owe
+// wiring, so this plan is mostly about wiring, not new vocabulary. Design only. Lane owner's ruling on the G route
+// (merry-fox-82, msg_a8e095b1, 2026-10-27): option A, recorded in section 2.
+
+fn opening() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. Target"),
+    ul(items: [
+      li(text: "**G first.** One floor job runs on mtcollins1 in one ephemeral attempt slot, with the slot shape of gunbc.runner.runner_slot_desired gunbc_runner_slot_desired and its workspace on RAM-backed tmpfs, so the slot's memory.peak includes the build tree (gunbc.runner.runner_throughput_qualification_route mtcollins1_qualification_workspace_backing). The run is bound by gunbc.host.memory_envelope and produces a sealed receipt. That receipt either admits the shape or refuses it, with the measured number."),
+      li(text: "**Then F.** Each boot of mtcollins1 brings up its N = gunbc.runner.runner_slot_allocation gunbc_runner_committed_width service slots, numbered 0..N-1 and named for the admitted boot id. Each pass of a slot mints one JIT runner config (no registration token, nothing long-lived on the host's disk), runs one job, collects its receipt and deregisters. A sweep removes registrations left by lost boots. Stateless: nothing about registration survives a boot (gunbc.design_ruling mtcollins1_ci_runner_enrolment_approved)."),
+      li(text: "**Order.** No service slot joins a runner group a required job can reach until G's receipt admits the shape. An unqualified host takes no required CI."),
+    ]),
+  ]
+}
+
+fn decisions() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Decisions"),
+    ul(items: [
+      li(text: "**G runs on the attempt-slot qualification route, not on a service slot** (lane owner, option A). gunbc.runner.runner_qualification_dispatch qualification_dispatch_subject_over keeps its SubjectSlotNotAttemptScoped refusal of a service slot, and that refusal stays a RED. The attempt label in runs-on is the only thing that stops another registration from serving the job (gunbc.runner.runner_qualification_receipt records the receipt that was published without it). Option B, widening the subject to ServiceSlot, is rejected: it would give up that binding and put service slots in front of required jobs before any qualification."),
+      li(text: "**The trigger of service_slot_pass_binding_execution_frontier is reworded** (gunbc.runner.runner_service_slot_controller). It named leg (g) as the run that executes the real pass bindings. Under option A, G never runs a service pass, so the trigger becomes F's first live service pass after G's receipt, and that pass must record the sealed JitRunnerDeregistered receipt. This PR makes that edit."),
+      li(text: "**No registration token exists on either route.** Both routes mint a GitHub JIT runner config (gunbc.runner.runner_jit_perform dispatch_jit_mint, through the one gunbc.runner.runner_jit_mint_binding jit_mint_binding), which registers one ephemeral runner for one job. The only long-lived credential is the gunbai-ci App key. G stages it in the fleet-converge run over WIF, as the lost-boot sweep's stage_controller_app_key does. F holds it per boot in host memory: the ServiceSlotAppKey row of gunbc.fleet.host_credential_custody_converge, CustodyTmpfsNoSwap, under gunbc.design_ruling mtcollins1_in_memory_app_credential_per_boot. Installation tokens and JIT configs reach the listener through the environment, never argv, and are never printed. Every collected line is built from typed fields that are not Secret, and a claim checks that."),
+      li(text: "**Modes, not jobs.** Every new operation is a mode of gunbc.fleet.fleet_converge_workflow (gunbc.design_ruling fleet_converge_modes_are_outside_the_job_roster). G's floor job runs only on workflow_dispatch, never on pull_request or merge_group, so it is inside that ruling's scope and not a job_roster_closed_to_growth addition. No pull-request job is added."),
+      li(text: "**The image stays revision-independent.** The host runs a gunbc release pushed after boot, not one baked into the medium: gunbc.runner.runner_host_medium runner_host_medium_image carries only the actions runner. The pushed revision must be one gunbc.fleet.fleet_revision_acceptance admits (RequiredCiSucceeded beside DefaultBranchRevisionObserved), and G's qualification_revision input is pinned the same way. That way a medium digest is never a second record of which compiler the slots run."),
+    ]),
+  ]
+}
+
+fn authorities() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Existing authorities each leg inhabits"),
+    ul(items: [
+      li(text: "**Authorization (section 3d).** gunbc.auth.privileged_effect_census already rows dispatch_jit_mint, ensure_jit_runner_deregistered, sweep_under_staged_key, dispatch_qualification_floor and ensure_qualification_ref_pin / remove_qualification_ref_pin, the last three under runner_lifecycle_scope_ruling. Custody placement is host_credential_custody_converge_ci_wet. Any site this plan adds (the service-slot start and collect folds, the G route fold, the sweep's read-only arm) gets a census row, and its pattern comes from executing gunbc.auth.authorization_pattern_selection select_authorization_pattern, not from the call site."),
+      li(text: "**Slot shape and width.** gunbc_runner_slot_desired is the single authority for MemoryMax, MemoryHigh, MemorySwapMax = 0, TasksMax and CPUWeight. G renders it as systemd-run properties (runner_throughput_qualification_route ephemeral_slot_properties). F's service units render it through the same properties function, not a sibling. The width is 5 (test.claim.runner.mtcollins1_runner_offer_witness). The disk axis reads DiskWidthUnconstrained (runner_slot_allocation host_disk_admitted_width), which on a RAM host means the workspace is charged to memory. G's receipt is the measurement that settles whether floor peak plus build tree fits under memory_high."),
+      li(text: "**Memory envelope.** gunbc.host.memory_envelope memory_envelope_decision with the slot requirement: the step runs under the unit cgroup whose memory.max binds, and memory_envelope_verdict refuses on any OOM kill or any swap. The live unit is read back against the declared shape (gunbc.runner.runner_unit_live_read) before the floor starts. A drift is the class gunbc.recurring_failure_mode the_live_runner_unit_memory_shape_drifts_from_the_declared_slot and refuses."),
+      li(text: "**Host transport.** Every on-host effect goes over gunbc.host.anchored_host_transport anchored_host_transport_of. The host is derived from the transport (gunbc.host.host_bound_transport), and any arm other than Bound refuses the leg. That dissolves the first anchored_host_transport_frontier_rows row."),
+      li(text: "**Boot evidence.** The current boot is only ever the one minted by gunbc.runner.runner_lost_boot_sweep_run lost_boot_observed_over (boot_id over the bound transport), joined to the capture by lost_boot_current_from_capture. F's population (gunbc.runner.runner_host_unit_slot current_service_population) and the sweep both take that one value."),
+    ]),
+  ]
+}
+
+fn leg_g() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. Leg G: the qualification run (hermetic now, wet on go)"),
+    p(text: "runner_throughput_qualification_route mtcollins1_route_legs lists boot and image as LegWired, and registration, dispatch, collect and deregistration as LegAuthorityImplemented, each with its wiring owed. G does that wiring and nothing else:"),
+    ul(items: [
+      li(text: "**G1a. The floor job and its mode.** The floor job's contract (the attempt input, the revision guard, the job) lives in gunbc.runner.runner_qualification_floor_job, below both of its readers. The dispatch module already reads the fleet-converge model, so it could not hold the contract without an import cycle. The job is the guard, then the required job's own prelude and subject steps (gunbc.witness.compiler_gate_workflow compiler_gate_floor_steps_after_checkout). It is selected by the qualification_floor mode and runs on exactly the attempt label. The revision is the workflow's existing expected_revision input, not a second qualification_revision input. That input already means the revision a run must check out, refusing on a mismatch, and the workflow's dispatch inputs sit at GitHub's limit of 25 with this change. Admission refuses a workflow requiring an input the dispatch does not carry (SubjectRequiredInputUnsupplied), and the dispatch carries mode and host."),
+      li(text: "**G1b. The driver mode.** qualification_attempt binds the real effects to the G2 fold: the slot host's unit hold (a qualification owner beside the boot, reset and probe owners), the App key staged over WIF, one installation token, and the launch over the anchored transport. It adds the census row for its site. **The launch's exit is not read off SSH.** gunbc.systemd_run_transient systemd_run_transient_wait_read refuses FleetSsh until a remote status can be told from a transport status (255 is either). So the listener's exit is the unit's own Result, read from the --wait summary that systemd-run prints from the remote manager (extdeps.systemd.systemd_run systemd_run_wait_summary). That needs a system-manager --pipe launch that is not --quiet and mints SystemdSummaryPrintingWait; today's pipe builder passes --quiet. An absent or unparseable summary is SlotListenerOutcomeUnobserved, a new JitSlotExit arm, never a fabricated clean or nonzero exit. **The listener command is one builder** for the service slot and the attempt slot, differing only in unit, user and root. The attempt unit runs as the host's declared runner user under Delegate=yes, never as root. A live anchored transport (the FleetSsh transport for the host, the presented key scanned, anchored_host_transport_of) is one shared composition in gunbc.host.anchored_host_transport, used by this driver and by F4's dry run, not one per caller."),
+      li(text: "**G2. The route fold**, one production caller for the four implemented legs, in this order: take the host's unit hold (gunbc.host.managed_host_unit_hold); host_unit_slot_for an AttemptSlot; mint with dispatch_jit_mint into the qualification group; start ephemeral_slot_command over the anchored transport, with the minted JIT config on stdin through the same export wrapper F's listener uses (extdeps.posix.sh_invocation posix_sh_export_from_stdin_then_exec_command, through gunbc.host.host_effect_realize run_argv_stdin_over_host_effect_transport), so the config never appears in argv; ensure_qualification_ref_pin; dispatch_qualification_floor; collect_qualification_run, then collect_qualification_instruments; on every exit, ensure_jit_runner_deregistered joined to a gunbc.runner.runner_teardown_receipt RunnerTeardownRequest over the host unit; remove_qualification_ref_pin. route_is_executable turns true only through these bindings, and its witness flips with them."),
+      li(text: "**G3. The instruments read today's floor.** collect_qualification_instruments decodes [floor-phase] and [floor-cgroup] rows, which the withdrawn claim_executor floor printed and today's required floor does not. Today's required floor prints, per subject step, gunbc test's memory envelope receipt at the bounding cgroup, which on this route is the attempt unit, so its peak includes the tmpfs build tree. The instruments are re-pointed at that receipt and at the job's step timings. Until then the collect leg reads nothing it can admit."),
+      li(text: "**G4. The receipt** is the sealed collection plus WorkspaceBacking RamBackedTmpfs, the memory envelope verdict, the live unit read and the teardown result. A workspace-inclusive peak above memory_high is a not-admitted verdict that carries the number. The remedy is a disk or a narrower shape, either of which is a different subject."),
+      li(text: "**Teardown deletes the pass tree before the unit goes.** A tmpfs page stays charged after its writer exits, and when the cgroup is removed it moves to the parent. A build tree left behind is host memory that no slot accounts for. The teardown receipt therefore observes the per-attempt root as absent, beside the registration being absent."),
+      li(text: "**Hermetic now.** The fold is written over fn-typed bindings, the way service_slot_pass_over is, with a pass witness that observes every leg on clean, failed and never-dispatched exits. Each binding gets a RED for deleting its call. The real bindings run only on the live run."),
+    ]),
+  ]
+}
+
+fn leg_f() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Leg F: the service-slot lifecycle (after G's receipt)"),
+    ul(items: [
+      li(text: "**F0. The runner group.** service_slot_runner_group_name joins gunbc.runner.runner_group_restriction_ensure restricted_runner_groups, restricted to service_slot_selected_workflow, and is ensured by the existing MicrovmRunnerGroupEnsure mode. Until then the mint refuses RunnerGroupAbsent, which is correct. Creating the group is the gate that keeps required CI away from the host, so it waits on G's receipt."),
+      li(text: "**F1. Dispatch: one service-slot start mode, generic over managed hosts** (mtcollins1 appears only as a row). The mode runs after the boot terminal and the HostCredentialCustodyConverge placement. Over the anchored transport it mints the boot evidence and derives current_service_population. It pushes the accepted release and starts N transient units, each named service_slot_unit_spelled with the shape from section 3, ExecStart = service_slot_controller_execstart, and a stop timeout long enough for one deregistration with readback. It then reads back every unit. This gives service_slot_controller_execstart and current_service_population their production consumer, so both consumer frontiers dissolve."),
+      li(text: "**F2. Collect.** The durable half is GitHub's: each job's run and log, read through gunbc.github_effect_perform read_job_log_with. The host half is the controller's one ServiceSlotPass line per pass on its journal, read over the anchored transport by the same mode's observe arm, in the gunbc.fleet.fleet_receipt_collector pattern (classify the raw bytes in a pure function; the wet seam only fetches). A boot lost before collection loses its host half. That loss is declared, never filled in."),
+      li(text: "**F3. Deregister on shutdown.** Every arm of service_slot_pass already reaches deregistration. What is owed is that a stop (host shutdown, unit stop) maps the listener's termination into that path inside the stop timeout. A control kills the unit and observes the deregistration call."),
+      li(text: "**F4. The lost-boot sweep, read-only first.** lost_boot_sweep_wet passes transport: none today, so it refuses every dispatch. It is given the anchored transport. The ServiceRunnerLostBootSweep mode gains a read-only effect input: plan computes sweep_plan against the real organization runner roster and writes the selection and the minted CurrentBootEvidence to the receipt, and deregister_selection is never called on that arm. The apply arm stays GATED and refuses unconditionally until the go. The dry run's receipt is the recorded evidence that the #14738 pairing obligation and lost_boot_sweep_effect_pairing_frontier item 3 require."),
+      li(text: "**F5. First live service pass.** After F0 to F2, one real witness-floor job on one service slot records the sealed JitRunnerDeregistered receipt. That discharges the reworded service_slot_pass_binding_execution_frontier (F1/F2 of that row)."),
+    ]),
+  ]
+}
+
+fn sequence() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Change sequence and gates"),
+    ul(items: [
+      li(text: "**PR 1 (this one):** the plan, plus the reworded service_slot_pass_binding_execution_frontier."),
+      li(text: "**PR 2:** G2, the hermetic pass fold (#15252). **PR 2a:** G1a, the floor job and mode. **PR 2b:** G1b, the driver mode with its census row. **PR 2c:** G3, the instruments."),
+      li(text: "**PR 3:** F4, the sweep's read-only arm over the anchored transport, hermetic."),
+      li(text: "**PR 4:** F1 to F3, the start and collect mode, hermetic, plus F0's roster row with group creation gated."),
+      li(text: "**Wet steps, each only on merry-fox-82's go, after mtcollins1 boots the runner image with network and sshd serving the custody-placed host key (boot lane):** the anchored host-key scan; the F4 dry run; the G run; F0 group creation; F5."),
+    ]),
+    h2(text: "7. Open items"),
+    ul(items: [
+      li(text: "**To verify upstream:** service_slot_selected_workflow restricts the group to the witness floor at refs/heads/main. A pull_request run's workflow ref is the pull request's merge ref, so the restriction may refuse the very jobs the slots exist to serve. It must be read against GitHub's documented selected-workflow matching before F0 creates the group."),
+      li(text: "**To observe on G:** whether 22 GiB holds floor peak plus build tree on tmpfs. If not, the width of 5 is unreachable as declared, and the remedy is a disk or a narrower shape, never a silent raise."),
+      li(text: "**Precondition owned by the boot lane:** today the RAM image has no network and no sshd (gunbc.runner.runner_host_first_boot_receipt). Every on-host leg above waits on it."),
+    ]),
+  ]
+}
+
+data mtcollins1_ci_service_legs_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly { ruling: project_documentation_projections_are_not_checkout_artifacts },
+  slug: "mtcollins1-ci-service-legs",
+  title: "mtcollins1 into CI service, legs F and G: qualify one attempt slot under the tmpfs-inclusive envelope, then run stateless per-boot service slots with JIT registration, collection, deregistration and a gated lost-boot sweep",
+  body: concat(concat(concat(concat(concat(opening(), decisions()), authorities()), leg_g()), leg_f()), sequence()),
+  retirement: PlanRetiresWhen {
+    condition: unbound_dissolution(description: "Retire when G's sealed qualification receipt for mtcollins1 is recorded (admitted or refused with its number), the lost-boot sweep's read-only run has recorded minted CurrentBootEvidence through the real dispatch, and, if G admitted the shape, one live service pass has recorded the sealed JitRunnerDeregistered receipt."),
+  },
+}

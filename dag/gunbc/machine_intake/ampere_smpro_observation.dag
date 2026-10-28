@@ -5,6 +5,7 @@ import std.algebra { trim }
 import std.measure { Second }
 import std.optional { Present, Absent }
 import extdeps.bmc.ipmi
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv, IpmiCipherSuite }
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeout_expired_exit_code }
 import extdeps.bmc.ipmitool_raw_reply { ipmitool_raw_byte_text, ipmitool_raw_byte_report, ipmitool_raw_reply_bytes }
 import extdeps.bmc.ipmi_master_write_read {
@@ -187,7 +188,7 @@ fn smpro_pass_observation_fixture(host: HostIdentity, site: SmproSite, outcomes:
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.ampere_smpro_observation_witness", decl_name: "observed_at"),
     decl_ref(module_path: "test.claim.machine_intake.smpro_internal_error_witness", decl_name: "observed"),
-    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness", decl_name: "smpro_probed"),
+    decl_ref(module_path: "test.claim.machine_intake.megarac_boot_diagnostic_bundle_witness", decl_name: "smpro_probed"),
     decl_ref(module_path: "test.claim.machine_intake.mtcollins1_boot_run_witness", decl_name: "smpro_probed_empty"),
     decl_ref(module_path: "test.claim.machine_intake.mtcollins1_power_on_account_witness", decl_name: "pass_of"),
   ]
@@ -340,7 +341,7 @@ fn smpro_request_text(w: SmproRequestWire) -> NonEmptyStr {
   concat("raw 0x06 0x52 ", w.bus as String, " ", w.slave as String, " ", w.read_count as String, " ", w.register as String, " ", w.read_count as String) as NonEmptyStr
 }
 
-fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second) -> SmproProbeOutcome
+fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: NonEmptyStr, password_file: NonEmptyStr, target: SmproTarget, reg: SmproRegister, sequence: Int, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproProbeOutcome
 {
   match master_write_read_bus_byte(bus: bus) {
     Absent => SmproRequestUnencodable { socket: target.socket, register: reg.name, detail: "the bus fields do not fit the request's byte 1" }
@@ -361,6 +362,7 @@ fn smpro_pass_read(bmc_host: NonEmptyStr, bus: MasterWriteReadBus, username: Non
             write_second: wire.read_count,
             deadline: coreutils_duration_operand(d: deadline) as NonEmptyStr,
             kill_after: coreutils_duration_operand(d: kill_after) as NonEmptyStr,
+            cipher_suite_argv: ipmi_cipher_suite_argv(suite: cipher_suite),
           )
           smpro_probe_outcome(raw: SmproProbeRaw {
             sequence: sequence, socket: target.socket, register: reg.name, request: smpro_request_text(w: wire),
@@ -437,9 +439,9 @@ fn smpro_pass_sequenced(plan: SmproPlan, read: fn(SmproTarget, SmproRegister, In
   ]))
 }
 
-fn smpro_pass_probes(subject: SmproPassSubject, username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second) -> SmproPassObservation
+fn smpro_pass_probes(subject: SmproPassSubject, username: NonEmptyStr, password_file: NonEmptyStr, deadline: Second, kill_after: Second, cipher_suite: IpmiCipherSuite?) -> SmproPassObservation
 {
-  SmproPassObservation { subject: subject, outcomes: smpro_pass_sequenced(plan: smpro_pass_plan(site: subject.site), read: (t, reg, n) => smpro_pass_read(bmc_host: subject.endpoint.host, bus: subject.site.bus, username: username, password_file: password_file, target: t, reg: reg, sequence: n, deadline: deadline, kill_after: kill_after)) }
+  SmproPassObservation { subject: subject, outcomes: smpro_pass_sequenced(plan: smpro_pass_plan(site: subject.site), read: (t, reg, n) => smpro_pass_read(bmc_host: subject.endpoint.host, bus: subject.site.bus, username: username, password_file: password_file, target: t, reg: reg, sequence: n, deadline: deadline, kill_after: kill_after, cipher_suite: cipher_suite)) }
 }
 
 // ── what each socket's reads establish ──────────────────────────────────────────────────────────
