@@ -183,7 +183,7 @@ data mtcollins1_evidence_manifest_digest: ContentHash = Sha256Hash(Sha256Digest 
 // which is the only difference between an observed capability and a hopeful one. The write evidence
 // is the second artifact, artifacts/bmc/mtcollins1-intake-write-exercise.json.
 data mtcollins1_boot_control_route: BmcBootControlRouteObservation = BmcBootControlRouteObservation {
-  route: IpmiLanplusRoute,
+  route: IpmiLanplusRoute { cipher_suite: Absent },
   raw_response: mtcollins1_write_exercise_digest,
   observed_at: mtcollins1_write_exercise_observed_at,
 }

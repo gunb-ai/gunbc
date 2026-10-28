@@ -143,7 +143,7 @@ fn dispatch_jit_mint(
   decl_ref(module_path: "test.claim.runner.runner_attempt_launch_witness", decl_name: "planned_with"),
   decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness", decl_name: "delivered_mint"),
   decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
-  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_the_generated_fleet_converge_workflow_admits_its_floor_job"),
 ] {
   match plan_jit_mint(
     subject: subject,
@@ -247,7 +247,7 @@ fn receive_jit_mint(
   decl_ref(module_path: "test.claim.github_app_registry", decl_name: "witness_a_minted_credential_is_bound_to_the_dispatched_attempt"),
   decl_ref(module_path: "test.claim.runner.runner_microvm_slot_controller_witness", decl_name: "delivered_mint"),
   decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_real_mint_admits_the_attempt_through_the_sealed_subject"),
-  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_attempt_input"),
+  decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "the_production_mint_over_the_generated_fleet_converge_workflow_admits_its_floor_job"),
   decl_ref(module_path: "test.claim.runner.runner_qualification_dispatch_witness", decl_name: "a_delivery_from_another_dispatch_on_the_same_slot_refuses"),
   decl_ref(module_path: "test.claim.runner.runner_attempt_launch_witness", decl_name: "planned_with"),
 ] {

@@ -195,6 +195,7 @@ fn qualification_attempt_pass_over(
 ) -> QualificationAttemptPass
   admit_callers: [
     decl_ref(module_path: "test.claim.runner.runner_qualification_attempt_pass_witness", decl_name: "pass_with"),
+    decl_ref(module_path: "gunbc.runner.runner_qualification_attempt_run", decl_name: "qualification_attempt_bound"),
   ]
 {
   match pin(attempt, revision) {

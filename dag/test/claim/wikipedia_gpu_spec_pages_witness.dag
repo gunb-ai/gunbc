@@ -1,0 +1,70 @@
+module test.claim.wikipedia_gpu_spec_pages_witness
+
+// EACH PINNED PAGE MODULE IS THE WHOLE REVISION: every wikitable, every row of every spec table, at the
+// counts read off that revision. The controls below remove or repeat one row or table of a supplied page
+// and require extdeps.wikipedia.gpu_spec_table wikipedia_spec_page_complete to refuse it.
+
+import std.types { Bool, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.wikipedia.gpu_spec_table {
+  WikipediaGpuSpecPage,
+  WikipediaGpuSpecRow,
+  WikipediaSpecTable,
+  WikipediaNonSpecTable,
+  NoMemorySizeColumn,
+  wikipedia_spec_page_complete,
+}
+import extdeps.wikipedia.list_of_nvidia_graphics_processing_units { list_of_nvidia_graphics_processing_units_page }
+import extdeps.wikipedia.list_of_amd_graphics_processing_units { list_of_amd_graphics_processing_units_page }
+import extdeps.wikipedia.amd_instinct { amd_instinct_page }
+import extdeps.wikipedia.list_of_intel_graphics_processing_units { list_of_intel_graphics_processing_units_page }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn w_every_pinned_gpu_page_is_complete() -> Bool {
+  wikipedia_spec_page_complete(page: list_of_nvidia_graphics_processing_units_page)
+    && wikipedia_spec_page_complete(page: list_of_amd_graphics_processing_units_page)
+    && wikipedia_spec_page_complete(page: amd_instinct_page)
+    && wikipedia_spec_page_complete(page: list_of_intel_graphics_processing_units_page)
+}
+
+data fixture_revision: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "en.wikipedia.org/w/index.php?title=Fixture&oldid=1" }
+}
+
+fn fixture_row(ordinal: Nat) -> WikipediaGpuSpecRow {
+  WikipediaGpuSpecRow {
+    ordinal: ordinal, model: none, launch_cell: none, launch_year: none, memory_cell: none, memory: none,
+    memory_type_cell: none, bandwidth_cell: none, bandwidth: none, power_cell: none, power: [], bus_cell: none, bus: none,
+  }
+}
+
+fn fixture_page(rows: List<WikipediaGpuSpecRow>, table_count: Nat) -> WikipediaGpuSpecPage {
+  WikipediaGpuSpecPage {
+    revision: fixture_revision,
+    html_sha256: "fixture",
+    table_count: table_count,
+    tables: [
+      WikipediaSpecTable { ordinal: 0, heading: "Desktop GPUs", row_count: 3, rows: rows },
+      WikipediaNonSpecTable { ordinal: 1, heading: "Desktop GPUs > IGP", reason: NoMemorySizeColumn },
+    ],
+  }
+}
+
+test fn w_control_the_complete_fixture_page_is_complete() -> Bool {
+  wikipedia_spec_page_complete(page: fixture_page(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 1), fixture_row(ordinal: 2)], table_count: 2))
+}
+
+test fn w_red_a_page_missing_one_row_is_not_complete() -> Bool {
+  !wikipedia_spec_page_complete(page: fixture_page(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 2)], table_count: 2))
+}
+
+test fn w_red_a_page_repeating_one_row_is_not_complete() -> Bool {
+  !wikipedia_spec_page_complete(page: fixture_page(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 1), fixture_row(ordinal: 1)], table_count: 2))
+}
+
+test fn w_red_a_page_missing_one_table_is_not_complete() -> Bool {
+  !wikipedia_spec_page_complete(page: fixture_page(rows: [fixture_row(ordinal: 0), fixture_row(ordinal: 1), fixture_row(ordinal: 2)], table_count: 3))
+}
