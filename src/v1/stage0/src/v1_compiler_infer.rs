@@ -18518,50 +18518,6 @@ pub fn alias_chain_type_arg_subst(
     }
 }
 
-pub fn alias_chain_arity_diagnostics(
-    carrier: Rc<Node>,
-    carrier_name: String,
-    env: Rc<TypeEnv>,
-    module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    {
-        let type_args = carrier.children.clone();
-        if (((carrier_name.clone() == "".to_string()) || ((type_args.clone().len() as i64) == 0))
-            || crate::std_types::is_container_type(carrier_name.clone()))
-        {
-            Rc::new(vec![])
-        } else {
-            match crate::v1_compiler_infer_env::lookup_type_by_name(
-                env.clone(),
-                carrier_name.clone(),
-            ) {
-                Some(target) => {
-                    let decl =
-                        alias_chain_generic_decl(env.clone(), carrier.clone(), target.clone());
-                    if alias_chain_type_arg_arity_mismatch(
-                        carrier.clone(),
-                        decl.clone(),
-                        type_args.clone(),
-                    ) {
-                        Rc::new(vec![crate::v1_std_core::make_error_node(
-                            Rc::new(CompilerDiagnostic::TypeArgumentArityMismatch {
-                                type_name: carrier_name.clone(),
-                                supplied: (type_args.clone().len() as i64),
-                                declared: (decl.params.clone().len() as i64),
-                                span: carrier.span.clone(),
-                            }),
-                            module_name,
-                        )])
-                    } else {
-                        Rc::new(vec![])
-                    }
-                }
-                std::option::Option::None => Rc::new(vec![]),
-            }
-        }
-    }
-}
-
 pub fn alias_chain_target_after_args(
     target: Rc<Node>,
     carrier: Rc<Node>,
@@ -18641,15 +18597,7 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             crate::v1_std_core::authored_name_at(env.source_indices.clone(), carrier.clone())
         };
-        let own_diags = v1_rt::concat(
-            peel_result.diagnostics.clone(),
-            alias_chain_arity_diagnostics(
-                carrier.clone(),
-                carrier_name.clone(),
-                env.clone(),
-                module_name.clone(),
-            ),
-        );
+        let own_diags = peel_result.diagnostics.clone();
         let structural = structural_from_expanded_type(
             crate::v1_compiler_infer_lookup::resolve_scrutinee_type_node(
                 env.clone(),
