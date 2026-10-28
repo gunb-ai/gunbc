@@ -12,7 +12,7 @@ import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualif
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome, RunArgvTransportObserved, RunArgvTransportRefused, ShellExecObserved,
-  run_argv_over_host_effect_transport,
+  run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
 }
 import gunbc.host.verified_archive_install {
   ArchiveSha256, ArchiveNpmIntegrity,
@@ -235,6 +235,35 @@ test fn fleet_ssh_argv_goes_through_the_host_effect_dispatcher() -> Bool {
       match run_argv_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/verified-archive-install-dispatcher"), transport: t) {
         RunArgvTransportRefused { reason: r } =>
           !string_contains(s: r, pattern: "run_argv_over_host_effect_transport refuses the FleetSsh")
+        RunArgvTransportObserved { observed: _ } => true
+      }
+  }
+}
+
+// THE STDIN RUNNER REACHES THE FLEET LEG. A word the far-side shell would re-split is refused by the
+// fleet leg's own portable-words admission, whose text the dispatcher's former blanket refusal never
+// carried, so the RED is the old dispatcher: it refused before reaching the leg and this text was absent.
+test fn fleet_ssh_stdin_refuses_a_non_portable_word_at_the_fleet_leg() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match run_argv_stdin_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/stdin fleet leg"), stdin_payload: "payload", transport: t) {
+        RunArgvTransportRefused { reason: r } =>
+          string_contains(s: r, pattern: "remote words are not portable under the far-side shell re-parse")
+        RunArgvTransportObserved { observed: _ } => false
+      }
+  }
+}
+
+// THE CONTROL: portable words pass that admission, so whatever the leg answers it is not the
+// non-portable refusal.
+test fn fleet_ssh_stdin_admits_portable_words_past_the_word_check() -> Bool {
+  match fleet_ssh_transport() {
+    Absent => false
+    Present { value: t } =>
+      match run_argv_stdin_over_host_effect_transport(command: mkdir_parents_command(path: "/tmp/stdin-fleet-leg"), stdin_payload: "payload", transport: t) {
+        RunArgvTransportRefused { reason: r } =>
+          !string_contains(s: r, pattern: "remote words are not portable under the far-side shell re-parse")
         RunArgvTransportObserved { observed: _ } => true
       }
   }

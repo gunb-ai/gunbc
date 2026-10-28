@@ -11,7 +11,7 @@ import gunbc.auth.mtjade1_arrival_federation {
 }
 import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_privileged_effect }
 import std.types { Bool, List, NonEmptyStr, String }
-import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_write_scope, srv1_root_apt_get_scope, srv1_root_mutation_approved_scopes, microvm_controller_install_root_scopes }
 import std.scoped_authorization { AuthorizationScope }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -97,8 +97,11 @@ import gunbc.auth.authorization_pattern_selection {
 //     realizing it is red unless it states why and what retires the reason.
 //   RealizedUnderApprovedConvergence -- the site performs the effect inside the attempt that claimed
 //     the operator's approval of its lineage root, and only after std.scoped_authorization authorize
-//     admits the effect's own scopes against that grant. No site realizes it yet; the first is a
-//     srv1 host-root write performed under the grant gunbc.fleet.srv1_root_mutation_approval_run admits.
+//     admits the effect's own scopes against that grant. The first site is the microVM controller
+//     install (gunbc.live_deploy.apply microvm_controller_install_wet): it re-reads the decision of
+//     the job's gate (gunbc.fleet.srv1_root_mutation_approval_run srv1_root_mutation_inherited_grant),
+//     refuses unless the grant covers microvm_controller_install_root_scopes, and performs every
+//     elevated leg as the fleet administrator over its SSH edge, never under a job-user grant.
 type OperatorSessionArm
   = GcloudInteractive
   | OperatorTokenFile
@@ -995,11 +998,6 @@ data interim_job_user_whole_binary_grants: DivergenceReason = DivergenceReason {
 // /etc/systemd/system are named by no rendered or live sudoers line, so the effect is refused at its
 // first write (recurring failure mode a_plan_emits_a_privileged_argv_its_hosts_grants_do_not_authorize,
 // run 39284886844). Granting it to the job user would make that account root-equivalent.
-data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
-  statement: "the effect's root writes (dd/install into /etc/systemd/system and /usr/local) are authorized by no grant, so the apply is refused at its first privileged line; the only realization that exists is the operator running it locally" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "NAMED CAPABILITY: the controller install's host-root writes run inside the attempt that claimed the operator's approval of the srv1 root-mutation job, under the grant gunbc.fleet.srv1_root_mutation_approval_run admits for that job, the install's scopes admitted and bundle identity with std.scoped_authorization authorize before writing and reads the installed release back (operator ruling 2026-10-25, gunbc.design_ruling the_initial_convergence_is_the_only_approval). Sufficient only when no job-user sudoers line names those writes (the lineage root, srv1_root_mutation_approval_row, already realizes RealizedApprovalCapability under operator ruling 2026-10-26, gunbc.design_ruling srv1_root_mutation_approval_is_filed_by_the_job). NOT satisfied by a grant to the job user, nor by the administrator edge" as NonEmptyStr),
-}
-
 // THE srv1 ROOT WRITES ARE ENTAILED BY THE ROOT-MUTATION JOB THE OPERATOR APPROVES. They recur on every
 // provision, so they cannot each ask for a tap, and before the 2026-10-25 ruling that left only the
 // administrator edge. Under the ruling the operator approves the job's convergence once and each of these
@@ -1243,9 +1241,9 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.host.host_effect_realize", decl_name: "microvm_controller_staged_write_steps"),
-    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice and release files under /etc/systemd/system and /usr/local as root (host_effect_apply MicrovmControllerInstall, run 39284886844 refused at 'controller slice unit (stage)')" as NonEmptyStr, required: [srv1_root_write_scope(path: ["etc", "systemd", "system"]), srv1_root_write_scope(path: ["usr", "local"])]),
-    realized: RealizedUnauthorized,
-    divergence_reason: Present { value: controller_install_holds_no_grant },
+    effect: srv1_host_root_effect(subject: "stage and install the microVM controller's units, slice, dispatch grant, release locus and revision-job state as root, then check the grant and reload the manager (host_effect_apply MicrovmControllerInstall; run 39284886844 was refused at 'controller slice unit (stage)' under the job user's sudo)" as NonEmptyStr, required: microvm_controller_install_root_scopes),
+    realized: RealizedUnderApprovedConvergence,
+    divergence_reason: none,
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.live_deploy.operations", decl_name: "deploy_stage_visudo_check_command"),

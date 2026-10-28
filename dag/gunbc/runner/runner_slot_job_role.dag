@@ -5,7 +5,8 @@ import std.nat { Nat }
 import product.host_identity { HostIdentity }
 import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, DeploySlotReading }
+import gunbc.ci.deploy_slot_tenancy { deploy_slot_job_user, deploy_slot_runner_group_name, DeploySlotReading, deploy_slot_observed_tenancy }
+import gunbc.ci.deploy_route_requirement { deploy_route_switch_admitted, srv1_deploy_route_requirement }
 import gunbc.runner.runner_host_deploy { srv1_runner_host_spec }
 import gunbc.runner.runner_group_restriction_observation { runner_group_restriction_not_yet_observed }
 import gunbc.runner.runner_slot_allocation {
@@ -144,4 +145,16 @@ fn srv1_modeled_deploy_slot_reading() -> DeploySlotReading {
       RunnerWidthUnresolved { cause: _ } => [ci_user]
     },
   }
+}
+
+// WHETHER srv1's DEPLOY ROUTE MAY SWITCH, asked once: the fleet-converge workflow routes the root-mutation
+// jobs onto the deploy slot only when this holds (gunbc.fleet.fleet_converge_workflow
+// fleet_converge_host_pinned_runner_spec), and the microVM controller install refuses to send a leg to
+// the administrator edge unless it holds (gunbc.live_deploy.apply microvm_controller_install_wet), so the
+// routing and the refusal read one answer over one reading.
+fn srv1_deploy_route_switch_admitted() -> Bool {
+  deploy_route_switch_admitted(
+    r: srv1_deploy_route_requirement,
+    observed: deploy_slot_observed_tenancy(reading: srv1_modeled_deploy_slot_reading()),
+  )
 }
