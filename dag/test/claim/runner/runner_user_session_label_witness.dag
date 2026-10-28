@@ -201,15 +201,12 @@ test fn a_ci_slot_label_set_follows_its_host_row_and_the_deploy_slot_stays_out()
 test fn the_consumer_selector_is_satisfied_by_the_row_grant_and_by_nothing_else() -> Bool {
   match runner_spec_from_offer(offer: srv4_offer) {
     SelfHosted { labels: platform } => {
+      let srv4 = runner_registration_labels(host: operator_host_srv4)
+      let srv1 = runner_registration_labels(host: operator_host_srv1)
       let selector = concat(platform, [gunbc_user_session_label])
-      runner_labels_satisfy_selector(
-        held: labels_of(reg: runner_registration_labels(host: operator_host_srv4)),
-        selector: selector,
-      )
-        && !runner_labels_satisfy_selector(
-          held: labels_of(reg: runner_registration_labels(host: operator_host_srv1)),
-          selector: selector,
-        )
+      resolved(reg: srv4) && resolved(reg: srv1)
+        && runner_labels_satisfy_selector(held: labels_of(reg: srv4), selector: selector)
+        && !runner_labels_satisfy_selector(held: labels_of(reg: srv1), selector: selector)
     }
     other => false
   }
