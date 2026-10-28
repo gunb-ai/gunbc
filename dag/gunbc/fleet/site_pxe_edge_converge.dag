@@ -77,7 +77,8 @@ import gunbc.runner.runner_host_file_converge { elevated_argv }
 import std.content_hash { content_hash_equal }
 import extdeps.toolchain.types { Architecture, Aarch64, X86_64, architecture_diagnostic_name }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly, ipxe_build_target_path, ipxe_chainloading_authority }
-import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError, render_mac_address }
+import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacParseError, render_mac_address, parse_mac_address }
+import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
 import gunbc.site_pxe_edge {
   SiteEdgeRoster,
   SiteEdgeServedChain,
@@ -464,7 +465,10 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
 data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = []
 
 // THE CLIENTS THE EDGE KNOWS, each parsed from a measured observation of the client's NIC, never retyped.
-data site_pxe_edge_known_client_observations: List<MacParseResult> = [first_onboarding_known_client_mac]
+data site_pxe_edge_known_client_observations: List<MacParseResult> = [
+  first_onboarding_known_client_mac,
+  parse_mac_address(text: srv14_host_nic_mac as String),
+]
 
 data site_pxe_edge_seed_origin_resolution: BootNetworkProbe = BootNetworkProbeUnobserved
 

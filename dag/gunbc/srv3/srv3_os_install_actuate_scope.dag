@@ -115,7 +115,11 @@ fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
     Srv3SeededInstallMediaRefused { reason: _ } => false
     Srv3SeededInstallMediaDerived { input: i } =>
       string_contains(s: i.image_stem as String, pattern: "srv3-seeded")
-        && string_contains(s: i.user_data_body as String, pattern: "hostname: srv3")
+        // The seeded document is key-only since 2026-10-28 (dashboard node adhoc-dfa3a487): the
+        // identity section, and with it the committed password hash, is gone; the account is a
+        // locked cloud-init user with the fleet's keys.
+        && string_contains(s: i.user_data_body as String, pattern: "lock_passwd: true")
+        && !string_contains(s: i.user_data_body as String, pattern: "identity:")
   }
 }
 

@@ -223,6 +223,7 @@ import std.dissolution { DissolutionCondition, retires_dissolution }
 import v2.std.integer { decimal_digits_to_magnitude, integer_decimal_magnitude_node, integer_decimal_magnitude_node_to_int, integer_int_type_node, integer_string_to_decimal_digits_optional, DecimalMagnitude, DecimalNonZero, DecimalNonZeroMagnitude, Int, NonZeroD1, NonZeroD2 }
 import std.integer { int_to_decimal_string }
 import v2.std.text { String }
+import extdeps.languages.dag.syntax { dag_keyword_literals }
 import extdeps.numeric.base16 { base16_digit_rows }
 import std.unicode.scalar { from_code_point }
 import std.error_primitives { Ok, Err }
@@ -6120,6 +6121,29 @@ fn dag_canonical_literal_from_node(node: Node) -> Outcome<DagCanonicalLiteral> {
         }
       } else {
         outcome_rejected(dag_canonical_literal_shape_diagnostic(node: node))
+      }
+  }
+}
+
+// A PATTERN ATOM THAT IS A LITERAL IS NEVER A BINDER, at any pattern position. A canonical literal
+// (dag_canonical_literal_from_node: `true`, `false`, a number, a string, a caret symbol) is a literal
+// pattern. So is every word the dag language's literal table names (extdeps.languages.dag.syntax
+// dag_keyword_literals), read from that table and not restated here: today `none` and `null`, which it
+// maps to LitNull. A pattern-position absence literal is the declared follow-up of ruling
+// gunbc.design_ruling dag_absence_is_one_meaning, so it has no lowering here yet; if it were read as a
+// binder it would match every value, so it stays an atom that resolves as a reference and refuses. A word
+// the table gains later is a literal here at once, never a catch-all binder.
+fn dag_pattern_atom_is_literal(node: Node) -> Bool {
+  match dag_canonical_literal_from_node(node: node) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } =>
+      match node_atom_identity_optional(node: node) {
+        Present { value: id } =>
+          match map_lookup(m: dag_keyword_literals, key: symbol_lexeme(sym: id)) {
+            Present { value: _ } => true
+            Absent => false
+          }
+        Absent => false
       }
   }
 }
