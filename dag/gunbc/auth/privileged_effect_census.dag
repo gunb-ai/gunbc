@@ -46,6 +46,7 @@ import gunbc.auth.managed_host_boot_federation {
 }
 import gunbc.auth.branch_dispatch_federation {
   boot_credential_effect_on_reviewed_main, boot_credential_effect_off_reviewed_main,
+  branch_boot_credential_effect_approval_free,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta_route { bootstrap_delta_privileged_effect }
 import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge }
@@ -1533,6 +1534,41 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "boot_credential_effect_off_reviewed_main"),
     effect: boot_credential_effect_off_reviewed_main(),
     realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  // THE APPROVAL-FREE BRANCH BOOT CREDENTIAL (operator rulings 2026-10-22 "is not sensitive" and 2026-10-23
+  // "permission to boot it endlessly" / a non-main integration branch "shouldn't need an approval"). Counted
+  // as its OWN site because it is a different credential -- a second workload pool, provider and service
+  // account (gunbc.auth.mtcollins1_branch_boot_trust) -- and a row that borrowed the main-dispatch site would
+  // hide from the census that a second principal can now drive this BMC.
+  //
+  // CLASSIFICATION AGAINST gunbc.design_ruling one_approval_route_for_every_privileged_action, which is what
+  // makes this row legal rather than a second approval route: that ruling routes an effect through the broker
+  // when a human can ATTEND it, and reserves the administrator edge for a MintsHostRootReach an attended human
+  // could not approve in time. Neither half reaches this effect. A BMC power-cycle of a lab unit is not
+  // MintsHostRootReach (its reach is MintsResourceScopedCredential -- a token scoped to the boot account, which
+  // mints no host root), and a human HAS attended: the operator consented to this exact effect, by name, out of
+  // band, permanently, in this lane's chat. The 2026-09-23/25 rulings already made the act approval-free on
+  // main; these extend that no-approval selection to same-repository branch dispatches. So this row selects
+  // FederatedScopedGrant, and it is the SAME selection the on-reviewed-main row already makes -- the ruling
+  // widened WHO MAY DISPATCH, not HOW THE EFFECT IS AUTHORIZED. It is a no-approval selection, not an approval
+  // route, and it adds no second route to the broker.
+  //
+  // WHY NO NEW DISCHARGE AND NO NEW INTERLOCK ROW: the destructive ACT and its discharge are unchanged. The
+  // irreversibility of a mtcollins1 boot is discharged by mtcollins1_operator_ruling at the boot's own actuation
+  // site, under the unit-maintenance interlock, and that row is untouched -- a branch boot reaches exactly that
+  // actuation through fleet-converge's fan_policy_phase hold gate, which is enforced in the job, not in this
+  // file. A credential seam that mints a resource-scoped token, bills nothing and is not break-glass owes no
+  // witness of its own, which is what the two existing boot-credential rows say (NoWitnessDischarge). Inventing
+  // a second ruling discharge for the same act would put two discharges on one destructive act, and the census's
+  // own join over discharges (rulings_without_a_rostered_interlock) would then demand it be rostered as a new
+  // authority over the act. It is not: it is the operator's standing permission for the CREDENTIAL, and its
+  // enforcement is the IAM trust in gunbc.auth.mtcollins1_branch_boot_trust -- the provider's attribute
+  // condition, evaluated by GCP over issuer-signed claims, not a line of workflow text a branch could rewrite.
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.branch_dispatch_federation", decl_name: "branch_boot_credential_effect_approval_free"),
+    effect: branch_boot_credential_effect_approval_free(),
+    realized: RealizedFederatedGrant,
     divergence_reason: none,
   },
   PrivilegedEffectSite {
