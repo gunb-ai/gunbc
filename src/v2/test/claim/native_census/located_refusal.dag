@@ -22,7 +22,12 @@ import v2.compiler.source_root_eval {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
-import v2.compiler.dependency_demand_census { demand_census_unbound_site_text }
+import v2.compiler.dependency_demand_census {
+  DemandCensusUnboundLocus,
+  UnboundNamed,
+  UnboundShaped,
+  demand_census_unbound_site_text
+}
 import v2.compiler.native_test_vocabulary {
   FileRefusalAtLine,
   FileRefusalAtOtherFile,
@@ -42,7 +47,7 @@ import v2.std.text { String, string_split }
 import std.coercion { unicode_scalar_unfold }
 import std.types { Char }
 import std.optional { Absent, Optional, Present }
-import std.algebra { FreeSemigroup, list_at_optional, for_all }
+import std.algebra { FreeSemigroup, list_at_optional, list_find_first, for_all }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -200,10 +205,12 @@ fn census_row_field(row: String, index: Int) -> Optional<String> {
   list_at_optional(xs: census_row_fields(row: row), index: index)
 }
 
-// THE FIRST ROW OF THAT PREFIX, which is what one module's one refusal mints.
+// THE ONE UNREACHED ROW OF A MODULE'S ROWS. The resolve arm PREPENDS the partial-binding rows and
+// snocs the unreached row last, so the row is found by its prefix rather than by position -- a claim
+// that read index 0 would be reading a binding_partial row and calling it the refusal.
 fn census_first_binding_unreached(lines: List<String>) -> String {
-  match list_at_optional(xs: lines, index: 0) {
-    Present { value: row } => if census_row_is_unreached(row: row) { row } else { "" }
+  match list_find_first(xs: lines, predicate: fn(row) { census_row_is_unreached(row: row) }) {
+    Present { value: row } => row
     Absent => ""
   }
 }
