@@ -41,8 +41,8 @@ pub use crate::std_types::{
     container_template_alias_algebra, container_template_alias_rows, is_container_type, SourceSpan,
 };
 pub use crate::v1_compiler_infer_env::{
-    alias_names_settled_agree, alias_settled_agree, generic_actual_position_type, settled_type,
-    text_crossing_by_identity, type_reference_declaration_ref, TypeBinding, TypeEnv,
+    alias_names_settled_agree, alias_settled_agree, settled_type, text_crossing_by_identity,
+    type_reference_declaration_ref, TypeBinding, TypeEnv,
 };
 pub use crate::v1_compiler_type_head_exposure::type_declaration_identity_key;
 use crate::v1_rt;
@@ -123,6 +123,14 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
         resolved_type(ch.clone())
     } else {
         ch.clone()
+    }
+}
+
+pub fn join_element_type(slot: Rc<Node>) -> Rc<Node> {
+    if (slot.children.clone().len() as i64) == 0 {
+        child_type_node(slot.clone())
+    } else {
+        slot
     }
 }
 
@@ -2766,13 +2774,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                crate::v1_compiler_infer_env::generic_actual_position_type(
-                                                                    left_ch.clone(),
-                                                                );
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                crate::v1_compiler_infer_env::generic_actual_position_type(
-                                                                    right_ch.clone(),
-                                                                );
+                                                                join_element_type(right_ch.clone());
                                                             let left_el_is_unit =
                                                                 is_unit_like(left_el.clone());
                                                             let right_el_is_unit =
@@ -2828,13 +2832,9 @@ pub fn node_type_compatible(
                                                     match right.children.clone().first().cloned() {
                                                         Some(right_ch) => {
                                                             let left_el =
-                                                                crate::v1_compiler_infer_env::generic_actual_position_type(
-                                                                    left_ch.clone(),
-                                                                );
+                                                                join_element_type(left_ch.clone());
                                                             let right_el =
-                                                                crate::v1_compiler_infer_env::generic_actual_position_type(
-                                                                    right_ch.clone(),
-                                                                );
+                                                                join_element_type(right_ch.clone());
                                                             if (is_unit_like(left_el.clone())
                                                                 || is_unit_like(right_el.clone()))
                                                             {

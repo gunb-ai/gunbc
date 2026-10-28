@@ -5,7 +5,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter, decl_ref, declaration_ref_eq }
 import v1.compiler.type_head_exposure { type_declaration_identity_key }
 
-import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type, generic_actual_position_type }
+import v1.compiler.infer_env { TypeBinding, TypeEnv, type_reference_declaration_ref, text_crossing_by_identity, alias_settled_agree, alias_names_settled_agree, settled_type }
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra, container_template_alias_rows }
 
@@ -76,6 +76,22 @@ fn resolved_type(n: Node) -> Node {
 // gunbc.recurring_failure_mode arity_proxy_for_callability_misroutes_a_found_local.
 fn child_type_node(ch: Node) -> Node {
   if ch.inferred != none && (ch.connective != Arrow) { resolved_type(n: ch) } else { ch }
+}
+
+// THE JOIN'S ELEMENT READ -- the single reader both container-descend and container-alias-descend arms use
+// (one authority for the subject; DESIGN 6b). An element of a container is read by its SHAPE. A bare leaf slot
+// (no children) only NAMES a type: read it through child_type_node to what it resolves to. An unsolved one --
+// the empty list's element -- then arrives as its type variable, and node_type_compatible defers on a type
+// variable, so the empty list joins any List<X> (the corpus shapes materialization_ladder.dag:428 and
+// native_route_progress_guard.dag:1407, which a blanket nominal read refused by handing back the bare slot,
+// whose inferred is a resolution, not a type variable, so nothing deferred). A resolved leaf arrives as the
+// use node it names. An APPLIED element (children) is compared by its head, so it is kept as its own nominal
+// node -- reading it through child_type_node handed back the declaration-body expansion (FreeMonoid<Symbol>
+// -> Disj Empty | Cons), and the join refused a pair both authors wrote as List<QualifiedName>
+// (dependency_demand_census.dag:1352). This matches child_type_node on every leaf and generic on every
+// application: it changes behaviour only where each was individually wrong at the join.
+fn join_element_type(slot: Node) -> Node {
+  if slot.children |> count == 0 { child_type_node(ch: slot) } else { slot }
 }
 
 fn is_type_expr_annotation(n: Node) -> Bool {
@@ -1206,8 +1222,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
           Present { value: left_ch } =>
             match right.children |> first {
               Present { value: right_ch } =>
-                let left_el = generic_actual_position_type(slot: left_ch)
-                let right_el = generic_actual_position_type(slot: right_ch)
+                let left_el = join_element_type(slot: left_ch)
+                let right_el = join_element_type(slot: right_ch)
                 let left_el_is_unit = is_unit_like(n: left_el)
                 let right_el_is_unit = is_unit_like(n: right_el)
                 if left_el_is_unit || right_el_is_unit { true }
@@ -1228,8 +1244,8 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
         Present { value: left_ch } =>
           match right.children |> first {
             Present { value: right_ch } =>
-              let left_el = generic_actual_position_type(slot: left_ch)
-              let right_el = generic_actual_position_type(slot: right_ch)
+              let left_el = join_element_type(slot: left_ch)
+              let right_el = join_element_type(slot: right_ch)
               if is_unit_like(n: left_el) || is_unit_like(n: right_el) { true }
               else { node_type_compatible(left: left_el, right: right_el, source_indices: source_indices, text: text) }
             Absent => true
