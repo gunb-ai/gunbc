@@ -2,14 +2,16 @@ module test.claim.fleet.site_pxe_edge_chainloader_real_execution_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import extdeps.shell
-import gunbc.output_policy { OutcomeIsData }
-import gunbc.retained_shell_script { retained_runtime }
+import std.types { FilePath }
 import std.algebra { non_empty_to_list }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderObservation,
   SitePxeEdgeEmbeddedRevision,
+  EmbeddedRevisionRead,
+  EmbeddedRevisionUnobservable,
   SitePxeEdgeMemberObservation,
-  SitePxeEdgeEmbeddedObservation,
+  site_pxe_edge_committed_ipxe_arm64,
+  site_pxe_edge_chainloader_target,
   SitePxeEdgeChainServable,
   SitePxeEdgeChainWithheld,
   site_pxe_edge_chainloader_pin,
@@ -31,29 +33,41 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Refused by the hermetic envelope (shell.Exec and shell.Mktemp.Dir have no mock_response), so it is
 // excluded from discovery and enrolled in gunbc.ci.ci_layer_roots as a real-execution witness.
 
-data committed_image_path: String = "artifacts/ipxe/snponly-arm64.efi"
+// THE PATH IS THE ARTIFACT'S OWN, not a second spelling: site_pxe_edge_committed_ipxe_arm64 is what the srv4 pin's
+// digest is taken from, so the bytes hashed and revision-read here are the bytes srv4 is checked against.
+data committed_image_path: String = site_pxe_edge_committed_ipxe_arm64.path as String
 
 
 fn digest_observation(path: String) -> SitePxeEdgeChainloaderObservation {
-  let r = shell.Exec.Run(script: retained_runtime(body: concat("sha256sum ", path), reason: "chainloader real-execution witness: sha256sum of the image" as NonEmptyStr), expect: OutcomeIsData)
-  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: r.success, line: r.stdout)
+  let r = shell.Exec.RunArgv(program: "sha256sum", arguments: [path])
+  site_pxe_edge_digest_observation(path: path as NonEmptyStr, success: r.exit_code == 0, line: r.stdout)
 }
 
 fn embedded_revision(path: String) -> SitePxeEdgeEmbeddedRevision {
-  let r = shell.Exec.Run(script: retained_runtime(body: concat("grep -a -o -E '[(]g[0-9a-f]{5}[)]' ", path), reason: "chainloader real-execution witness: embedded revision grep" as NonEmptyStr), expect: OutcomeIsData)
-  site_pxe_edge_embedded_revision(success: r.success, output: r.stdout)
+  let r = shell.Exec.RunArgv(program: "grep", arguments: ["-a", "-o", "-E", "[(]g[0-9a-f]{5}[)]", path])
+  site_pxe_edge_embedded_revision(success: r.exit_code == 0, output: r.stdout)
 }
 
-// The arm64 chain's standing from the production per-chain fold, with the member read at `path`.
+// The arm64 chain's standing from the production per-chain fold, with the member read at `path` (the digest
+// check srv4 gets), plus the revision this checkout's bytes carry against the pinned one (the check srv4 does
+// not repeat, because a digest match carries it).
 fn causes_for(path: String) -> String {
-  match site_pxe_edge_chain_standing(
+  let chain = match site_pxe_edge_chain_standing(
     pin: site_pxe_edge_arm64_ipxe_chain_pin(pin: site_pxe_edge_chainloader_pin),
     observations: [SitePxeEdgeMemberObservation { served_path: "snponly.efi", digest: digest_observation(path: path) }],
-    embedded: [SitePxeEdgeEmbeddedObservation { served_path: "snponly.efi", revision: embedded_revision(path: path) }],
   ) {
     SitePxeEdgeChainServable { chain: _ } => ""
-    SitePxeEdgeChainWithheld { architecture: _, causes: cs } => join(map(non_empty_to_list(xs: cs), c => site_pxe_edge_chain_cause_text(cause: c)), "\n")
+    SitePxeEdgeChainWithheld { architecture: _, audience: _, causes: cs } => join(map(non_empty_to_list(xs: cs), c => site_pxe_edge_chain_cause_text(cause: c)), "\n")
   }
+  let pinned = match site_pxe_edge_chainloader_target(pin: site_pxe_edge_chainloader_pin) {
+    Present { value: b } => b.embedded_revision as String
+    Absent => ""
+  }
+  let revision = match embedded_revision(path: path) {
+    EmbeddedRevisionRead { abbreviated: a } => if (a as String) == pinned { "" } else { join(["ipxe-embedded-revision-mismatch: image carries ", a as String, ", pinned ", pinned], "") }
+    EmbeddedRevisionUnobservable { reason: r } => concat("ipxe-embedded-revision-unobservable: ", r)
+  }
+  join([chain, revision], "\n")
 }
 
 // POSITIVE CONTROL: the committed image satisfies the pin's digest and revision; only the Secure Boot
@@ -74,10 +88,12 @@ test fn a_corrupted_copy_with_a_flipped_byte_in_each_marker_is_refused_by_real_e
     false
   } else {
     let copy = join([dir.path as String, "/snponly-arm64.efi"], "")
-    let made = shell.Exec.Run(script: retained_runtime(body: join(["cp ", committed_image_path, " ", copy, " && LC_ALL=C sed -i 's/(gc51ca)/(gc51cb)/g' ", copy], ""), reason: "chainloader real-execution witness: corrupt one marker byte in a copy" as NonEmptyStr), expect: OutcomeIsData)
+    let copied = shell.Copy.File(source: committed_image_path as FilePath, destination: copy as FilePath)
+    let edited = shell.Exec.RunArgv(program: "env", arguments: ["LC_ALL=C", "sed", "-i", "s/(gc51ca)/(gc51cb)/g", copy])
     let causes = causes_for(path: copy)
     let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-    made.success
+    copied.success
+      && edited.exit_code == 0
       && contains(causes, "ipxe-embedded-revision-mismatch: image carries c51cb, pinned c51ca")
       && contains(causes, "member-digest-mismatch snponly.efi")
       && cleaned.success

@@ -82,8 +82,10 @@ type Scale =
   | Nano
   | Micro
   | Milli
+  | Centi
   | One
   | Sixty
+  | ThirtySixHundred
   | RackUnitHeight
   | SquareFootArea
 
@@ -110,11 +112,13 @@ fn scale_exponent(s: Scale) -> Int? {
     Nano  =>  Present { value:  -9 }
     Micro =>  Present { value:  -6 }
     Milli =>  Present { value:  -3 }
+    Centi =>  Present { value:  -2 }
     One   =>  Present { value:   0 }
     ArcsecondAngle => none
     DegreeAngle    => none
     TurnAngle      => none
     Sixty =>  none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  =>  Present { value:   3 }
@@ -186,6 +190,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     DegreeAngle => none
     TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
+    ThirtySixHundred => Present { value: minutes_per_hour() * seconds_per_minute() }
     RackUnitHeight => none
     SquareFootArea => none
     Atto  => none
@@ -194,6 +199,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Centi => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -220,10 +226,12 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     Nano  => none
     Micro => none
     Milli => none
+    Centi => none
     ArcsecondAngle => none
     DegreeAngle => none
     TurnAngle => none
     Sixty => none
+    ThirtySixHundred => none
     RackUnitHeight => none
     SquareFootArea => none
     Kilo  => none
@@ -416,6 +424,20 @@ type PhysicalCoreCount = Measure<Count, One, Nat>
 
 type CharacterCount = Measure<Count, One, Nat>
 
+// A count of display pixels: the unit a spreadsheet column's width is set and read in (Google
+// Sheets DimensionProperties.pixelSize, extdeps.google.sheets SetColumnWidth). It is a NOMINAL
+// record, not a Measure alias, because an alias of Measure<Count, One, Nat> is the same type as
+// CharacterCount and every other count, and a distinct phantom quantity argument is not judged at
+// a generic application today (gunbc.recurring_failure_mode
+// direct_generic_application_admits_a_distinct_phantom_argument). A distinct record and an unaliased
+// Measure are refused at a DisplayPixelCount formal; an alias-typed count (CharacterCount) is still
+// admitted, which is gunbc.recurring_failure_mode
+// an_aliased_generic_application_is_admitted_at_a_distinct_record_formal, enrolled as an
+// expecting-red tripwire in test.claim.display_pixel_count_refusal_witness.
+type DisplayPixelCount {
+  pixels: Nat
+}
+
 type TokenCount = Measure<Count, One, Nat>
 
 // A count of KV allocator blocks (vLLM `num_gpu_blocks`). Same Count axis as TokenCount, different
@@ -461,12 +483,6 @@ type PowerCordCount = Measure<Count, One, Nat>
 // distinguishing a controller count from a DIMM count, a channel count or a slot number. Added
 // 2026-09-11.
 type MemoryControllerCount = Measure<Count, One, Nat>
-
-// A count of SDR text lines a decoder could not structure. Same Count axis as its siblings,
-// different thing counted: an undecoded line is parse residue, not a sensor and not a reading, and
-// the distinction is the whole point of counting them -- a truncated read and a machine with no
-// fans are different facts and the count is what separates them.
-type SdrUndecodedLineCount = Measure<Count, One, Nat>
 
 // A count of ROUNDS in an observation series -- how many times a producer sampled, not how long it
 // sampled for (that is Second) and not which sample this is (an index is an ordinal position, not a
@@ -792,6 +808,21 @@ fn events_per_minute(count: Nat) -> EventsPerMinute {
 }
 
 fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+  measure_count(r)
+}
+
+// A per-hour count of discrete events, the hourly sibling of EventsPerMinute at the ISO 8601
+// seconds-per-hour scale (minutes_per_hour x seconds_per_minute). A per-minute and a per-hour figure
+// cannot be compared or assigned across without a modeled conversion, so an hourly completion rate
+// never rides in a per-minute carrier scaled by hand. First consumer: the completed-turns-per-hour
+// quantity of gunbc.serving.serving_benchmark_run_receipt.
+type EventsPerHour = Measure<Frequency, ThirtySixHundred, Nat>
+
+fn events_per_hour(count: Nat) -> EventsPerHour {
+  Measure { count: count }
+}
+
+fn events_per_hour_count(r: EventsPerHour) -> Nat {
   measure_count(r)
 }
 
@@ -1504,14 +1535,6 @@ fn cpu_core_count_value(c: CpuCoreCount) -> Nat {
   measure_count(c)
 }
 
-fn sdr_undecoded_line_count(count: Nat) -> SdrUndecodedLineCount {
-  Measure { count: count }
-}
-
-fn sdr_undecoded_line_count_value(c: SdrUndecodedLineCount) -> Nat {
-  measure_count(c)
-}
-
 fn observation_round_count(count: Nat) -> ObservationRoundCount {
   Measure { count: count }
 }
@@ -1851,10 +1874,22 @@ fn percent_count(p: Percent) -> Nat {
 }
 
 // Concurrent max-length requests the engine prints as Nx (vLLM "Maximum concurrency for … tokens
-// per request: 11.22x"). Stored as hundredths (11.22x = 1122) on the same Dimensionless axis as
-// Percent, which this repository already uses for GPU utilization. A block is not a token; 11.22
-// concurrent requests is not 1122% utilization.
-type ConcurrentRequestHundredths = Measure<Dimensionless, One, Nat>
+// per request: 11.22x"), stored as hundredths (11.22x = 1122). THE AXIS IS Count, NOT Dimensionless:
+// 11.22 here means 11.22 REQUESTS resident, a number of things, the same quantity TokenCount and
+// CpuCoreCount carry — at the CENTI scale, where a hundredth of a request is nameable and a raw
+// printed hundredth count (11.22x = 1122) needs no rescaling. It was aliased on the
+// Dimensionless axis beside Percent, which made a concurrency reading and a utilization ratio ONE
+// STRUCTURAL TYPE: 1122 concurrent requests passed for 1122% utilization at every formal and at
+// measure_add, which is nicknaming (DESIGN 3), not a unit. Nor is it Dimensionless-at-One or
+// -at-Milli: at One the count 1122 reads as 1122 REQUESTS (wrong magnitude), and at Milli it is
+// structurally identical to ConcurrentRequestThousandths — the same fork twice. Scale.Centi is the
+// existing SI hundredths row (scale_exponent answers Centi => -2), minted alongside the other
+// decimal SI arms; consumers keep their printed hundredths integers unchanged. The printed Nx is a mean concurrency
+// only where the reading aggregates over a window — that is a property of the observation carrying
+// it (extdeps.vllm.log_lines, gunbc.serving.flash_next_recipe_throughput_evidence), not of the
+// unit, so the aggregation is NOT spelled here. Converting a count of requests to a percentage of
+// some capacity is a division by a count of capacity, at the call site, and is not an alias.
+type ConcurrentRequestHundredths = Measure<Count, Centi, Nat>
 
 fn concurrent_request_hundredths(count: Nat) -> ConcurrentRequestHundredths {
   Measure { count: count }
@@ -1925,10 +1960,14 @@ fn permille_count(p: Permille) -> Nat {
 }
 
 // Mean concurrent requests at milli resolution (Little's-law means: count 15860 is 15.86
-// requests resident). ConcurrentRequestHundredths holds whole hundredths at One; the milli
+// requests resident). ConcurrentRequestHundredths holds whole hundredths at Centi; the milli
 // resolution is the sibling this family lacked (review 84973: mean_decode_concurrency_milli
-// and pool_ratio_milli printed milli figures on bare Nat).
-type ConcurrentRequestThousandths = Measure<Dimensionless, Milli, Nat>
+// and pool_ratio_milli printed milli figures on bare Nat). Count axis, not Dimensionless: see
+// ConcurrentRequestHundredths — a number of resident requests is a COUNT, and sharing
+// Measure<Dimensionless, .., Nat> with Permille/Percent made a mean concurrency and a ratio one
+// structural type. The "mean" is how the reading was aggregated (Little's law over an uptime
+// window) and belongs on the observation carrying it, not on the unit.
+type ConcurrentRequestThousandths = Measure<Count, Milli, Nat>
 
 fn concurrent_request_thousandths(count: Nat) -> ConcurrentRequestThousandths {
   Measure { count: count }

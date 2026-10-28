@@ -1,0 +1,627 @@
+module test.claim.home_serving_candidate_field_witness
+
+// THE WITNESS FOR THE P4 SELECTION FOLD (dag/gunbc/serving/home_serving_candidate_field.dag).
+//
+// WHAT THIS IS FOR. DESIGN.md §5: "A claim is a check someone can make, and the check must be SEEN
+// executing." The fold's comments say what it refuses; comments are not evidence. Each claim below
+// calls the fold and inspects the verdict the kernel actually returned, so a change that turns a
+// refusal into a fabricated purchase recommendation — or a refusal into a silent empty field — goes
+// red here.
+//
+// WHAT THE HONEST STATE ACTUALLY IS, AND WHY THESE CLAIMS SAY THAT AND NOT "pick a card".
+// No receipt records an operator-applied power limit on any of these cards (the P4 plan states it:
+// "(2) No receipt anywhere records an applied power limit", confirmed by the sealed policy's own
+// AppliedStandingUnstated arm being what fires). So every card x rung cell is a PLANNED sweep value
+// whose watt is UNREAD. std.pareto is explicit about what an entry does with that: a nonempty
+// missing_inputs "states what is absent instead of substituting a zero or an average", and
+// std.decision's scan_feasibility answers a declared gap with SelectionNeedsEvidence carrying the
+// cause. So today's verdict is the instrument's OWN REFUSAL, and pinning THAT green is the point.
+// It is not "no candidates": sixteen candidates are offered, each with its gap. The distinction is
+// the whole content of this witness — see the pair of claims 3 and 4.
+//
+// EVERY CLAIM CAN FAIL, AND THE PAIRS ARE WHAT MAKE THAT MEANINGFUL. A single red claim proves
+// nothing about which guard is doing the work, so each refusal sits beside its inverse:
+//   live field needs evidence (3)      vs  the same field is never a pick, never "empty" (4)
+//   hand-built tie needs policy (5)    vs  hand-built pair IS selected (6)
+//   read candidate excluded (7)        vs  unread candidate is NOT excluded by an unread bound (8)
+//   roster rows all present (11)       vs  an SXM reference never enters (12)
+// Without the inverse, "always refuses" and "correctly refuses" look identical — the failure mode
+// this lane was filed for once already (a control that could not fail). A claim over an EMPTY list
+// is the same trap in a different costume: every `all(...)` below is preceded by a count check, so
+// a field that silently empties goes red instead of green.
+//
+// WHAT IT DELIBERATELY DOES NOT CLAIM. It never asserts a card was bought, installed, or measured,
+// and it never funds throughput: no WarmValid exists (extdeps.ninfer.replayed_tokens_total is
+// TranscribedUncited and no home host has a GPU to observe one), so a watt-ranked pick is all this
+// fold may say.
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.algebra { string_contains }
+import std.list { first_where }
+import std.measure { Watt, watt, watt_count }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.interval { degenerate_interval }
+import std.pareto { AxisGap, AxisReading, ParetoEntry }
+import std.decision {
+  NoFeasibleRealization,
+  SelectedWithin,
+  SelectionNeedsEvidence,
+  SelectionNeedsPolicy,
+  SelectionPolicy,
+  UniqueSurvivorRequired,
+  UnfundedAxis,
+}
+import gunbc.serving.home_serving_candidate_field {
+  HomeServingBuyerTerms,
+  home_serving_applied_rungs,
+  ax_applied_draw_watts,
+  home_serving_candidate_entry,
+  home_serving_candidate_exclusions,
+  home_serving_candidate_field,
+  home_serving_cell_identity,
+  home_serving_selection_for,
+  home_serving_sxm_rows_are_not_candidates,
+  hscf_cell_warrant,
+  hscf_unread_gap_cause,
+  HomeServingCellOutcome,
+  HomeServingCellExclusion,
+  ExcludedByPowerPolicy,
+  ExcludedBoardRefused,
+  CellOffered,
+  CellExcluded,
+  select_home_serving_candidate,
+}
+import gunbc.serving.home_serving_accelerator_field { home_serving_add_in_card_catalog_rows, home_serving_reference_sxm_catalog_rows }
+import gunbc.serving.home_serving_power_policy { HomeServingPowerReading }
+import extdeps.gpu.types {
+  GpuBoardAdmission,
+  GpuBoardAdmitted,
+  GpuBoardRefused,
+  GpuBoardCatalogFacts,
+  BoardCarriesNoGpu,
+  admit_gpu_board,
+  gpu_board_admission_facts,
+  gpu_catalog_row_eq,
+}
+import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_board_catalog, nvidia_b200_sxm_board_catalog, nvidia_b200_sxm_catalog }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, CitedToAuthority }
+
+// ── FIXTURES (test.claim.* may state buyer terms the production module must not hard-code) ─────
+data hscf_roomy: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 600) }
+data hscf_ceiling_350: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 350) }
+data hscf_ceiling_100: HomeServingBuyerTerms = HomeServingBuyerTerms { max_applied_watts: watt(count: 100) }
+
+fn hscf_live() -> List<ParetoEntry> = home_serving_candidate_field()
+
+// THE CELL COUNT IS DERIVED, NOT RECALLED. Every grid claim used to compare against a literal 16, and
+// review 86449 named why that is worthless: sixteen was typed out of a tree that happened to hold four
+// cards and four rungs, so a fifth of either — with the fold's lookup chain left behind — would narrow
+// the field and leave the claim green. The product of the two lists the fold actually folds over is the
+// only number that can fail. Both sides of the partition are read, so an exclusion cannot be smuggled in
+// as a smaller field.
+fn hscf_expected_cell_count() -> Nat {
+  count(home_serving_add_in_card_catalog_rows) * count(home_serving_applied_rungs)
+}
+
+// ONE CELL'S EXPECTED IDENTITY, asked of the fold's OWN naming function. Spelling `cand_<row>_at_<n>w`
+// again in this file would be the same re-invention review 86449 filed against the module, one storey up.
+fn hscf_expected_key(board: GpuBoardAdmission, rung: Watt) -> String? {
+  match board {
+    GpuBoardAdmitted { row: row } =>
+      match hscf_cell_warrant(board: row) {
+        WarrantRead { warrant: warrant } => Present {
+          value: home_serving_cell_identity(anchor: warrant.anchor, rung: rung).decl_name as String,
+        }
+        WarrantMissing { cause: _ } => Absent
+      }
+    GpuBoardRefused { facts: _, refusal: _ } => Absent
+  }
+}
+
+// An exclusion's cause as text: the policy's own renderer for a power cause, and the refusal for a board
+// the catalog's admission refused. Rendered rather than matched on spellings, as the claims below require.
+fn hscf_exclusion_text(x: HomeServingCellExclusion) -> String {
+  match x.cause {
+    ExcludedByPowerPolicy { cause: c } => hscf_unread_gap_cause(cause: c) as String
+    ExcludedBoardRefused { refusal: _ } => "BOARD-REFUSED-BY-ITS-CATALOG-ADMISSION"
+  }
+}
+
+
+fn hscf_display(e: ParetoEntry) -> String = e.display_label as String
+
+
+// Takes a Watt, not a Nat, for the same reason the fold's buyer terms do (review 86420): the watt
+// has one authority, and a bare Nat named `watts` would put that fact outside it. Converting through
+// watt_count here also keeps the probes at the SAME scale as the fold's own mint, which reads watt
+// counts into interval_micro -- so a probe and a minted cell are comparable, not merely both ints.
+fn hscf_entry(ref: DeclarationRef, label: String, watts: Watt) -> ParetoEntry {
+  ParetoEntry {
+    identity: ref,
+    display_label: label as NonEmptyStr,
+    readings: [AxisReading { axis: ax_applied_draw_watts, interval_micro: degenerate_interval(point: watt_count(w: watts) as Int) }],
+    missing_inputs: [],
+  }
+}
+
+
+data hscf_probe_a: DeclarationRef = decl_ref(module_path: "test.claim.home_serving_candidate_field_witness", decl_name: "hscf_probe_a")
+data hscf_probe_b: DeclarationRef = decl_ref(module_path: "test.claim.home_serving_candidate_field_witness", decl_name: "hscf_probe_b")
+
+data hscf_no_policy_identity: DeclarationRef = decl_ref(module_path: "test.claim.home_serving_candidate_field_witness", decl_name: "hscf_no_policy_identity")
+
+// UniqueSurvivorRequired is the arm that says "refuse to guess": one survivor or none, never a coin
+// flip. Its identity names THIS fixture module, because the policy under test is the question this
+// witness asks, not a production policy — production states none, and this module must not be able to
+// pass as the seat of one.
+fn hscf_no_policy() -> SelectionPolicy = UniqueSurvivorRequired { identity: hscf_no_policy_identity }
+
+// ── 1. THE FIELD IS OFFERED WITH ITS GAPS, NOT WITHHELD ────────────────────────────────────────
+// FOUR cards x FOUR rungs = sixteen cells, and all sixteen are OFFERED. This is the claim that the
+// fold does not silence the sweep: before the gap was carried through, the unread cells were dropped
+// (PowerPolicyUnread { cause: _ } => Absent) and the field came back empty, which std.decision
+// reported as "candidate field is empty" — an arm that means nobody offered a candidate at all.
+// Sixteen offered-with-a-gap and zero offered are different facts and only this claim tells them apart.
+// It deliberately does NOT assert offered == roster x ladder. That equality would fire a FALSE ALARM the
+// day someone legitimately adds a fifth card whose TDP is unpublished: the correct behaviour is to EXCLUDE
+// those cells with a cause, and a claim that punished correct data for being honest about a missing figure
+// would be paid for in pressure to invent the figure (§4d). The bookkeeping half — nothing may go missing
+// between offered and excluded — is the partition claim's job, where it cannot punish honesty.
+test fn home_serving_field_is_never_empty_while_its_inputs_are_not() -> ProcessExit {
+  if count(home_serving_add_in_card_catalog_rows) > 0
+    && count(home_serving_applied_rungs) > 0
+    && (hscf_live() |> count) > 0 {
+    ExitSuccess
+  } else {
+    exit_failure("roster and ladder are non-empty but the field offered no candidate at all")
+  }
+}
+
+// ── 2. EVERY OFFERED CELL DECLARES ITS GAP ON THE ONE FUNDED AXIS ───────────────────────────────
+// Each entry must state exactly one absence, on exactly the axis this fold funds, and must carry no
+// reading. This is std.pareto's own rule ("states what is absent instead of substituting a zero")
+// made checkable. An entry with no gap and no reading would be a zero-substitution; an entry with a
+// gap on some other axis would be a gap the kernel cannot answer.
+test fn home_serving_every_cell_declares_its_watt_gap() -> ProcessExit {
+  let entries = hscf_live()
+  let gaps_are_the_watt_axis = all(entries, e =>
+    (e.missing_inputs |> count) == 1
+      && any(e.missing_inputs, g => declaration_ref_eq(a: g.axis, b: ax_applied_draw_watts))
+  )
+  if (entries |> count) > 0 && all(entries, e => (e.readings |> count) == 0) && gaps_are_the_watt_axis {
+    ExitSuccess
+  } else {
+    exit_failure("a candidate does not declare exactly one gap on the funded watt axis")
+  }
+}
+
+// ── 3. THE LIVE VERDICT IS THE INSTRUMENT'S OWN REFUSAL FOR EVIDENCE ────────────────────────────
+// Not a hand-written message: std.decision's SelectionNeedsEvidence arm, reached by calling the fold.
+// The needs must name the watt axis and must be attributable to a receipt, which is what the policy
+// carries its cause for ("carried for attribution and never interrogated for the split").
+test fn home_serving_live_verdict_needs_evidence() -> ProcessExit {
+  match home_serving_selection_for(terms: hscf_roomy) {
+    SelectionNeedsEvidence { needs: needs } =>
+      if (needs |> count) > 0
+        && all(needs, n => match n {
+             UnfundedAxis { gap: g } => declaration_ref_eq(a: g.axis, b: ax_applied_draw_watts)
+             _ => false
+           })
+        && any(needs, n => match n {
+             UnfundedAxis { gap: g } => string_contains(s: g.cause as String, pattern: "receipt")
+             _ => false
+           }) {
+        ExitSuccess
+      } else {
+        exit_failure("the evidence refusal does not name the watt axis or the receipt to go read")
+      }
+    _ => exit_failure("the live verdict is not std.decision's own evidence refusal")
+  }
+}
+
+// THE INVERSE ON THAT REFUSAL, AND THE ANTI-SILENCE CLAIM. The same call must NOT be a pick, and
+// must NOT be CandidateFieldUnestablished — that arm is for nobody having offered a candidate, so
+// landing in it means candidates were withheld rather than declared unread. This is the claim that
+// would have gone red at the defect the gap-carrying entry fixes, from the other side.
+test fn home_serving_live_verdict_is_never_a_pick_and_never_empty() -> ProcessExit {
+  match home_serving_selection_for(terms: hscf_roomy) {
+    SelectedWithin { candidate: c, receipt: _ } =>
+      exit_failure("a card was picked with no power-limit receipt behind the rung")
+    NoFeasibleRealization { causes: _, scope: _ } =>
+      exit_failure("an unread rung was declared infeasible rather than unread")
+    SelectionNeedsPolicy { survivors: _ } =>
+      exit_failure("the field was asked to choose among unread candidates")
+    _ =>
+      if (hscf_live() |> count) == hscf_expected_cell_count() { ExitSuccess } else { exit_failure("the field emptied instead of declaring its gaps") }
+  }
+}
+
+// ── 4. THE NEAR-MISS: TWO READ SURVIVORS, NO POLICY, MUST NOT PRODUCE A PICK ────────────────────
+// The case the design review asked for by name. Two hand-built candidates with READ watt values,
+// equal at 200 W, on two different cards. Nothing distinguishes them, so the kernel must return
+// SelectionNeedsPolicy with BOTH survivors and must not pick. Reaching this arm requires entries that
+// actually have readings (scan_feasibility answers a gap first), which is why the pair is built here
+// rather than read from the live field — and why claim 3 and this one cannot substitute for each
+// other. Built entries, not the live field: no policy is invented in production, and a fixture that
+// supplies tie_break there would answer the question being asked.
+test fn home_serving_two_equal_survivors_need_policy() -> ProcessExit {
+  let tied = [
+    hscf_entry(ref: hscf_probe_a, label: "tied probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "tied probe B at 200 W", watts: watt(count: 200)),
+  ]
+  match select_home_serving_candidate(field: tied, terms: hscf_roomy, policy: hscf_no_policy()) {
+    SelectionNeedsPolicy { survivors: survivors } =>
+      if (survivors |> count) == 2 { ExitSuccess } else { exit_failure("the tie was refused without naming both survivors") }
+    _ => exit_failure("two indistinguishable candidates produced a verdict other than needs-policy")
+  }
+}
+
+// THE INVERSE ON THE TIE: the same fold, the same policy, the same call — a pair that IS distinguished
+// by the funded axis must actually be selected, and the cheaper card must win. Without this, claim 4
+// cannot tell "correctly refuses a tie" from "refuses everything".
+test fn home_serving_distinguished_pair_is_selected() -> ProcessExit {
+  let pair = [
+    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: watt(count: 600)),
+  ]
+  match select_home_serving_candidate(field: pair, terms: hscf_roomy, policy: hscf_no_policy()) {
+    SelectedWithin { candidate: chosen, receipt: _ } =>
+      if declaration_ref_eq(a: chosen.identity, b: hscf_probe_a) {
+        ExitSuccess
+      } else {
+        exit_failure("the pair was selected but not by the lower applied watt")
+      }
+    _ => exit_failure("a distinguished pair was not selected")
+  }
+}
+
+// ── 5. THE BUYER CEILING EXCLUDES IN THE KERNEL, NOT BESIDE IT ──────────────────────────────────
+// A ceiling of 350 W with two READ candidates, one at 600 W: the 600 W one must be excluded and the
+// 200 W one selected. The exclusion is done by std.decision's hard-constraint scan, so it is observable
+// only where a reading exists — which is why this pair is hand-built and the live field cannot show it.
+test fn home_serving_ceiling_excludes_a_read_candidate_above_the_bound() -> ProcessExit {
+  let pair = [
+    hscf_entry(ref: hscf_probe_a, label: "probe A at 200 W", watts: watt(count: 200)),
+    hscf_entry(ref: hscf_probe_b, label: "probe B at 600 W", watts: watt(count: 600)),
+  ]
+  match select_home_serving_candidate(field: pair, terms: hscf_ceiling_350, policy: hscf_no_policy()) {
+    SelectedWithin { candidate: chosen, receipt: _ } =>
+      if declaration_ref_eq(a: chosen.identity, b: hscf_probe_a) {
+        ExitSuccess
+      } else {
+        exit_failure("the candidate above the buyer ceiling was selected")
+      }
+    _ => exit_failure("the buyer ceiling did not produce a kernel exclusion")
+  }
+}
+
+// THE INVERSE: AN UNREAD CANDIDATE IS NOT OVER THE LIMIT. With the live field and a 100 W ceiling, the
+// kernel must NOT declare NoFeasibleRealization. A rung that is unread is not a rung measured above the
+// bound, and treating it as one would let a missing receipt silently mean "this card cannot be bought"
+// — the substitution §5's ladder refuses. The verdict must stay the evidence refusal.
+test fn home_serving_unread_cell_is_not_excluded_by_an_unread_bound() -> ProcessExit {
+  match home_serving_selection_for(terms: hscf_ceiling_100) {
+    NoFeasibleRealization { causes: causes, scope: _ } =>
+      exit_failure("an unread rung was declared infeasible against the buyer ceiling")
+    SelectedWithin { candidate: _, receipt: _ } =>
+      exit_failure("a card was declared feasible against a 100 W ceiling with no receipt")
+    SelectionNeedsEvidence { needs: needs } =>
+      if (needs |> count) > 0 { ExitSuccess } else { exit_failure("the ceiling refusal carried no need") }
+    _ => exit_failure("the unread field did not stay an evidence refusal under a tight ceiling")
+  }
+}
+
+// ── 6. NO UNFUNDED PERFORMANCE CLAIM ────────────────────────────────────────────────────────────
+// No entry carries ANY reading, let alone a second one. A reading appearing without a funded WarmValid
+// behind it is the harm the warm-capacity ledger row names ("a card is ranked on a workload it did not
+// actually hold"), and this claim makes that loud rather than silent.
+test fn home_serving_no_entry_claims_performance() -> ProcessExit {
+  let entries = hscf_live()
+  if (entries |> count) == hscf_expected_cell_count() && all(entries, e => (e.readings |> count) == 0) {
+    ExitSuccess
+  } else {
+    exit_failure("an entry carries a reading, and no WarmValid funds one")
+  }
+}
+
+// The fold funds exactly one axis, and it is the watt, minimizing.
+test fn home_serving_funds_exactly_one_axis() -> ProcessExit {
+  // The fold's own list is the thing under test; a literal list here would stay green even if the
+  // fold funded a second axis, which is a control that cannot fail.
+  let axes = home_serving_candidate_axes
+  // Every axis the fold actually funds, compared by identity — a fold rather than a positional read,
+  // so the claim cannot inspect a slot the fold never promised.
+  let only_the_watt = fold(axes, init: true, f: (acc, a) =>
+    acc && declaration_ref_eq(a: a.identity, b: ax_applied_draw_watts)
+  )
+  if (axes |> count) == 1 && only_the_watt {
+    ExitSuccess
+  } else {
+    exit_failure("the fold does not fund exactly the one applied-watt axis")
+  }
+}
+
+// ── 7. THE RUNG LADDER IS THE SWEEP ─────────────────────────────────────────────────────────────
+// The four rungs are the sweep the plan asks for (a ladder over applied watts), each watt-sized.
+test fn home_serving_rungs_are_watt_sized() -> ProcessExit {
+  let rungs = home_serving_applied_rungs
+  // The count is NOT asserted: the ladder is a sweep the plan asks for (a ladder over applied watts),
+  // and review 86449's point applies to this claim too — a literal 4 here would only restate the tree.
+  // What this claim owns is that every rung is a watt-sized reading WITH a standing, which is the part
+  // that used to be invented by code instead of carried by data.
+  if (rungs |> count) > 1 && all(rungs, r => watt_count(w: r.limit) > 0) {
+    ExitSuccess
+  } else {
+    exit_failure("an applied rung is not watt-sized")
+  }
+}
+
+// ── 8. SXM ROWS ARE REFERENCES, NOT CANDIDATES ──────────────────────────────────────────────────
+// The frontier names them as references only. A reference reaching the field would let a $30k+
+// server module be recommended for a tower.
+test fn home_serving_sxm_rows_stay_out_of_the_field() -> ProcessExit {
+  let sxm = home_serving_reference_sxm_catalog_rows
+  let labels = map(hscf_live(), e => hscf_display(e: e))
+  if home_serving_sxm_rows_are_not_candidates()
+    && (sxm |> count) > 0
+    && (hscf_live() |> count) == hscf_expected_cell_count()
+    && all(labels, l => !string_contains(s: l, pattern: "B200") && !string_contains(s: l, pattern: "B300")) {
+    ExitSuccess
+  } else {
+    exit_failure("an SXM reference row reached the candidate field")
+  }
+}
+
+// ── 9. EVERY CELL OF THE GRID IS PRESENT, BY ITS OWN NAME ──────────────────────────────────────
+// Each candidate's DeclarationRef is self-naming (cand_<card>_at_<n>w), so presence is pinned through
+// the fold's OWN identities rather than through display text typed by hand into this file. That
+// matters twice over. Hand-typed labels are a second authority for what a candidate is called, and a
+// label is a renderer: pinning on it (§13762's finding) tests the rendering's exact bytes instead of
+// the candidate, and it broke the moment a model string turned out not to contain the SKU the
+// declaration name uses. Here the four cards and four rungs are each named, so a cell that quietly
+// stops being minted goes red with the name of the missing cell in the failure reason.
+fn hscf_identity_key(e: ParetoEntry) -> String = e.identity.decl_name as String
+
+// THE RUNGS ARE READ FROM THE LADDER ITSELF, not typed here, and each cell's expected identity is
+// asked of the fold's own naming function. Both hand-written copies are gone: hscf_rung_for re-listed
+// 200/300/400/600 beside the ladder, and this claim hard-coded the four card names beside the roster
+// (review 86449). With either copy still in place, a fifth rung or fifth card would narrow the field
+// silently and leave this claim green. Deriving both makes that omission red and names the cell.
+test fn home_serving_field_covers_every_card_and_rung() -> ProcessExit {
+  let actual = map(hscf_live(), e => hscf_identity_key(e: e))
+  // The roster and the ladder, not lists of names. Four card strings and four rung strings used to be
+  // typed here beside the very lists the fold imports (review 86449): a fifth card in
+  // home_serving_add_in_card_catalog_rows, or a fifth rung in the ladder, would simply have been absent
+  // from this check while the claim stayed green. And each expected key is asked of the FOLD's naming
+  // function rather than spelled again, so the naming rule has one implementation.
+  let expected = flat_map(home_serving_add_in_card_catalog_rows, board =>
+    flat_map(home_serving_applied_rungs, r =>
+      // The fold's OWN derived decl_name on both sides. Nothing here spells `cand_..._at_...w`: the
+      // expected key comes from home_serving_cell_identity, the actual key from the minted entry's
+      // identity, so the naming rule has exactly one implementation and a rename cannot be hidden by a
+      // substring test that still matches.
+      match hscf_expected_key(board: board, rung: r.limit) {
+        Present { value: k } => [k]
+        Absent => []
+      },
+    ),
+  )
+  // BOTH DIRECTIONS, because the two ways the grid breaks are different. `missing` catches a cell that
+  // stopped being minted; `extra` catches a cell whose identity drifted (a rename of the naming rule, a
+  // row whose anchor stopped matching its own citation). Substring matching is deliberately not used: a
+  // cell named cand_rtx_pro_5000_48gb_at_200w would satisfy a `contains "48gb_at_200w"` test even if the
+  // prefix stopped naming this module, and the prefix is the part that makes it a symbol.
+  let missing = hscf_difference(a: expected, b: actual)
+  let extra = hscf_difference(a: actual, b: expected)
+  if (missing |> count) == 0 && (extra |> count) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("missing: [", join(missing, ", "), "] unexpected: [", join(extra, ", "), "]"))
+  }
+}
+
+// SET DIFFERENCE BY EXACT EQUALITY, over the fold's own keys. Written once because both directions need
+// it and a one-sided check is what let the original defect hide.
+fn hscf_difference(a: List<String>, b: List<String>) -> List<String> {
+  filter(a, x => !any(b, y => x == y))
+}
+
+// ── EACH EXCLUSION ARM HAS AN EXECUTING ROUTE ─────────────────────────────────────────────────
+// The minter became TOTAL (a cell is offered, or excluded with a located cause) to close review 86449's
+// silent-drop defect. DESIGN.md asks of any added declaration "name the consumer AND THE EXECUTING
+// ROUTE", and an arm nothing can reach is the same vacuity wearing a new costume — so each cause is
+// produced here by data the catalog ALREADY holds. No invented fixtures: the exclusions below are the
+// real B200 SXM board, and the comparisons are real RTX PRO 5000 figures against its own cited ceiling.
+// Causes are rendered by the fold's OWN hscf_unread_gap_cause rather than matched as enum spellings, so
+// a claim cannot pass against a cause name the module no longer produces.
+
+// A board that publishes no power figure at all cannot lend a ceiling to any cell — its datasheet leaves
+// the figure unpublished. Excluding it says so, with the board named; offering it would mint a ceiling nobody states
+// (§4d), and dropping it silently is the defect this type exists to end.
+test fn home_serving_row_without_a_tdp_is_excluded_with_its_cause() -> ProcessExit {
+  let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(board: nvidia_b200_sxm_board_catalog, rung: r))
+  let causes = map(outcomes, o => match o {
+    CellExcluded { exclusion: x } => hscf_exclusion_text(x: x)
+    CellOffered { entry: _ } => "OFFERED-WITHOUT-A-CEILING"
+  })
+  if (outcomes |> count) == count(home_serving_applied_rungs)
+    && all(causes, c => string_contains(s: c, pattern: "no TDP figure at all"))
+    && all(outcomes, o => match o {
+         CellExcluded { exclusion: x } => gpu_catalog_row_eq(a: x.board.gpu, b: nvidia_b200_sxm_catalog)
+         CellOffered { entry: _ } => false
+       }) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("B200 SXM cells not excluded for a missing TDP: ", join(causes, ", ")))
+  }
+}
+
+// ADMITTED and REFUSED come from ONE CARD'S OWN CITED CEILING. Every live rung carries
+// TranscribedUncited, so the policy stops at AppliedStandingUnstated and never compares — that is the
+// honest state of the catalog, but left alone it would make both comparison arms dead. These probes hand
+// the SAME function a rung whose standing is cited, over nvidia_rtx_pro_5000_48gb_board_catalog (cited
+// board power 300 W): 200 W must be admitted with a reading, 400 W must be refused. Same function, same row,
+// opposite verdicts — neither arm can be unreachable, and the refusal is §3d excluding a claimed
+// operating point that breaks the card's own ceiling, before Pareto rather than ranked by it.
+data hscf_probe_ground: CitedFigureStanding = CitedToAuthority {
+  authority: ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: "www.nvidia.com/content/dam/en-zz/Solutions/design-visualization/quadro-product-literature/workstation-datasheet-blackwell-rtx-pro-6000-workstation-edition-single-gpu-a4-2558292.pdf",
+    },
+  },
+}
+
+fn hscf_cited_rung(w: Nat) -> HomeServingPowerReading {
+  HomeServingPowerReading { limit: watt(count: w), standing: hscf_probe_ground }
+}
+
+fn hscf_cause_text(o: HomeServingCellOutcome) -> String {
+  match o {
+    CellExcluded { exclusion: x } => hscf_exclusion_text(x: x)
+    CellOffered { entry: _ } => "OFFERED"
+  }
+}
+
+fn hscf_is_admitted_with_one_reading(o: HomeServingCellOutcome) -> Bool {
+  match o {
+    CellOffered { entry: e } => (e.readings |> count) == 1 && (e.missing_inputs |> count) == 0
+    CellExcluded { exclusion: _ } => false
+  }
+}
+
+test fn home_serving_comparison_arms_are_reachable_on_one_card() -> ProcessExit {
+  let under = home_serving_candidate_entry(board: nvidia_rtx_pro_5000_48gb_board_catalog, rung: hscf_cited_rung(w: 200))
+  let over = home_serving_candidate_entry(board: nvidia_rtx_pro_5000_48gb_board_catalog, rung: hscf_cited_rung(w: 400))
+  if hscf_is_admitted_with_one_reading(o: under) && string_contains(s: hscf_cause_text(o: over), pattern: "exceeds the card's cited TDP") {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "200 W over a 300 W card must be admitted; 400 W must be refused. got: ",
+      hscf_cause_text(o: under),
+      " / ",
+      hscf_cause_text(o: over),
+    ))
+  }
+}
+
+// AN EXCLUSION IS NOT A MISSING CELL. The field builder returns only offered entries, so the count claim
+// above would pass with the grid silently narrowed unless the excluded side is also counted. This closes
+// that half: the two projections together account for every pair, so no cell can be lost between them.
+test fn home_serving_offered_plus_excluded_is_the_whole_product() -> ProcessExit {
+  let offered = hscf_live() |> count
+  let excluded = home_serving_candidate_exclusions() |> count
+  if offered + excluded == hscf_expected_cell_count() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat(
+      "offered ",
+      nat_to_decimal_string(value: offered),
+      " + excluded ",
+      nat_to_decimal_string(value: excluded),
+      " != roster x ladder ",
+      nat_to_decimal_string(value: hscf_expected_cell_count()),
+    ))
+  }
+}
+
+// THE INVERSE ON THAT: a label must still NAME its card and its rung, or the instrument is refusing
+// about something the reader cannot identify. Checked against the row's own model string and the rung
+// in the identity — both taken from the tree, neither typed here.
+test fn home_serving_every_entry_is_identifiable_to_a_buyer() -> ProcessExit {
+  let entries = hscf_live()
+  let roster = home_serving_add_in_card_catalog_rows
+  let readable = all(entries, e =>
+    any(roster, b => string_contains(s: hscf_display(e: e), pattern: gpu_board_admission_facts(admission: b).model as String))
+      && string_contains(s: hscf_identity_key(e: e), pattern: "_at_")
+  )
+  if (entries |> count) == hscf_expected_cell_count() && readable {
+    ExitSuccess
+  } else {
+    exit_failure("an entry does not name a roster card, or its identity does not name a rung")
+  }
+}
+
+// ── 10. THE TDP CITATION GUARD IS LOAD-BEARING ────────────────────────────────────────────────
+// A row whose TDP carries no citation contributes NO candidate: the fold refuses to mint an entry with
+// an invented ceiling. This claim used to assert that by grepping the grid for two hand-typed cell
+// names, which was a THIRD copy of the naming rule (beside the module's function and the coverage
+// claim) and went red the moment the rule was legitimately derived instead of spelled — it looked for
+// "rtx_pro_5000_48gb_at_200w" while the derived key is "cand_nvidia_rtx_pro_5000_48gb_board_facts_at_200w".
+// So the probes are now asked of the fold's own naming function, and the NEGATIVE CONTROL is executed
+// rather than recorded: home_serving_row_without_a_tdp_is_excluded_with_its_cause runs the guard on the
+// real nvidia_b200_sxm_board_catalog (its board_power is none) and requires every one of its cells to come
+// back excluded for that stated cause. Deleting a board_power FactCitation from a live board still takes this
+// claim and the coverage claim red, naming the cells.
+test fn home_serving_control_card_is_present() -> ProcessExit {
+  let keys = map(hscf_live(), e => hscf_identity_key(e: e))
+  let probes = [
+    hscf_row_at_rung(row_name: "nvidia_rtx_pro_5000_48gb_board_facts", rung_watts: 200),
+    hscf_row_at_rung(row_name: "nvidia_rtx_pro_6000_workstation_board_facts", rung_watts: 600),
+  ]
+  let absent = filter(probes, p => !any(keys, k => k == p))
+  if (absent |> count) == 0 {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("control cells absent from the grid: ", join(absent, ", ")))
+  }
+}
+
+// A cell's key for a named roster row at a named rung, resolved THROUGH the roster and the fold's naming
+// function. Matching on a row's own decl_name (not a hand-shortened label) is what keeps this honest:
+// the string below has to be the row's real declaration name, and the roster lookup fails loudly if it
+// is not, so the probe cannot quietly stop pointing at anything.
+fn hscf_row_at_rung(row_name: String, rung_watts: Nat) -> String {
+  let row = first_where(home_serving_add_in_card_catalog_rows, b =>
+    match b {
+      GpuBoardAdmitted { row: r } =>
+        match hscf_cell_warrant(board: r) {
+          WarrantRead { warrant: warrant } => warrant.anchor == row_name
+          WarrantMissing { cause: _ } => false
+        }
+      GpuBoardRefused { facts: _, refusal: _ } => false
+    }
+  )
+  match row {
+    Present { value: r } =>
+      match hscf_expected_key(board: r, rung: watt(count: rung_watts)) {
+        Present { value: k } => k
+        Absent => "NO_WARRANT_FOR_PROBE_ROW"
+      }
+    Absent => "PROBE_ROW_NOT_IN_ROSTER"
+  }
+}
+
+// ── A BOARD THE CATALOG REFUSES IS EXCLUDED WITH THAT REFUSAL, NOT DROPPED ─────────────────────
+// The roster holds board ADMISSIONS, so a board extdeps.gpu.types admit_gpu_board refuses reaches the
+// fold. Every live board is admitted, so this arm is executed on a refused copy of the real RTX PRO 5000
+// 48 GB board's facts (gpu_count 0, the BoardCarriesNoGpu refusal): every rung comes back excluded, naming
+// that board and the refusal, and none is offered.
+fn hscf_without_gpus(f: GpuBoardCatalogFacts) -> GpuBoardCatalogFacts {
+  GpuBoardCatalogFacts {
+    vendor: f.vendor, model: f.model, gpu: f.gpu, gpu_count: 0, attachment: f.attachment,
+    board_power: f.board_power, zero_power: f.zero_power, thermal: f.thermal, pci_device_id: f.pci_device_id,
+    figure_citations: f.figure_citations,
+  }
+}
+
+test fn home_serving_refused_board_is_excluded_with_its_refusal() -> ProcessExit {
+  let live = gpu_board_admission_facts(admission: nvidia_rtx_pro_5000_48gb_board_catalog)
+  let refused = admit_gpu_board(facts: hscf_without_gpus(f: live))
+  let outcomes = map(home_serving_applied_rungs, r => home_serving_candidate_entry(board: refused, rung: r))
+  let all_refused = all(outcomes, o => match o {
+    CellExcluded { exclusion: x } =>
+      gpu_catalog_row_eq(a: x.board.gpu, b: live.gpu) && (match x.cause {
+        ExcludedBoardRefused { refusal: BoardCarriesNoGpu } => true
+        _ => false
+      })
+    CellOffered { entry: _ } => false
+  })
+  if (outcomes |> count) == count(home_serving_applied_rungs) && (outcomes |> count) > 0 && all_refused {
+    ExitSuccess
+  } else {
+    exit_failure("a board refused by its catalog admission was offered, or excluded without its refusal")
+  }
+}

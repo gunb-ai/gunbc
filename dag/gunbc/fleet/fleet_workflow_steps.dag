@@ -19,6 +19,7 @@ module gunbc.fleet.fleet_workflow_steps
 // does not have.
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
+import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
@@ -72,6 +73,9 @@ import v2.extdeps.languages.bash_build {
   bash_build_if_from_stmts, bash_build_test_bracket, bash_build_command_with_words,
 }
 import std.types { List, String, Int, NonEmptyStr }
+
+// THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
 
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability,
@@ -322,7 +326,7 @@ fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: repo_self_seed_build_step_run(command: ci_release_build_script()),
     shell: none,
     env: none,
     working_directory: none,
@@ -385,7 +389,7 @@ fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
   RunStep {
     name: Present { value: "Build release bins (the dispatched mode's product)" },
     id: Present { value: "release_build" },
-    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    run: repo_self_seed_build_step_run(command: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script())),
     shell: none,
     env: Present { value: [release_bins_mode_env_kv()] },
     working_directory: none,
@@ -1038,12 +1042,18 @@ fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
 // release-bins download (transfer tier), the unpack-and-verify (aux tier), and the deploy itself
 // (live-deploy tier). Every step in that job runs on every dispatch of it -- there is no mode gating
 // WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the converge
-// job's bound this really is a straight sum rather than a worst-case-branch selection.
+// job's bound this really is a straight sum rather than a worst-case-branch selection. The srv1
+// root-mutation approval (gunbc.fleet.srv1_root_mutation_approval_run) adds its WIF auth (aux tier),
+// its file-and-wait step (its own bound, which covers the operator's whole decision window) and its
+// receipt upload (transfer tier).
 fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_live_deploy_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
 // The Mt. Collins boot job: checkout prelude, release download (transfer) and unpack (aux), the host

@@ -5,6 +5,9 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.node { Node }
+import extdeps.bmc.ipmi { IpmiCipherSuite, ipmi_cipher_suite_argv }
+import extdeps.bmc.access_profile { bmc_access_route_ipmi_cipher_suite }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_boot_control_route }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_concat_from_nodes, bash_build_word_cmdsubst, bash_build_command_with_words,
@@ -179,7 +182,20 @@ fn sol_hold_supervisor_body() -> List<Node> {
 // The rendered supervisor body, exposed so its bounded publication-failure path can be executed on its own.
 data mtcollins1_sol_hold_supervisor_script: String = sol_hold_rendered(stmts: sol_hold_supervisor_body())
 
-data mtcollins1_sol_hold_activate_script: String = join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+// THE ONE LANPLUS PATH (merry-fox-82, on #15262): the hold's ipmitool words take the route's cipher suite through
+// extdeps.bmc.ipmi ipmi_cipher_suite_argv like every diagnostic.ipmi.Tool operation, so an Absent suite renders the
+// script exactly as it was and a Present one adds "-C <id>" right after "-I lanplus". The suite's words are the
+// literal "-C" and a decimal ID, so they join into the script without quoting.
+fn sol_hold_cipher_suite_words(suite: IpmiCipherSuite?) -> String {
+  join(map(ipmi_cipher_suite_argv(suite: suite), w => concat(" ", w)), "")
+}
+
+fn sol_hold_activate_script(suite: IpmiCipherSuite?) -> String {
+  join(["h=\"$1\"; u=\"$2\"; pw=\"$3\"; cap=\"$4\"; pf=\"$5\"; bin=\"$6\"; diag=\"$7\"; in=$(mktemp -u \"$pf.stdin.XXXXXX\") && mkfifo -m 600 \"$in\" && exec 3<>\"$in\" && rm -f \"$in\" || exit 1; ( stdbuf -oL \"$bin\" -H \"$h\" -I lanplus", sol_hold_cipher_suite_words(suite: suite), " -U \"$u\" -f \"$pw\" sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- & p=$!; exec 3<&-\n", mtcollins1_sol_hold_supervisor_script, "\n) < /dev/null > /dev/null 2>&1 & exec 3<&-"], "")
+}
+
+// mtcollins1's hold, with the suite its observed lanplus route carries (gunbc.machine_intake.mtcollins1_access_observation).
+data mtcollins1_sol_hold_activate_script: String = sol_hold_activate_script(suite: bmc_access_route_ipmi_cipher_suite(route: mtcollins1_boot_control_route.route))
 
 // RELEASE IS THE ONE SPELLING OF "stop the collector this hold started": the workflow's teardown calls
 // ReleaseHeld after the BMC deactivate, and the boot step's EXIT trap runs the same script on cancel or

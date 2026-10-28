@@ -34,7 +34,7 @@ fn tree_there(td: String, n: String, k: String) -> Bool { Filesystem.Read(path: 
 
 // THE CLAIM STORE UNDER A DIRECTORY THE TEST OWNS: the production mint over an instance whose state root is the
 // test's, its directory created the way the instance directory row would, so the store is minted from a real
-// readiness observation exactly as the belt's is.
+// listing of that directory exactly as the belt's is.
 fn claims_at(cd: String) -> WorktreeClaimStoreReading {
   let instance = claim_instance(cd: cd)
   let _made = shell.Mkdir.Parents(path: worktree_claim_slots_path(instance: instance) as String as FilePath)
@@ -77,14 +77,18 @@ fn pass(
   match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
   WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+  Present { value: stores } =>
   worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims: claims, host: host,
+    stores: stores, claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => others, lifecycle_of: lifecycle_absent, now: now,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => content,
     remove_tree: p => if shell.Remove.RecursiveForce(path: p).success { ClaimRemoved } else { ClaimRemoveDeclined { detail: "rm failed" } },
     capture_of: (n, k) => capture)
+  }
   }
 }
 
@@ -153,12 +157,16 @@ fn ensure_pass_without_mkdir(dir: String, cd: String, td: String) -> WorktreeCla
   match worktree_claim_store(instance: claim_instance(cd: cd)) {
     WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
     WorktreeClaimStoreReady { store: claims } =>
-      worktree_claim_ensure_pass_at(
-        stores: stores_at(dir: dir), claims: claims, host: host,
-        path_of: (n, k) => tree_path(td: td, n: n, k: k),
-        loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
-        tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
-        remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled)
+      match stores_at(dir: dir) {
+        Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+        Present { value: stores } =>
+          worktree_claim_ensure_pass_at(
+            stores: stores, claims: claims, host: host,
+            path_of: (n, k) => tree_path(td: td, n: n, k: k),
+            loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 5000,
+            tree_of: p => ClaimTreeAbsent, content_of: p => ClaimContentPushed,
+            remove_tree: p => ClaimRemoved, capture_of: (n, k) => ClaimCaptureSettled)
+      }
   }
 }
 
@@ -275,14 +283,18 @@ test fn a_git_that_could_not_run_is_red_and_keeps_the_tree() -> Bool {
   let outcomes = match claims_at(cd: cd) {
   WorktreeClaimStoreUnready { detail } => WorktreeClaimPassRefused { detail: detail }
   WorktreeClaimStoreReady { store: claims } =>
+  match stores_at(dir: dir) {
+  Absent => WorktreeClaimPassRefused { detail: "the witness's session placement stores could not be minted" }
+  Present { value: stores } =>
   worktree_claim_ensure_pass_at(
-    stores: stores_at(dir: dir), claims: claims, host: host,
+    stores: stores, claims: claims, host: host,
     path_of: (n, k) => tree_path(td: td, n: n, k: k),
     loaded_of: u => AttemptUnitAbsent, lifecycle_of: lifecycle_absent, now: 1301,
     tree_of: p => if Filesystem.Read(path: p).success { ClaimTreePresent } else { ClaimTreeAbsent },
     content_of: p => ClaimContentPushed,
     remove_tree: p => ClaimRemoveUnexecuted { detail: "git is not resolvable on this host" },
     capture_of: (n, k) => ClaimCaptureSettled)
+  }
   }
   cleaned(dirs: [dir, cd, td], verdict: opened && planted && ran_only(p: outcomes, check: is_red) && tree_there(td: td, n: node_a, k: key_a))
 }

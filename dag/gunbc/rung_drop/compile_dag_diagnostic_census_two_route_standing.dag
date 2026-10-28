@@ -1,0 +1,77 @@
+module gunbc.rung_drop.compile_dag_diagnostic_census_two_route_standing
+
+import std.types { NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DerivedBy, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+// THE POPULATION POINTER IS THE INSTRUMENT'S OWN LABEL, IMPORTED NOT RESTATED.
+// `rung_drop_population_is_readable` refuses a DerivedBy population unless the label it carries is
+// rostered in gunbc.instrument_targets instrument_targets exactly once; taking the very function that
+// rostering calls -- instead of transcribing `//gunbc/instruments:ambient-name-census` here -- means
+// the drop and its instrument cannot drift apart: a renamed or unrostered instrument retires the
+// pointer with it, rather than leaving a row pointing at a producer that never existed.
+import gunbc.instrument_targets { ambient_name_census_label }
+
+// ONE RUNG DROP FOR THE CENSUS BUILT-IN'S TWO-ROUTE STANDING (NAMESPACE-XL; the bounded-drop form
+// ruled by tidy-ant-251 in side chat on gunb-ai/gunbc#15123, judged at c65239999c67). Naming
+// gunbc.compile_diagnostic_census `fn compile_dag_diagnostic_census(source: String) -> CompileDiagnosticCensus`
+// (the census carrier, whose rows a reader reaches through census_blocking_rows / census_count_at_key)
+// gave the ambient seed built-in its ONE declared home (a root-coordinator decision by sleek-owl-397),
+// realized as a HostRealizedSeam that binds the existing host implementation by the declaration's
+// identity. Homing the name did NOT remove the ambient route, and this row says so as data rather
+// than as a paragraph: the three ambient authorities for the spelling all still stand beside the
+// declaration, and the claim module's ambient_call_source test EXECUTES that (a bare call resolves
+// and returns the same census rows as the declared-import call). A name with two live routes and no
+// row saying which one retires when is what DESIGN 4b refuses: the guarantee is by agreement, so the
+// agreement is a rung drop, and a rung drop is declared.
+//
+// THE THREE AMBIENT AUTHORITIES, BY IDENTITY (the routes the retirement removes; each is a row that
+// exists today, not a paraphrase of one):
+//   * std.primitives `builtin_registry_surface_names` -- the spelling's entry in the registry surface
+//     list (dag/std/primitives.dag), which is what makes the bare name a surface name at all;
+//   * v1.compiler.infer_method `builtin_function_registry` (src/v1/04_method.dag) -- the typing entry
+//     `compile_dag_diagnostic_census: BuiltinSignature { source: String } -> compile_diagnostic_census_result`
+//     that types a bare call in the seed's inference;
+//   * gunbc.v1.v1_interpreter_primitive_surface `v1_interpreter_authored_roster_arms` -- the authored
+//     dispatch arm `free_call.compile_dag_diagnostic_census` with `authored_spelling:
+//     "compile_dag_diagnostic_census"` that runs it.
+// The claim module's no-growth control counts exactly those three (one entry each) beside exactly one
+// HostRealizedSeam row in std.primitive_projection, so "the homing added no second authority" is a
+// counted fact and not a promise.
+//
+// WHY THE POPULATION IS A POINTER AND NOT A NUMBER. The instrument under this row's DerivedBy
+// (//gunbc/instruments:ambient-name-census, reading owned by
+// gunbc/instruments/ambient_name_census_reading.dag over v2.compiler.occurrence_binding_census)
+// reports every occurrence of the spelling as a tab-separated IDENTITY -- occurrence kind, module,
+// spelling, index, source route, resolved target, position -- and the unswept population this drop
+// must cover is exactly the call-site identities whose source route is ambient (the `ambient:<table>`
+// rendering of v2.compiler.occurrence_binding_census SourceAmbient) rather than declared. Restating a
+// count here would be a second representation of a roster the instrument already derives, and it
+// would drift the moment a wave rewrote a module: the census re-derives the remainder, this row does
+// not. As of this commit the instrument answers 220 call-site occurrences of the spelling across 120
+// modules outside the home; that sentence is a READING of the instrument's answer at this head, not
+// the row's authority -- the row's authority is the label.
+//
+// WHY previous AND temporary ARE THE SAME RUNG. Nothing fell here. The ambient route was already
+// MechanicallyPreventable (three data rows, refusing nothing), and homing added a second live route
+// without deleting any of them, so the class landed where it started: a refusal is possible and is
+// not performed. That is also why this row is Standing and not Retired -- the retirement is the
+// trigger below, and a row that recorded its own trigger as fired would retire the debt on paper.
+data compile_dag_diagnostic_census_two_route_standing: RungDrop = RungDrop {
+  identity: "compile_dag_diagnostic_census_two_route_standing" as NonEmptyStr,
+
+  subject: "compile_dag_diagnostic_census: the declared home (gunbc.compile_diagnostic_census, a HostRealizedSeam row in std.primitive_projection bound to the host implementation by the declaration's identity) and the three ambient routes for the same spelling (std.primitives builtin_registry_surface_names, v1.compiler.infer_method builtin_function_registry, gunbc.v1.v1_interpreter_primitive_surface v1_interpreter_authored_roster_arms) all resolve today, with no row saying which side retires when",
+
+  declared: "2026-10-26 (cool-moth-834, NAMESPACE-XL wave for this name, gunb-ai/gunbc#15123; the two-route standing is older than this row -- it began the moment the home landed, and tidy-ant-251's side-chat ruling on that PR required this row rather than the prose)",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged {
+      replacement: "one authority for the spelling: the declared import of gunbc.compile_diagnostic_census, with the std.primitives builtin_registry_surface_names entry, the v1.compiler.infer_method builtin_function_registry entry and the gunbc.v1.v1_interpreter_primitive_surface authored arm for it DELETED, not aliased -- the chars, list_push and sha256_hex_of_text precedent, whose std.primitives *_contract rows came out the same way"
+    },
+    population: DerivedBy {
+      label: ambient_name_census_label()
+    },
+    restoration_trigger: "OWNER: wise-moth-707, the NAMESPACE-XL declared-import sweep lane (the wave that rewrites each ambient-routed occurrence the ambient-name census reads for this name into an import of its home, and the owner of the gate/namespace-tip branch whose instrument call sites are this declaration's named consumer). TRIGGER: that name's corpus wave -- the sweep over the occurrence population the census answers for compile_dag_diagnostic_census, admitted by the wave's binding-diff check and carried into the sweep by the v2.workflow.roster_import_sweep KeepHead row for this head. RETIREMENT: when the census answers ZERO call-site identities for the spelling whose source route is ambient, the std.primitives builtin_registry_surface_names entry for it is removed in the same change, together with the v1.compiler.infer_method builtin_function_registry entry and the gunbc.v1.v1_interpreter_primitive_surface authored arm for it, this row's standing becomes Superseded by the home's own declaration, and the ambient_call_source test in test.claim.compile_dag_diagnostic_census_declared_home goes with them -- a test that proves a route still resolves must not outlive the route. NOTHING SMALLER RETIRES THIS ROW: importing the home in some modules while any ambient-routed occurrence remains leaves the name resolving two ways, which is the standing this row records, not its end. THE CONTROLS THAT HOLD THE STANDING HONEST MEANWHILE, all in test.claim.compile_dag_diagnostic_census_declared_home: the NO-GROWTH control homing_the_name_added_no_second_authority (the homing added no second authority anywhere -- the three ambient rows still number exactly one entry each for the spelling, and std.primitive_projection carries exactly one row for the identity), and the IMPORTED-POSITIVE / BARE-NEGATIVE pair declared_import_binds_with_the_ambient_calls_rows and importing_an_undeclared_spelling_from_the_home_moves_the_rows (the declared import of the home binds and returns the same census rows as the bare call; importing a spelling the home does not declare moves the rows to exactly one MissingExport, so it is the home's export set that binds and not the ambient tier behind it)"
+  } }
+}

@@ -680,10 +680,12 @@ service gcp.ResourceManager {
     }
   }
 
+  // Resource Manager v3 answers a synchronously completed tag-binding create as a done Operation with
+  // no name (2026-10-28, receipt iam-ceremony-20261028T133424Z), so the name is optional.
   operation CreateTagBinding {
     requires Network
     input { access_token: Secret, parent: NonEmptyStr, tag_value: NonEmptyStr }
-    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    output { operation_name: String? from "name", done: Bool?, error: GoogleRpcStatus? }
     idempotent
     transport rest { method: POST, path: "/v3/tagBindings", body: { parent: parent, tagValue: tag_value } }
     response {

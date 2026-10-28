@@ -1,0 +1,11 @@
+module gunbc.machine_intake.srv14_host_nic_observation
+
+import std.types { NonEmptyStr }
+
+// THE NIC srv14's FIRMWARE NETBOOTS FROM, read from the host rather than from the BMC: this firmware serves no
+// Systems/system/EthernetInterfaces, so the address came from the UEFI Shell over IPMI SOL (`ifconfig -l`),
+// captured in artifacts/bmc/srv14-first-contact-2026-10-28/uefi_shell.txt (its README names the session route).
+// That listing shows exactly one host port with media present, eth1, and this is its address as printed,
+// lowercased. eth0 there is the host-to-BMC USB link and eth2/eth3 read disconnected, so neither is a
+// netboot candidate.
+data srv14_host_nic_mac: NonEmptyStr = "9c:6b:00:e7:ca:9c"

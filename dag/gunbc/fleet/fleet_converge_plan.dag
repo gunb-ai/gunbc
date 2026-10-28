@@ -238,6 +238,7 @@ import gunbc.runner.runner_service_activation {
   runner_activation_safety_report,
 }
 import extdeps.access.posix { file_mode_octal }
+import std.integer { int_to_decimal_string }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -829,9 +830,9 @@ fn plan_section_framing_fault(plan_body: String, section: String) -> PlanFraming
   } else if ends == 0 {
     PlanFramingFaulted { cause: concat("plan.txt carries no ", fleet_converge_plan_section_end_marker(section: section), " marker (minted before the rows were delimited)") }
   } else if starts != 1 {
-    PlanFramingFaulted { cause: concat("plan.txt carries ", starts as String, " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: starts), " ", section, ": boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else if ends != 1 {
-    PlanFramingFaulted { cause: concat("plan.txt carries ", ends as String, " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
+    PlanFramingFaulted { cause: concat("plan.txt carries ", int_to_decimal_string(value: ends), " ", fleet_converge_plan_section_end_marker(section: section), " boundaries (framing must be exact; embedded or duplicated boundary)") }
   } else {
     match list_head(xs: reverse(split(s: plan_body, delimiter: start))) {
       Absent => PlanFramingFaulted { cause: concat("plan.txt ", section, " section is empty") }
@@ -1736,8 +1737,11 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
       concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
-    WorkspaceSlotCommissioningConverge { basis } => [workspace_commissioning_basis_rows(basis: basis)]
-    WorkspaceCommissioningDependencyConverge { plan } => [host_kernel_dependency_row(plan: plan)] + host_kernel_dependency_action_lines(plan: plan)
+    // An observed basis row is a baseline fact: observed_identity_text renders it once, and that copy
+    // is what observed_baseline_hex authenticates and the executor reads (exactly one credential row).
+    // The axis section carries only what the basis implies, so it never repeats the row.
+    WorkspaceSlotCommissioningConverge { basis: _ } => []
+    WorkspaceCommissioningDependencyConverge { plan } => host_kernel_dependency_action_lines(plan: plan)
     WorkspaceAllocationConverge { basis: selected, release_dir: installed } => [
       "# workspace allocation: dispatch existing slot controller; readiness is observed separately",
       concat("workspace-launch-directive:", workspace_launch_directive_text(directive: workspace_launch_directive(basis: selected, release_dir: installed))),

@@ -15,6 +15,7 @@ import extdeps.ninfer.ninfer_serve { NinferModelsList, NinferModelsAdvertised, N
 import gunbc.harness.operator_pod_launch { operator_pod_ninfer_launch, operator_pod_listen_port }
 import gunbc.harness.harness_reasoning_wire { HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_unit_model_id }
 import gunbc.serving.turn_admission { ServingCoTenancyClass, InteractiveQualitySensitive, BatchQualityTolerant, serving_co_tenancy_class_wire }
+import gunbc.harness.harness_operator_credential { OperatorCredentialFile, operator_route_credential_file }
 import std.list { list_member }
 
 // THE OPERATOR-RUN ENDPOINT: a serving process the OPERATOR runs on a rented GPU pod, reached from the
@@ -91,7 +92,7 @@ type OperatorQualityFloor {
 type HarnessOperatorRoute {
   unit: HarnessServingUnit
   group_wire: NonEmptyStr
-  credential_relative_path: NonEmptyStr
+  credential: OperatorCredentialFile
   concurrency_ceiling: Nat
   quality_floor: OperatorQualityFloor
 }
@@ -99,7 +100,7 @@ type HarnessOperatorRoute {
 data harness_operator_route: HarnessOperatorRoute = HarnessOperatorRoute {
   unit: Qwen3_8_27bOnNinfer,
   group_wire: "operator:ninfer-gpu-pod" as NonEmptyStr,
-  credential_relative_path: ".config/gunbc-gpu-pod/api-key" as NonEmptyStr,
+  credential: operator_route_credential_file,
   concurrency_ceiling: operator_pod_ninfer_launch.max_concurrency,
   quality_floor: OperatorQualityFloor {
     admitted_class: BatchQualityTolerant,
@@ -124,11 +125,52 @@ fn operator_class_admission(route: HarnessOperatorRoute, class: ServingCoTenancy
 }
 
 // ── THE CREDENTIAL: a file path read into a Bearer header, never inlined ────────────────────────
-fn operator_credential_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
-  match shell.Env.Get(name: "HOME").value {
-    Absent => none
-    Present { value: h } => if h == "" { none } else { Present { value: join([h, "/", route.credential_relative_path as String], "") as NonEmptyStr } }
+//
+// A HARNESS THE SERVICE MANAGER STARTED WITH THE FILE HANDED IN READS IT THERE, NOT FROM A HOME. The route's
+// custody is a 0600 file under $HOME of the user running the harness (the credential's relative_path). A
+// dedicated worker account (gunbc.roadmap.roadmap_dashboard_instance WorkerDedicatedAccount) is the untrusted
+// principal and has no home, so that custody cannot be its own. Its unit is handed the file by the manager
+// (systemd.exec(5) LoadCredential=, from a root-owned credstore copy the deploy makes as the service user:
+// gunbc.roadmap.dispatch_worker_unit_confinement dispatch_worker_credentials, installed by
+// gunbc.live_deploy.apply_legs credstore_copy_legs) under the credential's identifier,
+// in the per-invocation directory the manager names in $CREDENTIALS_DIRECTORY, owned by the unit's user and
+// removed when the unit stops. The two locations are not tried in turn: a process the manager handed a
+// credentials directory reads only that directory, so a unit started without this route's credential refuses
+// naming the missing file there and never falls through to a home.
+type OperatorCredentialCustody
+  = OperatorCredentialHandedByManager { directory: NonEmptyStr }
+  | OperatorCredentialInHome { home: NonEmptyStr }
+  | OperatorCredentialUnlocated
+
+fn operator_credential_custody() -> OperatorCredentialCustody {
+  operator_credential_custody_of(
+    credentials_directory: shell.Env.Get(name: "CREDENTIALS_DIRECTORY").value,
+    home: shell.Env.Get(name: "HOME").value,
+  )
+}
+
+// The precedence over the two readings, apart from the environment read so a claim can supply them.
+fn operator_credential_custody_of(credentials_directory: String?, home: String?) -> OperatorCredentialCustody {
+  match credentials_directory {
+    Present { value: d } => if d == "" { OperatorCredentialUnlocated } else { OperatorCredentialHandedByManager { directory: d as NonEmptyStr } }
+    Absent =>
+      match home {
+        Absent => OperatorCredentialUnlocated
+        Present { value: h } => if h == "" { OperatorCredentialUnlocated } else { OperatorCredentialInHome { home: h as NonEmptyStr } }
+      }
   }
+}
+
+fn operator_custody_file_path(custody: OperatorCredentialCustody, file: OperatorCredentialFile) -> NonEmptyStr? {
+  match custody {
+    OperatorCredentialHandedByManager { directory: d } => Present { value: join([d as String, "/", file.identifier as String], "") as NonEmptyStr }
+    OperatorCredentialInHome { home: h } => Present { value: join([h as String, "/", file.relative_path as String], "") as NonEmptyStr }
+    OperatorCredentialUnlocated => none
+  }
+}
+
+fn operator_credential_path(route: HarnessOperatorRoute) -> NonEmptyStr? {
+  operator_custody_file_path(custody: operator_credential_custody(), file: route.credential)
 }
 
 // The header line a request carries, from the key file's text. Trailing newlines are the file's, not the
@@ -146,7 +188,7 @@ type OperatorHeaderOpen
 // harness_hosted_route does for OpenRouter. A refusal after the directory exists removes it.
 fn operator_open_header(route: HarnessOperatorRoute) -> OperatorHeaderOpen {
   match operator_credential_path(route: route) {
-    Absent => OperatorHeaderRefused { detail: "HOME is not set, so the operator endpoint's credential file cannot be located" }
+    Absent => OperatorHeaderRefused { detail: "neither CREDENTIALS_DIRECTORY nor HOME is set, so the operator endpoint's credential file cannot be located" }
     Present { value: path } => {
       let read = Filesystem.Read(path: path as String)
       match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {

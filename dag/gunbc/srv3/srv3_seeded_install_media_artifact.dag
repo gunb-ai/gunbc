@@ -13,6 +13,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media {
   ubuntu_seeded_install_media_grub_kernel_cmdline,
 }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3 }
 import gunbc.os_install_emit { autoinstall_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.provisioning.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import gunbc.provisioning.seeded_install_media_publish {
@@ -27,8 +28,12 @@ import gunbc.provisioning.seeded_install_media_publish {
 }
 import std.types { List, NonEmptyStr, String }
 
+// THE SEED DIRECTORY IS NAMED FROM THE HOST IDENTITY, NOT FROM THE DOCUMENT. It used to read the
+// autoinstall identity's hostname; the payload is key-only now (no identity section), so the only
+// honest source left is gunbc.fleet.fleet_host_identity's own row — the single authority for what a
+// host is called (§3). The bytes are unchanged ("nocloud/srv3"), because they always were this string.
 data srv3_seeded_nocloud_dir_on_iso: NonEmptyStr = ubuntu_seeded_install_media_default_nocloud_dir(
-  hostname: srv3_ubuntu_autoinstall_on_iso.identity.hostname,
+  hostname: operator_host_srv3,
 )
 
 data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_grub_kernel_cmdline(

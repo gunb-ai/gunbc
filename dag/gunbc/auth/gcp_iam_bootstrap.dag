@@ -38,7 +38,7 @@ import extdeps.cloud.gcp.storage { GcsBucketWire }
 import gunbc.auth.gcp_iam_bootstrap_journal { JournalSubject, JournalPoolFirstPublication, JournalBareSecretCreate, JournalMark, JournalElection, JournalClosure, JournalRefusal, JournalDisposal, JournalListing, JournalListed, JournalListingUnreadable, journal_list, journal_mark, journal_mark_outcome, JournalMarkOutcome, JournalMarkRecorded, JournalMarkAlreadyPresent, JournalMarkRefused, journal_listed_consents, journal_has, journal_object_name, journal_mark_named }
 import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_journal_bucket, iam_bootstrap_journal_bucket_location, iam_bootstrap_journal_bucket_uniform_access, iam_bootstrap_journal_bucket_public_access_prevention,
-  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short, iam_bootstrap_trust_root_tag_parents,
+  iam_bootstrap_trust_root_tag_key_namespaced, iam_bootstrap_trust_root_tag_value_namespaced, iam_bootstrap_trust_root_tag_key_parent, iam_bootstrap_trust_root_tag_key_short, iam_bootstrap_trust_root_tag_value_short,
   IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
   iam_bootstrap_resource_key, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_trust_bindings, iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over,
@@ -48,8 +48,9 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_tag_value_detach_permissions, TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
   TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_key_admission, trust_root_tag_value_admission,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
-  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
+  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match, deny_rules_text,
+  iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population,
+  iam_bootstrap_journal_cells, ceremony_cell_phrase, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
 }
 
 import gunbc.auth.gcp_iam_bootstrap_federation { iam_bootstrap_service_account, gcp_iam_bootstrap_wif_pool_id }
@@ -80,7 +81,39 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapTrustRootTags, BootstrapRoles, BootstrapJournalBucket, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+
+// A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. THE POPULATIONS THIS PREDICATE READS ARE
+// THE SAME ONES THE STAGES EXECUTE (iam_bootstrap_execute_stage, iam_bootstrap_stage_bindings) AND THE
+// POST-RUN PROOF READS BACK (iam_bootstrap_ceremony_owned_cells) -- one derivation for what a stage
+// owes, what it does, and what must be true afterwards. The claims pin the predicate to the estate:
+// all twelve stages are owed today, so a population going empty (which drops its stage from the run)
+// goes red in test.claim.gcp_iam_bootstrap_population_split_witness rather than silently shrinking a
+// ceremony (the 2026-10-27 shape: 10 of 12 stages, no receipts for the other two, no refusal).
+fn iam_bootstrap_stage_owed(stage: IamBootstrapStage) -> Bool {
+  match stage {
+    BootstrapServices => count(iam_bootstrap_required_services) > 0
+    BootstrapIdentities => count(iam_bootstrap_bound_secrets()) > 0 || count(iam_bootstrap_stage_identities(stage: BootstrapIdentities)) > 0
+    BootstrapTrustRootTags => count(ceremony_trust_root_cells()) > 0
+    BootstrapRoles => count(iam_bootstrap_roles) > 0
+    BootstrapDeny => count(iam_bootstrap_deny_policies()) > 0
+    BootstrapAuthorityCleanup => true
+    BootstrapCapabilities => count(iam_bootstrap_root_ceremony_bindings()) > 0
+    BootstrapJournalBucket => count(iam_bootstrap_journal_cells()) > 0
+    BootstrapProbeAuthority => true
+    BootstrapPrivilegeReadback => true
+    BootstrapProbeCleanup => true
+    BootstrapWorkflowTrust => true
+  }
+}
+
+// THE FOLDED ROW, DERIVED: the order filtered to the stages with declared work. THE ONLY LITERAL IS
+// iam_bootstrap_stage_order ABOVE, so "the run folded 10 of 12 stages" is no longer expressible -- on
+// 2026-10-27 the run's row and the ceremony's obligations were two lists and only the delta noticed
+// they disagreed. A stage can now leave the run ONLY by its population being genuinely empty, which is
+// what iam_bootstrap_stage_owed computes from the same populations the stages execute and the
+// post-run proof reads back.
+data iam_bootstrap_stages: List<IamBootstrapStage> = filter(iam_bootstrap_stage_order, s => iam_bootstrap_stage_owed(stage: s))
 
 type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
 
@@ -93,13 +126,13 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapDeny => [BootstrapIdentities, BootstrapTrustRootTags]
     BootstrapAuthorityCleanup => [BootstrapDeny]
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
-    BootstrapJournalBucket => [BootstrapIdentities]
+    BootstrapJournalBucket => [BootstrapRoles]
     BootstrapProbeAuthority => [BootstrapCapabilities]
     BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority]
     BootstrapProbeCleanup => [BootstrapProbeAuthority]
     BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback, BootstrapProbeCleanup]
   }
-  all(required, prerequisite => any(completed, done => done == prerequisite))
+  all(filter(required, prerequisite => iam_bootstrap_stage_owed(stage: prerequisite)), prerequisite => any(completed, done => done == prerequisite))
 }
 
 fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
@@ -403,7 +436,7 @@ fn iam_bootstrap_ensure_deny(token: Secret) -> String {
 fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: seen } =>
-      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it") }
+      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { join([policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: seen_refusal } =>
       if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
       else {
@@ -597,7 +630,7 @@ fn iam_bootstrap_stage_bindings_over(stage: IamBootstrapStage, targets: List<Ded
   match stage {
     BootstrapCapabilities => iam_bootstrap_root_ceremony_bindings_over(targets: targets, grant_set_secrets: grant_set_secrets)
     BootstrapServices => []  BootstrapIdentities => []  BootstrapTrustRootTags => []  BootstrapRoles => []  BootstrapDeny => []  BootstrapAuthorityCleanup => []
-    BootstrapJournalBucket => []  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
+    BootstrapJournalBucket => iam_bootstrap_journal_cells()  BootstrapProbeAuthority => []  BootstrapPrivilegeReadback => []  BootstrapProbeCleanup => []  BootstrapWorkflowTrust => []
   }
 }
 
@@ -679,30 +712,56 @@ fn ensure_trust_root_tag_value(key_name: NonEmptyStr, token: Secret) -> TagResou
   }
 }
 
-fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingReading? {
+// The listing's refusal is carried, not dropped: on 2026-10-28 (receipt iam-ceremony-20261028T130224Z)
+// the stage refused "tag bindings unreadable" with the upstream's cause discarded.
+type TagBindingRead = TagBindingReadAnswered { reading: TagBindingReading } | TagBindingReadRefused { cause: String }
+
+// The account parent is requested as //iam.googleapis.com/projects/<project id>/serviceAccounts/<uniqueId>;
+// the same resource under the project number is the other spelling the listing may answer.
+fn tag_parent_spellings(parent: String) -> List<String> {
+  let by_id = concat("//iam.googleapis.com/projects/", fleet_secrets_project_id as String)
+  let by_number = concat("//iam.googleapis.com/projects/", fleet_secrets_project_number)
+  if starts_with(s: parent, prefix: concat(by_id, "/")) { [parent, concat(by_number, parent.substring(start: by_id.length(), end: parent.length()))] } else { [parent] }
+}
+
+fn tag_bound_on(parent: String, value_name: NonEmptyStr, token: Secret) -> TagBindingRead {
   match gcp.ResourceManager.ListTagBindings(access_token: token, parent: parent as NonEmptyStr) {
-    RestRefused { refusal: _ } => none
-    RestAnswered { answer: l } => Present { value: trust_root_tag_binding_reading(parent: parent, value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
+    RestRefused { refusal } => TagBindingReadRefused { cause: rest_refusal_text(o: refusal) }
+    RestAnswered { answer: l } => TagBindingReadAnswered { reading: trust_root_tag_binding_reading(parents: tag_parent_spellings(parent: parent), value_name: value_name, bindings: l.tag_bindings, next_page_token: l.next_page_token) }
   }
 }
 
 fn ensure_trust_root_tag_binding(parent: String, value_name: NonEmptyStr, token: Secret) -> TrustRootTagsOutcome {
   match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-    Absent => trust_root_tags_refused(reason: concat(parent, ": tag bindings unreadable"))
-    Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
-    Present { value: TagBindingEstablished } => TrustRootTagsBound
-    Present { value: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
+    TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag bindings unreadable: ", cause], ""))
+    TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding listing has another page and no exact row; a partial listing is not absence"))
+    TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+    TagBindingReadAnswered { reading: TagBindingAbsent } => match gcp.ResourceManager.CreateTagBinding(access_token: token, parent: parent as NonEmptyStr, tag_value: value_name) {
       RestRefused { refusal } => trust_root_tags_refused(reason: join([parent, ": tag binding create refused: ", rest_refusal_text(o: refusal)], ""))
       RestAnswered { answer: a } => match a.error {
         Present { value: e } => trust_root_tags_refused(reason: join([parent, ": tag binding failed: ", match e.message { Present { value: m } => m  Absent => "no message" }], ""))
         Absent => match tag_bound_on(parent: parent, value_name: value_name, token: token) {
-          Present { value: TagBindingEstablished } => TrustRootTagsBound
-          Present { value: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
-          Present { value: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
-          Absent => trust_root_tags_refused(reason: concat(parent, ": tag binding readback unreadable"))
+          TagBindingReadAnswered { reading: TagBindingEstablished } => TrustRootTagsBound
+          TagBindingReadAnswered { reading: TagBindingAbsent } => trust_root_tags_refused(reason: concat(parent, ": tag binding not yet visible on readback; rerun the ceremony once it is"))
+          TagBindingReadAnswered { reading: TagBindingIncomplete } => trust_root_tags_refused(reason: concat(parent, ": tag binding readback listing has another page and no exact row; a partial listing is not absence"))
+          TagBindingReadRefused { cause } => trust_root_tags_refused(reason: join([parent, ": tag binding readback unreadable: ", cause], ""))
         }
       }
     }
+  }
+}
+
+// A service account's tag-binding parent names the account by its numeric uniqueId, not its email:
+// on 2026-10-28 (receipt iam-ceremony-20261028T131118Z) ListTagBindings on the email form answered 403
+// "iam.serviceAccounts.listTagBindings required (or the resource may not exist in this location)" to a
+// project owner. The id is read from the account, never transcribed.
+type TrustRootTagParent = TrustRootTagParentRead { parent: String } | TrustRootTagParentRefused { reason: String }
+
+fn trust_root_tag_parent(account: ServiceAccountEmail, token: Secret) -> TrustRootTagParent {
+  match gcp.IamAdmin.GetServiceAccount(access_token: token, project_id: fleet_secrets_project_id, sa_email: account) {
+    RestRefused { refusal } => TrustRootTagParentRefused { reason: join([account as String, ": account unreadable for its tag-binding parent: ", rest_refusal_text(o: refusal)], "") }
+    RestAnswered { answer: a } => if a.email != account || a.unique_id == "" { TrustRootTagParentRefused { reason: concat(account as String, ": account read answered another account or no uniqueId") } }
+      else { TrustRootTagParentRead { parent: join(["//iam.googleapis.com/projects/", fleet_secrets_project_id as String, "/serviceAccounts/", a.unique_id], "") } }
   }
 }
 
@@ -713,9 +772,12 @@ fn iam_bootstrap_ensure_trust_root_tags(token: Secret) -> TrustRootTagsOutcome {
     TagResourcePresent { name: key } => match ensure_trust_root_tag_value(key_name: key, token: token) {
       TagResourceRefused { reason } => trust_root_tags_refused(reason: reason)
       TagResourcePending { what } => trust_root_tags_refused(reason: concat(what, " creation is not yet done; rerun the ceremony once it is"))
-      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tag_parents(), init: TrustRootTagsBound, f: (acc, parent) => match acc {
+      TagResourcePresent { name: value } => fold(iam_bootstrap_trust_root_tagged_accounts(), init: TrustRootTagsBound, f: (acc, account) => match acc {
         TrustRootTagsRefused { reason: _ } => acc
-        TrustRootTagsBound => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        TrustRootTagsBound => match trust_root_tag_parent(account: account, token: token) {
+          TrustRootTagParentRefused { reason } => trust_root_tags_refused(reason: reason)
+          TrustRootTagParentRead { parent } => ensure_trust_root_tag_binding(parent: parent, value_name: value, token: token)
+        }
       })
     }
   }
@@ -734,7 +796,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
       match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
         RestAnswered { answer: seen } =>
-          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { concat(d.policy_id as String, ": existing deny policy differs; no authority granted") }
+          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { join([d.policy_id as String, ": existing deny policy differs; no authority granted; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: d.rules })], "") }
         RestRefused { refusal: seen_refusal } =>
           if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
           else {
@@ -745,7 +807,15 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     })
     BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
     BootstrapCapabilities => iam_bootstrap_execute_bindings(bindings: iam_bootstrap_stage_bindings(stage: stage), token: token)
-    BootstrapJournalBucket => iam_bootstrap_ensure_journal_bucket(bucket: iam_bootstrap_journal_bucket, token: token)
+    BootstrapJournalBucket => {
+      // THE BUCKET AND THE CELLS ON IT ARE ONE STAGE'S WORK: the cells it declares (model
+      // iam_bootstrap_journal_cells, the same population the post-run proof and the delta's root-cell
+      // check fold) are bound after the bucket exists, so a run that creates the bucket without making
+      // it readable by iam-observe and writable by iam-bootstrap is refused by its own stage rather
+      // than left to the next fleet-converge.
+      let created = iam_bootstrap_ensure_journal_bucket(bucket: iam_bootstrap_journal_bucket, token: token)
+      if created != "" { created } else { iam_bootstrap_execute_bindings(bindings: iam_bootstrap_stage_bindings(stage: BootstrapJournalBucket), token: token) }
+    }
     BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
     BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
     BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
@@ -759,6 +829,48 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
 // A create-only local receipt starts before cloud effects. Each stage has its own receipt; a
 // process loss leaves its started record visible. Named creates and etag-fenced additions can be
 // re-observed under a new receipt identity, never silently counted as completed from an exit code.
+// ── THE POST-RUN PROOF OF THE CELLS THIS CEREMONY OWNS ─────────────────────────
+// The delta refuses ROOT CEREMONY CELLS MISSING over exactly the cells the owner relation
+// (gunbc.auth.gcp_iam_bootstrap_model iam_bootstrap_cell_owner) hands to this ceremony, and its refusal
+// tells the operator this ceremony repairs them. That claim is only honest if the ceremony itself can
+// fail when it has not established them. It could not: every in-run check folded over whatever the
+// folded stage list happened to execute, and the observer readback deliberately withholds nothing from
+// ceremony-owned cells the observer cannot reach (their standing is this ceremony's own work). So a
+// ceremony that never ran the journal-bucket or trust-root-tags stage wrote nothing, produced no
+// refusal, and exited 0 while the next fleet-converge refused on its own behalf (the 2026-10-27
+// incident, receipt iam-ceremony-20261027T055742Z: 10 of 12 stage receipts, no setIamPolicy in the
+// REST log, ExitSuccess). THE CEREMONY NOW PROVES ITS OWN POPULATION WITH ITS OWN TOKEN AFTER THE
+// FOLD, AND REFUSES LOUDLY IF ANY CELL IT OWNS IS NOT ESTABLISHED. Fail-closed: an absent or unreadable
+// policy counts as not established. The wording of each cell is ceremony_cell_phrase, the same phrase
+// the delta's refusal uses, so the two sides cannot drift into two dialects (DESIGN section 3).
+type CeremonySubjectReading { subject: IamBootstrapResource, reading: PolicyReading }
+
+fn ceremony_unestablished_cell_phrases(readings: List<CeremonySubjectReading>) -> List<String> {
+  flat_map(iam_bootstrap_ceremony_owned_cells(), b =>
+    match filter(readings, r => iam_bootstrap_resource_key(resource: r.subject) == iam_bootstrap_resource_key(resource: b.resource)).first() {
+      Absent => [ceremony_cell_phrase(b: b)]
+      Present { value: r } => match r.reading {
+        PolicyObserved { policy } => if gcp_cell_in(c: b.cell, xs: gcp_policy_cells(p: policy)) { [] } else { [ceremony_cell_phrase(b: b)] }
+        PolicyResourceAbsent => [ceremony_cell_phrase(b: b)]
+        PolicyUnreadable { cause } => [concat(ceremony_cell_phrase(b: b), " (policy unreadable: ", cause, ")")]
+      }
+    })
+}
+
+// THE POPULATION THE POST-RUN PROOF COVERS: every cell the owner relation gives this ceremony. THE
+// SAME FILTER THE DELTA'S ROOT-CELL CHECK FOLDS (root_cell_repair_ceremony over the same roster), so
+// one population drives both sides of the ceremony/delta meaning (DESIGN section 2).
+fn iam_bootstrap_ceremony_owned_cells() -> List<IamBootstrapBinding> {
+  distinct_by_key(xs: iam_bootstrap_root_ceremony_bindings(), key: b => concat(iam_bootstrap_resource_key(resource: b.resource), cell_preimage(c: b.cell)))
+}
+
+fn ceremony_owned_proof_refusal(readings: List<CeremonySubjectReading>) -> String {
+  let outstanding = ceremony_unestablished_cell_phrases(readings: readings)
+  if count(outstanding) == 0 { "" } else {
+    concat("ROOT CEREMONY CELLS NOT ESTABLISHED: this ceremony owns these cells and its own policy read does not show them bound: ", join(outstanding, "; "))
+  }
+}
+
 fn iam_bootstrap_apply() -> ProcessExit {
   let receipt = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
   let input_refusals = dedicated_federation_input_refusals(federations: iam_bootstrap_identity_federations())
@@ -782,11 +894,17 @@ fn iam_bootstrap_apply() -> ProcessExit {
             else if outcome != "" { IamBootstrapProgress { completed: prior.completed, refusal: outcome } }
             else { IamBootstrapProgress { completed: prior.completed + [stage], refusal: "" } }
           })
+        // THE POST-RUN PROOF RUNS AFTER THE FOLD AND BEFORE THE AUTHORITY WITHDRAWALS: it measures what
+        // this run established, read with the ceremony's own token, so a stage that vanished from the
+        // folded list -- or whose write silently no-oped -- cannot green the ceremony.
+        let proof_readings = map(roster_subjects(roster: iam_bootstrap_ceremony_owned_cells()), s =>
+          CeremonySubjectReading { subject: s, reading: iam_bootstrap_read_policy(resource: s, token: token) })
+        let owned_proof = ceremony_owned_proof_refusal(readings: proof_readings)
         let probe_cleanup = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
         let deny_cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
         let cleanup = concat(probe_cleanup, if probe_cleanup != "" && deny_cleanup != "" { "; " } else { "" }, deny_cleanup)
-        if result.refusal == "" && cleanup == "" { ExitSuccess }
-        else { exit_failure(reason: concat(result.refusal, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
+        if result.refusal == "" && cleanup == "" && owned_proof == "" { ExitSuccess }
+        else { exit_failure(reason: concat(result.refusal, if owned_proof == "" { "" } else { concat(if result.refusal == "" { "" } else { "; " }, owned_proof) }, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
       }
     }
   } }
@@ -1238,7 +1356,8 @@ fn iam_bootstrap_current_authority_live() -> Bool {
 fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: check } =>
-      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
+      if iam_bootstrap_deny_rules_match(observed: check.rules, declared: policy.rules) { "" }
+      else { join([policy.policy_id as String, ": created deny policy differs; no capabilities granted; read: ", deny_rules_text(rules: check.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: check_refusal } =>
       if outcome_is_not_found(o: check_refusal) && remaining > 0 {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
@@ -1334,8 +1453,8 @@ fn pool_initialization_readback(reading: PolicyReading, cells: List<GcpIamBindin
   match reading {
     PolicyObserved { policy } => if iam_bootstrap_pool_initialized(policy: policy, cells: cells) { PoolInitReadbackExact }
       else { PoolInitReadbackRefused { reason: "pool initialization readback differs; workflow trust withheld" } }
-    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
-    PolicyUnreadable { cause: _ } => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
+    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback found no pool policy; workflow trust withheld" }
+    PolicyUnreadable { cause } => PoolInitReadbackRefused { reason: concat("pool initialization readback lacks its policy revision; workflow trust withheld: ", cause) }
   }
 }
 

@@ -1,0 +1,96 @@
+module gunbc.guarantee_stall.roster_pins
+
+// THE FOLDS THAT USED TO SIT BESIDE THE HAND LIST, HELD APART FROM THE ROSTER BECAUSE THE ROSTER
+// NO LONGER HAS AN AUTHOR. `gunbc.guarantee_stall.roster` `guarantee_stall_roster` is derived in
+// memory from the sibling files of this directory that declare a `GuaranteeStall` under their own
+// stem (`v1_compiler.cli_run.derived_row_roster` `GUARANTEE_STALL`), so an append is a new row file
+// and never an edit to a shared list. This module declares no `GuaranteeStall` row, so it is not a
+// member; type selection, not the directory alone, decides membership.
+//
+// ORDER IS NO LONGER SOURCE ORDER. The hand list called its order load-bearing for projections;
+// the derived list is ordered by row stem. Measured when the roster was derived: no consumer of
+// `guarantee_stall_roster` depends on order (every one is a universally quantified fold, a size, or
+// a count), and no projection renders the rows.
+//
+// EVERY ROW IS A FILE IN THIS DIRECTORY, AND A ROW DECLARED ELSEWHERE IS NOT WATCHED. The hand list
+// once carried five rows declared beside their subjects rather than here, found by a one-off run of
+// the declared-versus-rostered join; the three that survived (`runner_activation_reachability_stall`,
+// `runner_activation_safety_stall`, `declaration_index_fixture_exemption_classification_stall`)
+// were moved into row files here when the roster was derived (operator ruling, Charter 3), and
+// their host modules import them back. The objection the hand list recorded -- that a directory
+// cannot see a row declared elsewhere -- STILL HOLDS: a `GuaranteeStall` declared outside this
+// directory is absent from the roster and nothing refuses it. A row in this directory under a stem
+// that is not its declaration name is absent from the seed's roster too; the native derivation
+// (`v2.compiler.source_authority`, `DerivedRosterRowMisplaced`) refuses it, and
+// `v2.test.claim.derived_roster_seed_agreement` goes red on one, but neither runs on the required
+// path. `gunbc.rostered_row_join` declares the corpus-wide join that would refuse it
+// as `DeclaredNotRostered`, but its host entry point has no caller
+// (`gunbc.recurring_failure_mode.a_drops_rederivation_instrument_sits_in_the_population_it_measures`
+// names why, and what must land first). This is no worse than the hand list, which had the same
+// hole and a second one: forgetting the list entry. The derivation is still a host fold, not the
+// declaration-value binding `gunbc.guarantee_stall.roster_re_enumerates_its_own_rows_stall` awaits.
+//
+// TWO DATED COHORT NOTES ARE RETIRED WITH THE LIST THEY POINTED INTO. Required-floor runs
+// 32882641450 (ten facts over fifteen executing identities, stalls rather than drops) and
+// 32918791246 (four pre-existing facts over nine witness identities) were recorded deictically --
+// "the identities below" -- against the hand list's source order. That order no longer exists, and
+// nothing in the rows records their cohort, so the run ids are the remaining provenance.
+//
+// THE CITED WORK ITEMS ARE PROVENANCE, NEVER EVIDENCE THAT A CLIMB HAPPENED. Measured 2026-08-28:
+// adhoc-89fcf94a-bdd, adhoc-3cb769e0-0a6 and adhoc-a3b0e05f-374 reported done while their
+// conditions were unmet (required-floor run 33140608194). `NextRungTrigger` therefore carries the
+// operative half as `capability` and the asked lanes as modeled `DashboardWorkItemReferent` rows in
+// `awaiting`, and `every_stall_trigger_is_admitted` refuses a capability that spells a referent
+// back into itself. The dated reading counted three such rows; the migration found four, because
+// the reading enumerated what it had checked rather than the rows that spell one.
+//
+// THE ROSTER IS CHECKED BY FOLDS, NOT ONE EXEMPLAR PER ROW. A per-row witness would be N copies of
+// one assertion, each proving the functions work and none proving that row is enrolled, with
+// coverage tracking how many authors remembered rather than how many rows exist. The folds in
+// `test.claim.guarantee_stall_witness` scale with the population instead.
+
+import std.types { List, Bool }
+import std.algebra { fold_list }
+import gunbc.guarantee_stall { GuaranteeStall }
+import gunbc.guarantee_stall.external_model_scope_live_cover_stall { external_model_scope_live_cover_stall }
+import gunbc.guarantee_stall.observation_heartbeat_lockstep_stall { observation_heartbeat_lockstep_stall }
+import gunbc.guarantee_stall.operation_argv_binding_wall_stall { operation_argv_binding_wall_stall }
+
+// THE RESTORED SUBJECTS, PINNED BY IDENTITY SO THEIR LOSS REFUSES.
+//
+// These stalls were DECLARED in the stall carrier and absent from guarantee_stall_roster, so the
+// walls written over that roster ranged over 21 of the 25 rows the carrier then declared. The walls
+// were green because their input was short, which is exactly the shape
+// gunbc.recurring_failure_mode check_subject_narrower_than_its_declared_claim names.
+//
+// WHAT THIS CHECK COVERS AND WHAT IT DOES NOT. It covers exactly these subjects: if any is dropped
+// from the roster again (for example by its file losing the row-type declaration the derivation
+// selects on), the fold refuses. A NEW stall declared outside the directory is the corpus-wide
+// join's subject (gunbc.rostered_row_join), which does not execute today; see above. These pins
+// stay enrolled because a presence-exactly-once fold also refuses a DOUBLE entry, which an identity
+// join treating membership as a set does not see.
+//
+// PRESENCE-EXACTLY-ONCE, NOT SET EQUALITY: a new stall row must be admitted without editing this
+// list, while a lost one must refuse. PINNED BY REFERENCE TO THE DECLARATIONS, NOT BY TRANSCRIBING
+// THEIR SUBJECTS: an earlier draft listed the subjects as string literals and got all of them
+// wrong, and the import refuses at resolve if a row module is renamed or deleted rather than
+// silently matching nothing.
+data restored_stalls: List<GuaranteeStall> = [
+  external_model_scope_live_cover_stall,
+  observation_heartbeat_lockstep_stall,
+  operation_argv_binding_wall_stall,
+]
+
+fn every_restored_stall_is_rostered_once(ss: List<GuaranteeStall>) -> Bool {
+  fold_list(
+    xs: restored_stalls,
+    empty: true,
+    cons: fn(acc, want) {
+      acc && fold_list(
+        xs: ss,
+        empty: 0,
+        cons: fn(n, s) { if s.subject == want.subject { n + 1 } else { n } },
+      ) == 1
+    },
+  )
+}

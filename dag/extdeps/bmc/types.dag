@@ -707,3 +707,19 @@ type RedfishSystemAction =
   | ResetSystem { reset_type: RedfishResetType }
   | SetAccountPassword { account_id: NonEmptyStr, new_password: Secret }
   | GetSystem
+
+// The navigation properties of DMTF's ServiceRoot resource (Redfish schema bundle DSP8010, ServiceRoot),
+// each spelled as the schema spells it after the ServiceRoot prefix. Which of them a given service
+// answers is that implementation's per-release fact, recorded in its own extdeps module, never here.
+type RedfishServiceRootMember =
+    ServiceRootSystems
+  | ServiceRootChassis
+  | ServiceRootManagers
+  | ServiceRootTasks
+  | ServiceRootSessionService
+  | ServiceRootAccountService
+  | ServiceRootEventService
+  | ServiceRootUpdateService
+  | ServiceRootRegistries
+  | ServiceRootCertificateService
+  | ServiceRootJsonSchemas
