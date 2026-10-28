@@ -1651,8 +1651,17 @@ fn non_empty_to_list<T>(xs: FreeSemigroup<T>) -> FreeMonoid<T> {
 // DESIGN 6: a fixed cost, regardless of n. One native fold_list pass carries a lag pair — the element
 // read one step ago is only committed to the kept list when its successor arrives — so the last element is
 // what never gets committed, and the interpreter's stack never grows with n (fold_list is a seed native
-// intercept, and the emitter lowers it to a cursor loop). list_push appends in place, so the pass is
-// linear; a Cons-prepend fold would have rebuilt the accumulator per step.
+// intercept, and the emitter lowers it to a cursor loop). The pass is linear because the accumulator grows
+// by one list_push per step and BOTH realizations of that push share the spine instead of copying the
+// members: the dry-lane rc_list_push (v1_rt.rs) is Rc::make_mut(..).push_back(..), and the clone make_mut
+// takes when the handle is shared is im::Vector's structural-sharing clone -- O(1) per im-15.1.0
+// vector/mod.rs "Clone for Vector", O(n) only up to the bounded inline threshold, never per member -- and
+// the wet-lane list_push arm reads the receiver as a Value::List (value_to_list_carrier, copied = 0) and
+// pushes on a clone of that same tree. What re-derives it is the interpreter's own MutationCounters
+// list_push row (calls / entries copied / average per call; MutationCounters::fmt in
+// src/v1/stage0/src/v1_interpreter.rs, printed as the [interp-stats] block by print_interp_stats in
+// src/v1/stage0/src/bin/claim_batch.rs): a push that copied members would drive that average up with n
+// instead of holding at one entry per call. A Cons-prepend fold would have rebuilt the accumulator per step.
 type ListInitLag<T> {
   kept: FreeMonoid<T>
   pending: Optional<T>
