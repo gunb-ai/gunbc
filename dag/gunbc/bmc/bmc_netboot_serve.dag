@@ -5,7 +5,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.types { NonEmptyStr, String, Int, List, Port }
 import std.algebra { list_append }
 import extdeps.uri { Uri, Http, Https, uri_wire }
-import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload, WithIdentity, UserDataOnly, nocloud_seedfrom_kernel_arg }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.firmware.uefi_http_boot { UefiHttpBootEntry }
@@ -64,8 +64,9 @@ fn bmc_netboot_uri(plan: BmcNetbootServePlan, path: NonEmptyStr) -> Uri {
   }
 }
 
-fn bmc_netboot_seed_datasource(plan: BmcNetbootServePlan) -> String {
-  join(["nocloud-net;s=", uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/"))], "")
+// The seed's ds= argument through the one NoCloud token builder (extdeps.os.ubuntu_autoinstall).
+fn bmc_netboot_seed_kernel_arg(plan: BmcNetbootServePlan) -> KernelCmdlineArg {
+  nocloud_seedfrom_kernel_arg(datasource: "nocloud-net", seedfrom: uri_wire(uri: bmc_netboot_uri(plan: plan, path: "/nocloud/")) as String)
 }
 
 fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg> {
@@ -73,7 +74,7 @@ fn bmc_netboot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineAr
     KernelKeyValue { key: "ip", value: "dhcp" },
     KernelKeyValue { key: "url", value: uri_wire(uri: plan.bulk_iso_url) },
     KernelFlag { name: "autoinstall" },
-    KernelKeyValue { key: "ds", value: bmc_netboot_seed_datasource(plan: plan) },
+    bmc_netboot_seed_kernel_arg(plan: plan),
     KernelFlag { name: "---" },
   ]
 }
@@ -329,7 +330,38 @@ fn bmc_netboot_staging_of(plan: BmcNetbootServePlan, ops: List<BmcNetbootOp>) ->
 // launch, in the order they must act. This replaces the old hand-unrolled sequence -- a separate
 // mkdir run, then a per-file fold, then a serve launch gated on the fold's exit code -- whose
 // three argv call sites each reached the transport on their own.
-fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String) -> List<BmcNetbootOp> {
+// THE INSTANCE-ID OF THE STAGED meta-data FILE IS THE PLAN'S OWN HOSTNAME — that is what this file has
+// always written there, and the plan supplying it is the whole authority for it. When the seed takes the
+// key-only route there is no identity section and so no hostname, and NOTHING CITED SAYS what instance-id
+// such a seed carries: the fleet's one cited rule for this field
+// (gunbc.provisioning.public_nocloud_seed.public_seed_meta_data_document — cloud-init's NoCloud datasource
+// requires instance-id, so it is derived, never caller-chosen) derives it from the CLIENT'S MAC, and a serve
+// plan has no MAC to give it: at serve-plan time the client has not been identified yet, which is the point
+// of PXE. So this says Absent, and the staging that would have needed the value refuses by name. Inventing
+// "iid-datasource-none" here would have been a fabricated default in a credential-adjacent file, and the
+// comment claiming the vendor data "would carry it anyway" cited no one (DESIGN.md §5: a silent widen or
+// fabricated default is a hard reject).
+fn bmc_netboot_instance_id(plan: BmcNetbootServePlan) -> Optional<NonEmptyStr> {
+  match plan.autoinstall.identity_posture {
+    WithIdentity { identity: id, user_data: _ } => Present { value: id.hostname }
+    UserDataOnly { users: _ } => Absent
+  }
+}
+
+fn bmc_netboot_staging_refused_instance_id() -> BmcNetbootStaging {
+  BmcNetbootStagingRefused {
+    reason: join(
+      [
+        "bmc-netboot cannot stage a key-only (user-data) seed: nocloud/meta-data needs an instance-id, ",
+        "this plan's comes from its identity hostname, and the only cited rule for the field derives it ",
+        "from a client MAC a serve plan does not yet have",
+      ],
+      "",
+    ) as NonEmptyStr,
+  }
+}
+
+fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String, instance_id: NonEmptyStr) -> List<BmcNetbootOp> {
   [
     BmcNetbootMakeDir { name: "nocloud" },
     BmcNetbootPutArtifact { name: "busybox", artifact: bmc_netboot_artifact(name: "busybox") },
@@ -338,20 +370,33 @@ fn bmc_netboot_staging_ops(plan: BmcNetbootServePlan, user_seed: String) -> List
     BmcNetbootPutArtifact { name: "grubaa64.efi", artifact: bmc_netboot_artifact(name: "grubaa64.efi") },
     BmcNetbootPutText { name: "grub.cfg", text: bmc_netboot_grub_cfg_text(plan: plan) },
     BmcNetbootPutText { name: "nocloud/user-data", text: user_seed },
+    // THE INSTANCE-ID IS A PARAMETER, NOT A FALLBACK. The caller had to establish one — from this plan's
+    // identity hostname — or it never reached this line: the staging folds through
+    // bmc_netboot_provision_staging, which refuses first when bmc_netboot_instance_id says Absent. So there
+    // is no branch here that manufactures a value, and the bytes for a plan that has a hostname are exactly
+    // what they were.
     BmcNetbootPutText {
       name: "nocloud/meta-data",
-      text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], ""),
+      text: join(["instance-id: ", instance_id as String], ""),
     },
     BmcNetbootLaunchServe,
   ]
 }
 
 fn bmc_netboot_provision_staging(plan: BmcNetbootServePlan) -> BmcNetbootStaging {
-  match bmc_netboot_user_seed_verdict(plan: plan) {
-    AutoinstallUserDataRendered { content: t } =>
-      bmc_netboot_staging_of(plan: plan, ops: bmc_netboot_staging_ops(plan: plan, user_seed: t))
-    AutoinstallUserDataRefused { reason: r } =>
-      bmc_netboot_staging_refused_seed(cause: r)
+  // THE INSTANCE-ID IS ESTABLISHED BEFORE ANY OP IS PREPARED, so a plan that cannot name one stages nothing
+  // rather than staging a file whose instance-id was made up. The refusal carries no operation list at all,
+  // which is how this module already says "none of this becomes observable".
+  match bmc_netboot_instance_id(plan: plan) {
+    Absent => bmc_netboot_staging_refused_instance_id()
+    Present { value: instance_id } =>
+      match bmc_netboot_user_seed_verdict(plan: plan) {
+        AutoinstallUserDataRendered { content: t } => bmc_netboot_staging_of(
+          plan: plan,
+          ops: bmc_netboot_staging_ops(plan: plan, user_seed: t, instance_id: instance_id),
+        )
+        AutoinstallUserDataRefused { reason: r } => bmc_netboot_staging_refused_seed(cause: r)
+      }
   }
 }
 

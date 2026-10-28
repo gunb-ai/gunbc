@@ -29,6 +29,7 @@ import extdeps.bmc.ipmi_chassis_control {
   chassis_observation, ipmitool_chassis_status_power_line,
 }
 import gunbc.machine_intake.oob_boot_handoff { read_chassis_power }
+import extdeps.bmc.ipmi { ipmi_cipher_suite_argv }
 import gunbc.bmc_model {
   BmcWorld, BmcPowerOn, BmcPowerOff, BmcScheduledEvent, BmcAcPowerLost, bmc_power_is_on,
   bmc_world, bmc_with_pending, bmc_with_power,
@@ -76,7 +77,7 @@ fn world(power_on: Bool) -> BmcWorld {
 }
 
 fn read_power() -> ChassisPowerObservation {
-  read_chassis_power(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr)
+  read_chassis_power(bmc_host: "bmc.test.invalid" as NonEmptyStr, username: "operator" as NonEmptyStr, password_file: "/nonexistent/credential" as NonEmptyStr, cipher_suite: Absent)
 }
 
 fn power_control(action: NonEmptyStr) -> Bool {
@@ -87,6 +88,7 @@ fn power_control(action: NonEmptyStr) -> Bool {
     action: action,
     deadline: "5s" as NonEmptyStr,
     kill_after: "1s" as NonEmptyStr,
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
   ).success
 }
 
@@ -234,7 +236,7 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
     frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
     subject: fn(_scope) {
       let first = read_power()
-      let sensors = diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr)
+      let sensors = diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr, cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent))
       sensors.success
     }
   )
@@ -464,7 +466,7 @@ test fn a_nested_frame_cannot_open_inside_a_modeled_realization() -> Bool {
       let before = read_power()
       let bare = evaluate_in_witness_frame(
         frame: WitnessEvaluationFrame { envelope: modeled_frame(realization: other).envelope, rest_fixtures: [], realization: none },
-        subject: fn(_s) { diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr).success }
+        subject: fn(_s) { diagnostic.ipmi.Tool.SensorList(bmc_host: "bmc.test.invalid" as NonEmptyStr, cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent)).success }
       )
       let foreign = evaluate_in_witness_frame(
         frame: modeled_frame(realization: other),

@@ -24,7 +24,6 @@ import gunbc.runner.runner_microvm_network { runner_microvm_converged_receipt_ro
 import gunbc.live_deploy.belt_cadence { belt_exit_trigger_limit_interval, belt_exit_trigger_limit_burst, belt_tick_run_bound, belt_tick_cadence, instance_obligation_run_bound, belt_credential_recovery_backstop }
 import gunbc.roadmap.roadmap_belt_obligation { LaunchObligation }
 
-import gunbc.auth.approval_device_redemption { approval_device_store_directory }
 import gunbc.live_deploy.serve_binary { serve_binary_path, fixed_serve_binary_path }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,

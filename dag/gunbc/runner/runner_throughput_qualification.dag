@@ -2,7 +2,7 @@ module gunbc.runner.runner_throughput_qualification
 
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String, Timestamp }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure {
   ByteSize, byte_size_count,
   EvalStepCount, eval_step_count_value,
@@ -36,6 +36,7 @@ import v2.workflow.floor_eval_step_calibration {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
+import std.integer { int_to_decimal_string }
 
 // A RUNNER-THROUGHPUT ASSESSMENT SAYS WHETHER A SELECTED OFFER DELIVERS, AND NOTHING ELSE.
 //
@@ -370,7 +371,7 @@ fn first_refused(joins: List<SubjectJoin>) -> SubjectJoin {
 fn cpu_quota_wire(q: SlotQuotaThreads) -> String {
   match q {
     Absent => "unbounded"
-    Present { value: t } => concat(hardware_thread_count_value(t: t) as String, " threads")
+    Present { value: t } => concat(nat_to_decimal_string(value: hardware_thread_count_value(t: t)), " threads")
   }
 }
 
@@ -389,17 +390,17 @@ fn bound_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunnerQ
   let want = byte_size_count(b: selection.slot.memory_high)
   match run.memory {
     CgroupMemoryUnreadable { reason: r } =>
-      SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
+      SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: nat_to_decimal_string(value: want), observed: r as String }
     CgroupMemoryRead { level: _, bound: b, peak: _ } =>
       match b {
         HostBudgetUnreadable { reason: r } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
+          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: nat_to_decimal_string(value: want), observed: r as String }
         HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: r as String }
+          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: nat_to_decimal_string(value: want), observed: r as String }
         HostBudgetResolved { effective_bytes: e, requested_bytes: _, observation: _ } =>
-          join_axis(run: run.run, axis: BoundAxis, holds: byte_size_count(b: e) == want, selected: want as String, observed: byte_size_count(b: e) as String)
+          join_axis(run: run.run, axis: BoundAxis, holds: byte_size_count(b: e) == want, selected: nat_to_decimal_string(value: want), observed: nat_to_decimal_string(value: byte_size_count(b: e)))
         HostBudgetExternallyBounded { run_id: id } =>
-          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: want as String, observed: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id }) }
+          SubjectJoinRefused { run: run.run, axis: BoundAxis, selected: nat_to_decimal_string(value: want), observed: user_work_scope_standing_wire(s: ExternallyBoundedExecutor { run_id: id }) }
       }
   }
 }
@@ -439,12 +440,12 @@ fn subject_join<P>(selection: SelectedRunnerQualification<P>, run: ObservedRunne
     join_axis(run: run.run, axis: SpecimenAxis, holds: (selection.workload.specimen as String) == (run.specimen as String), selected: selection.workload.specimen as String, observed: run.specimen as String),
     join_axis(run: run.run, axis: ImageDigestAxis, holds: (selection.runtime.image_digest as String) == (run.image_digest as String), selected: selection.runtime.image_digest as String, observed: run.image_digest as String),
     join_axis(run: run.run, axis: RuntimeClosureAxis, holds: (selection.runtime.runtime_closure as String) == (run.runtime_closure as String), selected: selection.runtime.runtime_closure as String, observed: run.runtime_closure as String),
-    join_axis(run: run.run, axis: HostThreadsAxis, holds: hardware_thread_count_value(t: selection.offer.shape.hard.threads) == hardware_thread_count_value(t: run.host_threads), selected: hardware_thread_count_value(t: selection.offer.shape.hard.threads) as String, observed: hardware_thread_count_value(t: run.host_threads) as String),
+    join_axis(run: run.run, axis: HostThreadsAxis, holds: hardware_thread_count_value(t: selection.offer.shape.hard.threads) == hardware_thread_count_value(t: run.host_threads), selected: nat_to_decimal_string(value: hardware_thread_count_value(t: selection.offer.shape.hard.threads)), observed: nat_to_decimal_string(value: hardware_thread_count_value(t: run.host_threads))),
     join_axis(run: run.run, axis: HostArchitectureAxis, holds: architecture_joins(selection: selection, observed: run.host_architecture), selected: offer_architecture_wire(selection: selection), observed: architecture_diagnostic_name(arch: run.host_architecture) as String),
     join_axis(run: run.run, axis: SlotUnitAxis, holds: (selection.slot.unit as String) == (run.slot_unit as String), selected: selection.slot.unit as String, observed: run.slot_unit as String),
-    join_axis(run: run.run, axis: EffectiveMemoryMaxAxis, holds: byte_size_count(b: want.memory_max) == byte_size_count(b: run.effective.memory_max), selected: byte_size_count(b: want.memory_max) as String, observed: byte_size_count(b: run.effective.memory_max) as String),
-    join_axis(run: run.run, axis: EffectiveMemoryHighAxis, holds: byte_size_count(b: want.memory_high) == byte_size_count(b: run.effective.memory_high), selected: byte_size_count(b: want.memory_high) as String, observed: byte_size_count(b: run.effective.memory_high) as String),
-    join_axis(run: run.run, axis: EffectiveTasksMaxAxis, holds: want.tasks_max == run.effective.tasks_max, selected: want.tasks_max as String, observed: run.effective.tasks_max as String),
+    join_axis(run: run.run, axis: EffectiveMemoryMaxAxis, holds: byte_size_count(b: want.memory_max) == byte_size_count(b: run.effective.memory_max), selected: nat_to_decimal_string(value: byte_size_count(b: want.memory_max)), observed: nat_to_decimal_string(value: byte_size_count(b: run.effective.memory_max))),
+    join_axis(run: run.run, axis: EffectiveMemoryHighAxis, holds: byte_size_count(b: want.memory_high) == byte_size_count(b: run.effective.memory_high), selected: nat_to_decimal_string(value: byte_size_count(b: want.memory_high)), observed: nat_to_decimal_string(value: byte_size_count(b: run.effective.memory_high))),
+    join_axis(run: run.run, axis: EffectiveTasksMaxAxis, holds: want.tasks_max == run.effective.tasks_max, selected: int_to_decimal_string(value: want.tasks_max), observed: int_to_decimal_string(value: run.effective.tasks_max)),
     join_axis(run: run.run, axis: EffectiveCpuQuotaAxis, holds: cpu_quota_eq(a: want.cpu_quota_threads, b: run.effective.cpu_quota_threads), selected: cpu_quota_wire(q: want.cpu_quota_threads), observed: cpu_quota_wire(q: run.effective.cpu_quota_threads)),
     join_axis(run: run.run, axis: WorkspaceAxis, holds: workspace_locus_eq(a: workspace_bytes_locus(backing: selection.workspace), b: run.workspace), selected: locus_wire(l: workspace_bytes_locus(backing: selection.workspace)), observed: locus_wire(l: run.workspace)),
     bound_join(selection: selection, run: run),
@@ -773,10 +774,10 @@ fn concurrency_refusal(s: ConcurrencyStanding) -> List<ThroughputRefusal> {
 
 fn concurrency_standing_wire(s: ConcurrencyStanding) -> String {
   match s {
-    ConcurrencyObservedAtWidth { population: n } => concat("a concurrent cohort of ", concat(n as String, " seats was observed at the width"))
+    ConcurrencyObservedAtWidth { population: n } => concat("a concurrent cohort of ", concat(int_to_decimal_string(value: n), " seats was observed at the width"))
     ConcurrencyUnobserved => "no concurrent cohort was observed, so the width is divided, not observed"
     ConcurrencyCohortRefused { cause: c } => concat("the concurrent cohort was refused: ", c as String)
-    ConcurrencyPopulationIsNotTheWidth { population: n, width: w } => join(["the cohort ran ", n as String, " seats but the derived width is ", w as String], "")
+    ConcurrencyPopulationIsNotTheWidth { population: n, width: w } => join(["the cohort ran ", int_to_decimal_string(value: n), " seats but the derived width is ", int_to_decimal_string(value: w)], "")
     ConcurrencySeatNotAnAssessedRun { seat: r } => concat("a cohort seat is not one of the assessed runs: ", run_key(r: r))
     ConcurrencySeatFailed { seat: r, cause: c } => join(["cohort seat ", run_key(r: r), " failed: ", c as String], "")
     ConcurrencyNotAssessed { because: b } => concat("concurrency not assessed: ", b as String)
@@ -978,7 +979,7 @@ data qualification_run_producer_frontier: RouteLegStanding = LegAwaitingAuthorit
 // ── WIRE ──────────────────────────────────────────────────────────────────────────────────────
 
 fn nat_wire(n: Nat) -> String {
-  n as String
+  nat_to_decimal_string(value: n)
 }
 
 fn throughput_standing_wire(s: ThroughputStanding) -> NonEmptyStr {
@@ -1006,7 +1007,7 @@ fn memory_standing_wire(s: MemoryEnvelopeStanding) -> NonEmptyStr {
 fn slot_width_wire(s: SlotWidthStanding) -> NonEmptyStr {
   match s {
     SlotWidthDerived { by_memory: m, by_cpu: c, slots: n } =>
-      join(["slots ", n as String, " (memory admits ", m as String, ", cpu admits ", c as String, ")"], "") as NonEmptyStr
+      join(["slots ", int_to_decimal_string(value: n), " (memory admits ", int_to_decimal_string(value: m), ", cpu admits ", int_to_decimal_string(value: c), ")"], "") as NonEmptyStr
     SlotWidthUnderivable { cause: c } => concat("slot width underivable: ", c as String) as NonEmptyStr
   }
 }
@@ -1021,8 +1022,8 @@ fn refusal_wire(r: ThroughputRefusal) -> String {
       }
     SamplingDidNotHold { policy: p, observed_runs: n } =>
       match p {
-        ExactlyOneReconciledRun => join(["sampling policy wants exactly one reconciled run, observed ", n as String], "")
-        ConservativePerAxis { minimum_runs: m } => join(["sampling policy wants at least ", m as String, " runs, observed ", n as String], "")
+        ExactlyOneReconciledRun => join(["sampling policy wants exactly one reconciled run, observed ", int_to_decimal_string(value: n)], "")
+        ConservativePerAxis { minimum_runs: m } => join(["sampling policy wants at least ", int_to_decimal_string(value: m), " runs, observed ", int_to_decimal_string(value: n)], "")
       }
     ThroughputDidNotHold { standing: s } => throughput_standing_wire(s: s) as String
     MemoryEnvelopeDidNotHold { standing: s } => memory_standing_wire(s: s) as String

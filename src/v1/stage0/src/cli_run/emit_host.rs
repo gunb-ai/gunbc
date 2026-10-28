@@ -228,7 +228,21 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
                         )
                         .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
                         record_fixture_closure(&sources);
-                        compile_fixture_rendering_only_what_is_read(sources, None, module_index)
+                        // THE CENSUS RUNS ON THE COMPILED GRAPH'S DIAGNOSTICS AND REQUESTS NO
+                        // RENDER SUBJECT (mgr ruling msg_546ed998, after the #13037 floor repair
+                        // wired a render-selection demand into this route). A census asks "which
+                        // located diagnostics did the compile produce"; a render subject is not
+                        // one of its inputs, and demanding one made a parse-error fixture -- whose
+                        // own module never joins the compiled graph -- refuse the census instead of
+                        // reporting the parse diagnostics it exists to report. The route therefore
+                        // emits with an EMPTY selection: the fixed-point compile runs in full
+                        // (whole-graph checks and graph-level scans included, all before any
+                        // per-module work), and the empty selection renders no module, which is
+                        // exactly what a census needs and nothing more. It is NOT a catch of the
+                        // old refusal and a proceed, and it never widens to RenderEveryModule --
+                        // the counter below and the control test make a whole-graph census render
+                        // a refused regression rather than a slower pass.
+                        compile_fixture_rendering_nothing(sources, module_index)
                     })
                 },
             )
@@ -536,9 +550,10 @@ pub fn compile_dag_multi_module_fixture(
         // Walk per TypedModule registry. Bare Fn/Func names that collide across modules are
         // omitted (Absent) — never InstrumentRefused, never an un-expanded loser row.
         let resolved_rust_functions = project_resolved_rust_fn_signatures(resolved.as_ref());
-        let result = v1_compiler_compile::emit_resolved_for_target(
+        let result = emit_resolved_for_target_counting(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
+            Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
         );
         (module_count, resolved_rust_functions, result)
     }));
@@ -2205,10 +2220,109 @@ pub(crate) fn compile_fixture_rendering_only_what_is_read(
     )
     .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
     let selection = fixture_render_selection(&resolved, read_path)?;
-    Ok(v1_compiler_compile::emit_resolved_for_target_selected(
+    Ok(emit_resolved_for_target_counting(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
         selection,
+    ))
+}
+
+// RENDER-REQUEST COUNTERS AT THE HOST SEAM (floor repair C1 control, mgr ruling msg_546ed998).
+// These two thread_local Cells count every render REQUEST that passes through the host seam
+// `emit_resolved_for_target_counting`, by the shape requested: `RenderEveryModule` moves the
+// whole-graph counter, a `RenderSelectedMirrors` with at least one basename moves the selected
+// counter. They exist so the census route's claim "this route requests no render subject" is
+// executed evidence, not prose: `compile_fixture_rendering_nothing` -- the only render request
+// the census makes -- goes through the counting seam, so a census that widened to a whole-graph
+// render (re-buying the cost the empty selection exists to not-pay) moves a counter the control
+// test (`src/v1/stage0/tests/census_no_render_subject_control.rs`) reads, and the test's positive
+// control (a direct `RenderEveryModule` request through the same seam moves the whole-graph
+// counter by exactly one) proves the counter is not stuck at zero.
+//
+// WHY HERE AND NOT IN THE COMPILER: `v1_compiler_compile.rs` is a GENERATED file (its authority
+// is `src/v1/compile.dag`, which cannot express `thread_local`/`Cell`; the seed's hand-item law,
+// gunbc.recurring_failure_mode.regen_candidate_reverts_hand_authored_mirror, forbids hand items
+// in generated files, and a CI heal round has already executed that revert on this branch). The
+// census route's render REQUEST is authored in this hand file, so counting at the request site is
+// both law-abiding and exactly the level the control question lives at: what the census ASKED
+// for, not what the generated emit internals did internally.
+thread_local! {
+    static EVERY_MODULE_RENDER_CALLS: Cell<u64> = const { Cell::new(0) };
+    static NON_EMPTY_SELECTED_RENDER_CALLS: Cell<u64> = const { Cell::new(0) };
+}
+
+/// How many renders through [`emit_resolved_for_target_counting`] requested `RenderEveryModule`.
+/// Per-thread; the census and the control test run on the thread that calls them.
+pub fn every_module_render_calls() -> u64 {
+    EVERY_MODULE_RENDER_CALLS.with(Cell::get)
+}
+
+/// How many renders through [`emit_resolved_for_target_counting`] requested a
+/// `RenderSelectedMirrors` selection carrying at least one basename.
+pub fn non_empty_selected_render_calls() -> u64 {
+    NON_EMPTY_SELECTED_RENDER_CALLS.with(Cell::get)
+}
+
+/// THE COUNTED RENDER REQUEST SEAM. Records the requested selection's shape in the counters
+/// above, then delegates unchanged to `v1_compiler_compile::emit_resolved_for_target_selected`.
+/// It adds no decision and changes no verdict -- the delegation is the same call the pre-counter
+/// code made directly -- so the counters observe, they do not gate. Every render request made by
+/// a fixture instrument in this file goes through this function:
+/// `compile_fixture_rendering_only_what_is_read`, `compile_fixture_rendering_nothing` (the census
+/// route), the multi-module fixture, the render-selection agreement receipt, and the
+/// closure-union emit receipt. The production CLI compile paths (the render-requests verb in
+/// `cli_run.rs`, the compile command in `main.rs`) are not fixture instruments and do not pass
+/// here -- they emit what their request asks for. Within the instruments, a census route that
+/// re-widened to a whole-graph render -- by either compiler entry -- therefore moves the
+/// whole-graph counter, which the control test forbids.
+pub fn emit_resolved_for_target_counting(
+    resolved: Rc<v1_compiler_compile::ResolvedPipelineResult>,
+    target: crate::v1_compiler_artifact::RenderTarget,
+    selection: Rc<crate::v1_compiler_artifact::RustModuleRenderSelection>,
+) -> Rc<v1_compiler_compile::PipelineResult> {
+    match &*selection {
+        crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule => {
+            EVERY_MODULE_RENDER_CALLS.with(|c| c.set(c.get() + 1));
+        }
+        crate::v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames,
+        } => {
+            if !basenames.is_empty() {
+                NON_EMPTY_SELECTED_RENDER_CALLS.with(|c| c.set(c.get() + 1));
+            }
+        }
+    }
+    v1_compiler_compile::emit_resolved_for_target_selected(resolved, target, selection)
+}
+
+/// COMPILE A FIXTURE CLOSURE AND RENDER NOTHING. The census route: the same fixed-point compile
+/// as [`compile_fixture_rendering_only_what_is_read`] (identical pool, identical closure authority,
+/// identical resolve), but the emit requests NO render subject instead of deriving one from a read
+/// path. The census question -- "which located diagnostics did the compile produce" -- is answered
+/// by the diagnostics the compile and the crate-level emit scans attach before per-module work
+/// begins, so no module needs to render to answer it, and a fixture whose own module never joins
+/// the compiled graph (a parse-error fixture) reports its parse diagnostics instead of refusing for
+/// lack of a render subject. The selection is the empty one, never `RenderEveryModule`: widening
+/// would re-buy the whole-graph render cost this route exists to not-ask for, and the counter at
+/// `emit_resolved_for_target_counting` makes any such widening a control failure.
+pub(crate) fn compile_fixture_rendering_nothing(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    pool: &HashMap<String, String>,
+) -> Result<Rc<v1_compiler_compile::PipelineResult>, FixtureRenderRefusal> {
+    let resolved = super::provider_acquire::compile_to_provider_fixed_point(
+        sources,
+        &|module: &str| fixture_pool_answer(module, pool),
+        &|module: &str| fixture_pool_closure_of(module, pool),
+    )
+    .map_err(|cause| FixtureRenderRefusal::ClosureUnresolvable { cause })?;
+    Ok(emit_resolved_for_target_counting(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+        Rc::new(
+            crate::v1_compiler_artifact::RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: Rc::new(Vec::<String>::new().into()),
+            },
+        ),
     ))
 }
 
@@ -2297,11 +2411,12 @@ pub(crate) fn render_selection_agreement_receipt(
         let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
         let selection = fixture_render_selection(&resolved, Some(fx.read_path))
             .map_err(|r| refuse(r.to_string()))?;
-        let full = v1_compiler_compile::emit_resolved_for_target(
+        let full = emit_resolved_for_target_counting(
             resolved.clone(),
             crate::v1_compiler_artifact::RenderTarget::Rust,
+            Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
         );
-        let selected = v1_compiler_compile::emit_resolved_for_target_selected(
+        let selected = emit_resolved_for_target_counting(
             resolved,
             crate::v1_compiler_artifact::RenderTarget::Rust,
             selection,
@@ -2978,9 +3093,10 @@ pub(crate) fn fixture_closure_union_emit_receipt_staged(
     }
     let compile_diagnostics = resolved.diagnostics.len();
     stage_line("exclusion-done");
-    let rendered = v1_compiler_compile::emit_resolved_for_target(
+    let rendered = emit_resolved_for_target_counting(
         resolved,
         crate::v1_compiler_artifact::RenderTarget::Rust,
+        Rc::new(crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule),
     );
     stage_line("emit-done");
     let emitted: Vec<&Rc<ErrorNode>> = rendered

@@ -351,3 +351,35 @@ fn hub_checkpoint_manifest(
 fn hub_checkpoint_manifest_gibibytes(m: HubCheckpointManifest) -> Gibibyte {
   gibibyte_ceiling(b: m.safetensors_bytes)
 }
+
+// A PER-FILE PIN OF A REPO FILE AT A REVISION. The manifest above is the whole-snapshot sum; some
+// consumers must pin an individual file -- a config whose fields change engine behavior, an index
+// whose shard map must match the shards on disk -- and `revision` is part of the fact here exactly as
+// it is there. `sha256` is the file's content digest as the model API reports it for that revision;
+// for an LFS-stored file the Hub's `lfs.oid` IS that digest (the LFS pointer stores it), so the
+// digest of a multi-gigabyte shard is a fact of the API response rather than a local hash run, and
+// `lfs_stored` records which column of the response it came from. The rows are authored through this
+// mint for the same reason the manifest is: the seal is per module, product rows are not.
+type HubFileDigest sole_constructor {
+  path_in_repo: NonEmptyStr
+  revision: NonEmptyStr
+  bytes: ByteSize
+  sha256_hex: NonEmptyStr
+  lfs_stored: Bool
+}
+
+fn hub_file_digest(
+  path_in_repo: NonEmptyStr,
+  revision: NonEmptyStr,
+  bytes: ByteSize,
+  sha256_hex: NonEmptyStr,
+  lfs_stored: Bool,
+) -> HubFileDigest {
+  HubFileDigest {
+    path_in_repo: path_in_repo,
+    revision: revision,
+    bytes: bytes,
+    sha256_hex: sha256_hex,
+    lfs_stored: lfs_stored,
+  }
+}

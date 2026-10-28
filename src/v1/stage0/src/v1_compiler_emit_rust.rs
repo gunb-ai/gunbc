@@ -689,37 +689,39 @@ pub fn declaration_is_grounded_coproduct_native_alias(
     mut __tco_loop_module_path: String,
     mut __tco_loop_decl_name: String,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut module_path = __tco_loop_module_path;
-        #[allow(unused_mut)]
-        let mut decl_name = __tco_loop_decl_name;
-        if v1_rt::contains(decl_name.clone(), ".".to_string()) {
-            let segments = Rc::new(
-                decl_name
-                    .clone()
-                    .split(&".".to_string())
-                    .map(|s| s.to_string())
-                    .collect::<Vec<_>>(),
-            );
-            {
-                let __tco_0 = Rc::new(v1_rt::list_take(
-                    &segments.clone(),
-                    v1_rt::int_sub((segments.clone().len() as i64), 1),
-                ))
-                .join(&".".to_string());
-                let __tco_1 = crate::v1_std_core::qualified_last_segment(decl_name);
-                __tco_loop_module_path = __tco_0;
-                __tco_loop_decl_name = __tco_1;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut module_path = __tco_loop_module_path;
+            #[allow(unused_mut)]
+            let mut decl_name = __tco_loop_decl_name;
+            if v1_rt::contains(decl_name.clone(), ".".to_string()) {
+                let segments = Rc::new(
+                    decl_name
+                        .clone()
+                        .split(&".".to_string())
+                        .map(|s| s.to_string())
+                        .collect::<Vec<_>>(),
+                );
+                {
+                    let __tco_0 = Rc::new(v1_rt::list_take(
+                        &segments.clone(),
+                        v1_rt::int_sub((segments.clone().len() as i64), 1),
+                    ))
+                    .join(&".".to_string());
+                    let __tco_1 = crate::v1_std_core::qualified_last_segment(decl_name);
+                    __tco_loop_module_path = __tco_0;
+                    __tco_loop_decl_name = __tco_1;
+                    continue;
+                }
+            } else {
+                break ((is_host_freemonoid_vec_alias(decl_name.clone())
+                    || declaration_owns_host_option(module_path.clone(), decl_name.clone()))
+                    || crate::std_decl_ref::declaration_ref_in_list(
+                        crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
+                        rust_host_option_carrier_declarations(),
+                    ));
             }
-        } else {
-            break ((is_host_freemonoid_vec_alias(decl_name.clone())
-                || declaration_owns_host_option(module_path.clone(), decl_name.clone()))
-                || crate::std_decl_ref::declaration_ref_in_list(
-                    crate::std_decl_ref::decl_ref(module_path.clone(), decl_name.clone()),
-                    rust_host_option_carrier_declarations(),
-                ));
         }
     }
 }
@@ -889,9 +891,7 @@ pub fn is_host_optional_carrier_type(
             _ => false,
         },
         std::option::Option::None => {
-            let is_declaration_structure = (((n.module_item_kind.clone()
-                == ParsedModuleItemKind::ModuleItemTypeDeclaration)
-                || (n.connective.clone() == Connective::Disj))
+            let is_declaration_structure = (type_node_is_declaration_structure(n.clone())
                 && (n.ident_span.clone() != std::option::Option::None));
             let declared = if is_declaration_structure.clone() {
                 crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
@@ -1517,22 +1517,24 @@ pub fn rust_peel_all_rc_type_node(
     mut __tco_loop_type_node: Rc<Node>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut type_node = __tco_loop_type_node;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let seg = crate::v1_std_core::qualified_last_segment(type_node.name.clone());
-        if ((seg.clone() == "Rc".to_string()) || (seg.clone() == "Arc".to_string())) {
-            {
-                let __tco_0 = rust_peel_one_rc_type_node(type_node, source_indices.clone());
-                let __tco_1 = source_indices.clone();
-                __tco_loop_type_node = __tco_0;
-                __tco_loop_source_indices = __tco_1;
-                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut type_node = __tco_loop_type_node;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let seg = crate::v1_std_core::qualified_last_segment(type_node.name.clone());
+            if ((seg.clone() == "Rc".to_string()) || (seg.clone() == "Arc".to_string())) {
+                {
+                    let __tco_0 = rust_peel_one_rc_type_node(type_node, source_indices.clone());
+                    let __tco_1 = source_indices.clone();
+                    __tco_loop_type_node = __tco_0;
+                    __tco_loop_source_indices = __tco_1;
+                    continue;
+                }
+            } else {
+                break type_node.clone();
             }
-        } else {
-            break type_node.clone();
         }
     }
 }
@@ -3367,313 +3369,298 @@ pub fn render_rust_alias_rhs_type(
     mut __tco_loop_module_index: Rc<ModuleIndex>,
     mut __tco_loop_variant_to_enum: Rc<HashMap<String, String>>,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut generic_param_names = __tco_loop_generic_param_names;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut imports = __tco_loop_imports;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut module_name = __tco_loop_module_name;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        #[allow(unused_mut)]
-        let mut variant_to_enum = __tco_loop_variant_to_enum;
-        if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
-            match n.children.clone().first().cloned() {
-                Some(base_te) => {
-                    return render_rust_alias_rhs_type(
-                        base_te.clone(),
-                        generic_param_names.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        scope.clone(),
-                        imports.clone(),
-                        registry.clone(),
-                        module_name.clone(),
-                        export_sets.clone(),
-                        typed_modules.clone(),
-                        module_index.clone(),
-                        variant_to_enum.clone(),
-                    )
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut generic_param_names = __tco_loop_generic_param_names;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut imports = __tco_loop_imports;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut module_name = __tco_loop_module_name;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            #[allow(unused_mut)]
+            let mut variant_to_enum = __tco_loop_variant_to_enum;
+            if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
+                match n.children.clone().first().cloned() {
+                    Some(base_te) => {
+                        return render_rust_alias_rhs_type(
+                            base_te.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            scope.clone(),
+                            imports.clone(),
+                            registry.clone(),
+                            module_name.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            module_index.clone(),
+                            variant_to_enum.clone(),
+                        )
+                    }
+                    std::option::Option::None => {}
                 }
-                std::option::Option::None => {}
             }
-        }
-        let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        if (((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && {
-                let mut __found = false;
-                for g in generic_param_names.iter().cloned() {
-                    if (g.clone() == name.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            })
-        {
-            break rust_carrier_optional_wrap(
-                n.clone(),
-                crate::v1_compiler_emit_core_support::to_pascal(name.clone()),
-            );
-        } else {
-            if ((n.connective.clone() == Connective::NoConnective)
+            let name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+            if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) == 0))
-            {
-                match rust_exact_reference_spelling(
-                    n.clone(),
-                    source_indices.clone(),
-                    scope.type_env.clone(),
-                ) {
-                    Some(exact) => {
-                        break exact.clone();
-                    }
-                    std::option::Option::None => {
-                        match crate::v1_compiler_coercion::realization_host_numeric_spelling(
-                            crate::v1_compiler_coercion::type_reference_realization(
-                                n.clone(),
-                                name.clone(),
-                                RenderTarget::Rust,
-                            ),
-                        ) {
-                            Some(host) => {
-                                break host.clone();
-                            }
-                            std::option::Option::None => {
-                                match rust_opaque_kernel_alias_carrier(name.clone()) {
-                                    Some(carrier) => {
-                                        break carrier.clone();
-                                    }
-                                    std::option::Option::None => {
-                                        let leaf = crate::v1_std_core::qualified_last_segment(
-                                            name.clone(),
-                                        );
-                                        match rust_scalar_checkpoint_reference_base(
-                                            crate::v1_compiler_coercion::type_reference_realization(
-                                                n.clone(),
-                                                leaf.clone(),
-                                                RenderTarget::Rust,
-                                            ),
-                                        ) {
-                                            Some(scalar) => {
-                                                break scalar.clone();
-                                            }
-                                            std::option::Option::None => {
-                                                let rendered = rust_render_type_leaf_name(
-                                                    leaf.clone(),
-                                                    variant_to_enum.clone(),
-                                                );
-                                                break render_rust_shared_type_if_needed(
-                                                    leaf.clone(),
-                                                    rendered,
-                                                    shared_types.clone(),
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                && {
+                    let mut __found = false;
+                    for g in generic_param_names.iter().cloned() {
+                        if (g.clone() == name.clone()) {
+                            __found = true;
+                            break;
                         }
                     }
-                }
+                    __found
+                })
+            {
+                break rust_carrier_optional_wrap(
+                    n.clone(),
+                    crate::v1_compiler_emit_core_support::to_pascal(name.clone()),
+                );
             } else {
                 if ((n.connective.clone() == Connective::NoConnective)
-                    && ((n.children.clone().len() as i64) > 0))
+                    && ((n.children.clone().len() as i64) == 0))
                 {
-                    let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
-                    let numeric_host_alias = match rust_reference_checkpoint_spelling_at(
+                    match rust_exact_reference_spelling(
                         n.clone(),
                         source_indices.clone(),
                         scope.type_env.clone(),
                     ) {
-                        Some(scalar) => Some(scalar.clone()),
+                        Some(exact) => {
+                            break exact.clone();
+                        }
                         std::option::Option::None => {
-                            crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                            match crate::v1_compiler_coercion::realization_host_numeric_spelling(
                                 crate::v1_compiler_coercion::type_reference_realization(
                                     n.clone(),
-                                    leaf.clone(),
+                                    name.clone(),
                                     RenderTarget::Rust,
                                 ),
-                            )
-                        }
-                    };
-                    if (numeric_host_alias.clone() != std::option::Option::None) {
-                        return match numeric_host_alias.clone() {
-                            Some(host) => host.clone(),
-                            std::option::Option::None => "".to_string(),
-                        };
-                    }
-                    let local_mod =
-                        crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
-                    let def_mod = alias_rhs_rust_qualify_module_filename(
-                        leaf.clone(),
-                        module_name.clone(),
-                        imports.clone(),
-                        scope.clone(),
-                        registry.clone(),
-                        export_sets.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    );
-                    let base = match rust_seed_host_container_base(leaf.clone()) {
-                        Some(host) => host.clone(),
-                        std::option::Option::None => {
-                            if (def_mod.clone() != local_mod.clone()) {
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat("crate::".to_string(), def_mod.clone()),
-                                        "::".to_string(),
-                                    ),
-                                    leaf.clone(),
-                                )
-                            } else {
-                                leaf.clone()
-                            }
-                        }
-                    };
-                    match closed_alias_peel_verdict(scope.type_env.clone(), n.clone()) {
-                        ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
-                            if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                && !rust_type_is_rc_wrapped(base.clone()))
-                            {
-                                break crate::v1_compiler_languages::wrap_shared_type(
-                                    RenderTarget::Rust,
-                                    base.clone(),
-                                );
-                            } else {
-                                break base.clone();
-                            }
-                        }
-                        ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
-                            match alias_decl_arity_verdict(
-                                leaf.clone(),
-                                def_mod.clone(),
-                                typed_modules.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                                scope.type_env.clone(),
                             ) {
-                                AliasDeclArityVerdict::AliasDeclArityZeroParam => {
-                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                        && !rust_type_is_rc_wrapped(base.clone()))
-                                    {
-                                        break crate::v1_compiler_languages::wrap_shared_type(
-                                            RenderTarget::Rust,
-                                            base.clone(),
-                                        );
-                                    } else {
-                                        break base.clone();
-                                    }
+                                Some(host) => {
+                                    break host.clone();
                                 }
-                                AliasDeclArityVerdict::AliasDeclArityHasParams => {
-                                    let peel = is_parametric_opaque_type_base(
-                                        leaf.clone(),
-                                        def_mod.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                    );
-                                    let arg_list = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for arg in n.children.clone().iter().cloned() {
-                                            __result.push(if peel.clone() {
-                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
-                    } else {
-                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
-                    });
+                                std::option::Option::None => {
+                                    match rust_opaque_kernel_alias_carrier(name.clone()) {
+                                        Some(carrier) => {
+                                            break carrier.clone();
                                         }
-                                        __result
-                                    });
-                                    let args = arg_list.clone().join(&", ".to_string());
-                                    let applied_ty = rust_alias_rhs_applied_container_or_base(
-                                        n.clone(),
-                                        leaf.clone(),
-                                        base.clone(),
-                                        arg_list.clone(),
-                                        source_indices.clone(),
-                                    );
-                                    if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                        && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                                    {
-                                        break crate::v1_compiler_languages::wrap_shared_type(
-                                            RenderTarget::Rust,
-                                            applied_ty.clone(),
-                                        );
-                                    } else {
-                                        break applied_ty.clone();
+                                        std::option::Option::None => {
+                                            let leaf = crate::v1_std_core::qualified_last_segment(
+                                                name.clone(),
+                                            );
+                                            match rust_scalar_checkpoint_reference_base(crate::v1_compiler_coercion::type_reference_realization(n.clone(), leaf.clone(), RenderTarget::Rust)) {
+    Some(scalar) => { break scalar.clone(); },
+    std::option::Option::None => { let rendered = rust_render_type_leaf_name(leaf.clone(), variant_to_enum.clone());
+break render_rust_shared_type_if_needed(leaf.clone(), rendered, shared_types.clone()); },
+}
+                                        }
                                     }
                                 }
-                                AliasDeclArityVerdict::AliasDeclArityAbsent => {
-                                    break alias_decl_arity_refusal_expr(leaf.clone());
-                                }
-                            }
-                        }
-                        ClosedAliasPeelVerdict::ClosedAliasHasParams => {
-                            let peel = is_parametric_opaque_type_base(
-                                leaf.clone(),
-                                def_mod.clone(),
-                                typed_modules.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                            );
-                            let arg_list = Rc::new({
-                                let mut __result = Vec::new();
-                                for arg in n.children.clone().iter().cloned() {
-                                    __result.push(if peel.clone() {
-                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
-                    } else {
-                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
-                    });
-                                }
-                                __result
-                            });
-                            let args = arg_list.clone().join(&", ".to_string());
-                            let applied_ty = rust_alias_rhs_applied_container_or_base(
-                                n.clone(),
-                                leaf.clone(),
-                                base.clone(),
-                                arg_list.clone(),
-                                source_indices.clone(),
-                            );
-                            if (v1_rt::set_contains(&shared_types, leaf.clone())
-                                && !rust_type_is_rc_wrapped(applied_ty.clone()))
-                            {
-                                break crate::v1_compiler_languages::wrap_shared_type(
-                                    RenderTarget::Rust,
-                                    applied_ty.clone(),
-                                );
-                            } else {
-                                break applied_ty.clone();
                             }
                         }
                     }
                 } else {
-                    break render_rust_type(
-                        n.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
-                            crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
-                            generic_param_names.clone(),
+                    if ((n.connective.clone() == Connective::NoConnective)
+                        && ((n.children.clone().len() as i64) > 0))
+                    {
+                        let leaf = crate::v1_std_core::qualified_last_segment(name.clone());
+                        let numeric_host_alias = match rust_reference_checkpoint_spelling_at(
+                            n.clone(),
+                            source_indices.clone(),
                             scope.type_env.clone(),
-                        ),
-                    );
+                        ) {
+                            Some(scalar) => Some(scalar.clone()),
+                            std::option::Option::None => {
+                                crate::v1_compiler_coercion::realization_host_numeric_spelling(
+                                    crate::v1_compiler_coercion::type_reference_realization(
+                                        n.clone(),
+                                        leaf.clone(),
+                                        RenderTarget::Rust,
+                                    ),
+                                )
+                            }
+                        };
+                        if (numeric_host_alias.clone() != std::option::Option::None) {
+                            return match numeric_host_alias.clone() {
+                                Some(host) => host.clone(),
+                                std::option::Option::None => "".to_string(),
+                            };
+                        }
+                        let local_mod =
+                            crate::gunbc_rust_emitted_edge::module_to_filename(module_name.clone());
+                        let def_mod = alias_rhs_rust_qualify_module_filename(
+                            leaf.clone(),
+                            module_name.clone(),
+                            imports.clone(),
+                            scope.clone(),
+                            registry.clone(),
+                            export_sets.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        );
+                        let base = match rust_seed_host_container_base(leaf.clone()) {
+                            Some(host) => host.clone(),
+                            std::option::Option::None => {
+                                if (def_mod.clone() != local_mod.clone()) {
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("crate::".to_string(), def_mod.clone()),
+                                            "::".to_string(),
+                                        ),
+                                        leaf.clone(),
+                                    )
+                                } else {
+                                    leaf.clone()
+                                }
+                            }
+                        };
+                        match closed_alias_peel_verdict(scope.type_env.clone(), n.clone()) {
+                            ClosedAliasPeelVerdict::ClosedAliasPeelZeroParam => {
+                                if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    && !rust_type_is_rc_wrapped(base.clone()))
+                                {
+                                    break crate::v1_compiler_languages::wrap_shared_type(
+                                        RenderTarget::Rust,
+                                        base.clone(),
+                                    );
+                                } else {
+                                    break base.clone();
+                                }
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasBindingAbsent => {
+                                match alias_decl_arity_verdict(
+                                    leaf.clone(),
+                                    def_mod.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                    scope.type_env.clone(),
+                                ) {
+                                    AliasDeclArityVerdict::AliasDeclArityZeroParam => {
+                                        if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                            && !rust_type_is_rc_wrapped(base.clone()))
+                                        {
+                                            break crate::v1_compiler_languages::wrap_shared_type(
+                                                RenderTarget::Rust,
+                                                base.clone(),
+                                            );
+                                        } else {
+                                            break base.clone();
+                                        }
+                                    }
+                                    AliasDeclArityVerdict::AliasDeclArityHasParams => {
+                                        let peel = is_parametric_opaque_type_base(
+                                            leaf.clone(),
+                                            def_mod.clone(),
+                                            typed_modules.clone(),
+                                            source_indices.clone(),
+                                            module_index.clone(),
+                                        );
+                                        let arg_list = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for arg in n.children.clone().iter().cloned() {
+                                                __result.push(if peel.clone() {
+                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    } else {
+                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    });
+                                            }
+                                            __result
+                                        });
+                                        let args = arg_list.clone().join(&", ".to_string());
+                                        let applied_ty = rust_alias_rhs_applied_container_or_base(
+                                            n.clone(),
+                                            leaf.clone(),
+                                            base.clone(),
+                                            arg_list.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                            && !rust_type_is_rc_wrapped(applied_ty.clone()))
+                                        {
+                                            break crate::v1_compiler_languages::wrap_shared_type(
+                                                RenderTarget::Rust,
+                                                applied_ty.clone(),
+                                            );
+                                        } else {
+                                            break applied_ty.clone();
+                                        }
+                                    }
+                                    AliasDeclArityVerdict::AliasDeclArityAbsent => {
+                                        break alias_decl_arity_refusal_expr(leaf.clone());
+                                    }
+                                }
+                            }
+                            ClosedAliasPeelVerdict::ClosedAliasHasParams => {
+                                let peel = is_parametric_opaque_type_base(
+                                    leaf.clone(),
+                                    def_mod.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                );
+                                let arg_list = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for arg in n.children.clone().iter().cloned() {
+                                        __result.push(if peel.clone() {
+                        render_rust_phantom_opaque_applied_type_arg(arg.clone(), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    } else {
+                        render_rust_alias_rhs_applied_arg(alias_rhs_container_arg(arg.clone(), source_indices.clone()), generic_param_names.clone(), shared_types.clone(), source_indices.clone(), scope.clone(), imports.clone(), registry.clone(), module_name.clone(), export_sets.clone(), typed_modules.clone(), module_index.clone(), variant_to_enum.clone(), crate::v1_compiler_infer_resolve::applied_arg_is_width_resolution_position(n.clone(), arg.clone(), scope.type_env.clone()))
+                    });
+                                    }
+                                    __result
+                                });
+                                let args = arg_list.clone().join(&", ".to_string());
+                                let applied_ty = rust_alias_rhs_applied_container_or_base(
+                                    n.clone(),
+                                    leaf.clone(),
+                                    base.clone(),
+                                    arg_list.clone(),
+                                    source_indices.clone(),
+                                );
+                                if (v1_rt::set_contains(&shared_types, leaf.clone())
+                                    && !rust_type_is_rc_wrapped(applied_ty.clone()))
+                                {
+                                    break crate::v1_compiler_languages::wrap_shared_type(
+                                        RenderTarget::Rust,
+                                        applied_ty.clone(),
+                                    );
+                                } else {
+                                    break applied_ty.clone();
+                                }
+                            }
+                        }
+                    } else {
+                        break render_rust_type(
+                            n.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                                crate::v1_compiler_infer_emit_info::empty_emit_graph_info(),
+                                generic_param_names.clone(),
+                                scope.type_env.clone(),
+                            ),
+                        );
+                    }
                 }
             }
         }
@@ -3841,44 +3828,46 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
     mut __tco_loop_search_from: i64,
     mut __tco_loop_generic_param_names: Rc<Vec<String>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut type_str = __tco_loop_type_str;
-        #[allow(unused_mut)]
-        let mut search_from = __tco_loop_search_from;
-        #[allow(unused_mut)]
-        let mut generic_param_names = __tco_loop_generic_param_names;
-        if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
-            break false;
-        } else {
-            match string_index_of_from(type_str.clone(), "<".to_string(), search_from) {
-                Some(lt_pos) => {
-                    let atom = rust_read_rendered_type_ident(
-                        type_str.clone(),
-                        v1_rt::int_add(lt_pos.clone(), 1),
-                    );
-                    if ((((atom.clone().len() as i64) == 1)
-                        && rust_is_uppercase_letter(atom.clone()))
-                        && rust_fold_rendered_type_has_spurious_generic_atom(
-                            atom.clone(),
-                            generic_param_names.clone(),
-                        ))
-                    {
-                        break true;
-                    } else {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut type_str = __tco_loop_type_str;
+            #[allow(unused_mut)]
+            let mut search_from = __tco_loop_search_from;
+            #[allow(unused_mut)]
+            let mut generic_param_names = __tco_loop_generic_param_names;
+            if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
+                break false;
+            } else {
+                match string_index_of_from(type_str.clone(), "<".to_string(), search_from) {
+                    Some(lt_pos) => {
+                        let atom = rust_read_rendered_type_ident(
+                            type_str.clone(),
+                            v1_rt::int_add(lt_pos.clone(), 1),
+                        );
+                        if ((((atom.clone().len() as i64) == 1)
+                            && rust_is_uppercase_letter(atom.clone()))
+                            && rust_fold_rendered_type_has_spurious_generic_atom(
+                                atom.clone(),
+                                generic_param_names.clone(),
+                            ))
                         {
-                            let __tco_0 = type_str;
-                            let __tco_1 = v1_rt::int_add(lt_pos.clone(), 1);
-                            let __tco_2 = generic_param_names;
-                            __tco_loop_type_str = __tco_0;
-                            __tco_loop_search_from = __tco_1;
-                            __tco_loop_generic_param_names = __tco_2;
-                            continue;
+                            break true;
+                        } else {
+                            {
+                                let __tco_0 = type_str;
+                                let __tco_1 = v1_rt::int_add(lt_pos.clone(), 1);
+                                let __tco_2 = generic_param_names;
+                                __tco_loop_type_str = __tco_0;
+                                __tco_loop_search_from = __tco_1;
+                                __tco_loop_generic_param_names = __tco_2;
+                                continue;
+                            }
                         }
                     }
-                }
-                std::option::Option::None => {
-                    break false;
+                    std::option::Option::None => {
+                        break false;
+                    }
                 }
             }
         }
@@ -3915,6 +3904,62 @@ pub fn type_leaf_is_unbound_in_closure_scope(
     }
 }
 
+pub fn type_node_is_declaration_structure(n: Rc<Node>) -> bool {
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+        _ => (n.connective.clone() == Connective::Disj),
+    }
+}
+
+pub fn type_node_is_declaration_item(n: Rc<Node>) -> bool {
+    match n.module_item_kind.clone() {
+        ParsedModuleItemKind::ModuleItemTypeDeclaration => true,
+        _ => false,
+    }
+}
+
+pub fn type_node_applied_or_formal_has_closure_unbound_generic_atom(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            let mut __found = false;
+            for c in applied.children.clone().iter().cloned() {
+                if type_node_has_closure_unbound_generic_atom(
+                    c.clone(),
+                    generic_param_names.clone(),
+                    env.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        std::option::Option::None => {
+            let mut __found = false;
+            for p in n.params.clone().iter().cloned() {
+                if !type_var_in_fn_generic_scope(
+                    crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone()),
+                    generic_param_names.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn type_node_has_closure_unbound_generic_atom(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -3922,6 +3967,23 @@ pub fn type_node_has_closure_unbound_generic_atom(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if type_node_is_declaration_structure(n.clone()) {
+            {
+                let spelled_by_itself = ((crate::v1_std_core::find_property(
+                    n.properties.clone(),
+                    "__applied_type_args".to_string(),
+                    source_indices.clone(),
+                ) != std::option::Option::None)
+                    || type_node_is_declaration_item(n.clone()));
+                return (spelled_by_itself.clone()
+                    && type_node_applied_or_formal_has_closure_unbound_generic_atom(
+                        n.clone(),
+                        generic_param_names.clone(),
+                        env.clone(),
+                        source_indices.clone(),
+                    ));
+            }
+        }
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (((n.children.clone().len() as i64) == 0) && (leaf_name.clone() != "".to_string())) {
             if type_leaf_is_unbound_in_closure_scope(
@@ -3940,19 +4002,21 @@ pub fn type_node_has_closure_unbound_generic_atom(
                     }
                 }
                 InferredNode::Resolved { node: rt, .. } => {
-                    if type_node_has_closure_unbound_generic_atom(
-                        rt.clone(),
-                        generic_param_names.clone(),
-                        env.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if (!type_node_is_declaration_structure(rt.clone())
+                        && type_node_has_closure_unbound_generic_atom(
+                            rt.clone(),
+                            generic_param_names.clone(),
+                            env.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
                         return true;
                     }
                 }
                 _ => (),
             }
         }
-        if {
+        ({
             let mut __found = false;
             for c in n.children.clone().iter().cloned() {
                 if type_node_has_closure_unbound_generic_atom(
@@ -3966,48 +4030,41 @@ pub fn type_node_has_closure_unbound_generic_atom(
                 }
             }
             __found
-        } {
-            true
-        } else {
-            match crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    let mut __found = false;
-                    for c in applied.children.clone().iter().cloned() {
-                        if type_node_has_closure_unbound_generic_atom(
-                            c.clone(),
-                            generic_param_names.clone(),
-                            env.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                std::option::Option::None => {
-                    let mut __found = false;
-                    for p in n.params.clone().iter().cloned() {
-                        if !type_var_in_fn_generic_scope(
-                            crate::v1_std_core::generic_param_name_at(
-                                p.clone(),
-                                source_indices.clone(),
-                            ),
-                            generic_param_names.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
+        } || type_node_applied_or_formal_has_closure_unbound_generic_atom(
+            n.clone(),
+            generic_param_names.clone(),
+            env.clone(),
+            source_indices.clone(),
+        ))
+    })
+}
+
+pub fn type_node_applied_has_unbound_type_variable(
+    n: Rc<Node>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match crate::v1_std_core::find_property(
+        n.properties.clone(),
+        "__applied_type_args".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(applied) => {
+            let mut __found = false;
+            for c in applied.children.clone().iter().cloned() {
+                if type_node_has_unbound_type_variable(
+                    c.clone(),
+                    generic_param_names.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
                 }
             }
+            __found
         }
-    })
+        std::option::Option::None => false,
+    }
 }
 
 pub fn type_node_has_unbound_type_variable(
@@ -4016,6 +4073,13 @@ pub fn type_node_has_unbound_type_variable(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if type_node_is_declaration_structure(n.clone()) {
+            return type_node_applied_has_unbound_type_variable(
+                n.clone(),
+                generic_param_names.clone(),
+                source_indices.clone(),
+            );
+        }
         if (n.inferred.clone() != std::option::Option::None) {
             match (*n.inferred.clone().clone().unwrap()).clone() {
                 InferredNode::TypeVariable { id: tv, .. } => {
@@ -4024,18 +4088,20 @@ pub fn type_node_has_unbound_type_variable(
                     }
                 }
                 InferredNode::Resolved { node: rt, .. } => {
-                    if type_node_has_unbound_type_variable(
-                        rt.clone(),
-                        generic_param_names.clone(),
-                        source_indices.clone(),
-                    ) {
+                    if (!type_node_is_declaration_structure(rt.clone())
+                        && type_node_has_unbound_type_variable(
+                            rt.clone(),
+                            generic_param_names.clone(),
+                            source_indices.clone(),
+                        ))
+                    {
                         return true;
                     }
                 }
                 _ => (),
             }
         }
-        if {
+        ({
             let mut __found = false;
             for c in n.children.clone().iter().cloned() {
                 if type_node_has_unbound_type_variable(
@@ -4048,31 +4114,11 @@ pub fn type_node_has_unbound_type_variable(
                 }
             }
             __found
-        } {
-            true
-        } else {
-            match crate::v1_std_core::find_property(
-                n.properties.clone(),
-                "__applied_type_args".to_string(),
-                source_indices.clone(),
-            ) {
-                Some(applied) => {
-                    let mut __found = false;
-                    for c in applied.children.clone().iter().cloned() {
-                        if type_node_has_unbound_type_variable(
-                            c.clone(),
-                            generic_param_names.clone(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }
-                std::option::Option::None => false,
-            }
-        }
+        } || type_node_applied_has_unbound_type_variable(
+            n.clone(),
+            generic_param_names.clone(),
+            source_indices.clone(),
+        ))
     })
 }
 
@@ -4712,89 +4758,96 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut __tco_loop_seen_aliases: Rc<HashMap<String, bool>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<RustEnumWireSerde> {
-    loop {
-        #[allow(unused_mut)]
-        let mut wire_contract_item = __tco_loop_wire_contract_item;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut data_items = __tco_loop_data_items;
-        #[allow(unused_mut)]
-        let mut seen_aliases = __tco_loop_seen_aliases;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break rust_serde_error_policy(
-                "wire_contract: VariantEncoding alias chain exceeded recursion limit".to_string(),
-            );
-        } else {
-            match wire_contract_item.clone() {
-                std::option::Option::None => {
-                    break rust_tagged_object_policy();
-                }
-                Some(wc) => {
-                    if (wc.module_item_kind.clone() == ParsedModuleItemKind::ModuleItemDataValue) {
-                        match wc.body.clone() {
-                            std::option::Option::None => {
-                                break rust_serde_error_policy(
-                                    "wire_contract: data item has no initializer body".to_string(),
-                                );
-                            }
-                            Some(init) => match (*init.expr_data.clone()).clone() {
-                                ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                                    break resolve_wire_serde_policy(
-                                        init.clone(),
-                                        source_indices.clone(),
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut wire_contract_item = __tco_loop_wire_contract_item;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut data_items = __tco_loop_data_items;
+            #[allow(unused_mut)]
+            let mut seen_aliases = __tco_loop_seen_aliases;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                break rust_serde_error_policy(
+                    "wire_contract: VariantEncoding alias chain exceeded recursion limit"
+                        .to_string(),
+                );
+            } else {
+                match wire_contract_item.clone() {
+                    std::option::Option::None => {
+                        break rust_tagged_object_policy();
+                    }
+                    Some(wc) => {
+                        if (wc.module_item_kind.clone()
+                            == ParsedModuleItemKind::ModuleItemDataValue)
+                        {
+                            match wc.body.clone() {
+                                std::option::Option::None => {
+                                    break rust_serde_error_policy(
+                                        "wire_contract: data item has no initializer body"
+                                            .to_string(),
                                     );
                                 }
-                                ExprData::ExprVar {
-                                    binding_kind: _, ..
-                                } => {
-                                    let alias_name = crate::v1_std_core::expr_var_name_at(
-                                        init.clone(),
-                                        source_indices.clone(),
-                                    );
-                                    if (v1_rt::map_get(&seen_aliases, alias_name.clone())
-                                        != std::option::Option::None)
-                                    {
-                                        break rust_serde_error_policy(v1_rt::concat(
-                                            "wire_contract: cyclic VariantEncoding alias: "
-                                                .to_string(),
-                                            alias_name.clone(),
-                                        ));
-                                    } else {
-                                        match v1_rt::map_get(&data_items, alias_name.clone()) {
-                                            Some(candidates) => {
-                                                if ((candidates.clone().len() as i64) == 1) {
-                                                    match candidates.clone().first().cloned() {
-                                                        Some(aliased_data) => {
-                                                            let __tco_0 =
-                                                                Some(aliased_data.clone());
-                                                            let __tco_1 = source_indices;
-                                                            let __tco_2 = data_items;
-                                                            let __tco_3 = v1_rt::rc_map_insert(
-                                                                seen_aliases,
-                                                                alias_name.clone(),
-                                                                true,
-                                                            );
-                                                            let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                                            __tco_loop_wire_contract_item = __tco_0;
-                                                            __tco_loop_source_indices = __tco_1;
-                                                            __tco_loop_data_items = __tco_2;
-                                                            __tco_loop_seen_aliases = __tco_3;
-                                                            __tco_loop_fuel = __tco_4;
-                                                            continue;
+                                Some(init) => match (*init.expr_data.clone()).clone() {
+                                    ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                                        break resolve_wire_serde_policy(
+                                            init.clone(),
+                                            source_indices.clone(),
+                                        );
+                                    }
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
+                                        let alias_name = crate::v1_std_core::expr_var_name_at(
+                                            init.clone(),
+                                            source_indices.clone(),
+                                        );
+                                        if (v1_rt::map_get(&seen_aliases, alias_name.clone())
+                                            != std::option::Option::None)
+                                        {
+                                            break rust_serde_error_policy(v1_rt::concat(
+                                                "wire_contract: cyclic VariantEncoding alias: "
+                                                    .to_string(),
+                                                alias_name.clone(),
+                                            ));
+                                        } else {
+                                            match v1_rt::map_get(&data_items, alias_name.clone()) {
+                                                Some(candidates) => {
+                                                    if ((candidates.clone().len() as i64) == 1) {
+                                                        match candidates.clone().first().cloned() {
+                                                            Some(aliased_data) => {
+                                                                let __tco_0 =
+                                                                    Some(aliased_data.clone());
+                                                                let __tco_1 = source_indices;
+                                                                let __tco_2 = data_items;
+                                                                let __tco_3 = v1_rt::rc_map_insert(
+                                                                    seen_aliases,
+                                                                    alias_name.clone(),
+                                                                    true,
+                                                                );
+                                                                let __tco_4 =
+                                                                    v1_rt::int_sub(fuel, 1);
+                                                                __tco_loop_wire_contract_item =
+                                                                    __tco_0;
+                                                                __tco_loop_source_indices = __tco_1;
+                                                                __tco_loop_data_items = __tco_2;
+                                                                __tco_loop_seen_aliases = __tco_3;
+                                                                __tco_loop_fuel = __tco_4;
+                                                                continue;
+                                                            }
+                                                            std::option::Option::None => {
+                                                                break rust_serde_error_policy(v1_rt::concat("wire_contract: missing VariantEncoding data alias: ".to_string(), alias_name.clone()));
+                                                            }
                                                         }
-                                                        std::option::Option::None => {
-                                                            break rust_serde_error_policy(v1_rt::concat("wire_contract: missing VariantEncoding data alias: ".to_string(), alias_name.clone()));
-                                                        }
+                                                    } else {
+                                                        break rust_serde_error_policy(v1_rt::concat("wire_contract: ambiguous VariantEncoding data alias: ".to_string(), alias_name.clone()));
                                                     }
-                                                } else {
-                                                    break rust_serde_error_policy(v1_rt::concat("wire_contract: ambiguous VariantEncoding data alias: ".to_string(), alias_name.clone()));
                                                 }
-                                            }
-                                            std::option::Option::None => {
-                                                match init.inferred.clone() {
+                                                std::option::Option::None => {
+                                                    match init.inferred.clone() {
     std::option::Option::None => { break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string()); },
     Some(inf) => { match (*inf.clone()).clone() {
     InferredNode::Divergent => { break rust_serde_error_policy("wire_contract: initializer diverges, so it names no VariantEncoding alias".to_string()); },
@@ -4819,57 +4872,58 @@ continue;
     InferredNode::TypeVariable { id: _, .. } => { break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string()); },
 } },
 }
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => match init.inferred.clone() {
-                                    std::option::Option::None => {
-                                        break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string());
-                                    }
-                                    Some(inf) => match (*inf.clone()).clone() {
-                                        InferredNode::Divergent => {
-                                            break rust_serde_error_policy("wire_contract: initializer diverges, so it names no VariantEncoding alias".to_string());
-                                        }
-                                        InferredNode::Resolved { node: node, .. } => {
-                                            if (node.module_item_kind.clone()
-                                                == ParsedModuleItemKind::ModuleItemDataValue)
-                                            {
-                                                {
-                                                    let __tco_0 = Some(node.clone());
-                                                    let __tco_1 = source_indices;
-                                                    let __tco_2 = data_items;
-                                                    let __tco_3 = seen_aliases;
-                                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                                    __tco_loop_wire_contract_item = __tco_0;
-                                                    __tco_loop_source_indices = __tco_1;
-                                                    __tco_loop_data_items = __tco_2;
-                                                    __tco_loop_seen_aliases = __tco_3;
-                                                    __tco_loop_fuel = __tco_4;
-                                                    continue;
                                                 }
-                                            } else {
-                                                break resolve_wire_serde_policy(
-                                                    node.clone(),
-                                                    source_indices.clone(),
-                                                );
                                             }
                                         }
-                                        InferredNode::CompilerError { message, .. } => {
-                                            break rust_serde_error_policy(v1_rt::concat(
-                                                "wire_contract: ".to_string(),
-                                                message.clone(),
-                                            ));
+                                    }
+                                    _ => match init.inferred.clone() {
+                                        std::option::Option::None => {
+                                            break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string());
                                         }
-                                        InferredNode::TypeVariable { id: _, .. } => {
-                                            break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
-                                        }
+                                        Some(inf) => match (*inf.clone()).clone() {
+                                            InferredNode::Divergent => {
+                                                break rust_serde_error_policy("wire_contract: initializer diverges, so it names no VariantEncoding alias".to_string());
+                                            }
+                                            InferredNode::Resolved { node: node, .. } => {
+                                                if (node.module_item_kind.clone()
+                                                    == ParsedModuleItemKind::ModuleItemDataValue)
+                                                {
+                                                    {
+                                                        let __tco_0 = Some(node.clone());
+                                                        let __tco_1 = source_indices;
+                                                        let __tco_2 = data_items;
+                                                        let __tco_3 = seen_aliases;
+                                                        let __tco_4 = v1_rt::int_sub(fuel, 1);
+                                                        __tco_loop_wire_contract_item = __tco_0;
+                                                        __tco_loop_source_indices = __tco_1;
+                                                        __tco_loop_data_items = __tco_2;
+                                                        __tco_loop_seen_aliases = __tco_3;
+                                                        __tco_loop_fuel = __tco_4;
+                                                        continue;
+                                                    }
+                                                } else {
+                                                    break resolve_wire_serde_policy(
+                                                        node.clone(),
+                                                        source_indices.clone(),
+                                                    );
+                                                }
+                                            }
+                                            InferredNode::CompilerError { message, .. } => {
+                                                break rust_serde_error_policy(v1_rt::concat(
+                                                    "wire_contract: ".to_string(),
+                                                    message.clone(),
+                                                ));
+                                            }
+                                            InferredNode::TypeVariable { id: _, .. } => {
+                                                break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
+                                            }
+                                        },
                                     },
                                 },
-                            },
+                            }
+                        } else {
+                            break resolve_wire_serde_policy(wc.clone(), source_indices.clone());
                         }
-                    } else {
-                        break resolve_wire_serde_policy(wc.clone(), source_indices.clone());
                     }
                 }
             }
@@ -5813,56 +5867,58 @@ pub fn emit_rust_block_stmts(
     mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
     mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut emit_info = __tco_loop_emit_info;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let line = emit_typed_expr(
-                    stmt.clone(),
-                    registry.clone(),
-                    scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    emit_info.clone(),
-                    1024,
-                );
-                let next_scope =
-                    crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
-                {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                    let __tco_2 = next_scope;
-                    let __tco_3 = registry;
-                    let __tco_4 = depth;
-                    let __tco_5 = shared_types;
-                    let __tco_6 = emit_info;
-                    __tco_loop_remaining = __tco_0;
-                    __tco_loop_text = __tco_1;
-                    __tco_loop_scope = __tco_2;
-                    __tco_loop_registry = __tco_3;
-                    __tco_loop_depth = __tco_4;
-                    __tco_loop_shared_types = __tco_5;
-                    __tco_loop_emit_info = __tco_6;
-                    continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            #[allow(unused_mut)]
+            let mut emit_info = __tco_loop_emit_info;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let line = emit_typed_expr(
+                        stmt.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    );
+                    let next_scope =
+                        crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                        let __tco_2 = next_scope;
+                        let __tco_3 = registry;
+                        let __tco_4 = depth;
+                        let __tco_5 = shared_types;
+                        let __tco_6 = emit_info;
+                        __tco_loop_remaining = __tco_0;
+                        __tco_loop_text = __tco_1;
+                        __tco_loop_scope = __tco_2;
+                        __tco_loop_registry = __tco_3;
+                        __tco_loop_depth = __tco_4;
+                        __tco_loop_shared_types = __tco_5;
+                        __tco_loop_emit_info = __tco_6;
+                        continue;
+                    }
                 }
             }
         }
@@ -5878,74 +5934,78 @@ pub fn emit_rust_init_block_stmts(
     mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
     mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut emit_info = __tco_loop_emit_info;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
-                match rest.clone().first().cloned() {
-                    std::option::Option::None => {
-                        break Rc::new(BlockEmitState {
-                            text: text.clone(),
-                            scope: scope.clone(),
-                        });
-                    }
-                    Some(_) => {
-                        let raw_line = emit_typed_expr(
-                            stmt.clone(),
-                            registry.clone(),
-                            scope.clone(),
-                            depth.clone(),
-                            shared_types.clone(),
-                            emit_info.clone(),
-                            1024,
-                        );
-                        let is_let = match (*stmt.expr_data.clone()).clone() {
-                            ExprData::ExprLet => true,
-                            _ => false,
-                        };
-                        let line = if is_let.clone() {
-                            raw_line.clone()
-                        } else {
-                            v1_rt::concat(raw_line.clone(), ";".to_string())
-                        };
-                        let next_scope =
-                            crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
-                        {
-                            let __tco_0 = rest.clone();
-                            let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                            let __tco_2 = next_scope;
-                            let __tco_3 = registry;
-                            let __tco_4 = depth;
-                            let __tco_5 = shared_types;
-                            let __tco_6 = emit_info;
-                            __tco_loop_remaining = __tco_0;
-                            __tco_loop_text = __tco_1;
-                            __tco_loop_scope = __tco_2;
-                            __tco_loop_registry = __tco_3;
-                            __tco_loop_depth = __tco_4;
-                            __tco_loop_shared_types = __tco_5;
-                            __tco_loop_emit_info = __tco_6;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            #[allow(unused_mut)]
+            let mut emit_info = __tco_loop_emit_info;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                    match rest.clone().first().cloned() {
+                        std::option::Option::None => {
+                            break Rc::new(BlockEmitState {
+                                text: text.clone(),
+                                scope: scope.clone(),
+                            });
+                        }
+                        Some(_) => {
+                            let raw_line = emit_typed_expr(
+                                stmt.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            );
+                            let is_let = match (*stmt.expr_data.clone()).clone() {
+                                ExprData::ExprLet => true,
+                                _ => false,
+                            };
+                            let line = if is_let.clone() {
+                                raw_line.clone()
+                            } else {
+                                v1_rt::concat(raw_line.clone(), ";".to_string())
+                            };
+                            let next_scope = crate::v1_compiler_emit::scope_after_expr(
+                                stmt.clone(),
+                                scope.clone(),
+                            );
+                            {
+                                let __tco_0 = rest.clone();
+                                let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                                let __tco_2 = next_scope;
+                                let __tco_3 = registry;
+                                let __tco_4 = depth;
+                                let __tco_5 = shared_types;
+                                let __tco_6 = emit_info;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_text = __tco_1;
+                                __tco_loop_scope = __tco_2;
+                                __tco_loop_registry = __tco_3;
+                                __tco_loop_depth = __tco_4;
+                                __tco_loop_shared_types = __tco_5;
+                                __tco_loop_emit_info = __tco_6;
+                                continue;
+                            }
                         }
                     }
                 }
@@ -6289,6 +6349,31 @@ pub fn shared_by_every_declarer(
         }
         __all
     }
+}
+
+pub fn shared_type_declaration_is_marked_shared(
+    module_path: String,
+    name: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> bool {
+    (v1_rt::set_contains(&emit_info.shared_types.clone(), name.clone())
+        || match crate::v1_compiler_infer_emit_info::type_summary_decided(
+            emit_info.type_summaries.clone(),
+            crate::v1_compiler_infer_emit_info::type_decl_identity(module_path, name.clone()),
+        ) {
+            Some(summary) => v1_rt::set_contains(
+                &maybe_mark_shared_type(
+                    v1_rt::rc_empty_set::<String>(),
+                    summary.clone(),
+                    emit_info.recursive_type_set.clone(),
+                    crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
+                        .needs_sharing
+                        .clone(),
+                ),
+                summary.name.clone(),
+            ),
+            std::option::Option::None => false,
+        })
 }
 
 pub fn build_shared_types(
@@ -6704,6 +6789,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             expected_type: std::option::Option::None,
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            trmc_out: false,
             dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let registry = typed.item_registry.clone();
@@ -8003,6 +8089,7 @@ pub fn emit_module(
             expected_type: std::option::Option::None,
             tco_cursor_params: Rc::new(vec![]),
             tco_cursor_tails: v1_rt::rc_empty_map::<String, i64>(),
+            trmc_out: false,
             dying_base_sites: v1_rt::rc_empty_map::<String, String>(),
         });
         let shared_types = emit_info.shared_types.clone();
@@ -10627,6 +10714,7 @@ pub fn emit_module_full(
             expected_type: emit_info.expected_type.clone(),
             tco_cursor_params: emit_info.tco_cursor_params.clone(),
             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+            trmc_out: emit_info.trmc_out.clone(),
             dying_base_sites: emit_info.dying_base_sites.clone(),
         });
         let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -11165,86 +11253,89 @@ pub fn item_declaring_module_name(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    loop {
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut import_module = __tco_loop_import_module;
-        #[allow(unused_mut)]
-        let mut visited = __tco_loop_visited;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        if {
-            let mut __found = false;
-            for v in visited.iter().cloned() {
-                if (v.clone() == import_module.clone()) {
-                    __found = true;
-                    break;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut import_module = __tco_loop_import_module;
+            #[allow(unused_mut)]
+            let mut visited = __tco_loop_visited;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            if {
+                let mut __found = false;
+                for v in visited.iter().cloned() {
+                    if (v.clone() == import_module.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
-            }
-            __found
-        } {
-            break std::option::Option::None;
-        } else {
-            match typed_module_by_name(
-                import_module.clone(),
-                typed_modules.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-            ) {
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
-                Some(tm) => {
-                    if {
-                        let mut __found = false;
-                        for item in tm.items.clone().iter().cloned() {
-                            if (crate::v1_std_core::authored_name_at(
+                __found
+            } {
+                break std::option::Option::None;
+            } else {
+                match typed_module_by_name(
+                    import_module.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    std::option::Option::None => {
+                        break std::option::Option::None;
+                    }
+                    Some(tm) => {
+                        if {
+                            let mut __found = false;
+                            for item in tm.items.clone().iter().cloned() {
+                                if (crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    item.clone(),
+                                ) == name.clone())
+                                {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
+                            break Some(import_module.clone());
+                        } else {
+                            match explicit_import_source_module_for_name(
+                                name.clone(),
+                                import_module.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
                                 source_indices.clone(),
-                                item.clone(),
-                            ) == name.clone())
-                            {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    } {
-                        break Some(import_module.clone());
-                    } else {
-                        match explicit_import_source_module_for_name(
-                            name.clone(),
-                            import_module.clone(),
-                            typed_modules.clone(),
-                            export_sets.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        ) {
-                            Some(hop) => {
-                                let __tco_0 = name;
-                                let __tco_1 = hop.clone();
-                                let __tco_2 = v1_rt::concat(visited, Rc::new(vec![import_module]));
-                                let __tco_3 = typed_modules;
-                                let __tco_4 = export_sets;
-                                let __tco_5 = source_indices;
-                                let __tco_6 = module_index;
-                                __tco_loop_name = __tco_0;
-                                __tco_loop_import_module = __tco_1;
-                                __tco_loop_visited = __tco_2;
-                                __tco_loop_typed_modules = __tco_3;
-                                __tco_loop_export_sets = __tco_4;
-                                __tco_loop_source_indices = __tco_5;
-                                __tco_loop_module_index = __tco_6;
-                                continue;
-                            }
-                            std::option::Option::None => {
-                                break std::option::Option::None;
+                                module_index.clone(),
+                            ) {
+                                Some(hop) => {
+                                    let __tco_0 = name;
+                                    let __tco_1 = hop.clone();
+                                    let __tco_2 =
+                                        v1_rt::concat(visited, Rc::new(vec![import_module]));
+                                    let __tco_3 = typed_modules;
+                                    let __tco_4 = export_sets;
+                                    let __tco_5 = source_indices;
+                                    let __tco_6 = module_index;
+                                    __tco_loop_name = __tco_0;
+                                    __tco_loop_import_module = __tco_1;
+                                    __tco_loop_visited = __tco_2;
+                                    __tco_loop_typed_modules = __tco_3;
+                                    __tco_loop_export_sets = __tco_4;
+                                    __tco_loop_source_indices = __tco_5;
+                                    __tco_loop_module_index = __tco_6;
+                                    continue;
+                                }
+                                std::option::Option::None => {
+                                    break std::option::Option::None;
+                                }
                             }
                         }
                     }
@@ -11885,64 +11976,56 @@ pub fn reexport_source_module_name_with_visited(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    loop {
-        #[allow(unused_mut)]
-        let mut name = __tco_loop_name;
-        #[allow(unused_mut)]
-        let mut import_module = __tco_loop_import_module;
-        #[allow(unused_mut)]
-        let mut visited = __tco_loop_visited;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        if {
-            let mut __found = false;
-            for v in visited.iter().cloned() {
-                if (v.clone() == import_module.clone()) {
-                    __found = true;
-                    break;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut name = __tco_loop_name;
+            #[allow(unused_mut)]
+            let mut import_module = __tco_loop_import_module;
+            #[allow(unused_mut)]
+            let mut visited = __tco_loop_visited;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            if {
+                let mut __found = false;
+                for v in visited.iter().cloned() {
+                    if (v.clone() == import_module.clone()) {
+                        __found = true;
+                        break;
+                    }
                 }
-            }
-            __found
-        } {
-            break std::option::Option::None;
-        } else {
-            match typed_module_by_name(
-                import_module.clone(),
-                typed_modules.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-            ) {
-                std::option::Option::None => {
-                    break std::option::Option::None;
-                }
-                Some(tm) => {
-                    if type_name_is_export_source_in_module(
-                        name.clone(),
-                        import_module.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    ) {
-                        break Some(import_module.clone());
-                    } else {
-                        match find_variant_parent_in_module(
+                __found
+            } {
+                break std::option::Option::None;
+            } else {
+                match typed_module_by_name(
+                    import_module.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    std::option::Option::None => {
+                        break std::option::Option::None;
+                    }
+                    Some(tm) => {
+                        if type_name_is_export_source_in_module(
                             name.clone(),
                             import_module.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
                             module_index.clone(),
                         ) {
-                            Some(_parent) => {
-                                break Some(import_module.clone());
-                            }
-                            std::option::Option::None => {
-                                match Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in crate::v1_std_core::module_imports(tm.module.clone()).iter().cloned() { if ((crate::v1_std_core::import_is_all(imp.clone()) == false) && { let mut __found = false; for n in crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone()).iter().cloned() { if (n.clone() == name.clone()) { __found = true; break; } } __found }) { __result.push(imp); } } __result }).iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())); } __result }).first().cloned() {
+                            break Some(import_module.clone());
+                        } else {
+                            match find_variant_parent_in_module(name.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+    Some(_parent) => { break Some(import_module.clone()); },
+    std::option::Option::None => { match Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in crate::v1_std_core::module_imports(tm.module.clone()).iter().cloned() { if ((crate::v1_std_core::import_is_all(imp.clone()) == false) && { let mut __found = false; for n in crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone()).iter().cloned() { if (n.clone() == name.clone()) { __found = true; break; } } __found }) { __result.push(imp); } } __result }).iter().cloned() { __result.push(crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone())); } __result }).first().cloned() {
     Some(src) => { {
                     let __tco_0 = name;
 let __tco_1 = src.clone();
@@ -11983,8 +12066,8 @@ continue;
 } },
     std::option::Option::None => { break std::option::Option::None; },
 } },
+} },
 }
-                            }
                         }
                     }
                 }
@@ -12282,65 +12365,69 @@ pub fn variant_defining_module_filename_for_import(
     mut __tco_loop_fallback: String,
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut variant_name = __tco_loop_variant_name;
-        #[allow(unused_mut)]
-        let mut import_module = __tco_loop_import_module;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut fallback = __tco_loop_fallback;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        match find_variant_parent_in_module(
-            variant_name.clone(),
-            import_module.clone(),
-            typed_modules.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ) {
-            Some(_parent) => {
-                break crate::gunbc_rust_emitted_edge::module_to_filename(import_module.clone());
-            }
-            std::option::Option::None => {
-                match explicit_import_source_module_for_name(
-                    variant_name.clone(),
-                    import_module.clone(),
-                    typed_modules.clone(),
-                    export_sets.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Some(hop) => {
-                        if (hop.clone() != import_module.clone()) {
-                            {
-                                let __tco_0 = variant_name;
-                                let __tco_1 = hop.clone();
-                                let __tco_2 = typed_modules;
-                                let __tco_3 = export_sets;
-                                let __tco_4 = source_indices;
-                                let __tco_5 = fallback;
-                                let __tco_6 = module_index;
-                                __tco_loop_variant_name = __tco_0;
-                                __tco_loop_import_module = __tco_1;
-                                __tco_loop_typed_modules = __tco_2;
-                                __tco_loop_export_sets = __tco_3;
-                                __tco_loop_source_indices = __tco_4;
-                                __tco_loop_fallback = __tco_5;
-                                __tco_loop_module_index = __tco_6;
-                                continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut variant_name = __tco_loop_variant_name;
+            #[allow(unused_mut)]
+            let mut import_module = __tco_loop_import_module;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut fallback = __tco_loop_fallback;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            match find_variant_parent_in_module(
+                variant_name.clone(),
+                import_module.clone(),
+                typed_modules.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                Some(_parent) => {
+                    break crate::gunbc_rust_emitted_edge::module_to_filename(
+                        import_module.clone(),
+                    );
+                }
+                std::option::Option::None => {
+                    match explicit_import_source_module_for_name(
+                        variant_name.clone(),
+                        import_module.clone(),
+                        typed_modules.clone(),
+                        export_sets.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(hop) => {
+                            if (hop.clone() != import_module.clone()) {
+                                {
+                                    let __tco_0 = variant_name;
+                                    let __tco_1 = hop.clone();
+                                    let __tco_2 = typed_modules;
+                                    let __tco_3 = export_sets;
+                                    let __tco_4 = source_indices;
+                                    let __tco_5 = fallback;
+                                    let __tco_6 = module_index;
+                                    __tco_loop_variant_name = __tco_0;
+                                    __tco_loop_import_module = __tco_1;
+                                    __tco_loop_typed_modules = __tco_2;
+                                    __tco_loop_export_sets = __tco_3;
+                                    __tco_loop_source_indices = __tco_4;
+                                    __tco_loop_fallback = __tco_5;
+                                    __tco_loop_module_index = __tco_6;
+                                    continue;
+                                }
+                            } else {
+                                break fallback.clone();
                             }
-                        } else {
+                        }
+                        std::option::Option::None => {
                             break fallback.clone();
                         }
-                    }
-                    std::option::Option::None => {
-                        break fallback.clone();
                     }
                 }
             }
@@ -12525,81 +12612,83 @@ pub fn reexport_variant_parent_in_import_module(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
-    loop {
-        #[allow(unused_mut)]
-        let mut variant_name = __tco_loop_variant_name;
-        #[allow(unused_mut)]
-        let mut import_module = __tco_loop_import_module;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut type_summaries = __tco_loop_type_summaries;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        match reexport_source_module_name(
-            variant_name.clone(),
-            import_module,
-            typed_modules.clone(),
-            export_sets.clone(),
-            source_indices.clone(),
-            module_index.clone(),
-        ) {
-            std::option::Option::None => {
-                break std::option::Option::None;
-            }
-            Some(src_mod) => {
-                match find_variant_parent_in_module(
-                    variant_name.clone(),
-                    src_mod.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                ) {
-                    Some(parent) => {
-                        break Some(parent.clone());
-                    }
-                    std::option::Option::None => {
-                        match explicit_import_source_module_for_name(
-                            variant_name.clone(),
-                            src_mod.clone(),
-                            typed_modules.clone(),
-                            export_sets.clone(),
-                            source_indices.clone(),
-                            module_index.clone(),
-                        ) {
-                            Some(hop) => {
-                                if (hop.clone() != src_mod.clone()) {
-                                    {
-                                        let __tco_0 = variant_name;
-                                        let __tco_1 = hop.clone();
-                                        let __tco_2 = registry;
-                                        let __tco_3 = type_summaries;
-                                        let __tco_4 = typed_modules;
-                                        let __tco_5 = export_sets;
-                                        let __tco_6 = source_indices;
-                                        let __tco_7 = module_index;
-                                        __tco_loop_variant_name = __tco_0;
-                                        __tco_loop_import_module = __tco_1;
-                                        __tco_loop_registry = __tco_2;
-                                        __tco_loop_type_summaries = __tco_3;
-                                        __tco_loop_typed_modules = __tco_4;
-                                        __tco_loop_export_sets = __tco_5;
-                                        __tco_loop_source_indices = __tco_6;
-                                        __tco_loop_module_index = __tco_7;
-                                        continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut variant_name = __tco_loop_variant_name;
+            #[allow(unused_mut)]
+            let mut import_module = __tco_loop_import_module;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut type_summaries = __tco_loop_type_summaries;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            match reexport_source_module_name(
+                variant_name.clone(),
+                import_module,
+                typed_modules.clone(),
+                export_sets.clone(),
+                source_indices.clone(),
+                module_index.clone(),
+            ) {
+                std::option::Option::None => {
+                    break std::option::Option::None;
+                }
+                Some(src_mod) => {
+                    match find_variant_parent_in_module(
+                        variant_name.clone(),
+                        src_mod.clone(),
+                        typed_modules.clone(),
+                        source_indices.clone(),
+                        module_index.clone(),
+                    ) {
+                        Some(parent) => {
+                            break Some(parent.clone());
+                        }
+                        std::option::Option::None => {
+                            match explicit_import_source_module_for_name(
+                                variant_name.clone(),
+                                src_mod.clone(),
+                                typed_modules.clone(),
+                                export_sets.clone(),
+                                source_indices.clone(),
+                                module_index.clone(),
+                            ) {
+                                Some(hop) => {
+                                    if (hop.clone() != src_mod.clone()) {
+                                        {
+                                            let __tco_0 = variant_name;
+                                            let __tco_1 = hop.clone();
+                                            let __tco_2 = registry;
+                                            let __tco_3 = type_summaries;
+                                            let __tco_4 = typed_modules;
+                                            let __tco_5 = export_sets;
+                                            let __tco_6 = source_indices;
+                                            let __tco_7 = module_index;
+                                            __tco_loop_variant_name = __tco_0;
+                                            __tco_loop_import_module = __tco_1;
+                                            __tco_loop_registry = __tco_2;
+                                            __tco_loop_type_summaries = __tco_3;
+                                            __tco_loop_typed_modules = __tco_4;
+                                            __tco_loop_export_sets = __tco_5;
+                                            __tco_loop_source_indices = __tco_6;
+                                            __tco_loop_module_index = __tco_7;
+                                            continue;
+                                        }
+                                    } else {
+                                        break std::option::Option::None;
                                     }
-                                } else {
+                                }
+                                std::option::Option::None => {
                                     break std::option::Option::None;
                                 }
-                            }
-                            std::option::Option::None => {
-                                break std::option::Option::None;
                             }
                         }
                     }
@@ -13027,132 +13116,136 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_module_index: Rc<ModuleIndex>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut rhs_name = __tco_loop_rhs_name;
-        #[allow(unused_mut)]
-        let mut def_mod_filename = __tco_loop_def_mod_filename;
-        #[allow(unused_mut)]
-        let mut module_name = __tco_loop_module_name;
-        #[allow(unused_mut)]
-        let mut imports = __tco_loop_imports;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut typed_modules = __tco_loop_typed_modules;
-        #[allow(unused_mut)]
-        let mut export_sets = __tco_loop_export_sets;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut module_index = __tco_loop_module_index;
-        if is_phantom_unit_variant_type_arg(scope.type_env.clone(), rhs_name.clone()) {
-            break true;
-        } else {
-            match type_item_by_name_in_module_filename(
-                rhs_name.clone(),
-                def_mod_filename.clone(),
-                typed_modules.clone(),
-                source_indices.clone(),
-                module_index.clone(),
-            ) {
-                Some(item) => {
-                    match module_name_from_filename(
-                        def_mod_filename.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    ) {
-                        Some(def_module_name) => {
-                            match typed_module_by_name(
-                                def_module_name.clone(),
-                                typed_modules.clone(),
-                                source_indices.clone(),
-                                module_index.clone(),
-                            ) {
-                                Some(tm) => {
-                                    break type_item_has_rust_nominal_shell_authority(
-                                        item.clone(),
-                                        rhs_name.clone(),
-                                        def_module_name.clone(),
-                                        crate::v1_std_core::module_imports(tm.module.clone()),
-                                        crate::v1_compiler_emit::module_emit_scope(tm.clone()),
-                                        registry.clone(),
-                                        export_sets.clone(),
-                                        typed_modules.clone(),
-                                        source_indices.clone(),
-                                        module_index.clone(),
-                                    );
-                                }
-                                std::option::Option::None => {
-                                    break false;
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            break false;
-                        }
-                    }
-                }
-                std::option::Option::None => {
-                    match module_name_from_filename(
-                        def_mod_filename.clone(),
-                        typed_modules.clone(),
-                        source_indices.clone(),
-                        module_index.clone(),
-                    ) {
-                        Some(mod_name) => {
-                            match v1_rt::map_get(&export_sets, mod_name.clone()) {
-                                Some(exported) => {
-                                    if (v1_rt::map_get(&exported, rhs_name.clone()) == Some(true)) {
-                                        match reexport_source_module_name(
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut rhs_name = __tco_loop_rhs_name;
+            #[allow(unused_mut)]
+            let mut def_mod_filename = __tco_loop_def_mod_filename;
+            #[allow(unused_mut)]
+            let mut module_name = __tco_loop_module_name;
+            #[allow(unused_mut)]
+            let mut imports = __tco_loop_imports;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut typed_modules = __tco_loop_typed_modules;
+            #[allow(unused_mut)]
+            let mut export_sets = __tco_loop_export_sets;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut module_index = __tco_loop_module_index;
+            if is_phantom_unit_variant_type_arg(scope.type_env.clone(), rhs_name.clone()) {
+                break true;
+            } else {
+                match type_item_by_name_in_module_filename(
+                    rhs_name.clone(),
+                    def_mod_filename.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                ) {
+                    Some(item) => {
+                        match module_name_from_filename(
+                            def_mod_filename.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        ) {
+                            Some(def_module_name) => {
+                                match typed_module_by_name(
+                                    def_module_name.clone(),
+                                    typed_modules.clone(),
+                                    source_indices.clone(),
+                                    module_index.clone(),
+                                ) {
+                                    Some(tm) => {
+                                        break type_item_has_rust_nominal_shell_authority(
+                                            item.clone(),
                                             rhs_name.clone(),
-                                            mod_name.clone(),
-                                            typed_modules.clone(),
+                                            def_module_name.clone(),
+                                            crate::v1_std_core::module_imports(tm.module.clone()),
+                                            crate::v1_compiler_emit::module_emit_scope(tm.clone()),
+                                            registry.clone(),
                                             export_sets.clone(),
+                                            typed_modules.clone(),
                                             source_indices.clone(),
                                             module_index.clone(),
-                                        ) {
-                                            Some(src) => {
-                                                let __tco_0 = rhs_name;
-                                                let __tco_1 = crate::gunbc_rust_emitted_edge::module_to_filename(src.clone());
-                                                let __tco_2 = module_name;
-                                                let __tco_3 = imports;
-                                                let __tco_4 = scope;
-                                                let __tco_5 = registry;
-                                                let __tco_6 = typed_modules;
-                                                let __tco_7 = export_sets;
-                                                let __tco_8 = source_indices;
-                                                let __tco_9 = module_index;
-                                                __tco_loop_rhs_name = __tco_0;
-                                                __tco_loop_def_mod_filename = __tco_1;
-                                                __tco_loop_module_name = __tco_2;
-                                                __tco_loop_imports = __tco_3;
-                                                __tco_loop_scope = __tco_4;
-                                                __tco_loop_registry = __tco_5;
-                                                __tco_loop_typed_modules = __tco_6;
-                                                __tco_loop_export_sets = __tco_7;
-                                                __tco_loop_source_indices = __tco_8;
-                                                __tco_loop_module_index = __tco_9;
-                                                continue;
-                                            }
-                                            std::option::Option::None => {
-                                                break false;
-                                            }
-                                        }
-                                    } else {
+                                        );
+                                    }
+                                    std::option::Option::None => {
                                         break false;
                                     }
                                 }
-                                std::option::Option::None => {
-                                    break false;
-                                }
+                            }
+                            std::option::Option::None => {
+                                break false;
                             }
                         }
-                        std::option::Option::None => {
-                            break false;
+                    }
+                    std::option::Option::None => {
+                        match module_name_from_filename(
+                            def_mod_filename.clone(),
+                            typed_modules.clone(),
+                            source_indices.clone(),
+                            module_index.clone(),
+                        ) {
+                            Some(mod_name) => {
+                                match v1_rt::map_get(&export_sets, mod_name.clone()) {
+                                    Some(exported) => {
+                                        if (v1_rt::map_get(&exported, rhs_name.clone())
+                                            == Some(true))
+                                        {
+                                            match reexport_source_module_name(
+                                                rhs_name.clone(),
+                                                mod_name.clone(),
+                                                typed_modules.clone(),
+                                                export_sets.clone(),
+                                                source_indices.clone(),
+                                                module_index.clone(),
+                                            ) {
+                                                Some(src) => {
+                                                    let __tco_0 = rhs_name;
+                                                    let __tco_1 = crate::gunbc_rust_emitted_edge::module_to_filename(src.clone());
+                                                    let __tco_2 = module_name;
+                                                    let __tco_3 = imports;
+                                                    let __tco_4 = scope;
+                                                    let __tco_5 = registry;
+                                                    let __tco_6 = typed_modules;
+                                                    let __tco_7 = export_sets;
+                                                    let __tco_8 = source_indices;
+                                                    let __tco_9 = module_index;
+                                                    __tco_loop_rhs_name = __tco_0;
+                                                    __tco_loop_def_mod_filename = __tco_1;
+                                                    __tco_loop_module_name = __tco_2;
+                                                    __tco_loop_imports = __tco_3;
+                                                    __tco_loop_scope = __tco_4;
+                                                    __tco_loop_registry = __tco_5;
+                                                    __tco_loop_typed_modules = __tco_6;
+                                                    __tco_loop_export_sets = __tco_7;
+                                                    __tco_loop_source_indices = __tco_8;
+                                                    __tco_loop_module_index = __tco_9;
+                                                    continue;
+                                                }
+                                                std::option::Option::None => {
+                                                    break false;
+                                                }
+                                            }
+                                        } else {
+                                            break false;
+                                        }
+                                    }
+                                    std::option::Option::None => {
+                                        break false;
+                                    }
+                                }
+                            }
+                            std::option::Option::None => {
+                                break false;
+                            }
                         }
                     }
                 }
@@ -16334,7 +16427,7 @@ pub fn emit_typed_item(
                         Some(m) => m.clone(),
                         std::option::Option::None => v1_rt::rc_empty_set::<i64>(),
                     };
-                    let item_is_tco = crate::v1_compiler_emit::is_tco_eligible(
+                    let item_is_tco = (crate::v1_compiler_emit::is_tco_eligible(
                         Rc::new(DeclaredCallableIdentity {
                             owner_module_path: module_name.clone(),
                             decl_name: crate::v1_compiler_infer_env::authored_name(
@@ -16345,7 +16438,12 @@ pub fn emit_typed_item(
                         fn_body.clone(),
                         registry.clone(),
                         env.source_indices.clone(),
-                    );
+                    ) || is_trmc_eligible(
+                        fn_body.clone(),
+                        crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
+                        emit_info.clone(),
+                        env.source_indices.clone(),
+                    ));
                     let fn_read_only = if item_is_tco.clone() {
                         v1_rt::rc_empty_set::<String>()
                     } else {
@@ -16398,6 +16496,7 @@ pub fn emit_typed_item(
                         expected_type: emit_info.expected_type.clone(),
                         tco_cursor_params: emit_info.tco_cursor_params.clone(),
                         tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                        trmc_out: false,
                         dying_base_sites: fn_dying_base_sites.clone(),
                     });
                     let is_effectful = match crate::v1_compiler_emit::lookup_item_by_identity(
@@ -16521,53 +16620,56 @@ pub fn needs_box_wrapping(
     mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut n = __tco_loop_n;
-        #[allow(unused_mut)]
-        let mut recursive_types = __tco_loop_recursive_types;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        let name = crate::v1_std_core::qualified_last_segment(authored);
-        if v1_rt::set_contains(&shared_types, name.clone()) {
-            break false;
-        } else {
-            if v1_rt::set_contains(&recursive_types, name.clone()) {
-                break true;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut n = __tco_loop_n;
+            #[allow(unused_mut)]
+            let mut recursive_types = __tco_loop_recursive_types;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+            let name = crate::v1_std_core::qualified_last_segment(authored);
+            if v1_rt::set_contains(&shared_types, name.clone()) {
+                break false;
             } else {
-                if ((n.children.clone().len() as i64) == 0) {
-                    if (crate::v1_compiler_coercion::coerce_primitive_type(
-                        crate::v1_compiler_coercion::type_reference_realization(
-                            n.clone(),
-                            name.clone(),
-                            RenderTarget::Rust,
-                        ),
-                        name.clone(),
-                    ) != name.clone())
-                    {
-                        break false;
-                    } else {
-                        break v1_rt::set_contains(&recursive_types, name.clone());
-                    }
+                if v1_rt::set_contains(&recursive_types, name.clone()) {
+                    break true;
                 } else {
-                    let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-                    if is_optional.clone() {
+                    if ((n.children.clone().len() as i64) == 0) {
+                        if (crate::v1_compiler_coercion::coerce_primitive_type(
+                            crate::v1_compiler_coercion::type_reference_realization(
+                                n.clone(),
+                                name.clone(),
+                                RenderTarget::Rust,
+                            ),
+                            name.clone(),
+                        ) != name.clone())
                         {
-                            let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
-                            let __tco_1 = recursive_types;
-                            let __tco_2 = shared_types;
-                            let __tco_3 = source_indices;
-                            __tco_loop_n = __tco_0;
-                            __tco_loop_recursive_types = __tco_1;
-                            __tco_loop_shared_types = __tco_2;
-                            __tco_loop_source_indices = __tco_3;
-                            continue;
+                            break false;
+                        } else {
+                            break v1_rt::set_contains(&recursive_types, name.clone());
                         }
                     } else {
-                        break false;
+                        let is_optional =
+                            (n.return_cardinality.clone() == Cardinality::CardOptional);
+                        if is_optional.clone() {
+                            {
+                                let __tco_0 = crate::v1_std_core::with_required_cardinality(n);
+                                let __tco_1 = recursive_types;
+                                let __tco_2 = shared_types;
+                                let __tco_3 = source_indices;
+                                __tco_loop_n = __tco_0;
+                                __tco_loop_recursive_types = __tco_1;
+                                __tco_loop_shared_types = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                continue;
+                            }
+                        } else {
+                            break false;
+                        }
                     }
                 }
             }
@@ -17471,7 +17573,11 @@ pub fn emit_struct_from_children(
             env.module_path.clone(),
             name.clone(),
             children.clone(),
-            shared_types.clone(),
+            shared_type_declaration_is_marked_shared(
+                env.module_path.clone(),
+                name.clone(),
+                emit_info.clone(),
+            ),
             has_fn_fields,
             v1_rt::set_contains(
                 &emit_info.map_key_required_type_names.clone(),
@@ -18504,34 +18610,36 @@ pub fn string_index_of_from(
     mut __tco_loop_needle: String,
     mut __tco_loop_pos: i64,
 ) -> Option<i64> {
-    loop {
-        #[allow(unused_mut)]
-        let mut haystack = __tco_loop_haystack;
-        #[allow(unused_mut)]
-        let mut needle = __tco_loop_needle;
-        #[allow(unused_mut)]
-        let mut pos = __tco_loop_pos;
-        if (v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle))
-            > v1_rt::string_length(&haystack))
-        {
-            break std::option::Option::None;
-        } else {
-            if (v1_rt::substring(
-                &haystack,
-                pos.clone(),
-                v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle)),
-            ) == needle.clone())
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut haystack = __tco_loop_haystack;
+            #[allow(unused_mut)]
+            let mut needle = __tco_loop_needle;
+            #[allow(unused_mut)]
+            let mut pos = __tco_loop_pos;
+            if (v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle))
+                > v1_rt::string_length(&haystack))
             {
-                break Some(pos.clone());
+                break std::option::Option::None;
             } else {
+                if (v1_rt::substring(
+                    &haystack,
+                    pos.clone(),
+                    v1_rt::int_add(pos.clone(), v1_rt::string_length(&needle)),
+                ) == needle.clone())
                 {
-                    let __tco_0 = haystack;
-                    let __tco_1 = needle;
-                    let __tco_2 = v1_rt::int_add(pos, 1);
-                    __tco_loop_haystack = __tco_0;
-                    __tco_loop_needle = __tco_1;
-                    __tco_loop_pos = __tco_2;
-                    continue;
+                    break Some(pos.clone());
+                } else {
+                    {
+                        let __tco_0 = haystack;
+                        let __tco_1 = needle;
+                        let __tco_2 = v1_rt::int_add(pos, 1);
+                        __tco_loop_haystack = __tco_0;
+                        __tco_loop_needle = __tco_1;
+                        __tco_loop_pos = __tco_2;
+                        continue;
+                    }
                 }
             }
         }
@@ -19632,48 +19740,50 @@ pub fn v1_record_decl_slot_arg_name(
     mut __tco_loop_slot_name: String,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut decl_params = __tco_loop_decl_params;
-        #[allow(unused_mut)]
-        let mut type_args = __tco_loop_type_args;
-        #[allow(unused_mut)]
-        let mut slot_name = __tco_loop_slot_name;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match decl_params.clone().first().cloned() {
-            std::option::Option::None => {
-                break "".to_string();
-            }
-            Some(decl_param) => match type_args.clone().first().cloned() {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut decl_params = __tco_loop_decl_params;
+            #[allow(unused_mut)]
+            let mut type_args = __tco_loop_type_args;
+            #[allow(unused_mut)]
+            let mut slot_name = __tco_loop_slot_name;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match decl_params.clone().first().cloned() {
                 std::option::Option::None => {
                     break "".to_string();
                 }
-                Some(type_arg) => {
-                    if (crate::v1_std_core::generic_param_name_at(
-                        decl_param.clone(),
-                        source_indices.clone(),
-                    ) == slot_name.clone())
-                    {
-                        break crate::v1_std_core::authored_name_at(
+                Some(decl_param) => match type_args.clone().first().cloned() {
+                    std::option::Option::None => {
+                        break "".to_string();
+                    }
+                    Some(type_arg) => {
+                        if (crate::v1_std_core::generic_param_name_at(
+                            decl_param.clone(),
                             source_indices.clone(),
-                            type_arg.clone(),
-                        );
-                    } else {
+                        ) == slot_name.clone())
                         {
-                            let __tco_0 = Rc::new(v1_rt::list_skip(&decl_params, 1));
-                            let __tco_1 = Rc::new(v1_rt::list_skip(&type_args, 1));
-                            let __tco_2 = slot_name;
-                            let __tco_3 = source_indices;
-                            __tco_loop_decl_params = __tco_0;
-                            __tco_loop_type_args = __tco_1;
-                            __tco_loop_slot_name = __tco_2;
-                            __tco_loop_source_indices = __tco_3;
-                            continue;
+                            break crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                type_arg.clone(),
+                            );
+                        } else {
+                            {
+                                let __tco_0 = Rc::new(v1_rt::list_skip(&decl_params, 1));
+                                let __tco_1 = Rc::new(v1_rt::list_skip(&type_args, 1));
+                                let __tco_2 = slot_name;
+                                let __tco_3 = source_indices;
+                                __tco_loop_decl_params = __tco_0;
+                                __tco_loop_type_args = __tco_1;
+                                __tco_loop_slot_name = __tco_2;
+                                __tco_loop_source_indices = __tco_3;
+                                continue;
+                            }
                         }
                     }
-                }
-            },
+                },
+            }
         }
     }
 }
@@ -20229,81 +20339,58 @@ pub fn v1_fn_map_key_bound_fixpoint(
     mut __tco_loop_table: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
-    loop {
-        #[allow(unused_mut)]
-        let mut names = __tco_loop_names;
-        #[allow(unused_mut)]
-        let mut fn_decl_items = __tco_loop_fn_decl_items;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut table = __tco_loop_table;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            return table.clone();
-        }
-        let next = names.iter().cloned().fold(
-            table.clone(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(
-                &fn_decl_items,
-                n.clone(),
-            ) {
-                Some(item) => match item.body.clone() {
-                    std::option::Option::None => acc.clone(),
-                    Some(body) => {
-                        let generics = Rc::new({
-                            let mut __result = Vec::new();
-                            for p in function_type_params(item.params.clone()).iter().cloned() {
-                                __result.push(crate::v1_std_core::generic_param_name_at(
-                                    p.clone(),
-                                    source_indices.clone(),
-                                ));
-                            }
-                            __result
-                        });
-                        let forwarded = v1_call_forwarding_bound_param_names(
-                            ForwardedBoundClass::MapKeyForwarded,
-                            generics.clone(),
-                            body.clone(),
-                            fn_decl_items.clone(),
-                            acc.clone(),
-                            source_indices.clone(),
-                        );
-                        let existing = match v1_rt::map_get(&acc, n.clone()) {
-                            Some(e) => e.clone(),
-                            std::option::Option::None => Rc::new(vec![]),
-                        };
-                        let merged =
-                            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                                existing.clone(),
-                                forwarded.clone(),
-                            );
-                        if ((merged.clone().len() as i64) > 0) {
-                            v1_rt::rc_map_insert(acc.clone(), n.clone(), merged.clone())
-                        } else {
-                            acc.clone()
-                        }
-                    }
-                },
-                std::option::Option::None => acc.clone(),
-            },
-        );
-        if (v1_fn_map_key_bound_total(next.clone()) == v1_fn_map_key_bound_total(table.clone())) {
-            break next.clone();
-        } else {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut names = __tco_loop_names;
+            #[allow(unused_mut)]
+            let mut fn_decl_items = __tco_loop_fn_decl_items;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut table = __tco_loop_table;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
+                return table.clone();
+            }
+            let next = names.iter().cloned().fold(table.clone(), |acc: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&fn_decl_items, n.clone()) {
+    Some(item) => match item.body.clone() {
+    std::option::Option::None => acc.clone(),
+    Some(body) => {
+            let generics = Rc::new({ let mut __result = Vec::new(); for p in function_type_params(item.params.clone()).iter().cloned() { __result.push(crate::v1_std_core::generic_param_name_at(p.clone(), source_indices.clone())); } __result });
+let forwarded = v1_call_forwarding_bound_param_names(ForwardedBoundClass::MapKeyForwarded, generics.clone(), body.clone(), fn_decl_items.clone(), acc.clone(), source_indices.clone());
+let existing = match v1_rt::map_get(&acc, n.clone()) {
+    Some(e) => e.clone(),
+    std::option::Option::None => Rc::new(vec![]),
+};
+let merged = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(existing.clone(), forwarded.clone());
+if ((merged.clone().len() as i64) > 0) {
+                v1_rt::rc_map_insert(acc.clone(), n.clone(), merged.clone())
+            } else {
+                acc.clone()
+            }
+},
+},
+    std::option::Option::None => acc.clone(),
+});
+            if (v1_fn_map_key_bound_total(next.clone()) == v1_fn_map_key_bound_total(table.clone()))
             {
-                let __tco_0 = names;
-                let __tco_1 = fn_decl_items;
-                let __tco_2 = source_indices;
-                let __tco_3 = next.clone();
-                let __tco_4 = v1_rt::int_sub(fuel, 1);
-                __tco_loop_names = __tco_0;
-                __tco_loop_fn_decl_items = __tco_1;
-                __tco_loop_source_indices = __tco_2;
-                __tco_loop_table = __tco_3;
-                __tco_loop_fuel = __tco_4;
-                continue;
+                break next.clone();
+            } else {
+                {
+                    let __tco_0 = names;
+                    let __tco_1 = fn_decl_items;
+                    let __tco_2 = source_indices;
+                    let __tco_3 = next.clone();
+                    let __tco_4 = v1_rt::int_sub(fuel, 1);
+                    __tco_loop_names = __tco_0;
+                    __tco_loop_fn_decl_items = __tco_1;
+                    __tco_loop_source_indices = __tco_2;
+                    __tco_loop_table = __tco_3;
+                    __tco_loop_fuel = __tco_4;
+                    continue;
+                }
             }
         }
     }
@@ -20617,7 +20704,7 @@ pub fn emit_fn_def(
             body.clone(),
             si.clone(),
         );
-        let use_tco = (!realized_seam.clone()
+        let plain_tco = (!realized_seam.clone()
             && crate::v1_compiler_emit::is_tco_eligible(
                 Rc::new(DeclaredCallableIdentity {
                     owner_module_path: scope.module_name.clone(),
@@ -20627,6 +20714,9 @@ pub fn emit_fn_def(
                 registry.clone(),
                 si.clone(),
             ));
+        let use_trmc = ((!realized_seam.clone() && !plain_tco.clone())
+            && is_trmc_eligible(body.clone(), name.clone(), emit_info.clone(), si.clone()));
+        let use_tco = (plain_tco.clone() || use_trmc.clone());
         let needs_stacker = ((!realized_seam.clone()
             && crate::v1_compiler_emit::is_self_recursive(
                 Rc::new(DeclaredCallableIdentity {
@@ -20713,17 +20803,21 @@ pub fn emit_fn_def(
                     emit_info.variant_to_enum.clone(),
                     scope.type_env.clone(),
                 );
+                let loop_emit_info = Rc::new(EmitGraphInfo {
+                    trmc_out: use_trmc.clone(),
+                    ..(*body_emit_info.clone()).clone()
+                });
                 let cursor_plan = tco_cursor_plan(
                     body.clone(),
                     name.clone(),
                     value_params.clone(),
-                    body_emit_info.clone(),
+                    loop_emit_info.clone(),
                     si.clone(),
                 );
                 let cursor_emit_info = Rc::new(EmitGraphInfo {
                     tco_cursor_params: cursor_plan.params.clone(),
                     tco_cursor_tails: cursor_plan.tails.clone(),
-                    ..(*body_emit_info.clone()).clone()
+                    ..(*loop_emit_info.clone()).clone()
                 });
                 let body_str = emit_typed_tco_body(
                     body.clone(),
@@ -22137,105 +22231,64 @@ pub fn collect_pattern_string_guards(
     mut __tco_loop_path_prefix: Rc<Vec<String>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut pattern = __tco_loop_pattern;
-        #[allow(unused_mut)]
-        let mut path_prefix = __tco_loop_path_prefix;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        match (*pattern.clone()).clone() {
-            MatchPattern::VariantPattern {
-                name: n,
-                parent_enum: parent,
-                field_bindings: fbs,
-                ..
-            } => {
-                if (((n.clone() == "Present".to_string())
-                    && (parent.clone().as_deref() == Some("Optional".to_string()).as_deref()))
-                    && ((fbs.clone().len() as i64) == 1))
-                {
-                    match fbs.clone().first().cloned() {
-                        Some(fb) => {
-                            let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
-                            if is_string_lit_pattern(fb_pat.clone()) {
-                                match (*fb_pat.clone()).clone() {
-                                    MatchPattern::LitPattern { ref value, .. }
-                                        if matches!(
-                                            value.as_ref(),
-                                            LiteralValue::LitStr { value: _, .. }
-                                        ) =>
-                                    {
-                                        let LiteralValue::LitStr { value: s, .. } = value.as_ref()
-                                        else {
-                                            unreachable!()
-                                        };
-                                        break v1_rt::concat(
-                                            "__some_val == ".to_string(),
-                                            crate::v1_compiler_emit::emit_string_literal(
-                                                s.clone(),
-                                                "".to_string(),
-                                            ),
-                                        );
-                                    }
-                                    _ => {
-                                        break "".to_string();
-                                    }
-                                }
-                            } else {
-                                {
-                                    let __tco_0 = fb_pat.clone();
-                                    let __tco_1 =
-                                        v1_rt::rc_list_push(path_prefix, "Some".to_string());
-                                    let __tco_2 = source_indices;
-                                    __tco_loop_pattern = __tco_0;
-                                    __tco_loop_path_prefix = __tco_1;
-                                    __tco_loop_source_indices = __tco_2;
-                                    continue;
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            break "".to_string();
-                        }
-                    }
-                } else {
-                    if ((fbs.clone().len() as i64) == 1) {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut pattern = __tco_loop_pattern;
+            #[allow(unused_mut)]
+            let mut path_prefix = __tco_loop_path_prefix;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            match (*pattern.clone()).clone() {
+                MatchPattern::VariantPattern {
+                    name: n,
+                    parent_enum: parent,
+                    field_bindings: fbs,
+                    ..
+                } => {
+                    if (((n.clone() == "Present".to_string())
+                        && (parent.clone().as_deref() == Some("Optional".to_string()).as_deref()))
+                        && ((fbs.clone().len() as i64) == 1))
+                    {
                         match fbs.clone().first().cloned() {
                             Some(fb) => {
-                                if (crate::v1_std_core::field_binding_name_at(
-                                    fb.clone(),
-                                    source_indices.clone(),
-                                ) == "0".to_string())
-                                {
-                                    let fb_pat =
-                                        crate::v1_std_core::field_binding_pattern(fb.clone());
-                                    let pos_path = v1_rt::rc_list_push(
-                                        v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
-                                        "0".to_string(),
-                                    );
-                                    if is_string_lit_pattern(fb_pat.clone()) {
-                                        break positional_payload_string_guard(
-                                            fb_pat.clone(),
-                                            pattern_string_binding_name(pos_path.clone()),
-                                        );
-                                    } else {
+                                let fb_pat = crate::v1_std_core::field_binding_pattern(fb.clone());
+                                if is_string_lit_pattern(fb_pat.clone()) {
+                                    match (*fb_pat.clone()).clone() {
+                                        MatchPattern::LitPattern { ref value, .. }
+                                            if matches!(
+                                                value.as_ref(),
+                                                LiteralValue::LitStr { value: _, .. }
+                                            ) =>
                                         {
-                                            let __tco_0 = fb_pat.clone();
-                                            let __tco_1 = pos_path.clone();
-                                            let __tco_2 = source_indices;
-                                            __tco_loop_pattern = __tco_0;
-                                            __tco_loop_path_prefix = __tco_1;
-                                            __tco_loop_source_indices = __tco_2;
-                                            continue;
+                                            let LiteralValue::LitStr { value: s, .. } =
+                                                value.as_ref()
+                                            else {
+                                                unreachable!()
+                                            };
+                                            break v1_rt::concat(
+                                                "__some_val == ".to_string(),
+                                                crate::v1_compiler_emit::emit_string_literal(
+                                                    s.clone(),
+                                                    "".to_string(),
+                                                ),
+                                            );
+                                        }
+                                        _ => {
+                                            break "".to_string();
                                         }
                                     }
                                 } else {
-                                    break collect_field_binding_string_guards(
-                                        fbs.clone(),
-                                        v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
-                                        source_indices.clone(),
-                                    );
+                                    {
+                                        let __tco_0 = fb_pat.clone();
+                                        let __tco_1 =
+                                            v1_rt::rc_list_push(path_prefix, "Some".to_string());
+                                        let __tco_2 = source_indices;
+                                        __tco_loop_pattern = __tco_0;
+                                        __tco_loop_path_prefix = __tco_1;
+                                        __tco_loop_source_indices = __tco_2;
+                                        continue;
+                                    }
                                 }
                             }
                             std::option::Option::None => {
@@ -22243,16 +22296,60 @@ pub fn collect_pattern_string_guards(
                             }
                         }
                     } else {
-                        break collect_field_binding_string_guards(
-                            fbs.clone(),
-                            v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
-                            source_indices.clone(),
-                        );
+                        if ((fbs.clone().len() as i64) == 1) {
+                            match fbs.clone().first().cloned() {
+                                Some(fb) => {
+                                    if (crate::v1_std_core::field_binding_name_at(
+                                        fb.clone(),
+                                        source_indices.clone(),
+                                    ) == "0".to_string())
+                                    {
+                                        let fb_pat =
+                                            crate::v1_std_core::field_binding_pattern(fb.clone());
+                                        let pos_path = v1_rt::rc_list_push(
+                                            v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
+                                            "0".to_string(),
+                                        );
+                                        if is_string_lit_pattern(fb_pat.clone()) {
+                                            break positional_payload_string_guard(
+                                                fb_pat.clone(),
+                                                pattern_string_binding_name(pos_path.clone()),
+                                            );
+                                        } else {
+                                            {
+                                                let __tco_0 = fb_pat.clone();
+                                                let __tco_1 = pos_path.clone();
+                                                let __tco_2 = source_indices;
+                                                __tco_loop_pattern = __tco_0;
+                                                __tco_loop_path_prefix = __tco_1;
+                                                __tco_loop_source_indices = __tco_2;
+                                                continue;
+                                            }
+                                        }
+                                    } else {
+                                        break collect_field_binding_string_guards(
+                                            fbs.clone(),
+                                            v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
+                                            source_indices.clone(),
+                                        );
+                                    }
+                                }
+                                std::option::Option::None => {
+                                    break "".to_string();
+                                }
+                            }
+                        } else {
+                            break collect_field_binding_string_guards(
+                                fbs.clone(),
+                                v1_rt::rc_list_push(path_prefix.clone(), n.clone()),
+                                source_indices.clone(),
+                            );
+                        }
                     }
                 }
-            }
-            _ => {
-                break "".to_string();
+                _ => {
+                    break "".to_string();
+                }
             }
         }
     }
@@ -25656,75 +25753,82 @@ pub fn type_needs_rc_seen(
     mut __tco_loop_seen: Rc<HashMap<String, bool>>,
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    loop {
-        #[allow(unused_mut)]
-        let mut type_node = __tco_loop_type_node;
-        #[allow(unused_mut)]
-        let mut seen = __tco_loop_seen;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node);
-        let is_product = crate::v1_compiler_infer_types::is_product_type(normed.clone());
-        let is_coproduct = crate::v1_compiler_infer_types::is_coproduct_type(normed.clone());
-        if is_product.clone() {
-            break true;
-        } else {
-            if is_coproduct.clone() {
-                break {
-                    let mut __found = false;
-                    for child in normed.children.clone().iter().cloned() {
-                        if ((child.children.clone().len() as i64) > 0) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                };
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut type_node = __tco_loop_type_node;
+            #[allow(unused_mut)]
+            let mut seen = __tco_loop_seen;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node);
+            let is_product = crate::v1_compiler_infer_types::is_product_type(normed.clone());
+            let is_coproduct = crate::v1_compiler_infer_types::is_coproduct_type(normed.clone());
+            if is_product.clone() {
+                break true;
             } else {
-                let canonical =
-                    crate::v1_std_core::authored_name_at(source_indices.clone(), normed.clone());
-                if (normed.inferred.clone() != std::option::Option::None) {
-                    let next_seen = if (canonical.clone() == "".to_string()) {
-                        seen.clone()
-                    } else {
-                        v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
+                if is_coproduct.clone() {
+                    break {
+                        let mut __found = false;
+                        for child in normed.children.clone().iter().cloned() {
+                            if ((child.children.clone().len() as i64) > 0) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
                     };
-                    {
-                        let __tco_0 = crate::v1_compiler_infer_types::resolved_type(normed.clone());
-                        let __tco_1 = next_seen.clone();
-                        let __tco_2 = source_indices;
-                        __tco_loop_type_node = __tco_0;
-                        __tco_loop_seen = __tco_1;
-                        __tco_loop_source_indices = __tco_2;
-                        continue;
-                    }
                 } else {
-                    if ((canonical.clone() != "".to_string())
-                        && crate::v1_compiler_infer_types::emit_map_has(
-                            seen.clone(),
-                            canonical.clone(),
-                        ))
-                    {
-                        break false;
-                    } else {
+                    let canonical = crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        normed.clone(),
+                    );
+                    if (normed.inferred.clone() != std::option::Option::None) {
                         let next_seen = if (canonical.clone() == "".to_string()) {
                             seen.clone()
                         } else {
                             v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                         };
-                        let has_structure = (normed.connective.clone() != Connective::NoConnective);
-                        if (!has_structure.clone() && ((normed.children.clone().len() as i64) == 0))
+                        {
+                            let __tco_0 =
+                                crate::v1_compiler_infer_types::resolved_type(normed.clone());
+                            let __tco_1 = next_seen.clone();
+                            let __tco_2 = source_indices;
+                            __tco_loop_type_node = __tco_0;
+                            __tco_loop_seen = __tco_1;
+                            __tco_loop_source_indices = __tco_2;
+                            continue;
+                        }
+                    } else {
+                        if ((canonical.clone() != "".to_string())
+                            && crate::v1_compiler_infer_types::emit_map_has(
+                                seen.clone(),
+                                canonical.clone(),
+                            ))
                         {
                             break false;
                         } else {
+                            let next_seen = if (canonical.clone() == "".to_string()) {
+                                seen.clone()
+                            } else {
+                                v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
+                            };
+                            let has_structure =
+                                (normed.connective.clone() != Connective::NoConnective);
+                            if (!has_structure.clone()
+                                && ((normed.children.clone().len() as i64) == 0))
                             {
-                                let __tco_0 = normed.clone();
-                                let __tco_1 = next_seen.clone();
-                                let __tco_2 = source_indices;
-                                __tco_loop_type_node = __tco_0;
-                                __tco_loop_seen = __tco_1;
-                                __tco_loop_source_indices = __tco_2;
-                                continue;
+                                break false;
+                            } else {
+                                {
+                                    let __tco_0 = normed.clone();
+                                    let __tco_1 = next_seen.clone();
+                                    let __tco_2 = source_indices;
+                                    __tco_loop_type_node = __tco_0;
+                                    __tco_loop_seen = __tco_1;
+                                    __tco_loop_source_indices = __tco_2;
+                                    continue;
+                                }
                             }
                         }
                     }
@@ -25844,29 +25948,31 @@ pub fn type_node_carries_applicationless_parametric_head(
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let mut __found = false;
-        for c in n.children.clone().iter().cloned() {
-            if {
-                let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
-                (((n.connective.clone() != Connective::Disj)
-                    && rust_type_renders_bare_parametric_head(
-                        t.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        emit_info.clone(),
-                    ))
-                    || type_node_carries_applicationless_parametric_head(
-                        t.clone(),
-                        shared_types.clone(),
-                        source_indices.clone(),
-                        emit_info.clone(),
-                    ))
-            } {
-                __found = true;
-                break;
+        (!type_node_is_declaration_structure(n.clone()) && {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if {
+                    let t = crate::v1_compiler_infer_types::child_type_node(c.clone());
+                    (((n.connective.clone() != Connective::Disj)
+                        && rust_type_renders_bare_parametric_head(
+                            t.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                        || type_node_carries_applicationless_parametric_head(
+                            t.clone(),
+                            shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                } {
+                    __found = true;
+                    break;
+                }
             }
-        }
-        __found
+            __found
+        })
     })
 }
 
@@ -26132,33 +26238,48 @@ pub fn emit_rust_expr_var(
             ..
         } => {
             let n = crate::v1_std_core::expr_var_name_at(expr.clone(), source_indices.clone());
-            let moved_here = match crate::std_occurrence_identity::authored_occurrence_of(
-                expr.occurrence_identity.clone(),
-            ) {
-                Some(id) => v1_rt::set_contains(
-                    &emit_info.moved_argument_occurrences.clone(),
-                    id.value.clone(),
-                ),
-                std::option::Option::None => false,
-            };
-            let occurrence_info = if moved_here.clone() {
-                Rc::new(EmitGraphInfo {
-                    movable: v1_rt::rc_set_insert(emit_info.movable.clone(), n.clone()),
-                    ..(*emit_info.clone()).clone()
-                })
+            if cursor_name_in(emit_info.tco_cursor_params.clone(), n.clone()) {
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat("Rc::new(".to_string(), tco_base_name(n.clone())),
+                            ".skip(".to_string(),
+                        ),
+                        tco_cursor_name(n.clone()),
+                    ),
+                    "))".to_string(),
+                )
             } else {
-                emit_info.clone()
-            };
-            emit_var_ref(
-                n.clone(),
-                binding_kind.clone(),
-                expr.inferred.clone(),
-                shared_types,
-                registry,
-                occurrence_info,
-                source_indices.clone(),
-                module_name,
-            )
+                {
+                    let moved_here = match crate::std_occurrence_identity::authored_occurrence_of(
+                        expr.occurrence_identity.clone(),
+                    ) {
+                        Some(id) => v1_rt::set_contains(
+                            &emit_info.moved_argument_occurrences.clone(),
+                            id.value.clone(),
+                        ),
+                        std::option::Option::None => false,
+                    };
+                    let occurrence_info = if moved_here.clone() {
+                        Rc::new(EmitGraphInfo {
+                            movable: v1_rt::rc_set_insert(emit_info.movable.clone(), n.clone()),
+                            ..(*emit_info.clone()).clone()
+                        })
+                    } else {
+                        emit_info.clone()
+                    };
+                    emit_var_ref(
+                        n.clone(),
+                        binding_kind.clone(),
+                        expr.inferred.clone(),
+                        shared_types,
+                        registry,
+                        occurrence_info,
+                        source_indices.clone(),
+                        module_name,
+                    )
+                }
+            }
         }
         _ => crate::v1_compiler_emit::emit_error_expr(
             "emit_rust_expr_var expected ExprVar".to_string(),
@@ -27635,11 +27756,12 @@ pub fn rust_call_arg_function_value_adapt(
     idx: i64,
 ) -> String {
     {
-        let is_call_result = match (*arg.expr_data.clone()).clone() {
+        let is_rc_carried = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
+            ExprData::ExprFieldAccess { summary: _, .. } => true,
             _ => false,
         };
-        if !is_call_result.clone() {
+        if !is_rc_carried.clone() {
             return arg_str.clone();
         }
         match callee.clone() {
@@ -29017,40 +29139,42 @@ pub fn emit_nested_rt_concat(
     mut __tco_loop_acc: String,
     mut __tco_loop_shared_types: Rc<BTreeSet<String>>,
 ) -> String {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut acc = __tco_loop_acc;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break acc.clone();
-            }
-            Some(arg) => {
-                let next_acc = if (acc.clone() == "".to_string()) {
-                    arg.clone()
-                } else {
-                    v1_rt::concat(
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut acc = __tco_loop_acc;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+                Some(arg) => {
+                    let next_acc = if (acc.clone() == "".to_string()) {
+                        arg.clone()
+                    } else {
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat("v1_rt::concat(".to_string(), acc.clone()),
-                                ", ".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat("v1_rt::concat(".to_string(), acc.clone()),
+                                    ", ".to_string(),
+                                ),
+                                arg.clone(),
                             ),
-                            arg.clone(),
-                        ),
-                        ")".to_string(),
-                    )
-                };
-                {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
-                    let __tco_1 = next_acc;
-                    let __tco_2 = shared_types;
-                    __tco_loop_remaining = __tco_0;
-                    __tco_loop_acc = __tco_1;
-                    __tco_loop_shared_types = __tco_2;
-                    continue;
+                            ")".to_string(),
+                        )
+                    };
+                    {
+                        let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                        let __tco_1 = next_acc;
+                        let __tco_2 = shared_types;
+                        __tco_loop_remaining = __tco_0;
+                        __tco_loop_acc = __tco_1;
+                        __tco_loop_shared_types = __tco_2;
+                        continue;
+                    }
                 }
             }
         }
@@ -29975,6 +30099,7 @@ pub fn emit_rust_fold_method_call(
                             expected_type: emit_info.expected_type.clone(),
                             tco_cursor_params: emit_info.tco_cursor_params.clone(),
                             tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                            trmc_out: emit_info.trmc_out.clone(),
                             dying_base_sites: emit_info.dying_base_sites.clone(),
                         }),
                         std::option::Option::None => emit_info.clone(),
@@ -30038,6 +30163,7 @@ pub fn emit_rust_fold_method_call(
                                 expected_type: emit_info.expected_type.clone(),
                                 tco_cursor_params: emit_info.tco_cursor_params.clone(),
                                 tco_cursor_tails: emit_info.tco_cursor_tails.clone(),
+                                trmc_out: emit_info.trmc_out.clone(),
                                 dying_base_sites: emit_info.dying_base_sites.clone(),
                             }),
                             std::option::Option::None => emit_info.clone(),
@@ -32238,43 +32364,45 @@ pub fn fm_first_uncovered_len(
     mut __tco_loop_limit: i64,
     mut __tco_loop_fuel: i64,
 ) -> Option<i64> {
-    loop {
-        #[allow(unused_mut)]
-        let mut plans = __tco_loop_plans;
-        #[allow(unused_mut)]
-        let mut k = __tco_loop_k;
-        #[allow(unused_mut)]
-        let mut limit = __tco_loop_limit;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (k.clone() >= limit.clone()) {
-            break std::option::Option::None;
-        } else {
-            if (fuel.clone() <= 0) {
-                break Some(k.clone());
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut plans = __tco_loop_plans;
+            #[allow(unused_mut)]
+            let mut k = __tco_loop_k;
+            #[allow(unused_mut)]
+            let mut limit = __tco_loop_limit;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (k.clone() >= limit.clone()) {
+                break std::option::Option::None;
             } else {
-                if !{
-                    let mut __found = false;
-                    for p in plans.iter().cloned() {
-                        if fm_plan_is_exact_at(p.clone(), k.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
+                if (fuel.clone() <= 0) {
                     break Some(k.clone());
                 } else {
-                    {
-                        let __tco_0 = plans;
-                        let __tco_1 = v1_rt::int_add(k, 1);
-                        let __tco_2 = limit;
-                        let __tco_3 = v1_rt::int_sub(fuel, 1);
-                        __tco_loop_plans = __tco_0;
-                        __tco_loop_k = __tco_1;
-                        __tco_loop_limit = __tco_2;
-                        __tco_loop_fuel = __tco_3;
-                        continue;
+                    if !{
+                        let mut __found = false;
+                        for p in plans.iter().cloned() {
+                            if fm_plan_is_exact_at(p.clone(), k.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        break Some(k.clone());
+                    } else {
+                        {
+                            let __tco_0 = plans;
+                            let __tco_1 = v1_rt::int_add(k, 1);
+                            let __tco_2 = limit;
+                            let __tco_3 = v1_rt::int_sub(fuel, 1);
+                            __tco_loop_plans = __tco_0;
+                            __tco_loop_k = __tco_1;
+                            __tco_loop_limit = __tco_2;
+                            __tco_loop_fuel = __tco_3;
+                            continue;
+                        }
                     }
                 }
             }
@@ -35234,6 +35362,57 @@ pub fn find_unique_struct_name_by_fields(
     }
 }
 
+pub fn record_lit_variant_parent(
+    variant_surface_name: String,
+    bare_parent_enum: Option<String>,
+    resolved_type: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match contextual_variant_parent(
+        variant_surface_name.clone(),
+        bare_parent_enum.clone(),
+        resolved_type.clone(),
+        emit_info.clone(),
+        si.clone(),
+    ) {
+        Some(context_parent) => Some(context_parent.clone()),
+        std::option::Option::None => {
+            let rt_is_type_var = if (resolved_type.inferred.clone() != std::option::Option::None) {
+                is_type_variable(resolved_type.inferred.clone().clone().unwrap())
+            } else {
+                false
+            };
+            let rt_name = crate::v1_std_core::qualified_last_segment(
+                crate::v1_std_core::authored_name_at(si.clone(), resolved_type.clone()),
+            );
+            if (((((resolved_type.ident_span.clone() != std::option::Option::None)
+                && (rt_name.clone() != variant_surface_name.clone()))
+                && !rt_is_type_var.clone())
+                && (rt_name.clone() != "Error".to_string()))
+                && match (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
+                    emit_info.type_summaries.clone(),
+                    variant_surface_name.clone(),
+                    rt_name.clone(),
+                ))
+                .clone()
+                {
+                    TypeSummaryQuestion::QuestionDecided { value: v, .. } => v.clone(),
+                    _ => false,
+                })
+            {
+                Some(rt_name.clone())
+            } else {
+                bare_parent_enum.clone()
+            }
+        }
+    }
+}
+
+pub fn record_lit_is_host_freemonoid_cons(tn: String, effective_parent: Option<String>) -> bool {
+    ((tn.clone() == "Cons".to_string()) && parent_enum_is_freemonoid(effective_parent))
+}
+
 pub fn emit_typed_record_lit(
     type_name: Option<String>,
     fields: Rc<Vec<Rc<Node>>>,
@@ -35556,51 +35735,15 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), crat
                     }
                 };
                 let ctor_alias_resolved = (ctor_name.clone() != tn.clone());
-                let context_lookup = contextual_variant_parent(
+                let effective_parent = record_lit_variant_parent(
                     variant_surface_name.clone(),
                     bare_parent_enum.clone(),
                     resolved_type.clone(),
                     emit_info.clone(),
                     si.clone(),
                 );
-                let effective_parent = match context_lookup.clone() {
-                    Some(context_parent) => Some(context_parent.clone()),
-                    std::option::Option::None => {
-                        let rt_is_type_var =
-                            if (resolved_type.inferred.clone() != std::option::Option::None) {
-                                is_type_variable(resolved_type.inferred.clone().clone().unwrap())
-                            } else {
-                                false
-                            };
-                        let rt_name = crate::v1_std_core::qualified_last_segment(
-                            crate::v1_std_core::authored_name_at(si.clone(), resolved_type.clone()),
-                        );
-                        if (((((resolved_type.ident_span.clone() != std::option::Option::None)
-                            && (rt_name.clone() != variant_surface_name.clone()))
-                            && !rt_is_type_var.clone())
-                            && (rt_name.clone() != "Error".to_string()))
-                            && match (*crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
-                                emit_info.type_summaries.clone(),
-                                variant_surface_name.clone(),
-                                rt_name.clone(),
-                            ))
-                            .clone()
-                            {
-                                TypeSummaryQuestion::QuestionDecided { value: v, .. } => v.clone(),
-                                _ => false,
-                            })
-                        {
-                            Some(rt_name.clone())
-                        } else {
-                            bare_parent_enum.clone()
-                        }
-                    }
-                };
-                let host_freemonoid_cons = ((tn.clone() == "Cons".to_string())
-                    && match effective_parent.clone() {
-                        Some(p) => (p.clone() == "FreeMonoid".to_string()),
-                        std::option::Option::None => false,
-                    });
+                let host_freemonoid_cons =
+                    record_lit_is_host_freemonoid_cons(tn.clone(), effective_parent.clone());
                 if host_freemonoid_cons.clone() {
                     {
                         let head_val = match Rc::new({
@@ -36789,53 +36932,56 @@ pub fn rust_operand_realization_of_type(
     mut __tco_loop_scope: Rc<InferScope>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<OperandRealization> {
-    loop {
-        #[allow(unused_mut)]
-        let mut rt = __tco_loop_rt;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        let provenance = crate::v1_std_core::type_reference_provenance(rt.clone());
-        let authored =
-            crate::v1_std_core::authored_name_at(scope.type_env.source_indices.clone(), rt.clone());
-        let rt_is_type_var = match rt.inferred.clone() {
-            Some(i) => is_type_variable(i.clone()),
-            std::option::Option::None => false,
-        };
-        match (*provenance.clone()).clone() {
-            TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => {
-                break Rc::new(OperandRealization::HostRealizedOperand {
-                    reason: HostRealizationReason::KernelMintedType,
-                });
-            }
-            _ => {
-                if rt_is_type_var.clone() {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut rt = __tco_loop_rt;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            let provenance = crate::v1_std_core::type_reference_provenance(rt.clone());
+            let authored = crate::v1_std_core::authored_name_at(
+                scope.type_env.source_indices.clone(),
+                rt.clone(),
+            );
+            let rt_is_type_var = match rt.inferred.clone() {
+                Some(i) => is_type_variable(i.clone()),
+                std::option::Option::None => false,
+            };
+            match (*provenance.clone()).clone() {
+                TypeDeclarationProvenance::KernelMinted { minted_name: _, .. } => {
                     break Rc::new(OperandRealization::HostRealizedOperand {
-                        reason: HostRealizationReason::GenericTypeParameter,
+                        reason: HostRealizationReason::KernelMintedType,
                     });
-                } else {
-                    if crate::std_types::is_container_type(
-                        crate::v1_std_core::qualified_last_segment(authored.clone()),
-                    ) {
+                }
+                _ => {
+                    if rt_is_type_var.clone() {
                         break Rc::new(OperandRealization::HostRealizedOperand {
-                            reason: HostRealizationReason::HostContainer,
+                            reason: HostRealizationReason::GenericTypeParameter,
                         });
                     } else {
-                        if (authored.clone() == "".to_string()) {
+                        if crate::std_types::is_container_type(
+                            crate::v1_std_core::qualified_last_segment(authored.clone()),
+                        ) {
                             break Rc::new(OperandRealization::HostRealizedOperand {
-                                reason: HostRealizationReason::UnnamedSynthesizedType,
+                                reason: HostRealizationReason::HostContainer,
                             });
                         } else {
-                            if is_host_text_carrier_type(
-                                rt.clone(),
-                                scope.type_env.source_indices.clone(),
-                            ) {
+                            if (authored.clone() == "".to_string()) {
                                 break Rc::new(OperandRealization::HostRealizedOperand {
-                                    reason: HostRealizationReason::HostTextCarrier,
+                                    reason: HostRealizationReason::UnnamedSynthesizedType,
                                 });
                             } else {
-                                match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.source_indices.clone(), scope.type_env.clone()) {
+                                if is_host_text_carrier_type(
+                                    rt.clone(),
+                                    scope.type_env.source_indices.clone(),
+                                ) {
+                                    break Rc::new(OperandRealization::HostRealizedOperand {
+                                        reason: HostRealizationReason::HostTextCarrier,
+                                    });
+                                } else {
+                                    match crate::v1_compiler_infer_env::type_reference_declaration_ref(rt.clone(), scope.type_env.source_indices.clone(), scope.type_env.clone()) {
     std::option::Option::None => { break Rc::new(OperandRealization::OperandIdentityUnavailable {
     facts: Rc::new(OperandShapeFacts {
     authored_name: authored.clone(),
@@ -36864,6 +37010,7 @@ continue;
 }
 } },
 }
+                                }
                             }
                         }
                     }
@@ -37588,69 +37735,73 @@ pub fn emit_tco_init_block_stmts(
     mut __tco_loop_emit_info: Rc<EmitGraphInfo>,
     mut __tco_loop_params: Rc<Vec<Rc<Node>>>,
 ) -> Rc<BlockEmitState> {
-    loop {
-        #[allow(unused_mut)]
-        let mut remaining = __tco_loop_remaining;
-        #[allow(unused_mut)]
-        let mut text = __tco_loop_text;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut depth = __tco_loop_depth;
-        #[allow(unused_mut)]
-        let mut shared_types = __tco_loop_shared_types;
-        #[allow(unused_mut)]
-        let mut emit_info = __tco_loop_emit_info;
-        #[allow(unused_mut)]
-        let mut params = __tco_loop_params;
-        match remaining.clone().first().cloned() {
-            std::option::Option::None => {
-                break Rc::new(BlockEmitState {
-                    text: text.clone(),
-                    scope: scope.clone(),
-                });
-            }
-            Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
-                match rest.clone().first().cloned() {
-                    std::option::Option::None => {
-                        break Rc::new(BlockEmitState {
-                            text: text.clone(),
-                            scope: scope.clone(),
-                        });
-                    }
-                    Some(_) => {
-                        let line = emit_tco_init_stmt(
-                            stmt.clone(),
-                            params.clone(),
-                            registry.clone(),
-                            scope.clone(),
-                            depth.clone(),
-                            shared_types.clone(),
-                            emit_info.clone(),
-                        );
-                        let next_scope =
-                            crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
-                        {
-                            let __tco_0 = rest.clone();
-                            let __tco_1 = v1_rt::rc_list_push(text, line.clone());
-                            let __tco_2 = next_scope;
-                            let __tco_3 = registry;
-                            let __tco_4 = depth;
-                            let __tco_5 = shared_types;
-                            let __tco_6 = emit_info;
-                            let __tco_7 = params;
-                            __tco_loop_remaining = __tco_0;
-                            __tco_loop_text = __tco_1;
-                            __tco_loop_scope = __tco_2;
-                            __tco_loop_registry = __tco_3;
-                            __tco_loop_depth = __tco_4;
-                            __tco_loop_shared_types = __tco_5;
-                            __tco_loop_emit_info = __tco_6;
-                            __tco_loop_params = __tco_7;
-                            continue;
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut remaining = __tco_loop_remaining;
+            #[allow(unused_mut)]
+            let mut text = __tco_loop_text;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut depth = __tco_loop_depth;
+            #[allow(unused_mut)]
+            let mut shared_types = __tco_loop_shared_types;
+            #[allow(unused_mut)]
+            let mut emit_info = __tco_loop_emit_info;
+            #[allow(unused_mut)]
+            let mut params = __tco_loop_params;
+            match remaining.clone().first().cloned() {
+                std::option::Option::None => {
+                    break Rc::new(BlockEmitState {
+                        text: text.clone(),
+                        scope: scope.clone(),
+                    });
+                }
+                Some(stmt) => {
+                    let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                    match rest.clone().first().cloned() {
+                        std::option::Option::None => {
+                            break Rc::new(BlockEmitState {
+                                text: text.clone(),
+                                scope: scope.clone(),
+                            });
+                        }
+                        Some(_) => {
+                            let line = emit_tco_init_stmt(
+                                stmt.clone(),
+                                params.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                            );
+                            let next_scope = crate::v1_compiler_emit::scope_after_expr(
+                                stmt.clone(),
+                                scope.clone(),
+                            );
+                            {
+                                let __tco_0 = rest.clone();
+                                let __tco_1 = v1_rt::rc_list_push(text, line.clone());
+                                let __tco_2 = next_scope;
+                                let __tco_3 = registry;
+                                let __tco_4 = depth;
+                                let __tco_5 = shared_types;
+                                let __tco_6 = emit_info;
+                                let __tco_7 = params;
+                                __tco_loop_remaining = __tco_0;
+                                __tco_loop_text = __tco_1;
+                                __tco_loop_scope = __tco_2;
+                                __tco_loop_registry = __tco_3;
+                                __tco_loop_depth = __tco_4;
+                                __tco_loop_shared_types = __tco_5;
+                                __tco_loop_emit_info = __tco_6;
+                                __tco_loop_params = __tco_7;
+                                continue;
+                            }
                         }
                     }
                 }
@@ -37752,12 +37903,20 @@ pub fn emit_typed_tco_body(
         );
         let si = scope.type_env.source_indices.clone();
         let cursor_params = emit_info.tco_cursor_params.clone();
+        let trmc_decl = if emit_info.trmc_out.clone() {
+            "let mut __trmc_out = Rc::new(vec![]); ".to_string()
+        } else {
+            "".to_string()
+        };
         if ((cursor_params.clone().len() as i64) == 0) {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "loop {\n".to_string(),
+                            v1_rt::concat(
+                                v1_rt::concat("{ ".to_string(), trmc_decl.clone()),
+                                "loop {\n".to_string(),
+                            ),
                             crate::v1_compiler_emit::tco_loop_iteration_lets(
                                 params.clone(),
                                 si.clone(),
@@ -37771,7 +37930,7 @@ pub fn emit_typed_tco_body(
                     ),
                     inner.clone(),
                 ),
-                "\n}".to_string(),
+                "\n} }".to_string(),
             )
         } else {
             {
@@ -37787,8 +37946,7 @@ pub fn emit_typed_tco_body(
                 })
                 .join(&"".to_string());
                 let focus_lets = Rc::new({ let mut __result = Vec::new(); for cp in cursor_params.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)), "let ".to_string()), tco_base_name(cp.clone())), " = ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_emit::tco_loop_slot_name(cp.clone()), RenderTarget::Rust)), ".clone();\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "#[allow(unused_mut, unused_variables)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let mut ".to_string()), tco_focus_name(cp.clone())), " = ".to_string()), tco_base_name(cp.clone())), ".focus();\n".to_string())); } __result }).join(&"".to_string());
-                let cursor_lets = Rc::new({ let mut __result = Vec::new(); for cp in cursor_params.iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1)), "#[allow(unused_mut)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let mut ".to_string()), crate::v1_compiler_emit::emit_ident(cp.clone(), RenderTarget::Rust)), " = ".to_string()), crate::v1_compiler_emit::emit_ident(crate::v1_compiler_emit::tco_loop_slot_name(cp.clone()), RenderTarget::Rust)), ".clone();\n".to_string())); } __result }).join(&"".to_string());
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{ ".to_string(), cursor_decls.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "#[allow(unused_labels)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let __tco_result = ".to_string()), tco_rebase_label()), ": loop {\n".to_string()), focus_lets.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "break loop {\n".to_string()), crate::v1_compiler_emit::tco_loop_iteration_lets(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { if !cursor_name_in(cursor_params.clone(), crate::v1_std_core::param_node_name_at(p.clone(), si.clone())) { __result.push(p); } } __result }), si.clone(), v1_rt::int_add(depth.clone(), 1))), cursor_lets.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), inner.clone()), "\n};\n};\n__tco_result\n}".to_string())
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{ ".to_string(), trmc_decl.clone()), cursor_decls.clone()), "\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "#[allow(unused_labels)]\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "let __tco_result = ".to_string()), tco_rebase_label()), ": loop {\n".to_string()), focus_lets.clone()), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), "break loop {\n".to_string()), crate::v1_compiler_emit::tco_loop_iteration_lets(Rc::new({ let mut __result = Vec::new(); for p in params.iter().cloned() { if !cursor_name_in(cursor_params.clone(), crate::v1_std_core::param_node_name_at(p.clone(), si.clone())) { __result.push(p); } } __result }), si.clone(), v1_rt::int_add(depth.clone(), 1))), crate::v1_compiler_emit_core_support::make_indent(v1_rt::int_add(depth.clone(), 1))), inner.clone()), "\n};\n};\n__tco_result\n}".to_string())
             }
         }
     }
@@ -37819,10 +37977,10 @@ pub fn emit_rust_tco_non_self_call(
                 frame.scope.clone(),
                 frame.depth.clone(),
                 shared_types,
-                emit_info,
+                emit_info.clone(),
             );
             v1_rt::concat(
-                v1_rt::concat("break ".to_string(), call_str.clone()),
+                v1_rt::concat("break ".to_string(), trmc_exit(call_str, emit_info.clone())),
                 ";".to_string(),
             )
         }
@@ -37948,6 +38106,324 @@ pub struct TcoCursorPlan {
     pub tails: Rc<HashMap<String, i64>>,
 }
 
+pub fn is_trmc_eligible(
+    body: Rc<Node>,
+    fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (trmc_has_cons_site(body.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+        && trmc_tail_ok(body.clone(), fn_name.clone(), emit_info.clone(), si.clone()))
+}
+
+pub fn trmc_cons_tail_call(
+    n: Rc<Node>,
+    fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit {
+            parent_enum: pe, ..
+        } => {
+            let tn = match crate::v1_std_core::record_lit_type_name_at(n.clone(), si.clone()) {
+                Some(t) => t.clone(),
+                std::option::Option::None => "".to_string(),
+            };
+            let bare_parent = match pe.clone() {
+                Some(p) => Some(crate::v1_std_core::qualified_last_segment(p.clone())),
+                std::option::Option::None => std::option::Option::None,
+            };
+            let carrier_cons = record_lit_is_host_freemonoid_cons(
+                tn.clone(),
+                record_lit_variant_parent(
+                    tn.clone(),
+                    bare_parent,
+                    crate::v1_compiler_infer_types::resolved_type(n.clone()),
+                    emit_info,
+                    si.clone(),
+                ),
+            );
+            let names = Rc::new({
+                let mut __result = Vec::new();
+                for f in n.children.clone().iter().cloned() {
+                    __result.push(crate::v1_std_core::field_init_node_name_at(
+                        f.clone(),
+                        si.clone(),
+                    ));
+                }
+                __result
+            });
+            let shaped = (((carrier_cons.clone() && ((names.clone().len() as i64) == 2)) && {
+                let mut __found = false;
+                for x in names.iter().cloned() {
+                    if (x.clone() == "head".to_string()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }) && {
+                let mut __found = false;
+                for x in names.iter().cloned() {
+                    if (x.clone() == "tail".to_string()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            });
+            if !shaped.clone() {
+                std::option::Option::None
+            } else {
+                match Rc::new({
+                    let mut __result = Vec::new();
+                    for f in n.children.clone().iter().cloned() {
+                        if (crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone())
+                            == "tail".to_string())
+                        {
+                            __result.push(f);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(tf) => {
+                        let tv = crate::v1_std_core::field_init_node_value(tf.clone());
+                        match (*tv.expr_data.clone()).clone() {
+                            ExprData::ExprCall { .. } => {
+                                if (crate::v1_std_core::expr_call_func_at(tv.clone(), si.clone())
+                                    == fn_name.clone())
+                                {
+                                    Some(tv.clone())
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                            _ => std::option::Option::None,
+                        }
+                    }
+                    std::option::Option::None => std::option::Option::None,
+                }
+            }
+        }
+        _ => std::option::Option::None,
+    }
+}
+
+pub fn trmc_cons_head(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for f in n.children.clone().iter().cloned() {
+            if (crate::v1_std_core::field_init_node_name_at(f.clone(), si.clone())
+                == "head".to_string())
+            {
+                __result.push(f);
+            }
+        }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(hf) => Some(crate::v1_std_core::field_init_node_value(hf.clone())),
+        std::option::Option::None => std::option::Option::None,
+    }
+}
+
+pub fn trmc_no_self_call(
+    n: Rc<Node>,
+    fn_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    !crate::v1_std_core::expr_has_self_call(n, fn_name, si)
+}
+
+pub fn trmc_has_cons_site(
+    n: Rc<Node>,
+    fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match trmc_cons_tail_call(n.clone(), fn_name.clone(), emit_info.clone(), si.clone()) {
+            Some(_) => true,
+            std::option::Option::None => {
+                let mut __found = false;
+                for c in n.children.clone().iter().cloned() {
+                    if trmc_has_cons_site(c.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                    {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            }
+        }
+    })
+}
+
+pub fn trmc_tail_ok(
+    n: Rc<Node>,
+    fn_name: String,
+    emit_info: Rc<EmitGraphInfo>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match trmc_cons_tail_call(n.clone(), fn_name.clone(), emit_info.clone(), si.clone()) {
+            Some(call) => {
+                let head_ok = match trmc_cons_head(n.clone(), si.clone()) {
+                    Some(h) => trmc_no_self_call(h.clone(), fn_name.clone(), si.clone()),
+                    std::option::Option::None => false,
+                };
+                (head_ok.clone() && {
+                    let mut __all = true;
+                    for a in call.children.clone().iter().cloned() {
+                        if !(trmc_no_self_call(
+                            crate::v1_std_core::arg_value(a.clone()),
+                            fn_name.clone(),
+                            si.clone(),
+                        )) {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
+                })
+            }
+            std::option::Option::None => match (*n.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    if (crate::v1_std_core::expr_call_func_at(n.clone(), si.clone())
+                        == fn_name.clone())
+                    {
+                        {
+                            let mut __all = true;
+                            for a in n.children.clone().iter().cloned() {
+                                if !(trmc_no_self_call(
+                                    crate::v1_std_core::arg_value(a.clone()),
+                                    fn_name.clone(),
+                                    si.clone(),
+                                )) {
+                                    __all = false;
+                                    break;
+                                }
+                            }
+                            __all
+                        }
+                    } else {
+                        trmc_no_self_call(n.clone(), fn_name.clone(), si.clone())
+                    }
+                }
+                ExprData::ExprIf => {
+                    let else_ok = match crate::v1_std_core::if_else_branch(n.clone()) {
+                        Some(eb) => {
+                            trmc_tail_ok(eb.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                        }
+                        std::option::Option::None => true,
+                    };
+                    ((trmc_no_self_call(
+                        crate::v1_std_core::if_condition(n.clone()),
+                        fn_name.clone(),
+                        si.clone(),
+                    ) && trmc_tail_ok(
+                        crate::v1_std_core::if_then_branch(n.clone()),
+                        fn_name.clone(),
+                        emit_info.clone(),
+                        si.clone(),
+                    )) && else_ok.clone())
+                }
+                ExprData::ExprMatch => {
+                    (trmc_no_self_call(
+                        crate::v1_std_core::match_scrutinee(n.clone()),
+                        fn_name.clone(),
+                        si.clone(),
+                    ) && {
+                        let mut __all = true;
+                        for arm in crate::v1_std_core::match_arm_nodes(n.clone())
+                            .iter()
+                            .cloned()
+                        {
+                            if !(match crate::v1_std_core::arm_guard(arm.clone()) {
+                                Some(g) => {
+                                    trmc_no_self_call(g.clone(), fn_name.clone(), si.clone())
+                                }
+                                std::option::Option::None => true,
+                            } && trmc_tail_ok(
+                                crate::v1_std_core::arm_body(arm.clone()),
+                                fn_name.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            )) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
+                }
+                ExprData::ExprLet => {
+                    let body_ok = match crate::v1_std_core::let_body(n.clone()) {
+                        Some(b) => {
+                            trmc_tail_ok(b.clone(), fn_name.clone(), emit_info.clone(), si.clone())
+                        }
+                        std::option::Option::None => true,
+                    };
+                    (trmc_no_self_call(
+                        crate::v1_std_core::let_value(n.clone()),
+                        fn_name.clone(),
+                        si.clone(),
+                    ) && body_ok.clone())
+                }
+                ExprData::ExprBlock => {
+                    let ss = n.children.clone();
+                    let ss_count = (ss.clone().len() as i64);
+                    let inits_ok = {
+                        let mut __all = true;
+                        for pair in Rc::new(
+                            ss.clone()
+                                .iter()
+                                .cloned()
+                                .enumerate()
+                                .map(|(i, v)| (i as i64, v))
+                                .collect::<Vec<_>>(),
+                        )
+                        .iter()
+                        .cloned()
+                        {
+                            if !((pair.0.clone() == v1_rt::int_sub(ss_count.clone(), 1))
+                                || trmc_no_self_call(pair.1.clone(), fn_name.clone(), si.clone()))
+                            {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    };
+                    (inits_ok.clone()
+                        && match ss.clone().last().cloned() {
+                            Some(e) => trmc_tail_ok(
+                                e.clone(),
+                                fn_name.clone(),
+                                emit_info.clone(),
+                                si.clone(),
+                            ),
+                            std::option::Option::None => true,
+                        })
+                }
+                ExprData::ExprReturn => trmc_tail_ok(
+                    crate::v1_std_core::return_value(n.clone()),
+                    fn_name.clone(),
+                    emit_info.clone(),
+                    si.clone(),
+                ),
+                _ => trmc_no_self_call(n.clone(), fn_name.clone(), si.clone()),
+            },
+        }
+    })
+}
+
 pub fn tco_cursor_name(param: String) -> String {
     v1_rt::concat(
         "__tco_cursor_".to_string(),
@@ -38024,6 +38500,97 @@ pub fn cursor_walk_join(a: Rc<CursorWalk>, b: Rc<CursorWalk>) -> Rc<CursorWalk> 
     } else {
         cursor_walk_fail()
     }
+}
+
+pub fn cursor_escapes_only(
+    node: Rc<Node>,
+    p: String,
+    in_tails: Rc<Vec<String>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (!cursor_mentions(node.clone(), in_tails, si.clone())
+        && cursor_reads_are_plain(node.clone(), p, si.clone()))
+}
+
+pub fn cursor_reads_are_plain(
+    node: Rc<Node>,
+    p: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if !expr_references_var(node.clone(), p.clone(), si.clone()) {
+            true
+        } else {
+            match (*node.expr_data.clone()).clone() {
+                ExprData::ExprLambda => false,
+                ExprData::ExprForEach => false,
+                ExprData::ExprLet => {
+                    ((crate::v1_std_core::let_binding_name_at(node.clone(), si.clone())
+                        != p.clone())
+                        && {
+                            let mut __all = true;
+                            for c in node.children.clone().iter().cloned() {
+                                if !(cursor_reads_are_plain(c.clone(), p.clone(), si.clone())) {
+                                    __all = false;
+                                    break;
+                                }
+                            }
+                            __all
+                        })
+                }
+                ExprData::ExprMatch => {
+                    let rebinds = {
+                        let mut __found = false;
+                        for arm in crate::v1_std_core::match_arm_nodes(node.clone())
+                            .iter()
+                            .cloned()
+                        {
+                            if {
+                                let mut __found = false;
+                                for b in pattern_binder_names(
+                                    crate::v1_std_core::arm_pattern(arm.clone()),
+                                    si.clone(),
+                                )
+                                .iter()
+                                .cloned()
+                                {
+                                    if (b.clone() == p.clone()) {
+                                        __found = true;
+                                        break;
+                                    }
+                                }
+                                __found
+                            } {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    };
+                    (!rebinds.clone() && {
+                        let mut __all = true;
+                        for c in node.children.clone().iter().cloned() {
+                            if !(cursor_reads_are_plain(c.clone(), p.clone(), si.clone())) {
+                                __all = false;
+                                break;
+                            }
+                        }
+                        __all
+                    })
+                }
+                _ => {
+                    let mut __all = true;
+                    for c in node.children.clone().iter().cloned() {
+                        if !(cursor_reads_are_plain(c.clone(), p.clone(), si.clone())) {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
+                }
+            }
+        }
+    })
 }
 
 pub fn cursor_name_in(names: Rc<Vec<String>>, name: String) -> bool {
@@ -38271,7 +38838,8 @@ pub fn cursor_walk(
                             }
                         }
                     } else {
-                        if cursor_mentions(s.clone(), names.clone(), si.clone()) {
+                        if !cursor_escapes_only(s.clone(), p.clone(), in_tails.clone(), si.clone())
+                        {
                             cursor_walk_fail()
                         } else {
                             arm_list.iter().cloned().fold(
@@ -38283,9 +38851,10 @@ pub fn cursor_walk(
                                     );
                                     let guard_mentions =
                                         match crate::v1_std_core::arm_guard(arm.clone()) {
-                                            Some(g) => cursor_mentions(
+                                            Some(g) => !cursor_escapes_only(
                                                 g.clone(),
-                                                names.clone(),
+                                                p.clone(),
+                                                in_tails.clone(),
                                                 si.clone(),
                                             ),
                                             std::option::Option::None => false,
@@ -38323,7 +38892,7 @@ pub fn cursor_walk(
                 ExprData::ExprIf => {
                     let c = crate::v1_std_core::if_condition(n.clone());
                     let t = crate::v1_std_core::if_then_branch(n.clone());
-                    if cursor_mentions(c, names.clone(), si.clone()) {
+                    if !cursor_escapes_only(c, p.clone(), in_tails.clone(), si.clone()) {
                         cursor_walk_fail()
                     } else {
                         {
@@ -38358,9 +38927,10 @@ pub fn cursor_walk(
                     let bound = crate::v1_std_core::let_binding_name_at(n.clone(), si.clone());
                     if ((cursor_name_in(names.clone(), bound.clone())
                         || cursor_name_in(param_names.clone(), bound.clone()))
-                        || cursor_mentions(
+                        || !cursor_escapes_only(
                             crate::v1_std_core::let_value(n.clone()),
-                            names.clone(),
+                            p.clone(),
+                            in_tails.clone(),
                             si.clone(),
                         ))
                     {
@@ -38397,7 +38967,12 @@ pub fn cursor_walk(
                         .cloned()
                         {
                             if ((pair.0.clone() < v1_rt::int_sub(ss_count.clone(), 1))
-                                && cursor_mentions(pair.1.clone(), names.clone(), si.clone()))
+                                && !cursor_escapes_only(
+                                    pair.1.clone(),
+                                    p.clone(),
+                                    in_tails.clone(),
+                                    si.clone(),
+                                ))
                             {
                                 __found = true;
                                 break;
@@ -38472,13 +39047,35 @@ pub fn cursor_walk(
                                                 Some(av) => {
                                                     if (pair.1.clone() == p.clone()) {
                                                         match (*av.expr_data.clone()).clone() {
-    ExprData::ExprVar { binding_kind: _, .. } => (cursor_name_in(in_tails.clone(), crate::v1_std_core::expr_var_name_at(av.clone(), si.clone())) || !cursor_mentions(av.clone(), names.clone(), si.clone())),
-    _ => !cursor_mentions(av.clone(), names.clone(), si.clone()),
-}
+                                                            ExprData::ExprVar {
+                                                                binding_kind: _,
+                                                                ..
+                                                            } => {
+                                                                let passed = crate::v1_std_core::expr_var_name_at(av.clone(), si.clone());
+                                                                (((passed.clone() == p.clone())
+                                                                    || cursor_name_in(
+                                                                        in_tails.clone(),
+                                                                        passed.clone(),
+                                                                    ))
+                                                                    || cursor_escapes_only(
+                                                                        av.clone(),
+                                                                        p.clone(),
+                                                                        in_tails.clone(),
+                                                                        si.clone(),
+                                                                    ))
+                                                            }
+                                                            _ => cursor_escapes_only(
+                                                                av.clone(),
+                                                                p.clone(),
+                                                                in_tails.clone(),
+                                                                si.clone(),
+                                                            ),
+                                                        }
                                                     } else {
-                                                        !cursor_mentions(
+                                                        cursor_escapes_only(
                                                             av.clone(),
-                                                            names.clone(),
+                                                            p.clone(),
+                                                            in_tails.clone(),
                                                             si.clone(),
                                                         )
                                                     }
@@ -38499,10 +39096,70 @@ pub fn cursor_walk(
                             }
                         }
                     } else {
+                        if cursor_escapes_only(n.clone(), p.clone(), in_tails.clone(), si.clone()) {
+                            cursor_walk_ok(Rc::new(vec![]))
+                        } else {
+                            cursor_walk_fail()
+                        }
+                    }
+                }
+                ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                    let cons_step = if emit_info.trmc_out.clone() {
+                        trmc_cons_tail_call(
+                            n.clone(),
+                            fn_name.clone(),
+                            emit_info.clone(),
+                            si.clone(),
+                        )
+                    } else {
+                        std::option::Option::None
+                    };
+                    match cons_step.clone() {
+                        Some(call) => {
+                            let head_ok = match trmc_cons_head(n.clone(), si.clone()) {
+                                Some(h) => cursor_escapes_only(
+                                    h.clone(),
+                                    p.clone(),
+                                    in_tails.clone(),
+                                    si.clone(),
+                                ),
+                                std::option::Option::None => false,
+                            };
+                            if head_ok.clone() {
+                                cursor_walk(
+                                    call.clone(),
+                                    p.clone(),
+                                    in_tails.clone(),
+                                    fn_name.clone(),
+                                    param_names.clone(),
+                                    emit_info.clone(),
+                                    si.clone(),
+                                )
+                            } else {
+                                cursor_walk_fail()
+                            }
+                        }
+                        std::option::Option::None => {
+                            if cursor_escapes_only(
+                                n.clone(),
+                                p.clone(),
+                                in_tails.clone(),
+                                si.clone(),
+                            ) {
+                                cursor_walk_ok(Rc::new(vec![]))
+                            } else {
+                                cursor_walk_fail()
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    if cursor_escapes_only(n.clone(), p.clone(), in_tails.clone(), si.clone()) {
+                        cursor_walk_ok(Rc::new(vec![]))
+                    } else {
                         cursor_walk_fail()
                     }
                 }
-                _ => cursor_walk_fail(),
             }
         }
     })
@@ -38751,10 +39408,7 @@ pub fn emit_rust_tco_match(
             let on_cursor = (cursor_of_scrutinee.clone() != "".to_string());
             let scrut_str = if on_cursor.clone() {
                 v1_rt::concat(
-                    crate::v1_compiler_emit::emit_ident(
-                        cursor_of_scrutinee.clone(),
-                        RenderTarget::Rust,
-                    ),
+                    tco_base_name(cursor_of_scrutinee.clone()),
                     ".clone()".to_string(),
                 )
             } else {
@@ -39132,26 +39786,89 @@ pub fn emit_rust_tco_block(
     }
 }
 
+pub fn trmc_exit(value: String, emit_info: Rc<EmitGraphInfo>) -> String {
+    if emit_info.trmc_out.clone() {
+        v1_rt::concat(
+            v1_rt::concat(
+                "v1_rt::rc_list_concat(__trmc_out, ".to_string(),
+                value.clone(),
+            ),
+            ")".to_string(),
+        )
+    } else {
+        value.clone()
+    }
+}
+
 pub fn emit_rust_tco_default_return(
     frame: Rc<TcoFrame>,
+    fn_name: String,
+    params: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let val_str = emit_typed_expr(
-            frame.expr.clone(),
-            registry,
-            frame.scope.clone(),
-            frame.depth.clone(),
-            shared_types,
-            emit_info,
-            1024,
-        );
-        v1_rt::concat(
-            v1_rt::concat("break ".to_string(), val_str.clone()),
-            ";".to_string(),
-        )
+        let si = frame.scope.type_env.source_indices.clone();
+        let cons_step = if emit_info.trmc_out.clone() {
+            trmc_cons_tail_call(frame.expr.clone(), fn_name, emit_info.clone(), si.clone())
+        } else {
+            std::option::Option::None
+        };
+        match cons_step.clone() {
+            Some(call) => {
+                let head_str = match trmc_cons_head(frame.expr.clone(), si.clone()) {
+                    Some(h) => emit_typed_expr(
+                        h.clone(),
+                        registry.clone(),
+                        frame.scope.clone(),
+                        frame.depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    ),
+                    std::option::Option::None => emit_rust_compile_error_expr(
+                        "a tail-recursion-modulo-cons step without a head".to_string(),
+                    ),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "{ __trmc_out = v1_rt::rc_list_push(__trmc_out, ".to_string(),
+                                head_str.clone(),
+                            ),
+                            "); ".to_string(),
+                        ),
+                        emit_typed_tco_reassign(
+                            call.children.clone(),
+                            params,
+                            registry.clone(),
+                            frame.scope.clone(),
+                            frame.depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ),
+                    ),
+                    " }".to_string(),
+                )
+            }
+            std::option::Option::None => {
+                let val_str = emit_typed_expr(
+                    frame.expr.clone(),
+                    registry.clone(),
+                    frame.scope.clone(),
+                    frame.depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                );
+                v1_rt::concat(
+                    v1_rt::concat("break ".to_string(), trmc_exit(val_str, emit_info.clone())),
+                    ";".to_string(),
+                )
+            }
+        }
     }
 }
 
@@ -39234,6 +39951,8 @@ pub fn emit_typed_tco_expr(
         |frame| {
             emit_rust_tco_default_return(
                 frame,
+                fn_name.clone(),
+                params.clone(),
                 registry.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
@@ -39556,6 +40275,17 @@ pub fn emit_typed_tco_reassign(
                                     Some(given_av) => given_av.clone(),
                                     std::option::Option::None => pair.1.clone(),
                                 };
+                                let passed_itself = match (*assigned_av.expr_data.clone()).clone() {
+                                    ExprData::ExprVar {
+                                        binding_kind: _, ..
+                                    } => {
+                                        (crate::v1_std_core::expr_var_name_at(
+                                            assigned_av.clone(),
+                                            si.clone(),
+                                        ) == assigned_name.clone())
+                                    }
+                                    _ => false,
+                                };
                                 let advance = match (*assigned_av.expr_data.clone()).clone() {
                                     ExprData::ExprVar {
                                         binding_kind: _, ..
@@ -39571,32 +40301,36 @@ pub fn emit_typed_tco_reassign(
                                     ),
                                     _ => std::option::Option::None,
                                 };
-                                match advance.clone() {
-                                    Some(depth_of_tail) => Rc::new(vec![Rc::new(TcoAssign {
-                                        target: tco_cursor_name(assigned_name.clone()),
-                                        value: v1_rt::concat(
-                                            v1_rt::concat(
-                                                tco_cursor_name(assigned_name.clone()),
-                                                " + ".to_string(),
-                                            ),
-                                            crate::v1_compiler_emit_core_support::to_string(
-                                                depth_of_tail.clone(),
-                                            ),
-                                        ),
-                                        rebases: false,
-                                    })]),
-                                    std::option::Option::None => Rc::new(vec![
-                                        Rc::new(TcoAssign {
-                                            target: slot.clone(),
-                                            value: arg_str.clone(),
-                                            rebases: true,
-                                        }),
-                                        Rc::new(TcoAssign {
+                                if passed_itself.clone() {
+                                    Rc::new(vec![])
+                                } else {
+                                    match advance.clone() {
+                                        Some(depth_of_tail) => Rc::new(vec![Rc::new(TcoAssign {
                                             target: tco_cursor_name(assigned_name.clone()),
-                                            value: "0".to_string(),
-                                            rebases: true,
-                                        }),
-                                    ]),
+                                            value: v1_rt::concat(
+                                                v1_rt::concat(
+                                                    tco_cursor_name(assigned_name.clone()),
+                                                    " + ".to_string(),
+                                                ),
+                                                crate::v1_compiler_emit_core_support::to_string(
+                                                    depth_of_tail.clone(),
+                                                ),
+                                            ),
+                                            rebases: false,
+                                        })]),
+                                        std::option::Option::None => Rc::new(vec![
+                                            Rc::new(TcoAssign {
+                                                target: slot.clone(),
+                                                value: arg_str.clone(),
+                                                rebases: true,
+                                            }),
+                                            Rc::new(TcoAssign {
+                                                target: tco_cursor_name(assigned_name.clone()),
+                                                value: "0".to_string(),
+                                                rebases: true,
+                                            }),
+                                        ]),
+                                    }
                                 }
                             }
                         } else {
@@ -40934,47 +41668,35 @@ pub fn emit_rest_query_line(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     match crate::v1_std_core::transport_query(transport, source_indices.clone()) {
-        Some(q) => {
-            let pairs = Rc::new({
-                let mut __result = Vec::new();
-                for fi in q.children.clone().iter().cloned() {
-                    __result.push(v1_rt::concat(
+        Some(q) => Rc::new({
+            let mut __result = Vec::new();
+            for fi in q.children.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(
-                                    "(\"".to_string(),
-                                    crate::v1_std_core::field_init_node_name_at(
-                                        fi.clone(),
-                                        source_indices.clone(),
-                                    ),
-                                ),
-                                "\", &".to_string(),
-                            ),
-                            emit_rust_dag_string_to_host_via_seam(
-                                crate::v1_compiler_emit::emit_simple_expr(
-                                    crate::v1_std_core::field_init_node_value(fi.clone()),
-                                    RenderTarget::Rust,
+                                "let request = request.query(&[(\"".to_string(),
+                                crate::v1_std_core::field_init_node_name_at(
+                                    fi.clone(),
                                     source_indices.clone(),
                                 ),
                             ),
+                            "\", &".to_string(),
                         ),
-                        ")".to_string(),
-                    ));
-                }
-                __result
-            });
-            if ((pairs.clone().len() as i64) > 0) {
-                v1_rt::concat(
-                    v1_rt::concat(
-                        "let request = request.query(&[".to_string(),
-                        pairs.clone().join(&", ".to_string()),
+                        emit_rust_dag_string_to_host_via_seam(
+                            crate::v1_compiler_emit::emit_simple_expr(
+                                crate::v1_std_core::field_init_node_value(fi.clone()),
+                                RenderTarget::Rust,
+                                source_indices.clone(),
+                            ),
+                        ),
                     ),
-                    "]);".to_string(),
-                )
-            } else {
-                "".to_string()
+                    ")]);".to_string(),
+                ));
             }
-        }
+            __result
+        })
+        .join(&"\n".to_string()),
         std::option::Option::None => "".to_string(),
     }
 }
@@ -42205,47 +42927,29 @@ pub fn hop_argv_element_type(
     mut __tco_loop_source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut __tco_loop_fuel: i64,
 ) -> Rc<Node> {
-    loop {
-        #[allow(unused_mut)]
-        let mut rt = __tco_loop_rt;
-        #[allow(unused_mut)]
-        let mut scope = __tco_loop_scope;
-        #[allow(unused_mut)]
-        let mut emit_info = __tco_loop_emit_info;
-        #[allow(unused_mut)]
-        let mut source_indices = __tco_loop_source_indices;
-        #[allow(unused_mut)]
-        let mut fuel = __tco_loop_fuel;
-        if (fuel.clone() <= 0) {
-            break rt.clone();
-        } else {
-            if (type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
-                || is_rust_string_like(rt.clone(), source_indices.clone()))
-            {
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut rt = __tco_loop_rt;
+            #[allow(unused_mut)]
+            let mut scope = __tco_loop_scope;
+            #[allow(unused_mut)]
+            let mut emit_info = __tco_loop_emit_info;
+            #[allow(unused_mut)]
+            let mut source_indices = __tco_loop_source_indices;
+            #[allow(unused_mut)]
+            let mut fuel = __tco_loop_fuel;
+            if (fuel.clone() <= 0) {
                 break rt.clone();
             } else {
-                if rust_type_node_is_arrow(rt.clone()) {
-                    {
-                        let __tco_0 = argv_follow_inferred(rt);
-                        let __tco_1 = scope;
-                        let __tco_2 = emit_info;
-                        let __tco_3 = source_indices;
-                        let __tco_4 = v1_rt::int_sub(fuel, 1);
-                        __tco_loop_rt = __tco_0;
-                        __tco_loop_scope = __tco_1;
-                        __tco_loop_emit_info = __tco_2;
-                        __tco_loop_source_indices = __tco_3;
-                        __tco_loop_fuel = __tco_4;
-                        continue;
-                    }
+                if (type_node_is_ordered_element_run(rt.clone(), source_indices.clone())
+                    || is_rust_string_like(rt.clone(), source_indices.clone()))
+                {
+                    break rt.clone();
                 } else {
-                    match rust_operand_alias_or_refinement_continue(
-                        rt.clone(),
-                        scope.clone(),
-                        fuel.clone(),
-                    ) {
-                        Some(next) => {
-                            let __tco_0 = next.clone();
+                    if rust_type_node_is_arrow(rt.clone()) {
+                        {
+                            let __tco_0 = argv_follow_inferred(rt);
                             let __tco_1 = scope;
                             let __tco_2 = emit_info;
                             let __tco_3 = source_indices;
@@ -42257,41 +42961,40 @@ pub fn hop_argv_element_type(
                             __tco_loop_fuel = __tco_4;
                             continue;
                         }
-                        std::option::Option::None => {
-                            match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(
-                                emit_info.type_decl_items.clone(),
-                                rt.clone(),
-                                source_indices.clone(),
-                            ))
-                            .clone()
-                            {
-                                TypeDeclResolution::TypeDeclResolved { decl: d, .. } => {
-                                    let __tco_0 = argv_follow_inferred(d.clone());
-                                    let __tco_1 = scope;
-                                    let __tco_2 = emit_info;
-                                    let __tco_3 = source_indices;
-                                    let __tco_4 = v1_rt::int_sub(fuel, 1);
-                                    __tco_loop_rt = __tco_0;
-                                    __tco_loop_scope = __tco_1;
-                                    __tco_loop_emit_info = __tco_2;
-                                    __tco_loop_source_indices = __tco_3;
-                                    __tco_loop_fuel = __tco_4;
-                                    continue;
-                                }
-                                TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => {
-                                    break rt.clone();
-                                }
-                                TypeDeclResolution::TypeDeclKernelSpellingUndecided {
-                                    leaf: _,
-                                    ..
-                                } => {
-                                    break rt.clone();
-                                }
-                                TypeDeclResolution::TypeDeclNotDeclared => {
-                                    break rt.clone();
-                                }
-                            }
-                        }
+                    } else {
+                        match rust_operand_alias_or_refinement_continue(rt.clone(), scope.clone(), fuel.clone()) {
+    Some(next) => { {
+                        let __tco_0 = next.clone();
+let __tco_1 = scope;
+let __tco_2 = emit_info;
+let __tco_3 = source_indices;
+let __tco_4 = v1_rt::int_sub(fuel, 1);
+__tco_loop_rt = __tco_0;
+__tco_loop_scope = __tco_1;
+__tco_loop_emit_info = __tco_2;
+__tco_loop_source_indices = __tco_3;
+__tco_loop_fuel = __tco_4;
+continue;
+} },
+    std::option::Option::None => { match (*crate::v1_compiler_infer_emit_info::resolve_type_decl_reference(emit_info.type_decl_items.clone(), rt.clone(), source_indices.clone())).clone() {
+    TypeDeclResolution::TypeDeclResolved { decl: d, .. } => { {
+                        let __tco_0 = argv_follow_inferred(d.clone());
+let __tco_1 = scope;
+let __tco_2 = emit_info;
+let __tco_3 = source_indices;
+let __tco_4 = v1_rt::int_sub(fuel, 1);
+__tco_loop_rt = __tco_0;
+__tco_loop_scope = __tco_1;
+__tco_loop_emit_info = __tco_2;
+__tco_loop_source_indices = __tco_3;
+__tco_loop_fuel = __tco_4;
+continue;
+} },
+    TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: _, .. } => { break rt.clone(); },
+    TypeDeclResolution::TypeDeclKernelSpellingUndecided { leaf: _, .. } => { break rt.clone(); },
+    TypeDeclResolution::TypeDeclNotDeclared => { break rt.clone(); },
+} },
+}
                     }
                 }
             }
@@ -45628,7 +46331,7 @@ pub fn emit_source_root_eval_driver_main_rs(
         );
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "main".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "use std::time::Instant;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), native_route_mod.clone()), "::{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_census_module_completeness, native_census_module_resolution, native_census_modules,".to_string()), "\n".to_string()), "    native_census_module_inference, native_census_infer_type_contribution, native_census_infer_binding_lines,".to_string()), "\n".to_string()), "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module,".to_string()), "\n".to_string()), "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,".to_string()), "\n".to_string()), "    native_census_residual_rows,".to_string()), "\n".to_string()), "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,".to_string()), "\n".to_string()), "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,".to_string()), "\n".to_string()), "    native_census_verb_output, NativeCensusVerbWord,".to_string()), "\n".to_string()), "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,".to_string()), "\n".to_string()), "    NativeCensusScope, NativeCensusScoped,".to_string()), "\n".to_string()), "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,".to_string()), "\n".to_string()), "    CensusObligationRow, CensusComparableRecord, CensusRunDiffResult,".to_string()), "\n".to_string()), "    native_lane_controls, native_lane_file_refusal_index, native_lane_receipt,".to_string()), "\n".to_string()), "    native_test_context_absorb,".to_string()), "\n".to_string()), "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,".to_string()), "\n".to_string()), "    native_test_front_end_prepare,".to_string()), "\n".to_string()), "    native_driver_parse, native_driver_plan_exit, native_driver_plan_source_roots,".to_string()), "\n".to_string()), "    NativeDriverPlan, NativeDriverVerb,".to_string()), "\n".to_string()), "    NativeCensusModuleOutcome, NativeInferCensusOutcome,".to_string()), "\n".to_string()), "    NativeLaneAcquisition, NativeLaneHostFacts,".to_string()), "\n".to_string()), "    NativeRouteMemberRow,".to_string()), "\n".to_string()), "    native_demand_eval_nanos, native_demand_eval_samples,".to_string()), "\n".to_string()), "    native_demand_prepare_nanos, native_demand_prepare_samples,".to_string()), "\n".to_string()), "    native_demand_prepare_ok, native_demand_prepare_refused,".to_string()), "\n".to_string()), "    native_demand_scheduling_nanos,".to_string()), "\n".to_string()), "    native_demand_occurrence_census_lines, native_demand_occurrence_census_nanos,".to_string()), "\n".to_string()), "    native_demand_run_demand_count, native_demand_run_readiness_derivations,".to_string()), "\n".to_string()), "    native_demand_run_receipt_lines, native_demand_run_rows,".to_string()), "\n".to_string()), "    native_demand_observation_progressed,".to_string()), "\n".to_string()), "    native_demand_run_transition_count, native_demand_schedule_universe,".to_string()), "\n".to_string()), "    native_demand_tested_tree_input,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_program_assembly::{".to_string()), "\n".to_string()), "    program_assembly_allocator_next, program_assembly_parsed_alloc,".to_string()), "\n".to_string()), "    program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome,".to_string()), "\n".to_string()), "    program_assembly_normalized_alloc, program_assembly_normalized_spans, program_assembly_ingest_scope_outcome,".to_string()), "\n".to_string()), "    program_assembly_phase_parse_seeded,".to_string()), "\n".to_string()), "    program_assembly_phase_token_count, program_assembly_phase_tokenize,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), native_route_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_route_admission, native_route_admission_summary, native_route_admitted,".to_string()), "\n".to_string()), "    native_route_file_refusal_tally, native_route_member_row_text,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), frontier_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_frontier_proposal_file_lines, native_frontier_report_lines, native_frontier_verdict,".to_string()), "\n".to_string()), "    native_frontier_verdict_word,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_native_test_vocabulary::NativeTestVerdict;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::DagSourceReadWitness;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_bazel_target_pattern::TargetPattern;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::{".to_string()), "\n".to_string()), "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,".to_string()), "\n".to_string()), "    native_driver_exclusive_sum, NativeDriverCostAccounting,".to_string()), "\n".to_string()), "    native_driver_exclusive_rows, native_driver_exclusive_row_name,".to_string()), "\n".to_string()), "    NativeDriverExclusiveRowKey,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{nanosecond, nanosecond_count};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v1_rt::observed_thread_cpu_nanos;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v1_rt::bytes_identity_hash;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), type_census_mod.clone()), "::{type_census_receipt, type_census_run_add, type_census_run_empty};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "\n".to_string()), emit_host_acquisition_rs(crate_name.clone())), "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String {".to_string()), "\n".to_string()), "    match facts.get(key) {".to_string()), "\n".to_string()), "        Some(value) => value.clone(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host facts file carries no {key} row\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 {".to_string()), "\n".to_string()), "    let value = host_fact(facts, key);".to_string()), "\n".to_string()), "    match value.parse::<i64>() {".to_string()), "\n".to_string()), "        Ok(parsed) => parsed,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host fact {key} is not an integer: {value:?} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_host_facts(path: &str) -> NativeLaneHostFacts {".to_string()), "\n".to_string()), "    let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "        Ok(text) => text,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: could not read host facts file {path}: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut facts: std::collections::HashMap<String, String> = std::collections::HashMap::new();".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if line.is_empty() {".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match line.split_once('\\t') {".to_string()), "\n".to_string()), "            Some((key, value)) if !key.is_empty() => {".to_string()), "\n".to_string()), "                if facts.insert(key.to_string(), value.to_string()).is_some() {".to_string()), "\n".to_string()), "                    eprintln!(\"REFUSED: duplicate host fact row: {key}\");".to_string()), "\n".to_string()), "                    std::process::exit(2);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            _ => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: malformed host fact line (expected key<TAB>value): {line}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let malformed_path = host_fact(&facts, \"malformed_control_path\");".to_string()), "\n".to_string()), "    let malformed_reason = host_fact(&facts, \"malformed_control_reason\");".to_string()), "\n".to_string()), "    let malformed_control = if malformed_path.is_empty() {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenAccepted".to_string()), "\n".to_string()), "    } else {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenRefused {".to_string()), "\n".to_string()), "            path: malformed_path,".to_string()), "\n".to_string()), "            reason: malformed_reason,".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let old_route_disposition = host_fact(&facts, \"old_route_disposition\");".to_string()), "\n".to_string()), "    let old_route_executable = host_fact(&facts, \"old_route_executable\");".to_string()), "\n".to_string()), "    let old_route_control = match old_route_disposition.as_str() {".to_string()), "\n".to_string()), "        \"withdrawn\" => NativeRouteOldRouteControl::OldRouteWithdrawn {".to_string()), "\n".to_string()), "            withdrawn_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        \"not_present_at_window\" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow {".to_string()), "\n".to_string()), "            expected_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        other => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: old_route_disposition names no control this route can record: {other} -- expected withdrawn or not_present_at_window\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The emitted build is the host's observation of the cargo spawn this binary is the".to_string()), "\n".to_string()), "    // product of: six rows, the argv as one row per word under a length row. A count that".to_string()), "\n".to_string()), "    // does not parse, or an index row it promises that is missing, refuses like any other".to_string()), "\n".to_string()), "    // missing fact; nothing is defaulted.".to_string()), "\n".to_string()), "    let cargo_argv_len = host_fact_int(&facts, \"cargo_argv_len\");".to_string()), "\n".to_string()), "    let mut cargo_argv: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for index in 0..cargo_argv_len {".to_string()), "\n".to_string()), "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_{index}\")));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let emitted_build = NativeRouteEmittedBuild {".to_string()), "\n".to_string()), "        cargo_argv: Rc::new(cargo_argv.into()),".to_string()), "\n".to_string()), "        rustflags: host_fact(&facts, \"rustflags\"),".to_string()), "\n".to_string()), "        compiler_path: host_fact(&facts, \"compiler_path\"),".to_string()), "\n".to_string()), "        rustc_identity: host_fact(&facts, \"rustc_identity\"),".to_string()), "\n".to_string()), "        exit_status: host_fact_int(&facts, \"exit_status\"),".to_string()), "\n".to_string()), "        warning_count: host_fact_int(&facts, \"warning_count\"),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    NativeLaneHostFacts {".to_string()), "\n".to_string()), "        tested_tree: host_fact(&facts, \"tested_tree\"),".to_string()), "\n".to_string()), "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),".to_string()), "\n".to_string()), "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),".to_string()), "\n".to_string()), "        executable_path: host_fact(&facts, \"executable_path\"),".to_string()), "\n".to_string()), "        executable_identity: host_fact(&facts, \"executable_identity\"),".to_string()), "\n".to_string()), "        old_route_control: Rc::new(old_route_control),".to_string()), "\n".to_string()), "        malformed_control: Rc::new(malformed_control),".to_string()), "\n".to_string()), "        emitted_build: Rc::new(emitted_build),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn run_census(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // GROUPED BY THE FATAL REASON, BY THE FOLD THAT OWNS THE GROUPING".to_string()), "\n".to_string()), "    // (v2.compiler.source_root_eval native_census_cause_groups_add); this main only prints the groups.".to_string()), "\n".to_string()), "    // Each root carries its closure fan-out (v2.compiler.source_root_eval native_census_closure_index);".to_string()), "\n".to_string()), "    // this mode does not resolve, so no root claims an observed resolve refusal.".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        native_lane_file_refusal_index(context.file_refusals.clone()),".to_string()), "\n".to_string()), "        native_census_modules(ingest.clone()),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure, false);".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len(), \"advised_files\": context.accepted_file_advisories.len(), \"cause_groups\": cause_groups.len(), \"roots\": roots.len() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// THE THIRD MODE: THE WHOLE TREE, RESOLVED PER MODULE.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// WHY IT IS NOT A FLAG ON `census`. That mode has a live consumer -- the malformed control,".to_string()), "\n".to_string()), "// which the host runner spawns over a ONE-FILE scratch root and reads one per-file refusal".to_string()), "\n".to_string()), "// from -- and teaching it to resolve would make that control pay a whole-tree resolve to".to_string()), "\n".to_string()), "// learn a fact the front end already answered. Two modes because they are two subjects: a".to_string()), "\n".to_string()), "// roster of front-end refusals, and a roster of resolve refusals over every ingested module.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// WHY IT IS NOT THE `adjudicate` LOOP WIDENED. That loop walks `universe.modules` -- the".to_string()), "\n".to_string()), "// v2.test.* modules discovery enrolled rows for -- over a context folded from the import".to_string()), "\n".to_string()), "// CLOSURE of those modules. Both narrowings are correct for what adjudication asks and wrong".to_string()), "\n".to_string()), "// for a census: a residual reported over the closure of the test corpus is not a residual over".to_string()), "\n".to_string()), "// the tree, and the absence of a refusal in a population that was never resolved establishes".to_string()), "\n".to_string()), "// nothing about the dependents outside it.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE RESOLVED TREE IS NOT KEPT. NativeCensusModuleOutcome carries the diagnostics of a refusal".to_string()), "\n".to_string()), "// and nothing on the accepted arm, so each module's tree dies with the call that made it. The".to_string()), "\n".to_string()), "// adjudicating loop drops its tree explicitly because it must hold one to infer from; this loop".to_string()), "\n".to_string()), "// never holds one, which is the property that makes the whole-tree grain affordable at all.".to_string()), "\n".to_string()), "fn run_census_resolve(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let load_started = Instant::now();".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let load_nanos = span_nanos(load_started);".to_string()), "\n".to_string()), "    let context_started = Instant::now();".to_string()), "\n".to_string()), "    // MUTABLE BECAUSE IT IS THREADED: each module's resolution returns the context it ended".to_string()), "\n".to_string()), "    // with, carrying the module namespace provider (v2.compiler.name_resolve ResolutionContext".to_string()), "\n".to_string()), "    // namespaces), and the next module is resolved over that one -- a namespace is produced at".to_string()), "\n".to_string()), "    // most once per ingest only for a loop that binds what it gets back.".to_string()), "\n".to_string()), "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let context_nanos = span_nanos(context_started);".to_string()), "\n".to_string()), "    // The front-end refusals are reported in the same shape `census` reports them, because they".to_string()), "\n".to_string()), "    // are the same fact read from the same context: a module whose file the context refused is".to_string()), "\n".to_string()), "    // attributed there and is NOT re-reported below as a resolve refusal it never reached.".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE ADVISORY POPULATION IS THE SAME CONTEXT FACT `census` REPORTS, printed in the same".to_string()), "\n".to_string()), "    // shape, so a saved whole-tree receipt carries it without a second pass. Its count is taken".to_string()), "\n".to_string()), "    // here, from the context that produced the rows, not from the threaded one at the end.".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let advised_files = context.accepted_file_advisories.len();".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    let roster_started = Instant::now();".to_string()), "\n".to_string()), "    let modules = native_census_modules(ingest.clone());".to_string()), "\n".to_string()), "    let roster_nanos = span_nanos(roster_started);".to_string()), "\n".to_string()), "    // THE CAUSE GROUPS START FROM THE FRONT-END REFUSALS -- each a root carrying its closure".to_string()), "\n".to_string()), "    // fan-out -- and take each module as it is resolved: a cascade member once under its root,".to_string()), "\n".to_string()), "    // any other refusal per chain (v2.compiler.source_root_eval native_census_cause_groups_add_module).".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());".to_string()), "\n".to_string()), "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);".to_string()), "\n".to_string()), "    let mut resolve_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut resolve_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut resolved_ok: u64 = 0;".to_string()), "\n".to_string()), "    let mut file_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut resolve_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut residual_rows: u64 = 0;".to_string()), "\n".to_string()), "    // THE PER-MODULE LINE IS ALSO THE RUN'S PROGRESS: `index` of `of`, so a reader of a multi-hour".to_string()), "\n".to_string()), "    // census can tell a slow run from a hung one while it runs.".to_string()), "\n".to_string()), "    let census_modules_total = modules.len();".to_string()), "\n".to_string()), "    for (census_module_index, entry) in modules.iter().enumerate() {".to_string()), "\n".to_string()), "        let resolve_started = Instant::now();".to_string()), "\n".to_string()), "        let step = native_census_module_resolution(".to_string()), "\n".to_string()), "            context.clone(),".to_string()), "\n".to_string()), "            refusal_index.clone(),".to_string()), "\n".to_string()), "            entry.clone(),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        context = step.context.clone();".to_string()), "\n".to_string()), "        let outcome = step.outcome.clone();".to_string()), "\n".to_string()), "        let module_resolve_nanos = span_nanos(resolve_started);".to_string()), "\n".to_string()), "        groups = native_census_cause_groups_add_module(groups.clone(), closure.clone(), entry.clone(), step.clone());".to_string()), "\n".to_string()), "        let outcome_label = match &*outcome {".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleFileRefused => {".to_string()), "\n".to_string()), "                file_refused += 1;".to_string()), "\n".to_string()), "                \"file_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleResolved => {".to_string()), "\n".to_string()), "                resolved_ok += 1;".to_string()), "\n".to_string()), "                \"resolved\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleResolveRefused { first, rest, .. } => {".to_string()), "\n".to_string()), "                resolve_refused += 1;".to_string()), "\n".to_string()), "                // ONE ROW PER FAILURE CHAIN, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The rows are".to_string()), "\n".to_string()), "                // written as they are decided rather than accumulated: the census is over the".to_string()), "\n".to_string()), "                // whole tree, and a population held to the end is a second corpus-sized".to_string()), "\n".to_string()), "                // allocation beside the context that produced it.".to_string()), "\n".to_string()), "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() {".to_string()), "\n".to_string()), "                    residual_rows += 1;".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_residual\": row }));".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                \"resolve_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        resolve_total_nanos += module_resolve_nanos;".to_string()), "\n".to_string()), "        resolve_samples.push(module_resolve_nanos);".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-census-resolve] {}\",".to_string()), "\n".to_string()), "            serde_json::json!({".to_string()), "\n".to_string()), "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "                \"module\": entry.module.clone(),".to_string()), "\n".to_string()), "                \"path\": entry.path.clone(),".to_string()), "\n".to_string()), "                \"resolve_nanos\": module_resolve_nanos,".to_string()), "\n".to_string()), "                \"outcome\": outcome_label,".to_string()), "\n".to_string()), "                \"occurrence_completeness\": native_census_module_completeness(outcome.clone()),".to_string()), "\n".to_string()), "                \"index\": census_module_index + 1,".to_string()), "\n".to_string()), "                \"of\": census_modules_total,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    resolve_samples.sort_unstable();".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.source_root_eval native_census_roots_ranked).".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE TERMINAL LINE CARRIES THE COST AND THE POPULATION TOGETHER, because the reading this".to_string()), "\n".to_string()), "    // mode exists to support is whether a whole-tree resolve is affordable at all, and a residual".to_string()), "\n".to_string()), "    // count without the wall and the peak beside it cannot answer that.".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"census-resolve\",".to_string()), "\n".to_string()), "            \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "            \"modules\": modules.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": context.file_refusals.len(),".to_string()), "\n".to_string()), "            \"advised_files\": advised_files,".to_string()), "\n".to_string()), "            \"resolved\": resolved_ok,".to_string()), "\n".to_string()), "            \"file_refused\": file_refused,".to_string()), "\n".to_string()), "            \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "            \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "            \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "            \"roots\": roots.len(),".to_string()), "\n".to_string()), "            \"load_nanos\": load_nanos,".to_string()), "\n".to_string()), "            \"context_nanos\": context_nanos,".to_string()), "\n".to_string()), "            \"roster_nanos\": roster_nanos,".to_string()), "\n".to_string()), "            \"resolve_total_nanos\": resolve_total_nanos,".to_string()), "\n".to_string()), "            \"resolve_p50_nanos\": native_cost_quantile_nanos(&resolve_samples, 1, 2),".to_string()), "\n".to_string()), "            \"resolve_p95_nanos\": native_cost_quantile_nanos(&resolve_samples, 19, 20),".to_string()), "\n".to_string()), "            \"resolve_max_nanos\": resolve_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// THE NATIVE CENSUS VERBS (the words of `gunbc.native_census_verb`): ONE run function.".to_string()), "\n".to_string()), "// v2.compiler.source_root_eval native_census_verb_output decides every line and the exit from the verb".to_string()), "\n".to_string()), "// word; this function only reads the ingest, prints and exits.".to_string()), "\n".to_string()), "fn run_census_verb(verb: &NativeCensusVerbWord, source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let output = native_census_verb_output(verb.clone(), ingest);".to_string()), "\n".to_string()), "    for line in output.lines.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(output.exit as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// Every decision is a .dag fold: the per-module step (v2.compiler.source_root_eval".to_string()), "\n".to_string()), "// native_census_module_inference), the type-declaration census's contribution from it".to_string()), "\n".to_string()), "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and".to_string()), "\n".to_string()), "// terminal that run decides (v2.compiler.type_declaration_use_census). This loop reads the".to_string()), "\n".to_string()), "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's".to_string()), "\n".to_string()), "// trees live for one step; what is kept is the census's rows, not the trees.".to_string()), "\n".to_string()), "fn run_census_infer(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    census_infer_walk(read_census_ingest(source_roots), None);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE SIXTH MODE: ONE SUBJECT'S ACQUIRED CLOSURE, RESOLVED AND INFERRED PER MODULE (`census-scoped`).".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// The population is the subject's closure as v2.compiler.module_acquisition acquires it around its".to_string()), "\n".to_string()), "// blocks (v2.compiler.compile native_lane_census_scoped_ingest): acquisition's own reads, never a".to_string()), "\n".to_string()), "// second walk of the roots. The scope line says whether that population is closed or blocked, and".to_string()), "\n".to_string()), "// where. The walk is census-infer's, without the type-declaration census and without the subject".to_string()), "\n".to_string()), "// annotation: every member is in the subject's closure by construction.".to_string()), "\n".to_string()), "// WHAT A SCOPED WALK CARRIES BESIDE ITS READS: the label it was given, the scope acquisition decided,".to_string()), "\n".to_string()), "// the member digests it printed (the record's revision is read off them), and the baseline record it".to_string()), "\n".to_string()), "// compares itself against, when one was named.".to_string()), "\n".to_string()), "// A BASELINE IS A PUBLISHED RUN RECORD (the host's CensusRunRecordFile), and the host alone decides".to_string()), "\n".to_string()), "// which one -- by the status field it wrote (latest_complete_census_record). This only reads the".to_string()), "\n".to_string()), "// census_run_comparable row back as the same type; a file without one is a stated cause, never an empty diff.".to_string()), "\n".to_string()), "fn census_baseline_record(path: &str) -> Result<Rc<CensusComparableRecord>, String> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(path).map_err(|cause| format!(\"reading {path}: {cause}\"))?;".to_string()), "\n".to_string()), "    let file: serde_json::Value = serde_json::from_str(&text).map_err(|cause| format!(\"{path} is not one JSON value: {cause}\"))?;".to_string()), "\n".to_string()), "    let row = file.get(\"rows\").and_then(|r| r.as_array()).and_then(|rows| rows.iter().find_map(|row| row.get(\"census_run_comparable\").cloned()))".to_string()), "\n".to_string()), "        .ok_or_else(|| format!(\"{path} carries no census_run_comparable row\"))?;".to_string()), "\n".to_string()), "    serde_json::from_value::<CensusComparableRecord>(row).map(Rc::new).map_err(|cause| format!(\"{path} census_run_comparable does not read back: {cause}\"))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "struct CensusScopedWalk {".to_string()), "\n".to_string()), "    label: String,".to_string()), "\n".to_string()), "    scope: Rc<NativeCensusScope>,".to_string()), "\n".to_string()), "    digests: Vec<String>,".to_string()), "\n".to_string()), "    against: Option<String>,".to_string()), "\n".to_string()), "    subjects_rest: Vec<String>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn run_census_scoped(subject: &str, subjects_rest: &[String], against: Option<String>, source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let scoped = read_census_scoped_ingest(subject, subjects_rest, source_roots);".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"census_scope\": scoped.scope.clone() }));".to_string()), "\n".to_string()), "    // WHICH SUBJECT OBSERVED EACH MEMBER (NativeCensusScoped.reach): one line per (subject, member), so a".to_string()), "\n".to_string()), "    // union run that read a member once still says which closures it belongs to.".to_string()), "\n".to_string()), "    for reach in scoped.reach.iter() {".to_string()), "\n".to_string()), "        for member in reach.members.iter() { println!(\"binding_subject\\t{}\\t{}\", reach.subject, member); }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM: one".to_string()), "\n".to_string()), "    // member line per acquired read, its bytes digested (v1_rt bytes_identity_hash) from the string every stage consumes,".to_string()), "\n".to_string()), "    // so the run record's identity is the content that was censused and never a second read of the roots.".to_string()), "\n".to_string()), "    let mut digests: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for read in scoped.ingest.iter() {".to_string()), "\n".to_string()), "        let digest = bytes_identity_hash(read.source.carried.as_bytes());".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_member\": { \"compilation_unit\": read.compilation_unit.clone(), \"bytes\": read.source.carried.len(), \"fnv1a64\": digest.clone() } }));".to_string()), "\n".to_string()), "        digests.push(digest);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some(CensusScopedWalk { label: subject.to_string(), scope: scoped.scope.clone(), digests, against, subjects_rest: subjects_rest.to_vec() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE WALK BOTH CENSUS-INFER MODES SHARE. Every decision is a .dag fold: the per-module step (v2.compiler.compile".to_string()), "\n".to_string()), "// native_census_module_inference), the type-declaration census's contribution from it".to_string()), "\n".to_string()), "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and".to_string()), "\n".to_string()), "// terminal that run decides (gunbc.instruments.type_declaration_use_census). This loop reads the".to_string()), "\n".to_string()), "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's".to_string()), "\n".to_string()), "// trees live for one step; what is kept is the census's rows, not the trees. `scope` is absent for".to_string()), "\n".to_string()), "// the whole-corpus run, which also feeds the type census and marks each root against the subject".to_string()), "\n".to_string()), "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was".to_string()), "\n".to_string()), "// given so the instrument can check the subject it observed against the one it bound.".to_string()), "\n".to_string()), "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<CensusScopedWalk>) {".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // THE FRONT-END POPULATION IS PRINTED IN THE SHAPE census-resolve PRINTS IT: the same context fact.".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let file_refusals = context.file_refusals.len();".to_string()), "\n".to_string()), "    let advised_files = context.accepted_file_advisories.len();".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    let modules = native_census_modules(ingest.clone());".to_string()), "\n".to_string()), "    // THE INFER CENSUS'S GROUPS START FROM THE FRONT-END ROOTS, as census-resolve's do, and take each".to_string()), "\n".to_string()), "    // module's step through ONE fold (v2.compiler.source_root_eval native_census_cause_groups_add_infer_module):".to_string()), "\n".to_string()), "    // a resolve refusal filed as census-resolve files it, an infer refusal as one Infer-stage row.".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());".to_string()), "\n".to_string()), "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);".to_string()), "\n".to_string()), "    let mut run = type_census_run_empty();".to_string()), "\n".to_string()), "    let mut file_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut resolve_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut residual_rows: u64 = 0;".to_string()), "\n".to_string()), "    let mut inferred: u64 = 0;".to_string()), "\n".to_string()), "    let mut infer_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut obligation_rows: Vec<Rc<CensusObligationRow>> = Vec::new();".to_string()), "\n".to_string()), "    for entry in modules.iter() {".to_string()), "\n".to_string()), "        let started = Instant::now();".to_string()), "\n".to_string()), "        let step = native_census_module_inference(context.clone(), refusal_index.clone(), entry.clone());".to_string()), "\n".to_string()), "        context = step.context.clone();".to_string()), "\n".to_string()), "        groups = native_census_cause_groups_add_infer_module(groups.clone(), closure.clone(), entry.clone(), step.clone());".to_string()), "\n".to_string()), "        let outcome_label = match &*step.outcome {".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusFileRefused => { file_refused += 1; \"file_refused\" }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusResolveRefused { first, rest, .. } => {".to_string()), "\n".to_string()), "                resolve_refused += 1;".to_string()), "\n".to_string()), "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() {".to_string()), "\n".to_string()), "                    residual_rows += 1;".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_residual\": row }));".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                \"resolve_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusInferred { .. } => { inferred += 1; \"inferred\" }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusInferRefused { .. } => { infer_refused += 1; \"infer_refused\" }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if scope.is_some() {".to_string()), "\n".to_string()), "            for row in census_module_obligation_rows(refusal_index.clone(), entry.clone(), step.outcome.clone()).iter() {".to_string()), "\n".to_string()), "                obligation_rows.push(row.clone());".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_binding_census), one line each, in".to_string()), "\n".to_string()), "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.".to_string()), "\n".to_string()), "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() {".to_string()), "\n".to_string()), "            println!(\"{}\", line);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        if scope.is_none() {".to_string()), "\n".to_string()), "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());".to_string()), "\n".to_string()), "            run = type_census_run_add(run, contribution);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        eprintln!(\"[native-census-infer] {}\", serde_json::json!({".to_string()), "\n".to_string()), "            \"module\": entry.module.clone(),".to_string()), "\n".to_string()), "            \"path\": entry.path.clone(),".to_string()), "\n".to_string()), "            \"nanos\": span_nanos(started),".to_string()), "\n".to_string()), "            \"outcome\": outcome_label,".to_string()), "\n".to_string()), "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),".to_string()), "\n".to_string()), "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    if let Some(walk) = scope {".to_string()), "\n".to_string()), "        let subject_label = walk.label.clone();".to_string()), "\n".to_string()), "        let scope = walk.scope.clone();".to_string()), "\n".to_string()), "        for root in roots.iter() {".to_string()), "\n".to_string()), "            println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        let (subject, acquisition, blocks) = match &*scope {".to_string()), "\n".to_string()), "            NativeCensusScope::NativeCensusScopeClosed { subject, .. } => (subject.clone(), \"closed\", 0),".to_string()), "\n".to_string()), "            NativeCensusScope::NativeCensusScopeBlocked { subject, blocked_rest, .. } => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        // THE RUN'S OWN RECORD, decided by v2.compiler.source_root_eval census_scoped_run_record from what this walk held.".to_string()), "\n".to_string()), "        // A record names ONE subject (CensusRunRecord.subject), so a union run over several prints none: its".to_string()), "\n".to_string()), "        // population is not that subject's closure, and a record claiming it would be a second meaning of the name.".to_string()), "\n".to_string()), "        let diff = if !walk.subjects_rest.is_empty() { \"union\" } else {".to_string()), "\n".to_string()), "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_run_record\": record.clone() }));".to_string()), "\n".to_string()), "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes".to_string()), "\n".to_string()), "        // without minting a sealed value, and census_comparable_diff compares exactly these fields.".to_string()), "\n".to_string()), "        let comparable = census_comparable_record(record.clone());".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_run_comparable\": comparable.clone() }));".to_string()), "\n".to_string()), "        // THE COMPARISON, when a baseline was named: census_run_diff decides every finding. A baseline that".to_string()), "\n".to_string()), "        // cannot be read as a completed record is reported as no comparison, never as an empty one.".to_string()), "\n".to_string()), "        match &walk.against {".to_string()), "\n".to_string()), "            None => \"none\",".to_string()), "\n".to_string()), "            Some(path) => match census_baseline_record(path) {".to_string()), "\n".to_string()), "                Err(cause) => {".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_diff_unavailable\": { \"against\": path, \"cause\": cause } }));".to_string()), "\n".to_string()), "                    \"unavailable\"".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                Ok(before) => {".to_string()), "\n".to_string()), "                    let result = census_comparable_diff(before, comparable.clone());".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_run_diff\": result.clone(), \"against\": path }));".to_string()), "\n".to_string()), "                    match &*result {".to_string()), "\n".to_string()), "                        CensusRunDiffResult::CensusRunDiffSubjectRefused { .. } => \"subject_refused\",".to_string()), "\n".to_string()), "                        CensusRunDiffResult::CensusRunDiffCompared { .. } => \"compared\",".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"census-scoped\",".to_string()), "\n".to_string()), "            \"against\": walk.against.clone(),".to_string()), "\n".to_string()), "            \"diff\": diff,".to_string()), "\n".to_string()), "            \"subject_label\": subject_label,".to_string()), "\n".to_string()), "            \"subject\": subject,".to_string()), "\n".to_string()), "            \"subjects_rest\": walk.subjects_rest.clone(),".to_string()), "\n".to_string()), "            \"acquisition\": acquisition,".to_string()), "\n".to_string()), "            \"blocks\": blocks,".to_string()), "\n".to_string()), "            \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "            \"modules\": modules.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": file_refusals,".to_string()), "\n".to_string()), "            \"advised_files\": advised_files,".to_string()), "\n".to_string()), "            \"file_refused\": file_refused,".to_string()), "\n".to_string()), "            \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "            \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "            \"inferred\": inferred,".to_string()), "\n".to_string()), "            \"infer_refused\": infer_refused,".to_string()), "\n".to_string()), "            \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "            \"roots\": roots.len(),".to_string()), "\n".to_string()), "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.source_root_eval".to_string()), "\n".to_string()), "    // native_census_subject_closure): derived from the label, never from a list.".to_string()), "\n".to_string()), "    let subject = native_census_subject_closure(closure.clone(), modules.clone(), native_census_subject_label());".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"census_subject\": subject.clone() }));".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root, \"subject_closure\": native_census_root_subject_membership(subject.clone(), root.clone()) }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE TYPE-DECLARATION CENSUS'S LINES SHARE THIS STDOUT AND KEEP THEIR OWN LINE KIND (design 2a).".to_string()), "\n".to_string()), "    let receipt = type_census_receipt(run);".to_string()), "\n".to_string()), "    for line in receipt.lines.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE WALK COMPLETED, SO THE TERMINAL IS PRINTED WHATEVER THE TYPE CENSUS DECIDES: the refusal".to_string()), "\n".to_string()), "    // census and the type census are two facts, and the type census's verdict is the exit status alone.".to_string()), "\n".to_string()), "    let type_census = match &*receipt.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => \"held\",".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { .. } => \"not_held\",".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { .. } => \"no_observation\",".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "        \"mode\": \"census-infer\",".to_string()), "\n".to_string()), "        \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "        \"modules\": modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": file_refusals,".to_string()), "\n".to_string()), "        \"advised_files\": advised_files,".to_string()), "\n".to_string()), "        \"file_refused\": file_refused,".to_string()), "\n".to_string()), "        \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "        \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "        \"inferred\": inferred,".to_string()), "\n".to_string()), "        \"infer_refused\": infer_refused,".to_string()), "\n".to_string()), "        \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "        \"roots\": roots.len(),".to_string()), "\n".to_string()), "        \"type_census\": type_census,".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match &*receipt.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {".to_string()), "\n".to_string()), "    if sorted.is_empty() { return 0; }".to_string()), "\n".to_string()), "    let idx = (sorted.len() - 1) * numer / denom;".to_string()), "\n".to_string()), "    sorted[idx]".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN IS READ ONCE, THROUGH A READER THAT REFUSES A CLOCK THAT WENT BACKWARDS.".to_string()), "\n".to_string()), "// Instant::elapsed is Instant::now().duration_since(earlier), and duration_since SATURATES:".to_string()), "\n".to_string()), "// a monotonic clock that is not actually monotonic -- which happens on some virtualised and".to_string()), "\n".to_string()), "// migrated hosts -- yields Duration::ZERO rather than an error. That is the fabricated zero".to_string()), "\n".to_string()), "// this receipt forbids, arriving by a quieter route than the saturating_sub it replaced: a".to_string()), "\n".to_string()), "// phase would report as having taken no time and the partition would balance for the wrong".to_string()), "\n".to_string()), "// reason. checked_duration_since returns None instead, so the impossible reading is".to_string()), "\n".to_string()), "// REPRESENTABLE and can be refused.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// AN EARLIER REVISION OF THIS FILE CLAIMED THE CLASS WAS STRUCTURALLY IMPOSSIBLE ONCE THE".to_string()), "\n".to_string()), "// subtraction was gone. That was wrong and is corrected rather than softened: deleting the".to_string()), "\n".to_string()), "// explicit subtraction removed the visible clamp, not the saturation underneath it. The".to_string()), "\n".to_string()), "// honest rung is MITIGATED BY A TYPED REFUSAL at a declared boundary -- the host clock is".to_string()), "\n".to_string()), "// external reality, which DESIGN section 4b keeps off the ladder rather than on its top rung.".to_string()), "\n".to_string()), "fn span_nanos(started: Instant) -> u128 {".to_string()), "\n".to_string()), "    match Instant::now().checked_duration_since(started) {".to_string()), "\n".to_string()), "        Some(d) => d.as_nanos(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: the monotonic clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE PARTITION IS JUDGED ON THREAD CPU, AND THIS IS ITS SPAN (std.realization_measurement".to_string()), "\n".to_string()), "// ObserveThreadCpuAtSubject; extdeps.posix.clock_gettime ClockThreadCputimeId). The law".to_string()), "\n".to_string()), "// native_driver_cost_account enforces is that the phases partition the DRIVER'S OWN WORK. A".to_string()), "\n".to_string()), "// wall span also holds every interval the host descheduled this thread -- another tenant's".to_string()), "\n".to_string()), "// build, page-fault service, a lock wait -- none of which any phase performed, so on a wall".to_string()), "\n".to_string()), "// clock that time fell into the residual and the verdict tracked host load -- the same subject".to_string()), "\n".to_string()), "// reconciled on a quiet runner and refused on a contended one. The thread".to_string()), "\n".to_string()), "// CPU clock advances only while this thread runs, so the residual is uninstrumented driver".to_string()), "\n".to_string()), "// work and nothing else. The wall is still read once, around the whole run, and printed as an".to_string()), "\n".to_string()), "// observation; it is never an input to the verdict. The driver is single-threaded, so the".to_string()), "\n".to_string()), "// thread clock is the driver's whole CPU. An unsupported clock refuses inside the runtime".to_string()), "\n".to_string()), "// read; there is no wall fallback.".to_string()), "\n".to_string()), "#[derive(Clone, Copy)]".to_string()), "\n".to_string()), "struct CpuMark(u128);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn cpu_mark() -> CpuMark {".to_string()), "\n".to_string()), "    CpuMark(observed_thread_cpu_nanos(String::new()) as u128)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn cpu_span_nanos(started: CpuMark) -> u128 {".to_string()), "\n".to_string()), "    let finished = cpu_mark();".to_string()), "\n".to_string()), "    if finished.0 < started.0 {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: the thread CPU clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    finished.0 - started.0".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was".to_string()), "\n".to_string()), "// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a".to_string()), "\n".to_string()), "// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the".to_string()), "\n".to_string()), "// invented number is a zero that reports a phase as instant or a maximum that reports it as".to_string()), "\n".to_string()), "// three centuries. The saturating arm also chose the direction that hides best: i64::MAX would".to_string()), "\n".to_string()), "// push the exclusive sum past the parent and surface as NativeDriverCostOverAttributed, a cost".to_string()), "\n".to_string()), "// verdict naming the wrong cause.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// ON REACHABILITY, STATED RATHER THAN LEFT AS AN IMPLIED CLAIM: i64 nanoseconds is about 292".to_string()), "\n".to_string()), "// years, so no span this driver measures reaches it, and the refusal below is not expected to".to_string()), "\n".to_string()), "// fire. It is written because the alternative is not silence but a LIE -- the arm has to answer".to_string()), "\n".to_string()), "// something, and the only honest answers are a real number or a refusal.".to_string()), "\n".to_string()), "fn native_cost_i64(n: u128) -> i64 {".to_string()), "\n".to_string()), "    match i64::try_from(n) {".to_string()), "\n".to_string()), "        Ok(v) => v,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: a measured span does not fit the cost carrier, so no partition can be reported: {n} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as".to_string()), "\n".to_string()), "// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with".to_string()), "\n".to_string()), "// the key renamed, reported a process using no memory. Absence is carried as None and rendered".to_string()), "\n".to_string()), "// as JSON null, so the receipt says it does not know instead of inventing a figure. This is".to_string()), "\n".to_string()), "// telemetry on no receipt field, so it is the one place an Absent is carried rather than".to_string()), "\n".to_string()), "// refused: the run is still a valid observation of everything else.".to_string()), "\n".to_string()), "fn proc_status_kib(key: &str) -> Option<u64> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(\"/proc/self/status\").ok()?;".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if let Some(rest) = line.strip_prefix(key) {".to_string()), "\n".to_string()), "            return rest".to_string()), "\n".to_string()), "                .trim_start_matches(':')".to_string()), "\n".to_string()), "                .trim()".to_string()), "\n".to_string()), "                .split_whitespace()".to_string()), "\n".to_string()), "                .next()".to_string()), "\n".to_string()), "                .and_then(|n| n.parse::<u64>().ok());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    None".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// ONE CLOCK FOR THE VERDICT, AND IT IS THE THREAD CPU ONE (see cpu_span_nanos). Every exclusive".to_string()), "\n".to_string()), "// phase span and the parent span are read from it, so the partition compares readings from a".to_string()), "\n".to_string()), "// single source; the wall Instant around the run is an observation only. The history below is".to_string()), "\n".to_string()), "// why one source matters (review 64474), and it applied to the monotonic clock first.".to_string()), "\n".to_string()), "// They were split before this: the parent came from Instant while the phase spans came from".to_string()), "\n".to_string()), "// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator".to_string()), "\n".to_string()), "// adjustment. A step between two phase reads could then push the exclusive sum past a parent".to_string()), "\n".to_string()), "// span that never moved, and the driver would refuse with NativeDriverCostOverAttributed --".to_string()), "\n".to_string()), "// a cost refusal whose real cause was the clock. That is a fabricated attribution: the numbers".to_string()), "\n".to_string()), "// would be wrong while the receipt read as a measurement.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE SUBTRACTION IS GONE RATHER THAN GUARDED, which is the point. A span used to be an".to_string()), "\n".to_string()), "// explicit saturating_sub of two readings, so a backwards step clamped the difference to zero".to_string()), "\n".to_string()), "// and reported a phase as having taken NO TIME -- the exact state the annotation beside it".to_string()), "\n".to_string()), "// forbade, reached by the arm meant to prevent it. Instant::elapsed cannot return a negative".to_string()), "\n".to_string()), "// duration, so there is no difference to clamp and no clamp to review: DESIGN section 5".to_string()), "\n".to_string()), "// construction over validation, and the class climbs from mitigated to structurally".to_string()), "\n".to_string()), "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,".to_string()), "\n".to_string()), "// because the hazard it named cannot arise on this clock -- production handling dissolves on".to_string()), "\n".to_string()), "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.".to_string()), "\n".to_string()), "fn run_adjudication(facts_path: &str, pattern: Rc<TargetPattern>, source_roots: &[String]) {".to_string()), "\n".to_string()), "    let driver_start = cpu_mark();".to_string()), "\n".to_string()), "    let driver_wall_start = Instant::now();".to_string()), "\n".to_string()), "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this".to_string()), "\n".to_string()), "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that".to_string()), "\n".to_string()), "    // no reader can distinguish from a tree actually named local.".to_string()), "\n".to_string()), "    let head: Option<String> = std::env::var(\"GITHUB_SHA\").ok();".to_string()), "\n".to_string()), "    let facts = read_host_facts(facts_path);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the load row: ACQUIRING the requested closure. Reading and request detection are one".to_string()), "\n".to_string()), "    // dependency-driven walk (a module is read because an earlier one asked for it, and its own".to_string()), "\n".to_string()), "    // text is what asks for the next), so they cannot be priced apart and are not: the whole".to_string()), "\n".to_string()), "    // acquisition is this row, and nothing it does is counted under a fold's number.".to_string()), "\n".to_string()), "    let load_started = cpu_mark();".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let acquisition = acquire_native_lane(source_roots, pattern.clone());".to_string()), "\n".to_string()), "    let namespace_population = acquisition.population.len();".to_string()), "\n".to_string()), "    let load_nanos = cpu_span_nanos(load_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // universe_derivation: the floor's own per-file discovery fold over the acquired modules'".to_string()), "\n".to_string()), "    // marked declarations (their markers are supplied values -- the acquirer captured them), then".to_string()), "\n".to_string()), "    // the label universe of the pattern. The acquirer has already checked that the read set is the".to_string()), "\n".to_string()), "    // requested closure exactly (v2.compiler.module_acquisition acquire_verified), so no second".to_string()), "\n".to_string()), "    // identity join is asked here. The pattern is threaded, so this is the same entry a narrower".to_string()), "\n".to_string()), "    // pattern reaches, never a filter over a default universe.".to_string()), "\n".to_string()), "    let universe_started = cpu_mark();".to_string()), "\n".to_string()), "    let acquired = match &*native_lane_acquired(acquisition.clone(), pattern.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"DERIVATION-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let universe = acquired.universe.clone();".to_string()), "\n".to_string()), "    let closure_ingest = acquired.ingest.clone();".to_string()), "\n".to_string()), "    let closure_reads = closure_ingest.len();".to_string()), "\n".to_string()), "    let universe_nanos = cpu_span_nanos(universe_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.".to_string()), "\n".to_string()), "    // The driver owns the clock, so it is the only place a phase span can be read; the phases".to_string()), "\n".to_string()), "    // themselves are v2.compiler.program_assembly declarations and each binds the previous".to_string()), "\n".to_string()), "    // phase's Outcome, so each phase BODY is single-authored and only the ORDER and the".to_string()), "\n".to_string()), "    // inter-phase diagnostic merge exist twice -- here and in the modeled composition".to_string()), "\n".to_string()), "    // program_assembly_read_to_normalized_root_seeded. (It named the UNSEEDED composition".to_string()), "\n".to_string()), "    // until that one was deleted for having no caller; the seeded producer is now the single".to_string()), "\n".to_string()), "    // modeled per-file front end, and this loop is still its second spelling.)".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // THAT SECOND SPELLING IS ADMITTED DEBT AND IS FILED, NOT ASSERTED AWAY (review 65068):".to_string()), "\n".to_string()), "    // gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it.".to_string()), "\n".to_string()), "    // An earlier revision of this comment claimed the two are the same computation. Nothing".to_string()), "\n".to_string()), "    // executes that claim, and a .dag witness comparing the composition against its own phases".to_string()), "\n".to_string()), "    // CANNOT go red -- the composition is defined as the phase chain -- so the honest answer is".to_string()), "\n".to_string()), "    // the row and its trigger (a realization seam that yields per-phase spans FROM a modeled".to_string()), "\n".to_string()), "    // fold), not a green check. Reordering these calls or dropping the merge that".to_string()), "\n".to_string()), "    // program_assembly_phase_parse_seeded performs would change the context with".to_string()), "\n".to_string()), "    // nothing red.".to_string()), "\n".to_string()), "    let context_started = cpu_mark();".to_string()), "\n".to_string()), "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second".to_string()), "\n".to_string()), "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the".to_string()), "\n".to_string()), "    // realization layer exactly the per-file recompute the fold hoisted out.".to_string()), "\n".to_string()), "    let front_end = match &*native_test_front_end_prepare() {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let front_end_nanos = cpu_span_nanos(context_started);".to_string()), "\n".to_string()), "    // THE INGEST'S OCCURRENCE SCOPE, computed once: every projected occurrence the loop's".to_string()), "\n".to_string()), "    // normalize allocates states its cause in it (v2.compiler.program_assembly".to_string()), "\n".to_string()), "    // program_assembly_ingest_scope).".to_string()), "\n".to_string()), "    let ingest_scope = match &*program_assembly_ingest_scope_outcome(closure_ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut context_state = native_test_context_state_empty();".to_string()), "\n".to_string()), "    let mut tokenize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut parse_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut normalize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut absorb_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut phase_calls: u64 = 0;".to_string()), "\n".to_string()), "    let mut token_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut byte_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut context_file_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    for read in closure_ingest.iter() {".to_string()), "\n".to_string()), "        let file_started = cpu_mark();".to_string()), "\n".to_string()), "        let tokenize_started = cpu_mark();".to_string()), "\n".to_string()), "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lex.clone());".to_string()), "\n".to_string()), "        let file_tokenize_nanos = cpu_span_nanos(tokenize_started);".to_string()), "\n".to_string()), "        // The COUNT the time is read against: a span alone cannot separate a large file from a".to_string()), "\n".to_string()), "        // per-file constant. Counted outside every phase span so it prices none of them.".to_string()), "\n".to_string()), "        let file_tokens = program_assembly_phase_token_count(tokens.clone());".to_string()), "\n".to_string()), "        let parse_started = cpu_mark();".to_string()), "\n".to_string()), "        // SEEDED FROM THE MARK THE CONTEXT HAS REACHED, because this loop IS a source graph:".to_string()), "\n".to_string()), "        // std.occurrence_identity occurrence_identity_scope_law requires one allocator threaded".to_string()), "\n".to_string()), "        // across every parsed source, and a per-file reset makes two files' occurrence #N the".to_string()), "\n".to_string()), "        // same value with different meanings. The modeled fold threads it internally; this".to_string()), "\n".to_string()), "        // respelling has to thread it explicitly or it keeps the reset the fold no longer has.".to_string()), "\n".to_string()), "        let file_seed = context_state.alloc.clone();".to_string()), "\n".to_string()), "        let file_seed_reported = file_seed.clone();".to_string()), "\n".to_string()), "        let parsed = program_assembly_phase_parse_seeded(".to_string()), "\n".to_string()), "            tokens.clone(),".to_string()), "\n".to_string()), "            front_end.prepared.clone(),".to_string()), "\n".to_string()), "            file_seed.clone(),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        let file_parse_nanos = cpu_span_nanos(parse_started);".to_string()), "\n".to_string()), "        // On a refused parse".to_string()), "\n".to_string()), "        // this returns the seed unchanged. Not because nothing was minted -- a refused parse".to_string()), "\n".to_string()), "        // HAS minted ids -- but because ParseExprRejected carries no provenance state, so the".to_string()), "\n".to_string()), "        // mark the attempt reached is not recoverable. See the precondition on".to_string()), "\n".to_string()), "        // v2.compiler.source_root_eval native_test_context_absorb.".to_string()), "\n".to_string()), "        let file_alloc = program_assembly_parsed_alloc(parsed.clone(), file_seed);".to_string()), "\n".to_string()), "        let normalize_started = cpu_mark();".to_string()), "\n".to_string()), "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the".to_string()), "\n".to_string()), "        // next file seeds from the mark normalize reached, not the one parse reached.".to_string()), "\n".to_string()), "        let normalized = program_assembly_phase_normalize_seeded(parsed.clone(), file_alloc.clone(), ingest_scope.clone());".to_string()), "\n".to_string()), "        let root = program_assembly_normalized_outcome(normalized.clone());".to_string()), "\n".to_string()), "        let file_spans = program_assembly_normalized_spans(normalized.clone());".to_string()), "\n".to_string()), "        let file_alloc = program_assembly_normalized_alloc(normalized);".to_string()), "\n".to_string()), "        let file_alloc_reported = file_alloc.clone();".to_string()), "\n".to_string()), "        let file_normalize_nanos = cpu_span_nanos(normalize_started);".to_string()), "\n".to_string()), "        // qualified-name read plus source-root index insertion: the half of the per-file step".to_string()), "\n".to_string()), "        // that is not the front end, timed separately because a quadratic accumulator would".to_string()), "\n".to_string()), "        // live here and nowhere else in this loop.".to_string()), "\n".to_string()), "        let absorb_started = cpu_mark();".to_string()), "\n".to_string()), "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone(), file_alloc, file_spans);".to_string()), "\n".to_string()), "        let file_absorb_nanos = cpu_span_nanos(absorb_started);".to_string()), "\n".to_string()), "        let file_nanos = cpu_span_nanos(file_started);".to_string()), "\n".to_string()), "        tokenize_nanos += file_tokenize_nanos;".to_string()), "\n".to_string()), "        parse_nanos += file_parse_nanos;".to_string()), "\n".to_string()), "        normalize_nanos += file_normalize_nanos;".to_string()), "\n".to_string()), "        absorb_nanos += file_absorb_nanos;".to_string()), "\n".to_string()), "        phase_calls += 1;".to_string()), "\n".to_string()), "        token_total += file_tokens.max(0) as u64;".to_string()), "\n".to_string()), "        let file_bytes = read.source.carried.len() as u64;".to_string()), "\n".to_string()), "        byte_total += file_bytes;".to_string()), "\n".to_string()), "        context_file_samples.push(file_nanos);".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-context-split] {}\",".to_string()), "\n".to_string()), "            serde_json::json!({".to_string()), "\n".to_string()), "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "                \"path\": read.compilation_unit.clone(),".to_string()), "\n".to_string()), "                \"bytes\": file_bytes,".to_string()), "\n".to_string()), "                \"tokens\": file_tokens,".to_string()), "\n".to_string()), "                \"tokenize_nanos\": file_tokenize_nanos,".to_string()), "\n".to_string()), "                \"parse_nanos\": file_parse_nanos,".to_string()), "\n".to_string()), "                \"normalize_nanos\": file_normalize_nanos,".to_string()), "\n".to_string()), "                \"absorb_nanos\": file_absorb_nanos,".to_string()), "\n".to_string()), "                \"file_nanos\": file_nanos,".to_string()), "\n".to_string()), "                // THE THREADING, MADE OBSERVABLE. occurrence_seed is the mark this file was".to_string()), "\n".to_string()), "                // handed and occurrence_next the mark it reached, so a multi-file run shows".to_string()), "\n".to_string()), "                // one sequence continuing across files instead of each file restarting at 0.".to_string()), "\n".to_string()), "                // A REFUSED file reports next == seed. That is the mark it was HANDED, not a".to_string()), "\n".to_string()), "                // claim that nothing was minted: a refused parse mints ids that the refusal".to_string()), "\n".to_string()), "                // discards unrecoverably. The next file continues from the seed rather than".to_string()), "\n".to_string()), "                // rewinding to zero.".to_string()), "\n".to_string()), "                \"occurrence_seed\": program_assembly_allocator_next(file_seed_reported),".to_string()), "\n".to_string()), "                \"occurrence_next\": program_assembly_allocator_next(file_alloc_reported),".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());".to_string()), "\n".to_string()), "    let context_nanos = cpu_span_nanos(context_started);".to_string()), "\n".to_string()), "    context_file_samples.sort_unstable();".to_string()), "\n".to_string()), "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;".to_string()), "\n".to_string()), "    eprintln!(".to_string()), "\n".to_string()), "        \"[native-context-partition] {}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "            \"basis\": \"context_span\",".to_string()), "\n".to_string()), "            \"basis_note\": \"exclusive phase rows partition context_nanos; residual is loop overhead and the eprintln per file\",".to_string()), "\n".to_string()), "            \"context_nanos\": context_nanos,".to_string()), "\n".to_string()), "            \"front_end_prepare_nanos\": front_end_nanos,".to_string()), "\n".to_string()), "            \"tokenize_nanos\": tokenize_nanos,".to_string()), "\n".to_string()), "            \"parse_nanos\": parse_nanos,".to_string()), "\n".to_string()), "            \"normalize_nanos\": normalize_nanos,".to_string()), "\n".to_string()), "            \"absorb_nanos\": absorb_nanos,".to_string()), "\n".to_string()), "            \"sum_phase_nanos\": context_phase_sum,".to_string()), "\n".to_string()), "            \"residual_nanos\": context_nanos.saturating_sub(context_phase_sum),".to_string()), "\n".to_string()), "            \"files\": phase_calls,".to_string()), "\n".to_string()), "            \"tokenize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"parse_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"normalize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"absorb_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"front_end_prepare_calls\": 1,".to_string()), "\n".to_string()), "            \"tokens\": token_total,".to_string()), "\n".to_string()), "            \"bytes\": byte_total,".to_string()), "\n".to_string()), "            \"file_refusals\": context.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_p50_nanos\": native_cost_quantile_nanos(&context_file_samples, 1, 2),".to_string()), "\n".to_string()), "            \"file_p95_nanos\": native_cost_quantile_nanos(&context_file_samples, 19, 20),".to_string()), "\n".to_string()), "            \"file_max_nanos\": context_file_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the prepare and eval rows, entered separately per module so the number the profile".to_string()), "\n".to_string()), "    // lane prices -- the eval row -- is the sum of native_lane_identity_row".to_string()), "\n".to_string()), "    // and nothing else: not ingest, not resolve, not infer.".to_string()), "\n".to_string()), "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut evaluate_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut prepare_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut eval_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    // ExclusiveModuleRelease IS NOW STRUCTURALLY ZERO, AND THAT IS A REAL CHANGE RATHER".to_string()), "\n".to_string()), "    // THAN A TIDY-UP. The displaced loop dropped each module's resolved tree inside a span,".to_string()), "\n".to_string()), "    // because dropping at iteration end paid time no exclusive row covered. The engine holds".to_string()), "\n".to_string()), "    // every settled demand's value in its entries for the whole run, so there is no per-module".to_string()), "\n".to_string()), "    // release point to time -- resolved trees now accumulate where they used to be released.".to_string()), "\n".to_string()), "    // The row stays in the partition reporting zero rather than being deleted: a key removed".to_string()), "\n".to_string()), "    // here vanishes from the sum and the serialized line at once, silently, and the residual".to_string()), "\n".to_string()), "    // it used to carry would be absorbed into the tolerance rather than reported. Retention is".to_string()), "\n".to_string()), "    // std.materialization_ladder's question and the cut that answers it owns this row.".to_string()), "\n".to_string()), "    let module_release_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut relay_emit_nanos: u128 = 0;".to_string()), "\n".to_string()), "    // The per-path refusal index is built ONCE here rather than per module: this loop is the".to_string()), "\n".to_string()), "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x".to_string()), "\n".to_string()), "    // refusals) when each module scanned the refusal list for itself.".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    // ═══════════════════════════════════════════════════════════════════════════════════════".to_string()), "\n".to_string()), "    // THE SCHEDULE IS THE ENGINE'S. THIS LOOP HOLDS THE CLOCK AND NOTHING ELSE.".to_string()), "\n".to_string()), "    // ═══════════════════════════════════════════════════════════════════════════════════════".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // What stood here was `for entry in universe.modules` with `for declaration in".to_string()), "\n".to_string()), "    // entry.declarations` nested inside it -- a dependency structure written as control flow, and".to_string()), "\n".to_string()), "    // the last place in the native route that decided WHAT RUNS NEXT. It is deleted. The order now".to_string()), "\n".to_string()), "    // comes from v2.std.demand_engine's one ready queue, over a graph".to_string()), "\n".to_string()), "    // v2.compiler.native_demand_schedule DERIVES from the same universe roster this loop walked.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // WHY A LOOP REMAINS AT ALL, and why it is not the old one wearing a new name: a .dag fold".to_string()), "\n".to_string()), "    // cannot read a clock, and the native cost partition is an EXHAUSTIVE exclusive sum over".to_string()), "\n".to_string()), "    // parent_span with a 50ms tolerance arm. Replacing the walk with one opaque call would have".to_string()), "\n".to_string()), "    // dissolved the prepare and eval rows into an unattributed remainder and made that arm fire --".to_string()), "\n".to_string()), "    // so the driver asks the engine for the next admissible demand and spans the step. It supplies".to_string()), "\n".to_string()), "    // no ordering, no module iteration and no declaration iteration; remove the spans and the body".to_string()), "\n".to_string()), "    // is a drain.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // THE SEAT COUNT IS THE CALLER'S. One seat here, which is what makes this cut a pure authority".to_string()), "\n".to_string()), "    // move: same demands, same order, same single execution at a time. Multi-seat realization binds".to_string()), "\n".to_string()), "    // a different offer to the same drain and changes nothing else.".to_string()), "\n".to_string()), "    // THE DRIVER'S OWN INPUT CONSTRUCTION, charged to prepare as it was before the engine landed:".to_string()), "\n".to_string()), "    // it runs before any demand and is not the scheduler's bookkeeping, which the engine measures".to_string()), "\n".to_string()), "    // for itself.".to_string()), "\n".to_string()), "    let tested_tree_started = cpu_mark();".to_string()), "\n".to_string()), "    let tested_tree_input = native_demand_tested_tree_input(head.clone().unwrap_or_default());".to_string()), "\n".to_string()), "    prepare_total_nanos += cpu_span_nanos(tested_tree_started);".to_string()), "\n".to_string()), "    // ONE CALL. The driver does not drain the graph, does not decide readiness and does not".to_string()), "\n".to_string()), "    // classify a demand's stage -- those are the engine's and the plan's decisions, and a".to_string()), "\n".to_string()), "    // rendered-main loop that made them was a second consumer of the engine's admission".to_string()), "\n".to_string()), "    // vocabulary living in generated Rust, where no .dag check reaches.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // IT USED TO HOLD A LOOP FOR THE CLOCK, AND THAT REASON WAS WRONG. Each step now takes".to_string()), "\n".to_string()), "    // its own span through observed_thread_cpu_nanos -- an ordinary builtin with no resource".to_string()), "\n".to_string()), "    // requirement, modelled by std.realization_measurement as ObserveThreadCpuAtSubject's".to_string()), "\n".to_string()), "    // realization seam -- so the exclusive prepare and eval rows survive with the spans taken".to_string()), "\n".to_string()), "    // where the work is instead of around it.".to_string()), "\n".to_string()), "    // THE ENGINE CALL IS ONE MEASURED SPAN (std.compiler_entry ExclusiveDemandScheduling). Its".to_string()), "\n".to_string()), "    // demand windows are the prepare and eval rows; everything else the call spends is the".to_string()), "\n".to_string()), "    // scheduler's, including the work between the engine's own bookkeeping spans that no row".to_string()), "\n".to_string()), "    // timed when this row was the sum of those spans.".to_string()), "\n".to_string()), "    let schedule_started = cpu_mark();".to_string()), "\n".to_string()), "    let run = native_demand_schedule_universe(".to_string()), "\n".to_string()), "        universe.modules.clone(),".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        refusal_index.clone(),".to_string()), "\n".to_string()), "        tested_tree_input.clone(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let schedule_span_nanos = cpu_span_nanos(schedule_started);".to_string()), "\n".to_string()), "    // driver_collection: the driver's own work after the engine returned -- rows into the".to_string()), "\n".to_string()), "    // population, the samples, the counters. Named for what it is, not folded into scheduling.".to_string()), "\n".to_string()), "    let collection_started = cpu_mark();".to_string()), "\n".to_string()), "    for row in native_demand_run_rows(run.clone()).iter() {".to_string()), "\n".to_string()), "        population.push(row.clone());".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let engine_prepare_nanos = native_demand_prepare_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    let engine_eval_nanos = native_demand_eval_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    // OBSERVATION ONLY (v2.compiler.source_root_eval native_demand_occurrence_census_lines): the census is its".to_string()), "\n".to_string()), "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.".to_string()), "\n".to_string()), "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    prepare_total_nanos += engine_prepare_nanos;".to_string()), "\n".to_string()), "    evaluate_total_nanos += engine_eval_nanos;".to_string()), "\n".to_string()), "    // The engine's own bookkeeping sum stays an observation on the schedule line; it is not the row.".to_string()), "\n".to_string()), "    let engine_bookkeeping_nanos = native_demand_scheduling_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    // Every demand window the engine attributes -- prepare, eval and the occurrence census -- is a row".to_string()), "\n".to_string()), "    // of its own, so the scheduling row is the call span minus all three. Leaving the census out would".to_string()), "\n".to_string()), "    // count its windows twice. An engine that attributed more than its call took is incoherent; refuse".to_string()), "\n".to_string()), "    // rather than clamp the scheduling row to zero.".to_string()), "\n".to_string()), "    let attributed_in_call = engine_prepare_nanos + engine_eval_nanos + occurrence_census_nanos;".to_string()), "\n".to_string()), "    if attributed_in_call > schedule_span_nanos {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: native driver cost OverAttributed inside the engine call {{ attributed_nanos: {}, schedule_span_nanos: {} }}\", attributed_in_call, schedule_span_nanos);".to_string()), "\n".to_string()), "        std::process::exit(1);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;".to_string()), "\n".to_string()), "    for line in native_demand_occurrence_census_lines(run.clone(), universe.modules.len() as i64).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for n in native_demand_prepare_samples(run.clone()).iter() {".to_string()), "\n".to_string()), "        prepare_samples.push((*n).max(0) as u128);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for n in native_demand_eval_samples(run.clone()).iter() {".to_string()), "\n".to_string()), "        eval_samples.push((*n).max(0) as u128);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let prepare_ok: u64 = native_demand_prepare_ok(run.clone()).max(0) as u64;".to_string()), "\n".to_string()), "    let prepare_refused: u64 = native_demand_prepare_refused(run.clone()).max(0) as u64;".to_string()), "\n".to_string()), "    let driver_collection_nanos = cpu_span_nanos(collection_started);".to_string()), "\n".to_string()), "    // THE DRIVER REFUSES A RUN WHOSE CLOCK NEVER ADVANCED rather than reporting its zeros. A".to_string()), "\n".to_string()), "    // realization whose body returns a constant zero leaves every transition CLASSIFIED and".to_string()), "\n".to_string()), "    // VALIDLY OBSERVED, so completeness answers true over totals that are all zero, and the".to_string()), "\n".to_string()), "    // emitted-body membership check cannot see it either -- that check establishes a bridge HAS".to_string()), "\n".to_string()), "    // a body, never that the body measures. Reporting those zeros would be a fabricated".to_string()), "\n".to_string()), "    // measurement presented as an observation, so the line stops here with a located cause.".to_string()), "\n".to_string()), "    if !native_demand_observation_progressed(run.clone()) {".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-demand-schedule] REFUSED: transitions={} executed and the elapsed observation accumulated no span; the emitted monotonic clock is not advancing\",".to_string()), "\n".to_string()), "            native_demand_run_transition_count(run.clone()),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        std::process::exit(1);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE EVENT TRACE, SEPARATE FROM THE RESULT. One line per admission in admission order, each".to_string()), "\n".to_string()), "    // naming the demand key and the state it settled into. It is the schedule's receipt and it is".to_string()), "\n".to_string()), "    // deliberately not the population: two runs agreeing on rows while disagreeing on order is a".to_string()), "\n".to_string()), "    // real difference, and a receipt that carried only rows could not report it.".to_string()), "\n".to_string()), "    let relay_started = cpu_mark();".to_string()), "\n".to_string()), "    for line in native_demand_run_receipt_lines(run.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-demand-transition] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    eprintln!(".to_string()), "\n".to_string()), "        \"[native-demand-schedule] demands={} admitted={} readiness_derivations={} schedule_span_nanos={} engine_bookkeeping_nanos={}\",".to_string()), "\n".to_string()), "        native_demand_run_demand_count(run.clone()),".to_string()), "\n".to_string()), "        native_demand_run_transition_count(run.clone()),".to_string()), "\n".to_string()), "        native_demand_run_readiness_derivations(run.clone()),".to_string()), "\n".to_string()), "        schedule_span_nanos,".to_string()), "\n".to_string()), "        engine_bookkeeping_nanos,".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    relay_emit_nanos += cpu_span_nanos(relay_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary".to_string()), "\n".to_string()), "    // over it. The controls are executed here because they are receipt inputs, not universe members.".to_string()), "\n".to_string()), "    let admission_started = cpu_mark();".to_string()), "\n".to_string()), "    let receipt = native_lane_receipt(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        Rc::new(population.clone().into()),".to_string()), "\n".to_string()), "        native_lane_controls(context.clone()),".to_string()), "\n".to_string()), "        Rc::new(facts),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let admission = native_route_admission(receipt.clone());".to_string()), "\n".to_string()), "    let summary = native_route_admission_summary(admission.clone());".to_string()), "\n".to_string()), "    let file_refusal_tally: Vec<serde_json::Value> = native_route_file_refusal_tally(receipt.clone())".to_string()), "\n".to_string()), "        .iter()".to_string()), "\n".to_string()), "        .map(|row| serde_json::json!(row))".to_string()), "\n".to_string()), "        .collect();".to_string()), "\n".to_string()), "    let admitted = native_route_admitted(admission.clone());".to_string()), "\n".to_string()), "    // THE FRONTIER RATCHET, OVER THE SAME RECEIPT AND INSIDE THE SAME SPAN: the verdict is".to_string()), "\n".to_string()), "    // v2.workflow.native_frontier_ratchet's, and this main only carries its word to the terminal marker".to_string()), "\n".to_string()), "    // and its lines to stderr. It is measured under receipt_admission because it is judgement of".to_string()), "\n".to_string()), "    // the receipt, the row that span already names.".to_string()), "\n".to_string()), "    let frontier = native_frontier_verdict(receipt.clone(), admission.clone(), pattern.clone());".to_string()), "\n".to_string()), "    let frontier_word = native_frontier_verdict_word(frontier.clone());".to_string()), "\n".to_string()), "    let admission_nanos = cpu_span_nanos(admission_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review".to_string()), "\n".to_string()), "    // 64181 named this span; #11105 made leaving it unattributed fatal). Every row the".to_string()), "\n".to_string()), "    // population carries is turned into JSON here and written to stdout, which is real work".to_string()), "\n".to_string()), "    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never".to_string()), "\n".to_string()), "    // derived as parent minus the others: a row defined as the remainder would force the".to_string()), "\n".to_string()), "    // residual to zero and make the tolerance arm unfireable by construction.".to_string()), "\n".to_string()), "    let serialization_started = cpu_mark();".to_string()), "\n".to_string()), "    for refusal in receipt.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for row in population.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::to_string(row).unwrap());".to_string()), "\n".to_string()), "        // THE OPERATOR'S LINE, BESIDE THE PERSISTED ROW. The JSON above is the receipt; this is".to_string()), "\n".to_string()), "        // the same value rendered by the authority for a reader of the command's output, so a".to_string()), "\n".to_string()), "        // row that did not pass names its subject, stage, cause and position without anyone".to_string()), "\n".to_string()), "        // re-deriving them from the bytes just written. Passing rows print nothing here: the".to_string()), "\n".to_string()), "        // terminal marker carries their count. EXHAUSTIVE ON PURPOSE -- a verdict arm added to".to_string()), "\n".to_string()), "        // the vocabulary must decide here whether it is operator-visible.".to_string()), "\n".to_string()), "        match &*row.verdict {".to_string()), "\n".to_string()), "            NativeTestVerdict::NativeTestPassed => {}".to_string()), "\n".to_string()), "            NativeTestVerdict::NativeTestReturnedFalse".to_string()), "\n".to_string()), "            | NativeTestVerdict::NativeTestReturnedOther".to_string()), "\n".to_string()), "            | NativeTestVerdict::NativeTestRefused { .. } => {".to_string()), "\n".to_string()), "                eprintln!(\"[native-verdict] {}\", native_route_member_row_text(row.clone()));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for line in native_frontier_report_lines(frontier.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-frontier] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for line in native_frontier_proposal_file_lines(receipt.clone(), frontier.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-frontier-roster] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let row_serialization_nanos = cpu_span_nanos(serialization_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and".to_string()), "\n".to_string()), "    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows".to_string()), "\n".to_string()), "    // this route pays that a driver handed a universe file does not (universe_derivation,".to_string()), "\n".to_string()), "    // receipt_admission) are members of the same exclusive sum, so an over-attribution through".to_string()), "\n".to_string()), "    // either is caught here rather than by a check of its own.".to_string()), "\n".to_string()), "    prepare_samples.sort_unstable();".to_string()), "\n".to_string()), "    eval_samples.sort_unstable();".to_string()), "\n".to_string()), "    let parent_span_nanos = cpu_span_nanos(driver_start);".to_string()), "\n".to_string()), "    let parent_wall_nanos = span_nanos(driver_wall_start);".to_string()), "\n".to_string()), "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to".to_string()), "\n".to_string()), "    // std.compiler_entry makes THIS match refuse to compile until the driver says what".to_string()), "\n".to_string()), "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is".to_string()), "\n".to_string()), "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal".to_string()), "\n".to_string()), "    // did silently, three folds running.".to_string()), "\n".to_string()), "    let exclusive = native_driver_exclusive_rows(move |k| match k {".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(native_cost_i64(demand_scheduling_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(native_cost_i64(driver_collection_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(native_cost_i64(occurrence_census_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;".to_string()), "\n".to_string()), "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;".to_string()), "\n".to_string()), "    let accounting = native_driver_cost_account(".to_string()), "\n".to_string()), "        nanosecond(native_cost_i64(parent_span_nanos)),".to_string()), "\n".to_string()), "        exclusive.clone(),".to_string()), "\n".to_string()), "        native_driver_cost_remainder_tolerance_nanos(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    // The remainder is the residual the accounting itself returns, never parent minus sum: on".to_string()), "\n".to_string()), "    // over-attributed arm there IS no remainder, and a clamped zero there would be a".to_string()), "\n".to_string()), "    // plausible number standing where the measurement is incoherent.".to_string()), "\n".to_string()), "    let (verdict, remainder_nanos) = match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostOverAttributed\"#, serde_json::Value::Null),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostRemainderExceedsTolerance\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostReconciled\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let identities = universe.identities.len() as u64;".to_string()), "\n".to_string()), "    let eval_mean = if eval_samples.is_empty() { 0 } else { evaluate_total_nanos / eval_samples.len() as u128 };".to_string()), "\n".to_string()), "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_total_nanos / prepare_samples.len() as u128 };".to_string()), "\n".to_string()), "    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The field names".to_string()), "\n".to_string()), "    // were written once to build NativeDriverExclusiveRows and again to render it, which is the".to_string()), "\n".to_string()), "    // second spelling this file warns about for prose, applied to the emitted object: a driver".to_string()), "\n".to_string()), "    // gaining a phase would have updated the struct and left the receipt short. Serializing the".to_string()), "\n".to_string()), "    // value carries the row set from the type, so the JSON cannot disagree with the fold. The".to_string()), "\n".to_string()), "    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the".to_string()), "\n".to_string()), "    // unit travels with the number, which is the point of the type.".to_string()), "\n".to_string()), "    // A NON-RECONCILED ARM IS A PROCESS REFUSAL (#11105, review 63891). The receipt is".to_string()), "\n".to_string()), "    // printed first so the numbers that caused the refusal are on the wire, and THEN the".to_string()), "\n".to_string()), "    // line stops: a verdict string with exit 0 is the inert lens DESIGN section 6 names.".to_string()), "\n".to_string()), "    // The full-N run of this route refused here on 158600186 ns against a 50000000 ns".to_string()), "\n".to_string()), "    // tolerance before row_serialization was a measured row, which is what put that row on".to_string()), "\n".to_string()), "    // the type rather than a wider tolerance on this arm.".to_string()), "\n".to_string()), "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"basis\": \"native_driver_thread_cpu\",".to_string()), "\n".to_string()), "        \"basis_note\": \"single-threaded SourceRootEvalDriver thread CPU (CLOCK_THREAD_CPUTIME_ID); exclusive rows partition parent_span_nanos; parent_wall_nanos is an observation, never judged\",".to_string()), "\n".to_string()), "        \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "        \"head\": head,".to_string()), "\n".to_string()), "        \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "        \"verdict\": verdict,".to_string()), "\n".to_string()), "        \"tolerance_nanos\": tolerance_nanos,".to_string()), "\n".to_string()), "        \"parent_span_nanos\": parent_span_nanos,".to_string()), "\n".to_string()), "        \"parent_wall_nanos\": parent_wall_nanos,".to_string()), "\n".to_string()), "        \"exclusive\": exclusive.rows.iter().map(|r| (".to_string()), "\n".to_string()), "            native_driver_exclusive_row_name(r.key.clone()),".to_string()), "\n".to_string()), "            serde_json::json!(r.nanos),".to_string()), "\n".to_string()), "        )).collect::<serde_json::Map<String, serde_json::Value>>(),".to_string()), "\n".to_string()), "        \"sum_exclusive_nanos\": exclusive_sum,".to_string()), "\n".to_string()), "        \"remainder_nanos\": remainder_nanos,".to_string()), "\n".to_string()), "        \"namespace_population\": namespace_population,".to_string()), "\n".to_string()), "        \"closure_reads\": closure_reads,".to_string()), "\n".to_string()), "        \"identities\": identities,".to_string()), "\n".to_string()), "        \"unique_modules\": universe.modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "        \"prepare_ok\": prepare_ok,".to_string()), "\n".to_string()), "        \"prepare_refused\": prepare_refused,".to_string()), "\n".to_string()), "        \"prepare_mean_nanos\": prepare_mean,".to_string()), "\n".to_string()), "        \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2),".to_string()), "\n".to_string()), "        \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20),".to_string()), "\n".to_string()), "        \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"eval_mean_nanos\": eval_mean,".to_string()), "\n".to_string()), "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),".to_string()), "\n".to_string()), "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),".to_string()), "\n".to_string()), "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        \"rss_bytes\": proc_status_kib(\"VmRSS\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}\",".to_string()), "\n".to_string()), "                nanosecond_count(sum_exclusive.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(parent_span.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }} -- unattributed driver work; name the span, do not widen the tolerance\",".to_string()), "\n".to_string()), "                nanosecond_count(residual.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(tolerance.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "            \"rows\": population.len(),".to_string()), "\n".to_string()), "            \"universe\": universe.identities.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_refusal_tally\": file_refusal_tally,".to_string()), "\n".to_string()), "            \"advised_files\": context.accepted_file_advisories.len(),".to_string()), "\n".to_string()), "            \"admitted\": admitted,".to_string()), "\n".to_string()), "            \"summary\": summary,".to_string()), "\n".to_string()), "            \"frontier\": frontier_word,".to_string()), "\n".to_string()), "        })".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    if admitted {".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(1);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = native_driver_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    if let ProcessExit::ExitFailure { code, reason } = &*native_driver_plan_exit(plan.clone()) {".to_string()), "\n".to_string()), "        eprintln!(\"{reason}\");".to_string()), "\n".to_string()), "        std::process::exit(*code as i32);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let source_roots: Vec<String> = native_driver_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    match &*plan {".to_string()), "\n".to_string()), "        NativeDriverPlan::NativeDriverPlanRefused { reason, detail } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: native driver plan refused ({reason:?}) but its exit was success -- {detail}\");".to_string()), "\n".to_string()), "            std::process::exit(70);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverPlan::NativeDriverPlanned { verb } => {".to_string()), "\n".to_string()), "            let verb: &NativeDriverVerb = verb;".to_string()), "\n".to_string()), "            match verb {".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensus { .. } => run_census(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusResolve { .. } => run_census_resolve(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusInfer { .. } => run_census_infer(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusVerb { verb, .. } => run_census_verb(verb, &source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusScoped { subject, subjects_rest, against, .. } => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverAdjudicate { facts_path, pattern, .. } => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.".to_string(), "\n".to_string()), "\n".to_string()), "#![allow(unused_parens, clippy::all, clippy::disallowed_macros)]".to_string()), "\n".to_string()), "\n".to_string()), "use std::rc::Rc;".to_string()), "\n".to_string()), "use std::time::Instant;".to_string()), "\n".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), native_route_mod.clone()), "::{NativeRouteEmittedBuild, NativeRouteMalformedControl, NativeRouteOldRouteControl};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_census_module_completeness, native_census_module_resolution, native_census_modules,".to_string()), "\n".to_string()), "    native_census_module_inference, native_census_infer_type_contribution, native_census_infer_binding_lines,".to_string()), "\n".to_string()), "    native_census_infer_completeness, native_census_infer_accepted_frontier, native_census_cause_groups_add_infer_module,".to_string()), "\n".to_string()), "    native_census_subject_closure, native_census_root_subject_membership, native_census_subject_label,".to_string()), "\n".to_string()), "    native_census_residual_rows,".to_string()), "\n".to_string()), "    native_census_cause_groups_add_module, native_census_cause_groups_from_file_refusals,".to_string()), "\n".to_string()), "    native_census_cause_group_rows, native_census_closure_index, native_census_roots_ranked,".to_string()), "\n".to_string()), "    native_census_verb_output, NativeCensusVerbWord, native_self_host_frontier_output,".to_string()), "\n".to_string()), "    native_lane_acquire, native_lane_acquired, native_lane_census_ingest, native_lane_census_scoped_ingest,".to_string()), "\n".to_string()), "    NativeCensusScope, NativeCensusScoped,".to_string()), "\n".to_string()), "    census_module_obligation_rows, census_scoped_run_record, census_comparable_record, census_comparable_diff,".to_string()), "\n".to_string()), "    CensusObligationRow, CensusComparableRecord, CensusRunDiffResult,".to_string()), "\n".to_string()), "    native_lane_controls, native_lane_file_refusal_index, native_lane_receipt,".to_string()), "\n".to_string()), "    native_test_context_absorb,".to_string()), "\n".to_string()), "    native_test_context_finish, native_test_context_from_ingest, native_test_context_state_empty,".to_string()), "\n".to_string()), "    native_test_front_end_prepare,".to_string()), "\n".to_string()), "    native_driver_parse, native_driver_plan_exit, native_driver_plan_source_roots,".to_string()), "\n".to_string()), "    NativeDriverPlan, NativeDriverVerb,".to_string()), "\n".to_string()), "    NativeCensusModuleOutcome, NativeInferCensusOutcome,".to_string()), "\n".to_string()), "    NativeLaneAcquisition, NativeLaneHostFacts,".to_string()), "\n".to_string()), "    NativeRouteMemberRow,".to_string()), "\n".to_string()), "    native_demand_eval_nanos, native_demand_eval_samples,".to_string()), "\n".to_string()), "    native_demand_prepare_nanos, native_demand_prepare_samples,".to_string()), "\n".to_string()), "    native_demand_prepare_ok, native_demand_prepare_refused,".to_string()), "\n".to_string()), "    native_demand_scheduling_nanos,".to_string()), "\n".to_string()), "    native_demand_occurrence_census_lines, native_demand_occurrence_census_nanos,".to_string()), "\n".to_string()), "    native_demand_run_demand_count, native_demand_run_readiness_derivations,".to_string()), "\n".to_string()), "    native_demand_run_receipt_lines, native_demand_run_rows,".to_string()), "\n".to_string()), "    native_demand_observation_progressed,".to_string()), "\n".to_string()), "    native_demand_run_transition_count, native_demand_schedule_universe,".to_string()), "\n".to_string()), "    native_demand_tested_tree_input,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_program_assembly::{".to_string()), "\n".to_string()), "    program_assembly_allocator_next, program_assembly_parsed_alloc,".to_string()), "\n".to_string()), "    program_assembly_phase_normalize_seeded, program_assembly_normalized_outcome,".to_string()), "\n".to_string()), "    program_assembly_normalized_alloc, program_assembly_normalized_spans, program_assembly_ingest_scope_outcome,".to_string()), "\n".to_string()), "    program_assembly_phase_parse_seeded,".to_string()), "\n".to_string()), "    program_assembly_phase_token_count, program_assembly_phase_tokenize,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), native_route_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_route_admission, native_route_admission_summary, native_route_admitted,".to_string()), "\n".to_string()), "    native_route_file_refusal_tally, native_route_member_row_text,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), frontier_mod.clone()), "::{".to_string()), "\n".to_string()), "    native_frontier_proposal_file_lines, native_frontier_report_lines, native_frontier_verdict,".to_string()), "\n".to_string()), "    native_frontier_verdict_word,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_native_test_vocabulary::NativeTestVerdict;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_compiler_source_authority::DagSourceReadWitness;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v2_std_diagnostic::Outcome;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_process::ProcessExit;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::extdeps_bazel_target_pattern::TargetPattern;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::{".to_string()), "\n".to_string()), "    native_driver_cost_account, native_driver_cost_remainder_tolerance_nanos,".to_string()), "\n".to_string()), "    native_driver_exclusive_sum, NativeDriverCostAccounting,".to_string()), "\n".to_string()), "    native_driver_exclusive_rows, native_driver_exclusive_row_name,".to_string()), "\n".to_string()), "    NativeDriverExclusiveRowKey,".to_string()), "\n".to_string()), "};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_measure::{nanosecond, nanosecond_count};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v1_rt::observed_thread_cpu_nanos;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::v1_rt::bytes_identity_hash;".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), type_census_mod.clone()), "::{type_census_receipt, type_census_run_add, type_census_run_empty};".to_string()), "\n".to_string()), "use ".to_string()), crate_name.clone()), "::std_compiler_entry::NativeClaimTerminal;".to_string()), "\n".to_string()), "\n".to_string()), emit_host_acquisition_rs(crate_name.clone())), "fn host_fact(facts: &std::collections::HashMap<String, String>, key: &str) -> String {".to_string()), "\n".to_string()), "    match facts.get(key) {".to_string()), "\n".to_string()), "        Some(value) => value.clone(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host facts file carries no {key} row\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn host_fact_int(facts: &std::collections::HashMap<String, String>, key: &str) -> i64 {".to_string()), "\n".to_string()), "    let value = host_fact(facts, key);".to_string()), "\n".to_string()), "    match value.parse::<i64>() {".to_string()), "\n".to_string()), "        Ok(parsed) => parsed,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: host fact {key} is not an integer: {value:?} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn read_host_facts(path: &str) -> NativeLaneHostFacts {".to_string()), "\n".to_string()), "    let text = match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "        Ok(text) => text,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: could not read host facts file {path}: {cause}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut facts: std::collections::HashMap<String, String> = std::collections::HashMap::new();".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if line.is_empty() {".to_string()), "\n".to_string()), "            continue;".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        match line.split_once('\\t') {".to_string()), "\n".to_string()), "            Some((key, value)) if !key.is_empty() => {".to_string()), "\n".to_string()), "                if facts.insert(key.to_string(), value.to_string()).is_some() {".to_string()), "\n".to_string()), "                    eprintln!(\"REFUSED: duplicate host fact row: {key}\");".to_string()), "\n".to_string()), "                    std::process::exit(2);".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            _ => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: malformed host fact line (expected key<TAB>value): {line}\");".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let malformed_path = host_fact(&facts, \"malformed_control_path\");".to_string()), "\n".to_string()), "    let malformed_reason = host_fact(&facts, \"malformed_control_reason\");".to_string()), "\n".to_string()), "    let malformed_control = if malformed_path.is_empty() {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenAccepted".to_string()), "\n".to_string()), "    } else {".to_string()), "\n".to_string()), "        NativeRouteMalformedControl::MalformedSpecimenRefused {".to_string()), "\n".to_string()), "            path: malformed_path,".to_string()), "\n".to_string()), "            reason: malformed_reason,".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let old_route_disposition = host_fact(&facts, \"old_route_disposition\");".to_string()), "\n".to_string()), "    let old_route_executable = host_fact(&facts, \"old_route_executable\");".to_string()), "\n".to_string()), "    let old_route_control = match old_route_disposition.as_str() {".to_string()), "\n".to_string()), "        \"withdrawn\" => NativeRouteOldRouteControl::OldRouteWithdrawn {".to_string()), "\n".to_string()), "            withdrawn_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        \"not_present_at_window\" => NativeRouteOldRouteControl::OldRouteNotPresentAtWindow {".to_string()), "\n".to_string()), "            expected_executable: old_route_executable,".to_string()), "\n".to_string()), "        },".to_string()), "\n".to_string()), "        other => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: old_route_disposition names no control this route can record: {other} -- expected withdrawn or not_present_at_window\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // The emitted build is the host's observation of the cargo spawn this binary is the".to_string()), "\n".to_string()), "    // product of: six rows, the argv as one row per word under a length row. A count that".to_string()), "\n".to_string()), "    // does not parse, or an index row it promises that is missing, refuses like any other".to_string()), "\n".to_string()), "    // missing fact; nothing is defaulted.".to_string()), "\n".to_string()), "    let cargo_argv_len = host_fact_int(&facts, \"cargo_argv_len\");".to_string()), "\n".to_string()), "    let mut cargo_argv: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for index in 0..cargo_argv_len {".to_string()), "\n".to_string()), "        cargo_argv.push(host_fact(&facts, &format!(\"cargo_argv_{index}\")));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let emitted_build = NativeRouteEmittedBuild {".to_string()), "\n".to_string()), "        cargo_argv: Rc::new(cargo_argv.into()),".to_string()), "\n".to_string()), "        rustflags: host_fact(&facts, \"rustflags\"),".to_string()), "\n".to_string()), "        compiler_path: host_fact(&facts, \"compiler_path\"),".to_string()), "\n".to_string()), "        rustc_identity: host_fact(&facts, \"rustc_identity\"),".to_string()), "\n".to_string()), "        exit_status: host_fact_int(&facts, \"exit_status\"),".to_string()), "\n".to_string()), "        warning_count: host_fact_int(&facts, \"warning_count\"),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    NativeLaneHostFacts {".to_string()), "\n".to_string()), "        tested_tree: host_fact(&facts, \"tested_tree\"),".to_string()), "\n".to_string()), "        preparation_seed_identity: host_fact(&facts, \"preparation_seed_identity\"),".to_string()), "\n".to_string()), "        emitted_closure_identity: host_fact(&facts, \"emitted_closure_identity\"),".to_string()), "\n".to_string()), "        executable_path: host_fact(&facts, \"executable_path\"),".to_string()), "\n".to_string()), "        executable_identity: host_fact(&facts, \"executable_identity\"),".to_string()), "\n".to_string()), "        old_route_control: Rc::new(old_route_control),".to_string()), "\n".to_string()), "        malformed_control: Rc::new(malformed_control),".to_string()), "\n".to_string()), "        emitted_build: Rc::new(emitted_build),".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn run_census(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // GROUPED BY THE FATAL REASON, BY THE FOLD THAT OWNS THE GROUPING".to_string()), "\n".to_string()), "    // (v2.compiler.source_root_eval native_census_cause_groups_add); this main only prints the groups.".to_string()), "\n".to_string()), "    // Each root carries its closure fan-out (v2.compiler.source_root_eval native_census_closure_index);".to_string()), "\n".to_string()), "    // this mode does not resolve, so no root claims an observed resolve refusal.".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        native_lane_file_refusal_index(context.file_refusals.clone()),".to_string()), "\n".to_string()), "        native_census_modules(ingest.clone()),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure, false);".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"_terminal\": \"complete\", \"mode\": \"census\", \"file_refusals\": context.file_refusals.len(), \"advised_files\": context.accepted_file_advisories.len(), \"cause_groups\": cause_groups.len(), \"roots\": roots.len() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// THE THIRD MODE: THE WHOLE TREE, RESOLVED PER MODULE.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// WHY IT IS NOT A FLAG ON `census`. That mode has a live consumer -- the malformed control,".to_string()), "\n".to_string()), "// which the host runner spawns over a ONE-FILE scratch root and reads one per-file refusal".to_string()), "\n".to_string()), "// from -- and teaching it to resolve would make that control pay a whole-tree resolve to".to_string()), "\n".to_string()), "// learn a fact the front end already answered. Two modes because they are two subjects: a".to_string()), "\n".to_string()), "// roster of front-end refusals, and a roster of resolve refusals over every ingested module.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// WHY IT IS NOT THE `adjudicate` LOOP WIDENED. That loop walks `universe.modules` -- the".to_string()), "\n".to_string()), "// v2.test.* modules discovery enrolled rows for -- over a context folded from the import".to_string()), "\n".to_string()), "// CLOSURE of those modules. Both narrowings are correct for what adjudication asks and wrong".to_string()), "\n".to_string()), "// for a census: a residual reported over the closure of the test corpus is not a residual over".to_string()), "\n".to_string()), "// the tree, and the absence of a refusal in a population that was never resolved establishes".to_string()), "\n".to_string()), "// nothing about the dependents outside it.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE RESOLVED TREE IS NOT KEPT. NativeCensusModuleOutcome carries the diagnostics of a refusal".to_string()), "\n".to_string()), "// and nothing on the accepted arm, so each module's tree dies with the call that made it. The".to_string()), "\n".to_string()), "// adjudicating loop drops its tree explicitly because it must hold one to infer from; this loop".to_string()), "\n".to_string()), "// never holds one, which is the property that makes the whole-tree grain affordable at all.".to_string()), "\n".to_string()), "fn run_census_resolve(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let load_started = Instant::now();".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let load_nanos = span_nanos(load_started);".to_string()), "\n".to_string()), "    let context_started = Instant::now();".to_string()), "\n".to_string()), "    // MUTABLE BECAUSE IT IS THREADED: each module's resolution returns the context it ended".to_string()), "\n".to_string()), "    // with, carrying the module namespace provider (v2.compiler.name_resolve ResolutionContext".to_string()), "\n".to_string()), "    // namespaces), and the next module is resolved over that one -- a namespace is produced at".to_string()), "\n".to_string()), "    // most once per ingest only for a loop that binds what it gets back.".to_string()), "\n".to_string()), "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let context_nanos = span_nanos(context_started);".to_string()), "\n".to_string()), "    // The front-end refusals are reported in the same shape `census` reports them, because they".to_string()), "\n".to_string()), "    // are the same fact read from the same context: a module whose file the context refused is".to_string()), "\n".to_string()), "    // attributed there and is NOT re-reported below as a resolve refusal it never reached.".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE ADVISORY POPULATION IS THE SAME CONTEXT FACT `census` REPORTS, printed in the same".to_string()), "\n".to_string()), "    // shape, so a saved whole-tree receipt carries it without a second pass. Its count is taken".to_string()), "\n".to_string()), "    // here, from the context that produced the rows, not from the threaded one at the end.".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let advised_files = context.accepted_file_advisories.len();".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    let roster_started = Instant::now();".to_string()), "\n".to_string()), "    let modules = native_census_modules(ingest.clone());".to_string()), "\n".to_string()), "    let roster_nanos = span_nanos(roster_started);".to_string()), "\n".to_string()), "    // THE CAUSE GROUPS START FROM THE FRONT-END REFUSALS -- each a root carrying its closure".to_string()), "\n".to_string()), "    // fan-out -- and take each module as it is resolved: a cascade member once under its root,".to_string()), "\n".to_string()), "    // any other refusal per chain (v2.compiler.source_root_eval native_census_cause_groups_add_module).".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());".to_string()), "\n".to_string()), "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);".to_string()), "\n".to_string()), "    let mut resolve_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut resolve_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut resolved_ok: u64 = 0;".to_string()), "\n".to_string()), "    let mut file_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut resolve_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut residual_rows: u64 = 0;".to_string()), "\n".to_string()), "    // THE PER-MODULE LINE IS ALSO THE RUN'S PROGRESS: `index` of `of`, so a reader of a multi-hour".to_string()), "\n".to_string()), "    // census can tell a slow run from a hung one while it runs.".to_string()), "\n".to_string()), "    let census_modules_total = modules.len();".to_string()), "\n".to_string()), "    for (census_module_index, entry) in modules.iter().enumerate() {".to_string()), "\n".to_string()), "        let resolve_started = Instant::now();".to_string()), "\n".to_string()), "        let step = native_census_module_resolution(".to_string()), "\n".to_string()), "            context.clone(),".to_string()), "\n".to_string()), "            refusal_index.clone(),".to_string()), "\n".to_string()), "            entry.clone(),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        context = step.context.clone();".to_string()), "\n".to_string()), "        let outcome = step.outcome.clone();".to_string()), "\n".to_string()), "        let module_resolve_nanos = span_nanos(resolve_started);".to_string()), "\n".to_string()), "        groups = native_census_cause_groups_add_module(groups.clone(), closure.clone(), entry.clone(), step.clone());".to_string()), "\n".to_string()), "        let outcome_label = match &*outcome {".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleFileRefused => {".to_string()), "\n".to_string()), "                file_refused += 1;".to_string()), "\n".to_string()), "                \"file_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleResolved => {".to_string()), "\n".to_string()), "                resolved_ok += 1;".to_string()), "\n".to_string()), "                \"resolved\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeCensusModuleOutcome::NativeCensusModuleResolveRefused { first, rest, .. } => {".to_string()), "\n".to_string()), "                resolve_refused += 1;".to_string()), "\n".to_string()), "                // ONE ROW PER FAILURE CHAIN, WHICH IS ONE ROW PER REFUSED OCCURRENCE. The rows are".to_string()), "\n".to_string()), "                // written as they are decided rather than accumulated: the census is over the".to_string()), "\n".to_string()), "                // whole tree, and a population held to the end is a second corpus-sized".to_string()), "\n".to_string()), "                // allocation beside the context that produced it.".to_string()), "\n".to_string()), "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() {".to_string()), "\n".to_string()), "                    residual_rows += 1;".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_residual\": row }));".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                \"resolve_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        resolve_total_nanos += module_resolve_nanos;".to_string()), "\n".to_string()), "        resolve_samples.push(module_resolve_nanos);".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-census-resolve] {}\",".to_string()), "\n".to_string()), "            serde_json::json!({".to_string()), "\n".to_string()), "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "                \"module\": entry.module.clone(),".to_string()), "\n".to_string()), "                \"path\": entry.path.clone(),".to_string()), "\n".to_string()), "                \"resolve_nanos\": module_resolve_nanos,".to_string()), "\n".to_string()), "                \"outcome\": outcome_label,".to_string()), "\n".to_string()), "                \"occurrence_completeness\": native_census_module_completeness(outcome.clone()),".to_string()), "\n".to_string()), "                \"index\": census_module_index + 1,".to_string()), "\n".to_string()), "                \"of\": census_modules_total,".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    resolve_samples.sort_unstable();".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE ROOTS, RANKED BY CLOSURE FAN-OUT (v2.compiler.source_root_eval native_census_roots_ranked).".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE TERMINAL LINE CARRIES THE COST AND THE POPULATION TOGETHER, because the reading this".to_string()), "\n".to_string()), "    // mode exists to support is whether a whole-tree resolve is affordable at all, and a residual".to_string()), "\n".to_string()), "    // count without the wall and the peak beside it cannot answer that.".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"census-resolve\",".to_string()), "\n".to_string()), "            \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "            \"modules\": modules.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": context.file_refusals.len(),".to_string()), "\n".to_string()), "            \"advised_files\": advised_files,".to_string()), "\n".to_string()), "            \"resolved\": resolved_ok,".to_string()), "\n".to_string()), "            \"file_refused\": file_refused,".to_string()), "\n".to_string()), "            \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "            \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "            \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "            \"roots\": roots.len(),".to_string()), "\n".to_string()), "            \"load_nanos\": load_nanos,".to_string()), "\n".to_string()), "            \"context_nanos\": context_nanos,".to_string()), "\n".to_string()), "            \"roster_nanos\": roster_nanos,".to_string()), "\n".to_string()), "            \"resolve_total_nanos\": resolve_total_nanos,".to_string()), "\n".to_string()), "            \"resolve_p50_nanos\": native_cost_quantile_nanos(&resolve_samples, 1, 2),".to_string()), "\n".to_string()), "            \"resolve_p95_nanos\": native_cost_quantile_nanos(&resolve_samples, 19, 20),".to_string()), "\n".to_string()), "            \"resolve_max_nanos\": resolve_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "// THE NATIVE CENSUS VERBS (the words of `gunbc.native_census_verb`): ONE run function.".to_string()), "\n".to_string()), "// v2.compiler.source_root_eval native_census_verb_output decides every line and the exit from the verb".to_string()), "\n".to_string()), "// word; this function only reads the ingest, prints and exits.".to_string()), "\n".to_string()), "fn run_census_verb(verb: &NativeCensusVerbWord, source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let reads = read_census_ingest(source_roots);".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let output = native_census_verb_output(verb.clone(), ingest);".to_string()), "\n".to_string()), "    for line in output.lines.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(output.exit as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE SELF-HOST FRONTIER MODE (v2.compiler.source_root_eval native_self_host_frontier_output).".to_string()), "\n".to_string()), "// The fold decides every line and the exit -- 0 held, 1 an Unclassified file or a stale row, 2 no".to_string()), "\n".to_string()), "// observation -- and this function only reads the three operand files, prints and exits.".to_string()), "\n".to_string()), "fn run_self_host_frontier(manifest_path: &str, verdict_path: &str, observed_path: &str) {".to_string()), "\n".to_string()), "    let read = |path: &str| -> String {".to_string()), "\n".to_string()), "        match std::fs::read_to_string(path) {".to_string()), "\n".to_string()), "            Ok(text) => text,".to_string()), "\n".to_string()), "            Err(err) => {".to_string()), "\n".to_string()), "                eprintln!(\"REFUSED: cannot read {}: {}\", path, err);".to_string()), "\n".to_string()), "                std::process::exit(2);".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let output = native_self_host_frontier_output(read(manifest_path), read(verdict_path), read(observed_path));".to_string()), "\n".to_string()), "    for line in output.lines.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(output.exit as i32);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE FIFTH MODE: THE WHOLE TREE, RESOLVED AND INFERRED PER MODULE (`census-infer`).".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// Every decision is a .dag fold: the per-module step (v2.compiler.source_root_eval".to_string()), "\n".to_string()), "// native_census_module_inference), the type-declaration census's contribution from it".to_string()), "\n".to_string()), "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and".to_string()), "\n".to_string()), "// terminal that run decides (v2.compiler.type_declaration_use_census). This loop reads the".to_string()), "\n".to_string()), "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's".to_string()), "\n".to_string()), "// trees live for one step; what is kept is the census's rows, not the trees.".to_string()), "\n".to_string()), "fn run_census_infer(source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    census_infer_walk(read_census_ingest(source_roots), None);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE SIXTH MODE: ONE SUBJECT'S ACQUIRED CLOSURE, RESOLVED AND INFERRED PER MODULE (`census-scoped`).".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// The population is the subject's closure as v2.compiler.module_acquisition acquires it around its".to_string()), "\n".to_string()), "// blocks (v2.compiler.compile native_lane_census_scoped_ingest): acquisition's own reads, never a".to_string()), "\n".to_string()), "// second walk of the roots. The scope line says whether that population is closed or blocked, and".to_string()), "\n".to_string()), "// where. The walk is census-infer's, without the type-declaration census and without the subject".to_string()), "\n".to_string()), "// annotation: every member is in the subject's closure by construction.".to_string()), "\n".to_string()), "// WHAT A SCOPED WALK CARRIES BESIDE ITS READS: the label it was given, the scope acquisition decided,".to_string()), "\n".to_string()), "// the member digests it printed (the record's revision is read off them), and the baseline record it".to_string()), "\n".to_string()), "// compares itself against, when one was named.".to_string()), "\n".to_string()), "// A BASELINE IS A PUBLISHED RUN RECORD (the host's CensusRunRecordFile), and the host alone decides".to_string()), "\n".to_string()), "// which one -- by the status field it wrote (latest_complete_census_record). This only reads the".to_string()), "\n".to_string()), "// census_run_comparable row back as the same type; a file without one is a stated cause, never an empty diff.".to_string()), "\n".to_string()), "fn census_baseline_record(path: &str) -> Result<Rc<CensusComparableRecord>, String> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(path).map_err(|cause| format!(\"reading {path}: {cause}\"))?;".to_string()), "\n".to_string()), "    let file: serde_json::Value = serde_json::from_str(&text).map_err(|cause| format!(\"{path} is not one JSON value: {cause}\"))?;".to_string()), "\n".to_string()), "    let row = file.get(\"rows\").and_then(|r| r.as_array()).and_then(|rows| rows.iter().find_map(|row| row.get(\"census_run_comparable\").cloned()))".to_string()), "\n".to_string()), "        .ok_or_else(|| format!(\"{path} carries no census_run_comparable row\"))?;".to_string()), "\n".to_string()), "    serde_json::from_value::<CensusComparableRecord>(row).map(Rc::new).map_err(|cause| format!(\"{path} census_run_comparable does not read back: {cause}\"))".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "struct CensusScopedWalk {".to_string()), "\n".to_string()), "    label: String,".to_string()), "\n".to_string()), "    scope: Rc<NativeCensusScope>,".to_string()), "\n".to_string()), "    digests: Vec<String>,".to_string()), "\n".to_string()), "    against: Option<String>,".to_string()), "\n".to_string()), "    subjects_rest: Vec<String>,".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn run_census_scoped(subject: &str, subjects_rest: &[String], against: Option<String>, source_roots: &[String]) {".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let scoped = read_census_scoped_ingest(subject, subjects_rest, source_roots);".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"census_scope\": scoped.scope.clone() }));".to_string()), "\n".to_string()), "    // WHICH SUBJECT OBSERVED EACH MEMBER (NativeCensusScoped.reach): one line per (subject, member), so a".to_string()), "\n".to_string()), "    // union run that read a member once still says which closures it belongs to.".to_string()), "\n".to_string()), "    for reach in scoped.reach.iter() {".to_string()), "\n".to_string()), "        for member in reach.members.iter() { println!(\"binding_subject\\t{}\\t{}\", reach.subject, member); }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE INPUTS THIS RUN READ, AS THE RUN READ THEM: one".to_string()), "\n".to_string()), "    // member line per acquired read, its bytes digested (v1_rt bytes_identity_hash) from the string every stage consumes,".to_string()), "\n".to_string()), "    // so the run record's identity is the content that was censused and never a second read of the roots.".to_string()), "\n".to_string()), "    let mut digests: Vec<String> = Vec::new();".to_string()), "\n".to_string()), "    for read in scoped.ingest.iter() {".to_string()), "\n".to_string()), "        let digest = bytes_identity_hash(read.source.carried.as_bytes());".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_member\": { \"compilation_unit\": read.compilation_unit.clone(), \"bytes\": read.source.carried.len(), \"fnv1a64\": digest.clone() } }));".to_string()), "\n".to_string()), "        digests.push(digest);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    census_infer_walk(scoped.ingest.iter().cloned().collect(), Some(CensusScopedWalk { label: subject.to_string(), scope: scoped.scope.clone(), digests, against, subjects_rest: subjects_rest.to_vec() }));".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE WALK BOTH CENSUS-INFER MODES SHARE. Every decision is a .dag fold: the per-module step (v2.compiler.compile".to_string()), "\n".to_string()), "// native_census_module_inference), the type-declaration census's contribution from it".to_string()), "\n".to_string()), "// (native_census_infer_type_contribution), the run it accumulates into and the receipt and".to_string()), "\n".to_string()), "// terminal that run decides (gunbc.instruments.type_declaration_use_census). This loop reads the".to_string()), "\n".to_string()), "// roots, threads the context, prints and sets the status -- the operations no fold can. A module's".to_string()), "\n".to_string()), "// trees live for one step; what is kept is the census's rows, not the trees. `scope` is absent for".to_string()), "\n".to_string()), "// the whole-corpus run, which also feeds the type census and marks each root against the subject".to_string()), "\n".to_string()), "// closure; a scoped run does neither, and its terminal names its scope instead, with the label it was".to_string()), "\n".to_string()), "// given so the instrument can check the subject it observed against the one it bound.".to_string()), "\n".to_string()), "fn census_infer_walk(reads: Vec<Rc<DagSourceReadWitness>>, scope: Option<CensusScopedWalk>) {".to_string()), "\n".to_string()), "    let corpus_reads = reads.len();".to_string()), "\n".to_string()), "    let ingest = Rc::new(im::vector::Vector::from(reads));".to_string()), "\n".to_string()), "    let mut context = match &*native_test_context_from_ingest(ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    // THE FRONT-END POPULATION IS PRINTED IN THE SHAPE census-resolve PRINTS IT: the same context fact.".to_string()), "\n".to_string()), "    for refusal in context.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let file_refusals = context.file_refusals.len();".to_string()), "\n".to_string()), "    let advised_files = context.accepted_file_advisories.len();".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    let modules = native_census_modules(ingest.clone());".to_string()), "\n".to_string()), "    // THE INFER CENSUS'S GROUPS START FROM THE FRONT-END ROOTS, as census-resolve's do, and take each".to_string()), "\n".to_string()), "    // module's step through ONE fold (v2.compiler.source_root_eval native_census_cause_groups_add_infer_module):".to_string()), "\n".to_string()), "    // a resolve refusal filed as census-resolve files it, an infer refusal as one Infer-stage row.".to_string()), "\n".to_string()), "    let closure = native_census_closure_index(context.clone(), refusal_index.clone(), modules.clone());".to_string()), "\n".to_string()), "    let mut groups = native_census_cause_groups_from_file_refusals(context.file_refusals.clone(), closure.clone(), true);".to_string()), "\n".to_string()), "    let mut run = type_census_run_empty();".to_string()), "\n".to_string()), "    let mut file_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut resolve_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut residual_rows: u64 = 0;".to_string()), "\n".to_string()), "    let mut inferred: u64 = 0;".to_string()), "\n".to_string()), "    let mut infer_refused: u64 = 0;".to_string()), "\n".to_string()), "    let mut obligation_rows: Vec<Rc<CensusObligationRow>> = Vec::new();".to_string()), "\n".to_string()), "    for entry in modules.iter() {".to_string()), "\n".to_string()), "        let started = Instant::now();".to_string()), "\n".to_string()), "        let step = native_census_module_inference(context.clone(), refusal_index.clone(), entry.clone());".to_string()), "\n".to_string()), "        context = step.context.clone();".to_string()), "\n".to_string()), "        groups = native_census_cause_groups_add_infer_module(groups.clone(), closure.clone(), entry.clone(), step.clone());".to_string()), "\n".to_string()), "        let outcome_label = match &*step.outcome {".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusFileRefused => { file_refused += 1; \"file_refused\" }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusResolveRefused { first, rest, .. } => {".to_string()), "\n".to_string()), "                resolve_refused += 1;".to_string()), "\n".to_string()), "                for row in native_census_residual_rows(context.positions.clone(), entry.clone(), first.clone(), rest.clone()).iter() {".to_string()), "\n".to_string()), "                    residual_rows += 1;".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_residual\": row }));".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                \"resolve_refused\"".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusInferred { .. } => { inferred += 1; \"inferred\" }".to_string()), "\n".to_string()), "            NativeInferCensusOutcome::NativeInferCensusInferRefused { .. } => { infer_refused += 1; \"infer_refused\" }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        if scope.is_some() {".to_string()), "\n".to_string()), "            for row in census_module_obligation_rows(refusal_index.clone(), entry.clone(), step.outcome.clone()).iter() {".to_string()), "\n".to_string()), "                obligation_rows.push(row.clone());".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        // THE OCCURRENCE-BINDING CENSUS'S ROWS (v2.compiler.occurrence_resolution_census), one line each, in".to_string()), "\n".to_string()), "        // both modes: a scoped run is how a module's bindings are read when the whole corpus does not fit.".to_string()), "\n".to_string()), "        for line in native_census_infer_binding_lines(entry.clone(), step.outcome.clone()).iter() {".to_string()), "\n".to_string()), "            println!(\"{}\", line);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        if scope.is_none() {".to_string()), "\n".to_string()), "            let contribution = native_census_infer_type_contribution(context.clone(), entry.clone(), step.outcome.clone());".to_string()), "\n".to_string()), "            run = type_census_run_add(run, contribution);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        eprintln!(\"[native-census-infer] {}\", serde_json::json!({".to_string()), "\n".to_string()), "            \"module\": entry.module.clone(),".to_string()), "\n".to_string()), "            \"path\": entry.path.clone(),".to_string()), "\n".to_string()), "            \"nanos\": span_nanos(started),".to_string()), "\n".to_string()), "            \"outcome\": outcome_label,".to_string()), "\n".to_string()), "            \"occurrence_completeness\": native_census_infer_completeness(step.outcome.clone()),".to_string()), "\n".to_string()), "            \"accepted_frontier\": native_census_infer_accepted_frontier(step.outcome.clone()),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let cause_groups = native_census_cause_group_rows(groups.clone());".to_string()), "\n".to_string()), "    for group in cause_groups.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"cause_group\": group }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let roots = native_census_roots_ranked(cause_groups.clone());".to_string()), "\n".to_string()), "    if let Some(walk) = scope {".to_string()), "\n".to_string()), "        let subject_label = walk.label.clone();".to_string()), "\n".to_string()), "        let scope = walk.scope.clone();".to_string()), "\n".to_string()), "        for root in roots.iter() {".to_string()), "\n".to_string()), "            println!(\"{}\", serde_json::json!({ \"census_root\": root }));".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        let (subject, acquisition, blocks) = match &*scope {".to_string()), "\n".to_string()), "            NativeCensusScope::NativeCensusScopeClosed { subject, .. } => (subject.clone(), \"closed\", 0),".to_string()), "\n".to_string()), "            NativeCensusScope::NativeCensusScopeBlocked { subject, blocked_rest, .. } => (subject.clone(), \"blocked\", 1 + blocked_rest.len()),".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        // THE RUN'S OWN RECORD, decided by v2.compiler.source_root_eval census_scoped_run_record from what this walk held.".to_string()), "\n".to_string()), "        // A record names ONE subject (CensusRunRecord.subject), so a union run over several prints none: its".to_string()), "\n".to_string()), "        // population is not that subject's closure, and a record claiming it would be a second meaning of the name.".to_string()), "\n".to_string()), "        let diff = if !walk.subjects_rest.is_empty() { \"union\" } else {".to_string()), "\n".to_string()), "        let record = census_scoped_run_record(scope.clone(), Rc::new(im::vector::Vector::from(obligation_rows.clone())), Rc::new(walk.digests.iter().cloned().collect()));".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_run_record\": record.clone() }));".to_string()), "\n".to_string()), "        // THE PROJECTION A LATER RUN READS BACK (census_comparable_record): plain data, so it deserializes".to_string()), "\n".to_string()), "        // without minting a sealed value, and census_comparable_diff compares exactly these fields.".to_string()), "\n".to_string()), "        let comparable = census_comparable_record(record.clone());".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_run_comparable\": comparable.clone() }));".to_string()), "\n".to_string()), "        // THE COMPARISON, when a baseline was named: census_run_diff decides every finding. A baseline that".to_string()), "\n".to_string()), "        // cannot be read as a completed record is reported as no comparison, never as an empty one.".to_string()), "\n".to_string()), "        match &walk.against {".to_string()), "\n".to_string()), "            None => \"none\",".to_string()), "\n".to_string()), "            Some(path) => match census_baseline_record(path) {".to_string()), "\n".to_string()), "                Err(cause) => {".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_diff_unavailable\": { \"against\": path, \"cause\": cause } }));".to_string()), "\n".to_string()), "                    \"unavailable\"".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "                Ok(before) => {".to_string()), "\n".to_string()), "                    let result = census_comparable_diff(before, comparable.clone());".to_string()), "\n".to_string()), "                    println!(\"{}\", serde_json::json!({ \"census_run_diff\": result.clone(), \"against\": path }));".to_string()), "\n".to_string()), "                    match &*result {".to_string()), "\n".to_string()), "                        CensusRunDiffResult::CensusRunDiffSubjectRefused { .. } => \"subject_refused\",".to_string()), "\n".to_string()), "                        CensusRunDiffResult::CensusRunDiffCompared { .. } => \"compared\",".to_string()), "\n".to_string()), "                    }".to_string()), "\n".to_string()), "                }".to_string()), "\n".to_string()), "            },".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        };".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"census-scoped\",".to_string()), "\n".to_string()), "            \"against\": walk.against.clone(),".to_string()), "\n".to_string()), "            \"diff\": diff,".to_string()), "\n".to_string()), "            \"subject_label\": subject_label,".to_string()), "\n".to_string()), "            \"subject\": subject,".to_string()), "\n".to_string()), "            \"subjects_rest\": walk.subjects_rest.clone(),".to_string()), "\n".to_string()), "            \"acquisition\": acquisition,".to_string()), "\n".to_string()), "            \"blocks\": blocks,".to_string()), "\n".to_string()), "            \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "            \"modules\": modules.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": file_refusals,".to_string()), "\n".to_string()), "            \"advised_files\": advised_files,".to_string()), "\n".to_string()), "            \"file_refused\": file_refused,".to_string()), "\n".to_string()), "            \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "            \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "            \"inferred\": inferred,".to_string()), "\n".to_string()), "            \"infer_refused\": infer_refused,".to_string()), "\n".to_string()), "            \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "            \"roots\": roots.len(),".to_string()), "\n".to_string()), "            \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        }));".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // EACH ROOT IS MARKED AGAINST THE NATIVE TEST TARGET'S CLOSURE (v2.compiler.source_root_eval".to_string()), "\n".to_string()), "    // native_census_subject_closure): derived from the label, never from a list.".to_string()), "\n".to_string()), "    let subject = native_census_subject_closure(closure.clone(), modules.clone(), native_census_subject_label());".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({ \"census_subject\": subject.clone() }));".to_string()), "\n".to_string()), "    for root in roots.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"census_root\": root, \"subject_closure\": native_census_root_subject_membership(subject.clone(), root.clone()) }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE TYPE-DECLARATION CENSUS'S LINES SHARE THIS STDOUT AND KEEP THEIR OWN LINE KIND (design 2a).".to_string()), "\n".to_string()), "    let receipt = type_census_receipt(run);".to_string()), "\n".to_string()), "    for line in receipt.lines.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE WALK COMPLETED, SO THE TERMINAL IS PRINTED WHATEVER THE TYPE CENSUS DECIDES: the refusal".to_string()), "\n".to_string()), "    // census and the type census are two facts, and the type census's verdict is the exit status alone.".to_string()), "\n".to_string()), "    let type_census = match &*receipt.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => \"held\",".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { .. } => \"not_held\",".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { .. } => \"no_observation\",".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    println!(\"{}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "        \"mode\": \"census-infer\",".to_string()), "\n".to_string()), "        \"corpus_reads\": corpus_reads,".to_string()), "\n".to_string()), "        \"modules\": modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": file_refusals,".to_string()), "\n".to_string()), "        \"advised_files\": advised_files,".to_string()), "\n".to_string()), "        \"file_refused\": file_refused,".to_string()), "\n".to_string()), "        \"resolve_refused\": resolve_refused,".to_string()), "\n".to_string()), "        \"residual_rows\": residual_rows,".to_string()), "\n".to_string()), "        \"inferred\": inferred,".to_string()), "\n".to_string()), "        \"infer_refused\": infer_refused,".to_string()), "\n".to_string()), "        \"cause_groups\": cause_groups.len(),".to_string()), "\n".to_string()), "        \"roots\": roots.len(),".to_string()), "\n".to_string()), "        \"type_census\": type_census,".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match &*receipt.terminal {".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimHeld => std::process::exit(0),".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNotHeld { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NOT HELD: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeClaimTerminal::NativeClaimNoObservation { reason } => {".to_string()), "\n".to_string()), "            eprintln!(\"NO OBSERVATION: {reason}\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()), "fn native_cost_quantile_nanos(sorted: &[u128], numer: usize, denom: usize) -> u128 {".to_string()), "\n".to_string()), "    if sorted.is_empty() { return 0; }".to_string()), "\n".to_string()), "    let idx = (sorted.len() - 1) * numer / denom;".to_string()), "\n".to_string()), "    sorted[idx]".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN IS READ ONCE, THROUGH A READER THAT REFUSES A CLOCK THAT WENT BACKWARDS.".to_string()), "\n".to_string()), "// Instant::elapsed is Instant::now().duration_since(earlier), and duration_since SATURATES:".to_string()), "\n".to_string()), "// a monotonic clock that is not actually monotonic -- which happens on some virtualised and".to_string()), "\n".to_string()), "// migrated hosts -- yields Duration::ZERO rather than an error. That is the fabricated zero".to_string()), "\n".to_string()), "// this receipt forbids, arriving by a quieter route than the saturating_sub it replaced: a".to_string()), "\n".to_string()), "// phase would report as having taken no time and the partition would balance for the wrong".to_string()), "\n".to_string()), "// reason. checked_duration_since returns None instead, so the impossible reading is".to_string()), "\n".to_string()), "// REPRESENTABLE and can be refused.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// AN EARLIER REVISION OF THIS FILE CLAIMED THE CLASS WAS STRUCTURALLY IMPOSSIBLE ONCE THE".to_string()), "\n".to_string()), "// subtraction was gone. That was wrong and is corrected rather than softened: deleting the".to_string()), "\n".to_string()), "// explicit subtraction removed the visible clamp, not the saturation underneath it. The".to_string()), "\n".to_string()), "// honest rung is MITIGATED BY A TYPED REFUSAL at a declared boundary -- the host clock is".to_string()), "\n".to_string()), "// external reality, which DESIGN section 4b keeps off the ladder rather than on its top rung.".to_string()), "\n".to_string()), "fn span_nanos(started: Instant) -> u128 {".to_string()), "\n".to_string()), "    match Instant::now().checked_duration_since(started) {".to_string()), "\n".to_string()), "        Some(d) => d.as_nanos(),".to_string()), "\n".to_string()), "        None => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: the monotonic clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// THE PARTITION IS JUDGED ON THREAD CPU, AND THIS IS ITS SPAN (std.realization_measurement".to_string()), "\n".to_string()), "// ObserveThreadCpuAtSubject; extdeps.posix.clock_gettime ClockThreadCputimeId). The law".to_string()), "\n".to_string()), "// native_driver_cost_account enforces is that the phases partition the DRIVER'S OWN WORK. A".to_string()), "\n".to_string()), "// wall span also holds every interval the host descheduled this thread -- another tenant's".to_string()), "\n".to_string()), "// build, page-fault service, a lock wait -- none of which any phase performed, so on a wall".to_string()), "\n".to_string()), "// clock that time fell into the residual and the verdict tracked host load -- the same subject".to_string()), "\n".to_string()), "// reconciled on a quiet runner and refused on a contended one. The thread".to_string()), "\n".to_string()), "// CPU clock advances only while this thread runs, so the residual is uninstrumented driver".to_string()), "\n".to_string()), "// work and nothing else. The wall is still read once, around the whole run, and printed as an".to_string()), "\n".to_string()), "// observation; it is never an input to the verdict. The driver is single-threaded, so the".to_string()), "\n".to_string()), "// thread clock is the driver's whole CPU. An unsupported clock refuses inside the runtime".to_string()), "\n".to_string()), "// read; there is no wall fallback.".to_string()), "\n".to_string()), "#[derive(Clone, Copy)]".to_string()), "\n".to_string()), "struct CpuMark(u128);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn cpu_mark() -> CpuMark {".to_string()), "\n".to_string()), "    CpuMark(observed_thread_cpu_nanos(String::new()) as u128)".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn cpu_span_nanos(started: CpuMark) -> u128 {".to_string()), "\n".to_string()), "    let finished = cpu_mark();".to_string()), "\n".to_string()), "    if finished.0 < started.0 {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: the thread CPU clock went backwards between two reads, so no span is measurable\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    finished.0 - started.0".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// A SPAN THAT DOES NOT FIT REFUSES RATHER THAN SATURATING (review 64474 control). This was".to_string()), "\n".to_string()), "// i64::try_from(n).unwrap_or(i64::MAX), which turns a failed conversion into a FIGURE -- and a".to_string()), "\n".to_string()), "// fabricated figure on a receipt is the state DESIGN section 5 forbids outright, whether the".to_string()), "\n".to_string()), "// invented number is a zero that reports a phase as instant or a maximum that reports it as".to_string()), "\n".to_string()), "// three centuries. The saturating arm also chose the direction that hides best: i64::MAX would".to_string()), "\n".to_string()), "// push the exclusive sum past the parent and surface as NativeDriverCostOverAttributed, a cost".to_string()), "\n".to_string()), "// verdict naming the wrong cause.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// ON REACHABILITY, STATED RATHER THAN LEFT AS AN IMPLIED CLAIM: i64 nanoseconds is about 292".to_string()), "\n".to_string()), "// years, so no span this driver measures reaches it, and the refusal below is not expected to".to_string()), "\n".to_string()), "// fire. It is written because the alternative is not silence but a LIE -- the arm has to answer".to_string()), "\n".to_string()), "// something, and the only honest answers are a real number or a refusal.".to_string()), "\n".to_string()), "fn native_cost_i64(n: u128) -> i64 {".to_string()), "\n".to_string()), "    match i64::try_from(n) {".to_string()), "\n".to_string()), "        Ok(v) => v,".to_string()), "\n".to_string()), "        Err(cause) => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: a measured span does not fit the cost carrier, so no partition can be reported: {n} ({cause})\");".to_string()), "\n".to_string()), "            std::process::exit(2);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// AN UNREADABLE /proc IS ABSENT, NOT ZERO (review 64181). A zero here was printed as".to_string()), "\n".to_string()), "// peak_rss_bytes / rss_bytes and read as a measurement: a run on a host without /proc, or with".to_string()), "\n".to_string()), "// the key renamed, reported a process using no memory. Absence is carried as None and rendered".to_string()), "\n".to_string()), "// as JSON null, so the receipt says it does not know instead of inventing a figure. This is".to_string()), "\n".to_string()), "// telemetry on no receipt field, so it is the one place an Absent is carried rather than".to_string()), "\n".to_string()), "// refused: the run is still a valid observation of everything else.".to_string()), "\n".to_string()), "fn proc_status_kib(key: &str) -> Option<u64> {".to_string()), "\n".to_string()), "    let text = std::fs::read_to_string(\"/proc/self/status\").ok()?;".to_string()), "\n".to_string()), "    for line in text.lines() {".to_string()), "\n".to_string()), "        if let Some(rest) = line.strip_prefix(key) {".to_string()), "\n".to_string()), "            return rest".to_string()), "\n".to_string()), "                .trim_start_matches(':')".to_string()), "\n".to_string()), "                .trim()".to_string()), "\n".to_string()), "                .split_whitespace()".to_string()), "\n".to_string()), "                .next()".to_string()), "\n".to_string()), "                .and_then(|n| n.parse::<u64>().ok());".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    None".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "// ONE CLOCK FOR THE VERDICT, AND IT IS THE THREAD CPU ONE (see cpu_span_nanos). Every exclusive".to_string()), "\n".to_string()), "// phase span and the parent span are read from it, so the partition compares readings from a".to_string()), "\n".to_string()), "// single source; the wall Instant around the run is an observation only. The history below is".to_string()), "\n".to_string()), "// why one source matters (review 64474), and it applied to the monotonic clock first.".to_string()), "\n".to_string()), "// They were split before this: the parent came from Instant while the phase spans came from".to_string()), "\n".to_string()), "// SystemTime, which is the wall clock and is free to step backwards under NTP or an operator".to_string()), "\n".to_string()), "// adjustment. A step between two phase reads could then push the exclusive sum past a parent".to_string()), "\n".to_string()), "// span that never moved, and the driver would refuse with NativeDriverCostOverAttributed --".to_string()), "\n".to_string()), "// a cost refusal whose real cause was the clock. That is a fabricated attribution: the numbers".to_string()), "\n".to_string()), "// would be wrong while the receipt read as a measurement.".to_string()), "\n".to_string()), "//".to_string()), "\n".to_string()), "// THE SUBTRACTION IS GONE RATHER THAN GUARDED, which is the point. A span used to be an".to_string()), "\n".to_string()), "// explicit saturating_sub of two readings, so a backwards step clamped the difference to zero".to_string()), "\n".to_string()), "// and reported a phase as having taken NO TIME -- the exact state the annotation beside it".to_string()), "\n".to_string()), "// forbade, reached by the arm meant to prevent it. Instant::elapsed cannot return a negative".to_string()), "\n".to_string()), "// duration, so there is no difference to clamp and no clamp to review: DESIGN section 5".to_string()), "\n".to_string()), "// construction over validation, and the class climbs from mitigated to structurally".to_string()), "\n".to_string()), "// impossible. The pre-epoch refusal that guarded the old wall-clock read is DELETED with it,".to_string()), "\n".to_string()), "// because the hazard it named cannot arise on this clock -- production handling dissolves on".to_string()), "\n".to_string()), "// the climb (DESIGN section 4b(4)); no evidence is retired here, since that arm had none.".to_string()), "\n".to_string()), "fn run_adjudication(facts_path: &str, pattern: Rc<TargetPattern>, source_roots: &[String]) {".to_string()), "\n".to_string()), "    let driver_start = cpu_mark();".to_string()), "\n".to_string()), "    let driver_wall_start = Instant::now();".to_string()), "\n".to_string()), "    // A MISSING GITHUB_SHA IS ABSENT, NOT \"local\" (review 64181). The receipt line carries this".to_string()), "\n".to_string()), "    // as the tree the measurement describes; the literal \"local\" is a plausible identity that".to_string()), "\n".to_string()), "    // no reader can distinguish from a tree actually named local.".to_string()), "\n".to_string()), "    let head: Option<String> = std::env::var(\"GITHUB_SHA\").ok();".to_string()), "\n".to_string()), "    let facts = read_host_facts(facts_path);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the load row: ACQUIRING the requested closure. Reading and request detection are one".to_string()), "\n".to_string()), "    // dependency-driven walk (a module is read because an earlier one asked for it, and its own".to_string()), "\n".to_string()), "    // text is what asks for the next), so they cannot be priced apart and are not: the whole".to_string()), "\n".to_string()), "    // acquisition is this row, and nothing it does is counted under a fold's number.".to_string()), "\n".to_string()), "    let load_started = cpu_mark();".to_string()), "\n".to_string()), "    if source_roots.is_empty() {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: no source roots given\");".to_string()), "\n".to_string()), "        std::process::exit(2);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let acquisition = acquire_native_lane(source_roots, pattern.clone());".to_string()), "\n".to_string()), "    let namespace_population = acquisition.population.len();".to_string()), "\n".to_string()), "    let load_nanos = cpu_span_nanos(load_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // universe_derivation: the floor's own per-file discovery fold over the acquired modules'".to_string()), "\n".to_string()), "    // marked declarations (their markers are supplied values -- the acquirer captured them), then".to_string()), "\n".to_string()), "    // the label universe of the pattern. The acquirer has already checked that the read set is the".to_string()), "\n".to_string()), "    // requested closure exactly (v2.compiler.module_acquisition acquire_verified), so no second".to_string()), "\n".to_string()), "    // identity join is asked here. The pattern is threaded, so this is the same entry a narrower".to_string()), "\n".to_string()), "    // pattern reaches, never a filter over a default universe.".to_string()), "\n".to_string()), "    let universe_started = cpu_mark();".to_string()), "\n".to_string()), "    let acquired = match &*native_lane_acquired(acquisition.clone(), pattern.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"DERIVATION-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let universe = acquired.universe.clone();".to_string()), "\n".to_string()), "    let closure_ingest = acquired.ingest.clone();".to_string()), "\n".to_string()), "    let closure_reads = closure_ingest.len();".to_string()), "\n".to_string()), "    let universe_nanos = cpu_span_nanos(universe_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the context row: the front-end fold over the CLOSURE only, entered ONE PHASE AT A TIME.".to_string()), "\n".to_string()), "    // The driver owns the clock, so it is the only place a phase span can be read; the phases".to_string()), "\n".to_string()), "    // themselves are v2.compiler.program_assembly declarations and each binds the previous".to_string()), "\n".to_string()), "    // phase's Outcome, so each phase BODY is single-authored and only the ORDER and the".to_string()), "\n".to_string()), "    // inter-phase diagnostic merge exist twice -- here and in the modeled composition".to_string()), "\n".to_string()), "    // program_assembly_read_to_normalized_root_seeded. (It named the UNSEEDED composition".to_string()), "\n".to_string()), "    // until that one was deleted for having no caller; the seeded producer is now the single".to_string()), "\n".to_string()), "    // modeled per-file front end, and this loop is still its second spelling.)".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // THAT SECOND SPELLING IS ADMITTED DEBT AND IS FILED, NOT ASSERTED AWAY (review 65068):".to_string()), "\n".to_string()), "    // gunbc.recurring_failure_mode.realization_respells_a_modeled_folds_sequencing_to_instrument_it.".to_string()), "\n".to_string()), "    // An earlier revision of this comment claimed the two are the same computation. Nothing".to_string()), "\n".to_string()), "    // executes that claim, and a .dag witness comparing the composition against its own phases".to_string()), "\n".to_string()), "    // CANNOT go red -- the composition is defined as the phase chain -- so the honest answer is".to_string()), "\n".to_string()), "    // the row and its trigger (a realization seam that yields per-phase spans FROM a modeled".to_string()), "\n".to_string()), "    // fold), not a green check. Reordering these calls or dropping the merge that".to_string()), "\n".to_string()), "    // program_assembly_phase_parse_seeded performs would change the context with".to_string()), "\n".to_string()), "    // nothing red.".to_string()), "\n".to_string()), "    let context_started = cpu_mark();".to_string()), "\n".to_string()), "    // THE ONCE-PER-FOLD INVARIANT IS PAID ONCE, HERE, AND CARRIED INTO EVERY FILE. A second".to_string()), "\n".to_string()), "    // dag_language_model() or prepare_grammar() call inside the loop would re-introduce at the".to_string()), "\n".to_string()), "    // realization layer exactly the per-file recompute the fold hoisted out.".to_string()), "\n".to_string()), "    let front_end = match &*native_test_front_end_prepare() {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let front_end_nanos = cpu_span_nanos(context_started);".to_string()), "\n".to_string()), "    // THE INGEST'S OCCURRENCE SCOPE, computed once: every projected occurrence the loop's".to_string()), "\n".to_string()), "    // normalize allocates states its cause in it (v2.compiler.program_assembly".to_string()), "\n".to_string()), "    // program_assembly_ingest_scope).".to_string()), "\n".to_string()), "    let ingest_scope = match &*program_assembly_ingest_scope_outcome(closure_ingest.clone()) {".to_string()), "\n".to_string()), "        Outcome::Accepted { value, .. } => value.clone(),".to_string()), "\n".to_string()), "        Outcome::Rejected { diagnostics } => {".to_string()), "\n".to_string()), "            eprintln!(\"CONTEXT-REFUSED: {diagnostics:#?}\");".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let mut context_state = native_test_context_state_empty();".to_string()), "\n".to_string()), "    let mut tokenize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut parse_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut normalize_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut absorb_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut phase_calls: u64 = 0;".to_string()), "\n".to_string()), "    let mut token_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut byte_total: u64 = 0;".to_string()), "\n".to_string()), "    let mut context_file_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    for read in closure_ingest.iter() {".to_string()), "\n".to_string()), "        let file_started = cpu_mark();".to_string()), "\n".to_string()), "        let tokenize_started = cpu_mark();".to_string()), "\n".to_string()), "        let tokens = program_assembly_phase_tokenize(read.clone(), front_end.lex.clone());".to_string()), "\n".to_string()), "        let file_tokenize_nanos = cpu_span_nanos(tokenize_started);".to_string()), "\n".to_string()), "        // The COUNT the time is read against: a span alone cannot separate a large file from a".to_string()), "\n".to_string()), "        // per-file constant. Counted outside every phase span so it prices none of them.".to_string()), "\n".to_string()), "        let file_tokens = program_assembly_phase_token_count(tokens.clone());".to_string()), "\n".to_string()), "        let parse_started = cpu_mark();".to_string()), "\n".to_string()), "        // SEEDED FROM THE MARK THE CONTEXT HAS REACHED, because this loop IS a source graph:".to_string()), "\n".to_string()), "        // std.occurrence_identity occurrence_identity_scope_law requires one allocator threaded".to_string()), "\n".to_string()), "        // across every parsed source, and a per-file reset makes two files' occurrence #N the".to_string()), "\n".to_string()), "        // same value with different meanings. The modeled fold threads it internally; this".to_string()), "\n".to_string()), "        // respelling has to thread it explicitly or it keeps the reset the fold no longer has.".to_string()), "\n".to_string()), "        let file_seed = context_state.alloc.clone();".to_string()), "\n".to_string()), "        let file_seed_reported = file_seed.clone();".to_string()), "\n".to_string()), "        let parsed = program_assembly_phase_parse_seeded(".to_string()), "\n".to_string()), "            tokens.clone(),".to_string()), "\n".to_string()), "            front_end.prepared.clone(),".to_string()), "\n".to_string()), "            file_seed.clone(),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        let file_parse_nanos = cpu_span_nanos(parse_started);".to_string()), "\n".to_string()), "        // On a refused parse".to_string()), "\n".to_string()), "        // this returns the seed unchanged. Not because nothing was minted -- a refused parse".to_string()), "\n".to_string()), "        // HAS minted ids -- but because ParseExprRejected carries no provenance state, so the".to_string()), "\n".to_string()), "        // mark the attempt reached is not recoverable. See the precondition on".to_string()), "\n".to_string()), "        // v2.compiler.source_root_eval native_test_context_absorb.".to_string()), "\n".to_string()), "        let file_alloc = program_assembly_parsed_alloc(parsed.clone(), file_seed);".to_string()), "\n".to_string()), "        let normalize_started = cpu_mark();".to_string()), "\n".to_string()), "        // NORMALIZE ADVANCES THE ALLOCATOR: lowering allocates every image member an id, so the".to_string()), "\n".to_string()), "        // next file seeds from the mark normalize reached, not the one parse reached.".to_string()), "\n".to_string()), "        let normalized = program_assembly_phase_normalize_seeded(parsed.clone(), file_alloc.clone(), ingest_scope.clone());".to_string()), "\n".to_string()), "        let root = program_assembly_normalized_outcome(normalized.clone());".to_string()), "\n".to_string()), "        let file_spans = program_assembly_normalized_spans(normalized.clone());".to_string()), "\n".to_string()), "        let file_alloc = program_assembly_normalized_alloc(normalized);".to_string()), "\n".to_string()), "        let file_alloc_reported = file_alloc.clone();".to_string()), "\n".to_string()), "        let file_normalize_nanos = cpu_span_nanos(normalize_started);".to_string()), "\n".to_string()), "        // qualified-name read plus source-root index insertion: the half of the per-file step".to_string()), "\n".to_string()), "        // that is not the front end, timed separately because a quadratic accumulator would".to_string()), "\n".to_string()), "        // live here and nowhere else in this loop.".to_string()), "\n".to_string()), "        let absorb_started = cpu_mark();".to_string()), "\n".to_string()), "        context_state = native_test_context_absorb(context_state.clone(), read.clone(), root.clone(), file_alloc, file_spans);".to_string()), "\n".to_string()), "        let file_absorb_nanos = cpu_span_nanos(absorb_started);".to_string()), "\n".to_string()), "        let file_nanos = cpu_span_nanos(file_started);".to_string()), "\n".to_string()), "        tokenize_nanos += file_tokenize_nanos;".to_string()), "\n".to_string()), "        parse_nanos += file_parse_nanos;".to_string()), "\n".to_string()), "        normalize_nanos += file_normalize_nanos;".to_string()), "\n".to_string()), "        absorb_nanos += file_absorb_nanos;".to_string()), "\n".to_string()), "        phase_calls += 1;".to_string()), "\n".to_string()), "        token_total += file_tokens.max(0) as u64;".to_string()), "\n".to_string()), "        let file_bytes = read.source.carried.len() as u64;".to_string()), "\n".to_string()), "        byte_total += file_bytes;".to_string()), "\n".to_string()), "        context_file_samples.push(file_nanos);".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-context-split] {}\",".to_string()), "\n".to_string()), "            serde_json::json!({".to_string()), "\n".to_string()), "                \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "                \"path\": read.compilation_unit.clone(),".to_string()), "\n".to_string()), "                \"bytes\": file_bytes,".to_string()), "\n".to_string()), "                \"tokens\": file_tokens,".to_string()), "\n".to_string()), "                \"tokenize_nanos\": file_tokenize_nanos,".to_string()), "\n".to_string()), "                \"parse_nanos\": file_parse_nanos,".to_string()), "\n".to_string()), "                \"normalize_nanos\": file_normalize_nanos,".to_string()), "\n".to_string()), "                \"absorb_nanos\": file_absorb_nanos,".to_string()), "\n".to_string()), "                \"file_nanos\": file_nanos,".to_string()), "\n".to_string()), "                // THE THREADING, MADE OBSERVABLE. occurrence_seed is the mark this file was".to_string()), "\n".to_string()), "                // handed and occurrence_next the mark it reached, so a multi-file run shows".to_string()), "\n".to_string()), "                // one sequence continuing across files instead of each file restarting at 0.".to_string()), "\n".to_string()), "                // A REFUSED file reports next == seed. That is the mark it was HANDED, not a".to_string()), "\n".to_string()), "                // claim that nothing was minted: a refused parse mints ids that the refusal".to_string()), "\n".to_string()), "                // discards unrecoverably. The next file continues from the seed rather than".to_string()), "\n".to_string()), "                // rewinding to zero.".to_string()), "\n".to_string()), "                \"occurrence_seed\": program_assembly_allocator_next(file_seed_reported),".to_string()), "\n".to_string()), "                \"occurrence_next\": program_assembly_allocator_next(file_alloc_reported),".to_string()), "\n".to_string()), "            }),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let context = native_test_context_finish(context_state, front_end.clone(), closure_ingest.clone());".to_string()), "\n".to_string()), "    let context_nanos = cpu_span_nanos(context_started);".to_string()), "\n".to_string()), "    context_file_samples.sort_unstable();".to_string()), "\n".to_string()), "    let context_phase_sum = front_end_nanos + tokenize_nanos + parse_nanos + normalize_nanos + absorb_nanos;".to_string()), "\n".to_string()), "    eprintln!(".to_string()), "\n".to_string()), "        \"[native-context-partition] {}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "            \"basis\": \"context_span\",".to_string()), "\n".to_string()), "            \"basis_note\": \"exclusive phase rows partition context_nanos; residual is loop overhead and the eprintln per file\",".to_string()), "\n".to_string()), "            \"context_nanos\": context_nanos,".to_string()), "\n".to_string()), "            \"front_end_prepare_nanos\": front_end_nanos,".to_string()), "\n".to_string()), "            \"tokenize_nanos\": tokenize_nanos,".to_string()), "\n".to_string()), "            \"parse_nanos\": parse_nanos,".to_string()), "\n".to_string()), "            \"normalize_nanos\": normalize_nanos,".to_string()), "\n".to_string()), "            \"absorb_nanos\": absorb_nanos,".to_string()), "\n".to_string()), "            \"sum_phase_nanos\": context_phase_sum,".to_string()), "\n".to_string()), "            \"residual_nanos\": context_nanos.saturating_sub(context_phase_sum),".to_string()), "\n".to_string()), "            \"files\": phase_calls,".to_string()), "\n".to_string()), "            \"tokenize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"parse_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"normalize_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"absorb_calls\": phase_calls,".to_string()), "\n".to_string()), "            \"front_end_prepare_calls\": 1,".to_string()), "\n".to_string()), "            \"tokens\": token_total,".to_string()), "\n".to_string()), "            \"bytes\": byte_total,".to_string()), "\n".to_string()), "            \"file_refusals\": context.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_p50_nanos\": native_cost_quantile_nanos(&context_file_samples, 1, 2),".to_string()), "\n".to_string()), "            \"file_p95_nanos\": native_cost_quantile_nanos(&context_file_samples, 19, 20),".to_string()), "\n".to_string()), "            \"file_max_nanos\": context_file_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        }),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // the prepare and eval rows, entered separately per module so the number the profile".to_string()), "\n".to_string()), "    // lane prices -- the eval row -- is the sum of native_lane_identity_row".to_string()), "\n".to_string()), "    // and nothing else: not ingest, not resolve, not infer.".to_string()), "\n".to_string()), "    let mut population: Vec<Rc<NativeRouteMemberRow>> = Vec::new();".to_string()), "\n".to_string()), "    let mut prepare_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut evaluate_total_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut prepare_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    let mut eval_samples: Vec<u128> = Vec::new();".to_string()), "\n".to_string()), "    // ExclusiveModuleRelease IS NOW STRUCTURALLY ZERO, AND THAT IS A REAL CHANGE RATHER".to_string()), "\n".to_string()), "    // THAN A TIDY-UP. The displaced loop dropped each module's resolved tree inside a span,".to_string()), "\n".to_string()), "    // because dropping at iteration end paid time no exclusive row covered. The engine holds".to_string()), "\n".to_string()), "    // every settled demand's value in its entries for the whole run, so there is no per-module".to_string()), "\n".to_string()), "    // release point to time -- resolved trees now accumulate where they used to be released.".to_string()), "\n".to_string()), "    // The row stays in the partition reporting zero rather than being deleted: a key removed".to_string()), "\n".to_string()), "    // here vanishes from the sum and the serialized line at once, silently, and the residual".to_string()), "\n".to_string()), "    // it used to carry would be absorbed into the tolerance rather than reported. Retention is".to_string()), "\n".to_string()), "    // std.materialization_ladder's question and the cut that answers it owns this row.".to_string()), "\n".to_string()), "    let module_release_nanos: u128 = 0;".to_string()), "\n".to_string()), "    let mut relay_emit_nanos: u128 = 0;".to_string()), "\n".to_string()), "    // The per-path refusal index is built ONCE here rather than per module: this loop is the".to_string()), "\n".to_string()), "    // only place that knows a loop is about to happen, and the join it feeds was O(modules x".to_string()), "\n".to_string()), "    // refusals) when each module scanned the refusal list for itself.".to_string()), "\n".to_string()), "    let refusal_index = native_lane_file_refusal_index(context.file_refusals.clone());".to_string()), "\n".to_string()), "    // ═══════════════════════════════════════════════════════════════════════════════════════".to_string()), "\n".to_string()), "    // THE SCHEDULE IS THE ENGINE'S. THIS LOOP HOLDS THE CLOCK AND NOTHING ELSE.".to_string()), "\n".to_string()), "    // ═══════════════════════════════════════════════════════════════════════════════════════".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // What stood here was `for entry in universe.modules` with `for declaration in".to_string()), "\n".to_string()), "    // entry.declarations` nested inside it -- a dependency structure written as control flow, and".to_string()), "\n".to_string()), "    // the last place in the native route that decided WHAT RUNS NEXT. It is deleted. The order now".to_string()), "\n".to_string()), "    // comes from v2.std.demand_engine's one ready queue, over a graph".to_string()), "\n".to_string()), "    // v2.compiler.native_demand_schedule DERIVES from the same universe roster this loop walked.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // WHY A LOOP REMAINS AT ALL, and why it is not the old one wearing a new name: a .dag fold".to_string()), "\n".to_string()), "    // cannot read a clock, and the native cost partition is an EXHAUSTIVE exclusive sum over".to_string()), "\n".to_string()), "    // parent_span with a 50ms tolerance arm. Replacing the walk with one opaque call would have".to_string()), "\n".to_string()), "    // dissolved the prepare and eval rows into an unattributed remainder and made that arm fire --".to_string()), "\n".to_string()), "    // so the driver asks the engine for the next admissible demand and spans the step. It supplies".to_string()), "\n".to_string()), "    // no ordering, no module iteration and no declaration iteration; remove the spans and the body".to_string()), "\n".to_string()), "    // is a drain.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // THE SEAT COUNT IS THE CALLER'S. One seat here, which is what makes this cut a pure authority".to_string()), "\n".to_string()), "    // move: same demands, same order, same single execution at a time. Multi-seat realization binds".to_string()), "\n".to_string()), "    // a different offer to the same drain and changes nothing else.".to_string()), "\n".to_string()), "    // THE DRIVER'S OWN INPUT CONSTRUCTION, charged to prepare as it was before the engine landed:".to_string()), "\n".to_string()), "    // it runs before any demand and is not the scheduler's bookkeeping, which the engine measures".to_string()), "\n".to_string()), "    // for itself.".to_string()), "\n".to_string()), "    let tested_tree_started = cpu_mark();".to_string()), "\n".to_string()), "    let tested_tree_input = native_demand_tested_tree_input(head.clone().unwrap_or_default());".to_string()), "\n".to_string()), "    prepare_total_nanos += cpu_span_nanos(tested_tree_started);".to_string()), "\n".to_string()), "    // ONE CALL. The driver does not drain the graph, does not decide readiness and does not".to_string()), "\n".to_string()), "    // classify a demand's stage -- those are the engine's and the plan's decisions, and a".to_string()), "\n".to_string()), "    // rendered-main loop that made them was a second consumer of the engine's admission".to_string()), "\n".to_string()), "    // vocabulary living in generated Rust, where no .dag check reaches.".to_string()), "\n".to_string()), "    //".to_string()), "\n".to_string()), "    // IT USED TO HOLD A LOOP FOR THE CLOCK, AND THAT REASON WAS WRONG. Each step now takes".to_string()), "\n".to_string()), "    // its own span through observed_thread_cpu_nanos -- an ordinary builtin with no resource".to_string()), "\n".to_string()), "    // requirement, modelled by std.realization_measurement as ObserveThreadCpuAtSubject's".to_string()), "\n".to_string()), "    // realization seam -- so the exclusive prepare and eval rows survive with the spans taken".to_string()), "\n".to_string()), "    // where the work is instead of around it.".to_string()), "\n".to_string()), "    // THE ENGINE CALL IS ONE MEASURED SPAN (std.compiler_entry ExclusiveDemandScheduling). Its".to_string()), "\n".to_string()), "    // demand windows are the prepare and eval rows; everything else the call spends is the".to_string()), "\n".to_string()), "    // scheduler's, including the work between the engine's own bookkeeping spans that no row".to_string()), "\n".to_string()), "    // timed when this row was the sum of those spans.".to_string()), "\n".to_string()), "    let schedule_started = cpu_mark();".to_string()), "\n".to_string()), "    let run = native_demand_schedule_universe(".to_string()), "\n".to_string()), "        universe.modules.clone(),".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        refusal_index.clone(),".to_string()), "\n".to_string()), "        tested_tree_input.clone(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let schedule_span_nanos = cpu_span_nanos(schedule_started);".to_string()), "\n".to_string()), "    // driver_collection: the driver's own work after the engine returned -- rows into the".to_string()), "\n".to_string()), "    // population, the samples, the counters. Named for what it is, not folded into scheduling.".to_string()), "\n".to_string()), "    let collection_started = cpu_mark();".to_string()), "\n".to_string()), "    for row in native_demand_run_rows(run.clone()).iter() {".to_string()), "\n".to_string()), "        population.push(row.clone());".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let engine_prepare_nanos = native_demand_prepare_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    let engine_eval_nanos = native_demand_eval_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    // OBSERVATION ONLY (v2.compiler.source_root_eval native_demand_occurrence_census_lines): the census is its".to_string()), "\n".to_string()), "    // own demand kind, so its cost is the engine-reported ExclusiveOccurrenceCensus row, not a host span.".to_string()), "\n".to_string()), "    let occurrence_census_nanos = native_demand_occurrence_census_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    prepare_total_nanos += engine_prepare_nanos;".to_string()), "\n".to_string()), "    evaluate_total_nanos += engine_eval_nanos;".to_string()), "\n".to_string()), "    // The engine's own bookkeeping sum stays an observation on the schedule line; it is not the row.".to_string()), "\n".to_string()), "    let engine_bookkeeping_nanos = native_demand_scheduling_nanos(run.clone()).max(0) as u128;".to_string()), "\n".to_string()), "    // Every demand window the engine attributes -- prepare, eval and the occurrence census -- is a row".to_string()), "\n".to_string()), "    // of its own, so the scheduling row is the call span minus all three. Leaving the census out would".to_string()), "\n".to_string()), "    // count its windows twice. An engine that attributed more than its call took is incoherent; refuse".to_string()), "\n".to_string()), "    // rather than clamp the scheduling row to zero.".to_string()), "\n".to_string()), "    let attributed_in_call = engine_prepare_nanos + engine_eval_nanos + occurrence_census_nanos;".to_string()), "\n".to_string()), "    if attributed_in_call > schedule_span_nanos {".to_string()), "\n".to_string()), "        eprintln!(\"REFUSED: native driver cost OverAttributed inside the engine call {{ attributed_nanos: {}, schedule_span_nanos: {} }}\", attributed_in_call, schedule_span_nanos);".to_string()), "\n".to_string()), "        std::process::exit(1);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let demand_scheduling_nanos = schedule_span_nanos - attributed_in_call;".to_string()), "\n".to_string()), "    for line in native_demand_occurrence_census_lines(run.clone(), universe.modules.len() as i64).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"{}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for n in native_demand_prepare_samples(run.clone()).iter() {".to_string()), "\n".to_string()), "        prepare_samples.push((*n).max(0) as u128);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for n in native_demand_eval_samples(run.clone()).iter() {".to_string()), "\n".to_string()), "        eval_samples.push((*n).max(0) as u128);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let prepare_ok: u64 = native_demand_prepare_ok(run.clone()).max(0) as u64;".to_string()), "\n".to_string()), "    let prepare_refused: u64 = native_demand_prepare_refused(run.clone()).max(0) as u64;".to_string()), "\n".to_string()), "    let driver_collection_nanos = cpu_span_nanos(collection_started);".to_string()), "\n".to_string()), "    // THE DRIVER REFUSES A RUN WHOSE CLOCK NEVER ADVANCED rather than reporting its zeros. A".to_string()), "\n".to_string()), "    // realization whose body returns a constant zero leaves every transition CLASSIFIED and".to_string()), "\n".to_string()), "    // VALIDLY OBSERVED, so completeness answers true over totals that are all zero, and the".to_string()), "\n".to_string()), "    // emitted-body membership check cannot see it either -- that check establishes a bridge HAS".to_string()), "\n".to_string()), "    // a body, never that the body measures. Reporting those zeros would be a fabricated".to_string()), "\n".to_string()), "    // measurement presented as an observation, so the line stops here with a located cause.".to_string()), "\n".to_string()), "    if !native_demand_observation_progressed(run.clone()) {".to_string()), "\n".to_string()), "        eprintln!(".to_string()), "\n".to_string()), "            \"[native-demand-schedule] REFUSED: transitions={} executed and the elapsed observation accumulated no span; the emitted monotonic clock is not advancing\",".to_string()), "\n".to_string()), "            native_demand_run_transition_count(run.clone()),".to_string()), "\n".to_string()), "        );".to_string()), "\n".to_string()), "        std::process::exit(1);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    // THE EVENT TRACE, SEPARATE FROM THE RESULT. One line per admission in admission order, each".to_string()), "\n".to_string()), "    // naming the demand key and the state it settled into. It is the schedule's receipt and it is".to_string()), "\n".to_string()), "    // deliberately not the population: two runs agreeing on rows while disagreeing on order is a".to_string()), "\n".to_string()), "    // real difference, and a receipt that carried only rows could not report it.".to_string()), "\n".to_string()), "    let relay_started = cpu_mark();".to_string()), "\n".to_string()), "    for line in native_demand_run_receipt_lines(run.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-demand-transition] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    eprintln!(".to_string()), "\n".to_string()), "        \"[native-demand-schedule] demands={} admitted={} readiness_derivations={} schedule_span_nanos={} engine_bookkeeping_nanos={}\",".to_string()), "\n".to_string()), "        native_demand_run_demand_count(run.clone()),".to_string()), "\n".to_string()), "        native_demand_run_transition_count(run.clone()),".to_string()), "\n".to_string()), "        native_demand_run_readiness_derivations(run.clone()),".to_string()), "\n".to_string()), "        schedule_span_nanos,".to_string()), "\n".to_string()), "        engine_bookkeeping_nanos,".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    relay_emit_nanos += cpu_span_nanos(relay_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // receipt_admission: minting the receipt and evaluating the authority's admission and summary".to_string()), "\n".to_string()), "    // over it. The controls are executed here because they are receipt inputs, not universe members.".to_string()), "\n".to_string()), "    let admission_started = cpu_mark();".to_string()), "\n".to_string()), "    let receipt = native_lane_receipt(".to_string()), "\n".to_string()), "        context.clone(),".to_string()), "\n".to_string()), "        universe.clone(),".to_string()), "\n".to_string()), "        Rc::new(population.clone().into()),".to_string()), "\n".to_string()), "        native_lane_controls(context.clone()),".to_string()), "\n".to_string()), "        Rc::new(facts),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    let admission = native_route_admission(receipt.clone());".to_string()), "\n".to_string()), "    let summary = native_route_admission_summary(admission.clone());".to_string()), "\n".to_string()), "    let file_refusal_tally: Vec<serde_json::Value> = native_route_file_refusal_tally(receipt.clone())".to_string()), "\n".to_string()), "        .iter()".to_string()), "\n".to_string()), "        .map(|row| serde_json::json!(row))".to_string()), "\n".to_string()), "        .collect();".to_string()), "\n".to_string()), "    let admitted = native_route_admitted(admission.clone());".to_string()), "\n".to_string()), "    // THE FRONTIER RATCHET, OVER THE SAME RECEIPT AND INSIDE THE SAME SPAN: the verdict is".to_string()), "\n".to_string()), "    // v2.workflow.native_frontier_ratchet's, and this main only carries its word to the terminal marker".to_string()), "\n".to_string()), "    // and its lines to stderr. It is measured under receipt_admission because it is judgement of".to_string()), "\n".to_string()), "    // the receipt, the row that span already names.".to_string()), "\n".to_string()), "    let frontier = native_frontier_verdict(receipt.clone(), admission.clone(), pattern.clone());".to_string()), "\n".to_string()), "    let frontier_word = native_frontier_verdict_word(frontier.clone());".to_string()), "\n".to_string()), "    let admission_nanos = cpu_span_nanos(admission_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // row_serialization: SERIALIZING THE OBSERVATIONS AND WRITING THEM, MEASURED (review".to_string()), "\n".to_string()), "    // 64181 named this span; #11105 made leaving it unattributed fatal). Every row the".to_string()), "\n".to_string()), "    // population carries is turned into JSON here and written to stdout, which is real work".to_string()), "\n".to_string()), "    // no other row covers -- eval is the identity fold and nothing else. It is TIMED, never".to_string()), "\n".to_string()), "    // derived as parent minus the others: a row defined as the remainder would force the".to_string()), "\n".to_string()), "    // residual to zero and make the tolerance arm unfireable by construction.".to_string()), "\n".to_string()), "    let serialization_started = cpu_mark();".to_string()), "\n".to_string()), "    for refusal in receipt.file_refusals.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"file_refusal\": refusal }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for advised in context.accepted_file_advisories.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::json!({ \"accepted_file_advisories\": advised }));".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for row in population.iter() {".to_string()), "\n".to_string()), "        println!(\"{}\", serde_json::to_string(row).unwrap());".to_string()), "\n".to_string()), "        // THE OPERATOR'S LINE, BESIDE THE PERSISTED ROW. The JSON above is the receipt; this is".to_string()), "\n".to_string()), "        // the same value rendered by the authority for a reader of the command's output, so a".to_string()), "\n".to_string()), "        // row that did not pass names its subject, stage, cause and position without anyone".to_string()), "\n".to_string()), "        // re-deriving them from the bytes just written. Passing rows print nothing here: the".to_string()), "\n".to_string()), "        // terminal marker carries their count. EXHAUSTIVE ON PURPOSE -- a verdict arm added to".to_string()), "\n".to_string()), "        // the vocabulary must decide here whether it is operator-visible.".to_string()), "\n".to_string()), "        match &*row.verdict {".to_string()), "\n".to_string()), "            NativeTestVerdict::NativeTestPassed => {}".to_string()), "\n".to_string()), "            NativeTestVerdict::NativeTestReturnedFalse".to_string()), "\n".to_string()), "            | NativeTestVerdict::NativeTestReturnedOther".to_string()), "\n".to_string()), "            | NativeTestVerdict::NativeTestRefused { .. } => {".to_string()), "\n".to_string()), "                eprintln!(\"[native-verdict] {}\", native_route_member_row_text(row.clone()));".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for line in native_frontier_report_lines(frontier.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-frontier] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    for line in native_frontier_proposal_file_lines(receipt.clone(), frontier.clone()).iter() {".to_string()), "\n".to_string()), "        eprintln!(\"[native-frontier-roster] {}\", line);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let row_serialization_nanos = cpu_span_nanos(serialization_started);".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "    // THE PARTITION, THROUGH THE ONE LAW. The rows are the row set std.compiler_entry owns and".to_string()), "\n".to_string()), "    // verdict is native_driver_cost_account over them -- not a second reconcile. The two rows".to_string()), "\n".to_string()), "    // this route pays that a driver handed a universe file does not (universe_derivation,".to_string()), "\n".to_string()), "    // receipt_admission) are members of the same exclusive sum, so an over-attribution through".to_string()), "\n".to_string()), "    // either is caught here rather than by a check of its own.".to_string()), "\n".to_string()), "    prepare_samples.sort_unstable();".to_string()), "\n".to_string()), "    eval_samples.sort_unstable();".to_string()), "\n".to_string()), "    let parent_span_nanos = cpu_span_nanos(driver_start);".to_string()), "\n".to_string()), "    let parent_wall_nanos = span_nanos(driver_wall_start);".to_string()), "\n".to_string()), "    // THE DRIVER IS EXHAUSTIVE OVER THE KEY WITH NO WILDCARD, deliberately: a row added to".to_string()), "\n".to_string()), "    // std.compiler_entry makes THIS match refuse to compile until the driver says what".to_string()), "\n".to_string()), "    // measures it. A wildcard here would answer zero for a span nobody wired up, which is".to_string()), "\n".to_string()), "    // the absorbing arm DESIGN section 5 forbids -- and it is what the old record literal".to_string()), "\n".to_string()), "    // did silently, three folds running.".to_string()), "\n".to_string()), "    let exclusive = native_driver_exclusive_rows(move |k| match k {".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveLoad => nanosecond(native_cost_i64(load_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveUniverseDerivation => nanosecond(native_cost_i64(universe_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveContext => nanosecond(native_cost_i64(context_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusivePrepare => nanosecond(native_cost_i64(prepare_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveEval => nanosecond(native_cost_i64(evaluate_total_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveReceiptAdmission => nanosecond(native_cost_i64(admission_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRowSerialization => nanosecond(native_cost_i64(row_serialization_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveDemandScheduling => nanosecond(native_cost_i64(demand_scheduling_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveDriverCollection => nanosecond(native_cost_i64(driver_collection_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveOccurrenceCensus => nanosecond(native_cost_i64(occurrence_census_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveModuleRelease => nanosecond(native_cost_i64(module_release_nanos)),".to_string()), "\n".to_string()), "        NativeDriverExclusiveRowKey::ExclusiveRelayEmit => nanosecond(native_cost_i64(relay_emit_nanos)),".to_string()), "\n".to_string()), "    });".to_string()), "\n".to_string()), "    let exclusive_sum = nanosecond_count(native_driver_exclusive_sum(exclusive.clone())) as u128;".to_string()), "\n".to_string()), "    let tolerance_nanos = nanosecond_count(native_driver_cost_remainder_tolerance_nanos()) as u128;".to_string()), "\n".to_string()), "    let accounting = native_driver_cost_account(".to_string()), "\n".to_string()), "        nanosecond(native_cost_i64(parent_span_nanos)),".to_string()), "\n".to_string()), "        exclusive.clone(),".to_string()), "\n".to_string()), "        native_driver_cost_remainder_tolerance_nanos(),".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    // The remainder is the residual the accounting itself returns, never parent minus sum: on".to_string()), "\n".to_string()), "    // over-attributed arm there IS no remainder, and a clamped zero there would be a".to_string()), "\n".to_string()), "    // plausible number standing where the measurement is incoherent.".to_string()), "\n".to_string()), "    let (verdict, remainder_nanos) = match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostOverAttributed\"#, serde_json::Value::Null),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostRemainderExceedsTolerance\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { residual, .. } =>".to_string()), "\n".to_string()), "            (r#\"NativeDriverCostReconciled\"#, serde_json::json!(nanosecond_count(residual.clone()))),".to_string()), "\n".to_string()), "    };".to_string()), "\n".to_string()), "    let identities = universe.identities.len() as u64;".to_string()), "\n".to_string()), "    let eval_mean = if eval_samples.is_empty() { 0 } else { evaluate_total_nanos / eval_samples.len() as u128 };".to_string()), "\n".to_string()), "    let prepare_mean = if prepare_samples.is_empty() { 0 } else { prepare_total_nanos / prepare_samples.len() as u128 };".to_string()), "\n".to_string()), "    // THE ROWS ARE PROJECTED FROM THE VALUE, NOT RE-LISTED (review 64181). The field names".to_string()), "\n".to_string()), "    // were written once to build NativeDriverExclusiveRows and again to render it, which is the".to_string()), "\n".to_string()), "    // second spelling this file warns about for prose, applied to the emitted object: a driver".to_string()), "\n".to_string()), "    // gaining a phase would have updated the struct and left the receipt short. Serializing the".to_string()), "\n".to_string()), "    // value carries the row set from the type, so the JSON cannot disagree with the fold. The".to_string()), "\n".to_string()), "    // rows therefore render as std.measure Nanosecond objects rather than bare integers -- the".to_string()), "\n".to_string()), "    // unit travels with the number, which is the point of the type.".to_string()), "\n".to_string()), "    // A NON-RECONCILED ARM IS A PROCESS REFUSAL (#11105, review 63891). The receipt is".to_string()), "\n".to_string()), "    // printed first so the numbers that caused the refusal are on the wire, and THEN the".to_string()), "\n".to_string()), "    // line stops: a verdict string with exit 0 is the inert lens DESIGN section 6 names.".to_string()), "\n".to_string()), "    // The full-N run of this route refused here on 158600186 ns against a 50000000 ns".to_string()), "\n".to_string()), "    // tolerance before row_serialization was a measured row, which is what put that row on".to_string()), "\n".to_string()), "    // the type rather than a wider tolerance on this arm.".to_string()), "\n".to_string()), "    eprintln!(\"[native-cost-partition] {}\", serde_json::json!({".to_string()), "\n".to_string()), "        \"basis\": \"native_driver_thread_cpu\",".to_string()), "\n".to_string()), "        \"basis_note\": \"single-threaded SourceRootEvalDriver thread CPU (CLOCK_THREAD_CPUTIME_ID); exclusive rows partition parent_span_nanos; parent_wall_nanos is an observation, never judged\",".to_string()), "\n".to_string()), "        \"producer\": \"std.compiler_entry.SourceRootEvalDriver\",".to_string()), "\n".to_string()), "        \"head\": head,".to_string()), "\n".to_string()), "        \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "        \"verdict\": verdict,".to_string()), "\n".to_string()), "        \"tolerance_nanos\": tolerance_nanos,".to_string()), "\n".to_string()), "        \"parent_span_nanos\": parent_span_nanos,".to_string()), "\n".to_string()), "        \"parent_wall_nanos\": parent_wall_nanos,".to_string()), "\n".to_string()), "        \"exclusive\": exclusive.rows.iter().map(|r| (".to_string()), "\n".to_string()), "            native_driver_exclusive_row_name(r.key.clone()),".to_string()), "\n".to_string()), "            serde_json::json!(r.nanos),".to_string()), "\n".to_string()), "        )).collect::<serde_json::Map<String, serde_json::Value>>(),".to_string()), "\n".to_string()), "        \"sum_exclusive_nanos\": exclusive_sum,".to_string()), "\n".to_string()), "        \"remainder_nanos\": remainder_nanos,".to_string()), "\n".to_string()), "        \"namespace_population\": namespace_population,".to_string()), "\n".to_string()), "        \"closure_reads\": closure_reads,".to_string()), "\n".to_string()), "        \"identities\": identities,".to_string()), "\n".to_string()), "        \"unique_modules\": universe.modules.len(),".to_string()), "\n".to_string()), "        \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "        \"prepare_ok\": prepare_ok,".to_string()), "\n".to_string()), "        \"prepare_refused\": prepare_refused,".to_string()), "\n".to_string()), "        \"prepare_mean_nanos\": prepare_mean,".to_string()), "\n".to_string()), "        \"prepare_p50_nanos\": native_cost_quantile_nanos(&prepare_samples, 1, 2),".to_string()), "\n".to_string()), "        \"prepare_p95_nanos\": native_cost_quantile_nanos(&prepare_samples, 19, 20),".to_string()), "\n".to_string()), "        \"prepare_max_nanos\": prepare_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"eval_mean_nanos\": eval_mean,".to_string()), "\n".to_string()), "        \"eval_p50_nanos\": native_cost_quantile_nanos(&eval_samples, 1, 2),".to_string()), "\n".to_string()), "        \"eval_p95_nanos\": native_cost_quantile_nanos(&eval_samples, 19, 20),".to_string()), "\n".to_string()), "        \"eval_max_nanos\": eval_samples.last().copied().unwrap_or(0),".to_string()), "\n".to_string()), "        \"peak_rss_bytes\": proc_status_kib(\"VmHWM\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "        \"rss_bytes\": proc_status_kib(\"VmRSS\").map(|kib| kib * 1024),".to_string()), "\n".to_string()), "    }));".to_string()), "\n".to_string()), "    match accounting.as_ref() {".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostReconciled { .. } => {}".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostOverAttributed { sum_exclusive, parent_span } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost OverAttributed {{ sum_exclusive_nanos: {}, parent_span_nanos: {} }}\",".to_string()), "\n".to_string()), "                nanosecond_count(sum_exclusive.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(parent_span.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverCostAccounting::NativeDriverCostRemainderExceedsTolerance { residual, tolerance } => {".to_string()), "\n".to_string()), "            eprintln!(".to_string()), "\n".to_string()), "                \"REFUSED: native driver cost RemainderExceedsTolerance {{ residual_nanos: {}, tolerance_nanos: {} }} -- unattributed driver work; name the span, do not widen the tolerance\",".to_string()), "\n".to_string()), "                nanosecond_count(residual.clone()) as u128,".to_string()), "\n".to_string()), "                nanosecond_count(tolerance.clone()) as u128".to_string()), "\n".to_string()), "            );".to_string()), "\n".to_string()), "            std::process::exit(1);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    println!(".to_string()), "\n".to_string()), "        \"{}\",".to_string()), "\n".to_string()), "        serde_json::json!({".to_string()), "\n".to_string()), "            \"_terminal\": \"complete\",".to_string()), "\n".to_string()), "            \"mode\": \"adjudicate\",".to_string()), "\n".to_string()), "            \"rows\": population.len(),".to_string()), "\n".to_string()), "            \"universe\": universe.identities.len(),".to_string()), "\n".to_string()), "            \"file_refusals\": receipt.file_refusals.len(),".to_string()), "\n".to_string()), "            \"file_refusal_tally\": file_refusal_tally,".to_string()), "\n".to_string()), "            \"advised_files\": context.accepted_file_advisories.len(),".to_string()), "\n".to_string()), "            \"admitted\": admitted,".to_string()), "\n".to_string()), "            \"summary\": summary,".to_string()), "\n".to_string()), "            \"frontier\": frontier_word,".to_string()), "\n".to_string()), "        })".to_string()), "\n".to_string()), "    );".to_string()), "\n".to_string()), "    if admitted {".to_string()), "\n".to_string()), "        std::process::exit(0);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    std::process::exit(1);".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "".to_string()), "\n".to_string()), "fn main() {".to_string()), "\n".to_string()), "    let argv: Vec<String> = std::env::args().skip(1).collect();".to_string()), "\n".to_string()), "    let plan = native_driver_parse(Rc::new(argv.into()));".to_string()), "\n".to_string()), "    if let ProcessExit::ExitFailure { code, reason } = &*native_driver_plan_exit(plan.clone()) {".to_string()), "\n".to_string()), "        eprintln!(\"{reason}\");".to_string()), "\n".to_string()), "        std::process::exit(*code as i32);".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "    let source_roots: Vec<String> = native_driver_plan_source_roots(plan.clone()).iter().cloned().collect();".to_string()), "\n".to_string()), "    match &*plan {".to_string()), "\n".to_string()), "        NativeDriverPlan::NativeDriverPlanRefused { reason, detail } => {".to_string()), "\n".to_string()), "            eprintln!(\"REFUSED: native driver plan refused ({reason:?}) but its exit was success -- {detail}\");".to_string()), "\n".to_string()), "            std::process::exit(70);".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "        NativeDriverPlan::NativeDriverPlanned { verb } => {".to_string()), "\n".to_string()), "            let verb: &NativeDriverVerb = verb;".to_string()), "\n".to_string()), "            match verb {".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensus { .. } => run_census(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusResolve { .. } => run_census_resolve(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusInfer { .. } => run_census_infer(&source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusVerb { verb, .. } => run_census_verb(verb, &source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverCensusScoped { subject, subjects_rest, against, .. } => run_census_scoped(subject, &subjects_rest.iter().cloned().collect::<Vec<String>>(), against.clone(), &source_roots),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverSelfHostFrontier { manifest_path, verdict_path, observed_path } => run_self_host_frontier(manifest_path, verdict_path, observed_path),".to_string()), "\n".to_string()), "                NativeDriverVerb::NativeDriverAdjudicate { facts_path, pattern, .. } => run_adjudication(facts_path, Rc::new(TargetPattern::clone(pattern)), &source_roots),".to_string()), "\n".to_string()), "            }".to_string()), "\n".to_string()), "        }".to_string()), "\n".to_string()), "    }".to_string()), "\n".to_string()), "}".to_string()), "\n".to_string()), "\n".to_string()),
 })
     }
 }

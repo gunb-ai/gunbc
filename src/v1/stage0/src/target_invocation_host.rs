@@ -255,7 +255,7 @@ pub enum V2NativeCensusReading {
     },
     TypeDeclarationUse,
     /// `gunbc.instruments.ambient_name_census_reading`: the occurrence-binding rows census-infer prints.
-    OccurrenceBinding,
+    OccurrenceResolution,
     /// `gunbc.instruments.ambient_operation_disposition_reading`: the same run, read for each ambient
     /// primitive spelling's disposition.
     AmbientOperationDisposition,
@@ -322,6 +322,7 @@ pub enum TargetProducer {
     NativeCensusVerb {
         verb: &'static str,
     },
+    SelfHostFrontier,
     GenericIdentityCensus,
     InterpolationHoleCensus,
     SharedTypeLeafCollisionCensus,
@@ -441,7 +442,7 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("ambient-name-census"),
             TargetProducer::V2NativeCensus {
-                reading: V2NativeCensusReading::OccurrenceBinding,
+                reading: V2NativeCensusReading::OccurrenceResolution,
             },
         ),
         (
@@ -532,9 +533,27 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("router-proxy-falsifier"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/router_proxy_falsifier.dag",
+            },
+        ),
+        (
+            instrument_label("serving-benchmark-run"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/serving_benchmark_run.dag",
+            },
+        ),
+        (
             instrument_label("value-position-block-nests"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/value_position_block_nests.dag",
+            },
+        ),
+        (
+            instrument_label("roster-import-sweep-native"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/roster_import_sweep_native.dag",
             },
         ),
         (
@@ -626,6 +645,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("self-host-frontier"),
+            TargetProducer::SelfHostFrontier,
+        ),
+        (
             instrument_label("generic-identity-census"),
             TargetProducer::GenericIdentityCensus,
         ),
@@ -653,6 +676,13 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             },
         ),
         (
+            instrument_label("credential-acquisition-systemd-rows"),
+            TargetProducer::CliWireProgram {
+                entry: "dag/test/claim/dispatch_credential_acquisition_witness.dag",
+                function: "credential_acquisition_systemd_rows_wire",
+            },
+        ),
+        (
             instrument_label("append-chain-ladder"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/append_chain_ladder_native.dag",
@@ -662,6 +692,12 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("last-use-move"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/last_use_move_native.dag",
+            },
+        ),
+        (
+            instrument_label("cons-tail-recursion"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/cons_tail_recursion_native.dag",
             },
         ),
         (
@@ -1140,7 +1176,7 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
             reading: V2NativeCensusReading::TypeDeclarationUse,
         } => run_census_infer_reading(&self_host_source_roots(), &TYPE_DECLARATION_USE_READING),
         TargetProducer::V2NativeCensus {
-            reading: V2NativeCensusReading::OccurrenceBinding,
+            reading: V2NativeCensusReading::OccurrenceResolution,
         } => run_ambient_name_census(
             &self_host_source_roots(),
             "ambient-name-census",
@@ -1195,6 +1231,10 @@ fn run_producer(producer: TargetProducer, label: &str) -> InvocationOutcome {
         TargetProducer::NativeCensusVerb { verb } => {
             run_census_verb(verb, label, &self_host_source_roots())
         }
+        TargetProducer::SelfHostFrontier => run_self_host_frontier(
+            &self_host_source_roots(),
+            &crate::gunbc_stage0_stage0_cargo_manifest::stage0_package_root(),
+        ),
         TargetProducer::GenericIdentityCensus => {
             run_generic_identity_census(&self_host_source_roots())
         }
@@ -2059,8 +2099,9 @@ fn run_ambient_name_census(
         (Some("tree_runs".to_string()), text(&tree_runs)),
         (Some("rewritten".to_string()), text(&rewritten_text)),
     ];
-    if let Some(kit) = &kit {
+    if let (Some(kit), Some((kit_root, _))) = (&kit, &kit_inputs) {
         args.push((Some("kit_stdout".to_string()), text(&kit.stdout)));
+        args.push((Some("kit_root".to_string()), text(kit_root)));
     }
     match crate::v1_interpreter::run_in_context_with_args(&ctx, standing_function, &args, true) {
         Ok(value) => reader_standing_outcome(&ctx, &value, label_name, standing_function),
@@ -5278,6 +5319,31 @@ fn typed_graph_exclusive_bytes_over(
 mod native_route_termination_tests {
     use super::*;
 
+    /// THE CONTROL FOR THE NATIVE ROUTE OF THE GENERATOR SWEEP. The instrument's only producer is
+    /// `TargetProducer::NativeClaimProgram` -- emit-by-seed + cargo-build + exec, the same authority
+    /// instrument labels travel. If the row is removed, retargeted at any interpreter route
+    /// (SelfHost/Interpreted/RetainedHost) or downgraded to a wrapper, this test goes red: the
+    /// sweep's native route is the claim, and a fallback in the registry would silently run the
+    /// interpreter instead of the emitted program while still printing rows.
+    #[test]
+    fn roster_import_sweep_native_is_bound_to_the_native_claim_program_producer() {
+        let label = instrument_label("roster-import-sweep-native");
+        let row = instrument_registry()
+            .into_iter()
+            .find(|(l, _)| l == &label)
+            .unwrap_or_else(|| panic!("roster-import-sweep-native lost its registry row"));
+        assert!(
+            matches!(
+                row.1,
+                TargetProducer::NativeClaimProgram {
+                    entry: "dag/gunbc/instruments/roster_import_sweep_native.dag"
+                }
+            ),
+            "roster-import-sweep-native must run through NativeClaimProgramProducer, found a fallback: {:?}",
+            row.1
+        );
+    }
+
     /// `gunbc.target_invocation` `claim_route_termination`, mirrored: the same five rows
     /// `test.claim.target_invocation_witness` `the_claim_route_termination_maps_to_the_three_exit_statuses`
     /// pins on the model, so the host mirror cannot drift from it silently.
@@ -5969,6 +6035,25 @@ fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
     }
 }
 
+fn run_self_host_frontier(source_roots: &[String], stage0_crate_dir: &str) -> InvocationOutcome {
+    match cli_run::run_self_host_frontier(source_roots, stage0_crate_dir) {
+        Ok(code) => InvocationOutcome {
+            termination: match code {
+                0 => Termination::ObservationHeld,
+                1 => Termination::ObservationDidNotHold,
+                _ => Termination::SubjectUnreached,
+            },
+            message: format!(
+                "self-host-frontier: exit {code}; the [self-host-frontier] lines above are the derived frontier"
+            ),
+        },
+        Err(cause) => InvocationOutcome {
+            termination: Termination::SubjectUnreached,
+            message: cause,
+        },
+    }
+}
+
 /// A census verb of the emitted compiler, spawned by `cli_run::run_v2_census_verb`. Every line and
 /// the exit are decided by the emitted verb; the host adds no verdict.
 fn run_census_verb(verb: &str, label: &str, source_roots: &[String]) -> InvocationOutcome {
@@ -6002,10 +6087,14 @@ fn run_regen_round_cost_instrument() -> InvocationOutcome {
         message: format!("regen-round-cost: subject unreached: {detail}"),
     };
     let roots = self_host_source_roots();
+    // NOT a heal round: an instrument prices a round on the checkout it runs on, so it asks for
+    // no base mirror and its receipt renders no base-mirror line. Which authority a round seeds
+    // from is decided by the CALLER's context, never by whether something failed.
     let round = match cli_run::run_regen_round_cost(
         "target/stage0-regen-candidate",
         "target/stage0-regen-receipt.json",
         &roots,
+        false,
         false,
     ) {
         Ok(round) => round,

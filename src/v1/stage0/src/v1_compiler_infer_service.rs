@@ -711,42 +711,44 @@ pub fn expand_transitive_services_loop(
     mut __tco_loop_remaining_passes: i64,
     mut __tco_loop_before: i64,
 ) -> Rc<ServiceEffectAnalysis> {
-    loop {
-        #[allow(unused_mut)]
-        let mut module_callees = __tco_loop_module_callees;
-        #[allow(unused_mut)]
-        let mut registry = __tco_loop_registry;
-        #[allow(unused_mut)]
-        let mut remaining_passes = __tco_loop_remaining_passes;
-        #[allow(unused_mut)]
-        let mut before = __tco_loop_before;
-        let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
-        let after = total_service_count(next.clone());
-        if (before.clone() == after.clone()) {
-            break Rc::new(ServiceEffectAnalysis::EffectsComplete {
-                registry: registry.clone(),
-            });
-        } else {
-            if (remaining_passes.clone() <= 1) {
-                break Rc::new(ServiceEffectAnalysis::EffectsIncomplete {
-                    partial: next.clone(),
-                    causes: Rc::new(vec![Rc::new(
-                        EffectIncompleteness::ExpansionBudgetExhausted {
-                            remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
-                        },
-                    )]),
+    {
+        loop {
+            #[allow(unused_mut)]
+            let mut module_callees = __tco_loop_module_callees;
+            #[allow(unused_mut)]
+            let mut registry = __tco_loop_registry;
+            #[allow(unused_mut)]
+            let mut remaining_passes = __tco_loop_remaining_passes;
+            #[allow(unused_mut)]
+            let mut before = __tco_loop_before;
+            let next = expand_transitive_services_once(module_callees.clone(), registry.clone());
+            let after = total_service_count(next.clone());
+            if (before.clone() == after.clone()) {
+                break Rc::new(ServiceEffectAnalysis::EffectsComplete {
+                    registry: registry.clone(),
                 });
             } else {
-                {
-                    let __tco_0 = module_callees;
-                    let __tco_1 = next.clone();
-                    let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
-                    let __tco_3 = after.clone();
-                    __tco_loop_module_callees = __tco_0;
-                    __tco_loop_registry = __tco_1;
-                    __tco_loop_remaining_passes = __tco_2;
-                    __tco_loop_before = __tco_3;
-                    continue;
+                if (remaining_passes.clone() <= 1) {
+                    break Rc::new(ServiceEffectAnalysis::EffectsIncomplete {
+                        partial: next.clone(),
+                        causes: Rc::new(vec![Rc::new(
+                            EffectIncompleteness::ExpansionBudgetExhausted {
+                                remaining_delta: v1_rt::int_sub(after.clone(), before.clone()),
+                            },
+                        )]),
+                    });
+                } else {
+                    {
+                        let __tco_0 = module_callees;
+                        let __tco_1 = next.clone();
+                        let __tco_2 = v1_rt::int_sub(remaining_passes, 1);
+                        let __tco_3 = after.clone();
+                        __tco_loop_module_callees = __tco_0;
+                        __tco_loop_registry = __tco_1;
+                        __tco_loop_remaining_passes = __tco_2;
+                        __tco_loop_before = __tco_3;
+                        continue;
+                    }
                 }
             }
         }
