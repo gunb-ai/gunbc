@@ -305,6 +305,7 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_test_harness(path: "tests/dag_parse_sweep_refusal_location.rs"),
   retained_test_harness(path: "tests/declaration_index_integrity.rs"),
   retained_test_harness(path: "tests/floor_non_verdict_admission_seed_path.rs"),
+  retained_test_harness(path: "tests/fold_accumulator_hof_cast_emitted_rust.rs"),
   retained_test_harness(path: "tests/named_filter_emitted_rust.rs"),
   retained_test_harness(path: "tests/nominal_isomorphic_record_admission.rs"),
   retained_test_harness(path: "tests/nullary_fn_value_emitted_rust.rs"),

@@ -12482,9 +12482,9 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent => []
     }
   }
-  let unbound_owner_param_variables = fold(uninstantiated_owner_param_names, init: empty_map(), f: (acc, g) =>
-    map_insert(acc, g, type_variable_node(id: g))
-  )
+  // The names of the owner's type parameters that this call leaves uninstantiated. A field whose
+  // declared type mentions one of them gets NO expected type (see the fabrication note at the
+  // field_expected site below); the names exist only to recognise that condition.
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -12521,10 +12521,28 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       Absent =>
         match field_declared_type {
           Present { value: declared_ft } =>
-            let ft = if instantiated_struct_fields == none && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16) {
-              substitute_generics(n: declared_ft, subst: unbound_owner_param_variables, source_indices: scope.type_env.source_indices)
-            } else { declared_ft }
-            if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
+            let ft = declared_ft
+            // NO STAND-IN NAMED FOR THE OWNER'S OWN PARAMETER. When nothing in the call instantiates
+            // the record's type parameters, this arm used to substitute `type_variable_node(id: <param
+            // name>)` into every field whose declared type mentions that parameter — manufacturing a
+            // type variable whose name AND variable id are copied from the owner declaration's binder.
+            // Nothing in the call said that name means the field's type: manufactured evidence, and it
+            // walked straight past the unifier's evidence gates because it looks exactly like a
+            // legitimate binder. Measured at the store's cas_slot_keys witness
+            // (dag/gunbc/durable_cas_file_store.dag:1230): the fabricated `T` from a record fed by an
+            // empty-init fold reaches `distinct_by_key(xs: keys, key: fn(k) { k as String })`, the HOF
+            // binds its own parameter T := T (a variable matching its own fabricated name), the key
+            // lambda's parameter k carries a name where a type should be, and the emitted cast renders
+            // as a runtime panic. ABSENCE OF INSTANTIATION EVIDENCE IS THE ABSENCE OF AN EXPECTED TYPE:
+            // expect nothing here, so the field is inferred on its own (the shape of an unannotated
+            // binding) and the element slot stays a genuine unsolved variable, which the evidence gates
+            // already refuse to credit. Reading the declared type instead — un-substituted — would
+            // resolve the name against the ENCLOSING scope's binder, a different declaration's scope.
+            // A caller's OWN in-scope type parameter is still ordinary evidence: it never arrives
+            // through this arm (measured control: fn push_one<U>(xs: List<U>, item: U) types as List<U>).
+            let owner_param_uninstantiated = instantiated_struct_fields == none
+              && type_node_mentions_any_name(n: declared_ft, names: uninstantiated_owner_param_names, source_indices: scope.type_env.source_indices, fuel: 16)
+            if owner_param_uninstantiated { none } else if ft.ident_span != none || type_node_is_callable(n: ft) || ft.return_cardinality == CardOptional || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
               Present { value: ft }
             } else { none }
           Absent => none
