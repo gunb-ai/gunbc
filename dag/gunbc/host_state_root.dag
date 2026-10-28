@@ -77,7 +77,7 @@ fn host_state_tree_path(tree: HostStateTree) -> NonEmptyStr {
 // beneath it. It is a demanded directory because the store mints list their derived root and refuse
 // when it cannot be listed -- and their parents must exist and be traversable for the child to exist at
 // all, so the tree is enrolled wherever the tree's children are (gunbc.runner.runner_host_grants
-// unit_hold_store_operations and its neighbours).
+// unit_hold_store_plan and its neighbours).
 fn host_state_tree_directory() -> OwnedDirectoryTarget {
   OwnedDirectoryDeclared {
     member: "host-state" as NonEmptyStr,

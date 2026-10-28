@@ -35,7 +35,8 @@ import gunbc.cli_invoke { gunbc_run_invocation_words_with_functions, invocation_
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.owned_directory { owned_directory_stat_format, owned_directory_install_plan_of, owned_directory_path, OwnedDirectoryTarget }
 import gunbc.ensure { EnsurePlan, EnsurePlanAvailable, EnsurePlanUnavailable }
-import std.algebra { fold_list }
+import std.algebra { fold_list, length }
+
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import extdeps.systemd.systemctl { systemctl_enable_verb, systemctl_start_verb, systemctl_set_property_verb, systemctl_reload_verb, systemctl_restart_verb, systemctl_mask_verb, systemctl_now_flag }
 import gunbc.fleet.fleet_posix_accounts {
@@ -98,24 +99,6 @@ type ExecutorPrivilegedOperation
   | ReadUserspaceConntrackHelpers
   | ReadDirectoryIdentity { path: NonEmptyStr }
   | ListDirectoryEntries { path: NonEmptyStr }
-  // A REFUSAL TRAVELLING IN THE PLAN POPULATION, AS PLAN TEXT. A host-provisioning plan is a List of
-  // these rows, and a declared target whose mode cannot be resolved (gunbc.owned_directory
-  // owned_directory_mode's OwnedDirectoryModeRefused route, reached through
-  // owned_directory_install_plan_of's EnsurePlanUnavailable) has no directory row to contribute.
-  // Dropping it (the => [] this variant replaces) is the widen DESIGN section 5 forbids: the host
-  // converges without the directory and NOTHING in the rendered plan records why, while the store's
-  // mint later reports the directory unready -- a diagnosis the plan itself contradicts, because the
-  // plan never asked. This row keeps the refusal in the same list so it reaches every channel the
-  // list reaches: the sudoers body renders it as a comment line (sudo's own grammar; the WIDTH
-  // REFUSED rows above set that precedent) and the converge apply script renders it as a shell
-  // comment (gunbc.fleet.fleet_converge_plan fabric_cell_apply_comment_lines does the same for cell
-  // refusals). IT IS TEXT, NEVER A COMMAND: it has no argv words, and every renderer that could
-  // build one -- executor_privileged_operation_argv, executor_privileged_operation_converge_command,
-  // executor_privileged_operation_shell_command and the sudoers fold -- gates on
-  // executor_privileged_operation_is_plan_comment FIRST. Nothing may query sudo about it either: the
-  // grant census (gunbc.fleet.fleet_host_grant_coverage host_granted_operations) excludes comment
-  // rows, because a refusal authorizes nothing and must not be reported as a missing grant.
-  | ProvisioningPlanRefusal { path: NonEmptyStr, reason: NonEmptyStr }
   | RunGunbcEntryAs {
       run_as: NonEmptyStr
       workspace_root: NonEmptyStr
@@ -176,10 +159,6 @@ fn gunbc_entry_run_argv(
 // exactly one place where an operation becomes words.
 fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<NonEmptyStr> {
   match op {
-    // A REFUSAL HAS NO COMMAND: it is plan text, and the empty word list is what keeps it out of
-    // every transport. The renderers that produce shell text gate on the predicate and render the
-    // comment instead; nothing here can be sudo'd because sudo has no argv to match.
-    ProvisioningPlanRefusal { path: _, reason: _ } => []
     EnsureOwnedDirectory { path: p, owner: o, group: g, mode: m } =>
       concat(
         [ci_runner_sudo_binary_path(b: SudoInstall)],
@@ -267,11 +246,6 @@ fn executor_privileged_operation_argv(op: ExecutorPrivilegedOperation) -> List<N
 // EXHAUSTIVE, NO WILDCARD: a new operation must say whom it runs as instead of inheriting root.
 fn executor_privileged_operation_principal(op: ExecutorPrivilegedOperation) -> OperationPrincipal {
   match op {
-    // A refusal runs nothing, by anyone: it is plan text. RunsAsRoot is the honest answer to "who
-    // WOULD this run as" for a row that never reaches a command -- the refusals never reach a
-    // transport, so the principal is never consulted; naming it keeps the match exhaustive without
-    // inventing a fifth principal.
-    ProvisioningPlanRefusal { path: _, reason: _ } => RunsAsRoot
     RunGunbcEntryAs { run_as: u, workspace_root: _, binary: _, source_roots: _, entry: _, function: _ } => RunsAsAccount { login: u }
     EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => RunsAsRoot
     RemoveDirectoryTree { path: _ } => RunsAsRoot
@@ -385,20 +359,13 @@ fn executor_privileged_operation_sudoers_line(
   grantee: NonEmptyStr,
   op: ExecutorPrivilegedOperation,
 ) -> NonEmptyStr {
-  // A REFUSAL ROW IS COMMENT TEXT, NEVER A GRANT: it renders through the comment authority, so a
-  // caller that forgot the gate still cannot mint a NOPASSWD line for it.
-  match op {
-    ProvisioningPlanRefusal { path: p, reason: r } =>
-      executor_privileged_plan_comment_sudoers_line(path: p, reason: r) as NonEmptyStr
-    _ =>
-      join([
-        grantee as String,
-        " ALL=(",
-        operation_principal_sudoers_run_as(p: executor_privileged_operation_principal(op: op)) as String,
-        ") NOPASSWD: ",
-        executor_privileged_operation_sudoers_command(op: op) as String
-      ], "") as NonEmptyStr
-  }
+  join([
+    grantee as String,
+    " ALL=(",
+    operation_principal_sudoers_run_as(p: executor_privileged_operation_principal(op: op)) as String,
+    ") NOPASSWD: ",
+    executor_privileged_operation_sudoers_command(op: op) as String
+  ], "") as NonEmptyStr
 }
 
 fn executor_privileged_operations_sudoers_body(
@@ -415,57 +382,6 @@ fn executor_privileged_operations_sudoers_body(
         "\n"
       ], "")
   )
-}
-
-// THE ONE PROJECTION, refusal included. DESIGN section 5: "A failure arm refuses, never widens, and
-// every degradation is typed, located and countable." A provisioning plan is a List of rows over this
-// type, and a declared target whose mode cannot be resolved has no directory row to contribute -- but
-// an arm that yields [] (what this projection replaces, at all three host-plan sites in
-// gunbc.runner.runner_host_grants) drops the refusal silently: the host converges without the
-// directory and the rendered plan records nothing, while the store's mint later reports the directory
-// unready. THIS projects one OwnedDirectoryTarget through the ONE plan-of decision that already
-// carries the route (gunbc.owned_directory owned_directory_install_plan_of -> EnsurePlan's
-// EnsurePlanUnavailable) and yields either the directory row or the located refusal row -- never
-// nothing. Consumed by every plan site (the unit-hold, install-media and printer-state operations);
-// no site re-derives the projection, so none can drop the refusal.
-fn executor_privileged_owned_directory_plan_rows(t: OwnedDirectoryTarget) -> List<ExecutorPrivilegedOperation> {
-  match owned_directory_install_plan_of(t: t) {
-    EnsurePlanUnavailable { reason } =>
-      [ProvisioningPlanRefusal { path: owned_directory_path(t: t) as String as NonEmptyStr, reason: reason as NonEmptyStr }]
-    EnsurePlanAvailable { plan } =>
-      [EnsureOwnedDirectory {
-        path: plan.path as String as NonEmptyStr,
-        owner: plan.owner.user,
-        group: plan.owner.group,
-        mode: plan.mode,
-      }]
-  }
-}
-
-// IS THIS ROW PLAN TEXT RATHER THAN AN AUTHORIZATION? THE SINGLE GATE EVERY RENDERER CONSULTS FIRST.
-fn executor_privileged_operation_is_plan_comment(op: ExecutorPrivilegedOperation) -> Bool {
-  match op {
-    ProvisioningPlanRefusal { path: _, reason: _ } => true
-    _ => false
-  }
-}
-
-// THE SUDOERS RENDERING OF A REFUSAL ROW: a comment line. sudo's own grammar ignores it, visudo
-// still validates the file, and the refusal is VISIBLE in the installed plan next to the grants that
-// surround it -- the same shape the "# WIDTH REFUSED" lines above already set. It grants nothing.
-// executor_privileged_operation_sudoers_line gates on the predicate and routes here, so even a
-// renderer that forgot the gate emits a comment, not a grant.
-fn executor_privileged_plan_comment_sudoers_line(path: NonEmptyStr, reason: NonEmptyStr) -> String {
-  join(["# REFUSED: owned directory ", path as String, " has no resolvable mode and was NOT ensured: ", reason as String], "")
-}
-
-// THE APPLY-SCRIPT RENDERING OF A REFUSAL ROW: a shell comment, so the converge script shows what it
-// did not do and why -- fabric_cell_apply_comment_lines (gunbc.fleet.fleet_converge_plan) is the
-// existing idiom this copies. A refusal is never executed: executor_privileged_operation_argv gives
-// it no words, and the sudoers line and the converge/shell renderers all consult
-// executor_privileged_operation_is_plan_comment first.
-fn executor_privileged_plan_comment_apply_line(path: NonEmptyStr, reason: NonEmptyStr) -> String {
-  join(["# REFUSED: owned directory ", path as String, " has no resolvable mode and was NOT ensured: ", reason as String], "")
 }
 
 // THE POPULATION IS DERIVED FROM THE SLOT ROSTER, NOT HAND-LISTED. Each managed slot contributes
@@ -507,6 +423,117 @@ fn runner_slot_privileged_operations(
         }
       ]
   )
+}
+
+// A PROVISIONING PLAN OVER OWNED-DIRECTORY TARGETS, refusal carried rather than dropped.
+// DESIGN section 5: "A failure arm refuses, never widens, and every degradation is typed, located
+// and countable", and "A refusal that fires -> the line stops." The arm this record replaces mapped
+// a refused target to [] at all three host-plan sites in gunbc.runner.runner_host_grants: the host
+// converged WITHOUT the directory, the rendered plan recorded nothing, and the store's mint later
+// reported the directory unready with a "not converged yet" that was wrong -- the plan had never
+// asked for it.
+//
+// A REFUSAL IS NOT AN OPERATION. It is not an authorization: it has no principal, no argv and no
+// sudoers line, so it is not a variant of ExecutorPrivilegedOperation -- review 86921: putting it in
+// one forced a placeholder principal, an empty argv, a census exclusion and a Bool predicate over the
+// coproduct, the workarounds that are themselves the DESIGN section 5 tell. The record keeps the two
+// populations TYPED AND SEPARATE; each gets its own gate below, so no renderer, census row or argv
+// can ever touch a refusal, and no refusal can be counted as a grant. The refusals then stop the
+// line through the channels the repo already owns: gunbc.runner.runner_host_grants withholds the
+// whole sudoers artifact (RunnerHostSudoersBodyRefused, the arm a missing deploy row already uses),
+// and gunbc.fleet.fleet_host_grant_coverage gives each refused target a standing GrantBlocking row,
+// so the apply refuses as ApplyAwaitingCapability naming the directory BEFORE any host mutation --
+// the same standing a missing sudoers rule already earns.
+//
+// THE ONE DECISION is gunbc.owned_directory owned_directory_install_plan_of, whose EnsurePlan already
+// routes an unresolvable mode to EnsurePlanUnavailable; every plan site consumes this projection, so
+// no site can drop the refusal by re-deriving the rows.
+type ExecutorPrivilegedProvisioningPlan sole_constructor {
+  rows: List<ExecutorPrivilegedOperation>
+  refusals: List<OwnedDirectoryPlanRefusal>
+}
+
+// CONSTRUCTION SEALED to this module: a refusal exists only because the one plan-of decision said so, so
+// no module can fabricate one (or drop one) -- the census and the sudoers gate receive them, never build them.
+type OwnedDirectoryPlanRefusal sole_constructor {
+  path: NonEmptyStr
+  reason: NonEmptyStr
+}
+
+// ONE TARGET, THE ONE DECISION: the directory row, or the located refusal. Never nothing.
+fn executor_privileged_owned_directory_plan(t: OwnedDirectoryTarget) -> ExecutorPrivilegedProvisioningPlan {
+  match owned_directory_install_plan_of(t: t) {
+    EnsurePlanUnavailable { reason } =>
+      ExecutorPrivilegedProvisioningPlan {
+        rows: [],
+        refusals: [OwnedDirectoryPlanRefusal {
+          path: owned_directory_path(t: t) as String as NonEmptyStr,
+          reason: reason as NonEmptyStr,
+        }],
+      }
+    EnsurePlanAvailable { plan } =>
+      ExecutorPrivilegedProvisioningPlan {
+        rows: [EnsureOwnedDirectory {
+          path: plan.path as String as NonEmptyStr,
+          owner: plan.owner.user,
+          group: plan.owner.group,
+          mode: plan.mode,
+        }],
+        refusals: [],
+      }
+  }
+}
+
+// TARGETS INTO ONE PLAN. A refusal is never dropped and never lost behind later rows: once the plan
+// carries a refusal it stays that plan, so the fold's result says either what to provision or which
+// single located cause stops it.
+fn executor_privileged_owned_directory_plans(
+  targets: List<OwnedDirectoryTarget>,
+) -> ExecutorPrivilegedProvisioningPlan {
+  fold_list(
+    xs: targets,
+    empty: ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [] },
+    cons: (acc, t) =>
+      let p = executor_privileged_owned_directory_plan(t: t)
+      if length(xs: acc.refusals) > 0 {
+        acc
+      } else if length(xs: p.refusals) > 0 {
+        p
+      } else {
+        ExecutorPrivilegedProvisioningPlan { rows: concat(acc.rows, p.rows), refusals: [] }
+      }
+  )
+}
+
+// THE RENDERERS' GATE: rows only, which is why a refusal cannot be rendered as a sudoers rule or an
+// apply command -- there is no operation to render.
+fn executor_privileged_plan_rows(plan: ExecutorPrivilegedProvisioningPlan) -> List<ExecutorPrivilegedOperation> {
+  plan.rows
+}
+
+// THE EMPTY PLAN: a site whose conditions admit no directory contributes a plan with neither rows
+// nor refusals, which is distinguishable from a refusal at every gate.
+fn executor_privileged_empty_provisioning_plan() -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan { rows: [], refusals: [] }
+}
+
+// A PLAN OVER ROWS THIS MODULE DERIVES DIRECTLY (the host-wide rows carry their literal owner and
+// mode, so their mode is not a DeclaredManaged decision and cannot refuse). Lifting them into the
+// plan type is what lets one host plan carry every directory row.
+fn executor_privileged_plan_of_rows(rows: List<ExecutorPrivilegedOperation>) -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan { rows: rows, refusals: [] }
+}
+
+// THE ONE COMPOSITION OF SITE PLANS. A refusal survives every merge -- it is never overwritten by a
+// later site's rows -- so a host plan that carries a refusal is a host plan whose renderers must stop.
+fn executor_privileged_plan_merge(
+  a: ExecutorPrivilegedProvisioningPlan,
+  b: ExecutorPrivilegedProvisioningPlan,
+) -> ExecutorPrivilegedProvisioningPlan {
+  ExecutorPrivilegedProvisioningPlan {
+    rows: concat(a.rows, b.rows),
+    refusals: if length(xs: a.refusals) > 0 { a.refusals } else { b.refusals },
+  }
 }
 
 // THE STRING RENDERING IS A TRANSPORT SCAFFOLD, MARKED AS ONE. Review 55676 is right that a modeled
@@ -567,8 +594,6 @@ type OperationPrecondition
 // this type exists to end.
 fn executor_privileged_operation_precondition(op: ExecutorPrivilegedOperation) -> OperationPrecondition {
   match op {
-    // A refusal is not checked and not run; it has no precondition and no argv.
-    ProvisioningPlanRefusal { path: _, reason: _ } => NoPrecondition
     EnsureSystemAccount { login: l, shell: _ } => AccountExistsCheck { login: l }
     EnsureSupplementaryGroupMembership { login: _, group: _ } => NoPrecondition
     EnsureOwnedDirectory { path: _, owner: _, group: _, mode: _ } => NoPrecondition
@@ -638,19 +663,11 @@ fn executor_privileged_operation_converge_command(op: ExecutorPrivilegedOperatio
 }
 
 fn executor_privileged_operation_shell_command(op: ExecutorPrivilegedOperation) -> String {
-  // THE GATE: a refusal row renders as its comment line, never as a command. Without this the
-  // single quote-join over an empty argv would still emit the bare elevated sudo path -- a line a
-  // shell could run. The gate sits here, in the ONE shell-text renderer, so converge_command and any
-  // future renderer built on it inherit it.
-  match op {
-    ProvisioningPlanRefusal { path: p, reason: r } => executor_privileged_plan_comment_apply_line(path: p, reason: r)
-    _ =>
-      join(
-        map(
-          executor_privileged_operation_elevated_argv(op: op),
-          w => posix_single_quote(spelling: w),
-        ),
-        " ",
-      )
-  }
+  join(
+    map(
+      executor_privileged_operation_elevated_argv(op: op),
+      w => posix_single_quote(spelling: w),
+    ),
+    " ",
+  )
 }

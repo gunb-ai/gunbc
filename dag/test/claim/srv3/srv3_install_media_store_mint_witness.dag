@@ -4,7 +4,7 @@ module test.claim.srv3.srv3_install_media_store_mint_witness
 // admits on a listing; every refusal is typed and creates NOTHING. Three reviews put it here:
 // review 86279 (a list-only mint on a fresh host gated the fetch that provisions the store) is fixed
 // by ENROLLMENT, not by an effect: install_media_store_directory is a demanded provisioning directory
-// (gunbc.runner.runner_host_grants install_media_store_operations), so a converged host has the
+// (gunbc.runner.runner_host_grants install_media_store_plan), so a converged host has the
 // directory and an unconverged one is REFUSED, not silently built. Review 86297 (mkdir -p succeeds on
 // unreadable directories -- an ensure fallback admits them as Ready) and review 86365 (the mint also
 // opens the READ paths srv3_seeded_install_media_resolve/publish -- a read that mkdirs is a write in
@@ -131,7 +131,7 @@ fn failure_text(e: InstallMediaStoreReading) -> String {
 
 // AN UNCONVERGED HOST: no artifacts/ yet. The listing answers NotFound and the mint REFUSES with a
 // typed detail -- it does not mkdir. The directory is a DEMANDED PROVISIONING directory (the executor
-// creates it at convergence, gunbc.runner.runner_host_grants install_media_store_operations), so the
+// creates it at convergence, gunbc.runner.runner_host_grants install_media_store_plan), so the
 // answer to "not yet" is "refused, not built". RED against every ensure-fallback cut: those ran
 // mkdir -p here (one shell.Mkdir dispatch) and admitted Ready.
 test fn the_mint_refuses_an_unconverged_host_where_the_artifacts_directory_does_not_exist_yet() -> Bool {

@@ -1,14 +1,27 @@
 module test.claim.runner.store_provisioning_plan_refusal_witness
 
-// WITNESS FOR THE ONE PROJECTION FROM A DECLARED DIRECTORY TARGET ONTO A PROVISIONING PLAN ROW
-// (gunbc.executor_privileged_operation executor_privileged_owned_directory_plan_rows), review 86390:
-// a target whose mode cannot be resolved must contribute a LOCATED REFUSAL ROW to the plan, never an
-// empty contribution. The old sites did `OwnedDirectoryModeRefused { reason: _ } => []` -- the plan
-// converged without the directory and nothing recorded why. These witnesses pin all three conjuncts
-// the fix owes: (1) the refusal survives as exactly one located row, (2) the row is plan TEXT that no
-// renderer can turn into a command or a grant, and (3) the grant census never asks sudo about it.
+// WITNESS FOR THE PROVISIONING PLAN OVER DECLARED DIRECTORY TARGETS
+// (gunbc.executor_privileged_operation ExecutorPrivilegedProvisioningPlan), review 86390 as corrected
+// by review 86921. The three host-plan sites used to map a mode-refused target to [] -- the host
+// converged WITHOUT the directory, the rendered plan recorded nothing, and the store's mint later
+// reported the directory unready with a "not converged yet" that was false, because the plan had never
+// asked for it. The fix carries the refusal in the plan as its own typed population (NOT as a fake
+// operation variant: a refusal is not an authorization, has no principal and no argv), and stops the
+// line through two channels the repo already owns -- the sudoers artifact is withheld, and the grant
+// census gets a standing GrantBlocking row so the apply refuses before its first mutation.
+//
+// Six conjuncts, one per obligation the fix owes:
+//   1 POSITIVE CONTROL  an admitted target still contributes exactly one directory row.
+//   2 THE RED           a refused target contributes one located refusal and no rows -- under `=> []`
+//                       this witness is red, because the plan carried no trace of the directory.
+//   3 NO FAKE OPERATION the refusal population can never be rendered as a sudoers rule, an apply
+//                       command or a `sudo -n` query, because no renderer receives refusals at all.
+//   4 REFUSAL SURVIVES  merging a refused plan with a later admitted plan keeps the refusal.
+//   5 SUDOERS STOP      the gate withholds the whole artifact, naming path and cause.
+//   6 CENSUS STOP       the census blocks on the directory, and the blocking text is countable.
 
 import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length, string_contains }
 import std.optional { Present, Absent }
 import std.effect_grant { Read, Write, Execute }
 import extdeps.access.posix { PosixUser, LoginShellUnobserved }
@@ -21,16 +34,29 @@ import gunbc.managed_directory {
 import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryManaged }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
+  ExecutorPrivilegedProvisioningPlan,
+  OwnedDirectoryPlanRefusal,
   EnsureOwnedDirectory,
-  executor_privileged_owned_directory_plan_rows,
-  executor_privileged_operation_is_plan_comment,
-  executor_privileged_operation_sudoers_line,
-  executor_privileged_operation_converge_command,
-  executor_privileged_operation_shell_command,
+  executor_privileged_owned_directory_plan,
+  executor_privileged_owned_directory_plans,
+  executor_privileged_plan_rows,
+  executor_privileged_plan_merge,
+  executor_privileged_empty_provisioning_plan,
+  executor_privileged_plan_of_rows,
   executor_privileged_operations_sudoers_body,
 }
-import gunbc.fleet.fleet_host_grant_coverage { host_grant_queries }
-
+import gunbc.runner.runner_host_grants {
+  runner_host_sudoers_body_guard,
+  RunnerHostSudoersBodyProduced,
+  RunnerHostSudoersBodyRefused,
+}
+import gunbc.fleet.fleet_host_grant_coverage {
+  host_grant_provisioning_target_rows_of,
+  host_grant_blocking_texts,
+  host_grant_awaiting_capability,
+  host_grant_plan_lines,
+  host_grant_queries,
+}
 
 fn owner_user() -> PosixUser {
   PosixUser { name: "owner", uid: 4001, gid: 4001, shell: LoginShellUnobserved }
@@ -42,7 +68,8 @@ fn stranger_user() -> PosixUser {
 
 // A SYNTHETIC MANAGED TARGET. Admitted when its only writer is the owner; refused by
 // managed_directory_admit when a writer is neither owner nor in group -- the ONE route that makes
-// owned_directory_mode refuse, so the refusal row is not a scenario invented for the test.
+// owned_directory_install_plan_of answer EnsurePlanUnavailable, so the refusal is not a scenario
+// invented for the test.
 fn managed_with(writers: List<PosixUser>) -> OwnedDirectoryTarget {
   OwnedDirectoryManaged {
     directory: ManagedDirectory {
@@ -57,28 +84,24 @@ fn managed_with(writers: List<PosixUser>) -> OwnedDirectoryTarget {
   }
 }
 
-fn refused_rows() -> List<ExecutorPrivilegedOperation> {
-  executor_privileged_owned_directory_plan_rows(t: managed_with(writers: [stranger_user()]))
+fn refused_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_with(writers: [stranger_user()]))
 }
 
-fn admitted_rows() -> List<ExecutorPrivilegedOperation> {
-  executor_privileged_owned_directory_plan_rows(t: managed_with(writers: [owner_user()]))
+fn admitted_plan() -> ExecutorPrivilegedProvisioningPlan {
+  executor_privileged_owned_directory_plan(t: managed_with(writers: [owner_user()]))
 }
 
-fn one_row(rows: List<ExecutorPrivilegedOperation>) -> Bool {
-  count(rows) == 1
-}
-
-// THE POSITIVE CONTROL: an admitted target still projects exactly one directory row, and it is NOT a
-// comment -- the projection cannot pass by refusing everything.
-fn the_admitted_target_projects_one_directory_row() -> Bool {
-  let rows = admitted_rows()
-  count(rows) == 1
-    && match rows.first() {
+// 1. THE POSITIVE CONTROL. The projection cannot pass by refusing everything: an admitted target still
+// yields exactly one directory row over the declared path, owned as declared, with no refusal.
+fn the_admitted_target_contributes_one_directory_row() -> Bool {
+  let plan = admitted_plan()
+  count(executor_privileged_plan_rows(plan: plan)) == 1
+    && length(xs: plan.refusals) == 0
+    && match executor_privileged_plan_rows(plan: plan).first() {
       Absent => false
       Present { value: row } =>
-        !executor_privileged_operation_is_plan_comment(op: row)
-        && match row {
+        match row {
           EnsureOwnedDirectory { path: p, owner: o, group: g, mode: _ } =>
             (p as String) == "/synthetic/store-root" && (o as String) == "owner" && (g as String) == "owner"
           _ => false
@@ -86,52 +109,107 @@ fn the_admitted_target_projects_one_directory_row() -> Bool {
     }
 }
 
-// THE RED THE FIX ANSWERS: a target whose mode cannot be resolved projects EXACTLY ONE located
-// refusal row -- not zero rows. Under the deleted `=> []` arms this witness is red: the plan carried
-// no trace of the directory at all.
-fn the_refused_target_projects_a_located_refusal_not_nothing() -> Bool {
-  let rows = refused_rows()
-  match rows.first() {
-    Absent => false
-    Present { value: row } =>
-      count(rows) == 1
-        && executor_privileged_operation_is_plan_comment(op: row)
-        && string_contains(s: executor_privileged_operation_shell_command(op: row), pattern: "/synthetic/store-root")
-        // the refusal names WHO the executor refused: the stray writer from managed_directory_admit.
-        && string_contains(s: executor_privileged_operation_shell_command(op: row), pattern: "outsider")
-  }
-}
-
-// THE REFUSAL IS TEXT, NEVER A COMMAND OR A GRANT: the apply-script renderer emits a shell comment,
-// and the sudoers renderer emits a comment line -- no NOPASSWD, no argv, nothing visudo would honor.
-fn the_refusal_row_renders_as_comment_in_both_channels() -> Bool {
-  match refused_rows().first() {
-    Absent => false
-    Present { value: row } => {
-      let apply = executor_privileged_operation_converge_command(op: row)
-      let sudo = executor_privileged_operation_sudoers_line(grantee: "ghrunner", op: row) as String
-      string_contains(s: apply, pattern: "#") && !string_contains(s: apply, pattern: "sudo")
-        && string_contains(s: sudo, pattern: "#") && !string_contains(s: sudo, pattern: "NOPASSWD")
+// 2. THE RED THE FIX ANSWERS. A target whose mode cannot be resolved contributes EXACTLY ONE refusal,
+// located by path and caused by the stray writer managed_directory_admit named -- and NO rows. Under the
+// deleted `=> []` arms this is red twice over: no refusal existed, and the type to carry it did not.
+fn the_refused_target_contributes_a_located_refusal_and_no_rows() -> Bool {
+  let plan = refused_plan()
+  count(executor_privileged_plan_rows(plan: plan)) == 0
+    && length(xs: plan.refusals) == 1
+    && match plan.refusals.first() {
+      Absent => false
+      Present { value: r } =>
+        (r.path as String) == "/synthetic/store-root"
+          && string_contains(s: r.reason as String, pattern: "outsider")
     }
+}
+
+// 3. A REFUSAL IS NOT AN OPERATION, and the model makes that structural rather than a convention: the
+// renderer receives ONLY rows, so there is no refusal to render -- the sudoers body over a refused plan
+// is empty text, never a grant line, never an argv. (The rejected design stored the refusal inside
+// ExecutorPrivilegedOperation and needed a placeholder principal, an empty argv and a census exclusion;
+// this is the witness that would not exist in that shape.)
+fn a_refusal_can_never_be_rendered_as_a_grant() -> Bool {
+  let body = executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: executor_privileged_plan_rows(plan: refused_plan()))
+  !string_contains(s: body, pattern: "NOPASSWD")
+    && !string_contains(s: body, pattern: "/synthetic/store-root")
+    // THE DIFFERENTIAL THAT SHOWS THE SPLIT DOES THE WORK, rather than the synthetic path simply being
+    // uninteresting: the SAME projection over an admitted target yields a row that IS rendered as a
+    // sudoers rule and IS asked about by the census; over the refused target it yields neither.
+    && string_contains(
+      s: executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: executor_privileged_plan_rows(plan: admitted_plan())),
+      pattern: "/synthetic/store-root",
+    )
+    && count(host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: executor_privileged_plan_rows(plan: admitted_plan()))) == 1
+    && length(xs: host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: executor_privileged_plan_rows(plan: refused_plan()))) == 0
+}
+
+// 4. A REFUSAL IS NEVER LOST BEHIND LATER ROWS. A refused plan merged with an admitted one stays a
+// refused plan -- the rows of the admitted plan do not overwrite the refusal, which is how the fold in
+// executor_privileged_owned_directory_plans keeps one located cause per host plan.
+fn a_refusal_survives_a_merge_with_a_later_admitted_plan() -> Bool {
+  let merged = executor_privileged_plan_merge(a: refused_plan(), b: admitted_plan())
+  length(xs: merged.refusals) == 1
+    && match merged.refusals.first() {
+      Absent => false
+      Present { value: r } => (r.path as String) == "/synthetic/store-root"
+    }
+    // and the reverse order agrees, so the stop does not depend on which target refused first.
+    && length(xs: executor_privileged_plan_merge(a: admitted_plan(), b: refused_plan()).refusals) == 1
+    // an empty plan contributes nothing to either population: distinguishable from a refusal.
+    && length(xs: executor_privileged_plan_merge(a: executor_privileged_empty_provisioning_plan(), b: admitted_plan()).refusals) == 0
+}
+
+// 5. THE SUDOERS CHANNEL STOPS. With a refusal the gate withholds the WHOLE artifact -- the content that
+// would have been installed is not installed, and the refusal names the directory and its cause. Without
+// one, the same gate installs the content unchanged (the control that keeps the gate from being "refuse
+// everything").
+fn the_sudoers_gate_withholds_the_artifact_on_a_refusal() -> Bool {
+  match runner_host_sudoers_body_guard(refusals: refused_plan().refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+    RunnerHostSudoersBodyProduced { content: _ } => false
+    RunnerHostSudoersBodyRefused { reason: why } =>
+      string_contains(s: why, pattern: "/synthetic/store-root")
+        && string_contains(s: why, pattern: "outsider")
+        && !string_contains(s: why, pattern: "NOPASSWD")
   }
+    && match runner_host_sudoers_body_guard(refusals: admitted_plan().refusals, content: "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true") {
+      RunnerHostSudoersBodyProduced { content: c } => (c as String) == "ghrunner ALL=(ALL) NOPASSWD: /usr/bin/true"
+      RunnerHostSudoersBodyRefused { reason: _ } => false
+    }
 }
 
-// THE SUDOERS BODY CARRIES THE REFUSAL BESIDE THE GRANT IT REFUSES TO PRODUCE: with one admitted and
-// one refused target in the same plan population, the rendered file contains the real grant line for
-// the admitted directory AND the comment line for the refused one. Before the fix the file held only
-// the grant line and the refused directory was invisible.
-fn the_sudoers_body_shows_both_the_grant_and_the_refusal() -> Bool {
-  let body = executor_privileged_operations_sudoers_body(grantee: "ghrunner", ops: concat(admitted_rows(), refused_rows()))
-  string_contains(s: body, pattern: "NOPASSWD")
-    && string_contains(s: body, pattern: "# REFUSED")
-    && string_contains(s: body, pattern: "/synthetic/store-root has no resolvable mode")
+// 6. THE CENSUS CHANNEL STOPS BEFORE ANY MUTATION. The refused target earns a standing blocking row
+// whose text names the directory, so host_grant_awaiting_capability refuses the apply as
+// ApplyAwaitingCapability -- the same channel a missing sudoers rule uses, so the host never converges
+// with the directory silently absent. Countable: exactly one blocking text, one plan line.
+fn the_census_blocks_the_apply_on_a_refused_target() -> Bool {
+  let rows = host_grant_provisioning_target_rows_of(refusals: refused_plan().refusals, lease_owner: "lease")
+  let texts = host_grant_blocking_texts(rows: rows)
+  count(texts) == 1
+    && match texts.first() {
+      Absent => false
+      Present { value: t } =>
+        string_contains(s: t, pattern: "/synthetic/store-root") && string_contains(s: t, pattern: "outsider")
+    }
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => false
+      Present { value: cap } => string_contains(s: cap, pattern: "/synthetic/store-root")
+    }
+    // it shows in the plan a human reads, under its own label, with its count -- not only in the
+    // capability the apply later refuses on.
+    && any(xs: host_grant_plan_lines(rows: rows), predicate: fn(line) {
+      string_contains(s: line, pattern: "host-grants provisioning-target-refused (1): /synthetic/store-root")
+    })
 }
 
-// THE GRANT CENSUS NEVER ASKS SUDO ABOUT A REFUSAL: an invoker population holding only the refusal
-// row yields no queries at all, while the admitted row yields its query. A refusal queried would be
-// reported as a MISSING GRANT, inventing a remediation the mode decision withheld.
-fn the_census_asks_nothing_of_a_refusal_row() -> Bool {
-  let refused_queries = host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: refused_rows())
-  let admitted_queries = host_grant_queries(host: "no-such-host" as NonEmptyStr, lease_owner: "lease", invoker_ops: admitted_rows())
-  count(refused_queries) == 0 && count(admitted_queries) == 1
+// 6b. THE CONTROL FOR THE CENSUS. An admitted target produces NO blocking row and NO capability, so the
+// blocking above is caused by the refusal and not by the row shape.
+fn an_admitted_target_blocks_nothing() -> Bool {
+  let rows = host_grant_provisioning_target_rows_of(refusals: admitted_plan().refusals, lease_owner: "lease")
+  count(rows) == 0
+    && count(host_grant_blocking_texts(rows: rows)) == 0
+    && match host_grant_awaiting_capability(rows: rows) {
+      Absent => true
+      Present { value: _ } => false
+    }
 }

@@ -32,7 +32,13 @@ import gunbc.executor_privileged_operation {
   SystemdSetUnitProperty,
   executor_managed_directory_mode,
   executor_privileged_operations_sudoers_body,
-  executor_privileged_owned_directory_plan_rows,
+  ExecutorPrivilegedProvisioningPlan,
+  OwnedDirectoryPlanRefusal,
+  executor_privileged_owned_directory_plans,
+  executor_privileged_empty_provisioning_plan,
+  executor_privileged_plan_of_rows,
+  executor_privileged_plan_merge,
+  executor_privileged_plan_rows,
   runner_slot_privileged_operations,
 }
 import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
@@ -322,29 +328,52 @@ fn runner_host_wide_privileged_operations(deploy: RunnerHostDeploy) -> List<Exec
 // population, so a refused host can render them from its spec alone. Splitting the parameter is what
 // lets one body serve both the admitted and refused projections instead of forking the rows.
 fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+  executor_privileged_plan_rows(plan: runner_host_wide_plan(spec: spec))
+}
+
+// THE HOST-WIDE PLAN: the three literal rows lifted, then the two store-site plans merged. This is the
+// one place the host-wide population is composed, so the refusals its declared targets can carry are
+// carried by every consumer -- the sudoers renderers through the rows, the census through
+// runner_host_wide_plan_refusals.
+fn runner_host_wide_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
   let job = spec.job_user
-  [
-    EnsureOwnedDirectory {
-      path: gunbc_fleet_converge_state_dir,
-      owner: job,
-      group: job,
-      mode: executor_managed_directory_mode,
-    },
-    EnsureOwnedDirectory {
-      path: actions_runner_base_dir as NonEmptyStr,
-      owner: spec.runner_user,
-      group: spec.runner_user,
-      mode: executor_managed_directory_mode,
-    },
-    EnsureOwnedDirectory {
-      path: actions_runner_cache_dir as NonEmptyStr,
-      owner: spec.runner_user,
-      group: spec.runner_user,
-      mode: executor_managed_directory_mode,
-    },
-    EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
-    SystemdDaemonReload
-  ] + unit_hold_store_operations(spec: spec) + install_media_store_operations(spec: spec)
+  executor_privileged_plan_merge(
+    a: executor_privileged_plan_merge(
+      a: executor_privileged_plan_of_rows(rows: [
+        EnsureOwnedDirectory {
+          path: gunbc_fleet_converge_state_dir,
+          owner: job,
+          group: job,
+          mode: executor_managed_directory_mode,
+        },
+        EnsureOwnedDirectory {
+          path: actions_runner_base_dir as NonEmptyStr,
+          owner: spec.runner_user,
+          group: spec.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+        EnsureOwnedDirectory {
+          path: actions_runner_cache_dir as NonEmptyStr,
+          owner: spec.runner_user,
+          group: spec.runner_user,
+          mode: executor_managed_directory_mode,
+        },
+        EnsureSupplementaryGroupMembership { login: job, group: kvm_device_group },
+        SystemdDaemonReload,
+      ]),
+      b: unit_hold_store_plan(spec: spec),
+    ),
+    b: install_media_store_plan(spec: spec),
+  )
+}
+
+// THE CENSUS' STOP CHANNEL: the refusals the host-wide plan carries, TYPED (path + why its mode could
+// not be resolved). gunbc.fleet.fleet_host_grant_coverage turns each into a standing GrantBlocking row,
+// so a directory whose provisioning target was refused blocks the apply as ApplyAwaitingCapability
+// BEFORE any host mutation -- the same channel a missing or unobserved sudoers rule already uses. The
+// refusal is not a command, so it is never rendered as one and never becomes a `sudo -n` query.
+fn runner_host_wide_plan_refusals(spec: RunnerHostSpec) -> List<OwnedDirectoryPlanRefusal> {
+  runner_host_wide_plan(spec: spec).refusals
 }
 
 // THE INSTALL MEDIA ARTIFACTS ROOT LIVES ONLY WHERE THE FETCH IT FILLS RUNS: the actuator host, and
@@ -363,12 +392,12 @@ fn runner_host_wide_refused_operations(spec: RunnerHostSpec) -> List<ExecutorPri
 // target (install_media_store_directory), projected through the shared OwnedDirectoryTarget accessors
 // like the two sibling rows and printer_state_privileged_operations. ForeignOwnershipRefuses: a served
 // store's root left by another principal is a foreign subtree and is never adopted.
-fn install_media_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+fn install_media_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
   if (spec.host_label as String) == (operator_host_srv1 as String) && srv3_os_install_actuator_host_is_derived_srv1() {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    flat_map([install_media_store_directory(tree: host_state_tree(), owner: owner)], t => executor_privileged_owned_directory_plan_rows(t: t))
+    executor_privileged_owned_directory_plans(targets: [install_media_store_directory(tree: host_state_tree(), owner: owner)])
   } else {
-    []
+    executor_privileged_empty_provisioning_plan()
   }
 }
 
@@ -392,12 +421,12 @@ fn install_media_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivileg
 // The owner is the job user, because the boot and the operator's session both write slots as that
 // account; the executor's managed mode is the very same DirectoryOwnerAllEveryoneTraverse both stores
 // declare, asserted equal by the provision witness.
-fn unit_hold_store_operations(spec: RunnerHostSpec) -> List<ExecutorPrivilegedOperation> {
+fn unit_hold_store_plan(spec: RunnerHostSpec) -> ExecutorPrivilegedProvisioningPlan {
   if any(unit_hold_store_hosts(), h => (h as String) == (spec.host_label as String)) {
     let owner = PosixOwnerNames { user: spec.job_user, group: spec.job_user }
-    flat_map([host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)], t => executor_privileged_owned_directory_plan_rows(t: t))
+    executor_privileged_owned_directory_plans(targets: [host_state_tree_directory(), unit_hold_store_directory(tree: host_state_tree(), owner: owner), boot_attempt_slot_directory(tree: host_state_tree(), owner: owner)])
   } else {
-    []
+    executor_privileged_empty_provisioning_plan()
   }
 }
 
@@ -571,18 +600,53 @@ type RunnerHostSudoersBody
 
 fn runner_host_sudoers_body(host: HostIdentity, artifact_path: String) -> RunnerHostSudoersBody {
   match runner_host_deploy_for(host: host) {
-    RunnerHostDeployFound { deploy } =>
-      RunnerHostSudoersBodyProduced { content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path) }
+    RunnerHostDeployFound { deploy } => runner_host_sudoers_body_guard(
+      refusals: runner_host_provisioning_plan_refusals(deploy: deploy),
+      content: runner_host_sudoers_content(deploy: deploy, artifact_path: artifact_path),
+    )
     RunnerHostDeployUnmodeled { host: unmodeled } =>
       RunnerHostSudoersBodyRefused { reason: concat("no runner host deploy row for enrolled host ", unmodeled as String) }
     RunnerHostDeployRefused { host: refused, cause: why } =>
       match runner_host_spec_for(host: refused) {
-        RunnerHostSpecFound { spec: spec } =>
-          RunnerHostSudoersBodyProduced { content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path) }
+        RunnerHostSpecFound { spec: spec } => runner_host_sudoers_body_guard(
+          refusals: runner_host_wide_plan_refusals(spec: spec),
+          content: runner_host_refused_sudoers_content(spec: spec, cause: why, artifact_path: artifact_path),
+        )
         RunnerHostSpecAbsent { host: h } =>
           RunnerHostSudoersBodyRefused { reason: concat("runner host refused with no spec: ", h as String) }
       }
   }
+}
+
+// THE SUDOERS CHANNEL'S STOP, ONE GATE over a plan's refusals rather than an arm repeated at each
+// deployment width. THE FILE IS ONE AUTHORIZATION SET: installing it with a directory's rows quietly
+// absent would converge a host the plan cannot account for, so ANY refusal withholds the whole artifact.
+// This is the arm a missing deploy row already uses (gunbc.tier_o_artifact_emit refuses the artifact;
+// runner_host_file_converge reports the file withheld), so no new stop mechanism is invented -- and the
+// census carries the same refusal as a blocking row, so the apply refuses too.
+fn runner_host_sudoers_body_guard(refusals: List<OwnedDirectoryPlanRefusal>, content: String) -> RunnerHostSudoersBody {
+  match refusals.first() {
+    Present { value: r } => RunnerHostSudoersBodyRefused {
+      reason: concat("provisioning target refused: ", runner_host_plan_refusal_text(r: r)),
+    }
+    Absent => RunnerHostSudoersBodyProduced { content: content }
+  }
+}
+
+// THE REFUSAL'S ONE TEXT, spelled once here and by the census' blocking row: the directory, and why its
+// declared mode could not be resolved. Both stop channels name the same thing, so a witness can pin one
+// string and check it appears in both.
+fn runner_host_plan_refusal_text(r: OwnedDirectoryPlanRefusal) -> String {
+  join([r.path as String, ": ", r.reason as String], "")
+}
+
+// EVERY DECLARED PROVISIONING TARGET THIS HOST'S PLAN DEMANDS, refusal-bearing: the host-wide targets
+// (converge state, runner base/cache, unit holds, boot attempts, install media) plus the printer-state
+// directories. Renderers consult this once; no renderer can miss a refusal because none of them
+// re-derives rows from targets.
+fn runner_host_provisioning_plan_refusals(deploy: RunnerHostDeploy) -> List<OwnedDirectoryPlanRefusal> {
+  runner_host_wide_plan_refusals(spec: runner_host_spec_of(deploy: deploy))
+    + printer_state_store_plan(deploy: deploy).refusals
 }
 
 fn runner_host_deploy_slot_sudoers_block(deploy: RunnerHostDeploy) -> String {
@@ -677,9 +741,20 @@ fn printer_state_privileged_operations(deploy: RunnerHostDeploy) -> List<Executo
     let targets = printer_state_directories()
     let paths = map(targets, t => owned_directory_path(t: t) as String)
     let listed = fold(flat_map(paths, p => map(owned_directory_listed_ancestors(path: p as FilePath), a => a as String)), init: [], f: (acc, a) => if any(acc, x => x == a) { acc } else { concat(acc, [a]) })
-    flat_map(targets, t => executor_privileged_owned_directory_plan_rows(t: t))
+    executor_privileged_plan_rows(plan: printer_state_store_plan(deploy: deploy))
       + map(paths, p => ReadDirectoryIdentity { path: p as NonEmptyStr })
       + map(listed, p => ListDirectoryEntries { path: p as NonEmptyStr })
       + [EnsureSupplementaryGroupMembership { login: deploy.job_user, group: printer_state_group() }]
+  }
+}
+
+// THE PRINTER-STATE DIRECTORIES AS THE ONE PROVISIONING PLAN, so a refused target stops the host's
+// sudoers artifact through the same gate as the unit-hold and install-media directories rather than
+// contributing no row (the arm this replaces).
+fn printer_state_store_plan(deploy: RunnerHostDeploy) -> ExecutorPrivilegedProvisioningPlan {
+  if (deploy.host_label as String) != (printer_lan_host_identity() as String) {
+    executor_privileged_empty_provisioning_plan()
+  } else {
+    executor_privileged_owned_directory_plans(targets: printer_state_directories())
   }
 }

@@ -10,11 +10,15 @@ import gunbc.executor_privileged_operation {
   RunsAsAccount,
   executor_privileged_operation_argv,
   executor_privileged_operation_principal,
-  executor_privileged_operation_is_plan_comment,
   executor_privileged_operation_sudoers_command,
   executor_privileged_operation_sudoers_line,
+  OwnedDirectoryPlanRefusal,
 }
-import gunbc.runner.runner_host_grants { runner_host_wide_refused_operations, runner_host_sudoers_install_path }
+import gunbc.runner.runner_host_grants {
+  runner_host_wide_refused_operations,
+  runner_host_wide_plan_refusals,
+  runner_host_sudoers_install_path,
+}
 import gunbc.runner.runner_host_deploy { RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for }
 import extdeps.sudo.nopasswd_decision {
   SudoDecisionQuery,
@@ -90,6 +94,15 @@ type GrantBlockReason
   = GrantMissing
   | GrantNeedsPassword
   | GrantUnobserved { cause: NonEmptyStr }
+  // THE BLOCKING REASON THAT IS NOT ABOUT A SUDOERS RULE AT ALL: a declared provisioning target
+  // refused its mode, so the host plan has NO EnsureOwnedDirectory row for that directory and no rule
+  // was ever derived for it. The three reasons above answer "is the rule installed?"; this one answers
+  // a question the sudo -n read cannot ask -- whether there was anything to install. It blocks rather
+  // than being absent-and-fine because the host must not converge with the directory silently missing
+  // (review 86390, review 86921; DESIGN section 5, "A refusal that fires -> the line stops", and "every
+  // degradation is typed, located and countable": the path is the location, the mode refusal the cause,
+  // and one row per refused target is what makes it countable).
+  | GrantProvisioningTargetRefused { cause: NonEmptyStr }
 
 type HostGrantStanding
   = GrantCovered { source: GrantCoveredSource }
@@ -131,22 +144,15 @@ fn host_grant_query_key(query: SudoDecisionQuery) -> String {
 
 // THE OPERATIONS THE APPLY RUNS UNDER SUDO AND THEIR PRINCIPALS: the host-wide grants run inside the
 // flock as the lease owner (a host with no runner spec declares none), the caller's own invoker-run
-// operations (the generation-store ensure) as the invoker. PLAN-TEXT ROWS ARE EXCLUDED AT THIS SOURCE:
-// a refusal row authorizes nothing and has no argv, so querying sudo about it would ask a meaningless
-// question and -- worse -- report the mode the executor refused as a MISSING GRANT, inventing a
-// remediation (grant the directory) that the mode decision explicitly withholds.
+// operations (the generation-store ensure) as the invoker.
 fn host_granted_operations(host: NonEmptyStr, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<GrantedOperation> {
-  let real_ops = filter(invoker_ops, op => !executor_privileged_operation_is_plan_comment(op: op))
   concat(
     match runner_host_spec_for(host: host as HostIdentity) {
       RunnerHostSpecAbsent { host: _ } => []
       RunnerHostSpecFound { spec: spec } =>
-        filter(
-          map(runner_host_wide_refused_operations(spec: spec), op => GrantedOperation { op: op, principal: GrantRunByLeaseOwner { owner: lease_owner } }),
-          g => !executor_privileged_operation_is_plan_comment(op: g.op),
-        )
+        map(runner_host_wide_refused_operations(spec: spec), op => GrantedOperation { op: op, principal: GrantRunByLeaseOwner { owner: lease_owner } })
     },
-    map(real_ops, op => GrantedOperation { op: op, principal: GrantRunByInvoker }),
+    map(invoker_ops, op => GrantedOperation { op: op, principal: GrantRunByInvoker }),
   )
 }
 
@@ -218,12 +224,45 @@ fn host_grant_row(observation: HostGrantObservation, grantee: NonEmptyStr, g: Gr
 // A HOST WITH NO RUNNER SPEC DECLARES NO HOST-WIDE GRANTS (host_wide_grant_apply_lines applies none
 // for it), so it has none of those rows; the invoker-run operations remain, rendered for the lease
 // owner as the would-be grantee.
+//
+// BESIDES THE RULE ROWS, the plan's refused provisioning targets: one blocking row per directory whose
+// declared target refused its mode, so nothing was ever derived to install for it. These rows are NOT
+// sudo queries -- host_grant_queries is deliberately untouched, because there is no command to ask
+// `sudo -n` about; the refusal is not a command. They exist so the standing, and the fingerprint of
+// the standing, carry the directory's absence as a refusal that blocks the apply before its first
+// mutation (host_grant_awaiting_capability), instead of the plan proceeding as if the directory had
+// never been demanded.
 fn host_grant_rows(host: NonEmptyStr, observation: HostGrantObservation, lease_owner: NonEmptyStr, invoker_ops: List<ExecutorPrivilegedOperation>) -> List<HostGrantRow> {
   let grantee = match runner_host_spec_for(host: host as HostIdentity) {
     RunnerHostSpecAbsent { host: _ } => lease_owner
     RunnerHostSpecFound { spec: spec } => spec.job_user
   }
-  map(host_granted_operations(host: host, lease_owner: lease_owner, invoker_ops: invoker_ops), g => host_grant_row(observation: observation, grantee: grantee, g: g))
+  concat(
+    map(host_granted_operations(host: host, lease_owner: lease_owner, invoker_ops: invoker_ops), g => host_grant_row(observation: observation, grantee: grantee, g: g)),
+    host_grant_provisioning_target_rows(host: host, lease_owner: lease_owner),
+  )
+}
+
+// ONE BLOCKING ROW PER REFUSED PROVISIONING TARGET, named by the path that will be missing. Empty for
+// a host with no spec (it declares no targets) and for every host whose targets resolved.
+fn host_grant_provisioning_target_rows(host: NonEmptyStr, lease_owner: NonEmptyStr) -> List<HostGrantRow> {
+  match runner_host_spec_for(host: host as HostIdentity) {
+    RunnerHostSpecAbsent { host: _ } => []
+    RunnerHostSpecFound { spec: spec } =>
+      host_grant_provisioning_target_rows_of(refusals: runner_host_wide_plan_refusals(spec: spec), lease_owner: lease_owner)
+  }
+}
+
+// THE ROWS OVER A GIVEN REFUSAL POPULATION. Split out because a refusal cannot be forged from a plan:
+// OwnedDirectoryPlanRefusal is sealed to its declaring module, so a witness that must show the census
+// blocking on a refused target supplies the refusal here and asserts the census' decision over it. The
+// production census only ever passes the host's own plan refusals.
+fn host_grant_provisioning_target_rows_of(refusals: List<OwnedDirectoryPlanRefusal>, lease_owner: NonEmptyStr) -> List<HostGrantRow> {
+  map(refusals, r => HostGrantRow {
+    rule: r.path,
+    principal: GrantRunByLeaseOwner { owner: lease_owner },
+    standing: GrantBlocking { reason: GrantProvisioningTargetRefused { cause: r.reason } },
+  })
 }
 
 fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
@@ -234,6 +273,7 @@ fn host_grant_standing_tag(standing: HostGrantStanding) -> String {
     GrantBlocking { reason: GrantMissing } => "missing"
     GrantBlocking { reason: GrantNeedsPassword } => "needs-password"
     GrantBlocking { reason: GrantUnobserved { cause: _ } } => "unobserved"
+    GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => "provisioning-target-refused"
   }
 }
 
@@ -267,6 +307,7 @@ fn host_grant_blocking_text(rule: NonEmptyStr, principal: GrantPrincipal, reason
     GrantMissing => join(["missing sudoers rule (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
     GrantNeedsPassword => join(["sudoers rule requires a password (as ", host_grant_principal_tag(principal: principal), "): ", rule as String], "")
     GrantUnobserved { cause: why } => join(["unobserved sudoers rule (as ", host_grant_principal_tag(principal: principal), "; ", why as String, "): ", rule as String], "")
+    GrantProvisioningTargetRefused { cause: why } => join(["provisioning target refused (as ", host_grant_principal_tag(principal: principal), "; ", why as String, "): ", rule as String], "")
   }
 }
 
@@ -320,18 +361,31 @@ fn host_grant_plan_lines(rows: List<HostGrantRow>) -> List<String> {
       GrantBlocking { reason: GrantMissing } => [r.rule as String]
       GrantBlocking { reason: GrantNeedsPassword } => []
       GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => []
       GrantCovered { source: _ } => []
     })),
     host_grant_rules_line(label: "needs-password", rules: flat_map(rows, r => match r.standing {
       GrantBlocking { reason: GrantNeedsPassword } => [r.rule as String]
       GrantBlocking { reason: GrantMissing } => []
       GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
+      GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => []
       GrantCovered { source: _ } => []
     })),
     host_grant_rules_line(label: "unobserved", rules: flat_map(rows, r => match r.standing {
       GrantBlocking { reason: GrantUnobserved { cause: _ } } => [r.rule as String]
       GrantBlocking { reason: GrantMissing } => []
       GrantBlocking { reason: GrantNeedsPassword } => []
+      GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => []
+      GrantCovered { source: _ } => []
+    })),
+    // THE DIRECTORY THE PLAN COULD NOT ASK FOR, shown by path. The refusal must be countable where the
+    // plan is read, not only in the capability the apply later refuses on (DESIGN section 5: "every
+    // degradation is typed, located and countable").
+    host_grant_rules_line(label: "provisioning-target-refused", rules: flat_map(rows, r => match r.standing {
+      GrantBlocking { reason: GrantProvisioningTargetRefused { cause: _ } } => [r.rule as String]
+      GrantBlocking { reason: GrantMissing } => []
+      GrantBlocking { reason: GrantNeedsPassword } => []
+      GrantBlocking { reason: GrantUnobserved { cause: _ } } => []
       GrantCovered { source: _ } => []
     })),
   ]

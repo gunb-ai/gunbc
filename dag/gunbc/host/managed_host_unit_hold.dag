@@ -87,7 +87,7 @@ import extdeps.posix.identity { PosixOwnerNames }
 // (unit_hold_store_directory) and the path every consumer reads (unit_hold_store_path) all derive from
 // THIS data -- there is no second literal. THE MODE IS THE OBSERVED FACT: provisioning/srv1/gunbc-ghrunner.sudoers
 // creates the directory `install -d -m 00755 -o ghrunner -g ghrunner`, and the executor row that creates
-// it (gunbc.runner.runner_host_grants unit_hold_store_operations) uses the executor's managed mode,
+// it (gunbc.runner.runner_host_grants unit_hold_store_plan) uses the executor's managed mode,
 // which is 0755 (DirectoryOwnerAllEveryoneTraverse). Owner-ONLY would be wrong here: the acquisition
 // entry runs in ghrunner's group and the hold library's DefaultAccessCreateOnly publication relies on
 // the directory being group-reachable, so the historical mode is carried, not invented.
@@ -138,7 +138,7 @@ fn unit_hold_store_on_production_host() -> UnitHoldStoreReading {
 }
 
 // THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above and
-// enrolled where the tree's children are (gunbc.runner.runner_host_grants unit_hold_store_operations).
+// enrolled where the tree's children are (gunbc.runner.runner_host_grants unit_hold_store_plan).
 // The mint refuses a root it cannot list rather than reading it as empty, so a root nothing creates
 // refuses every take, release and boot: the creator the corpus names for a store root
 // (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory).
