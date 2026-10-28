@@ -4552,6 +4552,50 @@ fn native_census_infer_accepted_frontier(outcome: NativeInferCensusOutcome) -> O
   }
 }
 
+// RAVEN PROBE (lane5, scratch NEVER lands): the FATAL diagnostic of an infer refusal, whole. The
+// infer-refused census row drops the node the wall fired on (census_file_refusal_at_from_locus maps
+// NodeLocus to FileRefusalAtUnresolvedNode and census_occurrence_from_locus keeps only the id), so a
+// refused module's head_reason=infer_grounding_not_derived row carries no site. The node is present
+// in the outcome's chain head at diagnostic minting (infer_grounding_not_derived_diagnostic stamps
+// node_locus(node: n)); this reads it back out unchanged. Non-error, stderr-only, one extra JSON key
+// on the existing [native-census-infer] line: it cannot change abandonment or any stdout row.
+fn native_census_infer_fatal_probe(outcome: NativeInferCensusOutcome) -> Optional<Diagnostic> {
+  match outcome {
+    NativeInferCensusInferRefused { resolved: _, chain: chain } => Present { value: diagnostics_fatal(d: chain) }
+    _ => Absent
+  }
+}
+
+// Seat 16 (bold-bear-231) needs the WHOLE refusal chain, not just the fatal: every link's reason and
+// anchor, because the cause-group member row keeps only head_reason. The obligation fields Seat 16
+// discriminates the four emit sites by (position, parameter_identity, declared, produced) ride each
+// inhabitance refusal's correction node as authored edges (inhabitance.dag:807-827), so printing the
+// chain whole prints them. Same discipline: stderr-only, non-error, cannot change abandonment.
+fn native_census_infer_chain_probe(outcome: NativeInferCensusOutcome) -> Optional<NonEmptyDiagnostics> {
+  match outcome {
+    NativeInferCensusInferRefused { resolved: _, chain: chain } => Present { value: chain }
+    _ => Absent
+  }
+}
+
+// The loci map the outcome builds and the row drops (source_root_eval.dag:3612/3651), flattened to
+// strings (an OccurrenceId is a struct, which serde map keys cannot be).
+fn native_census_infer_loci_rows(outcome: NativeInferCensusOutcome) -> List<String> {
+  match outcome {
+    NativeInferCensusInferRefused { resolved: _, chain: _, loci: loci } =>
+      fold_list(xs: map_support_keys(m: loci), empty: [], cons: fn(acc, k) {
+        match map_lookup(m: loci, key: k) {
+          Present { value: lc } => list_snoc_item(xs: acc, item: concat(concat(concat(
+            concat(int_to_decimal_string(value: k.value), ":"), int_to_decimal_string(value: lc.line)),
+            ":"), int_to_decimal_string(value: lc.byte_column.value)))
+          _ => list_snoc_item(xs: acc, item: concat(
+            concat(int_to_decimal_string(value: k.value), ":?"), ":?"))
+        }
+      })
+    _ => []
+  }
+}
+
 // THE NATIVE TEST TARGET THE INFER CENSUS MARKS ITS ROOTS AGAINST: roadmap node `native-seven`
 // (gunbc.roadmap.roadmap_authority), whose boundary names this label and rules that its population is
 // DERIVED from the label, never kept as a list. So there is no roster of its tests here. The label is
