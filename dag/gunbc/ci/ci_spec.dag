@@ -1163,6 +1163,11 @@ data gunbc_ci_service_runner_lost_boot_sweep_target: GunbcRunStepTarget = GunbcR
   function: "lost_boot_sweep_wet",
 }
 
+data gunbc_ci_service_runner_lost_boot_sweep_dry_run_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/runner/runner_lost_boot_sweep_run.dag",
+  function: "lost_boot_sweep_dry_run_wet",
+}
+
 data gunbc_ci_qualification_attempt_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/runner/runner_qualification_attempt_run.dag",
   function: "qualification_attempt_wet",
@@ -1560,6 +1565,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_microvm_runner_group_ensure_target,
     gunbc_ci_srv1_root_mutation_approval_target,
     gunbc_ci_service_runner_lost_boot_sweep_target,
+    gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
     gunbc_ci_qualification_attempt_target,
     gunbc_ci_mtcollins1_boot_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
@@ -3987,7 +3993,6 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> List<Node> {
     bcmd(words: [bl(text: "chmod"), bl(text: "600"), bv(name: "SUB_FILE")]),
     bcmd(words: [bl(text: "rm"), bl(text: "-f"), bv(name: "HDR_FILE"), bv(name: "RESP_FILE")]),
     bcmd(words: [bl(text: "export"), bcat(parts: [bl(text: concat(approval_submission_mac_key_path_env as String, "=")), bv(name: "SUB_FILE")])]),
-    bcmd(words: [bl(text: "mkdir"), bl(text: "-p"), bcat(parts: [bv(name: "GITHUB_WORKSPACE"), bl(text: "/artifacts")])]),
     bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bquiet(stmt: bcmdl(lits: ["git", "rev-parse", "--show-toplevel"])), right: bcmdl(lits: ["pwd"])))),
   ]
 }
@@ -4466,6 +4471,16 @@ fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_service_runner_lost_boot_sweep_target.entry,
     function: gunbc_ci_service_runner_lost_boot_sweep_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.entry,
+    function: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target.function,
     claim_run: false,
     receipt_rel: none
   )

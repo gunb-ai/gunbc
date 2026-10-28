@@ -1,5 +1,6 @@
 module gunbc.machine_intake.supermicro_bmc_reading
 
+import gunbc.machine_intake.supermicro_h11ssl_unit_identity { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
@@ -19,7 +20,6 @@ import extdeps.bmc.supermicro {
   SupermicroSmbiosDimm, SupermicroCgiRead, SupermicroCgiPageRead, SupermicroCgiSessionRedirect, SupermicroCgiUnreadable,
   supermicro_cgi_smbios_dimms_of,
 }
-import gunbc.machine_intake.supermicro_h11ssl_unit_observation { supermicro_h11ssl_unit1_bmc_mac, supermicro_h11ssl_unit2_bmc_mac }
 import gunbc.bmc.supermicro_bmc_read {
   SupermicroIdentityReading, SupermicroResourceStanding, DimmReadingDisagreement, SupermicroVirtualMediaOffer,
   supermicro_bmc_identity, supermicro_resource_standing, supermicro_dimm_reading_disagreements, supermicro_virtual_media_offer,

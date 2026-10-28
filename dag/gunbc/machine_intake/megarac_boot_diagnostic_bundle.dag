@@ -176,11 +176,13 @@ import gunbc.machine_intake.megarac_media_attach {
 }
 import std.roster_frontier { FrontierRow, PathSubject }
 import gunbc.non_fold_residue { nfr_dissolve_owning_fold, nfr_reason_typed_census_ca5ed1724b }
-import gunbc.host.boot_attempt {
+import gunbc.host.boot_console_observation {
   ConsoleReading, ConsoleRetained, ConsoleExceedsBound, NotRetained, ConsoleUnread, ConsoleNotConfigured,
-  AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   bracketed_int, firmware_report_text, grub_report_text, console_text,
   console_path_retained, console_size_of_stat, checkpoint_relations, console, console_reading,
+}
+import gunbc.host.boot_attempt {
+  AttemptIdentityReading, AttemptRunId, AttemptIdentityUnavailable, attempt_identity_text,
   HostPowerState, PowerOn, PowerOff, PowerUnread, host_power_text,
   BootPresentation, Presented, PresentationNotServed, PresentationSessionHeld, PresentationUnread,
   StaleMediumPowerOff, StalePowerOffNotNeeded, StalePowerOffObserved, StalePowerOffCommandRefused,

@@ -56,7 +56,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
-import v2.std.node_query { is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { find_core_child, is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
@@ -65,7 +65,7 @@ import v2.std.list_introduction { list_introduction_elements_optional, list_intr
 import v2.std.arrow_signature { ApplicationBindingRefused, ApplicationBound, ApplicationSlot, ArrowParameterOrderAbsent, ArrowParameterOrderDeclared, ArrowParameterOrderMalformed, application_actual_edges, application_binding_plan, anonymous_signature_arrow, application_binding_plan_over, arrow_declared_parameter_order }
 import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canonical_grounding_from_derived_type }
 import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, application_argument_does_not_inhabit_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
-import v2.std.diagnostic { Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
+import v2.std.diagnostic { CorrectionNotModeled, Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
 import v2.std.logic { Bool, bool_node }
 import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names, where_predicate_set_edge }
 import v2.std.coercion { coercion_cast_crossing }
@@ -2967,6 +2967,7 @@ fn infer_match_arm_pattern_is_constructor(arm: Node) -> Bool {
       match infer_coproduct_arm_pattern(pat: pat) {
         ArmPatternVariant { tag: _, fields: _ } => true
         ArmPatternWildcard => false
+        ArmPatternBinder { name: _ } => false
         ArmPatternUnread => false
       }
   }
@@ -3160,17 +3161,28 @@ fn infer_match_field_type_instantiated(field_type: Node, instances: List<TypeVar
 //
 // That is the §3 lesson in miniature: the encoding has one reader, and a consumer that re-derives the tag
 // from edge positions is a second authority that decays silently the moment the encoding moves.
+//
+// A CATCH-ALL BINDER (`other => ..`) is the whole pattern read as a binder: resolve binds a bare pattern
+// atom that names no constructor by the same rule as a field binder (v2.compiler.lexical_scope
+// pattern_binder_candidates) and leaves it, like a field binder, as a lexical reference to its own
+// occurrence (infer_field_pattern_binds reads that same shape). It covers every alternative, as the
+// wildcard does, and binds the scrutinee.
 type InferCoproductArmPattern
   = ArmPatternVariant { tag: Symbol, fields: List<Edge> }
   | ArmPatternWildcard
+  | ArmPatternBinder { name: Symbol }
   | ArmPatternUnread
 
 fn infer_coproduct_arm_pattern(pat: Node) -> InferCoproductArmPattern {
-  match pat.kind {
-    TypeNode { connective: Atom { identity: _ } } =>
-      if is_wildcard_pattern(pattern: pat) { ArmPatternWildcard } else { ArmPatternUnread }
-    TypeNode { connective: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
-    ComputationNode { behavior: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
+  match lexical_reference_label_optional(node: pat) {
+    Present { value: name } => ArmPatternBinder { name: name }
+    Absent =>
+      match pat.kind {
+        TypeNode { connective: Atom { identity: _ } } =>
+          if is_wildcard_pattern(pattern: pat) { ArmPatternWildcard } else { ArmPatternUnread }
+        TypeNode { connective: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
+        ComputationNode { behavior: _ } => infer_coproduct_arm_pattern_constructed(pat: pat)
+      }
   }
 }
 
@@ -3289,6 +3301,8 @@ fn infer_match_arm_body_type_underived_diagnostic(body: Node) -> Diagnostic {
 type InferCoproductArmRow {
   covers: InferCoproductArmCoverage
   body: Node
+  arm: Node
+  catch_all_binder: Bool
 }
 
 type InferCoproductArmCoverage
@@ -3332,7 +3346,9 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
           match infer_coproduct_arm_pattern(pat: pat) {
             ArmPatternUnread => outcome_rejected(infer_match_pattern_unread_diagnostic(pattern: pat))
             ArmPatternWildcard =>
-              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body })
+              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm, catch_all_binder: false })
+            ArmPatternBinder { name: _ } =>
+              outcome_accepted(value: InferCoproductArmRow { covers: CoversAll, body: body, arm: arm, catch_all_binder: true })
             ArmPatternVariant { tag: tag, fields: fields } =>
               match infer_match_variant_payload(variants: coproduct.variants, tag: tag) {
                 Absent => outcome_rejected(infer_match_pattern_variant_not_declared_diagnostic(arm: arm))
@@ -3340,7 +3356,7 @@ fn infer_coproduct_arm_row(arm: Node, coproduct: InferMatchCoproduct) -> Outcome
                   bind_outcome(
                     o: infer_coproduct_arm_fields_check(pat: pat, payload: payload, fields: fields),
                     f: fn(_checked) {
-                      outcome_accepted(value: InferCoproductArmRow { covers: CoversVariant { tag: tag }, body: body })
+                      outcome_accepted(value: InferCoproductArmRow { covers: CoversVariant { tag: tag }, body: body, arm: arm, catch_all_binder: false })
                     }
                   )
               }
@@ -3541,6 +3557,12 @@ fn infer_match_coproduct_rows(
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: rows, diagnostics: _ } =>
+      match infer_coproduct_arm_after_catch_all(rows: rows) {
+        Present { value: unreachable } => outcome_rejected(infer_match_arm_unreachable_diagnostic(arm: unreachable))
+        Absent =>
+      match infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: rows, coproduct: coproduct) {
+        Present { value: binder_arm } => outcome_rejected(infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: binder_arm))
+        Absent =>
       match infer_coproduct_coverage_obligation(node: node, scrutinee_target: scrutinee_target, coproduct: coproduct, rows: rows) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: _, diagnostics: _ } =>
@@ -3577,6 +3599,115 @@ fn infer_match_coproduct_rows(
             }
           }
       }
+      }
+      }
+  }
+}
+
+// A CATCH-ALL BINDER LEFT TWO OR MORE ALTERNATIVES, ONE OF THEM NULLARY, REFUSES; the remedy is to give the
+// nullary variants their own arms. It closes the misspelled-nullary class without consulting spelling. A bare
+// name that names no declared payload reads as a binder (v2.compiler.lexical_scope
+// pattern_binder_candidates); if it misspells a nullary variant, the intended variant is among the
+// alternatives the earlier arms leave to it. When it is the ONLY one, the binder binds exactly that value (a
+// nullary variant carries only its tag), so `Absnet => Absnet` behaves as the intended program: not wrong,
+// and exempt. When two or more remain, the intended match would have been non-exhaustive and the misspelling
+// silently widens it: that refuses here, which an unread-binder gate cannot see because the arm reads the
+// binder. It is judged against the CURRENT remainder on every compile and never grandfathered, so adding a
+// variant to the type turns an exempt singleton into a refusal exactly when a misspelling would become a
+// silent widen. Only a BINDER is judged (a wildcard binds nothing), and every binder that reaches infer is
+// read: an unread one already refused at resolve (v2.compiler.resolve resolve_catch_all_binder_read_gate).
+// The remainder is the coproduct's alternatives less the tags the earlier arms name; a nullary alternative's
+// payload is the empty product, read through its one reader (infer_empty_product_shape). RULED by sleek-owl-397 on tidy-ant-251's escalation,
+// 2026-10-25, after review 86112; keen-heron-809 co-reviews. The residual (a misspelling over a singleton
+// remainder, accepted and behaviour-identical) is recorded on gunbc.recurring_failure_mode
+// a_misspelled_nullary_variant_in_the_last_arm_reads_as_a_catch_all_binder.
+fn infer_coproduct_catch_all_binder_widening_over_a_nullary(rows: List<InferCoproductArmRow>, coproduct: InferMatchCoproduct) -> Optional<Node> {
+  let walked = fold(rows, init: InferBinderRemainderWalk { earlier: Empty, found: Absent }, f: fn(acc, row) {
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if row.catch_all_binder && infer_remainder_widens_over_a_nullary(variants: coproduct.variants, earlier: acc.earlier) {
+          InferBinderRemainderWalk { earlier: acc.earlier, found: Present { value: row.arm } }
+        } else {
+          match row.covers {
+            CoversVariant { tag: t } => InferBinderRemainderWalk { earlier: list_snoc_item(xs: acc.earlier, item: t), found: Absent }
+            CoversAll => acc
+          }
+        }
+    }
+  })
+  walked.found
+}
+
+type InferBinderRemainderWalk {
+  earlier: List<Symbol>
+  found: Optional<Node>
+}
+
+fn infer_remainder_widens_over_a_nullary(variants: Node, earlier: List<Symbol>) -> Bool {
+  let left = fold(variants.children, init: InferRemainderTally { alternatives: 0, nullary: false }, f: fn(acc, e) {
+    match e.label {
+      Authored { name: tag } =>
+        if contains(xs: earlier, item: tag, eq: fn(x, y) { x == y }) {
+          acc
+        } else {
+          InferRemainderTally { alternatives: acc.alternatives + 1, nullary: acc.nullary || infer_empty_product_shape(node: e.target) }
+        }
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+  (left.alternatives >= 2) && left.nullary
+}
+
+type InferRemainderTally {
+  alternatives: Int
+  nullary: Bool
+}
+
+fn infer_match_catch_all_binder_widens_over_a_nullary_diagnostic(arm: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_catch_all_binder_widens_over_a_nullary_variant,
+    at: node_locus(node: arm),
+    correction: Unavailable { reason: CorrectionNotModeled }
+  }
+}
+
+// AN ARM AFTER A CATCH-ALL IS UNREACHABLE, AND REFUSES. A wildcard or a catch-all binder covers every
+// alternative (infer_coproduct_arm_row CoversAll), so a later arm can never be taken: the authored
+// program says something the match will never do. For a binder this is also the first defence against a
+// misspelled nullary variant (`Absnet => ..`), which names no payload and so reads as a binder: unless it
+// is the LAST arm, the arms after it refuse here, and an unread last-arm typo refuses at resolve
+// (v2.compiler.resolve resolve_catch_all_binder_read_gate). A last-arm typo its own arm reads refuses when
+// it would widen the match (infer_coproduct_catch_all_binder_widening_over_a_nullary).
+fn infer_coproduct_arm_after_catch_all(rows: List<InferCoproductArmRow>) -> Optional<Node> {
+  let walked = fold(rows, init: InferCatchAllWalk { seen: false, unreachable: Absent }, f: fn(acc, row) {
+    match acc.unreachable {
+      Present { value: _ } => acc
+      Absent =>
+        if acc.seen {
+          InferCatchAllWalk { seen: true, unreachable: Present { value: row.arm } }
+        } else {
+          match row.covers {
+            CoversAll => InferCatchAllWalk { seen: true, unreachable: Absent }
+            CoversVariant { tag: _ } => acc
+          }
+        }
+    }
+  })
+  walked.unreachable
+}
+
+type InferCatchAllWalk {
+  seen: Bool
+  unreachable: Optional<Node>
+}
+
+fn infer_match_arm_unreachable_diagnostic(arm: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_match_arm_unreachable,
+    at: node_locus(node: arm),
+    correction: Unavailable { reason: CorrectionNotModeled }
   }
 }
 
@@ -10354,23 +10485,41 @@ fn infer_match_arm_child_frame(parent: Node, frame: InferFrame, acc: InferGather
                 CoproductNotDeclared => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                 CoproductArityMismatch => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
                 UninhabitedScrutinee => infer_match_arm_unpaid_frame(frame: frame, arm: edge.target, resolved: resolved)
-                CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct)
+                CoproductRead { coproduct: coproduct } => infer_match_arm_paid_frame(frame: frame, arm: edge.target, coproduct: coproduct, scrutinee_type: scrutinee_type)
               }
           }
       }
   }
 }
 
-fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatchCoproduct) -> InferFrame {
+fn infer_match_arm_paid_frame(frame: InferFrame, arm: Node, coproduct: InferMatchCoproduct, scrutinee_type: Node) -> InferFrame {
   match infer_match_arm_binder_types(arm: arm, coproduct: coproduct, owed: infer_no_owed_formals()) {
     MatchArmFormalUndischarged { at: at } => infer_match_arm_formal_refused(frame: frame, at: at)
     MatchArmBinders { rows: rows } =>
       InferFrame {
         instances: frame.instances,
-        binder_types: infer_append_binder_types(xs: frame.binder_types, ys: rows),
+        binder_types: infer_append_binder_types(xs: frame.binder_types, ys: infer_append_binder_types(xs: rows, ys: infer_match_arm_catch_all_binder_types(arm: arm, scrutinee_type: scrutinee_type))),
         entering: InferFrameEnteredPlain,
         declared_position_expected: Absent,
         rigid_binders: frame.rigid_binders
+      }
+  }
+}
+
+// A CATCH-ALL BINDER IS THE SCRUTINEE, so it takes the scrutinee's type exactly as derived -- not its
+// alias-unfolded form (infer_match_coproduct_of_type unfolds only to read the alternatives), so an alias
+// identity the scrutinee carries reaches every later read of the binder. Its row is keyed by the
+// pattern's own occurrence, where resolve sited the binding (v2.compiler.resolve resolve_pattern_binders).
+fn infer_match_arm_catch_all_binder_types(arm: Node, scrutinee_type: Node) -> List<InferBinderType> {
+  match find_core_child(root: arm, marker: MatchArmPatternEdge) {
+    Rejected { diagnostics: _ } => infer_no_binder_types()
+    Accepted { value: pat, diagnostics: _ } =>
+      match infer_coproduct_arm_pattern(pat: pat) {
+        ArmPatternBinder { name: _ } => [InferBinderType { site: pat.occurrence_id, derived: scrutinee_type }]
+        // Workaround for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target (x): bind one field of an all-wildcard multi-field pattern; delete when the emitter keeps the braces.
+        ArmPatternVariant { tag: _tag, fields: _ } => infer_no_binder_types()
+        ArmPatternWildcard => infer_no_binder_types()
+        ArmPatternUnread => infer_no_binder_types()
       }
   }
 }
@@ -10450,6 +10599,7 @@ fn infer_match_arm_binder_types(arm: Node, coproduct: InferMatchCoproduct, owed:
       match infer_coproduct_arm_pattern(pat: pat) {
         ArmPatternUnread => infer_match_arm_binders_empty()
         ArmPatternWildcard => infer_match_arm_binders_empty()
+        ArmPatternBinder { name: _ } => infer_match_arm_binders_empty()
         ArmPatternVariant { tag: tag, fields: fields } =>
           match infer_match_variant_payload(variants: coproduct.variants, tag: tag) {
             Absent => infer_match_arm_binders_empty()

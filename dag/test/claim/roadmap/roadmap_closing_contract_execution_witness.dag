@@ -5,6 +5,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 import gunbc.roadmap.roadmap_validation_oracle { ValidationOracleRef }
 import gunbc.roadmap.roadmap_closing_contract_authoring {
   ClosingContractWitnessRun,
@@ -70,7 +71,7 @@ type PlantedFixture
 
 fn plant_fixtures(root: String) -> PlantedFixture {
   let dir = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/closing-contract-planted-XXXXXX") as FilePath,
+    template: concat(cargo_default_target_dir(build_root: root), "/closing-contract-planted-XXXXXX") as FilePath,
   )
   if !dir.success {
     PlantedFixturesUnwritable { detail: "mktemp under target/ failed" }

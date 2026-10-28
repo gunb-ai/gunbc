@@ -20,6 +20,8 @@ import extdeps.provisioning.ubuntu_install_media {
   UbuntuInstallMediaArtifactRow,
   noble_numbat_2404_5_live_server_arm64,
   noble_numbat_2404_3_live_server_amd64,
+  noble_numbat_2404_3_live_server_arm64,
+  ubuntu_install_media_architecture_wire,
   ubuntu_install_media_publishing_mirror,
   ubuntu_install_media_row_is_published,
   ubuntu_cd_image_signing_key_fingerprint,
@@ -203,22 +205,29 @@ fn ubuntu_noble_arm64_network_origin() -> UbuntuNetworkOrigin? {
 // were read out of the ISO9660 tree. The loader members were read out of the pool .debs, each of whose
 // sha256 equals its line in the ISO's main/binary-amd64/Packages.gz, whose sha256 equals its line in the
 // ISO's dists/noble/Release, which verifies under the same key.
-fn ubuntu_amd64_member_read_obligation(member: NonEmptyStr) -> NonEmptyStr {
+// ONE PROCEDURE FOR EVERY ARCHITECTURE'S MEMBERS: the media row names the ISO and its port, so the
+// Packages index the obligation cites is that row's.
+fn ubuntu_member_read_obligation(media: UbuntuInstallMediaArtifactRow, member: NonEmptyStr) -> NonEmptyStr {
   join([
-    ubuntu_origin_read_obligation(media: noble_numbat_2404_3_live_server_amd64) as String,
+    ubuntu_origin_read_obligation(media: media) as String,
     " For ", member as String,
     ": gpg --verify the ISO's dists/noble/Release.gpg against Release (key ", ubuntu_cd_image_signing_key_fingerprint as String,
-    "), check Packages.gz and the pool .deb against the sha256 lines they are listed under, then extract the member from the .deb's data tarball and run sha256sum and wc -c on it.",
+    "), check main/binary-", ubuntu_install_media_architecture_wire(arch: media.architecture) as String,
+    "/Packages.gz and the pool .deb against the sha256 lines they are listed under, then extract the member from the .deb's data tarball and run sha256sum and wc -c on it.",
   ], "") as NonEmptyStr
 }
 
-fn amd64_pin(hex: NonEmptyStr, size: Int, member: NonEmptyStr) -> PinnedArtefact? {
+fn media_member_pin(media: UbuntuInstallMediaArtifactRow, hex: NonEmptyStr, size: Int, member: NonEmptyStr) -> PinnedArtefact? {
   pinned_artefact(
     sha256_hex: hex,
-    digest_standing: TranscribedUncited { read_obligation: ubuntu_amd64_member_read_obligation(member: member) },
+    digest_standing: TranscribedUncited { read_obligation: ubuntu_member_read_obligation(media: media, member: member) },
     size: finite_byte_size(count: positive_measure_count(predecessor: size - 1)),
-    size_standing: TranscribedUncited { read_obligation: ubuntu_amd64_member_read_obligation(member: member) },
+    size_standing: TranscribedUncited { read_obligation: ubuntu_member_read_obligation(media: media, member: member) },
   )
+}
+
+fn amd64_pin(hex: NonEmptyStr, size: Int, member: NonEmptyStr) -> PinnedArtefact? {
+  media_member_pin(media: noble_numbat_2404_3_live_server_amd64, hex: hex, size: size, member: member)
 }
 
 fn ubuntu_noble_amd64_kernel_pin() -> PinnedArtefact? {
@@ -273,4 +282,40 @@ fn ubuntu_noble_amd64_network_boot_member_pins() -> List<UbuntuNetworkBootMember
     + member_pin(served_path: "grubx64.efi", pin: ubuntu_noble_amd64_network_grub_pin())
     + member_pin(served_path: "vmlinuz", pin: ubuntu_noble_amd64_kernel_pin())
     + member_pin(served_path: "initrd", pin: ubuntu_noble_amd64_initrd_pin())
+}
+
+// ── arm64, 24.04.3 ───────────────────────────────────────────────────────────────────────────────
+// Read on 2026-10-28 from ubuntu-24.04.3-live-server-arm64.iso. Its sha256 equals the line in
+// cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS, and SHA256SUMS.gpg verified good under the CD image
+// key named in extdeps.provisioning.ubuntu_install_media ubuntu_cd_image_signing_key_fingerprint. The casper
+// members were read out of the ISO9660 tree (Rock Ridge names). The loader members were read out of the pool
+// .debs. Each .deb's sha256 equals its line in the ISO's main/binary-arm64/Packages.gz; Packages.gz's sha256
+// equals its line in the ISO's dists/noble/Release; and Release.gpg verified good under the same key.
+// grubnetaa64.efi.signed carries the embedded prefix /grub. This is the 24.04.3 point release, the one the
+// amd64 chain serves, beside the 24.04.5 arm64 origin above.
+fn arm64_2404_3_pin(hex: NonEmptyStr, size: Int, member: NonEmptyStr) -> PinnedArtefact? {
+  media_member_pin(media: noble_numbat_2404_3_live_server_arm64, hex: hex, size: size, member: member)
+}
+
+fn ubuntu_noble_2404_3_arm64_kernel_pin() -> PinnedArtefact? {
+  arm64_2404_3_pin(hex: "f7816e8213621f699c58e6f2168dbeb85a463943e5359e8fd60c8a6a14cab3d0", size: 18309586, member: "casper/vmlinuz")
+}
+
+fn ubuntu_noble_2404_3_arm64_initrd_pin() -> PinnedArtefact? {
+  arm64_2404_3_pin(hex: "deb2c288c12e6f35c2b9242134116ea03f7d4eb91f0c354ecd993680ffabbbf7", size: 72194281, member: "casper/initrd")
+}
+
+fn ubuntu_noble_2404_3_arm64_shim_pin() -> PinnedArtefact? {
+  arm64_2404_3_pin(hex: "706f15b9578f780a2fddda8ee0806cd15b59124692cc297db320414a5a40fe44", size: 987336, member: "usr/lib/shim/shimaa64.efi.signed.latest")
+}
+
+fn ubuntu_noble_2404_3_arm64_network_grub_pin() -> PinnedArtefact? {
+  arm64_2404_3_pin(hex: "f9bf85d005a6be54313a478f33728825515bc6c87509ce39f4fec7212a1b1305", size: 2463624, member: "usr/lib/grub/arm64-efi-signed/grubnetaa64.efi.signed")
+}
+
+fn ubuntu_noble_2404_3_arm64_network_boot_member_pins() -> List<UbuntuNetworkBootMemberPin> {
+  member_pin(served_path: "bootaa64.efi", pin: ubuntu_noble_2404_3_arm64_shim_pin())
+    + member_pin(served_path: "grubaa64.efi", pin: ubuntu_noble_2404_3_arm64_network_grub_pin())
+    + member_pin(served_path: "arm64/vmlinuz", pin: ubuntu_noble_2404_3_arm64_kernel_pin())
+    + member_pin(served_path: "arm64/initrd", pin: ubuntu_noble_2404_3_arm64_initrd_pin())
 }
