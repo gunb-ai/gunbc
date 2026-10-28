@@ -2174,7 +2174,7 @@ fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
 // PR read cleanly and mismatched a carrier seal at runtime). Recorded as a typed obligation
 // rather than a prose promise so it cannot decay into an unmarked scaffold.
 data flat_scalar_millisecond_fields_dissolve_on: DissolutionCondition = unbound_dissolution(
-  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/wall_limit_ms parameters convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
+  description: "dissolve-on: ClaimSafetyOutcome's observed_cpu/observed_wall/elapsed_cpu_at_least/elapsed_wall_at_least and claim_safety_outcome's observed_cpu_ms/observed_wall_ms/wall_limit_ms parameters, and v2.workflow.floor_terminal_ledger_wire OutcomeRow's cpu_ms/wall_ms fields that carry them across the ledger wire, convert from bare Int to std.measure Millisecond once a verified Int/Nat conversion exists between v2's inductive Peano tower (v2.std.integer.Int = GroupCompletion<v2.std.nat.Nat>) and the host-backed Nat std.measure is built on (per review 53860 on gunbc#8584)." as NonEmptyStr,
 )
 
 // THE DERIVATION. `reached_verdict` is the one fact that decides between `SafetyInterrupted` and
