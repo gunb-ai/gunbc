@@ -1,0 +1,77 @@
+module test.claim.integer_parse_int_decimal
+
+import std.integer { parse_int, int_to_decimal_string }
+import std.optional { Absent, Present }
+import std.types { Bool, Int, String }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.integer parse_int CARRIES REFUSAL, NEVER A DEFAULT, through the imported declaration and so through its
+// realization by identity (the interpreter's parse_int arm; Rust v1_rt::parse_int). Each RED below is an input a
+// defaulting or lenient reading would answer Present for -- 0 for empty text, a prefix for trailing junk, a trimmed
+// value for surrounding whitespace, a wrapped or saturated value past the host range -- and each is paired with
+// a positive that the same reading must also get right, so a realization that refuses everything fails too.
+
+fn is_absent(r: Int?) -> Bool {
+  match r { Present { value: _ } => false  Absent => true }
+}
+
+fn is_present_value(r: Int?, expected: Int) -> Bool {
+  match r { Present { value: v } => v == expected  Absent => false }
+}
+
+// THE POSITIVE CONTROLS.
+test fn parse_int_of_a_decimal_is_its_value_holds() -> Bool {
+  is_present_value(r: parse_int(s: "42"), expected: 42)
+}
+
+test fn parse_int_of_a_negative_decimal_is_its_value_holds() -> Bool {
+  is_present_value(r: parse_int(s: "-42"), expected: 0 - 42)
+}
+
+test fn parse_int_of_zero_is_zero_not_absent_holds() -> Bool {
+  is_present_value(r: parse_int(s: "0"), expected: 0)
+}
+
+// The declared spelling is wider than int_to_decimal_string's image: a leading + and leading zeros parse.
+test fn parse_int_admits_a_plus_sign_and_leading_zeros_holds() -> Bool {
+  is_present_value(r: parse_int(s: "+7"), expected: 7) && is_present_value(r: parse_int(s: "007"), expected: 7)
+}
+
+// A left inverse of int_to_decimal_string at both ends of the host range.
+test fn parse_int_inverts_int_to_decimal_string_at_the_host_extremes_holds() -> Bool {
+  is_present_value(r: parse_int(s: int_to_decimal_string(value: 9223372036854775807)), expected: 9223372036854775807)
+    && is_present_value(r: parse_int(s: "-9223372036854775808"), expected: (0 - 9223372036854775807) - 1)
+}
+
+// THE REDS: empty input.
+test fn parse_int_of_empty_text_is_absent_not_zero_holds() -> Bool {
+  is_absent(r: parse_int(s: ""))
+}
+
+test fn parse_int_of_a_bare_sign_is_absent_holds() -> Bool {
+  is_absent(r: parse_int(s: "-")) && is_absent(r: parse_int(s: "+"))
+}
+
+// THE REDS: malformed input.
+test fn parse_int_of_trailing_junk_is_absent_not_its_prefix_holds() -> Bool {
+  is_absent(r: parse_int(s: "12a"))
+}
+
+test fn parse_int_of_surrounding_whitespace_is_absent_not_trimmed_holds() -> Bool {
+  is_absent(r: parse_int(s: " 5")) && is_absent(r: parse_int(s: "5\n"))
+}
+
+test fn parse_int_of_a_decimal_point_is_absent_not_truncated_holds() -> Bool {
+  is_absent(r: parse_int(s: "1.5"))
+}
+
+test fn parse_int_of_a_non_decimal_spelling_is_absent_holds() -> Bool {
+  is_absent(r: parse_int(s: "0x10")) && is_absent(r: parse_int(s: "abc"))
+}
+
+// One past the host maximum: refused, not wrapped to the minimum or saturated to the maximum.
+test fn parse_int_past_the_host_range_is_absent_not_wrapped_holds() -> Bool {
+  is_absent(r: parse_int(s: "9223372036854775808"))
+}

@@ -301,6 +301,20 @@ fn int_to_decimal_string(value: Int) -> String {
   }
 }
 
+// DECIMAL TEXT TO MACHINE INTEGER: the one declared home of the ambient seed name parse_int (NAMESPACE-XL, a
+// root-coordinator decision approved by sleek-owl-397), the partial inverse of int_to_decimal_string above. The
+// result carries refusal, never a default: Present { value } when the whole text is an optional `+` or `-` followed
+// by one or more ASCII decimal digits whose value fits the host integer, and Absent otherwise -- empty text, any other
+// character (whitespace included, so a caller trims first), or an out-of-range magnitude. Its spelling is wider than
+// int_to_decimal_string's image (a leading `+` and leading zeros parse), so it is a left inverse there, not a
+// bijection. A pure declared operation whose host realization binds by THIS declaration's identity
+// (std.primitive_projection primitive_parse_int, a HostRealizedSeam row; v1_rt::parse_int, Rust i64 FromStr), so
+// the body is a self-call no realization ever reaches. The std.primitives parse_int_contract row that let the bare
+// name resolve with no import is retired: a caller reaches it by `import std.integer { parse_int }`.
+fn parse_int(s: String) -> Int? {
+  parse_int(s: s)
+}
+
 // The digits of an Int's magnitude WITHOUT negating it: the minimum host integer has no
 // representable negation, so the recursion divides the signed value by ten and reads each units
 // digit through decimal_digit_of_units, which answers for either sign of remainder.
