@@ -88,9 +88,9 @@ fn runner_slot_registration_labels(slot: RunnerSlotIdentity) -> RunnerRegistrati
 // /run/user/<uid>/bus answers -- that is exactly what that row's converge leg observes and reads back
 // (gunbc.runner.runner_user_session: enable-linger ran, Linger=yes read back, the bus socket answers).
 // No caller may pass this label; the composition adds it iff the row names the host, so deleting the
-// row deletes the label. srv4 earned it on 2026-10-26: fleet-converge run 40270496735
-// (host=srv4, mode=runner_user_session_converge) recorded enable_linger=ok, linger=yes, bus=present
-// and wrote /srv/gunbc/converge/runner-user-session-srv4.json. srv1/srv3/srv2 carry no row, so their
+// row deletes the label. srv4 earned it on 2026-10-26: the receipt sits beside the row as data
+// (gunbc.runner.runner_host_deploy runner_job_user_session_converge_run_id +
+// runner_job_user_session_converge_readback), not as a restatement here. srv1/srv3/srv2 carry no row, so their
 // label sets are byte-identical to before this constant existed -- the label PR adds no label to a
 // host that has not been converged, and the runs-on selector step lands only once every pool host
 // reads ready.

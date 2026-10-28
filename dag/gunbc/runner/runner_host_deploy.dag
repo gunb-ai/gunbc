@@ -379,12 +379,28 @@ data runner_host_spec_rows: List<RunnerHostSpecRow> = [
 // host joins by joining this list. Declared frontier (DESIGN 3c), in order: once this converge's readback has held
 // on a host from main, a capability runner label derived from this row (gunbc.runner.runner_registration_labels)
 // -- DONE: gunbc_user_session_label, added to the job composition by runner_user_session_labels_for and stripped
-// from any caller-spelled or offer-spelled half, so this row is its only authority; srv4's readback held on main
-// (fleet-converge run 40270496735 at 8353c21c84a: enable_linger=ok, linger=yes, bus=present, receipt
-// /srv/gunbc/converge/runner-user-session-srv4.json), which is what makes the label true of srv4 rather than a
-// claim; then gunbc#14972's systemd credential rows select on that label (the runs-on selector step, to land once
-// every host in that pool reads ready -- until then a row for a host without the label would strand its runs-on).
+// from any caller-spelled or offer-spelled half, so this row is its only authority; srv4's readback held on main,
+// its evidence carried as the two data facts below rather than copied into prose here (DESIGN 4c: the machine
+// claim's receipt lives in a typed carrier, and the reader who wants to cite a run id can pull it from the place
+// a change would have to move it), which is what makes the label true of srv4 rather than a claim; then
+// gunbc#14972's systemd credential rows select on that label -- the CONSUMER of the label, the jobs that run a
+// command under the job account's user manager, realized today by gunbc.runner.runner_user_session
+// runner_user_session_unit_run_command_spec (the runs-on selector step, to land once every host in that pool reads
+// ready -- until then a row for a host without the label would strand its runs-on).
 data runner_job_user_session_hosts: List<HostIdentity> = [operator_host_srv4]
+
+// THE RECEIPT BEHIND THE ROW, AS DATA (DESIGN 4c). srv4's row was earned on 2026-10-26 by fleet-converge
+// run 40270496735 (host=srv4, mode=runner_user_session_converge), which reported enable_linger=ok,
+// linger=yes, bus=present and wrote /srv/gunbc/converge/runner-user-session-srv4.json. These two facts,
+// not a comment, are srv4's eligibility evidence: test.claim.runner.runner_user_session_label_witness
+// refuses if they are emptied, and the sites that used to restate the receipt in prose (here,
+// gunbc.runner.runner_registration_labels gunbc_user_session_label, and the srv4 fixture note in
+// test.claim.fleet.fleet_runner_connectivity_witness) now point here.
+data runner_job_user_session_converge_run_id: String = "40270496735"
+
+// What that run read back, in the converge's own line vocabulary (gunbc.runner.runner_user_session: the
+// enable_linger= line, linger_reading_text, and the user-bus probe answer).
+data runner_job_user_session_converge_readback: String = "enable_linger=ok, linger=yes, bus=present"
 
 fn runner_job_user_session_on(host: HostIdentity) -> Bool {
   any(runner_job_user_session_hosts, h => (h as String) == (host as String))
