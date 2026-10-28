@@ -60,7 +60,7 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 // checkout's working tree and refuse one that does not equal HEAD (CandidateCheckoutNotClean), so a
 // receipt in the tree stopped the first approved run (fleet-converge run 40556605128) after admission.
 data srv1_root_mutation_approval_receipt_file_name: String = "srv1-root-mutation-approval-receipt.txt"
-data srv1_root_mutation_approval_artifact_glob: String = "${{ runner.temp }}/srv1-root-mutation-approval-receipt.txt"
+data srv1_root_mutation_approval_artifact_glob: String = concat("${{ runner.temp }}/", srv1_root_mutation_approval_receipt_file_name)
 data srv1_root_mutation_submit_body_file_name: String = "srv1-root-mutation-approval-submit.json"
 
 // THE SELECTION, CARRIED AS INDEXED PAIRS: the workflow sets NAME_i and VALUE_i for i from 0, and the
