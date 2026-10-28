@@ -31899,17 +31899,35 @@ type WireSerializeResult<T> = Result<T, String>;
 
 pub fn resolve_coproduct_wire_policy(
     coproduct_name: &str,
+    declaring_module: Option<&str>,
     modules: &[Rc<TypedModule>],
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
 ) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
     use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
     use crate::v1_std_core::module_imports;
+    // KEYED BY THE PAIR, NOT THE BARE NAME -- parity with the typing authority, from ONE source.
+    // `build_coproduct_wire_contract_index` (v1_interpreter.rs) indexes rows by
+    // (DeclarationRef.module_path, DeclarationRef.decl_name) and `decode_nullary_coproduct` looks
+    // them up with the coproduct's DECLARING module. This fold asks that SAME question through the
+    // emitter's OWN pair-keyed resolver -- the base-era single call per module, with the declaring
+    // module passed where the emitter passes its emitting module -- so the row-selection, the
+    // StringVariant/nullary refusal, and the missing-encoding refusal exist exactly once (DESIGN
+    // section 2; section 6b: no second path beside a modeled route). RFM row:
+    // coproduct_wire_contract_target_not_local_in_emitted_extdeps_github: a row aimed at another
+    // module's same-named coproduct used to be served here under name-only matching. A coproduct
+    // with no declaring module in the index has no pair any row can name, so it resolves to the
+    // caller's default -- the authority indexes it nowhere too.
+    let declaring_module = declaring_module?;
     let si = Rc::new(source_indices.clone());
     let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
     for tm in modules {
         let imports = module_imports(tm.module.clone());
+        // all_unit_variants=false is the fold's pre-existing stance (the fold has no nullary
+        // observation here), applied BY the authority: a StringVariant row therefore returns an
+        // error policy and drops out below, exactly as before this change.
         if let Some(local) = resolve_local_coproduct_wire_policy(
             coproduct_name.to_string(),
+            declaring_module.to_string(),
             false,
             tm.items.clone(),
             imports,
@@ -31920,6 +31938,10 @@ pub fn resolve_coproduct_wire_policy(
             }
         }
     }
+    // Cross-module ambiguity handling, unchanged from the base fold: one row's policy wins;
+    // identical policies across modules agree on one answer; differing policies resolve to
+    // nothing (the caller's default), never to one of them -- the interpreter's index marks a
+    // key claimed by more than one distinct row AmbiguousWireContract.
     if matches.is_empty() {
         None
     } else if matches.len() == 1 {
@@ -32071,8 +32093,15 @@ fn serialize_variant_to_wire_json(
         data_path_wire_variant_tag, policy_is_string_variant, policy_is_untagged,
         policy_serde_tag_field, rust_tagged_object_policy,
     };
+    // The declaring module comes from the SAME index the interpreter's decode consults via
+    // `module_path_for_type_decl_node`, so serialize and decode agree on which declaration a row
+    // governs (pair key, RFM coproduct_wire_contract_target_not_local_in_emitted_extdeps_github).
+    let declaring_module = ctx
+        .type_decl_index()
+        .declaring_module_for_coproduct(type_name);
     let policy = resolve_coproduct_wire_policy(
         type_name,
+        declaring_module.as_deref(),
         &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
@@ -36285,6 +36314,113 @@ mod peak_resident_inheritance_control_tests {
         assert!(
             vmhwm < (PARENT_BYTES as u64) / 2,
             "the child's own peak read as the parent's: {line}"
+        );
+    }
+}
+
+// EXECUTABLE RECEIPT for the hand-written fold Rust in this file (the pair-keyed
+// `resolve_coproduct_wire_policy` + `serialize_variant_to_wire_json` declaring-module selection,
+// RFM dag/gunbc/recurring_failure_mode/coproduct_wire_contract_target_not_local_in_emitted_extdeps_github.dag).
+// This Rust is not deletable scaffold: it is the serializer-side reader of CoproductWireContract
+// rows, reached in production by `value_to_wire_json` for request-body coproduct values, and no
+// .dag fixture sends a coproduct REQUEST body -- so the admission evidence for this Rust is here,
+// driving the fold from its public entry over modules built the way the CLI builds them: real
+// corpus .dag text resolved through `resolve_virtual_source_with_imports` (the route
+// compile_dag_rust_emit_check uses), not hand-constructed ASTs.
+#[cfg(test)]
+mod wire_fold_pair_key_receipt_tests {
+    use super::{
+        build_module_path_index_from_witness_roots, resolve_virtual_source_with_imports,
+        value_to_wire_json,
+    };
+    use crate::v1_compiler_compile::compile_to_resolved;
+    use crate::v1_interpreter::{ExecutionMode, InterpContext, Value};
+    use std::rc::Rc;
+
+    fn carrier_ctx(rows: &str) -> InterpContext {
+        let entry = format!(
+            "module cwc_fold_carrier\n\nimport std.serialization {{ CoproductWireContract, InternallyTaggedObject, AsAuthored }}\nimport std.decl_ref {{ DeclarationRef, WholeDeclaration }}\n\ntype FoldState = Open | Closed\n\n{rows}\n"
+        );
+        let index = build_module_path_index_from_witness_roots();
+        let sources = resolve_virtual_source_with_imports(
+            "dag/test/claim/cwc_fold_carrier.dag",
+            &entry,
+            &index,
+        )
+        .unwrap_or_else(|e| panic!("fixture imports must resolve: {e}"));
+        let result = compile_to_resolved(Rc::new(sources.into()));
+        let graph = result
+            .graph
+            .as_ref()
+            .unwrap_or_else(|| panic!("fixture must resolve: {:?}", result.diagnostics));
+        InterpContext::new(
+            graph,
+            result.source_indices.clone(),
+            ExecutionMode::Hermetic,
+        )
+    }
+
+    fn serialize_open(rows: &str) -> serde_json::Value {
+        let ctx = carrier_ctx(rows);
+        let val = Value::Variant {
+            type_name: ctx.sym("FoldState"),
+            variant_name: ctx.sym("Open"),
+            fields: Rc::new(Vec::new()),
+        };
+        value_to_wire_json(&val, &ctx).expect("FoldState.Open must encode")
+    }
+
+    fn row_named(data_name: &str, claimed_module: &str, tag: &str) -> String {
+        format!(
+            "data {data_name}: CoproductWireContract = {{\n  coproduct: DeclarationRef {{ module_path: \"{claimed_module}\", decl_name: \"FoldState\", field: WholeDeclaration }},\n  encoding: InternallyTaggedObject {{ tag_field: \"{tag}\", naming: AsAuthored }}\n}}"
+        )
+    }
+
+    /// THE REPAIR, AT THE FOLD: a row whose DeclarationRef claims ANOTHER module's same-named
+    /// coproduct must not govern the local one. Before the pair-key change the fold matched rows
+    /// by decl_name alone and served the foreign `kind` tag to FoldState. After, the pair does
+    /// not match the declaring module, the row governs nothing here, and the value keeps the
+    /// internal-tag default.
+    #[test]
+    fn fold_ignores_a_row_claiming_another_modules_coproduct() {
+        let got = serialize_open(&row_named("fold_wire_row", "somewhere.else", "kind"));
+        assert_eq!(
+            got,
+            serde_json::json!({ "_variant": "Open" }),
+            "a foreign-claimed row leaked its tag into the fold"
+        );
+    }
+
+    /// THE STANDING OBLIGATION, AT THE FOLD: a row whose DeclarationRef names THIS module's
+    /// coproduct still governs the encoding -- the repair keys rows, it does not drop them.
+    #[test]
+    fn fold_still_serves_an_honest_local_row() {
+        let got = serialize_open(&row_named("fold_wire_row", "cwc_fold_carrier", "kind"));
+        assert_eq!(
+            got,
+            serde_json::json!({ "kind": "Open" }),
+            "the fold dropped a row that names its own coproduct"
+        );
+    }
+
+    /// THE PAIR KEY SELECTS, IT DOES NOT COLLAPSE: with two same-named rows where only one names
+    /// this module, the local row's encoding must apply. Under the old name-only matching both
+    /// rows entered the same candidate set: the fold-era merge saw divergent policies and dropped
+    /// ALL of them (the local obligation silently lost next to a foreign row), and the resolver's
+    /// ambiguity refusal turns the same mis-match into a wire error -- either way the honest local
+    /// row's encoding never reaches the wire.
+    #[test]
+    fn fold_prefers_the_local_row_beside_a_foreign_one() {
+        let rows = format!(
+            "{}\n\n{}",
+            row_named("fold_wire_row_foreign", "somewhere.else", "wrong_tag"),
+            row_named("fold_wire_row_local", "cwc_fold_carrier", "kind")
+        );
+        let got = serialize_open(&rows);
+        assert_eq!(
+            got,
+            serde_json::json!({ "kind": "Open" }),
+            "a foreign row must not contaminate the fold for a module that has its own row"
         );
     }
 }
