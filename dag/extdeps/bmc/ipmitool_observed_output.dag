@@ -81,8 +81,9 @@ data ipmitool_mc_info_mt_collins: String = "Firmware Revision         : 0.32\nIP
 // (sha256 e3db166444d26c8a1a6ec44a398adc229f3b88b50e21c016aa8f5daf80dc3031), verbatim -- byte-for-byte
 // stdout of boot run 40264233543, 894 bytes, 22 newlines, NO trailing newline: the capture's last byte
 // is the last `X` of the final `Product Extra` line. The literal is that file's bytes with each newline
-// written as \n; the witness below re-checks it against the artifact's digest, so a transcription drift
-// reds there rather than silently diverging from the capture.
+// written as \n; the witness (test.claim.operation_realization_witness the_fru_fixture_*) re-reads
+// the artifact and demands equality, so a transcription drift reds there rather than silently
+// diverging from the capture.
 data ipmitool_fru_print_0_mt_collins: String = " Chassis Type          : Rack Mount Chassis\n Chassis Part Number   : 1A624RA00-600-G\n Chassis Serial        : NULL\n Chassis Extra         : XXXXXXXXXXXX\n Chassis Extra         : YYYYYYYYYYYY\n Chassis Extra         : ZZZZZZZZZZZZ\n Board Mfg Date        : Mon 18 Oct 2021 06:36:00 PM UTC UTC\n Board Mfg             : FOXCONN\n Board Product         : Mt. Collins\n Board Serial          : 02030A800TEXFT02L\n Board Part Number     : 02030A800-600-G\n Board Extra           : 28C13C8AD64C\n Board Extra           : PCBAVer:EX\n Board Extra           : XXXXXXXXXXXX\n Product Manufacturer  : FOXCONN\n Product Name          : Mt. Collins\n Product Part Number   : 1A62AT100-600-G\n Product Version       : Ver 0.01\n Product Serial        : MXX2080619\n Product Asset Tag     : XXXXXXXXXXXXXXXXXX\n Product Extra         : XXQQQQQQQQQQ\n Product Extra         : XXXXXXXXXXXX\n Product Extra         : XXXXXXXXXXXX"
 
 // `ipmitool hpm check` on BMC 0.32, BEFORE the 2026-10-02 reflash: the component-properties table's

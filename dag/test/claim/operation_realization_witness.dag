@@ -257,8 +257,8 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
 // ipmitool_fru_print_0_mt_collins is the literal the realization answers `fru print 0` with; its cited
 // source is artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt.
 // The claim re-reads that committed artifact through the checkout-input carve-out and demands the
-// literal equals it exactly -- the 894 bytes INCLUDING the trailing space after
-// `Product Part Number   : NULL` and the ABSENCE of a final newline. A hand-typed drift, a stripped
+// literal equals it exactly -- 894 bytes, 22 newlines, and the ABSENCE of a final newline (the last
+// byte is the last `X` of the final `Product Extra` line). A hand-typed drift, a stripped
 // trailing blank, or a normalized line ending reds here rather than silently diverging the boot's
 // retained inventory from the controller's answer. The digest projection is pinned too, so the comment's
 // cited sha cannot rot away from the bytes.
