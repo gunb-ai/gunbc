@@ -322,8 +322,8 @@ fn admit_public_nocloud_seed(client_mac: Eui48Address, user_data: YamlValue) -> 
 // THE FIRST PRODUCTION MINT IS THE x86 SEED RENDERER. As of 2026-10-28 the BMC netboot edge DOES admit its
 // seed through this contract in production (gunbc.bmc.bmc_netboot_serve.bmc_netboot_user_seed_admission, keyed
 // on the measured srv4 NIC MAC — dashboard node adhoc-dfa3a487), but that route is not the dissolution below:
-// the frontier asks for the SITE PXE EDGE, whose install bindings are still empty until the amd64 seed renderer
-// lands them.
+// the frontier asks for the SITE PXE EDGE, whose install requests
+// (gunbc.fleet.site_pxe_edge_converge site_pxe_edge_install_requests) are still empty.
 // THE DECLARED srv3 GAP (review of #15318, DESIGN.md §4b rung honesty). srv3's install documents are
 // key-only BY DATA today; they are not contract-gated, because srv3 has no measured boot-NIC row —
 // there is no client MAC on record to key an instance-id on (gunbc.host.host_network_diagnosis.boot_nic_inventory

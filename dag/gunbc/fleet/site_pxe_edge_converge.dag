@@ -9,7 +9,8 @@ import extdeps.uri { Uri, Http, uri_wire }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
 import extdeps.firmware.kernel_cmdline { KernelCmdlineArg, KernelFlag, KernelKeyValue }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, nocloud_net_ds_kernel_arg }
-import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data }
+import gunbc.provisioning.public_nocloud_seed { PublicNoCloudSeed, public_nocloud_seed_client_mac, public_nocloud_seed_user_data, public_nocloud_seed_meta_data, admit_public_nocloud_seed, PublicSeedAdmitted, PublicSeedRefused, PublicSeedFinding }
+import extdeps.languages.yaml.types { YamlValue }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4ParseResult, Ipv4Parsed, Ipv4ParseFailed, Ipv4ParseError, parse_ipv4_address, render_ipv4_address }
 import gunbc.fleet.fleet_intent_network { srv4_host_lan_endpoint, operator_lan_segment }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -458,10 +459,10 @@ data site_pxe_edge_chain_pins: List<SitePxeEdgeChainPin> = [
   ),
 ]
 
-// THE INSTALL BINDINGS THIS EDGE SERVES, and the observation that srv4's name resolves from the segment.
-// Both are empty and unobserved on this head: a binding is handed over by a provisioning attempt (phase 3,
-// on merry-fox-82's go), and the resolution is read from the onboarding segment's resolver before it.
-data site_pxe_edge_install_bindings: List<SitePxeEdgeInstallBinding> = []
+// THE INSTALLS REQUESTED OF THIS EDGE, and the observation that srv4's name resolves from the segment. A request
+// names its client by a MAC parse and its user-data as a document; the run admits each through the public seed
+// authority, so a list of already-admitted seeds (which could only be authored by dropping refusals) never exists.
+data site_pxe_edge_install_requests: List<SitePxeEdgeInstallRequest> = []
 
 // THE CLIENTS THE EDGE KNOWS, each parsed from a measured observation of the client's NIC, never retyped.
 data site_pxe_edge_known_client_observations: List<MacParseResult> = [
@@ -919,6 +920,56 @@ type SitePxeEdgeInstallBinding {
   architecture: Architecture
 }
 
+// ONE INSTALL AS REQUESTED, before admission: the client's MAC as parsed from its observation, the seed renderer's
+// user-data document, and the architecture. Admission is the only route from a request to a binding.
+type SitePxeEdgeInstallRequest {
+  client: MacParseResult
+  user_data: YamlValue
+  architecture: Architecture
+}
+
+// WHAT ADMISSION MADE OF ONE REQUEST. A refused seed withholds that host's install by name and leaves the edge
+// serving everyone else; an unparseable client MAC names no host to withhold, so it closes the gate instead.
+type SitePxeEdgeRequestAdmission
+  = RequestBound { binding: SitePxeEdgeInstallBinding }
+  | RequestWithheld { standing: SitePxeEdgeInstallStanding }
+  | RequestClientUnparseable { error: MacParseError }
+
+fn site_pxe_edge_request_admission(request: SitePxeEdgeInstallRequest) -> SitePxeEdgeRequestAdmission {
+  match request.client {
+    MacParseFailed { error: e } => RequestClientUnparseable { error: e }
+    MacParsed { address: mac } =>
+      match admit_public_nocloud_seed(client_mac: mac, user_data: request.user_data) {
+        PublicSeedAdmitted { seed: sd } => RequestBound { binding: SitePxeEdgeInstallBinding { seed: sd, architecture: request.architecture } }
+        PublicSeedRefused { findings: fs } => RequestWithheld { standing: InstallWithheld { mac: mac, refusals: FreeSemigroup { head: InstallSeedRefused { findings: fs }, tail: [] } } }
+      }
+  }
+}
+
+fn site_pxe_edge_request_bindings(admissions: List<SitePxeEdgeRequestAdmission>) -> List<SitePxeEdgeInstallBinding> {
+  flat_map(admissions, a => match a {
+    RequestBound { binding: b } => [b]
+    RequestWithheld { standing: _ } => []
+    RequestClientUnparseable { error: _ } => []
+  })
+}
+
+fn site_pxe_edge_request_withheld(admissions: List<SitePxeEdgeRequestAdmission>) -> List<SitePxeEdgeInstallStanding> {
+  flat_map(admissions, a => match a {
+    RequestBound { binding: _ } => []
+    RequestWithheld { standing: st } => [st]
+    RequestClientUnparseable { error: _ } => []
+  })
+}
+
+fn site_pxe_edge_request_gate_causes(admissions: List<SitePxeEdgeRequestAdmission>) -> List<SitePxeEdgeGateCause> {
+  flat_map(admissions, a => match a {
+    RequestBound { binding: _ } => []
+    RequestWithheld { standing: _ } => []
+    RequestClientUnparseable { error: e } => [InstallRequestClientUnparseable { error: e }]
+  })
+}
+
 // THE CHAIN AN ARCHITECTURE INSTALLS THROUGH: its chain that carries install media (a kernel, an initrd and
 // the ISO they were extracted from). The iPXE chain carries none, so it is never an install chain; amd64's
 // one Ubuntu chain and aarch64's install-bound Ubuntu chain each are.
@@ -994,6 +1045,7 @@ type SitePxeEdgeInstallRefusal
   | InstallImageNotServable { standing: SitePxeEdgeImageStanding }
   | SeedOriginNameUnresolved { name: NonEmptyStr, probe: BootNetworkProbe }
   | InstallChainNotServable
+  | InstallSeedRefused { findings: FreeSemigroup<PublicSeedFinding> }
 
 fn site_pxe_edge_install_refusals(binding: SitePxeEdgeInstallBinding, roster: SiteEdgeRoster, install: SitePxeEdgeInstallChain?, image: SitePxeEdgeImageStanding, name_resolution: BootNetworkProbe) -> List<SitePxeEdgeInstallRefusal> {
   (if roster.known_client_macs |> any(m => m == site_pxe_edge_binding_mac(binding: binding)) { [] } else { [InstallClientNotOnRoster { mac: site_pxe_edge_binding_mac(binding: binding) }] })
@@ -1147,6 +1199,7 @@ type SitePxeEdgeGateCause
   = TftpServerAddressUnparseable { error: Ipv4ParseError }
   | SegmentNetworkUnparseable { error: Ipv4ParseError }
   | KnownClientMacUnparseable { error: MacParseError }
+  | InstallRequestClientUnparseable { error: MacParseError }
   | NoChainServable
   | ServedPathCollision { served_path: NonEmptyStr }
   | DnsmasqBinaryAbsent { reason: String }
@@ -1211,6 +1264,7 @@ fn site_pxe_edge_gate_cause_is_unobserved(cause: SitePxeEdgeGateCause) -> Bool {
     TftpServerAddressUnparseable { error: _ } => false
     SegmentNetworkUnparseable { error: _ } => false
     KnownClientMacUnparseable { error: _ } => false
+    InstallRequestClientUnparseable { error: _ } => false
     NoChainServable => false
     ServedPathCollision { served_path: _ } => false
     DnsmasqBinaryAbsent { reason: _ } => false
@@ -1222,6 +1276,7 @@ fn site_pxe_edge_gate_cause_text(cause: SitePxeEdgeGateCause) -> String {
     TftpServerAddressUnparseable { error: _ } => "tftp-server-address-unparseable: srv4_host_lan_endpoint.address is not an IPv4 address"
     SegmentNetworkUnparseable { error: _ } => "segment-network-unparseable: operator_lan_segment.cidr has no IPv4 network part"
     KnownClientMacUnparseable { error: _ } => "known-client-mac-unparseable: the measured host NIC observation does not parse as an EUI-48 address"
+    InstallRequestClientUnparseable { error: _ } => "install-request-client-unparseable: an install request's client MAC does not parse as an EUI-48 address"
     NoChainServable => "no-chain-servable: every served chain is withheld (see the chain lines)"
     ServedPathCollision { served_path: p } => concat("served-path-collision: two served chains claim ", p as String)
     DnsmasqBinaryAbsent { reason: r } => concat("dnsmasq-binary-absent: ", r)
@@ -2074,13 +2129,16 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
   }
   let standings = map(pins, p => site_pxe_edge_chain_standing(pin: p, observations: observations))
   let servable = site_pxe_edge_servable_chains(standings: standings)
-  let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: site_pxe_edge_install_bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  let bindings = site_pxe_edge_request_bindings(admissions: admissions)
+  let inputs = site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: bindings, tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network)
   let collisions = match inputs {
     Absent => []
     Present { value: i } => site_edge_served_path_collisions(roster: i.roster)
   }
   let causes = site_pxe_edge_gate_causes(tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network, known: site_pxe_edge_known_client_observations, servable: servable, collisions: collisions, dnsmasq_binary: binary, privilege: privilege)
-  let decisions = map(site_pxe_edge_install_bindings, b => {
+    + site_pxe_edge_request_gate_causes(admissions: admissions)
+  let decisions = map(bindings, b => {
     let install = site_pxe_edge_install_chain(architecture: b.architecture, chains: servable)
     let image = match install {
       Absent => InstallerImageUnplaced { reason: "no servable install chain for the binding's architecture" }
@@ -2098,7 +2156,7 @@ fn run_site_pxe_edge(target: SshTarget, context: FleetSshExecutionContext, mode:
       },
     }
   })
-  let installs = map(decisions, d => d.standing)
+  let installs = site_pxe_edge_request_withheld(admissions: admissions) + map(decisions, d => d.standing)
   let serves = site_pxe_edge_install_serves(decisions: decisions)
   let admitted = map(serves, sv => sv.binding)
   let files = match inputs {
