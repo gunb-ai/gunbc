@@ -6,11 +6,12 @@ import gunbc.roadmap.roadmap_workflow_stage {
   SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
   WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
 }
-import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderAwaitingAcceptance }
+import gunbc.roadmap.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderCompleted, ProviderFailed, ProviderAwaitingAcceptance, ProviderRequestPending }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltAttemptObligationKind, CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, AcceptanceOutcomeObligation, PublishObligation,
   belt_attempt_outstanding, belt_attempt_next_after, belt_attempt_obligation_kind_key,
   belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name,
+  belt_provider_terminal, belt_provider_candidate_ready, belt_capture_recording_owed,
   ServedObservationObligation, LaunchObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_key,
   BeltOperatorAction, OperatorDispatch, OperatorStop, OperatorPublish, OperatorIssueWrite, belt_operator_follow_up_kinds,
 }
@@ -144,4 +145,45 @@ test fn each_operator_route_declares_the_obligations_it_enqueues() -> Bool {
     && follow_up_keys(action: OperatorStop) == "observe,launch"
     && follow_up_keys(action: OperatorPublish) == "observe"
     && follow_up_keys(action: OperatorIssueWrite) == "observe"
+}
+
+// ================= REQUEST-PENDING: THE CAPTURE THAT WAS NEVER OWED (srv1 2026-10-28) =================
+// THE WEDGE, AT THE OBLIGATION INTERFACE. A request-pending worker HAS ENDED (it recorded the durable
+// turn.request_pending and exited), so the belt OWES the commit step that records the yield -- exactly as a
+// failed worker does. Before the projection gave it its own standing the attempt read as a refused/uncompleted
+// provider and owed no capture, so the capture was never made and the continuation refused it forever.
+test fn a_pending_request_worker_owes_capture() -> Bool {
+  let owed = keys(kinds: belt_attempt_outstanding(
+    provider: ProviderRequestPending { activity: "request-pending", detail: "{}" },
+    segments: segments(submission: WorkflowSegmentPending, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  string_contains(s: owed, pattern: "capture")
+}
+
+// THE DISCRIMINATOR AGAINST OVER-REACHING: a worker still RUNNING owes no capture (the belt does not settle
+// a live turn). Only the ENDED states owe it; request-pending joins them, running does not.
+test fn a_still_running_worker_owes_no_capture_but_a_pending_one_does() -> Bool {
+  let running = keys(kinds: belt_attempt_outstanding(
+    provider: ProviderRunning { activity: "round 7 in flight" },
+    segments: segments(submission: WorkflowSegmentPending, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  (!string_contains(s: running, pattern: "capture"))
+}
+
+// ONE PROJECTION, TWO QUESTIONS, ONE ANSWER EACH (DESIGN section 6b). The capture gate asks "has the worker
+// ended so its capture must be recorded?" -- YES for a pending request. The verify/publish gate asks "is there
+// a candidate to act on?" -- NO: the round drew no answer. Conflating them is the exact bug this contract
+// exposes, so the two named predicates are checked to DIVERGE here while agreeing on the other ended states.
+test fn a_pending_request_is_capture_owed_but_has_no_candidate_to_verify() -> Bool {
+  let pending = ProviderRequestPending { activity: "request-pending", detail: "{}" }
+  belt_provider_terminal(provider: pending)
+    && belt_capture_recording_owed(provider: pending)
+    && (!belt_provider_candidate_ready(provider: pending))
+}
+
+// THE YIELD SETTLING CLEARS THE OBLIGATION: once the commit step has run and the submission segment reads
+// Failed (HandoffYielded), capture is no longer outstanding -- the belt does not re-run the step every pass.
+test fn a_yielded_pending_request_is_not_re_owed_capture() -> Bool {
+  let owed = keys(kinds: belt_attempt_outstanding(
+    provider: ProviderRequestPending { activity: "request-pending", detail: "{}" },
+    segments: segments(submission: WorkflowSegmentFailed, verification: WorkflowSegmentPending, review: WorkflowSegmentPending, audit: WorkflowSegmentPending, publication: WorkflowSegmentPending)))
+  (!string_contains(s: owed, pattern: "capture"))
 }
