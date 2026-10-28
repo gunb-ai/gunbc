@@ -116,13 +116,6 @@ fn identity_parsed(value: String) -> IdentityParseResult {
   IdentityParsed { value: value }
 }
 
-fn parse_refused(result: IdentityParseResult) -> Bool {
-  match result {
-    IdentityParsed { value: _ } => false
-    IdentityRefused { failure: _ } => true
-  }
-}
-
 // Every character of the value is in the alphabet, refused rather than skipped: "nodekey:abc def" is not
 // an almost-key, so one character outside the alphabet fails the whole value. Two details that are not
 // decoration:
@@ -291,9 +284,6 @@ type TailscaleDevicesApiError {
 // THE API BASE, in one place so no caller spells the host.
 data tailscale_api_base: NonEmptyStr = "https://api.tailscale.com"
 
-// THE API AUTHORITY the auth gate is asked about, and the documentation anchor the model cites.
-data tailscale_devices_api_authority: NonEmptyStr = "api.tailscale.com"
-
 data devices_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -332,7 +322,7 @@ data tailscale_devices_path_tailnet: NonEmptyStr = "-"
 
 service tailscale.Devices {
   config {
-    endpoint: "https://api.tailscale.com"
+    endpoint: tailscale_api_base
     auth: Bearer
     auth_input: api_token
   }
