@@ -162,8 +162,16 @@ test fn w_the_desktop_max_q_workstation_card_is_a_card() -> Bool {
 
 test fn w_a_mobile_quadro_named_by_its_m_suffix_is_not_a_card() -> Bool {
   match decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 69, row: 6) {
-    Present { value: CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } } => (m as String) == "M"
+    Present { value: CensusExcluded { row: _, reason: NotADiscreteCard { marker: m } } } => (m as String) == "0M"
     _ => false
+  }
+}
+
+// "OEM" ends in "M" too; a desktop card is not a mobile part for that.
+test fn w_a_desktop_oem_card_is_a_card() -> Bool {
+  match only_card(d: decision_at(revision: list_of_nvidia_graphics_processing_units_page.revision, table: 22, row: 3)) {
+    Present { value: c } => c.model == "GeForce RTX 3050 OEM" && byte_size_count(b: c.memory_per_gpu) == gib(n: 8)
+    Absent => false
   }
 }
 
