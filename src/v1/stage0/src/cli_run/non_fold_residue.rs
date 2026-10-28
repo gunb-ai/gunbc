@@ -399,8 +399,8 @@ fn non_fold_residue_units_from_parse_source(
 
 fn nfr_workspace_carrier_files(root: &Path) -> Result<Vec<(String, String)>, String> {
     let mut acquired: Vec<crate::cli_run::derived_row_roster::AcquiredDag> = Vec::new();
-    collect_dag_files(&root.join("dag"), &mut acquired);
-    collect_dag_files(&root.join("src/v2"), &mut acquired);
+    collect_dag_files_result(&root.join("dag"), &mut acquired)?;
+    collect_dag_files_result(&root.join("src/v2"), &mut acquired)?;
     let mut files = Vec::new();
     for item in acquired {
         if item.is_derived() {

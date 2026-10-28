@@ -181,9 +181,19 @@ fn json_string_list(xs: List<String>) -> String {
 }
 
 // THE RECEIPT: one JSON object per line. A summary line whose counts are the lengths of lists
-// printed beneath it; one `lane` line per (job, subject) with the identities it resolved; and one
-// `unreached` line per unreached identity, so the population is greppable by identity and a
-// consumer never has to re-derive it from a count.
+// printed beneath it; one `lane` line per (job, subject) with the identities it resolved; one
+// `admitted` line per admitted identity; and one `unreached` line per unreached identity, so the
+// population is greppable by identity and a consumer never has to re-derive it from a count.
+// THE ADMITTED LINES EXIST TO SEPARATE TWO ABSENCES that were previously one AT POPULATION
+// GRAIN: an identity with an `admitted` line and no `unreached` line is admitted and reached.
+// Without the admitted lines, "resolved by a lane" and "not a module" both read as absence from
+// the unreached list, and the census could not tell a green lane from a typo. What absence from
+// BOTH lines MEANS for one identity is NOT left for a reader to infer -- DESIGN section 5
+// refuses absence-as-evidence -- the per-identity verdict is the TYPED ARM its named producer
+// prints: `claim_executor --required-ci --query-module <identity>` answers `never-admitted`
+// with its evidence (the run's SHA, and the deleting commit when history proves one, derived by
+// pickaxe over the module header, never hand-written), or `index-refused` when the state was
+// never observed. The receipt shows the population; the query arm PRIVES the single identity.
 fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
   let summary = concat(concat(concat(concat(
     "{\"kind\":\"summary\",\"instrument\":\"required-lane-resolution-census\",\"admitted\":", to_string(c.admitted |> count)),
@@ -196,6 +206,7 @@ fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
       ",\"subject\":"), serialize_json_string(s: subject_rendered(s: l.subject))),
       ",\"resolved\":"), to_string(l.modules |> count)),
       concat(",\"modules\":", concat(json_string_list(xs: l.modules), "}"))))
+  let admitted_lines = c.admitted |> map(m => concat(concat("{\"kind\":\"admitted\",\"module\":", serialize_json_string(s: m)), "}"))
   let unreached_lines = c.unreached |> map(m => concat(concat("{\"kind\":\"unreached\",\"module\":", serialize_json_string(s: m)), "}"))
   // One `roster` line per authored row of `v2.workflow.required_floor` required_gate_authored_modules,
   // by identity, naming its standing: `resolved-by-required-lane` (with the (job|subject) lanes whose compile closure
@@ -212,5 +223,5 @@ fn census_receipt_lines(c: ResolutionCensus) -> List<String> {
       RosterRowUnresolvable { module: m } =>
         concat(concat("{\"kind\":\"roster\",\"module\":", serialize_json_string(s: m)), ",\"standing\":\"unresolvable\"}")
     })
-  concat(concat(concat([summary], lane_lines), unreached_lines), roster_lines)
+  concat(concat(concat(concat([summary], lane_lines), admitted_lines), unreached_lines), roster_lines)
 }

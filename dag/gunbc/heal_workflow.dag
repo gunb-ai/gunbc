@@ -107,6 +107,22 @@ data heal_dispatch_base_ref_input: DispatchInput = DispatchInput {
   type: InputString
 }
 
+// The commit `base_ref` pointed at when this repair was dispatched, for a manual run that has no
+// pull_request context to read it from. A 40-hex commit, not a branch name -- see
+// heal_base_sha_read for why the round's authority is a commit.
+data heal_dispatch_base_sha_input: DispatchInput = DispatchInput {
+  name: "base_sha",
+  description: Present { value: "Base commit (40-hex) of that pull request" },
+  required: true,
+  default: none,
+  type: InputString
+}
+
+// THE ROUND'S OWN BOOTSTRAP AUTHORITY, its own name. `HEAL_BASE_REF` already belongs to the
+// candidate step (gunbc.heal_candidate heal_candidate_base_ref_env) and carries a BRANCH NAME for
+// a different purpose; the round's seed needs a COMMIT and must not read a name another step owns.
+data heal_round_base_mirror_env: String = "HEAL_BASE_MIRROR_COMMIT"
+
 data heal_workflow_name: String = "heal"
 
 data heal_workflow_job_id: String = "heal-generated-artifacts"
@@ -172,13 +188,26 @@ fn heal_checkout_step() -> Step {
   }
 }
 
+// ROUND 1 SEEDS FROM THE BASE REF'S COMMITTED MIRROR (DESIGN §5, `gunbc.recurring_failure_mode`
+// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair`, RFM PR #14963). The commit is
+// this step's ENVIRONMENT VALUE -- never argv -- because it is pull-request-controlled text:
+// spliced into a command word it would be shell, and the invoke-step admit gate refuses any argv
+// word containing `${{`. It is the IMMUTABLE `base.sha`, not `base.ref`: a branch name is a moving
+// name that a local branch and its remote-tracking ref can disagree about, and the round's seed
+// must be one commit that GitHub already resolved for this pull request. The step asks for the
+// base mirror UNCONDITIONALLY on every heal run; nothing here branches on a previous failure, and
+// the round's receipt names the base COMMIT it seeded from.
 fn heal_stage0_round_step() -> Step {
   RunStep {
     name: Present { value: "Converge the stage0 mirrors to the seed's own fixed point" },
     id: none,
     run: gunbc_ci_stage0_round_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: heal_round_base_mirror_env as String, value: yaml_string(s: heal_base_sha_read))
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -420,7 +449,8 @@ data heal_workflow: Workflow = Workflow {
     heal_dispatch_pull_number_input,
     heal_dispatch_head_sha_input,
     heal_dispatch_head_ref_input,
-    heal_dispatch_base_ref_input
+    heal_dispatch_base_ref_input,
+    heal_dispatch_base_sha_input
   ] }],
   concurrency: Present { value: heal_workflow_concurrency },
   env: Present {
@@ -551,6 +581,17 @@ data heal_head_ref_read: String = interpolate(expression: LogicalOr {
 data heal_base_ref_read: String = interpolate(expression: LogicalOr {
   left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "ref"] },
   right: ContextAccess { context: Inputs, path: [heal_dispatch_base_ref_input.name] }
+})
+
+// THE BASE COMMIT, IMMUTABLE. The round's bootstrap authority is read from `base.sha`, never from
+// `base.ref`: a branch is a moving name that two remotes can disagree about (a checkout's local
+// `main` can sit behind `origin/main`), and a receipt that named such a pick "the base commit"
+// would be recording a fact it did not establish -- DESIGN §3, each fact lives in exactly one
+// place, and §5, no plausible output is fabricated. The commit GitHub already resolved for this
+// pull request IS the fact; the name is a lookup of it, so the seed never performs one.
+data heal_base_sha_read: String = interpolate(expression: LogicalOr {
+  left: ContextAccess { context: Github, path: ["event", "pull_request", "base", "sha"] },
+  right: ContextAccess { context: Inputs, path: [heal_dispatch_base_sha_input.name] }
 })
 
 // THE GROUP PREFIX IS THE ONLY TEXT THIS MODEL OWNS for the group; the per-pull coordinate is the

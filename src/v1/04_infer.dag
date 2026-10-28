@@ -9,7 +9,7 @@ import std.content_hash {
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
-import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField, TypeParameter, decl_ref, decl_field_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.target_representation { VariantParentIdentity, VariantParentIdentified, VariantParentBeforeInference, VariantParentUnrecovered, VariantParentDeclaration, VariantParentKernelType }
 import std.kernel_type_name { kernel_type_name, KernelTypeNameAdmitted, NotAKernelTypeName }
 import std.operator_realization { OperandDeclaration }
@@ -23,6 +23,8 @@ import std.literal_elaboration {
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
   KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
+  carrier_grounding, CarrierGroundingFound, CarrierGroundingRefused, CarrierNotGrounded,
+  kernel_grounding_crossing, CrossingTotalWidening, CrossingRefused, kernel_crossing_refusal_message,
   kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows, conversion_plan_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
@@ -145,7 +147,7 @@ import v1.compiler.infer_env { settled_type, settled_type_of_declaration, declar
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, census_declaration_type_env, declaration_substitution_basis, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
+  lookup_binding_by_name, lookup_binding_on_chain, node_is_kernel_mint_named, binding_declares_name, type_reference_declaration_ref, carried_declaration_ref, declaration_ref_of_type_node, declaration_ref_of_declaration_node, type_reference_declaration, declaration_provenance_of_ref, declaration_node_of_ref, type_reference_declaration_reading, TypeReferenceDeclarationReading, TypeReferenceNamesDeclaration, TypeReferenceIsKernelType, TypeReferenceIsTypeVariable, TypeReferenceUnidentified,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -1371,7 +1373,7 @@ fn constructor_call_admission_diags_for_outcome(
 // compile_error! where there is none.
 //
 // WHAT THIS FOLD IS NOT: it is not an admission wall. Whether a caller ESTABLISHES a resource is
-// owned by DESIGN D13's derived DependencyDemand (docs/plans/demand-engine-program.md), under which
+// owned by DESIGN D13's derived DependencyDemand (`gunbc.plans.demand_engine_program`), under which
 // a transparent function's demand is derived rather than authored. This fold reads the caller's
 // AUTHORED `uses` rows only because no derived carrier with a binding identity exists yet
 // (its return is the next-rung trigger on gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target). A caller whose
@@ -7693,6 +7695,13 @@ fn categorized_error(message: String, span: SourceSpan, module_name: String, cat
   make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
 }
 
+fn cast_source_declaration(inner: Node, scope: InferScope) -> DeclarationRef? {
+  match inner.inferred {
+    Present { value: Resolved { node: n } } => carried_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    _ => none
+  }
+}
+
 // The solver's Unit placeholder is the synthesized core `unit_type` node, which has no declaration by
 // construction (OccurrenceSynthetic, kernel span): it is recognized as that node, so a source-authored
 // type spelled Unit, which carries a real occurrence and span, is never mistaken for it.
@@ -7703,11 +7712,26 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
   }
 }
 
-// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into NonEmptyStr, and
-// validate_cast passes a source outside the table's domain unjudged, so `n as NonEmptyStr` over an Int,
-// Bool, Float, Unit or Nat compiled clean and re-typed a number as text;
-// test.claim.non_text_cast_into_text_wall_witness holds the five REDs, the GREENs, and the RED that a
+// A NON-TEXT KERNEL SOURCE HAS NO ROUTE INTO TEXT. The cast table names no row into any text type,
+// and validate_cast passes a target outside the table's domain unjudged, so `n as NonEmptyStr` and
+// `n as String` over an Int, Bool, Float, Unit or Nat compiled clean, re-typed a number as text, and
+// reached the target emitter's unsupported-cast arm: gunbc.durable_cas_file_store's
+// `cas_generation_count(...) as String` emitted three `panic!("unsupported cast from i64 to String")`
+// arms, a runtime abort standing where a located refusal belonged (DESIGN section 5). The declared
+// Int-to-text route is std.integer int_to_decimal_string (std.nat nat_to_decimal_string for a Nat),
+// which the refusal names (operator ruling via stern-bat-401, 2026-10-24: Int-to-String needs a
+// declared, imported conversion).
+// test.claim.non_text_cast_into_text_wall_witness holds the REDs, the GREENs, and the RED that a
 // user-declared type SPELLED Int is not the kernel Int.
+//
+// THE TARGET IS TEXT BY ITS REPRESENTATION, read by the one classifier text crossings already use
+// (v1.compiler.infer_env text_representation_by_identity): host text (the kernel String mint, and
+// std.types NonEmptyStr because a where-refinement has its base's representation) or a code-point
+// sequence (std.algebra FreeMonoid<Char>, directly or through aliases). This was first a
+// NonEmptyStr-only leaf (#14822); `as String` was the same rule at its sibling target, so the rule is
+// the least general one covering both, not a second leaf beside the first. An UNIDENTIFIED target is
+// not judged here: that population is gunbc.rung_drop text_boundary_identity_wall's, and refusing it
+// would be a verdict this classifier declares it cannot give.
 //
 // KEYED ON IDENTITY, NEVER ON SPELLING (DESIGN section 4). Int, Float, Bool and Unit are read by their
 // mint provenance (node_is_kernel_mint_named over the resolved node). Nat is not a kernel mint: a binder
@@ -7726,8 +7750,7 @@ fn cast_source_is_solver_unit_placeholder(source_node: Node) -> Bool {
 // and is_dag_cast_domain_type are to be deleted or derived), and DESIGN section 3 admits no new rows on
 // a frozen authority's growth surfaces. Both leaves dissolve on that stall's trigger, when every
 // cast consumer asks its own inhabitance judgment, and the out-of-domain arm then judges all
-// targets, not one. String as a target is deliberately out of scope here: this change refuses only
-// into NonEmptyStr, as ruled.
+// targets, not one.
 fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScope) -> Bool {
   match type_reference_declaration_ref(n: n, source_indices: scope.type_env.source_indices, env: scope.type_env) {
     Present { value: d } => declaration_ref_eq(a: d, b: wanted)
@@ -7735,22 +7758,81 @@ fn type_node_names_declaration(n: Node, wanted: DeclarationRef, scope: InferScop
   }
 }
 
-fn is_non_text_kernel_cast_source(n: Node, scope: InferScope) -> Bool {
-  node_is_kernel_mint_named(n: n, name: "Int") || node_is_kernel_mint_named(n: n, name: "Float")
-    || node_is_kernel_mint_named(n: n, name: "Unit")
-    || type_node_names_declaration(n: n, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope)
+fn non_text_kernel_cast_into_text_diags(source_reading: HostTextSourceReading, source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+  match source_reading {
+    HostTextRouteAbsentKernel { kernel: k } =>
+      match source_inferred {
+        Present { value: Resolved { node: src_node } } =>
+          if text_representation_is_text_arm(r: text_representation_by_identity(n: target_type, env: scope.type_env)) {
+            let si = scope.type_env.source_indices
+            let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through ", non_text_kernel_text_route(kernel: k))
+            [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
+          } else { [] }
+        _ => []
+      }
+    HostTextRouteAbsentNominal => []
+    HostTextSourceAdmissible => []
+  }
 }
 
-fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?, target_type: Node, span: SourceSpan, scope: InferScope) -> List<ErrorNode> {
+// THE ONE READING OF WHETHER A VALUE HAS AN IMPLICIT ROUTE INTO HOST TEXT, asked at every crossing
+// into a text position: the explicit `as` here (validate_cast for the nominal arm,
+// non_text_kernel_cast_into_text_diags for the kernel arm), and the host-text formals of builtins
+// and algebra methods (gunbc.recurring_failure_mode
+// a_nominal_value_reaches_a_string_position_and_renders_host_debug_text, chain (ii)), so the
+// implicit route cannot admit what the explicit cast refuses (DESIGN section 4,
+// gunbc.design_ruling coercion_is_the_implicit_safe_subset). Operator ruling via stern-bat-401,
+// 2026-10-24: Int, Nat and Bool into host text need a declared, imported conversion at both
+// crossings. A coproduct and not a predicate, because each crossing words its refusal per arm, and
+// which kernels have no route is ONE list here rather than one per crossing.
+//   - HostTextRouteAbsentNominal: a declared product or coproduct (value_type_is_declared_nominal).
+//   - HostTextRouteAbsentKernel: a non-text kernel value -- the kernel mints Int, Float, Bool and
+//     Unit by mint provenance, and std.nat Nat and std.types Bool by the declaration their reference
+//     resolves to. std.types declares Bool as the coproduct True | False, so
+//     value_type_is_declared_nominal reads it as nominal; Bool is therefore read FIRST, so it takes
+//     this arm's reason. Every other kernel is exempt from that predicate and its order is moot.
+//   - HostTextSourceAdmissible: neither; text itself, a type variable, and every other source this
+//     reading does not judge.
+type HostTextSourceReading
+  = HostTextRouteAbsentNominal
+  | HostTextRouteAbsentKernel { kernel: NonTextKernel }
+  | HostTextSourceAdmissible
+
+// THE NON-TEXT KERNELS, closed, so the refusal names the route that kernel actually has: Int and Nat
+// each have one declared decimal conversion, and Float, Bool and Unit have none yet, so their
+// refusal says a conversion must be declared rather than pointing at one that does not apply.
+type NonTextKernel
+  = NonTextKernelInt
+  | NonTextKernelNat
+  | NonTextKernelFloat
+  | NonTextKernelBool
+  | NonTextKernelUnit
+
+fn non_text_kernel_text_route(kernel: NonTextKernel) -> String {
+  match kernel {
+    NonTextKernelInt => "its declared conversion, std.integer int_to_decimal_string"
+    NonTextKernelNat => "its declared conversion, std.nat nat_to_decimal_string"
+    NonTextKernelFloat => "a declared conversion; none exists for Float yet, so declare one before writing this crossing"
+    NonTextKernelBool => "a declared conversion; none exists for Bool yet, so declare one before writing this crossing"
+    NonTextKernelUnit => "a declared conversion; none exists for Unit yet, so declare one before writing this crossing"
+  }
+}
+
+fn host_text_source_reading(t: Node, scope: InferScope) -> HostTextSourceReading {
+  if node_is_kernel_mint_named(n: t, name: "Bool")
+    || type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.types", decl_name: "Bool"), scope: scope) { HostTextRouteAbsentKernel { kernel: NonTextKernelBool } }
+  else if value_type_is_declared_nominal(t: t, scope: scope) { HostTextRouteAbsentNominal }
+  else if node_is_kernel_mint_named(n: t, name: "Int") { HostTextRouteAbsentKernel { kernel: NonTextKernelInt } }
+  else if node_is_kernel_mint_named(n: t, name: "Float") { HostTextRouteAbsentKernel { kernel: NonTextKernelFloat } }
+  else if node_is_kernel_mint_named(n: t, name: "Unit") { HostTextRouteAbsentKernel { kernel: NonTextKernelUnit } }
+  else if type_node_names_declaration(n: t, wanted: decl_ref(module_path: "std.nat", decl_name: "Nat"), scope: scope) { HostTextRouteAbsentKernel { kernel: NonTextKernelNat } }
+  else { HostTextSourceAdmissible }
+}
+
+fn cast_source_host_text_reading(source_inferred: InferredNode?, scope: InferScope) -> HostTextSourceReading {
   match source_inferred {
-    Present { value: Resolved { node: src_node } } =>
-      if type_node_names_declaration(n: target_type, wanted: decl_ref(module_path: "std.types", decl_name: "NonEmptyStr"), scope: scope)
-        && is_non_text_kernel_cast_source(n: src_node, scope: scope) {
-        let si = scope.type_env.source_indices
-        let msg = concat("invalid cast: ", authored_name_at(source_indices: si, node: src_node), " as ", authored_name_at(source_indices: si, node: target_type), " -- a non-text value has no route into text; build the text through a declared conversion (to_string, or a checked constructor over its rendering)")
-        [make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: scope.module_name)]
-      } else { [] }
-    _ => []
+    Present { value: Resolved { node: source_node } } => host_text_source_reading(t: source_node, scope: scope)
+    _ => HostTextSourceAdmissible
   }
 }
 
@@ -7772,9 +7854,9 @@ fn non_text_kernel_cast_into_non_empty_text_diags(source_inferred: InferredNode?
 // foreign type spelled `Unit` is not std.types Unit. `Unit` is what the call-site generic solve answers
 // for a parameter it did not solve and what an absent literal infers as, so it is no established
 // nominal identity. Kernel Int and Float have no product or coproduct head and are not read as
-// nominal; Bool is: std.types declares it as the coproduct `True | False`, so `b as String` refuses
-// here and so does a Bool at a host-text formal (the refusal's reason text calls it nominal for now;
-// a kernel-scalar arm of this judgment gives it its own). Other kernel mints with a product or
+// nominal; Bool is: std.types declares it as the coproduct `True | False`, so a Bool at a host-text formal refuses
+// here, and at `as` host_text_source_reading reads Bool FIRST so the cast refusal gives it the
+// kernel reason. Other kernel mints with a product or
 // coproduct head (the kernel Optional, Map, RestResult, Hash, Callable) are not exempt: a kernel
 // Optional at a host-text formal renders `Present { value: .. }`, this class. When the declaration is NOT recovered (Absent) only the synthesized placeholder node
 // itself is exempt (it has no declaration by construction); any other unrecovered source refuses,
@@ -7861,32 +7943,105 @@ fn algebra_method_host_text_crossing_diags(method_name: String, semantics: Metho
 // chain (i)). std.coercion dag_cast_rules rosters only Int, Float and Bool, so a nominal source
 // has no declared conversion to any target; abstaining here (the is_dag_cast_domain_type arms
 // below) let v1_interpreter eval_cast supply a route no declaration owns, the host's debug text.
-// source_is_nominal is the head exposure of the source's declaration identity, the same authority
-// product_at_scalar_declared_type reads, never a bare spelling.
-fn validate_cast(source_inferred: InferredNode?, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_is_nominal: Bool) -> ErrorNode? {
+// source_reading is host_text_source_reading of the source; its nominal arm is the head exposure of
+// the source's declaration identity, the same authority product_at_scalar_declared_type reads, never
+// a bare spelling.
+// A CAST FROM A GROUNDED CARRIER IS DECIDED BY THE DERIVED CROSSING, keyed on both declarations
+// (std.literal_elaboration kernel_grounding_crossing over gunbc.structural_realization_bindings
+// kernel_grounding_rows): onto another grounded carrier it is admitted exactly when the source's extent lies
+// inside the target's, so `Nat as Int` at std.integer Int is the identity re-typing and the converse refuses.
+// A grounded NATURAL source has no route to any other target, so its cast refuses here ("no declared
+// conversion route"), EXCEPT onto the kernel Int: that cast is not an inclusion (the naturals are not inside
+// the 64-bit integers), and stern-bat-401's ruling keeps it on the name-keyed chain below, a declared
+// below-ceiling class (gunbc.recurring_failure_mode a_grounded_natural_cast_onto_the_kernel_integer_is_unjudged). A target that carries no identity
+// (unidentified, or a type variable) is not decided here either: a missing identity is not evidence of a different
+// target, so the name-keyed chain below keeps the answer it gave before. A source no row grounds is not decided here.
+type GroundedCastVerdict
+  = GroundedCastAdmitted
+  | GroundedCastRefused { cause: String }
+  | GroundedCastNotDecided
+
+fn grounded_cast_verdict(source: DeclarationRef, target: TypeReferenceDeclarationReading) -> GroundedCastVerdict {
+  match carrier_grounding(rows: kernel_grounding_rows, carrier: source) {
+    CarrierGroundingRefused { cause: c } =>
+      match c {
+        CarrierNotGrounded { carrier: _ } => GroundedCastNotDecided
+        _ => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+      }
+    CarrierGroundingFound { row: _ } =>
+      let natural = declaration_is_grounded_natural(rows: kernel_grounding_rows, d: source)
+      match target {
+        TypeReferenceNamesDeclaration { declaration: t } =>
+          match carrier_grounding(rows: kernel_grounding_rows, carrier: t) {
+            CarrierGroundingFound { row: _ } =>
+              match kernel_grounding_crossing(rows: kernel_grounding_rows, from: source, to: t) {
+                CrossingTotalWidening => GroundedCastAdmitted
+                CrossingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+              }
+            CarrierGroundingRefused { cause: CarrierNotGrounded { carrier: _ } } =>
+              if natural { GroundedCastRefused { cause: concat("no declared conversion route onto ", declaration_ref_display_key(ref: t)) } } else { GroundedCastNotDecided }
+            CarrierGroundingRefused { cause: c } => GroundedCastRefused { cause: kernel_crossing_refusal_message(cause: c) }
+          }
+        TypeReferenceIsKernelType { name: k } =>
+          if k == "Int" { GroundedCastNotDecided }
+          else if natural { GroundedCastRefused { cause: "no declared conversion route" } }
+          else { GroundedCastNotDecided }
+        _ => GroundedCastNotDecided
+      }
+  }
+}
+
+fn validate_cast(source_inferred: InferredNode?, source_declaration: DeclarationRef?, target_reading: TypeReferenceDeclarationReading, target_name: String, span: SourceSpan, source_indices: Map<String, NewlineIndex>, module_name: String, source_reading: HostTextSourceReading) -> ErrorNode? {
   match source_inferred {
     Present { value: Resolved { node: src_node } } =>
       let source_name = authored_name_at(source_indices: source_indices, node: src_node)
+      let grounded = match source_declaration {
+        Present { value: d } => grounded_cast_verdict(source: d, target: target_reading)
+        Absent => GroundedCastNotDecided
+      }
       if source_name == target_name { none }
+      else if (match grounded { GroundedCastAdmitted => true  _ => false }) { none }
+      else if (match grounded { GroundedCastRefused { cause: _ } => true  _ => false }) {
+        let cause = match grounded {
+          GroundedCastRefused { cause: c } => c
+          _ => ""
+        }
+        let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- ", cause)
+        Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
+      }
       else if dag_cast_requires_proof(source_type: source_name, target_type: target_name) {
         let msg = concat("invalid cast: ", source_name, " as ", target_name, " is a refinement cast, not a re-typing -- an arbitrary ", source_name, " has no ", target_name, "; use std.checked_arithmetic checked_int_to_nat (or a nonnegative literal, which needs no cast)")
         let diag = InternalError { message: msg, span: span }
         Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
       }
-      else if source_is_nominal {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
-        let diag = InternalError { message: msg, span: span }
-        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
-      }
-      else if !is_dag_cast_domain_type(name: source_name) { none }
-      else if !is_dag_cast_domain_type(name: target_name) { none }
-      else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
       else {
-        let msg = concat("invalid cast: ", source_name, " as ", target_name)
-        let diag = InternalError { message: msg, span: span }
-        Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
+        // Bool is read as a kernel for its host-text reason (non_text_kernel_text_route), but it is the
+        // declared coproduct True | False, so a cast from it to any other type has no declared
+        // conversion, exactly as for every nominal: only its text reason differs, never whether it refuses.
+        match source_reading {
+          HostTextRouteAbsentNominal => nominal_cast_refusal(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+          HostTextRouteAbsentKernel { kernel: NonTextKernelBool } => nominal_cast_refusal(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+          HostTextRouteAbsentKernel { kernel: _ } => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+          HostTextSourceAdmissible => validate_cast_in_table_domain(source_name: source_name, target_name: target_name, span: span, module_name: module_name)
+        }
       }
     _ => none
+  }
+}
+
+fn nominal_cast_refusal(source_name: String, target_name: String, span: SourceSpan, module_name: String) -> ErrorNode? {
+  let msg = concat("invalid cast: ", source_name, " as ", target_name, ": a nominal value has no declared conversion")
+  Present { value: make_error_node(diagnostic: InternalError { message: msg, span: span }, module_name: module_name) }
+}
+
+fn validate_cast_in_table_domain(source_name: String, target_name: String, span: SourceSpan, module_name: String) -> ErrorNode? {
+  if !is_dag_cast_domain_type(name: source_name) { none }
+  else if !is_dag_cast_domain_type(name: target_name) { none }
+  else if dag_can_cast(source_type: source_name, target_type: target_name) { none }
+  else {
+    let msg = concat("invalid cast: ", source_name, " as ", target_name, " -- no declared conversion route in std.coercion")
+    let diag = InternalError { message: msg, span: span }
+    Present { value: make_error_node(diagnostic: diag, module_name: module_name) }
   }
 }
 
@@ -10916,11 +11071,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let inner_emissions = inner_result.emissions
       let si = scope.type_env.source_indices
       let target_name = authored_name_at(source_indices: si, node: target_type)
-      let source_is_nominal = match inner_typed.inferred {
-        Present { value: Resolved { node: source_node } } => value_type_is_declared_nominal(t: source_node, scope: scope)
-        _ => false
-      }
-      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_is_nominal: source_is_nominal)
+      let source_reading = cast_source_host_text_reading(source_inferred: inner_typed.inferred, scope: scope)
+      let cast_diag = validate_cast(source_inferred: inner_typed.inferred, source_declaration: cast_source_declaration(inner: inner_typed, scope: scope), target_reading: type_reference_declaration_reading(n: target_type, source_indices: si, env: scope.type_env), target_name: target_name, span: span, source_indices: si, module_name: scope.module_name, source_reading: source_reading)
       let cast_diags = match cast_diag {
         Present { value: d } => [d]
         Absent => []
@@ -10933,7 +11085,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         module_name: scope.module_name
       )
       let cast_sole_ctor_diags = sole_constructor_construction_diags(type_name: target_name, span: span, scope: scope)
-      let cast_non_text_diags = non_text_kernel_cast_into_non_empty_text_diags(source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
+      let cast_non_text_diags = non_text_kernel_cast_into_text_diags(source_reading: source_reading, source_inferred: inner_typed.inferred, target_type: target_type, span: span, scope: scope)
       let cast_refinement_diags = where_refinement_mismatch_diags(
         formal: target_type,
         value_expr: inner_typed,
@@ -16755,7 +16907,7 @@ fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIn
 // DECLARED FRONTIER: the bare upgrade here is still eager over every bare name of the tree, while
 // a closure's typecheck reads only the names it looks up. Scoping it to those demands needs a
 // demand identity for "this lookup, in this closure" -- the demand-identity carriers of
-// docs/plans/demand-engine-program.md (M1). Until that capability exists, no key of `global_bare`
+// `gunbc.plans.demand_engine_program` (M1). Until that capability exists, no key of `global_bare`
 // can be marked undemanded without either a lazy cell or a new refusal arm in frozen v1 semantics,
 // both ruled out; this stays eager.
 fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {

@@ -1,0 +1,235 @@
+module v2.test.claim.enforcement.enrollment_witness_resolution_witness
+
+// THE SILENT-GREEN CONTROL for the enforcement-consistency gate (the ee97d81d defect).
+//
+// A Blocking contract's consumer leg was satisfied by a STRING MATCH alone: if the (entry,
+// function) its witness names equals some (entry, check_fn) pair in commit_gate_roster, the
+// consumer counted EnrolledInFloorRoster, consumer_is_live said true, and the gate went green --
+// whether or not the witness it promises exists anywhere. A roster row pointing at a witness that
+// was never declared (or at a file that was deleted) enforced nothing and reported as if it
+// enforced everything.
+//
+// The fix resolves the enrollment against the SAME closure DeclFacts pool the rest of the receipt
+// is derived from: a row counts only if a function item is declared at that (rel_path, name).
+// A row that resolves to nothing is refused the new typed arm EnrollmentWitnessUnresolved, which
+// is live=no and, by rank, countable apart from both WitnessOnly and NoConsumer.
+//
+// This file is a FRESH claim file on purpose: src/v2/test/lens_enforcement/gate.dag already fails
+// resolution on main, so a control added there would be a control nobody can run.
+//
+// WHAT THIS DOES NOT CLAIM. witnesses.yml embeds no check_fn names at all, so an EnrolledInFloorRoster
+// row still executes nowhere on the required path. This fix makes "enrolled" mean "resolves to a
+// real declaration", NOT "executes in CI". The execution gap stays where it is declared:
+// gunbc.rung_drop v1_required_lanes_withdrawn.
+
+import std.types { List }
+import v2.std.node { Atom, Node, TypeNode, NotADeclaration }
+import std.occurrence_identity { OccurrenceSynthetic }
+import std.algebra { Cons, Empty, contains, non_empty }
+import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq, CorpusWitnessKind }
+import v2.std.decl_index { DeclFact, FnItem, decl_facts_is_fn_like }
+import v2.lens.enforcement.vocab {
+  ConsumerKind, EnrolledInFloorRoster, WitnessOnly, NoConsumer,
+  EnrollmentWitnessUnresolved, BoundConsumerWitness, NoConsumerWitness,
+  consumer_kind_eq, consumer_is_live, consumer_rank
+}
+import v2.lens.enforcement.contract {
+  LensContract, EnrollmentDiscoveryReceipt,
+  lens_contract_cost, lens_contract_emitted_binary_effect_confinement, lens_contract_registry
+}
+import v2.lens.enforcement.receipts { consumer_enrolled_for, derive_receipt }
+import v2.lens.enforcement.gate { contract_internally_consistent, intent_family_verdict, leg_holds, all_intents_admissible }
+import v2.lens.enforcement.standing_intent { standing_intent_complexity_repo_wide, standing_intent_registry }
+import v2.workflow.enforcement_live { enforcement_consistency_live, enforcement_ci_witness_entries, enforcement_corpus_facts, coverage_receipts_from }
+
+// A synthetic node body: the census carries a node per declaration and the resolution reads only
+// rel_path, name, and kind, so a bare leaf stands in for any fn body.
+data phantom_probe_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^phantom_enrollment_probe_body } },
+  children: [],
+  occurrence_id: OccurrenceSynthetic
+}
+
+// The two witnesses that the positive control enrolls, copied field-for-field from the real
+// contracts (contract.dag) so the control judges the real thing and not a stand-in.
+data cost_roster_witness: ScheduleWitnessEntry = {
+  entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag",
+  function: "complexity_budget_roster_family_gate_holds",
+  kind: CorpusWitnessKind
+}
+
+data effect_confinement_roster_witness: ScheduleWitnessEntry = {
+  entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control.dag",
+  function: "emitted_binary_effect_confinement_authority_points_at_host_transport",
+  kind: CorpusWitnessKind
+}
+
+// THE PHANTOM. A roster row naming a witness that is declared nowhere. Its entry path names a file
+// this corpus does not contain and its function name appears in no declaration in the census.
+data phantom_roster_witness: ScheduleWitnessEntry = {
+  entry: "src/v2/test/claim/enforcement/enrollment_witness_phantom_absent.dag",
+  function: "phantom_witness_declared_nowhere_holds",
+  kind: CorpusWitnessKind
+}
+
+// Census facts for the two real witnesses: function items at exactly the (rel_path, name) the
+// contracts promise. This is what an enrollment must resolve against.
+data cost_witness_fact: DeclFact = {
+  qualified_name: "test.claim.complexity_gate.budget_roster_completeness.complexity_budget_roster_family_gate_holds",
+  name: "complexity_budget_roster_family_gate_holds",
+  kind: FnItem,
+  node: phantom_probe_body_leaf,
+  rel_path: "src/v2/test/claim/complexity_gate/budget_roster_completeness.dag"
+}
+
+data effect_confinement_witness_fact: DeclFact = {
+  qualified_name: "test.claim.emitted_binary_effect_confinement_red_control.emitted_binary_effect_confinement_authority_points_at_host_transport",
+  name: "emitted_binary_effect_confinement_authority_points_at_host_transport",
+  kind: FnItem,
+  node: phantom_probe_body_leaf,
+  rel_path: "src/v2/test/claim/emitted_binary_effect_confinement_red_control.dag"
+}
+
+data resolved_witness_facts: List<DeclFact> = [cost_witness_fact, effect_confinement_witness_fact]
+
+// The floor roster as it stands on main, plus the phantom row: the exact shape that turned the
+// gate green at ee97d81d.
+data roster_with_phantom: List<ScheduleWitnessEntry> =
+  [cost_roster_witness, effect_confinement_roster_witness, phantom_roster_witness]
+
+fn cost_bound() -> ConsumerKind {
+  consumer_enrolled_for(
+    binding: BoundConsumerWitness { witness: cost_roster_witness },
+    ci_entries: roster_with_phantom,
+    prepush_entries: [],
+    facts: resolved_witness_facts
+  )
+}
+
+fn effect_bound() -> ConsumerKind {
+  consumer_enrolled_for(
+    binding: BoundConsumerWitness { witness: effect_confinement_roster_witness },
+    ci_entries: roster_with_phantom,
+    prepush_entries: [],
+    facts: resolved_witness_facts
+  )
+}
+
+fn phantom_bound() -> ConsumerKind {
+  consumer_enrolled_for(
+    binding: BoundConsumerWitness { witness: phantom_roster_witness },
+    ci_entries: roster_with_phantom,
+    prepush_entries: [],
+    facts: resolved_witness_facts
+  )
+}
+
+// POSITIVE CONTROL, part 1: the cost and effect-confinement enrollments hold. Both witnesses are
+// declared, both rows are on the roster, so both stay EnrolledInFloorRoster -- the fix must not
+// turn a real enrollment into a refusal.
+test fn declared_witnesses_stay_enrolled() -> Bool {
+  consumer_kind_eq(a: cost_bound(), b: EnrolledInFloorRoster)
+    && consumer_kind_eq(a: effect_bound(), b: EnrolledInFloorRoster)
+}
+
+// THE RED: a roster row naming a nonexistent witness is refused, and refused by its OWN arm.
+// The string match alone would have called this EnrolledInFloorRoster.
+test fn phantom_row_is_refused_by_its_own_arm() -> Bool {
+  consumer_kind_eq(a: phantom_bound(), b: EnrollmentWitnessUnresolved)
+}
+
+// The refusal is COUNTABLE APART from WitnessOnly, which is the arm for "a real witness with no
+// enforcement surface". Conflating them would let a phantom hide inside an honest-looking state:
+// the two must differ in rank, in liveness, and in kind_eq.
+test fn refusal_is_countable_apart_from_witness_only() -> Bool {
+  !consumer_kind_eq(a: phantom_bound(), b: WitnessOnly)
+    && !consumer_kind_eq(a: phantom_bound(), b: NoConsumer)
+    && (consumer_rank(k: phantom_bound()) != consumer_rank(k: WitnessOnly))
+    && !consumer_is_live(k: phantom_bound())
+    && consumer_is_live(k: EnrolledInFloorRoster)
+}
+
+// THE GATE GOES RED WHEN A ROSTER ROW'S WITNESS DOES NOT EXIST. The roster keeps the cost row
+// exactly as main has it (the string match still holds), but the census carries no declaration at
+// that (rel_path, name): the witness the row promises was never declared. That is the ee97d81d
+// state, and this is what the old code could not see -- consumer_enrolled_for said
+// EnrolledInFloorRoster on the string match, consumer_is_live said true, and
+// contract_internally_consistent stayed true for a Blocking contract enforcing nothing.
+test fn unresolvable_roster_row_fails_the_gate() -> Bool {
+  let receipt = derive_receipt(
+    contract: lens_contract_cost,
+    desired_scope: lens_contract_cost.claimed_scope,
+    self_module_prefix: "lens.cost.",
+    facts: [effect_confinement_witness_fact],
+    ci_entries: roster_with_phantom,
+    prepush_entries: []
+  )
+  !contract_internally_consistent(c: lens_contract_cost, receipts: [receipt])
+}
+
+// THE DISCRIMINATOR: the identical derivation, over the identical roster, with only the census
+// restored -- the row's witness declared as a function item -- and the same Blocking contract is
+// internally consistent, and its live_consumer leg holds. The two tests differ in exactly one
+// fact, so the red discriminates on the witness's existence and on nothing else.
+test fn the_same_shape_is_green_with_the_witness_declared() -> Bool {
+  let receipt = derive_receipt(
+    contract: lens_contract_cost,
+    desired_scope: lens_contract_cost.claimed_scope,
+    self_module_prefix: "lens.cost.",
+    facts: resolved_witness_facts,
+    ci_entries: roster_with_phantom,
+    prepush_entries: []
+  )
+  contract_internally_consistent(c: lens_contract_cost, receipts: [receipt])
+    && leg_holds(l: intent_family_verdict(
+      intent: standing_intent_complexity_repo_wide,
+      contracts: [lens_contract_cost],
+      receipts: [receipt]
+    ).live_consumer)
+}
+
+// The phantom is not merely absent from the census -- it is ABSENT FROM THE CENSUS WHILE PRESENT ON
+// THE ROSTER, which is precisely the state the old code could not see. Both halves asserted, so a
+// fixture that quietly loses its roster row cannot make the red pass for the wrong reason.
+test fn phantom_is_on_the_roster_and_not_in_the_census() -> Bool {
+  contains(xs: roster_with_phantom, item: phantom_roster_witness, eq: schedule_witness_entry_eq)
+    && !non_empty(xs: filter(xs: resolved_witness_facts, predicate: fn(fact) {
+      decl_facts_is_fn_like(kind: fact.kind)
+        && fact.rel_path == phantom_roster_witness.entry
+        && fact.name == phantom_roster_witness.function
+    }))
+    && non_empty(xs: filter(xs: resolved_witness_facts, predicate: fn(fact) {
+      decl_facts_is_fn_like(kind: fact.kind)
+        && fact.rel_path == cost_roster_witness.entry
+        && fact.name == cost_roster_witness.function
+    }))
+}
+
+// POSITIVE CONTROL, part 2: the gate is green at base. Over the real corpus census and the real
+// roster (no phantom injected), every Blocking contract's consumer resolves -- including the cost
+// and effect-confinement enrollments -- and every standing intent stays admissible.
+test fn gate_is_green_at_base_over_the_real_corpus() -> Bool {
+  let facts = enforcement_corpus_facts()
+  let ci = enforcement_ci_witness_entries()
+  enforcement_consistency_live()
+    && all_intents_admissible(intents: standing_intent_registry)
+    && consumer_kind_eq(
+      a: consumer_enrolled_for(
+        binding: lens_contract_cost.consumer_witness,
+        ci_entries: ci,
+        prepush_entries: [],
+        facts: facts
+      ),
+      b: EnrolledInFloorRoster
+    )
+    && consumer_kind_eq(
+      a: consumer_enrolled_for(
+        binding: lens_contract_emitted_binary_effect_confinement.consumer_witness,
+        ci_entries: ci,
+        prepush_entries: [],
+        facts: facts
+      ),
+      b: EnrolledInFloorRoster
+    )
+    && non_empty(xs: coverage_receipts_from(facts: facts))
+}
