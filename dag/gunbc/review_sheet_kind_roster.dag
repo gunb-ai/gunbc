@@ -1,0 +1,31 @@
+module gunbc.review_sheet_kind_roster
+
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.review_sheet_kind { ReviewSheetKind }
+import gunbc.review_sheet_ci_prospect_kind { ci_prospect_review_sheet_kind }
+import gunbc.realization_census_sheet { realization_census_review_sheet_kind }
+
+// THE KINDS THE DRIVE-HALF CONVERGE CONVERGES, ONE ROW EACH. Adding a kind is adding a row here; the
+// converge holds no kind's name. The buyer review kind is declared in gunbc-private with this same
+// type and handed to the same converge there, which is why it is not a row of this public roster.
+fn review_sheet_kind_roster() -> List<ReviewSheetKind> {
+  [
+    ci_prospect_review_sheet_kind(),
+    realization_census_review_sheet_kind(),
+  ]
+}
+
+// TWO KINDS MAY NOT SHARE A MARKER, A FILE NAME OR AN IDENTITY. The marker is how the converge finds
+// a kind's spreadsheet, so two kinds under one marker would converge one file twice under two
+// schemas, each undoing the other. The roster is admitted before any request is spent on it.
+fn shares_identity(a: ReviewSheetKind, b: ReviewSheetKind) -> Bool {
+  (a.kind_id as String) == (b.kind_id as String)
+    || (a.marker_value as String) == (b.marker_value as String)
+    || (a.sheet_name as String) == (b.sheet_name as String)
+}
+
+fn review_sheet_roster_collisions(kinds: List<ReviewSheetKind>) -> List<NonEmptyStr> {
+  kinds
+    |> filter(k => count(filter(kinds, o => shares_identity(a: k, b: o))) > 1)
+    |> map(k => k.kind_id)
+}

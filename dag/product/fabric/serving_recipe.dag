@@ -20,6 +20,9 @@ import extdeps.gpu.nvidia { nvidia_rtx_pro_5000_48gb_catalog, nvidia_rtx_pro_500
 import extdeps.nvidia.cuda_toolkit_release { cuda_13_0_driver_requirement }
 import extdeps.vllm.local_inference_lab_build { VllmEngineRelease, local_inference_lab_vllm_release }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.huggingface.hub { HubCheckpointManifest }
+import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
+import gunbc.serving.srv1_serving_launch { srv1_serving_ground }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, Qwen3_8_27bOnNinfer, harness_serving_unit_compatibility,
   HarnessUnitsIdentical, HarnessUnitsCatalogFungible, HarnessUnitsIncompatible,
@@ -47,6 +50,15 @@ import gunbc.harness.harness_reasoning_wire {
 // and says so.
 type ServingWeightsSource
   = WeightsPlacedOnObjectStore { placement: RentedWeightsPlacement }
+  // THE HUGGING FACE PIN, the generalization gunbc.plans.flex_supplier_generalization
+  // generalization_55 declared ("over a Hugging Face repo at a pinned revision... Flash-Next moves
+  // from WeightsNamedUnpinned to the pinned revision observed on the image"). The pin is the
+  // publisher's own manifest row (extdeps.huggingface.hub HubCheckpointManifest: revision, shard
+  // count, byte totals, read record) — a digest the provision leg can verify, which
+  // WeightsNamedUnpinned could never give. `quantization` is what the ENGINE reported loading
+  // ("nvfp4_csf" for the lab checkpoint, from its startup log), never a restatement of the
+  // repository name (DESIGN 4d).
+  | WeightsPinnedAtHub { checkpoint: HubCheckpointManifest, quantization: NonEmptyStr? }
   | WeightsNamedUnpinned { weights: NonEmptyStr, quantization: NonEmptyStr? }
 
 type ServingModelArtifact {
@@ -94,12 +106,18 @@ type ServingSettingStanding
 
 type ServingStartRoute
   = StartFromPlacedWeights
+  // Starting from a checkpoint pinned at the model hub: the weights row is a HubCheckpointManifest
+  // (a digest exists), and `hub_fallback` false is the standing rule that a pinned revision is
+  // downloaded and never re-resolved behind the pin. Its standing is the observation that the
+  // serving host's launcher downloads by revision, held by the row that reads it.
+  | StartFromHubPinned { hub_fallback: Bool, standing: ServingSettingStanding }
   | StartFromObjectStoreObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
   | StartRouteUnread { read_obligation: NonEmptyStr }
 
 type ServingStartSource
   = StartSourcePlaced { source: RentedArtifactSource }
   | StartSourceObserved { store: NonEmptyStr, hub_fallback: Bool, standing: ServingSettingStanding }
+  | StartSourceHubPinned { checkpoint: HubCheckpointManifest, hub_fallback: Bool, standing: ServingSettingStanding }
   | StartSourcePlacementMissing
   | StartSourceUnread
 
@@ -108,6 +126,22 @@ fn serving_start_source(recipe: ServingRecipe) -> ServingStartSource {
     StartFromPlacedWeights =>
       match recipe.model.source {
         WeightsPlacedOnObjectStore { placement: p } => StartSourcePlaced { source: rented_weights_source(placement: p) }
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
+        WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
+        // A recipe that STARTS from placed weights but carries a HUB PIN has no placement to resolve:
+        // the pin is the bytes, and there is no object-store placement to fetch them from. Same answer
+        // as the named-and-unpinned arm for the same reason — nothing is placed — but spelled separately
+        // so the mismatch stays visible: an arm here is a per-variant STANDING, not a catch-all (a
+        // wildcard would silently absorb any future ServingWeightsSource variant). This arm is what
+        // #15222 owed when it added WeightsPinnedAtHub (§6b: enumerate the siblings of the match you
+        // extend); without it the whole closure through product.fabric.serving_recipe refuses to
+        // resolve as non-exhaustive.
+        WeightsPinnedAtHub { checkpoint: _, quantization: _ } => StartSourcePlacementMissing
+      }
+    StartFromHubPinned { hub_fallback: fb, standing: sd } =>
+      match recipe.model.source {
+        WeightsPinnedAtHub { checkpoint: c, quantization: _ } => StartSourceHubPinned { checkpoint: c, hub_fallback: fb, standing: sd }
+        WeightsPlacedOnObjectStore { placement: _ } => StartSourcePlacementMissing
         WeightsNamedUnpinned { weights: _, quantization: _ } => StartSourcePlacementMissing
       }
     StartFromObjectStoreObserved { store: st, hub_fallback: fb, standing: sd } =>
@@ -201,8 +235,21 @@ data serving_recipe_qwen3_8_27b_nvfp4_ninfer: ServingRecipe = ServingRecipe {
 // weights and saved kernel tuning started from the object store with no Hugging Face fallback.
 data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
   id: decl_ref(module_path: "product.fabric.serving_recipe", decl_name: "serving_recipe_flash_next_lab_vllm"),
+  // THE CHECKPOINT IS PINNED (2026-10-25). The manifest is the Hub model API's own answer for
+  // revision dc5b8ab2... (extdeps.local_inference_lab.qwen3_8_flash_next), and `quantization` is
+  // what the ENGINE reported LOADING in its startup log — not the repository name restated
+  // (gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading.weight_quantization).
   model: ServingModelArtifact {
-    source: WeightsNamedUnpinned { weights: "Qwen3.8-Flash-Next", quantization: none },
+    source: WeightsPinnedAtHub {
+      checkpoint: qwen3_8_flash_next_manifest,
+      quantization: Present { value: srv1_serving_startup_reading.weight_quantization },
+    },
+    // Left unread, UNCHANGED from main (`none`). The engine's own advertised name is an OBSERVED
+    // value carried by gunbc.host.srv1_serving_startup_receipt srv1_serving_startup_reading and read
+    // from there by its consumers (gunbc.serving.srv1_serving_launch srv1_router_upstream_launch_facts);
+    // THIS field is the FLEX advertised identifier, whose wall the flex/template domain governs
+    // (test.claim.fabric.flex_vast_shadow_witness: the template refuses while it is unread). Flipping
+    // it here would move that domain's gate from this PR.
     served_model_id: none,
   },
   engine: EngineVllm { build: local_inference_lab_vllm_release },
@@ -220,10 +267,13 @@ data serving_recipe_flash_next_lab_vllm: ServingRecipe = ServingRecipe {
     ram: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
     disk: CacheFractionOfHost { fraction: NonzeroNatFraction { num: 1, denom_predecessor: 1 } },
   },
-  start: StartFromObjectStoreObserved {
-    store: "R2",
+  // srv1's launcher downloads by revision into its HF cache (the wrapper's HF_HOME mount and the
+  // engine's own model= line, read through the srv1 serving launch receipt); no fallback
+  // re-resolution behind the pin. The standing is that observation, not the flex template ruling
+  // this row cited while its weights were unpinned.
+  start: StartFromHubPinned {
     hub_fallback: false,
-    standing: SettingOperatorPolicy { ruling: decl_ref(module_path: "gunbc.design_ruling", decl_name: "flex_operator_template_v2") },
+    standing: SettingReading { standing: srv1_serving_ground() },
   },
   throughput: ThroughputOperatorReading {
     tokens_per_second: tokens_per_second(count: 900),

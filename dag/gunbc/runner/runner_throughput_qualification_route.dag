@@ -1,7 +1,8 @@
 module gunbc.runner.runner_throughput_qualification_route
 
+import std.integer { int_to_decimal_string }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_to_decimal_string }
 import std.measure { byte_size_count, hardware_thread_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity }
@@ -100,7 +101,7 @@ fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
     SlotCpuQuotaUnbounded => []
     CpuQuotaResolved { threads: t } => {
       let percent = hardware_thread_count_value(t: t) * 100
-      [NamedUnitSetting { property: CPUQuota, value: concat(percent as String, "%") as NonEmptyStr }]
+      [NamedUnitSetting { property: CPUQuota, value: concat(nat_to_decimal_string(value: percent), "%") as NonEmptyStr }]
     }
   }
 }
@@ -108,11 +109,11 @@ fn cpu_quota_properties(quota: RunnerSlotCpuQuota) -> List<SystemdRunProperty> {
 fn ephemeral_slot_properties(desired: RunnerSlotDesired) -> List<SystemdRunProperty> {
   concat(
     [
-      NamedUnitSetting { property: MemoryMax, value: byte_size_count(b: desired.memory_max) as String as NonEmptyStr },
-      NamedUnitSetting { property: MemoryHigh, value: byte_size_count(b: desired.memory_high) as String as NonEmptyStr },
-      NamedUnitSetting { property: MemorySwapMax, value: byte_size_count(b: desired.memory_swap_max) as String as NonEmptyStr },
-      NamedUnitSetting { property: TasksMax, value: desired.tasks_max as String as NonEmptyStr },
-      NamedUnitSetting { property: CPUWeight, value: desired.cpu_weight as String as NonEmptyStr },
+      NamedUnitSetting { property: MemoryMax, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_max)) as NonEmptyStr },
+      NamedUnitSetting { property: MemoryHigh, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_high)) as NonEmptyStr },
+      NamedUnitSetting { property: MemorySwapMax, value: nat_to_decimal_string(value: byte_size_count(b: desired.memory_swap_max)) as NonEmptyStr },
+      NamedUnitSetting { property: TasksMax, value: int_to_decimal_string(value: desired.tasks_max) as NonEmptyStr },
+      NamedUnitSetting { property: CPUWeight, value: int_to_decimal_string(value: desired.cpu_weight) as NonEmptyStr },
     ],
     cpu_quota_properties(quota: desired.cpu_quota),
   )
@@ -246,24 +247,24 @@ data mtcollins1_image_leg: RouteLegStanding = LegWired {
 // with the attempt label as the workflow input, under the same run's authorization.
 data mtcollins1_registration_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
-  wiring_owed: "a production fold on this route that binds gunbc.runner.runner_host_unit_slot host_unit_slot_for to the booted managed host, mints under an observed runner group restricted to the qualification workflow and performs it through gunbc.github_effect_perform perform_organization_jit_mint; SUFFICIENT FOR one ephemeral registration per attempt label actually existing in the organization when the route runs" as NonEmptyStr,
+  wiring_owed: "a production fold on this route that binds gunbc.runner.runner_host_unit_slot host_unit_slot_for to the booted managed host, mints under an observed runner group restricted to the qualification workflow and performs it through gunbc.github_effect_perform perform_organization_jit_mint; SUFFICIENT FOR one ephemeral registration per attempt label actually existing in the organization when the route runs THE FOLD SEQUENCES THIS LEG: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over mints through the shared binding and admits the sealed subject (hermetically witnessed); what remains is its production binding, qualification_attempt_pass_production_frontier." as NonEmptyStr,
 }
 
 data mtcollins1_dispatch_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "dispatch_qualification_floor"),
-  wiring_owed: "the gunbc.fleet.fleet_converge_workflow mode that lands with the boot leg: a floor job in fleet_converge_workflow whose runs-on is exactly the qualification_attempt_dispatch_input it declares and whose first step is qualification_floor_revision_guard_step over the declared qualification_revision_dispatch_input, with no step that runs past a failure, and a route fold that takes the slot host's unit hold, ensures the per-attempt pin (gunbc.runner.runner_qualification_ref_pin ensure_qualification_ref_pin: branch qualification/<attempt> at the revision, the dedicated group pinned to it), mints the registration into that group, builds qualification_dispatch_subject from the pin, calls dispatch_qualification_floor and then collect_qualification_run, reconciling a commit-ambiguous dispatch before any retry, and removes the pin on every exit; SUFFICIENT FOR the floor run of each attempt being served only by the runner minted for that attempt at the pinned revision and read back as collected or as a typed refusal" as NonEmptyStr,
+  wiring_owed: "the gunbc.fleet.fleet_converge_workflow mode that lands with the boot leg: a floor job in fleet_converge_workflow whose runs-on is exactly the qualification_attempt_dispatch_input it declares and whose first step is qualification_floor_revision_guard_step over the declared qualification_revision_dispatch_input, with no step that runs past a failure, and a route fold that takes the slot host's unit hold, ensures the per-attempt pin (gunbc.runner.runner_qualification_ref_pin ensure_qualification_ref_pin: branch qualification/<attempt> at the revision, the dedicated group pinned to it), mints the registration into that group, builds qualification_dispatch_subject from the pin, calls dispatch_qualification_floor and then collect_qualification_run, reconciling a commit-ambiguous dispatch before any retry, and removes the pin on every exit; SUFFICIENT FOR the floor run of each attempt being served only by the runner minted for that attempt at the pinned revision and read back as collected or as a typed refusal THE FOLD SEQUENCES THIS LEG: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over pins, dispatches only an admitted subject and launches only after a dispatched receipt (hermetically witnessed); what remains is the mode above and the production binding, qualification_attempt_pass_production_frontier." as NonEmptyStr,
 }
 
 data mtcollins1_deregistration_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
-  wiring_owed: "the same route fold calling ensure_jit_runner_deregistered on every slot exit with the registration jit_registration_of minted from the registration leg's dispatch, joined to a host-unit gunbc.runner.runner_teardown_receipt RunnerTeardownResult; SUFFICIENT FOR the route reporting a slot retired only when the runner is absent from the organization listing and the unit's resources are observed gone" as NonEmptyStr,
+  wiring_owed: "the same route fold calling ensure_jit_runner_deregistered on every slot exit with the registration jit_registration_of minted from the registration leg's dispatch, joined to a host-unit gunbc.runner.runner_teardown_receipt RunnerTeardownResult; SUFFICIENT FOR the route reporting a slot retired only when the runner is absent from the organization listing and the unit's resources are observed gone THE FOLD COVERS ONLY THE REGISTRATION HALF: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over calls the deregistration on every arm after the mint (hermetically witnessed), but it takes no RunnerTeardownResult, so the unit's resources observed gone is NOT joined and this leg's sufficiency is not met by the fold." as NonEmptyStr,
 }
 
 // THE COLLECT STAGE'S STANDING. The authority reads the designated floor job's log and the
 // claim-cost artifact into a sealed receipt; nothing on the route invokes it yet.
 data mtcollins1_collect_leg: RouteLegStanding = LegAuthorityImplemented {
   authority: decl_ref(module_path: "gunbc.runner.runner_qualification_dispatch", decl_name: "collect_qualification_instruments"),
-  wiring_owed: "the same route fold calling collect_qualification_instruments with the DispatchedQualificationRun the dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration the registration leg minted; SUFFICIENT FOR FloorPhaseRows and FloorCgroupRows being read on every executed attempt from the one job its registered runner ran, as a sealed QualificationJobLogReceipt or a typed refusal (gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows)" as NonEmptyStr,
+  wiring_owed: "the same route fold calling collect_qualification_instruments with the DispatchedQualificationRun the dispatch leg returned, the collection collect_qualification_run read back, and the JitRegistration the registration leg minted; SUFFICIENT FOR FloorPhaseRows and FloorCgroupRows being read on every executed attempt from the one job its registered runner ran, as a sealed QualificationJobLogReceipt or a typed refusal (gunbc.runner.runner_qualification_dispatch qualification_instrument_extraction_frontier_rows) THE FOLD DOES NOT CALL THIS LEG'S AUTHORITY: gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_over reads the run back through collect_qualification_run only; collect_qualification_instruments is not sequenced, and its two instruments read the [floor-phase]/[floor-cgroup] rows of the withdrawn claim_executor floor, which today's required floor does not print (gunbc.plans.mtcollins1_ci_service_legs, the G3 instrument re-pointing)." as NonEmptyStr,
 }
 
 // THE FLEET-CONVERGE MODE THIS ROUTE BECOMES IS NOT NAMED HERE. A mode row belongs to

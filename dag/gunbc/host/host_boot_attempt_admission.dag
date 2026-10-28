@@ -1018,7 +1018,7 @@ fn cleared_attempt(clearance: BootAttemptClearance, run_attempt: NonEmptyStr) ->
 // THE PRODUCTION READ'S BINDING: the reading belongs to the host and attempt the clearance admitted.
 fn pre_power_firmware_observed(clearance: BootAttemptClearance, run_attempt: NonEmptyStr, table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_diagnostic_bundle", decl_name: "mtcollins1_boot_hpm_check"),
+    decl_ref(module_path: "gunbc.machine_intake.megarac_boot_diagnostic_bundle", decl_name: "megarac_boot_hpm_check"),
   ]
 {
   pre_power_firmware_minted(host: clearance.host, attempt: cleared_attempt(clearance: clearance, run_attempt: run_attempt), table: table, source: source)

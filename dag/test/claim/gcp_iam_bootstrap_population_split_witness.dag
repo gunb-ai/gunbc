@@ -2,14 +2,22 @@ module test.claim.gcp_iam_bootstrap_population_split_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Present, Absent }
-import extdeps.cloud.gcp.iam { GcpPolicy, gcp_cells_bindings }
-import gunbc.auth.gcp_iam_converge { gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, cell_preimage, ConvergeProviderRole }
-import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_cells }
+import std.optional { Absent, Optional, Present }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, GcpPolicy, gcp_cells_bindings, gcp_cell_in }
+import gunbc.auth.gcp_iam_converge {
+  AddPolicyCells, ConvergeProviderRole, GcpIamApply, GrantSet, PolicyObserved, SecretPolicy, SecretPolicyReading,
+  cell_preimage, fleet_roster_grants, gcp_iam_converge_grant_set_secrets, gcp_iam_converge_grant_sets,
+  gcp_iam_converge_targets, grant_set_secrets, iam_observe_service_account, plan_grant_set,
+}
+import gunbc.auth.gcp_iam_converge_federation { gcp_iam_observe_wif_pool_id }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
+import gunbc.auth.fleet_secret_accessor_roster { FleetAccessorGrantRow, approval_apns_auth_key_accessor_row, fleet_accessor_grant, fleet_accessor_grant_roster }
+import gunbc.auth.gcp_iam_trust_roots { TrustRootCeremony, IamBootstrapApply, ApprovalMacKeyProvision, OrgAdminAppKeyAccessConverge, ceremony_trust_root_cells, ceremony_trust_root_secret }
 import gunbc.auth.gcp_iam_bootstrap_model {
   IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding, BootstrapApplyRole,
   iam_bootstrap_capability_bindings_over, iam_bootstrap_root_ceremony_bindings_over, iam_bootstrap_delta_bindings_over,
-  iam_bootstrap_resource_key, iam_bootstrap_role_name,
+  iam_bootstrap_resource_key, iam_bootstrap_role_name, secret_iam_owner, SecretIamOwner, BootstrapRostered,
+  iam_bootstrap_capability_bindings, iam_bootstrap_root_ceremony_bindings, iam_bootstrap_journal_cells, delta_owned,
 }
 import gunbc.auth.gcp_iam_bootstrap_delta {
   BootstrapSubjectObservation, SubjectPolicyRead, SubjectAnswered, SubjectUnobservable,
@@ -29,7 +37,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //      delta population, disjoint, and widening the targets or grant sets moves the delta only;
 //   3. no pool cell the observer cannot read is dropped as "nothing to do": the observer reads every
 //      delta pool's policy, and a pool missing one cell surfaces exactly that cell;
-//   4. a missing root cell names the ceremony that repairs THAT cell, not one ceremony for every root.
+//   4. a missing root cell names the ceremony that repairs THAT cell, not one ceremony for every root;
+//   5-8. and what that means for the APNs accessor cell (node://adhoc-25c62174-378): it is DeltaOwned, so
+//        no ceremony binds it and no operator-token ensure may either -- see the block at the foot.
 
 data probe_secret: NonEmptyStr = "gunbc-bootstrap-split-probe-secret"
 
@@ -157,4 +167,124 @@ test fn the_identities_stage_creates_exactly_the_root_identities_and_does_not_mo
   let wide = map(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.federation.pool_id as String)
   count(narrow) == 3 && count(wide) == 3 && all(wide, x => any(narrow, y => y == x))
     && all(iam_bootstrap_stage_identities_over(stage: BootstrapIdentities, targets: gcp_iam_converge_targets), i => i.own_trust)
+}
+
+// ── THE APNs ACCESSOR CELL: WHICH POPULATION OWNS IT, AND WHAT UNBLOCKS IT ────────────────────
+// node://adhoc-25c62174-378 asked whether srv1's read grant on approval-apns-auth-key goes through the root
+// ceremony (a) or through a NEW operator-token gunbc.auth.gcp_secret_access secret_access_ensure_for entry
+// (b), copying the MAC-key precedent. The model answers before anyone argues: the secret is absent from
+// gunbc.auth.gcp_iam_trust_roots ceremony_trust_root_secrets, so secret_iam_owner answers BootstrapRostered
+// and iam_bootstrap_cell_owner answers DeltaOwned -- the cell belongs to no ceremony, while the cells run
+// 40251866941 refused on DO, and each names IamBootstrapApply as its repair. (b) would rebuild the
+// per-credential fold the operator deleted on 2026-10-18 ("for ALL keys"). These claims hold that line at
+// the selectors that decide it, so a future "just this one row" entry cannot land without breaking one.
+
+data apns_lane: String = "approval APNs auth key (srv1 broker custody)"
+
+data apns_secret_id: NonEmptyStr = "approval-apns-auth-key"
+
+// The APNs grant cell, derived the way the converge derives it -- never re-spelled here.
+fn apns_grant() -> SecretAccessGrant {
+  fleet_accessor_grant(row: approval_apns_auth_key_accessor_row)
+}
+
+fn apns_cells() -> List<GcpIamBindingCell> {
+  match grant_member_resolution() {
+    GrantMemberResolved { member: m } => secret_access_desired_cells(member: m, grant: apns_grant())
+    GrantMemberUnresolved { cause: _ } => []
+  }
+}
+
+// THE ROW THE NODE TURNS ON exists, names the secret the operator added version 1 for on 2026-10-25, and is
+// in the fold the converge selects. A lane rename is a real change here: it would silently drop srv1's
+// grant from fleet_roster_grants and the custody read would keep refusing with nobody noticing.
+test fn the_apns_accessor_row_is_rostered_for_the_secret_the_operator_added() -> Bool {
+  (approval_apns_auth_key_accessor_row.target.secret as String) == (apns_secret_id as String)
+    && approval_apns_auth_key_accessor_row.target.version == "1"
+    && any(fleet_accessor_grant_roster, r => r.lane == apns_lane)
+    && any(fleet_roster_grants(), g => (g.target.secret as String) == (apns_secret_id as String))
+}
+
+// THE DECISION, PINNED AT THE OWNER RELATION. Not a trust root => BootstrapRostered => DeltaOwned => no
+// ceremony repairs it, and the very cells the refused run named ARE the ceremony's. If anyone later
+// "fixes" srv1 by declaring this secret a trust root, this claim fails out loud rather than letting a
+// ceremony swallow a roster cell.
+test fn the_apns_accessor_cell_is_delta_owned_and_names_no_ceremony_repair() -> Bool {
+  !ceremony_trust_root_secret(secret: apns_secret_id)
+    && match secret_iam_owner(secret: apns_secret_id) {
+        Present { value: BootstrapRostered } => true
+        _ => false
+      }
+    && all(map(apns_cells(), c => IamBootstrapBinding { resource: BootstrapSecret { secret: apns_secret_id }, cell: c }), b => delta_owned(b: b))
+    && all(map(apns_cells(), c => IamBootstrapBinding { resource: BootstrapSecret { secret: apns_secret_id }, cell: c }), b => root_cell_repair_ceremony(b: b) == none)
+    // ... while every cell class the refusal named is the bootstrap ceremony's, and says so.
+    && all(map(iam_bootstrap_journal_cells(), b => b), b => match root_cell_repair_ceremony(b: b) { Present { value: IamBootstrapApply } => true  _ => false })
+    && any(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
+        BootstrapPool { pool } => (pool as String) == (gcp_iam_observe_wif_pool_id as String)
+        _ => false
+      })
+    && any(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
+        BootstrapAccount { account } => (account as String) == (iam_observe_service_account as String)
+        _ => false
+      })
+}
+
+// WHAT DOES BIND IT, so "run the ceremony" is not a guess about the rest of the path. THE ROUTE, in the
+// order the model actually runs it: the row is folded by fleet_roster_grants, the converge's grant-set
+// selectors (gcp_iam_converge_grant_sets) select that roster fold, and plan_grant_set -- the pure step
+// converge runs against a policy read -- turns the selected set's desired cells into the AddPolicyCells
+// effect that reaches GCP. So there is no per-row entry to add and no second path: the ceremony establishes
+// the writer identity that lets that plan be applied, and the accessor cell travels on the grant-set route.
+// The grant set is SELECTED from the converge's own list, never re-spelled here: if no set selects the APNs
+// grant there is no route and this claim says so by refusing (Absent), not by inventing an empty set.
+fn apns_fleet_grant_set() -> Optional<GrantSet> {
+  filter(gcp_iam_converge_grant_sets, g =>
+    any(g.grants, x => (x.target.secret as String) == (apns_secret_id as String))
+  ).first()
+}
+
+// An empty policy read over exactly the set's secrets: the shape the estate's first read comes back in for
+// a secret nobody has granted on yet. Built from grant_set_secrets, the same selector plan_grant_set keys
+// its "readings are exactly the set's secrets" guard on, so the plan cannot refuse on a key-set mismatch.
+fn apns_empty_readings(g: GrantSet) -> List<SecretPolicyReading> {
+  map(grant_set_secrets(g: g), x => SecretPolicyReading {
+    secret: x,
+    reading: PolicyObserved { policy: GcpPolicy { bindings: [], etag: "apns-witness-empty", version: 1 } },
+  })
+}
+
+test fn the_apns_accessor_cell_reaches_gcp_through_the_converge_grant_set_plan() -> Bool {
+  count(apns_cells()) == 1
+    // (1) THE FOLD: fleet_roster_grants carries the row's grant for the secret.
+    && any(fleet_roster_grants(), g => (g.target.secret as String) == (apns_secret_id as String))
+    // (2) THE SELECTION: some converge grant set selects that grant, and the secret is in the converge's
+    //     grant-set secret selectors.
+    && any(gcp_iam_converge_grant_sets, s =>
+      any(s.grants, x => (x.target.secret as String) == (apns_secret_id as String)))
+    && any(gcp_iam_converge_grant_set_secrets(), s => (s as String) == (apns_secret_id as String))
+    // (3) THE PLAN: plan_grant_set carries the accessor cell as an AddPolicyCells effect on the APNs
+    //     secret. Matched on Present -- no selected set means no route, and that FAILS rather than
+    //     planning over a fabricated empty set.
+    && match apns_fleet_grant_set() {
+        Present { value: g } => match plan_grant_set(g: g, member: g.member, secret_policies: apns_empty_readings(g: g)) {
+          GcpIamApply { diff: d } => any(d.effects, e => match e {
+            AddPolicyCells { subject: SecretPolicy { secret: s }, observed_etag: _, cells: cs } =>
+              (s as String) == (apns_secret_id as String) && all(apns_cells(), c => gcp_cell_in(c: c, xs: cs))
+            _ => false
+          })
+          _ => false
+        }
+        Absent => false
+      }
+    // (4) AND IT TRAVELS ON THAT ROUTE ALONE: the ceremony population never holds the APNs secret, and the
+    //     capability population -- which holds a secret only as the policy-writer cells (secret.iamMember)
+    //     and the observe cells (secret.versionGetter), never an accessor cell -- never holds this cell.
+    && !any(iam_bootstrap_root_ceremony_bindings(), b => match b.resource {
+        BootstrapSecret { secret } => (secret as String) == (apns_secret_id as String)
+        _ => false
+      })
+    && all(iam_bootstrap_capability_bindings(), b => match b.resource {
+        BootstrapSecret { secret } => (secret as String) != (apns_secret_id as String) || !gcp_cell_in(c: b.cell, xs: apns_cells())
+        _ => true
+      })
 }

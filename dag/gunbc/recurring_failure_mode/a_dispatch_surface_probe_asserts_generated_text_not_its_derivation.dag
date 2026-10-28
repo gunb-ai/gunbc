@@ -1,0 +1,38 @@
+module gunbc.recurring_failure_mode.a_dispatch_surface_probe_asserts_generated_text_not_its_derivation
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THREE SURVIVING RED CLAIMS, named by their actual causes, held here until the repair owned by
+// work item adhoc-972c2336-4c5 lands. These are NOT regressions introduced by the re-contract of
+// the three trusted-checkout claims (that re-contract turned test.claim.machine_intake.mtcollins1_boot_run_witness
+// green, 39 -> 40 at the branch head); they are PRE-EXISTING reds measured identical at the branch
+// base and at the branch head -- a control run at the base (dispatch ctl14, fresh build) and at the
+// head (dispatch claimrun tables) report the same three failures on the same conjuncts, so nothing
+// this PR does widens them, and the manager's side-chat ruling requires they carry a typed
+// declaration naming their causes and a capability-based repair trigger rather than silence.
+
+data a_dispatch_surface_probe_asserts_generated_text_not_its_derivation: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_dispatch_surface_probe_asserts_generated_text_not_its_derivation" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: MechanicallyPreventable, blocker: ClimbableButUnbuilt, trigger_capability: "the capability of re-expressing a fleet-converge dispatch-surface claim as a read of the mode-to-job assignment and the closed mode roster themselves -- the way gunbc.fleet.fleet_converge_workflow fleet_converge_shared_job_if already derives its selectors from fleet_converge_mode_job_id -- SUFFICIENT FOR the three named claims to keep their teeth across a re-derivation of the emitted if-condition or a mode retirement, and for a revert of that re-expression to turn them red again." } },
+
+  receipts: [
+    "**THE DEFECT:** a dispatch-surface probe asserts a literal substring of the EMITTED workflow text (an exclusion clause of the shared job's if-condition) or a literal roster of mode options, instead of reading the derivation those texts come from. When the derivation is legitimately re-shaped, the probe goes red on a true program. This is the same class gunbc.recurring_failure_mode.workflow_job_selection_diverges_from_mode_assignment closed for the shared job's own condition (#13607, 2026-10-09): the repair then MADE the shared job's if a positive derivation from fleet_converge_mode_job_id over the closed mode roster -- which is exactly what silently reddened the probes that kept asserting the retired NEGATIVE exclusion spelling.",
+    "**SURVIVING RED 1, test.claim.namecheap_workflow_witness.trusted_code_cannot_be_replaced_by_dispatch_revision:** its fourth conjunct demands fleet_converge_shared_job_if contain \"github.event.inputs.mode != 'namecheap_observe'\". Since the #13607 re-derivation the shared job's if carries positive selectors only; namecheap_observe has its OWN dedicated job (emitted fleet-converge.yml: job 'namecheap_observe' with if github.event.inputs.mode == 'namecheap_observe'), so the negative clause the probe greps for no longer exists anywhere. The claim's first three conjuncts (the dispatch-revision ref expression, the event-sha arm, the absence of expected_revision) all hold. Cause: derivation re-shape (#13607 repair), not a lost security property.",
+    "**SURVIVING RED 2, test.claim.printer_workflow_binding_witness.trusted_code_cannot_be_replaced_by_dispatch_revision:** identical shape -- its fourth conjunct demands fleet_converge_shared_job_if contain \"github.event.inputs.mode != 'printer'\"; printer likewise has its own dedicated emitted job (if github.event.inputs.mode == 'printer'), so the negative clause is gone. Its first three conjuncts hold.",
+    "**SURVIVING RED 3, test.claim.printer_workflow_binding_witness.printer_and_main_workspace_modes_remain_dispatchable:** it demands every one of eleven named modes appear exactly once in fleet_converge_mode_options. Four (printer, workspace_commissioning_plan, r2_workspace_object_read_mint, r2_workspace_object_write_mint) do; the seven spark_* names (spark_runtime_image_produce, spark_runtime_image_distribute, spark_arm_checkpoint_materialize, spark_arm_group_observe, spark_arm_group_launch_plan, spark_arm_group_launch, spark_arm_group_load) were REMOVED from FleetConvergeWorkflowMode by fa44b9810259 (2026-10-10, v1 closeout mega branch #13641) and their modes left the emitted options list. Cause: retired-mode roster, not a lost dispatch capability for the four surviving modes.",
+    "**MEASURED, not inferred:** control dispatch ctl14 at branch base f4619452d9922c0ec9ce16a5ce8a2cce7470f09a (fresh build) reports namecheap 3/4 and printer 4/6 with exactly these failing names; the same run at the branch head reports the identical set, while mtcollins1_boot_run_witness moves 39/40 -> 40/40 (the re-contract's own RED -> GREEN). The three reds are therefore pre-existing main-side drift on other conjuncts, visible in the claim tables, un-enrolled before this row.",
+    "**REPAIR OWNER:** work item adhoc-972c2336-4c5 (filed by the manager 2026-10-25). When the repair lands -- the three claims re-expressed as reads of fleet_converge_mode_job_id and the closed mode roster -- this row's trigger capability has fired and this row retires with it; the claims remain as ordinary regression controls.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "test.claim.namecheap_workflow_witness", decl_name: "trusted_code_cannot_be_replaced_by_dispatch_revision", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.printer_workflow_binding_witness", decl_name: "trusted_code_cannot_be_replaced_by_dispatch_revision", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.printer_workflow_binding_witness", decl_name: "printer_and_main_workspace_modes_remain_dispatchable", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_shared_job_if", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_mode_job_id", field: WholeDeclaration },
+  ],
+}

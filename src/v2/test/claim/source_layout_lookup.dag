@@ -4,7 +4,7 @@ import std.types { Bool, List }
 import std.coercion { unicode_scalar_fold }
 import v2.std.text { String }
 import std.algebra { for_all, length, list_map }
-import v2.std.cross_tree.import_model { DagTree, V2Tree }
+import v2.std.cross_tree.import_model { CrossTreeFromTreeNotInRootSet, CrossTreeNamespaceUndeclared, CrossTreeToTreeNotInRootSet, DagTree, V2Tree }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.compiler.module_header { ModuleHeaderAbsent, ModuleHeaderDeclared, ModuleHeaderReader, ModuleHeaderRefused, module_header_reader }
 import v2.compiler.parse { PreparedVoidGrammar }
@@ -45,7 +45,8 @@ import v2.compiler.source_authority {
   module_file,
   module_file_key,
   reference_prefixes,
-  resolve_reference_over
+  resolve_reference_over,
+  source_storage_layout
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -61,12 +62,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Every refusal control pins the KIND of the one refusal it expects, not a count: a count of one
 // is satisfied by any refusal, and a fold that refused for the wrong reason would pass it.
 
+// The declared rows are invented like everything else here: `a` and `a.b` for the dag-tree controls, `v2`
+// and `v2.std` for the v2 tree, and `test.claim` for the cross-tree positive control. `undeclared` has no row.
 fn layout() -> SourceStorageLayout {
-  SourceStorageLayout {
+  source_storage_layout(
     namespace_roots: [StorageNamespaceRoot { namespace: "v2", tree: V2Tree {}, elides_namespace: true }],
     default_tree: DagTree {},
+    namespace_rows: ["a", "a.b", "v2", "v2.std", "test.claim"],
     derived_rosters: []
-  }
+  )
 }
 
 // The reader the acquirer's lookup takes (v2.compiler.module_acquisition acquisition_header_reader),
@@ -301,15 +305,35 @@ test fn header_agreement_accepts_exactly_when_the_parsed_identity_is_the_request
   length(xs: header_cases) > 5 && for_all(xs: header_cases, predicate: fn(case) { case_agrees_with_the_lookup(case: case) })
 }
 
-// The tree direction survives the lookup: a dag-tree module resolving a name that lives in the v2
-// tree is denied through the same storage verdict the import graph uses (DESIGN 4,
-// tree_fundamentality_order), and the denial is decided from the candidate's name and tree BEFORE
-// any file is read -- so no observation is supplied, and a regression that probed first and
-// denied afterwards would still be answered here by the module it names.
-test fn lookup_dag_to_v2_reference_is_denied_before_any_read() -> Bool {
-  match resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "m", reference: "v2.std.text.String", observed: []) {
-    ReferenceCrossTreeDenied { module: named, file: file, reason: _ } =>
-      named == "v2.std.text.String" && file.relative_path == "std/text/String.dag"
+// ADMISSION READS NAMESPACE MEMBERSHIP from the declared rows, and the crossing is decided BEFORE any file is
+// read. The positive control: a module in `test.claim` resolving `v2.std.text.String` crosses between two
+// declared namespaces. The longest candidate, `v2.std.text.String`, lies in `v2.std.text`, which has no
+// row and so stores no module: it is skipped unread (no observation names it), and `v2.std.text` is read.
+test fn lookup_test_to_v2_reference_resolves() -> Bool {
+  match resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "test.claim.m", reference: "v2.std.text.String", observed: [
+    ModuleFilePresent { file: v2_file(path: "std/text.dag"), content: "module v2.std.text\n" }
+  ]) {
+    ReferenceResolved { module: named, member: member, file: file, content: _ } =>
+      named == "v2.std.text" && member == "String" && file.relative_path == "std/text.dag"
+    ReferenceCrossTreeDenied { module: _, file: _, reason: _ } => false
+    ReferenceUnknownModule { reference: _ } => false
+    ReferenceRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleHeaderRefused { module: _, file: _, cause: _ } => false
+    ReferenceModuleLineMissing { module: _, file: _ } => false
+    ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
+  }
+}
+
+fn undeclared_namespace_denial_named(lookup: ReferenceLookup, module: String, path: String) -> Bool {
+  match lookup {
+    ReferenceCrossTreeDenied { module: named, file: file, reason: reason } =>
+      named == module
+        && file.relative_path == path
+        && match reason {
+          CrossTreeNamespaceUndeclared => true
+          CrossTreeToTreeNotInRootSet => false
+          CrossTreeFromTreeNotInRootSet => false
+        }
     ReferenceResolved { module: _, member: _, file: _, content: _ } => false
     ReferenceUnknownModule { reference: _ } => false
     ReferenceRefused { module: _, file: _, cause: _ } => false
@@ -317,6 +341,32 @@ test fn lookup_dag_to_v2_reference_is_denied_before_any_read() -> Bool {
     ReferenceModuleLineMissing { module: _, file: _ } => false
     ReferenceModuleLineDisagrees { module: _, declared: _, file: _ } => false
   }
+}
+
+// THE RED, differing from the positive control in the importer's namespace alone: `undeclared` has no row,
+// and the crossing refuses fail-closed as CrossTreeNamespaceUndeclared, located at the first
+// storable candidate, with nothing read -- the file is supplied present, so a lookup that read before
+// deciding would resolve it.
+test fn lookup_undeclared_importer_crossing_to_v2_is_denied_before_any_read() -> Bool {
+  undeclared_namespace_denial_named(
+    lookup: resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: DagTree {}, from_module: "undeclared.m", reference: "v2.std.text.String", observed: [
+      ModuleFilePresent { file: v2_file(path: "std/text.dag"), content: "module v2.std.text\n" }
+    ]),
+    module: "v2.std.text",
+    path: "std/text.dag"
+  )
+}
+
+// The same red in the other direction: membership is a namespace's, not a tree's, so a v2-tree importer
+// whose namespace has no row is refused crossing into the dag tree too.
+test fn lookup_undeclared_v2_importer_crossing_to_dag_is_denied_before_any_read() -> Bool {
+  undeclared_namespace_denial_named(
+    lookup: resolve_reference_over(reader: header_reader(), layout: layout(), from_tree: V2Tree {}, from_module: "v2.undeclared.m", reference: "a.b.f", observed: [
+      ModuleFilePresent { file: dag_file(path: "a/b.dag"), content: "module a.b\n" }
+    ]),
+    module: "a.b",
+    path: "a/b.dag"
+  )
 }
 
 test fn lookup_v2_to_dag_reference_is_admitted() -> Bool {

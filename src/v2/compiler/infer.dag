@@ -56,7 +56,7 @@ import std.optional {
   optional_present
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional, qualified_name_init, qualified_name_last_segment, declaration_denotation_of_type, declaration_denotation_is_optional }
-import v2.std.node_query { is_wildcard_pattern, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
+import v2.std.node_query { is_wildcard_pattern, node_is_coproduct, BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child, find_named_child, arrow_constant_member_codomain }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.symbol_index { DeclaredPayloadKind, MentionDeclaringContested, MentionDeclaringUnavailable, MentionDeclaringUnique, RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_declares_primitive_contract_at, symbol_index_declaring_path_of, symbol_index_is_module_root_at, symbol_index_lookup }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_formal_at, fold_step_member_formal }
@@ -67,7 +67,7 @@ import v2.std.constraints { CanonicalGrounding, CanonicalGroundingWitness, canon
 import v2.std.inhabitance { DeclaredType, DeclaredTypeObligation, PositionDirectCallArgument, DeclaredTypePosition, DeclaredTypeVariable, TypeVariableInstance, inhabitance_formal_declaration, type_variable_instance_lookup, InhabitanceFormal, InhabitanceUndecidableReason, InhabitanceVerdict, application_argument_does_not_inhabit_diagnostic, application_positional_arity_mismatch_diagnostic, application_parameter_order_absent_reason, application_parameter_order_diagnostic, application_parameter_order_malformed_reason, declared_type_inhabitance, inhabitance_node_undecidable_reason, inhabitance_node_mentions_type_variable, inhabitance_undecidable_diagnostic, position_binder_default, position_declared_return, position_record_field, position_let_annotation, position_direct_call_argument, position_match_coverage, undecidable_argument_type_not_derived, undecidable_formal_unresolved, undecidable_where_predicate_subject_unmodelled }
 import v2.std.diagnostic { Diagnostic, Diagnostics, ExternalContractUnknown, Locus, NonEmptyDiagnostics, Suggested, UserInputBoundary, declaration_locus, node_locus, Outcome, Unavailable, Accepted, None, Rejected, Some, bind_outcome, diagnostics_merge, diagnostics_singleton, outcome_rejected, outcome_accepted, rejected_with_pending }
 import v2.std.logic { Bool, bool_node }
-import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names }
+import v2.std.type_binder { GenericTypeDecl, KindBound, NotATypeDecl, OpaqueTypeDecl, PlainTypeDecl, RefinementDeclaration, StructureBound, TypeAlias, Unbound, cast_target_optional, declaration_binder_edge, edge_is_type_params, refinement_declaration_of_node, type_annotation_optional, type_decl_view, type_param_bound, type_param_names, where_predicate_set_edge }
 import v2.std.coercion { coercion_cast_crossing }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness, witness_from_optional }
 import std.roster_frontier { FrontierRow, PathSubject }
@@ -908,7 +908,7 @@ fn infer_node_facts(n: Node, partials: List<Node>, kinds: List<RosterKindIndex>,
 }
 
 // A LEXICAL BINDER'S REFERENCE IS GROUNDED BY THE BINDING RESOLVE RECORDED FOR IT. v2.compiler.resolve
-// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_bindings,
+// mints it from a Lexical frame and records which binder answered it in ResolvedTree.occurrence_resolutions,
 // keyed by the reference's occurrence, so infer reads that binding and never searches scope. A binder
 // whose type a sibling fixes -- a `let` (infer_let_body_frame) or a match-arm payload binder -- is typed by
 // the frame's InferBinderType row at its site; a binder that declares a type (a lambda parameter's domain
@@ -1336,7 +1336,7 @@ fn infer_receiver_declares_no_fields_diagnostic(node: Node) -> Diagnostic {
 // no types.
 //
 // THE PATH, NEVER THE LEAF. The deleted scope walk (infer_parameter_scope_search, superseded by
-// resolve's recorded lexical bindings, ResolvedTree.occurrence_bindings) recorded what a leaf-name answer
+// resolve's recorded lexical bindings, ResolvedTree.occurrence_resolutions) recorded what a leaf-name answer
 // costs: `fn positive(x: Int)` beside `fn f(x: Pos)` grounded every `x` in `f` as `Int`, a type
 // fabricated from an unrelated declaration. symbol_index_lookup is asked for the whole declaring
 // path, and it is the GUARDED read: a path with more than one bound declaring answers Absent, so a
@@ -4713,14 +4713,22 @@ fn infer_resolved_payload(resolved: ResolvedTree, path: QualifiedName) -> Option
   }
 }
 
+// A STORED COPRODUCT IS ITSELF THE DECLARATION. Its variant tags are authored edges, and v2.std.node_query
+// named_child_lookup reads them on every node kind, so `type RustcSpanRead = RustcSpanRead { .. } | ..`
+// (extdeps.rust.cargo_diagnostic) would hand back its own variant for the leaf `RustcSpanRead`. Asking a
+// coproduct for a member named like the declaration is the wrong question, so it is not asked.
 fn infer_type_decl_identity_node(declared: Node, identity: QualifiedName) -> Node {
-  match qualified_name_last_segment(qn: identity) {
-    Absent => declared
-    Present { value: leaf } =>
-      match find_named_child(root: declared, name: leaf) {
-        Accepted { value: inner, diagnostics: _ } => inner
-        Rejected { diagnostics: _ } => declared
-      }
+  if node_is_coproduct(node: declared) {
+    declared
+  } else {
+    match qualified_name_last_segment(qn: identity) {
+      Absent => declared
+      Present { value: leaf } =>
+        match find_named_child(root: declared, name: leaf) {
+          Accepted { value: inner, diagnostics: _ } => inner
+          Rejected { diagnostics: _ } => declared
+        }
+    }
   }
 }
 
@@ -7668,24 +7676,7 @@ fn infer_disj_is_named_sum(n: Node) -> Bool {
 // favour of checked constructors returning Optional, SUFFICIENT FOR no where-predicate call to reach infer --
 // then this arm and its reason are deleted with the clause.
 fn infer_where_predicate_set_edge(parent: Node, edge: Edge) -> Bool {
-  match edge.label {
-    Positional => false
-    StructuralLabel { label: _ } => false
-    Authored { name: label } =>
-      if label == ^grammar_production_captured_node_projection {
-        match find_named_child(root: parent, name: ^grammar_production_identity_node_projection) {
-          Accepted { value: identity, diagnostics: _ } =>
-            match identity.kind {
-              TypeNode { connective: Atom { identity: emitted } } => emitted == ^dag_surface_where_refinement_clause
-              TypeNode { connective: _ } => false
-              ComputationNode { behavior: _ } => false
-            }
-          Rejected { diagnostics: _ } => false
-        }
-      } else {
-        false
-      }
-  }
+  where_predicate_set_edge(parent: parent, edge: edge)
 }
 
 fn infer_where_predicate_calls_unjudged(set: Node) -> Diagnostics {

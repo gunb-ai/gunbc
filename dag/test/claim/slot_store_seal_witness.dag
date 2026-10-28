@@ -79,6 +79,8 @@ test fn a_claim_store_from_a_literal_path_is_refused_at_compile() -> ProcessExit
 // created while every lifecycle write went to slots, is deleted, so naming it no longer resolves. The wet half
 // (setup and the first write land in one directory) is test.claim.roadmap.session_placement_wet_witness
 // setup_and_the_first_lifecycle_write_address_the_same_store.
+// With gunbc#14972 the record's slots field is the sealed gunbc.roadmap.roadmap_session_attempt_slots_root
+// SessionAttemptSlotsStore, so the one root is read as s.slots.slots.root (field reads are not module-private).
 data session_second_root_source: String = "module probe_session_second_root\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_session_placement { SessionPlacementStores }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(s: SessionPlacementStores) -> NonEmptyStr {\n  s.slots_root\n}\n"
 
 data session_store_baseline_source: String = "module probe_session_store_baseline\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_session_placement { SessionPlacementStores }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(n: NonEmptyStr) -> NonEmptyStr {\n  n\n}\n"
@@ -91,7 +93,7 @@ test fn a_session_store_root_is_read_off_its_slot_store() -> ProcessExit {
   census_exit(blocking_delta(hostile: session_store_root_source, safe: session_store_baseline_source, holds: fn(n) { n <= 0 }))
 }
 
-data session_store_root_source: String = "module probe_session_store_root\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_session_placement { SessionPlacementStores }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(s: SessionPlacementStores) -> NonEmptyStr {\n  s.slots.root\n}\n"
+data session_store_root_source: String = "module probe_session_store_root\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_session_placement { SessionPlacementStores }\nimport gunbc.durable_cas_file_store { SlotStore, file_slot_store }\nfn f(s: SessionPlacementStores) -> NonEmptyStr {\n  s.slots.slots.root\n}\n"
 
 test fn no_path_taking_minter_resolves() -> ProcessExit {
   census_exit(blocking_delta(hostile: path_minter_source, safe: closure_baseline_source, holds: fn(n) { n >= 1 }))

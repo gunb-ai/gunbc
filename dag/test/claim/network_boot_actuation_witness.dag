@@ -39,7 +39,7 @@ import gunbc.provisioning.network_boot_actuation {
   network_boot_attempt_actuation_consumer_ref,
 }
 import gunbc.provisioning.provisioning_arm { ArmRefused, SeedBindingRefused }
-import gunbc.provisioning.altra_autoinstall_seed { TargetNotAdmitted, UnitKeyUnbound }
+import gunbc.provisioning.ubuntu_autoinstall_seed { TargetNotAdmitted, UnitKeyUnbound }
 import gunbc.machine_intake.subject { BoardSerialAbsent }
 import gunbc.firmware_network_boot_standing { Unobserved }
 import std.content_hash { ContentHash, Sha256Digest, Sha256Hash }
@@ -60,6 +60,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   SecureBootObserved,
   SecureBootVerdictBooted,
   site_pxe_edge_chainloader_build_receipt,
+  SitePxeEdgeCommittedArtifact,
 }
 import gunbc.firmware_network_boot_standing {
   FirmwareNetworkBootStanding,
@@ -77,10 +78,10 @@ import gunbc.firmware_network_boot_standing {
   boot_order_entry,
 }
 import gunbc.provisioning.ubuntu_network_origin_observation { UbuntuNetworkOrigin, ubuntu_noble_arm64_network_origin }
-import gunbc.provisioning.altra_autoinstall_seed { AltraAutoinstallSeedBinding }
+import gunbc.provisioning.ubuntu_autoinstall_seed { UbuntuAutoinstallSeedBinding }
 // REMAINING COUPLING, owed to #14306: the seed binding is sole_constructor, so the only honest fixture is
 // the one its own producer builds. Every other fixture below is owned by this witness.
-import test.claim.altra_autoinstall_seed_witness {
+import test.claim.ubuntu_autoinstall_seed_witness {
   built_seed_and_binding,
   build_seed_fixture,
   network_posture,
@@ -97,7 +98,7 @@ import test.claim.altra_autoinstall_seed_witness {
   bay_population,
   target_refused_by_unbound_key,
 }
-import gunbc.provisioning.altra_autoinstall_seed { bind_altra_autoinstall_seed, Bound, BindRefused, select_target_disk }
+import gunbc.provisioning.ubuntu_autoinstall_seed { bind_ubuntu_autoinstall_seed, Bound, BindRefused, select_target_disk }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -105,7 +106,7 @@ fn fixture_origin() -> UbuntuNetworkOrigin? {
   ubuntu_noble_arm64_network_origin()
 }
 
-fn fixture_seed() -> AltraAutoinstallSeedBinding? {
+fn fixture_seed() -> UbuntuAutoinstallSeedBinding? {
   match built_seed_and_binding() {
     Present { value: built } => Present { value: built.binding }
     Absent => Absent
@@ -175,7 +176,7 @@ fn pin_with(secure_boot: SitePxeEdgeSecureBootStanding) -> SitePxeEdgeChainPin {
       built_from_commit: "fixture-commit",
       build_target: ipxe_arm64_efi_snponly,
       architecture: Aarch64,
-      digest: digest_a,
+      artifact: SitePxeEdgeCommittedArtifact { path: "artifacts/ipxe/snponly-arm64.efi", digest: digest_a },
       installed_filename: "snponly.efi",
       secure_boot: secure_boot,
     )
@@ -380,10 +381,10 @@ test fn the_s5_frontier_names_this_declaration() -> Bool {
 // The seed is sealed: the only way to a second binding is the owner's binder, fed a seed whose documented
 // axis (the netplan source) differs. If either side refuses to bind, this is FALSE: a refusal never counts as
 // covering seed-varies.
-fn alt_seed_binding() -> AltraAutoinstallSeedBinding? {
+fn alt_seed_binding() -> UbuntuAutoinstallSeedBinding? {
   match build_seed_fixture(network: network_posture_alt_netplan, packages: clean_packages, entry_keys: one_key, console: locked_console, credential: seeded_handle, delivery: virtual_media_strategy, target: target_altra) {
     Present { value: seed } =>
-      match bind_altra_autoinstall_seed(seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
+      match bind_ubuntu_autoinstall_seed(seed: seed, target: target_altra, unit_key: unit_a_key, attempt: attempt_one, selection: select_target_disk(selector: serial_selector, observed: bay_population)) {
         Bound { binding: b } => Present { value: b }
         BindRefused { blocker: _ } => Absent
       }

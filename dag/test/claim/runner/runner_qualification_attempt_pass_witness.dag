@@ -1,0 +1,354 @@
+module test.claim.runner.runner_qualification_attempt_pass_witness
+
+// THE QUALIFICATION PASS'S ORDER, EXECUTED. qualification_attempt_pass_over is the one fold that decides
+// pin -> mint -> admit -> dispatch -> launch -> collect, and that every arm after the mint reaches the
+// deregistration and every arm after the pin reaches the branch removal. The effects are stand-ins that answer
+// from what they were handed, so the VALUE the pass returns shows which calls ran and what each saw: the
+// deregistration echoes the registration and exit it was given, the removal echoes the branch, and the launch
+// answers a status (77) no other arm produces, so a launch that ran where it must not shows in the exit.
+//
+// THE REAL-PATH CLAIM: the slot is host_unit_slot_for over the first real managed host, the mint dispatch is the
+// real dispatch_jit_mint for the pass's own binding, and the subject is the real qualification_dispatch_subject_over
+// over a supplied floor workflow; a refused dispatch is reachable only after that subject was admitted.
+//
+// PAIRING FRONTIER: the launched arm (AttemptRan) needs a DispatchedQualificationRun, which is sealed behind
+// dispatch_qualification_floor's REST exchange, and the Deregistered retirement needs the sealed readback receipt.
+// Both are reached only by the real producers on the live run
+// (gunbc.runner.runner_qualification_attempt_pass qualification_attempt_pass_production_frontier).
+
+import std.types { Bool, CommitSha, Int, NonEmptyStr, String }
+import std.optional { Absent, Present }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
+import extdeps.github.actions_jit_runner { EncodedJitConfig }
+import extdeps.github.git_database { GitRefWire, GitRefObjectWire }
+import extdeps.github.actions { Workflow, Job, WorkflowDispatch, RunsOnExpression, RunStep }
+import extdeps.github.workflow_runs { GitHubWorkflowRunId }
+import extdeps.transports.rest { RestAnswered, RestExchangeUnreached }
+import gunbc.host.managed_host { managed_hosts }
+import gunbc.host.bmc_control_binding { bmc_control_binding }
+import gunbc.host.host_control_route { bmc_controlled_host }
+import gunbc.auth.github_apps { GitHubAppControlPlaneState }
+import gunbc.github_effect_perform { JitMintReceived, JitMintClockUnread }
+import gunbc.runner.runner_host_unit_slot { host_unit_slot_for, AttemptSlot, HostUnitSlot, HostUnitSlotBound, HostUnitSlotRefused }
+import gunbc.runner.runner_jit_admission { jit_admission_axis_standing, AttemptBindingAxis }
+import gunbc.runner.runner_jit_perform {
+  AuthorizedJitMintDispatch, JitCredentialDelivery, JitMintDispatchAuthorized, JitMintDispatchRefused, dispatch_jit_mint, receive_jit_mint,
+}
+import gunbc.runner.runner_jit_deregistration {
+  JitSlotExit, SlotNeverLaunched, JitRegistration, jit_registration_of, JitDeregistrationRefused,
+  AuthorizedDispatchRegistration, DeregistrationAuthorityForAnotherInstallation,
+}
+import gunbc.runner.runner_jit_mint_binding { JitMintBinding, JitBoundMint, JitBindingDeregistration, JitBindingDeregistrationRan }
+import gunbc.runner.runner_throughput_qualification_route { ephemeral_slot_unit }
+import gunbc.runner.runner_service_slot_controller { ListenerRun, ListenerExited }
+import gunbc.runner.runner_qualification_ref_pin {
+  QualificationRefPin, QualificationRefPinStanding, QualificationRefPinRefused, PinBranchNameRefused, PinBranchCreateAmbiguous,
+  QualificationRefPinRemoval, QualificationBranchRemoved, QualificationBranchRemovalRefused, BranchReadUnreadable,
+  QualificationBranchName, qualification_branch_name, QualificationBranchNamed, QualificationBranchNameRefused,
+  qualification_selected_workflow, qualification_ref_pin_of,
+}
+import gunbc.runner.runner_qualification_dispatch {
+  QualificationDispatchSubject, QualificationSubjectStanding, QualificationSubjectRefused, SubjectSlotNotAttemptScoped,
+  QualificationDispatch, QualificationDispatchRefused, QualificationDispatchCommitAmbiguous, DispatchTokenForAnotherInstallation,
+  DispatchedQualificationRun, QualificationRunCollection, QualificationRunRefused, RunReadUnreadable,
+  qualification_dispatch_subject_over, qualification_revision_dispatch_input,
+}
+import gunbc.runner.runner_qualification_floor_job { qualification_attempt_dispatch_input, qualification_floor_revision_guard_step }
+import gunbc.runner.runner_qualification_attempt_pass {
+  QualificationAttemptPass, AttemptPinRefused, AttemptPassed,
+  QualificationAttemptRun, AttemptNotMinted, AttemptSubjectRefused, AttemptDispatchRefused, AttemptDispatchAmbiguous,
+  AttemptNothingRegistered, AttemptRegistrationRemains,
+  qualification_attempt_pass_over, qualification_attempt_registration_and_branch_removed,
+}
+import test.claim.github_app_registry { app_credential, observed_grant, runner_grant, gunbai_org_ref, group_restricted_to, minted_outcome }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data attempt: NonEmptyStr = "q-1"
+data pin_branch: NonEmptyStr = "qualification/q-1"
+data revision: CommitSha = "1111111111111111111111111111111111111111"
+data floor_job_id: NonEmptyStr = "qualification-floor"
+
+// The status only a launch produces: an exit carrying it means the pass launched.
+data launched_status: Int = 77
+
+// ── THE SLOT, OVER THE FIRST REAL MANAGED HOST ──────────────────────────────────────────────────
+
+fn first_host_slot() -> HostUnitSlot? {
+  match first(managed_hosts()) {
+    Absent => none
+    Present { value: h } =>
+      match host_unit_slot_for(
+        host: bmc_controlled_host(host: h.host, standing: bmc_control_binding(observed: h.access, secured: h.secure)),
+        purpose: AttemptSlot { attempt: attempt },
+        workflow: qualification_selected_workflow(branch: pin_branch),
+      ) {
+        HostUnitSlotBound { slot: s } => Present { value: s }
+        HostUnitSlotRefused { refusal: _ } => none
+      }
+  }
+}
+
+fn expected_unit() -> String {
+  match first(managed_hosts()) {
+    Absent => ""
+    Present { value: h } => ephemeral_slot_unit(host: h.host, attempt: attempt) as String
+  }
+}
+
+// ── THE STAND-INS ───────────────────────────────────────────────────────────────────────────────
+
+// The pin, through the real sealed mint over a readback at the revision and the dedicated group restricted to the
+// slot's workflow.
+fn pin_ok(a: NonEmptyStr, r: CommitSha) -> QualificationRefPinStanding {
+  match qualification_branch_name(attempt: a) {
+    QualificationBranchNameRefused { attempt: _, cause: c } => QualificationRefPinRefused { attempt: a, refusal: PinBranchNameRefused { cause: c } }
+    QualificationBranchNamed { name: n } =>
+      qualification_ref_pin_of(
+        name: n,
+        revision: r,
+        readback: RestAnswered { answer: GitRefWire { ref: concat("refs/heads/", n.branch as String), object: GitRefObjectWire { type: "commit", sha: r as String } } },
+        group: group_restricted_to(workflow: qualification_selected_workflow(branch: n.branch)),
+      )
+  }
+}
+
+// A pin refused after its create was sent: the branch may exist, so the pass must still remove it.
+fn pin_refused_after_create(a: NonEmptyStr, r: CommitSha) -> QualificationRefPinStanding {
+  QualificationRefPinRefused { attempt: a, refusal: PinBranchCreateAmbiguous { detail: "the create's answer was lost" as NonEmptyStr } }
+}
+
+fn observe_stub(signer: JwsSigningKeyRef, reason: NonEmptyStr) -> GitHubAppControlPlaneState {
+  observed_grant(perms: runner_grant)
+}
+
+// The delivered mint: the real dispatch for the pass's own binding (its subject, its group and workflow), then
+// upstream's 201 fold.
+fn delivering_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint {
+  match dispatch_jit_mint(
+    subject: binding.subject,
+    authority: app_credential,
+    control_plane: state,
+    organization: gunbai_org_ref,
+    runner_group: group_restricted_to(workflow: binding.selected_workflow),
+    attempt_binding: jit_admission_axis_standing(axis: AttemptBindingAxis),
+  ) {
+    JitMintDispatchAuthorized { dispatch: d } =>
+      JitBoundMint {
+        performance: JitMintReceived { delivery: receive_jit_mint(dispatch: JitMintDispatchAuthorized { dispatch: d }, outcome: minted_outcome) },
+        registration: jit_registration_of(dispatch: JitMintDispatchAuthorized { dispatch: d }),
+      }
+    JitMintDispatchRefused { refusal: _ } => JitBoundMint { performance: JitMintClockUnread { detail: "refused" }, registration: none }
+  }
+}
+
+fn refusing_mint(binding: JitMintBinding, state: GitHubAppControlPlaneState) -> JitBoundMint {
+  JitBoundMint { performance: JitMintClockUnread { detail: "no dispatch" }, registration: none }
+}
+
+fn floor_job() -> Job {
+  Job {
+    id: floor_job_id as String,
+    name: Present { value: "qualification floor" },
+    runner: RunsOnExpression { expression: "${{ inputs.runner_attempt_label }}" },
+    environment: none,
+    steps: [
+      qualification_floor_revision_guard_step(revision_input: qualification_revision_dispatch_input),
+      RunStep {
+        name: Present { value: "run the floor" }, id: none, run: "claim_executor --required-ci",
+        shell: none, env: none, working_directory: none, if_condition: none, continue_on_error: none, timeout_minutes: none,
+      },
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none,
+  }
+}
+
+data floor_workflow: Workflow = Workflow {
+  name: "fleet-converge",
+  run_name: none,
+  on: [WorkflowDispatch { inputs: [qualification_attempt_dispatch_input, qualification_revision_dispatch_input] }],
+  concurrency: none,
+  jobs: [floor_job()],
+  env: none,
+  permissions: none,
+}
+
+// The real sealed subject mint over the supplied floor workflow.
+fn admit_real(dispatch: AuthorizedJitMintDispatch, slot: HostUnitSlot, delivery: JitCredentialDelivery, pin: QualificationRefPin) -> QualificationSubjectStanding {
+  qualification_dispatch_subject_over(dispatch: dispatch, slot: slot, delivery: delivery, workflow: floor_workflow, floor_job_id: floor_job_id, pin: pin)
+}
+
+fn admit_refusing(dispatch: AuthorizedJitMintDispatch, slot: HostUnitSlot, delivery: JitCredentialDelivery, pin: QualificationRefPin) -> QualificationSubjectStanding {
+  QualificationSubjectRefused { refusal: SubjectSlotNotAttemptScoped }
+}
+
+fn dispatch_refused(subject: QualificationDispatchSubject) -> QualificationDispatch {
+  QualificationDispatchRefused { subject: subject, refusal: DispatchTokenForAnotherInstallation }
+}
+
+fn dispatch_ambiguous(subject: QualificationDispatchSubject) -> QualificationDispatch {
+  QualificationDispatchCommitAmbiguous { subject: subject, detail: "the dispatch's answer was lost" as NonEmptyStr }
+}
+
+fn launch_marks(slot: HostUnitSlot, credential: EncodedJitConfig) -> ListenerRun {
+  ListenerExited { exit_code: launched_status }
+}
+
+fn collect_unread(run: DispatchedQualificationRun) -> QualificationRunCollection {
+  QualificationRunRefused { run_id: GitHubWorkflowRunId { value: 1 }, refusal: RunReadUnreadable { refusal: RestExchangeUnreached { cause: "stand-in" } } }
+}
+
+// The deregistration echoes the registration and exit it was handed.
+fn dereg_echo(binding: JitMintBinding, state: GitHubAppControlPlaneState, registration: JitRegistration, exit: JitSlotExit) -> JitBindingDeregistration {
+  JitBindingDeregistrationRan { deregistration: JitDeregistrationRefused {
+    subject: AuthorizedDispatchRegistration { registration: registration },
+    exit: exit,
+    refusal: DeregistrationAuthorityForAnotherInstallation,
+  } }
+}
+
+// The removal echoes the branch it was handed; the refusing one leaves it.
+fn unpin_echo(name: QualificationBranchName) -> QualificationRefPinRemoval {
+  QualificationBranchRemoved { name: name, deleted: true }
+}
+
+fn unpin_stays(name: QualificationBranchName) -> QualificationRefPinRemoval {
+  QualificationBranchRemovalRefused { name: name, cause: BranchReadUnreadable { refusal: RestExchangeUnreached { cause: "stand-in" } } }
+}
+
+// ── THE PASS OVER THE STAND-INS ─────────────────────────────────────────────────────────────────
+
+fn pass_with(
+  pin: fn(NonEmptyStr, CommitSha) -> QualificationRefPinStanding,
+  mint: fn(JitMintBinding, GitHubAppControlPlaneState) -> JitBoundMint,
+  admit: fn(AuthorizedJitMintDispatch, HostUnitSlot, JitCredentialDelivery, QualificationRefPin) -> QualificationSubjectStanding,
+  dispatch: fn(QualificationDispatchSubject) -> QualificationDispatch,
+  unpin: fn(QualificationBranchName) -> QualificationRefPinRemoval,
+) -> QualificationAttemptPass? {
+  match first_host_slot() {
+    Absent => none
+    Present { value: slot } =>
+      Present { value: qualification_attempt_pass_over(
+        slot: slot,
+        attempt: attempt,
+        revision: revision,
+        signer: HostKeyFile { path: "/run/stand-in-key" },
+        pin: pin,
+        observe: observe_stub,
+        mint: mint,
+        admit: admit,
+        dispatch: dispatch,
+        launch: launch_marks,
+        collect: collect_unread,
+        deregister: dereg_echo,
+        unpin: unpin,
+      ) }
+  }
+}
+
+fn run_of(p: QualificationAttemptPass?) -> QualificationAttemptRun? {
+  match p {
+    Present { value: AttemptPassed { run: r, retirement: _, unpin: _ } } => Present { value: r }
+    _ => none
+  }
+}
+
+fn remains_exit(p: QualificationAttemptPass?) -> JitSlotExit? {
+  match p {
+    Present { value: AttemptPassed { run: _, retirement: AttemptRegistrationRemains { exit: e, detail: _, acknowledged: _ }, unpin: _ } } => Present { value: e }
+    _ => none
+  }
+}
+
+fn acknowledged_name(p: QualificationAttemptPass?) -> String {
+  match p {
+    Present { value: AttemptPassed { run: _, retirement: AttemptRegistrationRemains { exit: _, detail: _, acknowledged: Present { value: AuthorizedDispatchRegistration { registration: r } } }, unpin: _ } } => r.name.value as String
+    _ => ""
+  }
+}
+
+fn removed_branch(p: QualificationAttemptPass?) -> String {
+  match p {
+    Present { value: AttemptPassed { run: _, retirement: _, unpin: QualificationBranchRemoved { name: n, deleted: _ } } } => n.branch as String
+    Present { value: AttemptPinRefused { attempt: _, refusal: _, unpin: Present { value: QualificationBranchRemoved { name: n, deleted: _ } } } } => n.branch as String
+    _ => ""
+  }
+}
+
+fn never_launched(e: JitSlotExit?) -> Bool {
+  match e {
+    Present { value: SlotNeverLaunched { cause: _ } } => true
+    _ => false
+  }
+}
+
+// ── THE CLAIMS ──────────────────────────────────────────────────────────────────────────────────
+
+// The real route: the real slot, the real mint dispatch and the real sealed subject admit the attempt, and only
+// an admitted subject reaches the dispatch, whose refusal is carried whole and launches nothing.
+test fn the_real_subject_is_admitted_and_a_refused_dispatch_launches_nothing_and_deregisters() -> Bool {
+  let p = pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)
+  (match run_of(p: p) {
+    Present { value: AttemptDispatchRefused { refusal: DispatchTokenForAnotherInstallation } } => true
+    _ => false
+  }) && never_launched(e: remains_exit(p: p)) && removed_branch(p: p) == (pin_branch as String)
+}
+
+test fn an_ambiguous_dispatch_launches_nothing_and_still_deregisters() -> Bool {
+  let p = pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_ambiguous, unpin: unpin_echo)
+  (match run_of(p: p) {
+    Present { value: AttemptDispatchAmbiguous { detail: _ } } => true
+    _ => false
+  }) && never_launched(e: remains_exit(p: p))
+}
+
+test fn a_refused_subject_deregisters_the_minted_registration() -> Bool {
+  let p = pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_refusing, dispatch: dispatch_refused, unpin: unpin_echo)
+  (match run_of(p: p) {
+    Present { value: AttemptSubjectRefused { refusal: SubjectSlotNotAttemptScoped } } => true
+    _ => false
+  }) && never_launched(e: remains_exit(p: p))
+}
+
+test fn the_deregistration_is_handed_the_mints_own_registration_name() -> Bool {
+  acknowledged_name(p: pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == expected_unit()
+}
+
+test fn an_undelivered_mint_registers_nothing_and_still_removes_the_branch() -> Bool {
+  let p = pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)
+  (match p {
+    Present { value: AttemptPassed { run: AttemptNotMinted, retirement: AttemptNothingRegistered, unpin: _ } } => true
+    _ => false
+  }) && removed_branch(p: p) == (pin_branch as String)
+}
+
+test fn a_refused_pin_mints_nothing_and_removes_the_branch_it_may_have_created() -> Bool {
+  let p = pass_with(pin: pin_refused_after_create, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)
+  (match p {
+    Present { value: AttemptPinRefused { attempt: _, refusal: PinBranchCreateAmbiguous { detail: _ }, unpin: Present { value: _ } } } => true
+    _ => false
+  }) && removed_branch(p: p) == (pin_branch as String)
+}
+
+// THE GITHUB-SIDE REMOVAL needs both halves: a registration still listed, or a branch still present, fails it; with
+// nothing registered and the branch removed it holds. (The host-side teardown is not this predicate's.)
+fn removed_of(p: QualificationAttemptPass?) -> Bool? {
+  match p {
+    Absent => none
+    Present { value: v } => Present { value: qualification_attempt_registration_and_branch_removed(pass: v) }
+  }
+}
+
+test fn the_github_side_removal_needs_the_registration_and_the_branch_both_gone() -> Bool {
+  removed_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: true }
+    && removed_of(p: pass_with(pin: pin_ok, mint: refusing_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_stays)) == Present { value: false }
+    && removed_of(p: pass_with(pin: pin_ok, mint: delivering_mint, admit: admit_real, dispatch: dispatch_refused, unpin: unpin_echo)) == Present { value: false }
+}
