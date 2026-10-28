@@ -52,7 +52,6 @@ import gunbc.bmc.bmc_onboarding {
   srv3_onboarding_plan,
   srv4_onboarding_plan,
   srv13_onboarding_plan,
-  srv14_onboarding_plan,
   BmcCredentialProbeResult,
   FactoryCredentialActive,
   RotatedCredentialActive,
@@ -572,18 +571,6 @@ fn srv4_converge_credential() -> ProcessExit
 fn srv13_converge_credential() -> ProcessExit
 {
   bmc_converge_credential_selected(plan: srv13_onboarding_plan)
-}
-
-// srv14 is in the same factory-credential state: its in-band recovery ended in a factory reset, and the
-// published credential answered PasswordChangeRequired. AN EXCEPTION TO THIS MODULE'S QUARANTINE, approved
-// by the operator 2026-10-28: the capability-selected route (gunbc.machine_intake.bmc_secure
-// plan_bmc_account_action) has no live readers and no grounded Redfish route for this board and build, and
-// the BMC sat on the LAN under its published credential. It ran once (artifacts/bmc/
-// srv14-first-contact-2026-10-28/). It is deleted with srv13's entry when BmcSecure becomes the authority
-// for this controller family.
-fn srv14_converge_credential() -> ProcessExit
-{
-  bmc_converge_credential_selected(plan: srv14_onboarding_plan)
 }
 
 // srv1 AND srv2 TAKE WHATEVER CREDENTIAL THE RUN HAS -- the Workload Identity token in a federated

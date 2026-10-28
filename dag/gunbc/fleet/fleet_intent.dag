@@ -294,18 +294,6 @@ data srv13_baseboard: ServerBaseboard = ServerBaseboard {
   catalog: asrock_altrad8ud_1l2t_catalog,
   bmc: BmcEndpoint { host: "192.168.1.247", protocol: Redfish },
 }
-// srv14's board and BMC endpoint. The unit is the ALTRAD8UD-1L2T whose BMC was recovered in-band on
-// 2026-10-16 (gunbc.machine_intake.bmc_inband_recovery_receipts; artifacts/bmc/
-// altrad8ud-1l2t-6-inband-recovery-2026-10-16/, where `mc info` read the board and firmware 3.22). The
-// operator read the router's static bmc-altrad8ud-1l2t-6 reservation, MAC 9c:6b:00:e7:c9:fa, at
-// 192.168.1.250 on 2026-10-28, and the operator assigned the unit the srv14 slot. Its host inventory was read
-// the same day (artifacts/bmc/srv14-first-contact-2026-10-28/). The ComputeHost row joins
-// fleet_intent_known_hosts in the enrollment change after the OS is installed, because that list deploys
-// runners and sudoers to every member.
-data srv14_baseboard: ServerBaseboard = ServerBaseboard {
-  catalog: asrock_altrad8ud_1l2t_catalog,
-  bmc: BmcEndpoint { host: "192.168.1.250", protocol: Redfish },
-}
 
 data srv1_nvme0: StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,

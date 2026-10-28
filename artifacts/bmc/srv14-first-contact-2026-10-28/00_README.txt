@@ -6,10 +6,14 @@ artifacts/bmc/altrad8ud-1l2t-6-inband-recovery-2026-10-16/.
 PROVENANCE
 - Unauthenticated Redfish ServiceRoot: gunbc.tools.bmc_intake_first_contact (HTTP 200).
 - Published credential root/0penBmc before rotation: 403 Base.1.16.0.PasswordChangeRequired.
-- Rotation: gunbc.tools.bmc_onboard srv14_converge_credential. It is the legacy route, run once as an
-  operator-approved exception. The secret bmc-srv14-admin was created in gunbai-secrets, version 1 added and
-  read back, the BMC password was set, and GetSystem re-authenticated with the new credential. After that the
-  published credential answered 401.
+- Rotation: one run of the quarantined legacy route (gunbc.tools.bmc_onboard bmc_converge_credential_selected
+  over an altra_onboarding_plan for srv14 at 192.168.1.250). It ran from a session-local entry that was NOT
+  landed: the operator approved a single run in conversation, the capability-selected route
+  (gunbc.machine_intake.bmc_secure) cannot yet rotate this board, and review 87134 asked for no callable legacy
+  entry to remain after it. The secret bmc-srv14-admin was created in gunbai-secrets, version 1 added and read
+  back, the BMC password was set, and GetSystem re-authenticated with the new credential. After that the
+  published credential answered 401. BmcSecure has not established this controller: neither the published
+  account's retirement nor its IPMI LAN state was read.
 - redfish_*.json: authenticated GETs with the rotated credential, bodies as returned. This firmware serves no
   Systems/system/EthernetInterfaces and no SecureBoot resource (ResourceNotFound, kept as returned).
 - uefi_shell.txt: an IPMI SOL session (ipmitool 1.8.19 on srv1, lanplus cipher suite 17) to a host sitting at
