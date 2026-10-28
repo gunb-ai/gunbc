@@ -79,7 +79,7 @@ import gunbc.roadmap.roadmap_dispatch_actuator {
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
   filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_command,
+  dispatch_review_unit_name, dispatch_review_unit_command, dispatch_review_unit_properties, dispatch_attempt_review_log_path_for_instance,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
   dispatch_audit_unit_name, dispatch_audit_unit_command,
   dispatch_unit_exec_argv,
@@ -297,7 +297,7 @@ import extdeps.systemd {
   SystemdUnitNameOverlong,
 }
 import gunbc.compute.unit_bounds { gunbc_user_work_transient_command }
-import std.measure { byte_size_count, kibibyte, Second }
+import std.measure { byte_size_count, kibibyte, kibibyte_to_byte_size, Second }
 import gunbc.deploy_transition {
   ActuationAdmission,
   ActuationAdmitted,
@@ -724,6 +724,11 @@ import gunbc.roadmap.roadmap_session_placement {
   session_placement_observe_for_attempt, SessionPlacementUnreadable, SessionPlacementUnnameable,
   SessionSlotRecords, SessionSlotRecordsRead, SessionSlotRecordsRefused,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
+  SessionReviewerGrant, session_reviewer_placement_stores, session_reviewer_placement_acquire,
+  SessionReviewerPlacementGranted, SessionReviewerPlacementDeferred, SessionReviewerPlacementRefused,
+  session_reviewer_placement_record_write, session_reviewer_placement_begin_launch,
+  SessionReviewerLaunchAdmitted, SessionReviewerLaunchRefused, session_reviewer_placement_abandon,
+  session_reviewer_placement_settle_pass,
 }
 import gunbc.roadmap.roadmap_session_activation_ensure { session_activation_ensure_after_settlement }
 import gunbc.roadmap.roadmap_attempt_worktree_claim_root { worktree_claim_slots_root_of }
@@ -1742,7 +1747,27 @@ fn belt_session_settlement_pass(instance: HostDashboardInstance) -> SessionSettl
     SessionStoresResolved { stores } =>
       match belt_session_slots_ensure(instance: instance, stores: stores) {
         Present { value: why } => SessionSettlePassRefused { detail: why }
-        Absent => belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
+        Absent => {
+          let worker_pass = belt_worktree_claim_ensure(instance: instance, stores: stores, settled: session_activation_ensure_after_settlement(instance: instance, stores: stores, settled: session_placement_settle_pass(instance: instance, stores: stores)))
+          // THE TICK SETTLES BOTH ROLES' HOLDS. A reviewer's hold must not wait for a spawn to be
+          // freed -- a tick that neither spawns nor settles keeps the slice full of the dead. A
+          // refusal of the reviewer store is recorded as a finding INSIDE the ran pass rather than
+          // refusing the whole settlement: the worker's holds release independently of the
+          // reviewer's store, and one class's unreadable ledger does not pause the other's.
+          match belt_reviewer_settlement_pass(instance: instance) {
+            SessionSettlePassRan { settlements: reviewer_settlements } =>
+              match worker_pass {
+                SessionSettlePassRan { settlements: worker_settlements } => SessionSettlePassRan { settlements: concat(worker_settlements, reviewer_settlements) }
+                SessionSettlePassRefused { detail } => SessionSettlePassRefused { detail: join([detail, "; reviewer pass ran: ", session_settle_pass_wire(p: SessionSettlePassRan { settlements: reviewer_settlements })], "") }
+              }
+            SessionSettlePassRefused { detail: rd } =>
+              match worker_pass {
+                SessionSettlePassRan { settlements: worker_settlements } =>
+                  SessionSettlePassRan { settlements: concat(worker_settlements, [SessionSettlementKept { unit: "reviewer-settlement-pass", why: join(["the reviewer settlement pass could not run, so no reviewer hold was released this tick: ", rd], "") }]) }
+                SessionSettlePassRefused { detail } => SessionSettlePassRefused { detail: join([detail, "; reviewer pass: ", rd], "") }
+              }
+          }
+        }
       }
   }
 }
@@ -12371,6 +12396,66 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
   }
 }
 
+// ============================================================================================
+// THE REVIEWER'S PLACEMENT, BELT SIDE (2026-10-28: seventeen unleased reviewers OOM-killed)
+//
+// belt_review_spawn asks this for a seat before anything costs a roster entry or a unit. The
+// placement itself is gunbc.roadmap.roadmap_session_placement's (the same authority and the same
+// laws the worker's session_placement_acquire serves); this helper only wires the belt's answers:
+// lack of room DEFERS (the belt re-tries the criterion on a later tick -- waiting is not failure),
+// a bug REFUSES, and the settlement pass runs first so a terminal reviewer's hold never occupies
+// the slice in the next reviewer's admission.
+// ============================================================================================
+
+type BeltReviewerPlacement
+  = BeltReviewerPlacementHeld { grant: SessionReviewerGrant, stores: SessionPlacementStores }
+  | BeltReviewerPlacementDeferred { detail: String }
+  | BeltReviewerPlacementRefused { detail: String }
+
+fn belt_reviewer_placement(
+  instance: HostDashboardInstance,
+  node_id: String,
+  attempt_key: String,
+  criterion_key: String,
+  reviewer_slots: Nat,
+) -> BeltReviewerPlacement {
+  match session_reviewer_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => BeltReviewerPlacementRefused { detail: detail }
+    SessionStoresResolved { stores } =>
+      match belt_session_slots_ensure(instance: instance, stores: stores) {
+        Present { value: why } => BeltReviewerPlacementRefused { detail: why }
+        Absent =>
+          match session_reviewer_placement_settle_pass(instance: instance, stores: stores) {
+            // An unreadable hold store cannot tell you there is room, and it cannot tell you there
+            // is not: the patient answer is to defer the criterion, not to gamble the slice.
+            SessionSettlePassRefused { detail } =>
+              BeltReviewerPlacementDeferred { detail: join(["the reviewer holds could not be read to decide room: ", detail], "") }
+            SessionSettlePassRan { settlements: _ } =>
+              match session_reviewer_placement_acquire(instance: instance, stores: stores, node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key, reviewer_slots: reviewer_slots) {
+                SessionReviewerPlacementGranted { grant } => BeltReviewerPlacementHeld { grant: grant, stores: stores }
+                SessionReviewerPlacementDeferred { detail } => BeltReviewerPlacementDeferred { detail: detail }
+                SessionReviewerPlacementRefused { detail } => BeltReviewerPlacementRefused { detail: detail }
+              }
+          }
+      }
+  }
+}
+
+// THE REVIEWER SETTLEMENT PASS, run from the placement pass above and from the tick's placement
+// settlement. Reviewer holds are released only here -- never by the spawn's word, never by the
+// verdict's arrival -- so the pass that reads the unit (observation first, self-recorded exit
+// second, cause-unknown else) is the one that decides.
+fn belt_reviewer_settlement_pass(instance: HostDashboardInstance) -> SessionSettlePass {
+  match session_reviewer_placement_stores(instance: instance) {
+    SessionStoresUnresolved { detail } => SessionSettlePassRefused { detail: detail }
+    SessionStoresResolved { stores } =>
+      match belt_session_slots_ensure(instance: instance, stores: stores) {
+        Present { value: why } => SessionSettlePassRefused { detail: why }
+        Absent => session_reviewer_placement_settle_pass(instance: instance, stores: stores)
+      }
+  }
+}
+
 fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_key: String, worktree: String, head: String, plan: ReviewPlan, call: ReviewCall) -> BeltReviewOutcome {
   let nid = node_id as gunbc.roadmap.roadmap_model.RoadmapNodeId
   let key = belt_review_call_key(plan: plan, call: call)
@@ -12383,19 +12468,56 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }, record_owner: instance.directory_owner) {
         AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
         AttemptExitHookRendered { exec_line } =>
-      match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
-        RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
-        RosterAdmitted =>
-      match dispatch_review_unit_command(instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key, exit_hook: exec_line) {
-        SystemdRunCommandRefused { cause: why } =>
-          ReviewFailed { node_id: node_id, criterion: call.id, detail: systemd_run_option_words_refused_cause_detail(cause: why) }
-        SystemdRunCommandReady { command: command } =>
-          match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
-            ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
-            ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-            ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
+      // THE PLACEMENT COMES BEFORE ANYTHING THAT COSTS: no roster entry, no command, no unit exists
+      // until the reviewer's seat is granted by the same authority the workers lease through
+      // (gunbc.compute.host_capacity, ReviewerSessionPool partition). A refusal for LACK OF ROOM is
+      // a DEFERRAL -- the criterion waits for the slice, it has not failed -- and the belt re-tries
+      // it on a later tick (the operator's patient-request law). Only a bug (an unnameable unit, a
+      // ledger refusing for a non-room reason) fails, and it fails with the holds abandoned. The cap
+      // the unit carries below is the granted figure itself; nothing re-derives it.
+      match belt_reviewer_placement(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: key, reviewer_slots: count(plan.calls)) {
+        BeltReviewerPlacementDeferred { detail } =>
+          ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer waits for room in the work slice: ", detail], "") }
+        BeltReviewerPlacementRefused { detail } =>
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not placed: ", detail], "") }
+        BeltReviewerPlacementHeld { grant: grant, stores: stores } => {
+          let granted_bytes = kibibyte_to_byte_size(k: grant.amount)
+          match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
+            RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause, "; ", session_reviewer_placement_abandon(stores: stores, grant: grant, reason: "reviewer roster admission refused before launch" as NonEmptyStr)], "") }
+            RosterAdmitted =>
+          match dispatch_review_unit_command(instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key, granted: granted_bytes, exit_hook: exec_line) {
+            SystemdRunCommandRefused { cause: why } =>
+              ReviewFailed { node_id: node_id, criterion: call.id, detail: join([systemd_run_option_words_refused_cause_detail(cause: why), "; ", session_reviewer_placement_abandon(stores: stores, grant: grant, reason: "reviewer unit command refused before launch" as NonEmptyStr)], "") }
+            SystemdRunCommandReady { command: command } => {
+              // THE RECORD CARRIES THE SETTINGS THE UNIT ACTUALLY RUNS WITH, built from the same call
+              // the command builder makes, so a reader can compare cap to grant without trusting
+              // either alone. Record, then launch generation, then start -- the worker's order.
+              let unit_properties = match systemd_run_property_assignments(properties: dispatch_review_unit_properties(instance: instance, granted: granted_bytes, working_directory: instance.repo_root as String, log_path: dispatch_attempt_review_log_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, criterion_key: key), review_dir: dispatch_attempt_review_dir_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key), exit_hook: exec_line)) {
+                SystemdRunPropertyAssignmentsReady { assignments: assignments } => map(assignments, a => systemd_run_property_wire(p: a))
+                SystemdRunPropertyAssignmentsRefused { index: _, detail: _ } => [] as List<String>
+              }
+              match session_reviewer_placement_record_write(stores: stores, host: instance.host_identity as String, grant: grant, unit_properties: unit_properties) {
+                SessionPlacementWriteFailed { path: p, error: e } =>
+                  ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer placement record could not be written at ", p, ": ", e, "; ", session_reviewer_placement_abandon(stores: stores, grant: grant, reason: "reviewer placement record write failed before launch" as NonEmptyStr)], "") }
+                SessionPlacementWritten { path: _ } =>
+                  match session_reviewer_placement_begin_launch(stores: stores, grant: grant) {
+                    // THE SLOT WAS SETTLED WHILE WE WERE PREPARING: the hold belongs to the
+                    // settlement pass now, the unit is NOT started, and the criterion is re-tried on
+                    // a later tick -- the same patient law as a lack of room.
+                    SessionReviewerLaunchRefused { detail: ld } =>
+                      ReviewDeferred { node_id: node_id, criterion: call.id, reason: join(["the reviewer slot was settled before its unit started; the criterion is re-tried: ", ld], "") }
+                    SessionReviewerLaunchAdmitted { grant: launched } =>
+                      match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                        ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
+                        ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr, "; ", session_reviewer_placement_abandon(stores: stores, grant: launched, reason: "reviewer unit start failed" as NonEmptyStr)], "") }
+                        ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join([reason, "; ", session_reviewer_placement_abandon(stores: stores, grant: launched, reason: "reviewer unit start could not run" as NonEmptyStr)], "") }
+                      }
+                  }
+              }
+            }
           }
-      }
+          }
+        }
       }
       }
     }

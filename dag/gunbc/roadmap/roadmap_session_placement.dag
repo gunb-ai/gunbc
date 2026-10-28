@@ -1770,16 +1770,11 @@ fn session_reviewer_placement_begin_launch(stores: SessionPlacementStores, grant
   }
 }
 
-// THE LEDGER ANSWERS AFTER A GRANT IS SETTLED.
-type SessionReviewerAbandonment {
-  freed: ComputeRelease
-  detail: String
-}
-
 // WHEN THE START ITSELF REFUSED, free what was granted. The slot's generation decides: a winner
 // closes it and releases; a loser or a refusal leaves the slot to the settlement pass, which reads
-// the same states and holds nothing back on the belt's word alone.
-fn session_reviewer_placement_abandon(stores: SessionPlacementStores, grant: SessionReviewerGrant, reason: NonEmptyStr) -> SessionReviewerAbandonment {
+// the same states and holds nothing back on the belt's word alone. The answer is the release note
+// the spawn outcome carries, in the worker's shape.
+fn session_reviewer_placement_abandon(stores: SessionPlacementStores, grant: SessionReviewerGrant, reason: NonEmptyStr) -> String {
   match attempt_terminate(root: stores.slots_root, reference: grant.slot.reference as NonEmptyStr, expected: grant.slot_generation, verdict: AttemptRecovered, detail: reason as String) {
     AttemptAdvanced { state: _, generation: _ } => {
       let freed = compute_release_on(store: grant.store, partition: grant.partition, appropriation: kibibyte(count: 0), reference: grant.unit, reason: reason)
@@ -1790,12 +1785,12 @@ fn session_reviewer_placement_abandon(stores: SessionPlacementStores, grant: Ses
         reason: reason,
         freed: freed,
       )
-      SessionReviewerAbandonment { freed: freed, detail: join([reason as String, "; placement record close: ", session_write_note(w: write)], "") }
+      join([reason as String, "; placement record close: ", session_write_note(w: write)], "")
     }
     AttemptLostRace { expected: e, observed: o } =>
-      SessionReviewerAbandonment { freed: ComputeNothingToRelease { detail: "the slot moved; settlement reads it" }, detail: join(["the reviewer slot moved while the start failed (expected ", e, ", found ", o, "); the settlement pass owns it from here"], "") }
+      join([reason as String, "; the reviewer slot moved while the start failed (expected ", e, ", found ", o, "); the settlement pass owns it from here"], "")
     AttemptTransitionRefused { detail: d } =>
-      SessionReviewerAbandonment { freed: ComputeNothingToRelease { detail: "the slot refused the close; settlement reads it" }, detail: join(["the reviewer slot would not take the terminal generation: ", d], "") }
+      join([reason as String, "; the reviewer slot would not take the terminal generation: ", d], "")
   }
 }
 
