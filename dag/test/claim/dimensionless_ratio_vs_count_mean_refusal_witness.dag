@@ -1,7 +1,7 @@
 module test.claim.dimensionless_ratio_vs_count_mean_refusal_witness
 
 import std.types { String, Bool, Int, List }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable, census_blocking_histograms_equal }
 
 // A DIMENSIONLESS RATIO AND A MEAN CONCURRENCY ARE NOT ONE TYPE (dashboard review 86657 on #15225,
 // an auto-opened duplicate of the merged #14718; DESIGN 3 nicknaming, ceiling 4b).
@@ -49,6 +49,10 @@ fn census_ran(c: CompileDiagnosticCensus) -> Bool {
   match c { CensusNotRunnable { cause: _ } => false CensusObserved { rows: _ } => true }
 }
 
+fn rows_of(c: CompileDiagnosticCensus) -> List<CompileDiagnosticCensusRow> {
+  match c { CensusNotRunnable { cause: _ } => [] CensusObserved { rows: rows } => rows }
+}
+
 // ── THE REFUSALS THIS CHANGE BUYS ──────────────────────────────────────────────────────────────
 // A Little's-law mean concurrency where a ratio is expected: the fixture the review asked for.
 data mean_at_permille_source: String = "module probe_ratio_vs_countmean_mean_at_permille\nimport std.measure { Permille, ConcurrentRequestThousandths, concurrent_request_thousandths }\nfn parity_share(p: Permille) -> Int { 0 }\nfn call() -> Int { parity_share(p: concurrent_request_thousandths(count: 15860)) }\n"
@@ -58,6 +62,14 @@ data ratio_at_thousandths_source: String = "module probe_ratio_vs_countmean_rati
 
 // The older sibling against the ratio family the review named.
 data hundredths_at_percent_source: String = "module probe_ratio_vs_countmean_hundredths_at_percent\nimport std.measure { Percent, ConcurrentRequestHundredths, concurrent_request_hundredths }\nfn utilization(p: Percent) -> Int { 0 }\nfn call() -> Int { utilization(p: concurrent_request_hundredths(count: 1122)) }\n"
+
+// THE DISCRIMINATING CONTROL THE BRIEF NAMES: a Percent value at a ConcurrentRequestThousandths
+// formal. Structurally Percent was Measure<Dimensionless, One, Nat> and the mean concurrency is
+// Measure<Count, Milli, Nat> — the Quantity argument differs, which the checker refuses on an
+// alias (measured: byte_size at a Percent formal blocks the same way). Before the move both were
+// Measure<Dimensionless, ?, Nat> differing only in Scale, and a percent figure could be handed to
+// a resident-requests formal as a bare number.
+data percent_at_thousandths_source: String = "module probe_ratio_vs_countmean_percent_at_thousandths\nimport std.measure { Percent, ConcurrentRequestThousandths, percent }\nfn resident_requests(c: ConcurrentRequestThousandths) -> Int { 0 }\nfn call() -> Int { resident_requests(c: percent(count: 15)) }\n"
 
 test fn a_mean_concurrency_refuses_at_a_ratio_parameter() -> Bool {
   blocking_total(c: compile_dag_diagnostic_census(mean_at_permille_source)) > 0
@@ -69,6 +81,10 @@ test fn a_ratio_refuses_at_a_mean_concurrency_parameter() -> Bool {
 
 test fn a_hundredth_of_concurrency_refuses_at_a_percent_parameter() -> Bool {
   blocking_total(c: compile_dag_diagnostic_census(hundredths_at_percent_source)) > 0
+}
+
+test fn a_percent_refuses_at_a_mean_concurrency_parameter() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(percent_at_thousandths_source)) > 0
 }
 
 // ── POSITIVE CONTROLS: the wall is reachable, and each concept still admits its own ────────────
@@ -163,9 +179,22 @@ test fn the_generic_algebra_still_admits_a_count_and_a_ratio_together() -> Bool 
 // and compiles them through the census is what says the migration closed: the census resolves a
 // fixture's import closure against the source root, so a consumer that no longer type-checks shows
 // up as a blocking row here rather than only on the required floor.
+//
+// THE FORM IS DIFFERENTIAL, NOT ABSOLUTE, and it has to be: the census counts the import closure's
+// OWN blocking rows, so this subject carries a non-zero baseline no branch could clear (measured:
+// the same fixture with Int formals blocks just as much). The claim is therefore that the
+// alias-typed surface blocks EXACTLY as much as the same surface typed at the plain Ints it moved
+// off — key by key, through the census module's own comparator. A consumer that stopped resolving
+// on the moved axes adds a row no Int baseline carries, and this goes red on it.
 data consumers_source: String = "module probe_ratio_vs_countmean_consumers\nimport std.types { Bool }\nimport std.measure { ConcurrentRequestHundredths, ConcurrentRequestThousandths, concurrent_request_hundredths, concurrent_request_thousandths }\nimport extdeps.vllm.log_lines { VllmNumberReading }\nimport extdeps.vllm.kv_layout { hundredths_within_printed_precision }\nimport gunbc.serving.flash_next_recipe_throughput_evidence { mean_decode_concurrency, RecipeThroughputVerdict }\nimport gunbc.spark.serving_rank_observe { RankStartupObservation }\nfn uses(predicted: ConcurrentRequestHundredths, reported: ConcurrentRequestHundredths, mean: ConcurrentRequestThousandths, reading: VllmNumberReading<ConcurrentRequestHundredths>, verdict: RecipeThroughputVerdict, observed: RankStartupObservation) -> Bool { hundredths_within_printed_precision(predicted: predicted, reported: reported) }\n"
 
+// The same fixture before the move: identical imports, the aliases replaced by the Ints they
+// structurally were. This is the baseline the alias surface has to match, row for row.
+data consumers_int_baseline_source: String = "module probe_ratio_vs_countmean_baseline\nimport std.types { Bool }\nimport std.measure { ConcurrentRequestHundredths, ConcurrentRequestThousandths, concurrent_request_hundredths, concurrent_request_thousandths }\nimport extdeps.vllm.log_lines { VllmNumberReading }\nimport extdeps.vllm.kv_layout { hundredths_within_printed_precision }\nimport gunbc.serving.flash_next_recipe_throughput_evidence { mean_decode_concurrency, RecipeThroughputVerdict }\nimport gunbc.spark.serving_rank_observe { RankStartupObservation }\nfn uses(predicted: Int, reported: Int, mean: Int, reading: Int, verdict: RecipeThroughputVerdict, observed: RankStartupObservation) -> Bool { true }\n"
+
 test fn the_consuming_modules_resolve_on_the_moved_axes() -> Bool {
-  let c = compile_dag_diagnostic_census(consumers_source)
-  census_ran(c: c) && blocking_total(c: c) == 0
+  let moved = compile_dag_diagnostic_census(consumers_source)
+  let baseline = compile_dag_diagnostic_census(consumers_int_baseline_source)
+  census_ran(c: moved) && census_ran(c: baseline)
+    && census_blocking_histograms_equal(a: rows_of(c: moved), b: rows_of(c: baseline))
 }
