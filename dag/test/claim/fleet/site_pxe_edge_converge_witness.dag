@@ -18,6 +18,7 @@ import std.decl_ref { decl_ref }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
+import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
 import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
@@ -107,6 +108,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   EmbeddedRevisionRead,
   EmbeddedRevisionUnobservable,
   site_pxe_edge_desired_inputs,
+  site_pxe_edge_known_client_observations,
   site_pxe_edge_desired_files,
   site_pxe_edge_roster,
   site_pxe_edge_unit_file,
@@ -1157,3 +1159,19 @@ test fn an_arm64_binding_renders_the_arm64_members() -> Bool {
   }
 }
 
+// The edge's own known-client rows, not a supplied list: every row parses, and the rendered daemon config tags
+// each measured host NIC as known. Dropping srv14's row (or mistyping it) turns this red.
+test fn the_production_known_clients_are_tagged_known_in_the_rendered_config() -> Bool {
+  let servable = servable_ipxe(pin: pinned(digest: digest_a), digest: ChainloaderDigestObserved { digest: digest_a })
+  match site_pxe_edge_desired_inputs(servable: servable, known: site_pxe_edge_known_client_observations, bindings: [], tftp_server: site_pxe_edge_tftp_server_address, segment: site_pxe_edge_segment_network) {
+    Absent => false
+    Present { value: i } =>
+      length(i.roster.known_client_macs) == 2
+        && (match site_pxe_edge_desired_files(roster: i.roster, network: i.network, chains: i.chains).first() {
+          Absent => false
+          Present { value: cfg } =>
+            contains(cfg.content, concat(concat("dhcp-host=", mtcollins1_host_nic_mac as String), ",set:onboarding-known"))
+              && contains(cfg.content, concat(concat("dhcp-host=", srv14_host_nic_mac as String), ",set:onboarding-known"))
+        })
+  }
+}
