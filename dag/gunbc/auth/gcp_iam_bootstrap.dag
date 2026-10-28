@@ -1453,8 +1453,8 @@ fn pool_initialization_readback(reading: PolicyReading, cells: List<GcpIamBindin
   match reading {
     PolicyObserved { policy } => if iam_bootstrap_pool_initialized(policy: policy, cells: cells) { PoolInitReadbackExact }
       else { PoolInitReadbackRefused { reason: "pool initialization readback differs; workflow trust withheld" } }
-    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
-    PolicyUnreadable { cause: _ } => PoolInitReadbackRefused { reason: "pool initialization readback lacks its policy revision; workflow trust withheld" }
+    PolicyResourceAbsent => PoolInitReadbackRefused { reason: "pool initialization readback found no pool policy; workflow trust withheld" }
+    PolicyUnreadable { cause } => PoolInitReadbackRefused { reason: concat("pool initialization readback lacks its policy revision; workflow trust withheld: ", cause) }
   }
 }
 
