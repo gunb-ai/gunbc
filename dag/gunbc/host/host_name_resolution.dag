@@ -78,6 +78,9 @@ import extdeps.dns.domain_name {
   FullyQualified,
   PartiallyQualified,
   parse_host_name,
+  dns_label_eq,
+  domain_name_eq,
+  host_name_eq,
 }
 import extdeps.dns.resolver {
   Resolver,
@@ -95,6 +98,7 @@ import extdeps.dns.resolver {
   resolvable_name_labels,
   resolvable_name_qualification,
   resolvable_name_label_count,
+  resolvable_host_name,
   resolve_name,
   resolution_from_answer,
 }
@@ -111,8 +115,13 @@ import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
 // a different rule — silently losing the qualification the parser had settled, and leaving "is srv2.com a
 // suffix of xrv2.com?" to a string rule no one wrote down. `Zone` is sealed (sole_constructor, admitted only
 // from a parsed `HostName`), so a space cannot be configured with an unparsed domain at all.
+// A ZONE IS A SUFFIX, AND CARRIES ONE: the `DomainName` that was parsed to obtain it. It used to carry a bare
+// `List<DnsLabel>`, which meant the module kept its own label list beside the authority's and had to invent
+// `zone_eq` to compare them — the third copy of one rule review 87232 counted. Carrying `DomainName` means a
+// zone is compared with the ONE label equality that exists, and `zone_admit` hands over what it parsed rather
+// than unpacking it and re-wrapping it, which is the same fact in fewer steps.
 type Zone sole_constructor {
-  labels: List<DnsLabel>
+  suffix: DomainName
 }
 
 type ZoneAdmission
@@ -125,30 +134,27 @@ type ZoneAdmission
 // whether it was written with a trailing dot is not a fact about the zone.
 fn zone_admit(raw: String) -> ZoneAdmission {
   match parse_host_name(raw: raw) {
-    Ok { value: h } => ZoneAdmitted { zone: Zone { labels: h.name.labels } }
+    Ok { value: h } => ZoneAdmitted { zone: Zone { suffix: h.name } }
     Err { value: _ } => ZoneRefused { raw: raw }
   }
 }
 
-// LABEL EQUALITY, written once and named. `DnsLabel` is `NonEmptyStr` branded, and the corpus's idiom for
-// comparing a branded string is the widening cast — the cast is what says "this is being read as text,
-// here, on purpose" (precedent: gunbc.serving.caller_backlog logical_work_eq, which compares branded
-// LogicalWorkIds the same way, and gunbc.design.reference_instrument citation_is_contained, which widens
-// branded module paths to compare them).
-fn dns_label_eq(a: DnsLabel, b: DnsLabel) -> Bool {
-  (a as String) == (b as String)
-}
-
-// DO TWO ADMITTED NAMES MEAN THE SAME HOST? Compared label-by-label, never by rendering both sides and
-// comparing strings at a call site: that idiom re-derives structure the parser already settled, and it
-// makes the boundary between "srv2.example" and "srv2example" a character rule nobody wrote down. Used by
-// the share gate to decide whether the row vouches for the spelling the boot would write.
-fn names_agree(a: ResolvableName, b: ResolvableName) -> Bool {
-  zip_eq(
-    a: resolvable_name_labels(name: a),
-    b: resolvable_name_labels(name: b),
-    eq: fn(x, y) { dns_label_eq(a: x, b: y) },
-  )
+// DO TWO ADMITTED NAMES MEAN THE SAME NAME? The authority's own equality — NOT a local one. Earlier drafts
+// carried a `names_agree` here that compared labels only (with a locally-written `dns_label_eq`), so
+// "srv2.mynetworksettings.com" and the same labels without qualification were the same host to this module
+// and different names to `extdeps.dns` — one question, two sources, two answers (review 87232, §3 meaning
+// fork, §2 no re-invention).
+//
+// The full equality is also the CORRECT question for every use site here, and that is worth the paragraph,
+// because it is not obvious. `host_name_eq` checks qualification, and for a RESOLVER question the
+// qualification is not cosmetic: "srv2.mynetworksettings.com." is "ask exactly this", while
+// "srv2.mynetworksettings.com" is "ask this and let the resolver apply its search domains" — two different
+// questions, potentially two different addresses. So a share row may not be vouched for by a receipt taken
+// for a differently-qualified spelling of the same labels, and `domain_name_eq` (labels only, still one
+// function, still in the grammar module) is reserved for the one place qualification is legitimately out of
+// play: the zone suffix test, where `zone_admit` drops the trailing dot on purpose.
+fn names_are_the_same_name(a: ResolvableName, b: ResolvableName) -> Bool {
+  host_name_eq(a: resolvable_host_name(name: a), b: resolvable_host_name(name: b))
 }
 
 // THE LABELS THAT BELONG TO THE HOST, given a name and a zone: the name's labels with the zone's labels
@@ -164,17 +170,19 @@ fn names_agree(a: ResolvableName, b: ResolvableName) -> Bool {
 //     to a host. So a name must be strictly longer than its zone.
 fn host_part_of(name: ResolvableName, zone: Zone) -> List<DnsLabel>? {
   let name_labels = resolvable_name_labels(name: name)
-  let zone_labels = zone.labels
+  let zone_labels = zone.suffix.labels
   let name_count = list_length(items: name_labels)
   let zone_count = list_length(items: zone_labels)
   if zone_count >= name_count {
     Absent
   } else {
     let host_count = name_count - zone_count
+    // `dns_label_eq` is the grammar module's own (extdeps.dns.domain_name), not one written here: what two
+    // labels being equal means is settled where `DnsLabel` is branded, and this is a consumer of that rule.
     if zip_eq(
       a: list_reverse(xs: skip(xs: name_labels, n: host_count)),
       b: list_reverse(xs: zone_labels),
-      eq: fn(a, b) { dns_label_eq(a: a, b: b) },
+      eq: dns_label_eq,
     ) {
       Present { value: take_prefix(name_labels, host_count) }
     } else {
@@ -496,19 +504,19 @@ fn first_reached(xs: List<NameSpace>, space: NameSpace) -> NameSpace? {
   }
 }
 
-// ARE TWO NAME SPACES THE SAME SPACE, asked of the ONE fact that decides it: the zone. An earlier draft
-// matched the two arms against each other and returned false for the cross cases, which is a hand-written
-// equality over a sum type — the same predicate-dissolution error this module's header says it removed,
-// and it bought nothing: `Lan` and `Tailnet` answer for different zones, so the arm pair is already
-// distinguished by `zone_eq`, and the `why` is documentation about a space rather than part of its
-// identity. Comparing zones directly also keeps the rule honest: two `Lan` rows configured with different
-// zones are different spaces, which a shape-only comparison would have wrongly called the same.
+// ARE TWO NAME SPACES THE SAME SPACE, asked of the ONE fact that decides it: the zone's labels, compared with
+// the ONE label equality the corpus owns (`extdeps.dns.domain_name domain_name_eq`). An earlier draft matched
+// the two arms against each other and returned false for the cross cases — a hand-written equality over a sum
+// type, the predicate-dissolution error this module's header says it removed, and it bought nothing: `Lan` and
+// `Tailnet` answer for different zones, so the arm pair is already distinguished by the zone. Comparing zones
+// directly also keeps the rule honest: two `Lan` rows configured with different zones are different spaces,
+// which a shape-only comparison would have wrongly called the same.
+//
+// Labels, NOT the full `host_name_eq`: a zone is a suffix and `zone_admit` drops the trailing dot on purpose,
+// so "was the zone spelled with a final dot" must not make two identical zones different spaces. That is the
+// one place qualification is legitimately out of play, and it is why the grammar module exposes both.
 fn same_space(a: NameSpace, b: NameSpace) -> Bool {
-  zone_eq(a: space_zone(space: a), b: space_zone(space: b))
-}
-
-fn zone_eq(a: Zone, b: Zone) -> Bool {
-  zip_eq(a: a.labels, b: b.labels, eq: fn(x, y) { dns_label_eq(a: x, b: y) })
+  domain_name_eq(a: space_zone(space: a).suffix, b: space_zone(space: b).suffix)
 }
 
 // WHAT WAS OBSERVED, AND WHO READS IT (review 87196, finding 1, option (b) for the dead half). This module
@@ -518,14 +526,14 @@ fn zone_eq(a: Zone, b: Zone) -> Bool {
 // not the first one — an earlier draft had the gate refuse on the first citation it found, which would have
 // let a stale receipt hide behind a fresh one. The two helpers that fold does use are the ones that remain.
 
-// DOES THIS OBSERVATION ANSWER FOR THIS NAME, by the labels the parser settled — compared with `zip_eq` and
-// the named label equality, not by rendering both sides and comparing strings at a call site.
+// DOES THIS OBSERVATION ANSWER FOR THIS NAME? Asked of the grammar module's own equality, via
+// `names_are_the_same_name` — the third local copy review 87232 counted was this `zip_eq` over
+// `resolvable_name_labels`. It also used the wrong rule: an observation is a reply to ONE QUESTION, and the
+// qualification is part of the question ("ask exactly this" vs "ask this and apply search rules"), so a
+// receipt taken for a differently-qualified spelling does not speak for this name. The full equality is what
+// a citation match needs.
 fn observed_names_this(outcome: NameResolution, name: ResolvableName) -> Bool {
-  zip_eq(
-    a: resolvable_name_labels(name: asked_name(outcome: outcome)),
-    b: resolvable_name_labels(name: name),
-    eq: fn(x, y) { dns_label_eq(a: x, b: y) },
-  )
+  names_are_the_same_name(a: asked_name(outcome: outcome), b: name)
 }
 
 // THE NAME AN OBSERVATION IS ABOUT, out of either conclusion arm. Handed back as the name, not as a field

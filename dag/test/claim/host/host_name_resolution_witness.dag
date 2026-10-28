@@ -332,8 +332,9 @@ test fn a_malformed_name_is_refused_as_malformed_and_not_as_an_address() -> Bool
 //   forge_single_label_row_hole_source  the same forgery inside a fleet-shaped share row, with the
 //                                       single-label spelling the controller's firmware refuses: the
 //                                       authorable boundary, at the exact shape of the row that broke.
-//   forge_zone_hole_source              writes `Zone { labels: ... }` by hand, which would let a name
-//                                       space be configured with an unparsed domain.
+//   forge_zone_hole_source              writes `Zone { suffix: DomainName { labels: [] } }` by hand, which
+//                                       would let a name space be configured with an unparsed domain — and
+//                                       with no labels at all, which would make every name a suffix match.
 //   forge_empty_resolver_hole_source    the fail-open trap: a resolver with no servers, which makes every
 //                                       name look unresolvable. Refused TWICE — by the seal, and by the
 //                                       field's cardinality, since `servers` is a `FreeSemigroup` and an
@@ -344,7 +345,7 @@ data forge_resolvable_name_hole_source: String = "module probe_forge_resolvable_
 
 data forge_single_label_row_hole_source: String = "module probe_forge_single_label_row\nimport extdeps.dns.resolver { ResolvableName }\nimport extdeps.dns.domain_name { parse_host_name }\nimport std.error_primitives { Ok, Err }\nimport std.optional { Optional, Present, Absent }\ntype ShareRow { server: ResolvableName }\nfn forged_row() -> Optional<ShareRow> {\n  match parse_host_name(raw: \"srv2\") {\n    Ok { value: h } => Present { value: ShareRow { server: ResolvableName { name: h } } }\n    Err { value: e } => Absent\n  }\n}\n"
 
-data forge_zone_hole_source: String = "module probe_forge_zone\nimport gunbc.host.host_name_resolution { Zone }\ndata bad_zone: Zone = Zone { labels: [] }\n"
+data forge_zone_hole_source: String = "module probe_forge_zone\nimport gunbc.host.host_name_resolution { Zone }\nimport extdeps.dns.domain_name { DomainName, DnsLabel }\ndata bad_zone: Zone = Zone { suffix: DomainName { labels: [] } }\n"
 
 // THE EMPTY RESOLVER. `[]` is a FreeMonoid and cannot be a FreeSemigroup, so the forgery is refused by the
 // field's cardinality as well as by the seal — which is the difference between a check that can be

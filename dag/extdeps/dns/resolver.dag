@@ -37,7 +37,7 @@ module extdeps.dns.resolver
 // nonemptiness is constructed or proved), which deleted both that check and the invented cause the
 // iteration needed for the case the check was supposed to make unreachable.
 
-import std.types { String, List, Int, Present, Absent, Optional, list_length }
+import std.types { String, List, Int, Present, Absent, Optional }
 import std.algebra { Cons, Empty, FreeSemigroup, non_empty_to_list }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import extdeps.network.address { IpAddress, IpV4, IpV6 }
@@ -197,11 +197,25 @@ fn resolvable_name_qualification(name: ResolvableName) -> NameQualification {
   name.name.qualification
 }
 
+// THE QUESTION, AS THE GRAMMAR MODULE HOLDS IT. A consumer that must compare two admitted names does so with
+// the grammar module's OWN equality (`extdeps.dns.domain_name host_name_eq`), which is the only place the
+// answer to "are these the same name?" lives; this hands over the value so a consumer can ask without
+// unwrapping the brand by hand and without this module growing a second equality of its own.
+fn resolvable_host_name(name: ResolvableName) -> HostName {
+  name.name
+}
+
 // THE LABEL COUNT, for gates that must refuse a single label — the BMC media leg's own requirement,
 // where the firmware's field validator rejects a one-label spelling. A count, not a Bool: the gate
 // compares it against its own rule rather than being told the gate's conclusion.
+//
+// DELEGATED, NOT RE-WRITTEN (review 87232). Counting labels is `extdeps.dns.domain_name`'s rule, which
+// exports `host_name_label_count`; this module is the RESOLVER shape and borrows the grammar, as its header
+// says, so it asks the authority rather than walking `labels` itself. A second count of one list is a second
+// answer to one question, and the two drift the moment the grammar grows (a trailing dot, an escape, a
+// wildcard label — any of which changes what "how many labels" means in exactly one of the two places).
 fn resolvable_name_label_count(name: ResolvableName) -> Int {
-  list_length(items: name.name.name.labels)
+  host_name_label_count(host: name.name)
 }
 
 // ── THE ANSWER ───────────────────────────────────────────────────────────────────────────────
