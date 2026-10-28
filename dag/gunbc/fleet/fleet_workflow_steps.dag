@@ -20,6 +20,7 @@ module gunbc.fleet.fleet_workflow_steps
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import std.measure { minute_count, second_count }
 import gunbc.fleet.srv1_root_mutation_approval_run { srv1_root_mutation_approval_step_timeout_minutes }
+import gunbc.live_deploy.service_ready { approval_broker_readback_poll_bound }
 import std.types { Duration }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import extdeps.github.actions {
@@ -1051,6 +1052,47 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_live_deploy_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+// THE BROKER DARK-INSTALL STEP'S OWN BUDGET. It is ONE `gunbc run` of the dark-install wet
+// (gunbc.live_deploy.apply approval_broker_dark_install_wet): it boots (resolve + typecheck) the wet's
+// entry closure, realizes the additive install legs, restarts the broker's OWN unit, and then waits on
+// the broker's startup by polling /livez to the readback bound. It must NOT borrow
+// gunbc_ci_live_deploy_step_timeout_minutes -- that 30-minute tier is the roadmap
+// observe-then-cutover deploy's budget, a different shape of work, and the additive install plus
+// broker-restart-and-wait does not fit it. Each term is a declared authority, composed, never
+// widened to absorb the dark-install RENDER fold: that cost is
+// gunbc.rung_drop live_deploy_dark_install_render_new_witness_eval_step_cost, its own task, and
+// budgeting it here would hide a measured defect behind a longer timeout.
+//   - the `gunbc run` boot tier (closure resolve dominates),
+//     gunbc_ci_gunbc_run_resolve_step_timeout_minutes;
+//   - one aux tier for the additive install legs, gunbc_ci_aux_step_timeout_minutes;
+//   - the BROKER'S OWN STARTUP, given its own declared budget rather than inheriting the step's: the
+//     same figure the readback poll uses, approval_broker_readback_poll_bound, converted to minutes.
+//     Reserving it as its own term is the fix for run 40630763823: the broker was restarted at
+//     04:56:17 and the step died at the inherited 30-minute cap at 04:58:17, ~160 s into its ~200 s
+//     boot (journalctl showed it still typechecking), so it never bound 8085 -- the broker never
+//     failed to start, the step ran out of borrowed budget before the broker's startup finished.
+fn gunbc_ci_approval_broker_dark_install_step_timeout_minutes() -> Int {
+  gunbc_ci_gunbc_run_resolve_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + (((second_count(s: approval_broker_readback_poll_bound) as Int) + 59) / 60)
+}
+
+// The dark-install JOB's own backstop, derived the same way as the dashboard deploy's and kept
+// SEPARATE from both the converge job's (which would wait on the fleet-converge wait-for-reconciliation
+// and reconciliation jobs' budget) and the dashboard deploy's (which would wait on the roadmap
+// live-deploy step, a step this job never runs). It composes the job's REAL steps: the consumer prelude,
+// the release-bins download and unpack-verify, the srv1 root-mutation secret auth + file-and-wait +
+// receipt upload, and the dark-install step's own tier (replacing the dashboard's live-deploy step).
+fn gunbc_ci_approval_broker_dark_install_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes
+    + gunbc_ci_artifact_transfer_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_approval_broker_dark_install_step_timeout_minutes()
     + gunbc_ci_aux_step_timeout_minutes
     + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
     + gunbc_ci_artifact_transfer_step_timeout_minutes

@@ -137,8 +137,7 @@ import gunbc.live_deploy.readiness {
   live_deploy_proxied_readiness,
 }
 import gunbc.live_deploy.service_ready {
-  approval_broker_expected_startup,
-  live_deploy_service_ready_poll_bound_margin_factor,
+  approval_broker_readback_poll_bound,
   live_deploy_service_ready_poll_cadence,
 }
 import gunbc.serve_liveness { ServeLivenessRead, ServeLivenessUnreachable }
@@ -944,13 +943,15 @@ fn approval_broker_dark_install_wet_with_access(
 // the first attempt and is something else entirely. That distinction is the not-met versus
 // cannot-tell split this module keeps everywhere else.
 //
-// THE BOUND IS THE BROKER'S OWN, derived from one measured srv1 start (see
-// gunbc.live_deploy.service_ready approval_broker_expected_startup for the reading and its
-// thinness), never from the roadmap's 240 s: the two units load different closures. The cadence and
+// THE BOUND IS THE BROKER'S OWN, declared once at gunbc.live_deploy.service_ready
+// approval_broker_readback_poll_bound (measured against one srv1 start; see the rationale there for
+// its thinness), never from the roadmap's 240 s: the two units load different closures. This is a
+// CONSUMER of that single derivation, not a re-derivation of expected_startup times the margin -- the
+// CI step budget that runs the install reads the same figure, per DESIGN section 6b. The cadence and
 // the margin factor are the roadmap's own declarations rather than new numbers, because the
 // uncertainty they encode is a property of polling a restarting unit, not of which unit it is.
 fn approval_broker_readback_poll_attempts() -> Int {
-  second_count(s: approval_broker_expected_startup) * live_deploy_service_ready_poll_bound_margin_factor
+  second_count(s: approval_broker_readback_poll_bound)
 }
 
 fn approval_broker_liveness_poll(
