@@ -14,6 +14,7 @@ import std.scoped_authorization {
 }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_run_attempt_variable_name, github_sha_variable_name, github_job_variable_name, github_runner_temp_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.github.expressions { ExpressionTemplate, LiteralText, Interpolation, runner_temp, serialize_template }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.auth.approval_gate {
@@ -60,7 +61,27 @@ import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 // checkout's working tree and refuse one that does not equal HEAD (CandidateCheckoutNotClean), so a
 // receipt in the tree stopped the first approved run (fleet-converge run 40556605128) after admission.
 data srv1_root_mutation_approval_receipt_file_name: String = "srv1-root-mutation-approval-receipt.txt"
-data srv1_root_mutation_approval_artifact_glob: String = concat("${{ runner.temp }}/", srv1_root_mutation_approval_receipt_file_name)
+// ONE TEMPLATE, READ TWO WAYS: serialized it is the upload step's path; realized with runner.temp bound
+// to RUNNER_TEMP (the same directory, GitHub's runner context) it is the path the gate writes. A
+// template naming any other expression has no realization here and refuses.
+data srv1_root_mutation_approval_receipt_template: ExpressionTemplate = {
+  segments: [
+    Interpolation { expression: runner_temp() },
+    LiteralText { text: concat("/", srv1_root_mutation_approval_receipt_file_name) },
+  ]
+}
+
+data srv1_root_mutation_approval_artifact_glob: String = serialize_template(template: srv1_root_mutation_approval_receipt_template)
+
+fn srv1_root_mutation_approval_receipt_path(runner_temp_dir: String) -> String? {
+  fold(srv1_root_mutation_approval_receipt_template.segments, init: Present { value: "" }, f: (acc, seg) => match acc {
+    Absent => Absent
+    Present { value: sofar } => match seg {
+      LiteralText { text: t } => Present { value: concat(sofar, t) }
+      Interpolation { expression: e } => if e == runner_temp() { Present { value: concat(sofar, runner_temp_dir) } } else { Absent }
+    }
+  })
+}
 data srv1_root_mutation_submit_body_file_name: String = "srv1-root-mutation-approval-submit.json"
 
 // THE SELECTION, CARRIED AS INDEXED PAIRS: the workflow sets NAME_i and VALUE_i for i from 0, and the
@@ -258,6 +279,13 @@ fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
   if runner_temp == "" {
     return exit_failure(reason: "srv1 root mutation: RUNNER_TEMP is unset, so the receipt has no place outside the deployed checkout; nothing filed")
   }
+  let receipt_path = match srv1_root_mutation_approval_receipt_path(runner_temp_dir: runner_temp) {
+    Present { value: rp } => rp
+    Absent => ""
+  }
+  if receipt_path == "" {
+    return exit_failure(reason: "srv1 root mutation: the receipt template names an expression with no realization on the runner; nothing filed")
+  }
   if actions_variable_trimmed(name: approval_submission_mac_key_path_env) == "" {
     return exit_failure(reason: concat("srv1 root mutation: ", concat(approval_submission_mac_key_path_env as String, " is unset, so no approval can be filed; no root step runs")))
   }
@@ -268,7 +296,7 @@ fn srv1_root_mutation_approval_on_srv1() -> ProcessExit
       escalation_id: srv1_root_mutation_escalation_id(job: job as NonEmptyStr, run_id: run_id as NonEmptyStr, run_attempt: run_attempt as NonEmptyStr),
       execution_revision: sha as NonEmptyStr,
       selects: selects,
-    ), receipt_path: join([runner_temp, "/", srv1_root_mutation_approval_receipt_file_name], ""))
+    ), receipt_path: receipt_path)
   }
 }
 
