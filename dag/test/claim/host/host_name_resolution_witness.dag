@@ -59,8 +59,8 @@ import gunbc.host.host_name_resolution {
   zone_admit,
   host_part_of,
   lan_zone_wire,
-  tailnet_zone_wire,
   lan_zone,
+  tailnet_zone,
   NameSpace,
   Lan,
   lan_name_space,
@@ -83,11 +83,15 @@ import gunbc.host.host_name_resolution {
   Usable,
   megarac_media_address_rule,
   media_share_address_gate,
-  srv2_current_address,
+  media_share_name_cutover_frontier,
   router_address,
   srv2_lan_name,
   srv2_tailnet_name_refused,
 }
+import gunbc.fleet.fleet_reach { srv2_lan_ipv4 }
+import gunbc.fleet.fleet_tailnet { fleet_tailnet_domain }
+import gunbc.machine_intake.mtcollins1_boot_run { mtcollins1_media_share }
+import extdeps.network.ipv4 { render_ipv4_address }
 import product.host_identity { host_identity_eq }
 import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all }
 
@@ -130,7 +134,7 @@ fn unanswered() -> ResolverAnswer {
 }
 
 fn one_address() -> FreeSemigroup<Ipv4Address> {
-  non_empty_singleton(item: srv2_current_address)
+  non_empty_singleton(item: srv2_lan_ipv4)
 }
 
 // TWO ADDRESSES, to show a resolved reply does not silently keep only the author's favourite.
@@ -447,6 +451,52 @@ test fn a_single_label_share_refuses_because_the_consumer_would_reject_it() -> B
   }
 }
 
+// THE GATE RUNS AGAINST THE REAL BMC SHARE ROW, not only against spellings this file invented (review
+// 87139, finding 3). `mtcollins1_media_share` is the row a boot reads; its server field is still an
+// address spelling, and this claim asserts that OUR gate refuses THAT row — the production row, read from
+// its own module — rather than a string we typed here. If the row is ever cut over to the LAN name (the
+// frontier below), this claim stops matching `AddressIsNotAName` and goes red, where whoever lands the
+// paired firmware write flips it to the Usable arm. It cannot silently keep a green.
+test fn the_gate_refuses_the_production_share_row_while_it_names_an_address() -> Bool {
+  match name_of(spelling: srv2_lan_fqdn) {
+    Absent => false
+    Present { value: n } =>
+      match lan_space() {
+        Absent => false
+        Present { value: space } =>
+          match filed_row(name: n, space: space, answer: answered(addrs: one_address())) {
+            Absent => false
+            Present { value: row } =>
+              match media_share_address_gate(
+                share_server: mtcollins1_media_share.server_address,
+                row: row,
+                reach: bmc_lan_reach(resolver: resolver_of(server: router_address)),
+                rule: megarac_media_address_rule,
+                // An ask that would admit anything: the refusal must come from the row's own spelling.
+                ask: fn(_s, _nm) { answered(addrs: one_address()) },
+              ) {
+                AddressIsNotAName { raw: r, cause: _ } =>
+                  (r as String) == (render_ipv4_address(addr: srv2_lan_ipv4) as String)
+                _ => false
+              }
+          }
+      }
+  }
+}
+
+// THE FRONTIER IS A ROW WITH A TRIGGER, AND THIS CLAIM READS IT AS ONE (§3c: a declaration consumed by a
+// named later change is a declared frontier, not dangling — but only if the trigger is actually stated).
+// The assertions are on the words that make it a trigger rather than a wish: the row it names, the paired
+// firmware write, and each of the three conditions. Delete the trigger and this goes red; that is the
+// difference between a frontier and a TODO nobody owns.
+test fn the_media_share_cutover_frontier_states_its_row_and_its_trigger() -> Bool {
+  string_contains(s: media_share_name_cutover_frontier, pattern: "mtcollins1_media_share")
+    && string_contains(s: media_share_name_cutover_frontier, pattern: "media/general PUT")
+    && string_contains(s: media_share_name_cutover_frontier, pattern: "boot 7")
+    && string_contains(s: media_share_name_cutover_frontier, pattern: "DNS server")
+    && string_contains(s: media_share_name_cutover_frontier, pattern: "operator")
+}
+
 // A SHARE THAT DISAGREES WITH ITS OWN ROW REFUSES. The share says the tailnet name while the row vouches
 // for the LAN name — both are names, both may resolve, and the pair is still a lie about one host. This is
 // the read-compare the boot already performs, moved earlier so the refusal arrives before the attach.
@@ -573,7 +623,7 @@ test fn an_answer_with_addresses_is_resolved() -> Bool {
     Absent => false
     Present { value: n } =>
       match resolution_from_answer(name: n, answer: answered(addrs: one_address())) {
-        Resolved { name: _, addresses: a } => host_identity_eq(a: "srv2", b: "srv2") && a.head == srv2_current_address
+        Resolved { name: _, addresses: a } => host_identity_eq(a: "srv2", b: "srv2") && ipv4_address_eq(a: a.head, b: srv2_lan_ipv4)
         Unresolved { name: _, cause: _ } => false
       }
   }
@@ -673,7 +723,7 @@ test fn a_usable_share_names_the_address_it_resolved_to() -> Bool {
             Absent => false
             Present { value: row } =>
               match gate(share: srv2_lan_fqdn, row: row, reach: bmc_lan_reach(resolver: resolver_of(server: router_address)), answer: answered(addrs: two_addresses())) {
-                Usable { host: _, name: _, address: a } => ipv4_address_eq(a: a, b: srv2_current_address)
+                Usable { host: _, name: _, address: a } => ipv4_address_eq(a: a, b: srv2_lan_ipv4)
                 _ => false
               }
           }
@@ -908,17 +958,67 @@ test fn srv2_has_no_tailnet_row_and_the_refusal_names_the_missing_reader() -> Bo
   }
 }
 
-// THE CONFIGURED ZONES PARSE. A space whose zone string did not parse would silently have no rows at all;
-// this is the premise the LAN claims above rest on, named as its own claim so its failure reads as what
-// it is — a defect in this module's configuration, not in a name.
+// THE CONFIGURED ZONES PARSE. A space whose zone string did not parse would silently have no rows at all —
+// every claim under it would simply never fire, which is the quietest possible failure. Named as its own
+// claim so that failure reads as what it is: a defect in this module's configuration, not in a name.
 test fn both_configured_zones_parse() -> Bool {
-  match zone_admit(raw: lan_zone_wire) {
-    ZoneAdmitted { zone: _ } =>
-      match zone_admit(raw: tailnet_zone_wire) {
-        ZoneAdmitted { zone: _ } => true
-        ZoneRefused { raw: _ } => false
+  match lan_zone() {
+    Present { value: _ } =>
+      match tailnet_zone() {
+        Present { value: _ } => true
+        Absent => false
       }
-    ZoneRefused { raw: _ } => false
+    Absent => false
+  }
+}
+
+// THE TAILNET ZONE IS THE FLEET'S OWN AUTHORITY, NOT A SECOND MINTING (review 87139, finding 2). This
+// module used to carry its own `tailecbe08.ts.net`; `gunbc.fleet.fleet_tailnet.fleet_tailnet_domain` is
+// that fact's one home, and its comment at fleet_tailnet.dag:13 records the re-minting as the defect. The
+// claim is a DRIFT WITNESS rather than an equality on two strings: the tailnet space must answer for a
+// name spelled under the authority's domain. Re-mint a different tailnet string here, or let the two
+// drift, and the host part stops coming out — this goes red and the LAN claims stay green, which is the
+// pair that says which fact moved.
+test fn the_tailnet_space_answers_for_the_fleet_authority_s_domain() -> Bool {
+  match fleet_tailnet_domain {
+    Absent => false
+    Present { value: authority_domain } => match zone_admit(raw: authority_domain as String) {
+      ZoneRefused { raw: _ } => false
+      ZoneAdmitted { zone: authority } =>
+      match name_of(spelling: srv2_tailnet_fqdn) {
+        Absent => false
+        Present { value: n } =>
+          match host_part_of(name: n, zone: authority) {
+            Present { value: part } =>
+              match tailnet_zone() {
+                // The same name must have a host part under BOTH the authority's zone and the space's
+                // zone. They differ only if this module has re-minted the domain.
+                Present { value: ours } =>
+                  match host_part_of(name: n, zone: ours) {
+                    Present { value: ours_part } => list_length(items: part) == 1 && list_length(items: ours_part) == 1
+                    Absent => false
+                  }
+                Absent => false
+              }
+            Absent => false
+          }
+      }
+    }
+  }
+}
+
+// srv2's LAN ADDRESS IS NOT RESTATED HERE EITHER (review 87139, finding 1): the row this module files is
+// grounded by the address `gunbc.fleet.fleet_reach` holds for srv2's 1G NIC, so the two cannot drift. A
+// second `ipv4_address(192,168,1,201)` in this module would let the fleet move srv2 and leave the BMC's
+// share row vouched for by a stale receipt — which is precisely the failure that broke the boot.
+test fn the_lan_row_is_grounded_by_the_fleet_reach_address() -> Bool {
+  match srv2_lan_name() {
+    HostNameResolutionAdmitted { resolution: r } =>
+      match r.grounded.outcome {
+        Resolved { name: _, addresses: addrs } => ipv4_address_eq(a: addrs.head, b: srv2_lan_ipv4)
+        Unresolved { name: _, cause: _ } => false
+      }
+    HostNameResolutionRefused { host: _, cause: _ } => false
   }
 }
 
