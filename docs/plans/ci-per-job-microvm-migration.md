@@ -11,7 +11,7 @@
 - **`runner-canary`** — `InProgress`, M1. Exit: GitHub App + `workflow_job` webhook → JIT ephemeral runner in a **per-job microVM** on the canary host → one real job completes → metered receipt → environment destroyed. One real job has already completed on Mt. Collins (gunbc#10733). Three conjuncts remain (authenticated JIT push, metered vCPU-minutes, teardown bound to the attempt identity).
 - **`dogfood-started`** — M1. Exit: **gunbc's own CI runs on the canary host through the runner-canary path** — *the two-week observation clock STARTS*. Depends on `hw-first-host`, `boot-minimum`, `fabric-m0`, `runner-canary`.
 
-This is not an infrastructure detour competing with the year-end plan. **Public CI on our own microVM runners is the M1 dogfood deliverable.** Until that exit is true, the two-week clock cannot start, and M1b `dogfood-window` cannot start.
+**Public CI on our microVM runners is the M1 dogfood deliverable.** Its exit starts the two-week clock; M1b `dogfood-window` cannot start before it.
 
 The 2026-09-10 motive is independent and already declared. gunbc-private PR #50 went red on "Build gunbc from the public seed" with exit 126 (~15s, command found but not executable). Public `gunbc.witness.witness_floor_workflow` `toolchain_filesystem_probe_dissolution_condition` is the named cure for that shared-FS eviction class. **gunbc#10985** (still-bear-335) rewrites that row so the probe dissolves only on **both** conjuncts this plan already named — public `selected_ci_runner_target` / `gunbc_ci_selected_runner_spec` and private `witnesses_job()` `SelfHosted` custom labels, not the empty-custom fleet slot — and identifying a deleter on the shared slot is **not** a substitute. Typed env-vs-code (POSIX 126/127, BMC/host/JIT) does not dissolve here. This PR does not flip `runs-on`; #10985 does not either.
 
@@ -30,9 +30,9 @@ One mechanism, four presentations already seen tonight:
 - vanished registry src / dep-info (rustc 101)
 - host `loadavg` 115
 
-**What Y makes unwritable.** A job in its own Firecracker guest **cannot** have another job's runner re-register into its workspace: there is no shared `_work` to re-register into. That is the microVM arm of `toolchain_filesystem_probe_dissolution_condition` read as §4b: the class climbs from *instrumented on a shared slot* to **structurally impossible** under per-attempt guests. It does **not** dissolve the probe on the srv slot today. Identification of this deleter is still **not** a substitute for the two `runs-on` conjuncts in #10985.
+**Per-attempt guests remove the shared `_work` that another runner can re-register into.** This is the structural-impossibility arm of `toolchain_filesystem_probe_dissolution_condition` (DESIGN §4b). The shared-slot probe remains until both `runs-on` conjuncts in #10985 hold; identifying the deleter does not bind it.
 
-**Not asserted here.** A deterministic double-occupancy could also produce near-identical `MemoryStallRefusedPageThrash` fault rates (cool-badger-34's two specimens). That join is a question for whoever owns the thrash reading. This plan does not treat thrash as the deleter, and it does not scope a `--entry` compile to "fix" a problem that may never have been the compile.
+**Unestablished:** whether double occupancy explains cool-badger-34's two near-identical `MemoryStallRefusedPageThrash` specimens. The thrash owner must make that join. Thrash is not identified as the deleter, and a scoped `--entry` compile is not justified by this finding.
 
 ## 1. What must be true for `host_boot_cutover_frontier` to fire
 
@@ -94,7 +94,7 @@ Both workflows today select `[self-hosted, linux, arm64]` (public via `gunbc.ci.
 | M1 | **`dogfood-started` is this repo's CI** | Not the year-end exit |
 | `runs-on` | `gunbc.ci.ci_runner_target` `gunbc_ci_selected_runner_spec` | Not a YAML literal. `witnesses_job()` is `SelfHosted { labels: self_hosted_labels(kernel: Linux, arch: Aarch64, custom: []) }`. Per-attempt label goes in `custom`. #46 does not touch `witnesses_job()`. |
 
-**Why order matters — two improvements can compose into a wash.** #46 removes 34 redundant world acquisitions, which *leaves the seed build as the dominant term*. A naive microVM flip that then compiles that seed with no reachable cache reintroduces cost on that same term. Isolation of the deleter class is still a win; the *job wall* can be a wash. That is the argument for sequencing, and it is stronger than "private is smaller".
+**Sequence against whole-job cost.** #46 removes 34 world acquisitions and leaves the seed build dominant. A cold microVM could add cost to that term even while curing the deleter class. Compare the whole job, not just isolation or build time.
 
 **The bar is the whole job against the pre-#46 job wall and against the timeout that was cancelling runs, not the build step.** Producers, so the subtraction re-derives:
 
@@ -111,11 +111,9 @@ Subtraction is `post_job − warm_seed + candidate_seed` against those two job w
 | Lower-bound local-cold 238 s (BuildBuddy invocation) | 815 s | crushing win | not racing |
 | 2× that lower bound (476 s seed) | 1053 s | crushing win | not racing |
 
-**Accepted-cold clears the bar.** Every row is a crushing win over 3341 s and none is near the ~61-minute cancel class. Guest egress and a prebuilt image are therefore **not on the critical path**. Carrying three arms forward after this subtraction would be redundant work.
+**Accepted-cold is the working assumption.** These rows clear both job bars, so guest sccache and a prebuilt image are off the critical path. The 3m 58s reading is only a **lower bound**: `CARGO_HOME` was not wiped (private wipes `RUNNER_TEMP/cargo`), and amd64 BuildBuddy differs from the Aarch64 fleet in ISA, dependencies and registry cache. Twice that bound still clears the bar; this is not a claim that arm64 will build in four minutes.
 
-The 3m 58s figure is a **lower bound, twice over**, not an estimate: (1) `CARGO_HOME` was not wiped, and private wipes `RUNNER_TEMP/cargo`; (2) amd64 BuildBuddy is not the Aarch64 fleet host — different ISA, different dependency set, different registry cache. The number can only be wrong *up*. Twice the lower bound still clears the bar, which is why accepted-cold is the working assumption rather than a guess that 4m will hold on arm64.
-
-**What would make it a conclusion rather than a working assumption:** the same command on an **Aarch64 fleet host with `CARGO_HOME` wiped**. Unobtainable in this session: `ctrl-build --remote` is linux/amd64; a session-local release compile is forbidden (sessions.slice OOM, swap off); the Aarch64 fleet slots *are* the CI runners and are not a disposable probe; Mt. Collins guest exec is still `HostShellAndBootImageAccessRefused`. That measurement is the **trigger** that could reopen the cache question as a gate. Until it lands, accepted-cold stands.
+**Trigger to revisit:** the same command on an **Aarch64 fleet host with `CARGO_HOME` wiped**, measuring whole-job time. This session cannot obtain it: `ctrl-build --remote` is linux/amd64; local release builds risk sessions.slice OOM with swap off; live fleet CI slots are not disposable probes; Mt. Collins exec remains `HostShellAndBootImageAccessRefused`. Until that reading, accepted-cold stands.
 
 **Sequence (shared capability first, then workflows):**
 
@@ -125,7 +123,7 @@ The 3m 58s figure is a **lower bound, twice over**, not an estimate: (1) `CARGO_
 
 Capacity: one Mt. Collins canary is not two 90-minute public lanes plus private. Public cutover needs either serialized lanes, a second canary host, or an honest declared drop of parallelism.
 
-**Coldness is a property of the cache's location, not the VM's lifetime.** That distinction still matters as an *optimization* (a reachable sccache still saves a few minutes). It is not a cutover gate while accepted-cold clears the job bar.
+Cache coldness follows its location, not VM lifetime. Reachable sccache remains an optimization, not a gate while accepted-cold clears the whole-job bar.
 
 The three arms, after the subtraction:
 
@@ -137,7 +135,7 @@ The three arms, after the subtraction:
 
 Named lower-bound dispatch (not a guest): `ctrl-build --remote -- bash -lc '… unset RUSTC_WRAPPER; CARGO_TARGET_DIR=$(mktemp -d); /opt/cargo/bin/cargo build --release -p v1-compiler --bin gunbc'`. Producer: BuildBuddy invocation [1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84](https://app.buildbuddy.io/invocation/1f689c7c-cb5f-4de9-b25e-c7d45a7f8a84). Cargo `Finished release … in 3m 58s`; `elapsed_sec=238`; `rustc_wrapper_at_start=UNSET`.
 
-**Complementary, not subsuming.** #46 stops the 3341 s job (run 34462653642) racing the cancel class of run 34523487941. MicroVMs stop the deleter class. Together they do not wash: even 1053 s after #46 is still a crushing win over 3341 s.
+#46 cuts roster cost; microVMs cure shared-filesystem eviction. The combined 1053 s sensitivity case still beats the pre-#46 3341 s job. Neither retires the other's work.
 
 ## 4. What is lost, and the staged carve-out
 
@@ -159,7 +157,7 @@ X may remain as an offline oracle (srv slots keep running **until** the switch).
 
 ## Adjacent lanes — what this cure does and does not retire
 
-Three lanes, three questions. An earlier revision of this plan routed the filesystem-instrument dissolution to warm-badger-62. That was wrong.
+An earlier revision incorrectly assigned probe dissolution to warm-badger-62; ownership is:
 
 | Lane | Question | Relation to this plan |
 |---|---|---|
@@ -191,4 +189,4 @@ Three lanes, three questions. An earlier revision of this plan routed the filesy
 
 ## What this document deliberately does not do
 
-It does not change `selected_ci_runner_target`, private `witnesses_job()` labels, fleet-converge, or recovered init. It does not exec jailer. It does not land guest egress. It does not archive still-bear-335 or private #46. Those are the cutover, which this task forbids.
+This plan changes no `selected_ci_runner_target`, private `witnesses_job()` labels, fleet-converge or recovered init; executes no jailer; lands no guest egress; and closes neither still-bear-335 nor private #46. Cutover is outside this task.

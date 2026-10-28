@@ -1,4 +1,4 @@
-module gunbc.provisioning.altra_autoinstall_seed
+module gunbc.provisioning.ubuntu_autoinstall_seed
 
 // THE SEED AN ALTRA BOARD NET-BOOTS INTO (physical-machine boot program, cut 6, step 2: "OS
 // installation through autoinstall from a pinned origin"). extdeps.os.ubuntu_autoinstall owns what
@@ -11,24 +11,24 @@ module gunbc.provisioning.altra_autoinstall_seed
 //
 // WHO CONSUMES THIS, declared per DESIGN 3c rather than left to be inferred.
 //   * CONSUMED IN THIS CHANGE: every refusal arm, both digest functions, the render, the audit, the selection
-//     rule and the projection edge are consumed by test.claim.altra_autoinstall_seed_witness. Nothing here is
+//     rule and the projection edge are consumed by test.claim.ubuntu_autoinstall_seed_witness. Nothing here is
 //     exercised only by its own module. The roster and its verdicts are OBTAINED, NEVER QUOTED here (DESIGN
 //     section 6: name the instrument, never transcribe its output): the count of test fns is derived from the
 //     witness file by gunbc.frontend_eval.control's test_fns, which reads the module-scope `test fn ` lines the
 //     parser itself requires, and each one's verdict comes from the claim run, which reports one PASS or FAIL
 //     line per test fn — `gunbc run --source-root dag --source-root src/v2 --entry
-//     dag/test/claim/altra_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
+//     dag/test/claim/ubuntu_autoinstall_seed_witness.dag --claim-run --function <the fn>`. A number written into
 //     this comment would be a second, rotting copy of a fact both of those produce on demand; if the two ever
 //     disagree, the module has grown a rule nothing exercises and the run says so, not this sentence.
-//   * CONSUMED ON MAIN: test.claim.altra_autoinstall_seed_witness, as above. That is the only EXECUTING consumer
+//   * CONSUMED ON MAIN: test.claim.ubuntu_autoinstall_seed_witness, as above. That is the only EXECUTING consumer
 //     of anything here while this change stands on its own, and this header says so rather than borrowing a
 //     sibling's unmerged branch for standing.
 //   * DECLARED FRONTIER, NAMED, WITH ITS TRIGGER — NOT CITED AS JUSTIFICATION: the binding record is imported
 //     (not yet executed) by the S5 sibling, gunbc.provisioning.provisioning_arm, whose branch imports
-//     AltraAutoinstallSeedBinding. Naming that import as this module's consumer would be circular — S5 resolves
+//     UbuntuAutoinstallSeedBinding. Naming that import as this module's consumer would be circular — S5 resolves
 //     only because S4 exists, so S5's branch cannot be what justifies S4 (review: swift-wren-451; the PR's
 //     earlier wording did exactly that and is withdrawn here). What is true and checkable on main is the
-//     frontier itself: cut 6 step 3 must mint the install-attempt record through bind_altra_autoinstall_seed and
+//     frontier itself: cut 6 step 3 must mint the install-attempt record through bind_ubuntu_autoinstall_seed and
 //     read binding_digest — if step 3 lands and never calls this module, these declarations are scaffold and must
 //     be deleted, which is the same rule that already governs project_autoinstall_identity and
 //     project_storage_policy: consumed by cut 6 step 4 (a seed becomes bytes an installer can fetch via
@@ -82,6 +82,7 @@ module gunbc.provisioning.altra_autoinstall_seed
 // — so a strategy name cannot quietly change what the seed promises.
 
 import std.types { Bool, Int, List, NonEmptyStr, String, list_length }
+import std.algebra { list_append }
 import std.os.types { NobleNumbat2404Lts, UbuntuDistribution }
 import std.measure { ByteSize, CharacterCount, byte_size_count, character_count, measure_le }
 import std.decl_ref { decl_ref }
@@ -117,12 +118,17 @@ import extdeps.uri { Uri, Https }
 import extdeps.os.ubuntu_autoinstall {
   AutoinstallDeliveryMethod,
   AutoinstallIdentity,
+  WithIdentity,
+  UserDataOnly,
+  CloudInitUserEntry,
   AutoinstallStoragePolicy,
   NoCloudLocal,
   NoCloudNet,
   StoragePolicyDirectLayout,
   UbuntuAutoinstallPayload,
   AutoinstallSshServer,
+  // The H11SSL key-only user's shell is stated here, so the closed type's arm is named here.
+  BashLoginShell,
 }
 // THE RENDERER IS THE ONE THE FLEET ALREADY BOOTS FROM. (review: merry-fox-82, HOLD section 1) This module
 // does not emit YAML and does not imitate the cloud-config writer: it builds the upstream payload record and
@@ -142,7 +148,7 @@ import extdeps.storage.types {
   storage_device_persistence,
   storage_device_serial,
 }
-import extdeps.toolchain.types { Aarch64, Architecture }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcFirmwareFamily, OpenBmc, SupermicroAten }
 import extdeps.provisioning.network_boot {
   ClientNetworkBootMode,
@@ -206,10 +212,10 @@ data debconf_preseed_authority: ExternalAuthority = ExternalAuthority {
 // that two units share is evidence nobody wrote a per-host rule. A future requirement that really does
 // need per-unit configuration (a unit-local mirror, say) adds a constructor to a closed axis below plus
 // the evidence that justifies it; it does not add a String field keyed on a label.
-type AltraAutoinstallTargetStanding sole_constructor {
+type ProvisioningTargetStanding sole_constructor {
   architecture: Architecture
   bmc_firmware: BmcFirmwareFamily
-  role: AltraAutoinstallTargetRole
+  role: ProvisioningTargetRole
   kernel_flavour: UbuntuKernelFlavour
 }
 
@@ -221,14 +227,14 @@ type AltraAutoinstallTargetStanding sole_constructor {
 // a host string here would be a field with no consumer whose only effect would be to make two refusals of
 // the same kind digest differently. A future requirement (serving hosts allowed to seed themselves) adds a
 // constructor here and a row in the door below; it does not add a host payload to a refusal.
-type AltraAutoinstallTargetRole = AltraProvisioningTarget | RunnerBacked
+type ProvisioningTargetRole = ProvisioningTarget | RunnerBacked
 
 // RENDERED OR REFUSED, WITH REFUSAL AS A VALUE. Refusal is an arm, not an error, because the program's
 // rule is "no route from absent evidence to a green claim": a seed that was never admitted is not an
 // exception to swallow, it is the record of why nothing was installed, and it has to survive to the
 // report.
-type AltraAutoinstallTarget
-  = TargetAdmitted { standing: AltraAutoinstallTargetStanding }
+type ProvisioningTargetAdmission
+  = TargetAdmitted { standing: ProvisioningTargetStanding }
   | TargetRefused { reason: TargetRefusalCause }
 
 // THE CAUSES NAME WHAT THE PROBE DID NOT OBSERVE, NOT WHAT WENT WRONG IN THIS MODULE. Each arm is a
@@ -236,9 +242,16 @@ type AltraAutoinstallTarget
 // standing failed to be present.
 type TargetRefusalCause
   = UnitKeyUnbound { cause: UnitKeyRefusalCause }
+  // AN ARCHITECTURE WITH NO SEED ROW AT ALL: nobody has said what this platform's seed is built from, so a
+  // seed for it would be a document whose every claim is unsourced.
   | PlatformUnsupported { architecture: Architecture }
+  // AN ARCHITECTURE WITH A ROW BUT NO ADMITTED PACKAGE ROWS BENEATH IT. Distinguished from
+  // PlatformUnsupported because the operator reads a different instruction from each: "no row" means the
+  // platform was never brought into scope, "a row whose packages all refuse" means somebody tried, and the
+  // row's own package citations are what to go fix.
+  | ArchitectureHasNoPackageRows { architecture: Architecture }
   | BmcFirmwareFamilyUnobserved { discriminator: NonEmptyStr }
-  | NotAnAltraProvisioningTarget { role: AltraAutoinstallTargetRole }
+  | NotAnProvisioningTarget { role: ProvisioningTargetRole }
 
 // THE ONLY DOOR INTO A TARGET STANDING, AND WHY EVERY ARGUMENT IS A STANDING RATHER THAN A FACT. A
 // caller holding an unbound UnitKey or an unobserved BMC family receives a refused arm out of the
@@ -248,34 +261,46 @@ type TargetRefusalCause
 // whose console has been observed directly adds a standing to
 // gunbc.machine_intake.bmc_first_contact_standing and a row in the match below — it does not add a
 // "guess the family" default.
-fn admit_altra_autoinstall_target(
+fn admit_provisioning_target(
   unit_key: UnitKeyStanding,
   architecture: Architecture,
   bmc_firmware: BmcFirmwareFamilyStanding,
-  role: AltraAutoinstallTargetRole,
+  role: ProvisioningTargetRole,
   kernel_flavour: UbuntuKernelFlavour,
-) -> AltraAutoinstallTarget {
+) -> ProvisioningTargetAdmission {
   match unit_key {
     UnitKeyBound { key: _ } =>
       match bmc_firmware {
         FamilyObserved { family: observed } =>
-          match architecture {
-            Aarch64 =>
-              match role {
-                AltraProvisioningTarget =>
-                  TargetAdmitted {
-                    standing: AltraAutoinstallTargetStanding {
-                      architecture: architecture,
-                      bmc_firmware: observed,
-                      role: role,
-                      kernel_flavour: kernel_flavour,
-                    },
-                  }
-                RunnerBacked => TargetRefused {
-                  reason: NotAnAltraProvisioningTarget { role: role },
+          // THE ARCHITECTURE IS ADMITTED BY ITS ROW, NEVER BY A BRANCH THAT NAMES A BOARD OR A FAMILY.
+          // A platform is provisionable exactly when it carries a seed architecture row and that row
+          // admits at least one package row: an architecture nobody has admitted a single verified
+          // package for is not a supported platform, it is an aspiration with a name, and admitting it
+          // would let a seed be built whose every package claim is unverifiable. Admitting X86_64 is
+          // therefore the addition of a row, not the addition of an arm to this match.
+          match find_seed_architecture_row(architecture: architecture) {
+            Absent => TargetRefused { reason: PlatformUnsupported { architecture: architecture } }
+            Present { value: row } =>
+              match architecture_row_admissible(row: row, architecture: architecture) {
+                False => TargetRefused {
+                  reason: ArchitectureHasNoPackageRows { architecture: architecture },
                 }
+                True =>
+                  match role {
+                    ProvisioningTarget =>
+                      TargetAdmitted {
+                        standing: ProvisioningTargetStanding {
+                          architecture: architecture,
+                          bmc_firmware: observed,
+                          role: role,
+                          kernel_flavour: kernel_flavour,
+                        },
+                      }
+                    RunnerBacked => TargetRefused {
+                      reason: NotAnProvisioningTarget { role: role },
+                    }
+                  }
               }
-            _ => TargetRefused { reason: PlatformUnsupported { architecture: architecture } }
           }
         FamilyUnobserved { discriminator: d } => TargetRefused {
           reason: BmcFirmwareFamilyUnobserved { discriminator: d },
@@ -345,11 +370,15 @@ fn client_network_boot_mode_token(mode: ClientNetworkBootMode) -> NonEmptyStr {
 // WHY THIS IS CLOSED WHEN PackageIntent Is Open. The closed sets are the members WE guarantee; anything else
 // enters through PackageIntent, where the caller names it and carries its debconf burden. A member added here
 // is a claim this module defends with a citation.
-type AltraInstallDriver =
+type SeedInstallDriver =
     NvmeCliDriver
   | IpmiToolDriver
   | DmidecodeDriver
   | LinuxFirmwareDriver
+  // THE x86 CPU-FIRMWARE PACKAGE, one row per architecture that needs it. amd64-microcode carries the
+  // processor microcode bundles x86 boards apply at boot; the arm64 fleet has no such package and no arm
+  // profile names this variant. Admitted as a row of the driver table, never as an if-x86 branch.
+  | Amd64MicrocodeDriver
 
 // THE PACKAGE NAME IS DERIVED FROM ONE ROW, AND THE ROW CARRIES ITS WARRANT. This function is the only place
 // any of these spellings exists, so a seed cannot name a package its driver set does not contain. The
@@ -360,12 +389,13 @@ type AltraInstallDriver =
 // arm64. linux-firmware is here because the r8169 driver requests firmware at probe time (drivers/net/
 // ethernet/realtek/r8169_main.c at v6.8 calls request_firmware), so a board with the 8125-class NIC the S2
 // probe reports cannot bring its own link up without it — an install-time need, not a cosmetic one.
-fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
+fn install_driver_package(driver: SeedInstallDriver) -> NonEmptyStr {
   match driver {
     NvmeCliDriver => "nvme-cli"
     IpmiToolDriver => "ipmitool"
     DmidecodeDriver => "dmidecode"
     LinuxFirmwareDriver => "linux-firmware"
+    Amd64MicrocodeDriver => "amd64-microcode"
   }
 }
 
@@ -387,13 +417,142 @@ fn altra_install_driver_package(driver: AltraInstallDriver) -> NonEmptyStr {
 // Unclassified into a pass would have fixed the witness by making it lie. A future checked-silent package adds a
 // row here with its own version and standing; a package nobody has checked still enters through
 // UnclassifiedPackage and is still refused.
-fn altra_required_late_package_rows() -> List<PackageIntent> {
+fn board_required_late_package_rows() -> List<PackageIntent> {
   [
     PackageVerifiedSilent { silence: nvme_cli_silence_receipt },
     PackageVerifiedSilent { silence: ipmitool_silence_receipt },
     PackageVerifiedSilent { silence: dmidecode_silence_receipt },
     PackageVerifiedSilent { silence: rasdaemon_silence_receipt },
   ]
+}
+
+// THE SAME FOUR, AT THE amd64 BUILDS, FOR THE x86 BOARD. Each of these receipts names the .deb it was read
+// from in the amd64 pool at archive.ubuntu.com (not the arm64 ports mirror — the two are separately built and
+// separately versioned), at the noble version recorded in the receipt, and each was verified the same way:
+// dpkg-deb over the downloaded artifact, no `config` member in the control tarball, no DEBIAN/templates in
+// the data tarball, no db_* call in the maintainer scripts it does ship. None of the five prompts; none is
+// recorded as a prompter.
+fn board_required_amd64_late_package_rows() -> List<PackageIntent> {
+  [
+    PackageVerifiedSilent { silence: nvme_cli_amd64_silence_receipt },
+    PackageVerifiedSilent { silence: ipmitool_amd64_silence_receipt },
+    PackageVerifiedSilent { silence: dmidecode_amd64_silence_receipt },
+    PackageVerifiedSilent { silence: rasdaemon_amd64_silence_receipt },
+  ]
+}
+
+// ---------------------------------------------------------------------------
+// 3e. Board seed profiles: which drivers a board's seed carries, as ONE ROW PER BOARD.
+// ---------------------------------------------------------------------------
+
+// THE BOARDS THAT HAVE A SEED PROFILE. A closed sum, not a string: "which install drivers, which loadable
+// modules, which late drivers does this board's seed carry" used to be spelled at each call site, which meant
+// a new board was a new copy-paste of five argument lists that nothing checked against the hardware. Adding a
+// board is a constructor here plus a row below; the row is where its citations live.
+type ProvisioningBoard =
+    AltraBoard
+  // Supermicro H11SSL-family (the X11SSM/H11SSi class with the AST2500 BMC); the unit this phase's board is
+  // named for. Its profile is the row below, not an if-x86 branch.
+  | SupermicroH11SslBoard
+
+// WHAT A BOARD'S SEED CARRIES, per axis, exactly as build_ubuntu_autoinstall_seed receives the axes. This is
+// not a new authority — it is the five lists the caller already had to hand over, lifted from call sites into
+// rows so a board's driver set can be read, cited, and diffed against the hardware without reading Rust.
+type BoardSeedProfile sole_constructor {
+  install_drivers: List<SeedInstallDriver>
+  loadable_modules: List<LoadableModuleClass>
+  late_drivers: List<LateDriver>
+  late_packages: List<PackageIntent>
+}
+
+// THE VIRTUAL-MEDIA USB SET, APPLIED TO THE PROFILE BY THE STRATEGY THAT NEEDS IT. A BMC virtual-media
+// install hands the board a USB mass-storage device, so the installer needs usb-storage, uas and sd_mod
+// loaded before it can read the media it installs from. This is a rule over the delivery strategy — the
+// SAME rule fires for any board delivered that way — not a board-name branch, which is why it is a function
+// of the strategy and not a field of the row.
+fn virtual_media_usb_modules() -> List<LoadableModuleClass> {
+  [
+    UsbStorageModule,
+    UasModule,
+    SdModuleModule,
+  ]
+}
+
+fn profile_with_delivery_modules(
+  profile: BoardSeedProfile,
+  delivery: SeedDeliveryStrategy,
+) -> BoardSeedProfile {
+  match delivery {
+    PxeStrategy { boot_mode: _ } => profile
+    VirtualMediaStrategy { media_stem: _ } =>
+      BoardSeedProfile {
+        install_drivers: profile.install_drivers,
+        loadable_modules: list_append(left: profile.loadable_modules, right: virtual_media_usb_modules()),
+        late_drivers: profile.late_drivers,
+        late_packages: profile.late_packages,
+      }
+  }
+}
+
+// THE PROFILE ROWS. Altra's row is TODAY'S CHOICE VERBATIM — the four lists exactly as the ARM callers pass
+// them, so the rename moves nothing; the digest of an Altra seed is the control that proves it. The H11SSL
+// row is new, and every module in it carries its kconfig citation beside it (symbol + file, the same two
+// fields the existing rows spell), verified at v6.8:
+//   igb            CONFIG_IGB, tristate, drivers/net/ethernet/intel/Kconfig; built as igb/igb.o by
+//                  drivers/net/ethernet/intel/igb/Makefile; the i210's 0x1533 device id is claimed in
+//                  drivers/net/ethernet/intel/igb/igb_main.c's pci_device_id table.
+//   ahci           CONFIG_SATA_AHCI, tristate, drivers/ata/Kconfig; built as ahci.o by
+//                  drivers/ata/Makefile (obj-$(CONFIG_SATA_AHCI) += ahci.o libahci.o). Distinct from
+//                  ahci_platform (SATA_AHCI_PLATFORM), which is the Altra row — different symbol, different
+//                  silicon, two rows on purpose.
+//   nvme           CONFIG_BLK_DEV_NVME, drivers/nvme/host/Kconfig, nvme.o — the boot disk; kept beside the
+//                  arm row because the board boots from NVMe too.
+//   usb set        see virtual_media_usb_modules above; arrives only with a virtual-media strategy.
+//   ast            CONFIG_DRM_AST, drivers/gpu/drm/ast/Kconfig, ast.o — the AST2500 BMC's video, so the
+//                  BMC console shows the installer instead of a black panel.
+//   ipmi_si        CONFIG_IPMI_SI, drivers/char/ipmi/Kconfig, ipmi_si.o — the System Interface driver for
+//                  the AST2500's BMC.
+//   ipmi_watchdog  CONFIG_IPMI_WATCHDOG, drivers/char/ipmi/Kconfig, ipmi_watchdog.o — the BMC watchdog, so
+//                  a board that hangs mid-install is reset rather than kept company by nobody.
+fn board_seed_profile(board: ProvisioningBoard, delivery: SeedDeliveryStrategy) -> BoardSeedProfile {
+  let row = match board {
+    AltraBoard =>
+      BoardSeedProfile {
+        install_drivers: [
+          NvmeCliDriver,
+          LinuxFirmwareDriver,
+        ],
+        loadable_modules: [
+          NvmeBlockModule,
+          AhciPlatformModule,
+        ],
+        late_drivers: [
+          KipmiSiDriver,
+          IpmiWatchdogDriver,
+        ],
+        late_packages: board_required_late_package_rows(),
+      }
+    SupermicroH11SslBoard =>
+      BoardSeedProfile {
+        install_drivers: [
+          NvmeCliDriver,
+          LinuxFirmwareDriver,
+          Amd64MicrocodeDriver,
+        ],
+        loadable_modules: [
+          NvmeBlockModule,
+          AhciModule,
+          IgbNicModule,
+        ],
+        late_drivers: [
+          Ast2500DrmDriver,
+          KipmiSiDriver,
+          IpmiWatchdogDriver,
+        ],
+        late_packages: board_required_amd64_late_package_rows(),
+      }
+  }
+  profile_with_delivery_modules(profile: row, delivery: delivery)
 }
 
 // ONE RECEIPT PER PACKAGE, EACH CARRYING THE BUILD ITS CLAIM IS ABOUT. Silence is a property of a BUILD, not of a
@@ -403,24 +562,28 @@ fn altra_required_late_package_rows() -> List<PackageIntent> {
 // one of them is only transcribed, or is found to prompt, it can change its standing without touching the others.
 data nvme_cli_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "nvme-cli" as NonEmptyStr,
+  architecture: Aarch64,
   observed_version: "2.8-1build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: nvme_cli_deb_authority },
 }
 
 data ipmitool_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "ipmitool" as NonEmptyStr,
+  architecture: Aarch64,
   observed_version: "1.8.19-7build2" as NonEmptyStr,
   standing: CitedToAuthority { authority: ipmitool_deb_authority },
 }
 
 data dmidecode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "dmidecode" as NonEmptyStr,
+  architecture: Aarch64,
   observed_version: "3.5-3build1" as NonEmptyStr,
   standing: CitedToAuthority { authority: dmidecode_deb_authority },
 }
 
 data rasdaemon_silence_receipt: PackageSilenceReceipt = SilentReceipt {
   package: "rasdaemon" as NonEmptyStr,
+  architecture: Aarch64,
   observed_version: "0.8.0-2" as NonEmptyStr,
   standing: CitedToAuthority { authority: rasdaemon_deb_authority },
 }
@@ -458,6 +621,234 @@ data rasdaemon_deb_authority: ExternalAuthority = ExternalAuthority {
   }
 }
 
+// THE SAME FOUR QUESTIONS, ASKED OF THE AMD64 ARCHIVE, ANSWERED SEPARATELY. Silence is a property of a build,
+// and an amd64 build is a different build: it has its own control tarball (which is where a config script
+// would live) and its own data tarball (which is where debconf/templates would live). These five rows were
+// established the same way the arm64 four were — the named .deb fetched from the named path in the amd64
+// archive at archive.ubuntu.com/ubuntu/pool, `debian-binary`/`control.tar.zst`/`data.tar.zst` extracted, the
+// control tarball read for a `config` member (none in any of the five) and the data tarball read for any
+// `DEBIAN/templates` or `db_` call in a maintainer script (none in any of the five) — and NOT imported from
+// the arm64 rows above. Two archives, two index files, two release cadences: a silent arm64 build says
+// nothing about an amd64 one, so no row here is derived from its counterpart, and the two sets are allowed
+// to diverge when one side grows a config script. amd64-microcode is the fifth because it is a row only the
+// x86 board can use: it is the CPU's own microcode blob, so it has no arm64 counterpart to be paired with.
+data nvme_cli_amd64_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "archive.ubuntu.com/ubuntu/pool/main/n/nvme-cli/nvme-cli_2.8-1build2_amd64.deb"
+  }
+}
+
+data ipmitool_amd64_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "archive.ubuntu.com/ubuntu/pool/universe/i/ipmitool/ipmitool_1.8.19-7build2_amd64.deb"
+  }
+}
+
+data dmidecode_amd64_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "archive.ubuntu.com/ubuntu/pool/main/d/dmidecode/dmidecode_3.5-3build1_amd64.deb"
+  }
+}
+
+data rasdaemon_amd64_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "archive.ubuntu.com/ubuntu/pool/universe/r/rasdaemon/rasdaemon_0.8.0-2_amd64.deb"
+  }
+}
+
+data amd64_microcode_deb_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "archive.ubuntu.com/ubuntu/pool/main/a/amd64-microcode/amd64-microcode_3.20231019.1ubuntu2_amd64.deb"
+  }
+}
+
+// THE AMD64 SILENCE ROWS, ONE PER PACKAGE, each naming the architecture it was established FOR. This is a
+// field of the receipt rather than a property of the authority the receipt cites (the locator string happens to
+// end in `_amd64.deb` today, and would still end in it after the artifact was moved to a mirror) because the
+// admission gate below reads the ARCHITECTURE FIELD: a row silently re-pointed at another architecture's
+// artifact stops admitting, where a locator-only design would keep admitting and never notice.
+data nvme_cli_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "nvme-cli" as NonEmptyStr,
+  architecture: X86_64,
+  observed_version: "2.8-1build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: nvme_cli_amd64_deb_authority },
+}
+
+data ipmitool_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "ipmitool" as NonEmptyStr,
+  architecture: X86_64,
+  observed_version: "1.8.19-7build2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: ipmitool_amd64_deb_authority },
+}
+
+data dmidecode_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "dmidecode" as NonEmptyStr,
+  architecture: X86_64,
+  observed_version: "3.5-3build1" as NonEmptyStr,
+  standing: CitedToAuthority { authority: dmidecode_amd64_deb_authority },
+}
+
+data rasdaemon_amd64_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "rasdaemon" as NonEmptyStr,
+  architecture: X86_64,
+  observed_version: "0.8.0-2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: rasdaemon_amd64_deb_authority },
+}
+
+data amd64_microcode_silence_receipt: PackageSilenceReceipt = SilentReceipt {
+  package: "amd64-microcode" as NonEmptyStr,
+  architecture: X86_64,
+  observed_version: "3.20231019.1ubuntu2" as NonEmptyStr,
+  standing: CitedToAuthority { authority: amd64_microcode_deb_authority },
+}
+
+// ---------------------------------------------------------------------------
+// 4b. ARCHITECTURE ROWS: which architecture a silence was established for, and what a target may install.
+// ---------------------------------------------------------------------------
+
+// WHICH ARCHITECTURE A SILENCE WAS ESTABLISHED FOR, and which seed may therefore use it. This is a row-level
+// fact and not a global one: the arm64 archive and the amd64 archive are different trees with different builds
+// of the same source, and the same name can be silent on one and prompt on the other. A row and a receipt carry
+// it as the ISA it was built for, in extdeps.toolchain.types Architecture: the same vocabulary the target is
+// admitted in, so matching a row to a target is equality on one type, with no second architecture enum and no
+// translation between them (review 87055, DESIGN section 3).
+
+// ONE ADMITTED PACKAGE ROW. `architecture` is the axis the seed's target is matched against; `receipt` carries
+// everything else the silence claim needs (name, version, standing, citation). Rows are the only way a package
+// enters a seed: an architecture with no rows is not a platform this module can build a seed for, and the
+// admit door refuses it rather than producing a seed whose every package claim is unverifiable.
+type SeedPackageRow sole_constructor {
+  architecture: Architecture
+  receipt: PackageSilenceReceipt
+}
+
+// THE ADMITTED SET. Two architectures, each carrying the packages verified silent for IT, including
+// architecture-exclusive rows: the arm64 set has no amd64-microcode because no arm64 build carries Intel/AMD
+// microcode, and the amd64 set has no counterpart to a hypothetical arm64-only package by the same rule. A
+// third architecture (say riscv64) becomes provisionable by adding rows here — the door's rule and the audit's
+// gate change for nobody.
+fn seed_package_rows() -> List<SeedPackageRow> {
+  [
+    // ARM64 (the ASRock Rack ALTRAD8UD-2T32F fleet).
+    SeedPackageRow {
+      architecture: Aarch64,
+      receipt: nvme_cli_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: Aarch64,
+      receipt: ipmitool_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: Aarch64,
+      receipt: dmidecode_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: Aarch64,
+      receipt: rasdaemon_silence_receipt,
+    },
+    // AMD64 (the Supermicro H11SSL family). The first four are the same diagnostic and BMC tooling the arm64
+    // board installs, re-verified against this architecture's own builds; the fifth is x86's CPU firmware.
+    SeedPackageRow {
+      architecture: X86_64,
+      receipt: nvme_cli_amd64_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: X86_64,
+      receipt: ipmitool_amd64_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: X86_64,
+      receipt: dmidecode_amd64_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: X86_64,
+      receipt: rasdaemon_amd64_silence_receipt,
+    },
+    SeedPackageRow {
+      architecture: X86_64,
+      receipt: amd64_microcode_silence_receipt,
+    },
+  ]
+}
+
+// THE ADMIT DOOR'S ROW LOOKUP. Absent means no architecture row was found, which the door reads as a refusal —
+// not as a default, and not as a branch that names a board or a family.
+fn find_seed_architecture_row(architecture: Architecture) -> Optional<SeedPackageRow> {
+  seed_package_rows().filter(row => row.architecture == architecture).first()
+}
+
+// THE DOOR'S REAL PREDICATE: not "does the architecture have a row" but "does it have a row THAT CAN CARRY A
+// CLAIM INTO A SEED". A row set consisting only of receipts the audit would refuse is an architecture admitted
+// in name only, so the door applies the same test the audit will, on the same rows. Admitting an architecture
+// with no rows at all is therefore impossible, and it is impossible because of a fact about the rows rather
+// than because a match arm says so.
+fn architecture_row_admissible(
+  row: SeedPackageRow,
+  architecture: Architecture,
+) -> Bool {
+  match blocking_refusal(
+    intent: PackageVerifiedSilent { silence: row.receipt },
+    architecture: architecture,
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE AUDIT'S ARCHITECTURE GATE, as a function the door and the audit share. The name is checked against the
+// ADMITTED ROWS for the target's architecture — the receipt's own architecture field is authoritative for what
+// was verified, and this is where it is required to agree with the target. A package with no row for the
+// target's architecture is refused even when the identical package name is admitted for another one: arm64's
+// verified nvme-cli says nothing about the amd64 build, and an amd64 seed asking for an arm64-only row is the
+// mistake this refuses — a package the target's own archive never promised was silent.
+fn architecture_admits_package(
+  architecture: Architecture,
+  package: NonEmptyStr,
+) -> Bool {
+  seed_package_rows().filter(row =>
+    row.architecture == architecture && silenced_package(receipt: row.receipt) == package
+  ).count() > 0
+}
+
+// THE ARCHITECTURE A RECEIPT ITSELF WAS READ OFF. The type carries it as a field; reading it back is what lets
+// a seed be audited against the evidence rather than against a name the caller repeated.
+fn silenced_receipt_architecture(receipt: PackageSilenceReceipt) -> Architecture {
+  match receipt {
+    SilentReceipt { package: _, architecture: arch, observed_version: _, standing: _ } => arch
+  }
+}
+
+// IS THIS VERY RECEIPT ADMITTED FOR THIS ARCHITECTURE? Two conditions, both required, and the first is the one
+// that cannot be faked by a caller who has read the row table but not the artifact:
+//   1. the architecture the RECEIPT claims to have been read off must BE the seed's architecture — an arm64
+//      receipt carried into an amd64 seed refuses whatever its package name is, because the .deb it was read
+//      from is a different build;
+//   2. a row must actually be shipped for that (architecture, package) pair, so a receipt with a plausible
+//      architecture field that nobody admitted still refuses.
+fn silence_receipt_is_admitted_for(
+  receipt: PackageSilenceReceipt,
+  architecture: Architecture,
+) -> Bool {
+  silenced_receipt_architecture(receipt: receipt) == architecture
+    && architecture_admits_package(
+      architecture: architecture,
+      package: silenced_package(receipt: receipt),
+    )
+}
+
+// THE ADMITTED PACKAGE ROWS FOR A TARGET, as intents. A witness or a caller builds a seed's package list from
+// here rather than by hand-pairing a name with a receipt; the pairing cannot go wrong because there is no
+// place left to put it wrong.
+fn package_rows_for_architecture(architecture: Architecture) -> List<PackageIntent> {
+  seed_package_rows().filter(row => row.architecture == architecture)
+    .map(row => PackageVerifiedSilent { silence: row.receipt })
+}
+
 // THE KERNEL-MODULE AXIS, KEPT APART BECAUSE IT IS NOT CHECKABLE AGAINST APT. What the board must have loaded
 // inside the installer environment is not something the installer can apt-install: the installer's kernel is
 // already running, so a `.ko` is a claim about which kernel package carries it, verified against the source
@@ -474,19 +865,25 @@ data rasdaemon_deb_authority: ExternalAuthority = ExternalAuthority {
 // exist here because a BMC virtual-media install hands the board a USB mass-storage device — a board missing
 // those three cannot read the media it is installing from. That is a consequence of the delivery strategy
 // arriving as data, not a machine-name branch: the same rule would fire for any unit delivered that way.
-type AltraLoadableModule =
+// AhciModule and IgbNicModule are the H11SSL family's own two: the chipset's SATA controller and its i210
+// management NIC, each admitted as a row (name + symbol + file) rather than as a branch on a board.
+type LoadableModuleClass =
     NvmeBlockModule
   | AhciPlatformModule
+  | AhciModule
+  | IgbNicModule
   | R8169NicModule
   | RealtekPhyModule
   | UsbStorageModule
   | UasModule
   | SdModuleModule
 
-fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_name(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "nvme"
     AhciPlatformModule => "ahci_platform"
+    AhciModule => "ahci"
+    IgbNicModule => "igb"
     R8169NicModule => "r8169"
     RealtekPhyModule => "realtek"
     UsbStorageModule => "usb-storage"
@@ -500,10 +897,21 @@ fn altra_loadable_module(driver: AltraLoadableModule) -> NonEmptyStr {
 // citation is part of what the seed CLAIMS (this module asserts that this symbol, in this file, was read as
 // `tristate`), so it belongs in the digest — and a provenance the digest cannot see is a provenance that can be
 // changed without any witness noticing.
-fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_kconfig_symbol(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "BLK_DEV_NVME"
     AhciPlatformModule => "SATA_AHCI_PLATFORM"
+    // CONFIG_SATA_AHCI is the H11SSL chipset's own AHCI host controller driver (v6.8: a `tristate` stanza
+    // in drivers/ata/Kconfig, built by drivers/ata/Makefile's obj-$(CONFIG_SATA_AHCI) += ahci.o). It is a
+    // different symbol from SATA_AHCI_PLATFORM above, which is why it is its own row: two names, two
+    // stanzas, two failure modes.
+    AhciModule => "SATA_AHCI"
+    // CONFIG_IGB is the driver for the i210 gigabit NIC on the H11SSL's management path (v6.8: a
+    // `tristate` stanza in drivers/net/ethernet/intel/Kconfig, built by drivers/net/ethernet/intel/Makefile's
+    // obj-$(CONFIG_IGB) += igb/igb.o). The i210's device id 0x1533 is claimed in the igb driver's own
+    // pci_device_id table (drivers/net/ethernet/intel/igb/igb_main.c), which is what ties THIS module to
+    // THIS board's silicon rather than merely to a plausible name.
+    IgbNicModule => "IGB"
     R8169NicModule => "R8169"
     RealtekPhyModule => "REALTEK_PHY"
     UsbStorageModule => "USB_STORAGE"
@@ -512,10 +920,12 @@ fn loadable_module_kconfig_symbol(driver: AltraLoadableModule) -> NonEmptyStr {
   }
 }
 
-fn loadable_module_kconfig_path(driver: AltraLoadableModule) -> NonEmptyStr {
+fn loadable_module_kconfig_path(driver: LoadableModuleClass) -> NonEmptyStr {
   match driver {
     NvmeBlockModule => "drivers/nvme/host/Kconfig"
     AhciPlatformModule => "drivers/ata/Kconfig"
+    AhciModule => "drivers/ata/Kconfig"
+    IgbNicModule => "drivers/net/ethernet/intel/Kconfig"
     R8169NicModule => "drivers/net/ethernet/realtek/Kconfig"
     RealtekPhyModule => "drivers/net/phy/Kconfig"
     UsbStorageModule => "drivers/usb/storage/Kconfig"
@@ -529,9 +939,9 @@ fn loadable_module_kconfig_path(driver: AltraLoadableModule) -> NonEmptyStr {
 // anyone sees this board at all, and the display path the BMC's video pipeline offers. Same tristate rule as
 // above: each row is a `tristate` stanza in the named file with the named Makefile object (v6.8,
 // drivers/char/ipmi/Kconfig + Makefile, drivers/gpu/drm/ast/Kconfig + Makefile).
-type AltraLateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
+type LateDriver = KipmiIpmbDriver | KipmiSiDriver | Ast2500DrmDriver | IpmiWatchdogDriver
 
-fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
+fn late_driver_module(driver: LateDriver) -> NonEmptyStr {
   match driver {
     KipmiIpmbDriver => "ipmi_ipmb"
     KipmiSiDriver => "ipmi_si"
@@ -540,7 +950,7 @@ fn altra_late_driver_module(driver: AltraLateDriver) -> NonEmptyStr {
   }
 }
 
-fn altra_late_driver_kconfig_symbol(driver: AltraLateDriver) -> NonEmptyStr {
+fn late_driver_kconfig_symbol(driver: LateDriver) -> NonEmptyStr {
   match driver {
     KipmiIpmbDriver => "IPMI_IPMB"
     KipmiSiDriver => "IPMI_SI"
@@ -671,6 +1081,7 @@ fn debconf_answer_for(
 // comes along for free and cannot be left behind.
 type PackageSilenceReceipt = SilentReceipt {
   package: NonEmptyStr
+  architecture: Architecture
   observed_version: NonEmptyStr
   standing: CitedFigureStanding
 }
@@ -678,7 +1089,7 @@ type PackageSilenceReceipt = SilentReceipt {
 // WHICH PACKAGE A SILENCE CLAIM IS ABOUT — read from the evidence, which is the only place it is written.
 fn silenced_package(receipt: PackageSilenceReceipt) -> NonEmptyStr {
   match receipt {
-    SilentReceipt { package: pkg, observed_version: _, standing: _ } => pkg
+    SilentReceipt { package: pkg, architecture: _, observed_version: _, standing: _ } => pkg
   }
 }
 
@@ -1079,7 +1490,7 @@ type ConsoleEntryUnlockReason = SerialConsoleGettyUnlocked | BmcSolConsoleUnlock
 // caller's `List<SshPublicKey>` into the fact "the board's owner authorised these keys". A check placed in a
 // helper that a caller could also skip turns only the callers who remembered to call it into that fact —
 // which is why the earlier revision's claim that keys "are validated through ssh_ed25519_key_identity" was
-// false: nothing on the route from build_altra_autoinstall_seed to the seed ever called it. Each key must
+// false: nothing on the route from build_ubuntu_autoinstall_seed to the seed ever called it. Each key must
 // satisfy BOTH facts before the list is credited as an authorisation, and each fact is refused as itself:
 //   - the declared algorithm must be Ed25519 — the fleet's declared key type, per keys.dag's Rsa posture row
 //     (ssh-rsa signatures deprecated by RFC 8332) — and
@@ -1255,7 +1666,7 @@ fn disk_selection_provenance(
   admitted: StorageDevice,
   observed: List<StorageDevice>,
 ) -> DiskSelectionProvenance admit_callers: [
-  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "select_target_disk")
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "select_target_disk")
 ] {
   DiskSelectionProvenance {
     selector: selector,
@@ -1603,6 +2014,20 @@ type SeedInteractiveCause
   // distinguishes WHY there is no entrypoint (say, an unlocked-but-unclaimed console) adds a NEW arm, not a
   // field here.
   | NoEntrypointAtAll
+  // A SILENCE RECEIPT THAT WAS NEVER ESTABLISHED FOR THIS ARCHITECTURE. Silence is a property of a BUILD, and
+  // the build is per architecture: a receipt read off the arm64 .deb says nothing about the amd64 .deb, which
+  // is a differently compiled artifact that could ship a config script the arm64 one has never had. A seed for
+  // one architecture carrying the other's receipts would certify "nothing can ever be asked" from evidence
+  // nobody gathered for this machine — so it refuses, naming both the package and the architecture it was
+  // refused against. This is the row-gate that keeps x86 from borrowing arm64's homework; there is no if-x86
+  // branch anywhere, only this arm firing when the row and the axes disagree.
+  | PackageSilenceUnestablishedForArchitecture { name: NonEmptyStr, architecture: NonEmptyStr }
+  // THE KEY-ONLY POSTURE CARRYING NO AUTHORISED KEY. Distinct from NoEntrypointAtAll, which is "locked console
+  // with no keys" and can be waived by a deliberate unlock: under a key-only posture the unlock waiver is the
+  // FORGOTTEN-PASSWORD fallback, which this posture does not have, so an empty authorised-key set locks the
+  // owner out through every path the seed offers and no waiver can rescue it. Named separately because the fix
+  // is different: here, admit the operator's key; there, lock the console or record why not.
+  | KeyOnlyPostureAdmitsNoKeys
 
 // THE PROOF, AS DATA. The audit's green arm is neither unit nor Bool: it carries WHY it is green, in the
 // same parts the refusal names, so an auditor reading a rendered seed later can re-check the claim without
@@ -1642,36 +2067,71 @@ fn console_stanza_for(strategy: SeedDeliveryStrategy) -> NonInteractiveConsoleSt
 // barely be reached at all — admit_admin_access_authorisation already made "no keys and locked console"
 // unnameable — so it is a second line of defence against a caller that bypassed that constructor, not the
 // primary guard. That redundancy is intentional: this is the failure the module exists to make impossible.
-fn audit_altra_autoinstall_seed(
+fn audit_ubuntu_autoinstall_seed(
   network: SeedNetworkPosture,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   locale: SeedLocale,
   entry: AdminAccessAuthorisation,
   strategy: SeedDeliveryStrategy,
+  // THE AXES THE INTERACTIVITY CHAIN CANNOT SEE ON ITS OWN. The architecture decides whether a silence
+  // receipt counts (a receipt established against the arm64 pool says nothing about the amd64 .deb); the
+  // credential decides whether the key-only posture's own entrypoint obligation applies, which is NOT the
+  // locked-console one — see key_only_posture_admits_no_entry below.
+  architecture: Architecture,
+  credential: AdminCredentialPosture,
 ) -> SeedAudit {
-  match entry.console_entry {
-    ConsoleEntryLocked =>
-      match list_length(items: entry.authorised_keys) {
-        0 =>
-          SeedRefused {
-            cause: NoEntrypointAtAll,
+  // THE KEY-ONLY OBLIGATION FIRST, BEFORE THE CONSOLE MATCH. The console-unlock waiver exists for the
+  // password postures (a locked-out owner can still be reached by password); a key-only posture has no such
+  // fallback, so under it an empty authorised-key set admits nobody through any path and the unlock cannot
+  // save it. This cannot be expressed as "empty keys are refused": the seeded-handle rows legitimately carry
+  // empty keys with a deliberate unlock, because a password backs them.
+  match key_only_posture_admits_no_entry(credential: credential, entry: entry) {
+    True => SeedRefused { cause: KeyOnlyPostureAdmitsNoKeys }
+    False =>
+      match entry.console_entry {
+        ConsoleEntryLocked =>
+          match list_length(items: entry.authorised_keys) {
+            0 =>
+              SeedRefused {
+                cause: NoEntrypointAtAll,
+              }
+            n => audit_seed_interactivity(
+              network: network,
+              install_packages: install_packages,
+              late_packages: late_packages,
+              locale: locale,
+              strategy: strategy,
+              architecture: architecture,
+            )
           }
-        n => audit_seed_interactivity(
+        ConsoleEntryUnlocked { reason: _ } => audit_seed_interactivity(
           network: network,
           install_packages: install_packages,
           late_packages: late_packages,
           locale: locale,
           strategy: strategy,
+          architecture: architecture,
         )
       }
-    ConsoleEntryUnlocked { reason: _ } => audit_seed_interactivity(
-      network: network,
-      install_packages: install_packages,
-      late_packages: late_packages,
-      locale: locale,
-      strategy: strategy,
-    )
+  }
+}
+
+// IS THIS POSTURE KEY-ONLY WITH NOTHING TO KEY ON? One predicate, both arms total. A declared password
+// (present hash or handle-backed) is false regardless of keys: somebody can still log in. A key-only posture
+// is true exactly when the admitted authorisation carries no authorised key at all — no key to present, no
+// password to type, a host locked out by its own seed.
+fn key_only_posture_admits_no_entry(
+  credential: AdminCredentialPosture,
+  entry: AdminAccessAuthorisation,
+) -> Bool {
+  match credential {
+    PasswordHandle { handle: _ } => false
+    PasswordUnset =>
+      match list_length(items: entry.authorised_keys) {
+        0 => true
+        n => false
+      }
   }
 }
 
@@ -1685,6 +2145,7 @@ fn audit_seed_interactivity(
   late_packages: List<PackageIntent>,
   locale: SeedLocale,
   strategy: SeedDeliveryStrategy,
+  architecture: Architecture,
 ) -> SeedAudit {
   match prompt_over_locale(locale: locale) {
     Present { value: question } =>
@@ -1696,10 +2157,10 @@ fn audit_seed_interactivity(
           match network.addressing {
             InstallerManaged => SeedRefused { cause: AddressingIsInstallerManaged }
             SeededNetplan { source: _ } =>
-              match first_blocking_refusal(intents: install_packages) {
+              match first_blocking_refusal(intents: install_packages, architecture: architecture) {
                 Present { value: offender } => SeedRefused { cause: offender }
                 Absent =>
-                  match first_blocking_refusal(intents: late_packages) {
+                  match first_blocking_refusal(intents: late_packages, architecture: architecture) {
                     Present { value: late_offender } => SeedRefused { cause: late_offender }
                     Absent =>
                       SeedIsNonInteractive {
@@ -1742,13 +2203,16 @@ fn prompt_over_locale(locale: SeedLocale) -> Optional<NonEmptyStr> {
 // answer `blocking_refusal` was about to give, so the two could drift and every intent paid for the
 // question twice. A cause is never dropped: the recursion returns the FIRST Present, and Absent only when
 // every intent answered its own question.
-fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteractiveCause> {
+fn first_blocking_refusal(
+  intents: List<PackageIntent>,
+  architecture: Architecture,
+) -> Optional<SeedInteractiveCause> {
   match intents {
     Empty => Absent
     Cons { head: head, tail: rest } =>
-      match blocking_refusal(intent: head) {
+      match blocking_refusal(intent: head, architecture: architecture) {
         Present { value: cause } => Present { value: cause }
-        Absent => first_blocking_refusal(intents: rest)
+        Absent => first_blocking_refusal(intents: rest, architecture: architecture)
       }
   }
 }
@@ -1767,7 +2231,10 @@ fn first_blocking_refusal(intents: List<PackageIntent>) -> Optional<SeedInteract
 // one verdict onto its cause — so there is no second, weaker reading of the same intent for a future caller (or a
 // future witness) to reach by mistake, which is what the comment above this function has always claimed and the
 // code never did.
-fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
+fn blocking_refusal(
+  intent: PackageIntent,
+  architecture: Architecture,
+) -> Optional<SeedInteractiveCause> {
   match package_prompting_verdict(intent: intent) {
     ClosedQuestion { name: _, question: _ } => Absent
     // THE CAUSE IS THE VERDICT'S OWN, NOT A FRESH READING OF THE INTENT. name/question come from the closed
@@ -1777,9 +2244,25 @@ fn blocking_refusal(intent: PackageIntent) -> Optional<SeedInteractiveCause> {
       value: PackagePrompts { name: prompted, question: asked },
     }
     UnclassifiedPrompting { name: un } => Present { value: PackagePromptingUnclassified { name: un } }
-    // SILENT BLOCKS NOTHING. This arm is the whole point of the fourth state: the audit's green path becomes
-    // reachable for a board that installs BMC and diagnostic tooling, which under three arms it never was.
-    NothingToAsk { name: _, silence: _ } => Absent
+    // SILENT BLOCKS NOTHING — ONLY WHEN THE RECEIPT ITSELF WAS ESTABLISHED FOR THIS ARCHITECTURE. The verdict's
+    // silence is checked against the seed's own architecture before it is credited. The check reads the RECEIPT,
+    // not just its package name: a receipt verified against the arm64 .deb is not evidence about the amd64
+    // build of the same source — differently compiled, separately versioned, free to ship a config script the
+    // other never had — and an x86 seed carrying arm64's receipts would certify "nothing can ever be asked"
+    // from evidence nobody gathered for this machine. The row table is consulted too, so a receipt whose own
+    // architecture field agrees but whose citation nobody shipped still refuses. This is the row-gate that keeps
+    // x86 from borrowing arm64's homework; there is no if-x86 branch anywhere, only this arm firing when the
+    // receipt and the axes disagree.
+    NothingToAsk { name: asked_name, silence: silence } =>
+      match silence_receipt_is_admitted_for(receipt: silence, architecture: architecture) {
+        True => Absent
+        False => Present {
+          value: PackageSilenceUnestablishedForArchitecture {
+            name: asked_name,
+            architecture: architecture_token(architecture: architecture),
+          },
+        }
+      }
   }
 }
 
@@ -1838,12 +2321,12 @@ fn questions_closed_count(
 // against a fixed upstream change, and be digested without digesting formatting. sole_constructor because a
 // hand-written record could pair an audited proof with inputs the audit never saw: the proof and the inputs
 // it was computed from must not be independently assignable, or the field is decoration.
-type AltraAutoinstallSeed sole_constructor {
-  target: AltraAutoinstallTargetStanding,
+type UbuntuAutoinstallSeed sole_constructor {
+  target: ProvisioningTargetStanding,
   network: SeedNetworkPosture,
-  install_drivers: List<AltraInstallDriver>,
-  loadable_modules: List<AltraLoadableModule>,
-  late_drivers: List<AltraLateDriver>,
+  install_drivers: List<SeedInstallDriver>,
+  loadable_modules: List<LoadableModuleClass>,
+  late_drivers: List<LateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   disk: TargetDiskSelector,
@@ -1867,12 +2350,12 @@ type AltraAutoinstallSeed sole_constructor {
 // through which a caller can supply a proof, which is the difference between an audit and a stamp. A future
 // requirement (re-verifying a seed built before an upstream change) adds a re-audit function beside this one;
 // it does not add a proof parameter.
-fn build_altra_autoinstall_seed(
-  target: AltraAutoinstallTarget,
+fn build_ubuntu_autoinstall_seed(
+  target: ProvisioningTargetAdmission,
   network: SeedNetworkPosture,
-  install_drivers: List<AltraInstallDriver>,
-  loadable_modules: List<AltraLoadableModule>,
-  late_drivers: List<AltraLateDriver>,
+  install_drivers: List<SeedInstallDriver>,
+  loadable_modules: List<LoadableModuleClass>,
+  late_drivers: List<LateDriver>,
   install_packages: List<PackageIntent>,
   late_packages: List<PackageIntent>,
   disk: TargetDiskSelector,
@@ -1888,17 +2371,21 @@ fn build_altra_autoinstall_seed(
   locale: SeedLocale,
   delivery: SeedDeliveryStrategy,
   keyboard: CeremonialKeyboardLayout,
-) -> Optional<AltraAutoinstallSeed> {
+) -> Optional<UbuntuAutoinstallSeed> {
   match target {
     TargetRefused { reason: _ } => Absent
     TargetAdmitted { standing: admitted } =>
-      match audit_altra_autoinstall_seed(
+      match audit_ubuntu_autoinstall_seed(
         network: network,
         install_packages: install_packages,
         late_packages: late_packages,
         locale: locale,
         entry: entry,
         strategy: delivery,
+        // THE ADMITTED ARCHITECTURE, not a parameter the caller can point somewhere else: the seed's target
+        // carries the architecture it was admitted for, and the package rows must answer to THAT.
+        architecture: admitted.architecture,
+        credential: credential,
       ) {
         SeedRefused { cause: _ } => Absent
         SeedIsNonInteractive { evidence: established } =>
@@ -1906,7 +2393,7 @@ fn build_altra_autoinstall_seed(
             False => Absent
             True =>
               Present {
-                value: AltraAutoinstallSeed {
+                value: UbuntuAutoinstallSeed {
                 target: admitted,
                 network: network,
                 install_drivers: install_drivers,
@@ -2681,7 +3168,7 @@ type IdentityProjection
   | IdentityReceiptIsForeign { expected: NonEmptyStr, presented: NonEmptyStr }
 
 fn project_autoinstall_identity(
-  seed: AltraAutoinstallSeed,
+  seed: UbuntuAutoinstallSeed,
   binding_hostname: NonEmptyStr,
   receipt: Optional<AdminPasswordHashReceipt>,
 ) -> IdentityProjection {
@@ -2755,7 +3242,7 @@ fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
 // ---------------------------------------------------------------------------
 
 // THE RENDERING IS A FUNCTION OF THE AXES AND NOTHING ELSE. Every wire spelling below is derived by the
-// fn that owns it — the locale by seed_locale_wire, the package names by altra_install_driver_package, the
+// fn that owns it — the locale by seed_locale_wire, the package names by install_driver_package, the
 // console stanza by console_stanza_for, the transport by delivery_strategy_diagnostic — so the digest is a
 // digest of decisions, never of formatting or of a stored string that could disagree with the axis it
 // claims to spell. Field order is fixed by this function rather than by a map iteration, because a digest
@@ -2767,7 +3254,7 @@ fn project_storage_policy(selection: TargetDiskSelection) -> StorageProjection {
 // ones that contain no secret and no identity. The credential's VERSION still reaches the digest through a
 // locator-shaped atom — so a rotated secret changes the digest — without the secret itself ever being in
 // scope of a hash input.
-fn render_altra_autoinstall_seed(seed: AltraAutoinstallSeed) -> NonEmptyStr {
+fn render_ubuntu_autoinstall_seed(seed: UbuntuAutoinstallSeed) -> NonEmptyStr {
   [
     "autoinstall/1",
     concat("arch=", architecture_token(architecture: seed.target.architecture)),
@@ -2817,10 +3304,10 @@ fn architecture_token(architecture: Architecture) -> NonEmptyStr {
 // to a digest of some other record that happens to render the same, and the whole purpose of the digest is
 // to be quotable as evidence years later. Adding a seed format (a non-autoinstall variant) means a new tag,
 // and a new tag cannot silently collide with this one.
-fn altra_autoinstall_seed_digest(seed: AltraAutoinstallSeed) -> Fnv1a64Structural {
+fn ubuntu_autoinstall_seed_digest(seed: UbuntuAutoinstallSeed) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed/1",
-    payload: content_hash_atom(value: render_altra_autoinstall_seed(seed: seed)),
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed/1",
+    payload: content_hash_atom(value: render_ubuntu_autoinstall_seed(seed: seed)),
   )
 }
 
@@ -2843,7 +3330,7 @@ type SeedDocument
   // recording a digest of a rendering nobody was ever served.
   | DocumentRefused { reason: NonEmptyStr }
 
-fn seed_document(seed: AltraAutoinstallSeed) -> SeedDocument {
+fn seed_document(seed: UbuntuAutoinstallSeed) -> SeedDocument {
   match autoinstall_payload(seed: seed) {
     Absent => DocumentRefused { reason: "seed-declares-nothing-to-write" as NonEmptyStr }
     Present { value: payload } =>
@@ -2860,26 +3347,80 @@ fn seed_document(seed: AltraAutoinstallSeed) -> SeedDocument {
 // a fabricated credential into a document that is about to be served to a board. (review: merry-fox-82) The
 // earlier projection handed a placeholder digest to the payload and the witness then compared placeholders —
 // both sides of an equality over something that was never read.
-fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstallPayload> {
-  match password_field_from(seed: seed) {
-    Present { value: hashed } =>
+// THE PAYMENT OF A CREDENTIAL POSTURE IS PAID HERE, IN THE DOCUMENT, NOT IN A COMMENT. The seed carries which
+// posture was chosen at admission; this fn turns that posture into the two sections Canonical reads —
+// `identity` and the cloud-init `user-data` — and each posture gets its OWN path, never a shared literal with a
+// conditional hash:
+//
+//   PasswordHandle   → `identity` present, with the admitted crypt digest as its hash. Byte-identical to the
+//                      rendering this module produced before the key-only posture existed; the ARM digest
+//                      control in the witness is the proof that this path moved nothing.
+//   PasswordUnset    → `identity` ABSENT and a `user-data` users list instead. This is the posture the operator
+//                      asked for — no password at all — and it is legal rather than merely tolerated because
+//                      Canonical's own reference makes identity the only mandatory key "unless the user-data
+//                      section is present, in which case it is optional" (cited on the identity field in
+//                      extdeps.os.ubuntu_autoinstall). The user entry carries lock_passwd: true and the
+//                      admitted keys and has NO field that could hold a password, so there is no hash, no lock
+//                      marker, and no empty string anywhere in this document; with the ssh section's allow-pw:
+//                      false, the only way in is a key.
+fn autoinstall_payload(seed: UbuntuAutoinstallSeed) -> Optional<UbuntuAutoinstallPayload> {
+  match seed.credential {
+    PasswordHandle { handle: _ } =>
+      match password_field_from(seed: seed) {
+        Present { value: hashed } =>
+          Present { value: UbuntuAutoinstallPayload {
+            autoinstall_version: 1,
+            delivery: payload_delivery_for(delivery: seed.delivery),
+            fully_automated: true,
+            target_distribution: NobleNumbat2404Lts,
+            identity_posture: WithIdentity {
+              identity: AutoinstallIdentity {
+                hostname: "altra-installer" as NonEmptyStr,
+                username: "gunbc-admin" as NonEmptyStr,
+                realname: "gunbc provisioning" as NonEmptyStr,
+                hashed_password: hashed,
+              },
+              user_data: Absent,
+            },
+            locale: seed_locale_wire(locale: seed.locale),
+            keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
+            ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
+            storage_policy: StoragePolicyDirectLayout,
+          } }
+        Absent => Absent
+      }
+    PasswordUnset =>
       Present { value: UbuntuAutoinstallPayload {
         autoinstall_version: 1,
         delivery: payload_delivery_for(delivery: seed.delivery),
         fully_automated: true,
         target_distribution: NobleNumbat2404Lts,
-        identity: AutoinstallIdentity {
-          hostname: "altra-installer" as NonEmptyStr,
-          username: "gunbc-admin" as NonEmptyStr,
-          realname: "gunbc provisioning" as NonEmptyStr,
-          hashed_password: hashed,
+        // THE KEY-ONLY ROUTE IS THE OTHER ARM: no identity section at all, and the operator's account in
+        // cloud-init's user-data. This is not the emitter being told to omit a field — WithIdentity cannot
+        // be written without an identity, and UserDataOnly cannot be written without the user table, so a
+        // document with NEITHER (which subiquity refuses) is not a payload this module can hand over.
+        identity_posture: UserDataOnly {
+          // THE NAME IS POSIX-LEGAL ON PURPOSE. gunbc.provisioning.public_nocloud_seed admits the user's name
+        // through extdeps.posix.shell_command_language.admit_posix_shell_name (XBD 3.235), whose continue
+        // alphabet is letters, digits and underscore — a hyphen is not in it. "gunbc-admin" would render a
+        // document the seed admission refuses at the name leaf, so the key-only account is named the way the
+        // rule allows. (The SEEDED-HANDLE identity above keeps "gunbc-admin": that document publishes no
+        // user-data users section at all, so its username never meets the POSIX leaf, and its bytes are the
+        // ones the ARM control witness pins byte-for-byte.)
+          users: [
+          CloudInitUserEntry {
+            name: "gunbcadmin" as NonEmptyStr,
+            ssh_authorized_keys: seed.entry.authorised_keys,
+            lock_passwd: true,
+            shell: BashLoginShell,
+          },
+          ],
         },
         locale: seed_locale_wire(locale: seed.locale),
         keyboard_layout: ceremonial_keyboard_layout_wire(layout: seed.keyboard),
         ssh: openssh_server_section(intents: seed.install_packages, authorised_keys: seed.entry.authorised_keys),
         storage_policy: StoragePolicyDirectLayout,
       } }
-    Absent => Absent
   }
 }
 
@@ -2899,9 +3440,18 @@ fn autoinstall_payload(seed: AltraAutoinstallSeed) -> Optional<UbuntuAutoinstall
 // declined a password shows the lock marker and nothing else, and a seed that has one shows a digest this
 // module admitted. Both are only survivable because the entry posture had to justify itself at admission —
 // a locked password with no authorised key never became a seed (AdminEntryHasNoKey).
-fn password_field_from(seed: AltraAutoinstallSeed) -> Optional<NonEmptyStr> {
+fn password_field_from(seed: UbuntuAutoinstallSeed) -> Optional<NonEmptyStr> {
   match seed.credential {
-    PasswordUnset => Present { value: "!*" as NonEmptyStr }
+    // NO PASSWORD FIELD EXISTS UNDER THIS POSTURE — not even a lock marker. An earlier revision answered
+    // "!"-marker here, which was the right answer while identity was the only place a credential could be
+    // stated: with a mandatory identity section, "locked" had to be spelled AS a password value the crypt
+    // scheme could never produce. Identity is now Optional (extdeps.os.ubuntu_autoinstall, Canonical citation
+    // on its Optional field), so the key-only posture states no identity at all and the account lock moves to
+    // where cloud-init keeps it — lock_passwd: true on the user-data user (gunbc.os_install_emit's
+    // cloudinit_user_entries). Returning a marker here would put a password-shaped string back into a document
+    // whose whole claim is that no password field was written, and the render witness refuses any document
+    // containing one.
+    PasswordUnset => Absent
     // THE READ TRAVELS INSIDE THE SEED, SO THERE IS NOTHING LEFT TO RE-PROVE HERE. An earlier revision
     // re-ran receipt_matches_handle on this path; the re-check was UNREACHABLE, because the only minter of a
     // seed refuses to build one whose read belongs to another handle, and a loosened copy of it could not be
@@ -3056,7 +3606,7 @@ fn rendered_document_digest(content: NonEmptyStr) -> Optional<Fnv1a64Structural>
     False =>
       Present {
         value: content_hash_tagged_structural(
-          tag: "gunbc.provisioning.altra_autoinstall_seed.document/sha256",
+          tag: "gunbc.provisioning.ubuntu_autoinstall_seed.document/sha256",
           payload: content_hash_atom(value: hex as NonEmptyStr),
         ),
       }
@@ -3127,7 +3677,7 @@ type ServedPreseed
 // seeds differing only in an answer VALUE). A fold term no test can lose is a comment with arithmetic in it.
 fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.bundle/1",
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed.bundle/1",
     payload: content_hash_combine_structural(
       left: content_hash_tagged_structural(tag: "document", payload: document),
       right: match preseed {
@@ -3162,7 +3712,7 @@ fn served_bundle_digest(document: Fnv1a64Structural, preseed: ServedPreseed) -> 
 // learned to produce text that will not cast, the compiler refuses to resolve the fn rather than silently serving
 // a wrong-typed answer file, which is the honest outcome (an empty file is NoDebconfQuestionsToAnswer, never a
 // one-line file with an empty value).
-fn render_served_preseed(seed: AltraAutoinstallSeed) -> ServedPreseed {
+fn render_served_preseed(seed: UbuntuAutoinstallSeed) -> ServedPreseed {
   let intents = all_package_intents(seed: seed)
   match seed_preseed_file(intents: intents) == "" {
     True => NoDebconfQuestionsToAnswer
@@ -3170,8 +3720,8 @@ fn render_served_preseed(seed: AltraAutoinstallSeed) -> ServedPreseed {
   }
 }
 
-fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
-  decl_ref(module_path: "gunbc.provisioning.altra_autoinstall_seed", decl_name: "bind_altra_autoinstall_seed")
+fn serve_seed_bundle(seed: UbuntuAutoinstallSeed) -> Optional<ServedSeedBundle> admit_callers: [
+  decl_ref(module_path: "gunbc.provisioning.ubuntu_autoinstall_seed", decl_name: "bind_ubuntu_autoinstall_seed")
 ] {
   match seed_document(seed: seed) {
     DocumentRefused { reason: _ } => Absent
@@ -3201,7 +3751,7 @@ fn serve_seed_bundle(seed: AltraAutoinstallSeed) -> Optional<ServedSeedBundle> a
 // Its own fn because the mint needs it twice (the emptiness test and the digest both read it) and an expression
 // repeated is an expression that can drift. Structurally recursive rather than a list concatenation, matching
 // preseed_records' own construction — records arrive one at a time, in the order they were authored.
-fn all_package_intents(seed: AltraAutoinstallSeed) -> List<PackageIntent> {
+fn all_package_intents(seed: UbuntuAutoinstallSeed) -> List<PackageIntent> {
   intents_after(left: seed.install_packages, right: seed.late_packages)
 }
 
@@ -3280,7 +3830,7 @@ fn address_family_diagnostic(family: SeedAddressFamily) -> NonEmptyStr {
 // when the preimage changes shape: reorder a segment, make one optional, and an unframed host containing '|'
 // starts masquerading as the next segment's label. Framing now is cheaper than reasoning about it later, and it
 // is the same framing every other host- or serial-shaped field in this preimage already uses. THIS STRING IS THE
-// DIGEST PREIMAGE — render_altra_autoinstall_seed is its only consumer — so the tagging is not a reporting
+// DIGEST PREIMAGE — render_ubuntu_autoinstall_seed is its only consumer — so the tagging is not a reporting
 // choice but the thing that makes the receipt's answer trustworthy; a second untagged spelling kept beside it
 // would be the collision again with a greener name. A future arm of ArchiveMirrorAuthority adds a case HERE with
 // its own tag (unhandled, no default), so a new kind of mirror cannot digest into an existing arm's bytes.
@@ -3351,7 +3901,7 @@ fn int_diagnostic(count: Int) -> NonEmptyStr {
 // swapped value that still "answers" the question must not digest identically).
 //
 // WHY A HASH AND NOT THE STRING. This render is a diagnostic and an identity, not a config file (see the note on
-// render_altra_autoinstall_seed): it is printed in reports and compared in receipts, and key material and seeded
+// render_ubuntu_autoinstall_seed): it is printed in reports and compared in receipts, and key material and seeded
 // values have no business being copied into a log line. A digest is the honest middle: it makes the identity
 // depend on the bytes while publishing nothing, and it is the same primitive the seed digest itself is built
 // from, so there is no second hashing story to keep consistent. A future requirement to SHOW a value must add a
@@ -3466,10 +4016,10 @@ fn credential_diagnostic(posture: AdminCredentialPosture) -> NonEmptyStr {
 // callers who list the same packages in different orders must produce the same seed — otherwise the digest
 // stops meaning "the same configuration" and starts meaning "the same configuration, typed the same way",
 // and the second is worthless as evidence.
-fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmptyStr {
+fn install_driver_list_diagnostic(drivers: List<SeedInstallDriver>) -> NonEmptyStr {
   render_sorted_names(
     names: drivers
-      .map(driver => concat("pkg:", altra_install_driver_package(driver: driver)) as String),
+      .map(driver => concat("pkg:", install_driver_package(driver: driver)) as String),
   )
 }
 
@@ -3479,13 +4029,13 @@ fn install_driver_list_diagnostic(drivers: List<AltraInstallDriver>) -> NonEmpty
 // missing module fails as "no disks found" and gets blamed on the backplane). The Kconfig symbol rides in the
 // token: two rows claiming one object stem from different symbols is a real modeling error, and a digest that
 // equated them would hide it.
-fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmptyStr {
+fn loadable_module_list_diagnostic(modules: List<LoadableModuleClass>) -> NonEmptyStr {
   render_sorted_names(
     names: modules
       .map(loaded =>
         concat(
           concat(
-            concat("mod:", altra_loadable_module(driver: loaded)),
+            concat("mod:", loadable_module_name(driver: loaded)),
             concat("=", loadable_module_kconfig_symbol(driver: loaded)),
           ),
           concat("@", loadable_module_kconfig_path(driver: loaded)),
@@ -3493,13 +4043,13 @@ fn loadable_module_list_diagnostic(modules: List<AltraLoadableModule>) -> NonEmp
   )
 }
 
-fn late_driver_list_diagnostic(drivers: List<AltraLateDriver>) -> NonEmptyStr {
+fn late_driver_list_diagnostic(drivers: List<LateDriver>) -> NonEmptyStr {
   render_sorted_names(
     names: drivers
       .map(driver =>
         concat(
-          concat("mod:", altra_late_driver_module(driver: driver)),
-          concat("=", altra_late_driver_kconfig_symbol(driver: driver)),
+          concat("mod:", late_driver_module(driver: driver)),
+          concat("=", late_driver_kconfig_symbol(driver: driver)),
         ) as String),
   )
 }
@@ -3562,7 +4112,7 @@ fn package_intent_diagnostic(intent: PackageIntent) -> NonEmptyStr {
 // could not tell them apart could not later answer "what did this board actually get".
 fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
   match receipt {
-    SilentReceipt { package: _, observed_version: version, standing: how } =>
+    SilentReceipt { package: _, architecture: _, observed_version: version, standing: how } =>
       concat(
         concat("silent@", version),
         match cited_figure_read_obligation(standing: how) {
@@ -3581,7 +4131,7 @@ fn silence_receipt_diagnostic(receipt: PackageSilenceReceipt) -> NonEmptyStr {
 // still transcribed rather than having to re-derive that it is. Absent means nothing is owed.
 fn silence_read_obligation(receipt: PackageSilenceReceipt) -> Optional<NonEmptyStr> {
   match receipt {
-    SilentReceipt { package: _, observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
+    SilentReceipt { package: _, architecture: _, observed_version: _, standing: how } => cited_figure_read_obligation(standing: how)
   }
 }
 
@@ -3615,7 +4165,7 @@ fn render_sorted_names(names: List<String>) -> NonEmptyStr {
 // whoever records the boot event — a seed does not restate origin digests, because then a seed would be
 // stale whenever the origin was republished byte-identically, and "which seed" would stop being a
 // question with one answer. The binding keeps the two records side by side, each with its own digest.
-type AltraAutoinstallSeedBinding sole_constructor {
+type UbuntuAutoinstallSeedBinding sole_constructor {
   unit_key: UnitKey
   attempt: IntakeAttemptId
   // TWO DIGESTS BECAUSE THERE ARE TWO QUESTIONS. `seed_digest` answers "which configuration" and is computed
@@ -3686,16 +4236,16 @@ type BindingBlocker
 
 // THE TWO OUTCOMES OF A BINDING ATTEMPT, as arms rather than Optional, for the reason above: the green arm
 // carries the record, the red arm carries why there is no record.
-type BindingResult = Bound { binding: AltraAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
+type BindingResult = Bound { binding: UbuntuAutoinstallSeedBinding } | BindRefused { blocker: BindingBlocker }
 
 // THE ONLY DOOR INTO A BINDING. It takes the SEED (so the digest is computed now, from this record), the
 // unit key and attempt (so the identity is bound, not assumed), and the live disk SELECTION (so a binding
 // cannot exist for a disk the rules refused — a binding whose install had no target disk is a record of an
 // install that could not have happened). A caller holding a refused selection receives Absent; the refusal
 // reason is carried out so the report says why there is no binding.
-fn bind_altra_autoinstall_seed(
-  seed: AltraAutoinstallSeed,
-  target: AltraAutoinstallTarget,
+fn bind_ubuntu_autoinstall_seed(
+  seed: UbuntuAutoinstallSeed,
+  target: ProvisioningTargetAdmission,
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
   selection: TargetDiskSelection,
@@ -3739,10 +4289,10 @@ fn bind_altra_autoinstall_seed(
                   BindRefused { blocker: SeedHasNoRenderableDocument { reason: "bundle-mint-refused-after-document-built" as NonEmptyStr } }
                 Present { value: served } =>
               Bound {
-                binding: AltraAutoinstallSeedBinding {
+                binding: UbuntuAutoinstallSeedBinding {
                   unit_key: unit_key,
                   attempt: attempt,
-                  seed_digest: altra_autoinstall_seed_digest(seed: seed),
+                  seed_digest: ubuntu_autoinstall_seed_digest(seed: seed),
                   // THE SAME VALUE THE BUNDLE DIGEST FOLDED, taken out of the bundle rather than re-hashed here,
                   // so `document_digest` and the digest inside the served bundle cannot drift. The bundle is only
                   // `Present` when a real SHA-256 existed, so this field can never carry a stand-in (review 83764 #1).
@@ -3750,7 +4300,7 @@ fn bind_altra_autoinstall_seed(
                   // THE RENDERING IS CARRIED, not just its digest, so the receipt can be re-checked without the
                   // seed still existing. And the disk evidence is inside the digest below, so "the machine
                   // booted seed X" cannot be answered for a machine that was pointed at a different drive.
-                  seed_rendering: render_altra_autoinstall_seed(seed: seed),
+                  seed_rendering: render_ubuntu_autoinstall_seed(seed: seed),
                   served: served,
                   delivery: seed.delivery,
                   disk: seed.disk,
@@ -3816,8 +4366,8 @@ type BindingVerdict
   | BindingIsForeign
 
 fn check_binding_against_seed(
-  binding: AltraAutoinstallSeedBinding,
-  seed: AltraAutoinstallSeed,
+  binding: UbuntuAutoinstallSeedBinding,
+  seed: UbuntuAutoinstallSeed,
   unit_key: UnitKey,
   attempt: IntakeAttemptId,
 ) -> BindingVerdict {
@@ -3826,7 +4376,7 @@ fn check_binding_against_seed(
     True =>
       match content_hash_eq_structural(
         left: binding.seed_digest,
-        right: altra_autoinstall_seed_digest(seed: seed),
+        right: ubuntu_autoinstall_seed_digest(seed: seed),
       ) {
         True => BoundConfigurationMatchesSeed
         False => BoundConfigurationDiffersFromSeed
@@ -3932,7 +4482,7 @@ type SuppliedDocumentStanding
 // same tagged fold the mint used, so both user-data and preseed must agree. The configuration digest stays on
 // the binding answering "which configuration did we intend"; the served bytes answer "what did the board get".
 fn supplied_document_standing(
-  binding: AltraAutoinstallSeedBinding,
+  binding: UbuntuAutoinstallSeedBinding,
   supplied: Optional<SuppliedServedDocument>,
 ) -> SuppliedDocumentStanding {
   match supplied {
@@ -3964,9 +4514,9 @@ fn supplied_document_standing(
 // be overwritten by whichever write came second. Including it means "the receipt for this attempt" changes when
 // the target changes, and a silent change of drive in a stored receipt becomes a different receipt rather than
 // the same one.
-fn binding_digest(binding: AltraAutoinstallSeedBinding) -> Fnv1a64Structural {
+fn binding_digest(binding: UbuntuAutoinstallSeedBinding) -> Fnv1a64Structural {
   content_hash_tagged_structural(
-    tag: "gunbc.provisioning.altra_autoinstall_seed.binding/3",
+    tag: "gunbc.provisioning.ubuntu_autoinstall_seed.binding/3",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
         left: content_hash_atom(value: to_string(binding.unit_key) as NonEmptyStr),

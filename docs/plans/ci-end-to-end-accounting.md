@@ -2,7 +2,7 @@
 
 **Status:** analysis, not a ruling. It is the input to consolidating the required CI (`gunbc.witness.compiler_gate_workflow` → `.github/workflows/witnesses.yml`) into one job over one prepared corpus.
 
-**Instrument.** Every figure below is from ONE run, `gunb-ai/gunbc` actions run **37501346261** (pull_request, 2026-10-06; head `f937ee1b`; all lanes green). The figures come from that run's job API timestamps, the step timings, and the per-phase lines the binary prints (`[floor-phase]`, `[pre-entry]`, `✅ … done in`). They are a dated receipt for that run and are not a standing fact: to re-derive them, re-read any required run's logs the same way, and use the floor's per-claim cost artifact `required-floor-claim-cost` for claim cost. The 787 claim rows sum from that artifact's `observed_cpu_ms` column.
+**Instrument.** Dated receipt: `gunb-ai/gunbc` actions run **37501346261** (pull_request, 2026-10-06; head `f937ee1b`; all lanes green). Re-derive from job API timestamps, step timings and binary phase lines (`[floor-phase]`, `[pre-entry]`, `✅ … done in`); sum the 787 claim rows' `observed_cpu_ms` in `required-floor-claim-cost`. These figures describe that run, not current CI.
 
 ## 0. The run as a whole
 
@@ -102,14 +102,12 @@ Critical path: emit-build (51.6 min) → the aggregate then waits **15.7 min for
 
 ## 6. Redundant work (corrected after review)
 
-**Corrections from review of the first draft.** The first version of this table misread several entries:
+**First-draft corrections** (original row numbers):
 - **R8:** the per-claim compiles are fixture compiles, and they are test work.
 - **R12:** the fixture tail is a blocking check over one union, not post-verdict waste.
 - **R13:** the typecheck log lines are slow module cache misses, not separate projection typechecks.
 - **R9:** the two native closures cannot be emitted as one union. They declare different `compiler_pipeline_entry` drivers, the emitter admits exactly one entry per closure, and stage0 regenerates its own v1 mirror population.
 - **R4:** queue time overlaps across jobs.
-
-The table below keeps only what the code supports.
 
 | # | Work | Where | Runner-min (this run) | Disposition |
 |---|---|---|---|---|
@@ -135,7 +133,7 @@ The table below keeps only what the code supports.
 | Reporting and overhead | ≤1 |
 | **Total** | **≤29** |
 
-The easy cuts (R1, R2, R4) remove about 23–24 min on an eligible run. The budget also needs R3 (native product reuse) and R8 (cold-path cost). Moving work to the merge queue cuts PR latency but still spends runner-minutes, so PR and merge-group cost are reported together.
+R1, R2 and R4 remove about 23–24 min on eligible runs; the budget also needs R3's native reuse and R8's cold-path reductions. Report PR and merge-group cost together: moving work to the queue reduces PR latency, not runner-minutes.
 
 ### Work programme
 
