@@ -1010,9 +1010,9 @@ data controller_install_holds_no_grant: DivergenceReason = DivergenceReason {
 // srv1_root_mutation_approval_is_filed_by_the_job): the first step of each srv1 root-mutation job files
 // one access request with the broker and the job proceeds only on the operator's device-redeemed
 // approval of it (gunbc.fleet.srv1_root_mutation_approval_run). The scopes it requests are the root's
-// approved_scopes below, one value. The srv1-production environment's required reviewer is a separate
-// row (gunbc.auth.github_deployment_environment srv1_production_protection_standing) that keeps its own
-// divergence until the operator removes the reviewer. The row is ONE value, rostered in the census and
+// approved_scopes below, one value. The srv1-production environment carries only its main-only branch
+// rule (the operator removed its required reviewer on 2026-10-28, gunbc.auth.github_deployment_environment);
+// applying that rule is its own row below. The row is ONE value, rostered in the census and
 // carried as the root, so the root's characteristics are the row's by construction.
 data srv1_root_mutation_approval_row: PrivilegedEffectSite = PrivilegedEffectSite {
   site: decl_ref(module_path: "gunbc.fleet.srv1_root_mutation_approval_run", decl_name: "srv1_root_mutation_after_gate"),
@@ -1062,11 +1062,6 @@ data manual_api_effect_beside_unlanded_approval_adapter: DivergenceReason = Dive
 data review_sheet_writer_cell_outside_the_converge_projects: DivergenceReason = DivergenceReason {
   statement: "the cell sits on review-sheet-writer's policy in gunbai-sheets, and every role the approval-gated IAM converge and its bootstrap delta hold is a project custom role of the fleet secrets project, which cannot be bound on a resource in another project; so no approval route reaches it, and the operator writes it once in their own session (stern-ram-763, 2026-10-25: chosen over giving iam-converge standing reach into gunbai-sheets)" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "an approval-gated route whose actuator may write the writer's policy without standing project reach in gunbai-sheets -- an organization-level custom role bound on that one account, or an authority adapter under a redeemed ApprovalCapability -- that writes this one cell and reads it back under an independent observer" as NonEmptyStr),
-}
-
-data github_environment_gate_is_not_the_approval_route: DivergenceReason = DivergenceReason {
-  statement: "a GitHub environment's required-reviewer gate is a human click in the GitHub UI: it authorizes a whole job rather than one effect, binds no device-signed consent to the effect's parameters, and leaves its protection setting (reviewers, deployment branch rule) as a repository-settings fact the workflow file cannot carry or observe" as NonEmptyStr,
-  dissolution: unbound_dissolution(description: "the job requests an access_request for its re-derived effect and proceeds only on a redeemed ApprovalCapability (gunbc.auth.approval_broker redeem_capability) delivered by the iOS approval app, with the environment reduced to a branch rule. NOT satisfied by adding reviewers to the environment" as NonEmptyStr),
 }
 
 fn manual_srv1_root_effect(subject: NonEmptyStr, step: HumanIntervention) -> PrivilegedEffect {
@@ -2025,7 +2020,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     // No HumanIntervention models this setting (the standing is Unobserved), so the frequency has no
     // authority to be read from; it is stated here as the one fact this row owns.
     effect: PrivilegedEffect {
-      subject: "apply the srv1-production environment protection (deployment branch rule main only, required reviewers) in GitHub repository settings" as NonEmptyStr,
+      subject: "apply the srv1-production environment protection (deployment branch rule main only) in GitHub repository settings" as NonEmptyStr,
       frequency: FleetOnce,
       reversibility: ReversibleByReapply,
       surface: ApiSurface,
@@ -2035,7 +2030,7 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
       witness_discharge: NoWitnessDischarge,
     },
     realized: RealizedHumanStep,
-    divergence_reason: Present { value: github_environment_gate_is_not_the_approval_route },
+    divergence_reason: Present { value: manual_api_effect_beside_unlanded_approval_adapter },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.cloudflare.r2_origin", decl_name: "cloudflare_account_allocation_intervention"),
