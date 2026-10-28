@@ -23,13 +23,14 @@ import gunbc.compute.attempt_lifecycle {
 }
 import gunbc.compute.host_capacity {
   HostCapacityPool, AgentSessionPool, host_capacity_reserve, host_capacity_subject,
+  ReviewerSessionPool, host_capacity_reserve_reviewer,
   ComputeReservation, ComputeReserved, ComputeCapacityFull, ComputeHostBelowFloor, ComputeReservationRefused, compute_reservation_wire,
   ComputeRelease, ComputeReleased, ComputeNothingToRelease, ComputeReleaseRefused, compute_release_on,
   ComputeSubjectResolution, ComputeSubjectResolved, ComputeSubjectHostUnresolved, compute_capacity_store,
   compute_memory_ceiling,
 }
 import gunbc.compute.work_class_grant {
-  WorkClassAgentSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
+  WorkClassAgentSession, WorkClassReviewerSession, WorkClassGrant, work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_wire,
 }
 import gunbc.compute.unit_bounds { UnitProcessBounds }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_default_capacity }
@@ -91,16 +92,25 @@ import extdeps.languages.json.parse {
 // BEFORE any new acquisition, which covers controller death and host reboot as well as returned
 // failures, because it starts from the store rather than from anything the dead process meant to do.
 //
-// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: reviewer, auditor and supervisor sessions still
-// start unleased at the instance ceiling. They join WorkClassAgentSession once a session grant row
-// (measured session peaks) sizes the class below the ceiling -- at the ceiling, fourteen reviewer
-// lanes per head cannot fit a pool sized to the belt's worker count. Vendor providers (claude, codex,
-// cursor) run in tmux, whose panes escape any unit's cgroup, so they hold no placement until they
-// move into a unit; their attempts read SessionPlacementAbsent, which is the truth.
+// DECLARED FRONTIER (DESIGN 3c), WITH ITS TRIGGER: THE REVIEWER SESSION IS NO LONGER UNLEASED
+// (still-hawk-558, 2026-10-28, after the srv1 OOM receipt: 17 unleased reviewers at the instance
+// ceiling blew the 44 GiB slice mid-typecheck). A reviewer launch now takes its grant from the same
+// capacity authority the workers use -- gunbc.compute.host_capacity's ReviewerSessionPool, its own
+// seats, its own partition, with the slice leg adjudicating the cgroup the units actually land in
+// (the section at the foot of this module). Its MemoryMax is the granted amount, one figure for
+// reservation and cap. What REMAINS at the frontier: auditor and supervisor sessions still start
+// unleased at the instance ceiling; they join the ledger as their own classes once measured peak
+// rows size them (the reviewer's producer, below, is the pattern they follow), and their belt arms
+// have no acquire call site yet. Vendor providers (claude, codex, cursor) run in tmux, whose panes
+// escape any unit's cgroup, so they hold no placement until they move into a unit; their attempts
+// read SessionPlacementAbsent, which is the truth.
 
-// THE ROLE SEGMENT OF THE RECORD NAME. Only the worker holds a placement in this change (see the
-// frontier above); a role coproduct lands with the second role rather than as a one-arm type.
+// THE ROLE SEGMENTS OF THE RECORD NAMES. Two roles hold placements now, so the coproduct the first
+// role's note promised lands here rather than as a second string constant: the segment is the
+// role's token, and the identity and every durable name are built FROM the role value, so a third
+// role adds an arm and not another pair of twins.
 data session_worker_role: String = "worker"
+data session_reviewer_role: String = "reviewer"
 
 data session_placement_schema: String = "gunbc.session-placement/v1"
 
