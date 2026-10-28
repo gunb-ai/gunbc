@@ -378,6 +378,27 @@ fn iam_bootstrap_deny_rules_match(observed: List<GcpDenyPolicyRule>?, declared: 
   }
 }
 
+// A refused deny comparison names what was read, so a mismatch is located rather than asserted
+// (2026-10-28: the wall read back "differs" twice while a hand-built copy of the answered policy
+// matched; the decoded value is the missing fact).
+fn deny_rules_text(rules: List<GcpDenyPolicyRule>?) -> String {
+  match rules {
+    Absent => "no rules field"
+    Present { value: rows } => join(map(rows, r => match r.deny_rule {
+      Absent => "rule without denyRule"
+      Present { value: d } => join([
+        "principals=[", join(d.denied_principals, ","), "] permissions=[", join(d.denied_permissions, ","),
+        "] exceptions=", match d.exception_principals { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        "/", match d.exception_permissions { Absent => "absent"  Present { value: xs } => join(xs, ",") },
+        " condition=", match d.denial_condition {
+          Absent => "absent"
+          Present { value: c } => join(["(title=", c.title, " expression=", c.expression, " description=", match c.description { Absent => "absent"  Present { value: t } => t }, ")"], "")
+        }
+      ], "")
+    }), " | ")
+  }
+}
+
 fn iam_bootstrap_deny_matches(rules: List<GcpDenyPolicyRule>?) -> Bool {
   iam_bootstrap_deny_rules_match(observed: rules, declared: iam_bootstrap_deny_rules())
 }

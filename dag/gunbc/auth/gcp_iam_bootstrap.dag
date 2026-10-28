@@ -48,7 +48,7 @@ import gunbc.auth.gcp_iam_bootstrap_model {
   iam_bootstrap_tag_value_detach_permissions, TagDetachProbeVerdict, TagDetachAbsent, TagDetachUndiscriminating, TagDetachHeld, tag_detach_probe_verdict,
   TrustRootTagAdmission, TrustRootTagAdmitted, TrustRootTagRefused, trust_root_tag_key_admission, trust_root_tag_value_admission,
   iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
-  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match,
+  IamBootstrapDenyPolicy, iam_bootstrap_deny_policies, iam_bootstrap_deny_rules_match, deny_rules_text,
   iam_bootstrap_identity_federations, iam_bootstrap_identity_population, iam_bootstrap_ceremony_identity_population,
   iam_bootstrap_journal_cells, ceremony_cell_phrase, iam_bootstrap_ceremony_identity_population_over, iam_bootstrap_identity_population_over, IamBootstrapIdentity, iam_bootstrap_bound_secrets,
 }
@@ -436,7 +436,7 @@ fn iam_bootstrap_ensure_deny(token: Secret) -> String {
 fn iam_bootstrap_ensure_deny_bounded(policy: IamBootstrapDenyPolicy, token: Secret, remaining: Int) -> String {
   match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: policy.policy_id) {
     RestAnswered { answer: seen } =>
-      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { concat(policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it") }
+      if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: policy.rules) { "" } else { join([policy.policy_id as String, ": existing bootstrap deny policy differs; refusing to weaken or adopt it; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: seen_refusal } =>
       if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
       else {
@@ -796,7 +796,7 @@ fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> Strin
     BootstrapDeny => fold(iam_bootstrap_deny_policies(), init: "", f: (prior, d) => if prior != "" { prior } else {
       match gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: d.policy_id) {
         RestAnswered { answer: seen } =>
-          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { concat(d.policy_id as String, ": existing deny policy differs; no authority granted") }
+          if iam_bootstrap_deny_rules_match(observed: seen.rules, declared: d.rules) { "" } else { join([d.policy_id as String, ": existing deny policy differs; no authority granted; read: ", deny_rules_text(rules: seen.rules), "; declared: ", deny_rules_text(rules: Present { value: d.rules })], "") }
         RestRefused { refusal: seen_refusal } =>
           if !outcome_is_not_found(o: seen_refusal) { rest_refusal_text(o: seen_refusal) }
           else {
@@ -1365,7 +1365,7 @@ fn iam_bootstrap_deny_creation_readback(policy: IamBootstrapDenyPolicy, token: S
           iam_bootstrap_deny_creation_readback(policy: policy, token: token, remaining: remaining - 1)
         } else { "deny creation readback wait failed" }
       }
-      else { concat(policy.policy_id as String, ": created deny policy differs; no capabilities granted") }
+      else { join([policy.policy_id as String, ": created deny policy differs; no capabilities granted; read: ", deny_rules_text(rules: check.rules), "; declared: ", deny_rules_text(rules: Present { value: policy.rules })], "") }
     RestRefused { refusal: check_refusal } =>
       if outcome_is_not_found(o: check_refusal) && remaining > 0 {
         if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
