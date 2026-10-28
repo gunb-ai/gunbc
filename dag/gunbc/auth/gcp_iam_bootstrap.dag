@@ -81,7 +81,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
 type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapTrustRootTags | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapJournalBucket | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
 
-data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapJournalBucket, BootstrapTrustRootTags, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+data iam_bootstrap_stage_order: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapTrustRootTags, BootstrapRoles, BootstrapJournalBucket, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
 
 // A STAGE IS OWED IFF ITS DECLARED POPULATION IS NONEMPTY. THE POPULATIONS THIS PREDICATE READS ARE
 // THE SAME ONES THE STAGES EXECUTE (iam_bootstrap_execute_stage, iam_bootstrap_stage_bindings) AND THE
@@ -126,7 +126,7 @@ fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBoo
     BootstrapDeny => [BootstrapIdentities, BootstrapTrustRootTags]
     BootstrapAuthorityCleanup => [BootstrapDeny]
     BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapJournalBucket]
-    BootstrapJournalBucket => [BootstrapIdentities]
+    BootstrapJournalBucket => [BootstrapRoles]
     BootstrapProbeAuthority => [BootstrapCapabilities]
     BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapTrustRootTags, BootstrapProbeAuthority]
     BootstrapProbeCleanup => [BootstrapProbeAuthority]
