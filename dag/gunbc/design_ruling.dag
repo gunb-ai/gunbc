@@ -409,8 +409,16 @@ data native_claim_route_admits_the_docker_cli: DesignRuling = DesignRuling {
   provenance: "Operator ruling relayed by calm-crab-645 (msg_396b4514), answering proud-bear-756's escalation msg_127d75bc: the router proxy falsifier (plan gunbc.plans.fabric_serving_router, S1b) takes route (a), native-process-effect, over a seed producer or a live receipt. Process spawn is a declared .dag effect, and one native route's denominator is extended on the D11 row (gunbc.plans.demand_engine_program); the seed does not grow. As built, and with calm-crab-645's conditions of msg_49fe21ca: std.compiler_entry native_claim_route_denominator admits exactly extdeps.docker.cli_service DockerCli, a fixed-argv shell-transport service whose image, name, network and paths arrive as parameters; generic exec (extdeps.shell.exec, held at an empty roster by the meta_exec_confinement lens) stays out; a runner with no reachable docker daemon answers no observation (exit 2), never a skip or a green.",
 }
 
+data macos_operator_terminal_runs_without_a_memory_bound: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "macos_operator_terminal_runs_without_a_memory_bound"),
+  decided: "2026-10-28",
+  section: "Building & checks",
+  provenance: "Operator ruling to wise-bat-528, 2026-10-28, answering the option 'A: admit an operator-attended macOS run without a cgroup wrap, with a notice; CI and servers unchanged' with 'A is fine'. Context: the IAM root ceremony (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply) is run from the operator's Mac, which has no cgroup facility, so every gunbc run there refused CgroupUnreadable. As built (gunbc#15316): macOS, GITHUB_ACTIONS unset, and stdin a terminal classify as OperatorHostWithoutCgroups and skip the wrap with a notice; every other macOS run still refuses. The loss is declared as gunbc.rung_drop.macos_operator_terminal_run_unbounded.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    macos_operator_terminal_runs_without_a_memory_bound,
     cross_tree_admission_is_namespace_membership,
     native_claim_route_admits_the_docker_cli,
     emit_build_subjects_are_the_two_compiler_products,
