@@ -16676,7 +16676,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                                                 .map(|a| a.name.clone())
                                                 .collect::<Vec<String>>()
                                                 .join("+");
-                                            format!("Settled(head={}.{}:{:?}", s0.head.module_path.clone(), s0.head.decl_name.clone(), s0.head.field.clone()) + args_txt.as_str() + ")")
+                                            format!("Settled(head={}.{}:{:?}", s0.head.module_path.clone(), s0.head.decl_name.clone(), s0.head.field.clone()) + args_txt.as_str() + ")"
                                         }
                                         None => "Unsettled".to_string(),
                                     }
