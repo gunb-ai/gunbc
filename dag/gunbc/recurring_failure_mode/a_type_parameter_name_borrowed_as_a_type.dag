@@ -1,0 +1,45 @@
+module gunbc.recurring_failure_mode.a_type_parameter_name_borrowed_as_a_type
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+
+// RUNG STATED BY THIS ROW, AND IT IS PENDING ONE THING. Found below the floor: the wrongness was
+// silent — nothing refused, the emitted module simply carried a name where a type should be, and the
+// panic only appeared at RUNTIME, in a store witness that executed the emitted code. The rung this
+// change reaches is Mitigatable: the fabrication is deleted at the one construction that produced it,
+// and a parallel wall refuses the symptom at the cast (quiet-bear-692's cast wall, landed separately)
+// — a discipline and a refusal, which other legs can still skip, so it is not structural. THAT
+// REACHED RUNG IS PENDING THE RUN: the naming specimen test.claim-adjacent Rust harness
+// src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs must execute in the v2-bootstrap gate
+// for the reached rung to be a measured fact rather than an authored claim; if that run changes the
+// finding, this row is updated in the same PR.
+data a_type_parameter_name_borrowed_as_a_type: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_type_parameter_name_borrowed_as_a_type" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a v2 callback-frame rule (v2.compiler.infer infer_callback_formal_frame) that reads a lambda's expected fn type from an instantiated signature and carries binder identity on the variable node, so a callee's own formal can never be credited as a call's argument in any carrier",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a type node is CONSTRUCTED FROM A BINDER'S SPELLING — `type_variable_node(id: <the declaration's own type-parameter name>)` — and downstream rules then treat it as if the call had typed it. Two gates that look like substitution checks actually test spelling: an enclosing-scope membership test on a variable's NAME, and an unifier's first-wins binding that credits `T := T` because the candidate matches the callee's own parameter name and id. Once such a node is in circulation, every consumer that reads it faithfully propagates a name where a type belongs.",
+    "WHERE IT BIT, silently: gunbc.durable_cas_file_store cas_slot_keys (dag/gunbc/durable_cas_file_store.dag:1230, `distinct_by_key(xs: keys, key: fn(k) { k as String })` where `keys` is built by `fold(xs, init: [], f: (acc, n) => acc |> list_push(n as NonEmptyStr))`). Nothing refused at compile time; the emitted Rust read `crate::std_list::distinct_by_key(keys, |k| panic!(\"unsupported cast from T to String\"))` and the panic was only reachable by EXECUTING the emitted store witness.",
+    "HOW THE NAME ARRIVED (instrumented, not inferred). The empty accumulator types as a carrier with NO element child (`List`, connective NoConnective, zero children, measured), so the update leg `acc |> list_push(item)` falls through the algebraic TEMPLATE path, and the record-literal leg that builds the call's argument substituted `type_variable_node(id: <owner's uninstantiated parameter>)` into every field whose declared type named that parameter. The node carried name=\"T\", span file `<kernel:T>`, inferred TypeVariable{id:\"T\"} — and it reached the higher-order call as that call's ELEMENT TYPE, so the key lambda's formal was framed from it and the cast had no established source type to lower.",
+    "WHY IT LOOKED LEGITIMATE. Every guard at the binding point keys on names or on shape: an enclosing-declared-type-parameter set of STRINGS, a fully-resolved test, a `name == var` shortcut that reads declared formals as if they were bound. A node fabricated from the callee's own parameter satisfies all of them. The discriminator that actually works is BINDER IDENTITY — which declaration's type-parameter scope a variable belongs to — and it is only available if the carrier records it: measured contrast, a legitimate generic wrapper `fn push_one<U>(xs: List<U>, item: U)` binds the callee's T to the CALLER's U (evidence), while the fabricated node is the CALLEE's own unsubstituted formal (no evidence). Those two are indistinguishable by spelling, and two declarations that both write `T` break any name-based rule.",
+    "MASKING, MEASURED (why absence of the panic is NOT evidence of a fix). At the parallel cast-wall head f178f6018025, after the stage0 mirrors were regenerated, the whole emitted corpus contained 0 files with an unsupported-cast panic and the store emitted 4 `int_to_decimal_string` uses with no panic — while the minimal fold probe still emitted `panic!(\"unsupported cast from T to String\")`. A refusal at the cast removes the symptom without touching the unification, so the control for this class must assert the TYPE, not the absence of a panic.",
+    "RECOGNITION RULE: (1) never construct a type node from a binder's spelling — absence of instantiation evidence is the ABSENCE OF AN EXPECTED TYPE, and the slot stays an unsolved variable that the existing evidence gates refuse to credit; (2) never read a callee's UN-substituted formal as the expected type of a call's argument, and never resolve a declaration's parameter name against an ENCLOSING scope; (3) discriminate vacuous candidates by binder identity (the callee's own unsubstituted formal, or an unconstrained variable), never by whether a name matches; (4) a control for any such rule must include a generic wrapper, because an over-broad refusal breaks legitimate T := U bindings; (5) where a fabricated node has already been credited, the red control asserts the resulting TYPE or its emission shape — panic-absence can be produced by masking.",
+    "CEILING AND ITS REASON: structurally guaranteed would mean a type variable can NEVER be manufactured from a name and no consumer can mistake one for evidence, which needs binder identity carried on the variable itself (a scope/owner identity on the node) rather than reconstructed from strings at each use site. THIS PR closes the one construction that produced such a node (the record-literal uninstantiated-owner-parameter arm, src/v1/04_infer.dag) and deletes the map that built it, rather than adding a second guard beside it. The v2 callback-frame rule is named as the next trigger: v2 self-host runs on the v1 seed carrier today, so v2's own lambda-frame rule (src/v2/compiler/infer.dag, infer_callback_formal_frame) is re-checked against this shape separately.",
+    "RUNG REACHED BY THIS ROW IS PENDING ITS RUN: the fixture named in this class (src/v1/stage0/tests/fold_accumulator_hof_cast_emitted_rust.rs, enrolled in v2.self_host.seed_retention_frontier's retained_test_harness list) has not yet executed in the gate at the time of writing; the Mitigatable standing above is the finding from the construction-level fix plus the measured masking contrast, and this row is updated when the harness's execution is on record.",
+  ],
+  evidence: [],
+}
