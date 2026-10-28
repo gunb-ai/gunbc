@@ -1,50 +1,16 @@
-# Model-grounding lens — whole-tree EXTRACT
+# Model-grounding EXTRACT
 
-> DESIGN.md §2 leaf-decomposition residue lens. Detector half of the [reference-grounding migration](reference-grounding-migration.md) effort; carrier half is tidy-badger-45. Sibling design history: anemia lens (PR #5302; no standalone plan doc on main).
+**Goal:** find bare `String`/`NonEmptyStr` fields that may duplicate existing concepts. **Method:** `v2.lens.grounding` folds the type-level concept index into candidates for semantic adjudication. **Validation:** whole-corpus extraction, explicit exclusions and retained refusal evidence; name coincidence alone never proves a grounding defect.
 
-## 1. What the lens does
+The carrier migration is [`gunbc.plans.reference_grounding_migration`](../../dag/gunbc/plans/reference_grounding_migration.dag). `enumerate_concepts()` includes records/coproducts, never variant names. `ConstructionJustification` remains `WallAfterGrounding { dissolves_to: SingleAuthority }`; `grounding_extract_closed_set_stall` owns the EXTRACT stall. `grounding_name_only_residual_boundary` is `OutsideModeledGuarantee`, not a live `RatchetForever` arm or the deterministic climb’s ceiling. DECIDE clears closed-set comparisons, consumer-cracked leaves and parse-input cases; meaning-dependent cases require CONFIRM. Open registries, grammar strings, opaque tokens and prose may legitimately stay strings despite matching concept names.
 
-`v2.lens.grounding` is a pure fold over the type-level concept index that flags bare-`String` / `NonEmptyStr` fields whose **name** coincides with an existing concept that could ground them (e.g. `cursor: String` next to a `Cursor` type). It stores nothing and gates nothing alone — it narrows the corpus to a high-quality **candidate set** for a downstream CONFIRM (LLM) judge.
+Whole-tree access requires fail-closed `concept_decl_facts(roots)` over `dag` + `src/v2`, using `medium_structure_project::parse_file`: `concept_decl_facts_live()` only reflects resolved entry closure; whole-tree resolve can yield `graph: None`. Marshal head type names for exact `String`/`NonEmptyStr` matching; an unrepresentable concept fails loudly, never `Err(_) => continue`.
 
-`enumerate_concepts()` is **type-level** (record/coproduct declarations), never coproduct-arm names. Coincidence is checked against concept **names** only, so `cursor`→a `Cursor` **arm** is structurally impossible as a false positive.
+- `build_concept_name_index` replaces quadratic scanning with O(unique names) lookup.
+- Exclude meta self-coincidence only for substrate meta names `field`/`name`, and layer-DAG inversion (`std ← extdeps ← compiler ← workflow`). Role words such as `id` still reach adjudication.
+- Surface sibling variants, `Unrecognized*`/`NonExternal*` flags and optional-decode siblings as evidence, never automatic exclusions.
+- `GroundingWorklistEntry` retains `enclosing`, `field`, `declared_type`, resolved-qualified `coincides_with`, `target_kind`, `target_structure`, enclosing `qualified_name`, `layer_excluded`, `sibling_variant_names`, `has_unrecognized_sibling`, `sibling_decode_optional`. `candidates()` excludes layer-included=false rows; `worklist()` retains them for audit.
 
-## 2. Construction justification (post-#5943 carrier)
+The historical haiku `GROUND`/`KEEP` judge (`starts_with` grading) was deleted as unconsumed on 2026-08-22; this plan does not claim a live CONFIRM implementation. Target-kind/structure enrichment was its precision lever. Evaluation history is [PR #5302](https://github.com/gunb-ai/gunbc/pull/5302) and the [pinned corpus](https://github.com/gunb-ai/gunbc/blob/d919d662ddf5/src/v2/lens/testdata/anemia_confirm_eval_corpus.json), not a retained test fixture.
 
-The module carries `ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }`. The EXTRACT stall is `gunbc.guarantee_stall.grounding_extract_closed_set_stall`. The name-only confirm-judge residual is `grounding_name_only_residual_boundary` (`OutsideModeledGuarantee`). Rice-complete "should this string be a reference?" is not the EXTRACT ceiling.
-
-Whether a bare-string field **should be grounded** on an existing concept (it re-spells a type that already exists) or is legitimately a string (an open registry, a constraint/grammar string, an opaque token, or free-form prose) is **not decidable from the substrate**. Name-coincidence with a concept (Signal-A) is only a **necessary** candidate condition, never sufficient: `cursor`~`Cursor`, `mediaType`~open registry, `schedule`~`Schedule`(wrong-target) all coincide by name yet are correct as strings. Sufficiency requires semantic judgment of the field's meaning — the residual routes to a CONFIRM judge (LLM). That residue is not a live `RatchetForever` `ConstructionClass` arm (that arm is gone); it is the part of the subject that the WallAfterGrounding stamp does not claim becomes a wall.
-
-The decidable part (`is_bare_string` AND `name_coincides`) is a candidate signal only; the should-ground verdict is the undecidable residue. **Dissolves toward:** deterministic DECIDE clearing of provable cases (closed-set-by-comparison, consumer-cracks-the-leaf, parse-input fields) shrinks the residual sent to the judge. The name-only residual stays off that climb's ceiling.
-
-## 3. Whole-tree EXTRACT (#5933 follow-up)
-
-`concept_decl_facts_live()` reflects only the **resolved closure** of the run entry (~3 hits on `src/v2`-only). Production use requires `concept_decl_facts(roots)` — a fail-closed host builtin that walks `dag` + `src/v2` via **parse-only** projection (`medium_structure_project::parse_file`), not whole-tree resolve (blocked: unresolved imports → `graph: None`).
-
-**§5 cardinal rule:** never `Err(_) => continue` on marshal — that silently drops concepts whose compound fields (`List<T>`, …) cannot fully marshal. The host marshals **head type-names** only (the lens matches exact `"String"` / `"NonEmptyStr"`). Unrepresentable concepts fail **loud**.
-
-## 4. Precision machinery
-
-| Mechanism | Role |
-| --- | --- |
-| **Name index** | `build_concept_name_index` — O(unique names) lookup vs O(n²) linear scan |
-| **Job A — layer exclusion** | Structural, bidirectional: meta self-coincidence (`FieldRef.field`~`Field` on substrate layers — only when the field name is a meta-model name `field` or `name`, not role words) + layer-DAG inversion (enclosing layer cannot import target layer per `std ← extdeps ← compiler ← workflow`). Replaces the hand-list `is_structural_name` **meta** half. |
-| **Job B — role words** | `widget.id` etc. are **not** pre-filtered. Flow to CONFIRM / adjudication ledger (tidy-badger-45). |
-| **Residue evidence** | Sibling coproduct variant names, `Unrecognized*` / `NonExternal*` flags, optional-decode siblings — **surfaced**, not pre-filtered. Verdict is the ledger's. |
-| **CONFIRM judge** | `gunbc.tools.grounding_confirm` (**DELETED 2026-08-22** by the unconsumed-module census disposition: unreachable from every root and named bare by nothing, so the judge described in this row no longer exists in the tree; the design it records stands, its realization does not) — haiku, `GROUND`/`KEEP`, `starts_with` grading. **Enrichment** (`target_kind` + `target_structure`) is the precision lever: bare ~4/6 wrong → enriched 6/6 on the haiku_confirm slice. Eval authority: `src/v2/lens/testdata/anemia_confirm_eval_corpus.json`. |
-
-## 5. Worklist schema (feeds tidy-badger ITEM 4)
-
-Each `GroundingWorklistEntry`:
-
-- `enclosing`, `field`, `declared_type`
-- `coincides_with` — **resolved qualified name** of the matched concept (identity, not bare name)
-- `target_kind`, `target_structure`
-- `qualified_name` — enclosing concept's qualified name
-- `layer_excluded` — Job A already ran
-- `sibling_variant_names`, `has_unrecognized_sibling`, `sibling_decode_optional` — fail-closed residue evidence
-
-`candidates()` returns layer-included rows only; `worklist()` includes layer-excluded rows for audit.
-
-## Dissolution trigger
-
-Delete this doc when `v2.lens.grounding`'s EXTRACT pass returns empty over the corpus (no unadjudicated bare-String field coincides with a concept), groundedness is a walked graph property, and the host `concept_decl_facts(roots)` bridge dissolves into v2 self-host compile-graph access (#5364).
+Remove this document when EXTRACT finds no unadjudicated coinciding bare-string fields, groundedness is a walked graph property, and the host bridge dissolves into v2 self-host compile-graph access (#5364).

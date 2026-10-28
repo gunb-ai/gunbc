@@ -25991,7 +25991,7 @@ fn project_layer_import_syntax_facts(
 
 /// Layer-scoped dependency edges for `v2.std.layer` (`LayerImportFact`) and sibling consumers.
 ///
-/// Transitional producer (namespace terminal step, docs/plans/layering-imports-reference-repoint-design.md §3.1):
+/// Transitional producer consumed by `v2.std.layer_import_scan.layer_import_facts_live`:
 /// import-syntax facts for import-bearing files, plus `reference_edges_as_import_facts(..., strict=true)`
 /// for import-less files in the scan roots. Import-syntax wins on `(path, target_module)` collision.
 pub fn layer_import_facts(

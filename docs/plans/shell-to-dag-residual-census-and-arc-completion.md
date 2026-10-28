@@ -1,6 +1,8 @@
 # Shell → DAG: residual census, thin-run scoping, and arc completion
 
-> **Status: assessment + sign-ready scoping draft (witty-ibex-317, 2026-07-12).** Grounded against `origin/main` @ #6507. Builds on the landed slices (Retry #6467, If-band #6475, typed transports #6457/#6478) and lane D's authority [provisioning-window-executor-capability-design.md](provisioning-window-executor-capability-design.md). No `.dag` edits — records direction for operator + host-effect-lane sign-off. ⚠ FLAG = a decision needing sign-off.
+> **Status: dated assessment + scoping draft (witty-ibex-317, 2026-07-12).** Grounded against `origin/main` @ #6507. Builds on the landed slices (Retry #6467, If-band #6475, typed transports #6457/#6478) and lane D's authority [provisioning-window-executor-capability-design.md](https://github.com/gunb-ai/gunbc/blob/d1f6922580962d14870577f1352e62966073c4bb/docs/plans/provisioning-window-executor-capability-design.md). No `.dag` edits — records direction for operator + host-effect-lane sign-off. ⚠ FLAG = a decision needing sign-off.
+
+[Original census, superseded dispatch ledgers and correction receipts](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/shell-to-dag-residual-census-and-arc-completion.md). The scope and remaining obligations below are not a claim that every historical site remains live.
 
 ## 0. The one finding
 
@@ -26,143 +28,39 @@ A distinct axis from §1's *emission* census: ops whose **interface shape is rig
 
 ---
 
-## 0c. The named boundary — argv is not the authority, and CLI invocation is not the universal effect model (2026-08-19)
+## 0c. The named boundary — domain operation, realization, CLI surface
 
-This lane and the CLI-invocation lane (`cli-invocation-emission-design.md`, gunbc#8467, `sharp-ant-396`) are **one migration program with a named boundary**, not competing destinations. Stated because otherwise #8467's diagnosis — an argv array is a serialization exactly as bash text is a serialization of a bash AST — reads as replacing every typed effect with a CLI tree, moving the authority *downward* into one particular realization technology.
-
-The division:
-
-- **This lane owns the semantic destination and site routing.** The authority remains the typed domain operation or the typed `HostEffect`. It decides whether a realization is native, REST, filesystem, library, CLI-backed, or necessarily text-emitting. That is unchanged by #8467 and is exactly what §1's five categories already do.
-- **#8467 owns one realization sublayer:** how a **CLI-backed** handler lowers a tool-semantic request through cited CLI grammar rows into a carrier. It is the inside of one cell of §1.C, not a replacement for §1.
-- **argv is never the authority.** `ArgvCommand` builders and `transport shell { argv: [...] }` are migration substrates.
-- **CLI invocation is not the universal effect model.** A native handler reaches no CLI surface at all.
-
-The complete shape, so the layers are not re-fused by the next reader:
+This lane owns typed domain/HostEffect semantics and site routing. The CLI-invocation lane (#8467) owns only CLI-backed lowering through cited tool grammar. `ArgvCommand` and handwritten `transport shell { argv }` are migration substrates, never authority. Native REST/filesystem/library/Redfish handlers reach no CLI surface.
 
 ```
-typed domain operation / HostEffect        <- this lane; the authority
-    |
-    | realization selection                <- this lane
-    |
-    +-- native handler: REST / filesystem / library / Redfish / ...
-    |                                       (no CLI surface is reachable from here)
-    `-- CLI-backed handler                 <- #8467 owns everything below this line
-          |  private tool-semantic request
-          v
-       admitted tool process plan (tool identity, emitted CLI surface, stdin,
-                                    cwd/environment, observation contract)
-          |
-          +-- local target: ProcessArgv -> direct process spawn
-          `-- SSH target:   shell simple-command tree -> shell grammar -> RFC 4254 string
-          |
-          v
-       raw ProcessObservation -> tool-policy decoder -> typed tool observation
-          -> domain decoder -> domain result / reconciliation receipt
+domain operation → realization choice
+  native handler → domain result
+  CLI handler → tool-semantic request → admitted process plan
+    (tool identity, CLI surface, stdin, cwd/env, observation contract)
+    local: ProcessArgv → direct spawn
+    SSH: simple-command tree → shell grammar → RFC 4254 command string
+  raw ProcessObservation → tool-policy decoder → typed tool observation → domain result
 ```
 
-**Two consequences are load-bearing.** Local process execution has **no shell and no quoting** — the v1 seed realizes `transport shell` as `Command::new(&argv[0]).args(&argv[1..])`, with no shell, word splitting or quoting layer, so the name is a historical DSL keyword, not a description (hence the host-edge carrier is `ProcessArgvExpansion`, not `ShellArgvExpansion` — the §3 nickname class, caught before it spread). And **SSH is a different target**: RFC 4254 carries one command string, and far-side shell interpretation is a deployment capability to be modeled or observed, never assumed.
+Local `transport shell` executes `Command::new(...).args(...)`, with no shell, splitting or quoting; its carrier is `ProcessArgvExpansion`. SSH carries one string, and far-side shell interpretation is a modeled/observed capability. Never append inner argv to an SSH prefix and assume boundaries survive.
 
-### What this corrects in this document
-
-§5's framing — "the arc needs only a few new typed ops", §5.A's new-op list and §5.B's call-an-existing-op table — is **not wrong about the destination** but uses the vocabulary of the layer #8467 replaces. Typed argv is the terminus for a **CLI-backed** handler only because argv is what the process boundary consumes; it is not the authority a domain module authors against. The §5.B rows stand as written: calling `systemd.Systemctl.ShowProperty` instead of concatenating `systemctl show --property=…` remains exactly right. What changes is one layer in — the op's *own* realization must not be a hand-authored flag list, the defect #8467 measured (a dropped `--fail` across the curl sites made a 401 read as success). A §5.B migration is complete at this lane's grain when the concat is gone and the caller names semantics; at #8467's grain when the op's flags derive from cited rows. **Do not treat a §5.B row as blocked on #8467** — the grains land independently, and this lane's row is the prerequisite, not the dependent.
-
-### The measured shape of the remainder (2026-08-19)
-
-Measured on `dag/**` and `src/v2/**`, excluding `/test/`, `*_test.dag` and fixtures — production populations, not witness counts:
-
-| population | production count |
-|---|---|
-| `transport shell` blocks | re-derive: `git grep -c 'transport shell' -- dag src/v2 ':!*/test/*' ':!*_test.dag'` (per-file; **the bulk is in `dag/extdeps`**) |
-| `argv:` lines | re-derive: `git grep -c 'argv:' -- dag src/v2 ':!*/test/*' ':!*_test.dag'` |
-| counted retained-script bridge call sites | enumerated below |
-| distinct `fn *_argv` builders (whole tree) | many of which lead with `shape`/`witness`/`operation`/`typed` and model no tool at all |
-
-The files, named rather than counted, because a count cannot expose a misfiled row. **At `98d7147f9e`, one fewer than first
-measured** — `gunbc.provider_wire_evidence` is struck below, having migrated fully to typed `extdeps.shell`
-operations; it stays struck-through rather than dropped, because a census row that vanishes unexplained cannot be
-told from one never measured:
-
-`gunbc.command_runner` · `gunbc.host.host_effect_realize` · `gunbc.retained_shell_script` · `gunbc.package_delivery` ·
-`gunbc.codex_app_server_press` · `gunbc.bmc.bmc_netboot_serve` · ~~`gunbc.provider_wire_evidence`~~ · `gunbc.design_document` ·
-`tools.gunbc_ci` · `gunbc.instruments.emit_host_gate` · `gunbc.instruments.host_prelude` · `gunbc.instruments.interpreter_dispatch_bijection_real_roster_transport` ·
-`v2.lens.meta_exec_confinement`
-
-**Three are absent from the §4 punch-list**, which still calls itself the complete per-instance list at `78f43c38`:
-`package_delivery`, `codex_app_server_press` and `bmc_netboot_serve` are post-July production work. That heading's
-"complete, current" claim is true at its stated commit and false at this one; it is a snapshot, and this row is
-its correction, not a second census.
-
-**The classification question is now SETTLED, by measurement rather than by grep, and the answer is the one the
-question feared.** These three modules were flagged as possibly misfiled because they route through `retained_foreign`,
-whose `dissolves_to` is the Bash emitter — the destination for *foreign executors and pre-runtime bootstrap* — while
-appearing to run inside a present gunbc runtime. Measured on `98d7147f9e`:
-
-| module | `retained_foreign(` call sites | at the flag | now |
-|---|---|---|---|
-| `gunbc.package_delivery` | present | present | partially migrated |
-| `gunbc.codex_app_server_press` | present | present | partially migrated |
-| `gunbc.provider_wire_evidence` | **none** | (flagged) | **fully migrated; import is dead** |
-
-**The executor window is decided by construction, not by inspection of intent.** `package_delivery` calls
-`shell.Mkdir.Parents` and `shell.Find.FilesAndSymlinksWithMode` — typed operations that *cannot execute without a
-present gunbc runtime* — in the same function bodies that then fall back to `retained_foreign`. A function that
-interleaves a typed operation with a retained foreign script is runtime-present because its first half ran.
-So the remaining calls dissolve to typed effects (`retained_runtime`), not the Bash emitter, and the
-`dissolves_to` on those sites is wrong. The question is *decidable* without its owners: a typed operation
-in the same scope answers it.
-
-**`provider_wire_evidence` is no longer a bridge file at all** and is struck from the list above. Its
-effects became typed `extdeps.shell` operations under review 50540; what survives is an unused
-`import gunbc.retained_shell_script { retained_foreign }`, dead and to be deleted. A module counted as a bridge on the
-strength of an unused import is the census direction over-reporting, as §0c records it doing elsewhere.
-
-**A partial migration left a second instance of the exact defect its own note claims to have fixed.**
-`package_materialized_tree_observation_note` records that the `find`-piped-to-`sort` string was replaced by
-`shell.Find.FilesAndSymlinksWithMode` plus in-substrate `std` sort, because the string form escaped its quoting on a
-root containing an apostrophe and forked an authority `extdeps.shell` already owned. That landed at one site.
-Another `find '…' -type f -name '*.json' | sort` remains in the same module, built by the same concat-into-a-quoted-string
-shape, with the same escape exposure and locale-dependent collation. The note is true of its site and reads as
-true of the module. **A carrier that records a fix should name the population it fixed**, or the next reader
-takes the note as coverage — as happened here, until the count disagreed with the prose.
-
-**The load-bearing reading:** `transport shell` is overwhelmingly an `extdeps` population — re-derive with the `transport shell` command in the table above — i.e. it sits *beneath already-typed operations*, in the interface layer, not the intent. This lane's original job, getting shell out of the intent, is substantially done; most of what remains is transport depth inside a CLI-backed cell — #8467's subject, not this document's.
-
-Two cautions against over-reading it. The `dag/gunbc` argv residue (re-derive: `git grep -c 'argv:' -- dag/gunbc ':!*/test/*' ':!*_test.dag'`) is real intent-adjacent work, not a rounding error (an earlier scoping pass quoted the *file* count as though it were the line count; recorded so the smaller figure is not re-cited). And a `transport shell` block is not a residual shell program: the v1 seed executes it as `Command::new(&argv[0]).args(&argv[1..])`, so each block is a *process invocation*, of which the shell-shaped ones are the SSH-composed subset.
-
-**Do not turn these counts into a work plan.** Under the replacement-migration rule the unit is a root consumer × subject population, and the census direction reliably overestimates: sizing by argv occurrence, by executable head, then by tool each inflated, because a tool vertical, its site cutovers and its `host_effect_apply` caller are commonly **one** vertical whose acceptance condition is the old site's deletion — not three workstreams. The §5.D domain clusters, each with its own un-defer trigger, are the better unit.
-
-**This section is a boundary and scoping increment, NOT a migration closeout receipt.** Neither finish line below is met at the commit introducing this text: `HostEffect.ShellCommand` still exists and is still constructed (including `host_effect_plan`'s empty placeholder), and `retained_runtime` / `retained_srvn` remain defined and populated (elsewhere in the tree — `bmc_netboot_serve`, `host_effect_realize`). Stated because a section naming a finish line reads, at a glance, like a claim to have reached it. *(Corrected 2026-08-20: this previously also named `command_runner`'s argv → text → heredoc route as live. That route is now deleted — `run_shell_command`/`run_shell_command_capture` ask `command_over_transport` once for the outer `ArgvCommand`, for either transport, and hand it directly to `shell.Exec.RunArgv`, with no per-transport match and no shell round trip. `command_runner_dissolution_trigger`'s first clause — `host_effect_apply` binding `ArgvCommand` execution — is unaffected and stays open.)*
+Calling an existing semantic op closes this lane's site even while its CLI realization still owes grammar-derived flags. The grains land independently; semantic homing is never blocked on CLI work, but an actual cutover may share its process/SSH target increment. Build that increment once, never bypass it with another string. #8596 supplied the SSH target and `command_runner` removed argv→quoted-text→heredoc for both transports; its `command_runner_dissolution_trigger` still requires `host_effect_apply` to bind ArgvCommand execution.
 
 ### Two finish lines, named separately
 
-The program has two, and conflating them is what makes the remainder look larger than it is:
+**SHELL-DAG:** zero runtime-present scripts; foreign/bootstrap shell emitted from typed intent; ShellCommand and runtime retained-script bridges deleted. **CLI-AUTHORITY:** production CLI realizations derive argv from semantic requests and cited surfaces. Naming either finish line is not a closeout receipt.
 
-```
-SHELL-DAG        runtime-present script carriers are zero;
-                 foreign/bootstrap shell is emitted from typed intent;
-                 ShellCommand and the runtime retained-script bridges are deleted.
+### Measured residual classification
 
-CLI-AUTHORITY    production CLI-backed realizations derive their concrete argv
-                 from semantic tool requests and cited surface rows.
-```
+The 2026-08-19 census covered production `dag/**` and `src/v2/**`, excluding tests/fixtures. Re-derive `transport shell` and `argv:` populations with scoped `git grep`; block counts are process invocations, not shell programs, and file/line/occurrence counts differ. Most transport blocks sit under typed extdeps operations; intent-side argv remains a distinct population. Price work by root consumer × subject population, not each tool/argv/site mention.
 
-SHELL-DAG is this document's; CLI-AUTHORITY is `cli-invocation-emission-design.md`'s. A site can be complete against the first and still owe the second — not a defect in either, but the §0c boundary working. Corollary for dispatch: **a SHELL-DAG row is never blocked on DECIDING its semantic destination.** Its production cutover may share a carrier or target increment with CLI-AUTHORITY — `command_runner`'s is the live case: deleting that argv → quoted text → heredoc route needs the structured process-argv carrier, and its SSH arm needs the nested shell-command target — and those shared increments are implemented once, never bypassed with another shell string. *(Corrected 2026-08-19, review on #8535. This read "never blocked on CLI-AUTHORITY" flat — true of the homing decision, false as a sequencing rule, with the counter-example named in the same document.)*
+The July §4 snapshot missed later `package_delivery`, `codex_app_server_press` and `bmc_netboot_serve` retained bridges. At `98d7147f9e`, package delivery/app-server press remained partial, while `provider_wire_evidence` had migrated to typed shell ops and only its dead retained_foreign import remained. Interleaving typed Mkdir/Find operations with a retained script proves runtime presence by construction: those scripts dissolve to typed effects (`retained_runtime`), not foreign Bash. Package delivery fixed one apostrophe-unsafe find/sort site but retained another JSON find/sort concat with quoting/locale exposure; a fix note must name its actual population.
 
-### A live instance of the forbidden SSH shape
+### Obligations across lanes
 
-`extdeps.exec.command` `command_over_transport` constructs `ArgvCommand { argv: append(ssh_exec_prefix(target: t), items: command.argv) }` — exactly the `append(ssh_prefix, inner.argv)` composition §0c forbids: SSH is a nested target whose carrier is one RFC 4254 command string, not a prefix on an argument vector. It is production code beneath the generic runner, so every SSH-transported `ArgvCommand` in the tree flows through it; it is the concrete mechanism by which argument boundaries are lost remotely.
+CLI lane owes a negative falsifier proving a Redfish/REST path reaches no JqInvocation, CliSurface, ProcessArgvExpansion or shell target, and its scoped supersession statement: argv ceases to be terminal authority only inside CLI-backed handlers. This does not replace domain effects, typed extdeps, host routing or native realizations. DESIGN §3 already owns the interface/realization/policy split; no extra authority paragraph is needed. Existing `retained_runtime`/`retained_srvn` populations and host-effect completion require their own closeout; dated census counts do not discharge them.
 
-It sits in the same file as `gunbc.command_runner`. *(Corrected 2026-08-20: this paragraph previously described `run_shell_command` as rendering the outer `ArgvCommand` to quoted text via `shell_command_render` and posting it through `shell.Exec.Run`'s heredoc transport. That round trip is deleted — `run_shell_command` now asks `command_over_transport` once, per transport, and hands the outer argv directly to `shell.Exec.RunArgv`, with no shell and no per-transport match at the run site.)* `command_runner_dissolution_trigger` still declares the repair its first clause owns: *dissolves when `host_effect_apply` binds `ArgvCommand` execution as a typed transport handler*. So the runner cut and the SSH target were one vertical, not two, and the debt was declared before it was scoped — the SSH target landed in #8596, the runner's own heredoc hop is gone for both arms; what remains open is `host_effect_apply` itself.
-
-### What is owed, and by whom
-
-- The **negative falsifier** — one witness proving a Redfish/REST path reaches no `JqInvocation`, no `CliSurface`, no `ProcessArgvExpansion` and no shell target — is owed by the CLI lane (`sharp-ant-396`), not this one. It guards this boundary better than any further argv census, and per the replacement-migration rule a census over a structure being deleted is the attractor at work.
-- The **scoped supersession sentence** in `cli-invocation-emission-design.md` is that document's to place. It supersedes typed argv as the terminal representation *for CLI-backed handlers*; not typed domain effects, typed extdeps operations, host-effect routing, or native realizations.
-- **`DESIGN.md` needs no edit, and the reason CHANGED under this PR.** The first draft said its shell → intent open-thread row already routed runtime-present sites to typed effects, so the boundary falsified nothing in it. That row **no longer exists**: #8476 cut DESIGN to ~9.5k words and removed the open-threads section wholesale. What survives, and what the boundary instantiates, is §3's general paragraph — *interface, realization and policy are three facts, not one row*, the transport a Realization handler one of N, the realization-selecting dispatch peripheral rather than in the interface. A CLI-backed handler is that paragraph's shape at the tool seam: a consequence of DESIGN, not an addition, still needing no edit there. *(Rewritten 2026-08-19 while correcting this document's other stale claims — the original clause was accurate when written and falsified by a merge to main two commits later. Recorded rather than silently swapped, because that failure mode is the subject of this very commit.)*
-
----
-
-## 1. Residual-shell census (current tree)
+## 1. Residual-shell census (dated observations and retained obligations)
 
 Five categories. "Genuine emitter" = emits bash that actually runs; "oracle/scaffold" = shell text retained only for a test. *(Corrected 2026-07-26: the oracle/scaffold definition read "`serialize_bash` retained only for a test" — that sidecar is deleted and **no** test retains it, so the definition described an empty class by mechanism instead of role. §4.H is the live statement of this category.)*
 
@@ -202,53 +100,15 @@ These run before a gunbc runtime exists on the target, so shell is the honest lo
 
 The surviving srv\* dissolution triggers are unanimous: runtime-present raw transport dissolves into typed operations on `host_effect_apply`; the common runner `gunbc.shell_bash_runner.shell_exec_via_bash` (the `bash <<'GUNBC_BASH_EOF'` heredoc framing) dissolves when no caller passes a raw script. The former `srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger` carrier was deleted with that dead reconcile/checklist subgraph; do not cite it as live.
 
-### C-note — a dead verdict fold discovered adjacent to A5, filed not fixed (2026-08-20)
+### C-note — build-cache admission: corrected finding and executed repair
 
-**Historical investigation; admission wiring subsequently LANDED #8825 (`40f2fb60d39`).** The current `gunbc.host.host_effect_realize.realize_provision_build_cache_body` surveys and admits before mutation, and `build_cache_ensure_step` surveys again for `provision_build_cache_verdict`. The zero-caller and unwired-path findings below describe the earlier tree, not the current dispatch obligation; the remaining shell construction is recorded in the table above.
+The zero-caller build-cache fold was an **unconsumed incident remedy**, not dead code. `lane_e_srv1_ci_noncompletion_root_cause_receipt` required `placement_verdict` to refuse ServerRunnerOwned endpoints on active or retired lifecycles; deleting green witnesses would have erased a live incident obligation. Catalog-ID validation was not equivalent placement admission. A generic zero-caller census cannot make that retirement decision.
 
-**Not a shell-residual row** — a dead-code finding surfaced while deleting `host_build_cache_provision_script.dag` (row above): the module names differ by one suffix (`host_build_cache_provision.dag` vs `host_build_cache_provision_script.dag`), hold unrelated concepts, and one was edited while the other was deleted in the same PR — a naming hazard that produced a real false-negative dependents-census answer in that PR's review. Recorded so the next person near either file is warned where they stand, and so the fold is sequenced deliberately rather than appended to an unrelated vertical.
+#8825 wired both authorities around actuation: `build_cache_ensure.admit_ensure_build_cache_instance` is the precondition; AlreadyConverged writes/restarts nothing and runner ownership refuses located. `host_build_cache_provision.provision_build_cache_verdict` is the postcondition over a second observation. #14155 deleted the remaining concat builders and replaced ensure legs with typed argv, discharging that shell row. Its deleted prose note's obligations survive in `build_cache_daemon_ensure` and the verified-binary-install dissolution witnesses; #8598's narrower arm/render ruling did not itself claim admission.
 
-`dag/gunbc/host/host_build_cache_provision.dag` carries a full catalog-gate/verdict fold — `BuildCacheDaemonObservation`, `provision_build_cache_verdict`, `placement_verdict`, `build_cache_provision_gate_accepts` — with **zero non-test, non-self-file callers tree-wide**, confirmed by grep on both `main` and `session/proud-swift-703` (2026-08-20). The zero-caller count reproduces. **The characterization that followed it did not survive re-measurement, and is corrected below** — this is an *unconsumed authority*, not dead code. PR #8598's arm-swap touched only the two effect-constructor functions at the bottom of the file (mechanically required by the `HostEffect` rename) and did not create, fix, or reach this fold.
+`gunbc.build_cache.build_cache_endpoint_observe` purely decodes read bytes into endpoint/path/currency observations. Host realization owns nonmutating reads through its actual transport: boot_id, endpoint stat, `/proc/net/unix`, fd-holder find, then cgroup/stat/principal/exe only for a single resolved owner. The receipt chain is exact path + `St==01` → inode → owner pid → owner facts, never `ss`.
 
-Two test consumers, and they do **not** get the same disposition:
-- `dag/test/claim/host_build_cache_provision_design_witness_test.dag` — entirely dedicated to this fold (gate/verdict/classifier). Its subject disappears whole with the fold: pure deletion population, no assertion needs rehoming.
-- `dag/test/claim/build_cache_placement_observation.dag` — its real subject, `placement_of_endpoint_observation` (in `build_cache_endpoint_observation.dag`), is **live and unrelated to this fold**. Only its `refuses()` helper (used by some of its witnesses) reaches into the dead fold's `placement_verdict` as a boolean-collapse over a `BuildCacheServerPlacement`. Deleting the fold without rehoming `refuses()` onto a live equivalent would silently drop those witnesses' pass/fail assertion, not just their subject — the "reaches its subject through the fold while asserting something else" case, not deletion population.
-
-**CORRECTION (2026-08-20, same day, before any deletion was made): the disposition above is wrong and the fold must NOT be deleted.**
-
-The zero-caller measurement reproduces, but does not establish that the fold is *unwanted*; the module's own receipt, read rather than the grep output, shows the opposite. `lane_e_srv1_ci_noncompletion_root_cause_receipt`, in the same file, names `placement_verdict` **as the fix authority for a live incident class** — "FIX AUTHORITY: ServerManagedUnitOwned on the managed compile-pool slice — ServerRunnerOwned on ANY lifecycle (active or retired) must refuse ProvisionConverged (`placement_verdict`, `build_cache_placement_observation_test` `witness_both_runner_lifecycles_refuse_at_the_verdict`)" — for the stranded-sccache-server defect that killed CI builds at the 15m compile ceiling. Its own status: "INCIDENT CLEARED, NOT REPAIRED ... the class can strand again the next time a slot retires while holding the server."
-
-Nor is the module dead: nine production modules import `gunbc.host.host_build_cache_provision` (`extdeps.cache.sccache`, `build_cache_ensure`, `build_cache_instance`, `build_cache_unit`, `fleet_host_budget`, `host_effect_realize`, `host_layout`, `host_standup`, `runner_capacity_realize`), consuming other declarations in it. A symbol-level zero inside a heavily-imported module is exactly the shape that reads as dead from a whole-file glance and is not.
-
-So the finding is **strictly worse than dead code, and a §4b rung problem rather than a §2 redundancy problem**: fold, gate and witnesses exist and pass, and nothing on the provisioning path asks any of them; the named remedy is computed by a function no production caller calls. Green witnesses prove the fold *correct*, not the class *guarded*; reported as the latter, the class reads a rung above where it sits — the inflation §4b calls worse than sitting low, because an inflated class never ranks for climbing.
-
-**What the deletion would have cost, stated because it very nearly happened:** it would have applied cleanly, taken the witnesses with it, broken nothing, and removed the named remedy for a recurrable CI-capacity incident — leaving a prose receipt pointing at a symbol that no longer exists. The witnesses' greenness made removal look safe.
-
-**Next step, replacing the one this paragraph supersedes: wire it up, do not delete it.** Find the provisioning path that should be gated and establish why it is not — a different job, size and owner than a deletion. First test the one benign possibility: that the path is gated by an equivalent check under another name rather than genuinely ungated. The `refuses()` rehoming note above is moot if the fold stays; retained in case a future measurement re-establishes the deletion case.
-
-**That first test is now answered, on `origin/main` at 2026-08-20, by reading `host_effect_realize.dag`, `build_cache_ensure.dag` and `host_build_cache_catalog_gate.dag` directly. The benign explanation is refuted: the path is genuinely ungated for placement.**
-
-`realize_provision_build_cache` has exactly one gate before dispatching to the body — `provision_build_cache_catalog_gate_verdict(catalog_id: instance.implementation)` — and that function, in a third module, is pure id validation: unknown id refuses, an id other than `sccache_local` refuses, otherwise realizable. It never observes placement, principal, unit ownership, or lifecycle. So there *is* a check under a different name, and it is **not equivalent**: passing it says nothing about whether the daemon is stranded in a retired slot's cgroup, the class the incident receipt names `placement_verdict` as the fix for. `host_effect_realize.dag` matches none of `placement_verdict`, `provision_build_cache_verdict`, `build_cache_provision_gate_accepts`, `admit_ensure_build_cache_instance`, or `EnsureBuildCacheAdmission`.
-
-**Two unconsumed authorities, not one — and therefore one wiring job, not two.** `build_cache_ensure.dag` carries a second admission authority, `admit_ensure_build_cache_instance`, with its own `EnsureBuildCacheAdmission` / `EnsureRefusal` / `EndpointPreflight` vocabulary and no production caller. Both name the *same* next consumer: `realize_provision_build_cache_body`. That materially reduces the sizing this note originally implied.
-
-**The tree recorded this, and the record has been re-homed, not lost.** The terms were carried by `ensure_effect_grain_migration_note` in `build_cache_ensure.dag` — "RENDER IS NOT ADMIT ... NO PRODUCTION CALLER IS NAMEABLE TODAY ... The nameable next consumer is `realize_provision_build_cache_body` ... once it is rewritten to observe `BuildCacheServerPlacement` and `EndpointPathState` for the target host and route through this admission instead of unconditionally rendering and restarting the unit." #14155 deleted that prose-only `String` row (DESIGN §4c: a String whose only purpose is commentary is misplaced data; no fold consumed it) and kept its durable content where it is checked rather than quoted: the A5 rows above and below, the verified-binary-install dissolution rows in `dag/test/claim/dissolution_census_mechanism_witness.dag`, and the "WHAT THIS MODULE REPLACES" block in `gunbc.host.build_cache_daemon_ensure`. The scope boundary that produced the gap was a deliberate ruling on #8598 (arm-plus-render only, explicitly refusing to wire a consumer that did not then exist) — correct for that PR, and discharged for this lane by #14155.
-
-**Not established here:** what it costs to observe `BuildCacheServerPlacement` and `EndpointPathState` at realize time. That is the actual content of the wiring job and the reason it was deferred rather than done; this note does not size it.
-
-**LANDED 2026-08-21 — both authorities are consumed, and what it cost is recorded rather than left as the open question above.** The missing piece was a producer, with no cheap version: `build_cache_endpoint_observation.build_cache_ci_endpoint_observed_producer` returned `ProcTableUnreadable` in every arm because it takes a `HostIdentity` and so has no transport to thread through. The producer now lives in `gunbc.build_cache.build_cache_endpoint_observe` as a PURE DECODE of read text into `BuildCacheEndpointObservation` / `EndpointPathState` / `ObservationCurrency`, and `gunbc.host.host_effect_realize` performs the reads through the transport it already holds — single-argv, non-mutating reads per pass (`cat /proc/sys/kernel/random/boot_id`, `stat -c %F` on the endpoint path, `cat /proc/net/unix`, the `find` fd-holder walk, then the owner's `cgroup`, `stat`, principal and `exe` only when a single owner resolved). Locally via `gunbc.command_runner.run_shell_command_capture`; over SSH via `run_typed_argv_transport`. No shell body was added: the reads land on the typed-argv side of `#5828`, and the ensure step's concat-built script is untouched, so the A5 row's dissolve-on is unchanged. UPDATED #14155: that concat-built script no longer exists — the `build_cache_*_body` builders and `build_cache_provision_shell_script` were deleted and the ensure legs became typed argv operations (see the A5 rows), which is what discharges the dissolve-on this sentence kept open.
-
-Both authorities are consumed, on opposite sides of the act, without duplicating each other. `build_cache_ensure.admit_ensure_build_cache_instance` is the PRECONDITION and runs before the first mutation — `EnsureAlreadyConverged` returns converged with no unit written and no restart issued, removing a per-pass reinstall that re-colded every compile on the host; a runner-owned endpoint refuses with the owner located, which is the incident class. `host_build_cache_provision.provision_build_cache_verdict` is the POSTCONDITION over a re-observed placement after the ensure ran, catching an ensure that reports success while the endpoint ends up owned by something else.
-
-**A CAPABILITY BOUNDARY WAS CLAIMED HERE AND IS REFUTED BY MEASUREMENT — read this before concluding anything in this lane is impossible.** An earlier revision of this row stated that the fourth stale-socket observer clause (no `/proc/*/fd` entry still resolves to the socket's inode) needs a glob over `/proc`, therefore a shell, therefore emitted-shell growth this A5 row may not do — so `EndpointStaleSocket` could never be produced and srv4's stranded socket could only ever refuse. **That is false.** The walk is one argv with no shell:
-
-```
-find /proc -maxdepth 3 -path "*/fd/*" -lname "socket:?INODE?"   ->  /proc/<pid>/fd/<n>
-```
-
-Executed 2026-08-21 against a live listening socket, reproduced independently by a second session, with the two controls that are the measurement's content: the bracketed form `socket:[INODE]` matches **nothing** (find reads `[...]` as a glob character class), and a non-existent inode returns **empty**. The original error was exactly that trap — the bracketed probe returned nothing and "found nothing" was taken as proof the walk was impossible. **A zero with no nonzero beside it in the same run is not a measurement**; the refutation is stated rather than the claim dropped, because a silently removed impossibility leaves the next reader no reason to try either.
-
-So the shipped producer walks the receipt's chain — `/proc/net/unix` (exact path, `St==01`) → listening inode → the `find` walk → owner pid → `/proc/<pid>/{cgroup,stat,exe}` — and `ss` is not used, matching both `gunbc.build_cache.build_cache_instance.endpoint_ownership_note` and the step-1 placement receipt, **which were right as written and are unamended.** All four stale-socket clauses are established, so `EndpointStaleSocket` is produced and the admitted unlink is reachable: srv4's `/var/lib/ctrl/sccache-ci/server.sock` becomes an admitted unlink rather than a permanent refusal. Genuinely unmodeled: TCP-endpoint ownership (`/proc/net/tcp` with its own hex address decode); no `BuildCacheInstance` in the tree carries a TCP endpoint, and that arm is a positive typed refusal, not an untested path that answers.
+The measured shell-free walk is `find /proc -maxdepth 3 -path "*/fd/*" -lname "socket:?INODE?"`. Live-socket positive and absent-inode negative controls established it; `socket:[INODE]` failed because brackets are glob syntax, not because argv cannot walk procfs. All four stale-socket clauses can therefore produce EndpointStaleSocket and admitted unlink. TCP ownership remains unmodeled (`/proc/net/tcp` hex decode), explicitly refused; no measured BuildCacheInstance used it. A zero without a same-run nonzero control proves no impossibility.
 
 ### D. Oracle / scaffold retainers — NOT genuine emitters (mostly my Phase 3a work)
 
@@ -338,7 +198,7 @@ The construction half of the global transport wall has **since closed too**: `Tr
 
 ## 4. Exhaustive instance census @ `78f43c38` — the tracked punch-list (calm-ferret-849, 2026-07-22)
 
-§1–§3 record *direction* at #6507; this section is the **complete, current, per-instance list** so every shell-string-construction site is tracked to closure. Grounded against `origin/main` @ `78f43c38`.
+§1–§3 record *direction* at #6507; this section is the **per-instance snapshot at the stated base** so every shell-string-construction site is tracked to closure. Grounded against `origin/main` @ `78f43c38`.
 
 **Why now:** a "migration" wave (#7004, #7006, and the closed srv* cluster) counted **relocations** as progress — it moved `ShellCommand{script: concat(...)}` out of the intent file into a new `*_script.dag` file and realized a typed variant by *calling that concat and stuffing the raw string back into `ShellOnHost{script}`*. Net raw-shell-string construction: unchanged; new §3 coproduct-nickname debt added. This census exists so no site is counted done until the concat is **gone**, not homed elsewhere.
 
@@ -379,15 +239,7 @@ Keyed on the **construction site (variant/fn name)** and the modeled op it *shou
 | ~~hygiene reaper/liveness~~ **DELETED #8583** | ~~`host_hygiene_reaper_script.dag` (`…_body`), `host_hygiene_liveness_script.dag`~~ **file deleted** — migrated to typed `host_hygiene_reaper_observe.dag` / `host_hygiene_reaper_remediate.dag` / `host_hygiene_liveness_observe.dag` | typed observe/remediate modules | **A5 DISSOLVED #8583** — CASE 2 (file deletion upstream): script file deleted, construction migrated to typed sub-modules. No direct successor body names. |
 | `srv3_host_effect_apply.dag` · `Srv3*` variants, `srv3_install_diagnostic_checklist.dag` · `Srv3InstallDiagnosticObserve`, `nbd_proxy_virtual_media_install.dag` · `Srv3NbdProxyServe` | `srv3_host_effect_script.dag`, `srv3_install_diagnostic_observe_script.dag` | typed observe/receipt effects | **A5** srv* deprioritized |
 
-**A1 dead-scaffold finding (census true-up, 2026-07-26).** The A1 typed migration (D2 #7192) dissolved the *live* read path onto `ShowProperty`/`ListUnits` but left two `systemctl` concat builders behind in `fleet_show_effective_read.dag`, orphaned:
-
-- `fleet_runner_unit_memory_props_read_script` — **zero references tree-wide** beyond its own definition. Pure dead code.
-- `fleet_runner_width_count_read_script` — **zero production callers**; its only other reference was a witness assertion.
-
-Both are deleted in this true-up (deletion is the receipt; a "done" row beside a live concat is the relocation pattern this census exists to catch). Two things make this worth recording rather than quietly fixing:
-
-1. **The file's own note claimed the property the tree did not have.** the `reason:` note in `gunbc.fleet.fleet_show_effective_read` asserts "no per-command HostEffect nicknames, **no concat shell strings**" while concat shell strings sat below it in the same file. The note was true of the *live path* and false of the *file* — the §3 tell that a prose claim had drifted from its carrier.
-2. **A witness was pinning the dead scaffold as contract.** `fleet_show_effective_read_witness.dag` · `witness_transport_reads_use_show_property_authority` — a witness whose *name* asserts reads use the typed authority — carried a third conjunct asserting `fleet_runner_width_count_read_script(...)` contains `"list-units"`. That conjunct (a) is tautological (a `concat` of a literal containing `list-units` always contains `list-units`; it fails only if someone edits the literal), (b) asserts nearly the **opposite** of the witness's stated purpose — that a shell-concat *bypass* still exists with the right shape, and (c) kept a dead symbol referenced, so it never read as dead code. Removing it leaves the witness asserting exactly what its name claims (typed argv match + local read) — **stronger**, not weaker. This is the DESIGN §5 "tests *asserting the string* so the degradation was enshrined as the contract" shape, in the small.
+**A1 correction:** the live typed migration left two dead concat builders (`fleet_runner_unit_memory_props_read_script`, `fleet_runner_width_count_read_script`), subsequently deleted. One had a tautological witness pinning “list-units” text while claiming typed authority. Keep the actual typed argv/local-read controls; do not preserve a bypass because its string assertion is green. A module-wide “no concat” claim must cover the module, not only its migrated path.
 
 ### 4.B — DIRECT `ShellCommand{script}` still constructed in intent
 
@@ -500,43 +352,13 @@ These are correct as shell (GHA `run:`, cron, git hooks, pre-runtime bootstrap �
 | `host_language_transport_script` lens | **LIVE — activated by #7184**, not inert. `v2.test.claim.host_language_transport_script.corpus.wall_residue_live`: *"the previously-inert … lens is wired as a per-PR live consumer over the `shell.Exec.Run` anchor sites"*, disposition `ReadsLiveTree`. It reds a **new raw literal** at an enrolled Run position, and stays **deliberately green** on `ComputedApplication` (the counted bridge calls) — which is why it never caught the #7064 computed-join fake | **none — done as a literal-blob backstop.** `RetainedShellScript` closed the computed-join class at the `ShellOnHost` record field and #7962 closed the direct `shell.Exec.Run` sink at the type; the lens deliberately permits computed applications, which are now exactly the counted bridge calls. Do not "promote" the lens — that action presumed a brand that does not work and a lens that was already switched on |
 | meta-exec module `extdeps.shell.exec` | not walled | module-isolate / symbol-visibility confinement (meta-exec-confinement lane) *(still open — the genuinely remaining Phase-3 item)* |
 
-### 4.G — bash-AST emit vocab (emit-internal — **EXTINCT**, not merely confined)
+### 4.G — bash-AST vocabulary is extinct; the replacement is live
 
-**Corrected @ 2026-07-26 (snappy-moth-330), in two passes — read the method note below before trusting or editing this section.** The original row read *"in … files … + the ubuntu-media files + `nbd_proxy_serve`"*, overstating the live surface and costing an audit a wrong prerequisite (see the trap note). The first correction pass still listed several files as live `ShellProgram`/`serialize_bash` construction sites — **also wrong** (`review 43441`), the same way: every one of those hits is prose. The second pass scoped the occurrence count to `.dag` files, missing the frozen `.diff` fixtures (`review 43455`). Re-censused hit-by-hit, unscoped, over `origin/main`:
+#6831 deleted `program.dag` and its ShellProgram/serialize_bash/ShellStmt/RawLine constructors. Remaining occurrences are prose, absence controls, substring collisions or frozen `.diff` fixtures; never edit those fixtures to improve a census. Live `bash_command_fold`/`bash_build` constructs Node and is replacement machinery, confined by `realization_vocabulary_containment` (#6854), not a dissolution target.
 
-| vocabulary | live construction sites | where the remaining text occurrences are |
-| --- | --- | --- |
-| `RawLine` (bash-AST node) | **zero** — tree-wide | occurrences **excluding this document** (see the self-reference note below), none a construction site: one prose string at `extdeps.provisioning.ubuntu_seeded_install_media_remaster` (no longer present at this revision) (a dissolution `reason:` attesting to its own removal), and **the rest in frozen `.diff` fixtures** — `src/v1/stage0/testdata/module_grain_affected_{dag_only_6edafbb,v2_only_bb6e656}.diff`. Some of those are `-` **deletion** lines (`-  RawLine,`, `-      RawLine { text: … }`) — i.e. the recorded removal itself |
-| `ShellProgram` / `serialize_bash` / `ShellStmt` | **zero** — the defining module `dag/extdeps/languages/bash/program.dag` was **DELETED** (#6831, Phase 0). There is no bash-AST sidecar left to construct from | prose and frozen fixtures only — `gunbc.design_document` (no longer present at this revision), `DESIGN.md` (its rendered twin), `plans/{shell_emission_model,emission_ingestion_inverse,host_convergence_circuit_residue}.dag`, the two ubuntu-media `reason:` fields, and `src/v1/stage0/testdata/module_grain_affected_dag_only_6edafbb.diff` — plus `test.claim.srv3.srv3_host_effect_apply_witness` (no longer present at this revision), a witness asserting the string is **absent**. (`lens_module_gate`'s `ProjectionShellProgram` is a different identifier — a lens projection variant, not this type.) |
-| `bash_command_fold` / `bash_build` | **live, and this is the actual replacement machinery** — `src/v2/extdeps/languages/bash_command_fold.dag`, consumed by `bash_orchestration_emit.dag`, `dag/gunbc/instruments/build_step.dag` (which constructs plain `Node`, **not** `ShellStmt`), `realization_vocabulary_containment.dag`, and the fold tests | — |
-| `nbd_proxy_serve` | **none of it** | (§1.C, §3 P6 and §5.D each carried a pre-dissolution copy of that row; all three corrected in the same pass) |
+A hit is not a construction. Check declarations, read every hit across all file types, exclude this census's self-reference, and distinguish matching lines (`grep -c`) from occurrences (`grep -o`). Deletion lines in frozen patches are evidence of removal. Delete a superseded directive, or retain its exact correction where needed: **refuted** means never retry; **completed** means do not redo; **partially superseded** preserves named residual work. Never append a mutually incompatible instruction beside its correction.
 
-**Method note, because this row has been wrong three times with one cause.** `git grep -l` answers *"which files contain this string"*, **not** *"which files construct this thing"*. Distinct classes match the string and none is a construction site:
-
-- **(a) prose** — `data …_note: String` / `text:` / `reason:` fields, including dissolution notes whose content says the builder was *removed*.
-- **(b) absence-asserting witnesses** — e.g. `!string_contains(s: argv_surface, pattern: "serialize_bash")`, which matches the grep precisely *because* it proves the opposite.
-- **(c) different identifiers sharing a substring** — `ProjectionShellProgram` vs `ShellProgram`; `ExprCmdSubst`/`CmdSubstLines` vs the `CaptureSpec.CmdSubst` variant.
-- **(d) frozen historical artifacts** — recorded `.diff` fixtures under `src/v1/stage0/testdata/`, capturing the tree as it *was*. These match forever and must **never** be "cleaned up": they are test data, and editing them corrupts the fixture. The sharpest case is a `-` **deletion** line (`-  RawLine,`): it matches a search for the symbol *because it records the symbol's removal* — the strongest available evidence of absence, and the easiest to miscount as presence.
-
-Error history: a file count originally; several files as live sites in the first pass, when the true count is **zero and the declaring module does not exist**; the second pass scoped the occurrence census to `dag/**` and `src/v2/**`, missing class (d) entirely (caught by `review 43455`). **Scope note, so the claim is checkable — and it must exclude this file (`review 43530`).** The counts above are over the *whole repository, all file types*, **minus this document**, which is a census *of* these names and therefore full of them: an unscoped `git grep -- .` returns a larger number, because this file's own corrections contribute `RawLine` lines of pure self-reference. The reproducible command is:
-
-```
-git grep -o RawLine -- . ":!docs/plans/shell-to-dag-residual-census-and-arc-completion.md" | wc -l
-```
-
-Two further reproducibility traps, since a census's whole value is that its numbers can be re-derived: `git grep -c` counts **matching lines** while `git grep -o | wc -l` counts **occurrences** — they differ wherever a line mentions a name twice — and a count taken before a later commit will not match one taken after. The figure above is occurrences; the per-file split is `ubuntu_seeded_install_media_remaster.dag` + `module_grain_affected_dag_only_6edafbb.diff` + `module_grain_affected_v2_only_bb6e656.diff`. Before editing this section again: confirm the *declaring* module still exists, search unscoped, and read each hit rather than counting filenames.
-
-**The second rule, which cost more rounds than the grep rule and generalises past greps: a correction is not done until the text it supersedes is GONE.** Across eight review rounds on this document the dominant failure was not a wrong fact but the corrected fact written *beside* the stale one, leaving both — two mutually exclusive instructions with no way to tell which is live, strictly worse than the original error because the stale half now looks reviewed. Instances: §4.F's table kept "brand `TransportScript`" while §5.E already recorded it refuted; §1.A/§1.D kept sibling rows citing deleted vocabulary; the `TeeTo` finding carried two contradictory **dispositions** in adjacent paragraphs, one directing the very fix the other says was rejected (`review 43513`). So, when correcting:
-
-- **Delete** the superseded text when it is purely a directive — a stale action row is a misdispatch waiting to happen and preserves nothing worth reading.
-- **Strike it in place, with the reason**, only when the correction is *illegible without it* — e.g. §5.E's three original bullets, where a verdict like "refuted" means nothing unless you can see what was refuted.
-- Never simply append. If you cannot tell which of the two applies, you do not yet understand the correction well enough to write it.
-
-**Third rule, and the one that survived longest undetected: say HOW a directive died, because the three ways are not interchangeable.** *Refuted* (the idea does not work — never retry it), *completed* (it already happened — do not re-do it), or *partially superseded* (part landed, part is live residue — the dangerous one, because striking it whole retires open work). All three read identically as "out of date", so a bare strike-through loses exactly what a reader needs. `review 43522` caught two at once in §5.E: the lens directive labelled **refuted** when #7184 had **completed** it, and the typed-argv retype labelled **landed** when what landed was a *different sink* (`RetainedShellScript.body` is a `String`, not `List<String>`) with the typed-argv path still open. The first sends someone to re-argue a settled design; the second deletes live §5.A/§5.B work from the plan.
-
-Confined by `realization_vocabulary_containment` (LANDED #6854). **No dissolution action, but the two halves are no longer the same kind of thing:** the bash-AST *sidecar* vocabulary (`ShellProgram`/`serialize_bash`/`ShellStmt`/`RawLine`) is **extinct** — nothing to dissolve or confine, because the declaring module is gone; only `bash_command_fold`/`bash_build` remains, and that is the replacement machinery proper. This section is now a *negative* result — kept so the extinct names aren't mistaken for construction sites, and so the next reader doesn't re-derive the same false positives from a filename grep.
-
-**⚠ Name-collision trap — do not read this section as covering the bare-line path.** The live "emit one raw line" path is `realize_run_rawline` (`v2.std.orchestration_emit` `OrchestrationEmitMedium`), a **method on the `OrchestrationEmitMedium` interface**, realized by `bash_fold_raw_line_target_model` (`v2.extdeps.languages.bash_command_fold` `bash_fold_raw_line_target_model`) and reached from `v2.compiler.emit_orchestration` `orch_emit_run_core` for env-free `Run`s. It merely *echoes the name* of the retired bash-AST `RawLine` node; it is a different thing at a different layer, and very much alive. Consequence, recorded because an audit hit it: a non-command `PipelineStep` (e.g. dissolving `orch_bash_comment_line`) needs **only** a new variant wired to this existing medium method — **not** a new grammar row, **not** a restored `ShellProgram`. Reading §4.G's old "RawLine is confined emit-internal vocab" line as if it described this path is what produced the wrong prerequisite.
+The live `v2.std.orchestration_emit.OrchestrationEmitMedium.realize_run_rawline` is a different concept from the extinct RawLine AST node. `bash_fold_raw_line_target_model`, reached by `orch_emit_run_core` for env-free Run, remains live. A non-command PipelineStep can use this existing medium method; it does not require a restored ShellProgram or new grammar row merely because the names resemble one another.
 
 ### 4.H — oracle / test retainers (NOT live construction — skip)
 
@@ -572,42 +394,9 @@ The 07-22 snapshot is several merges stale. What has landed since, keyed to the 
 
 **Meta-exec roster: → 0, and the dark lane that hid it.** Two of the three rows (`dag/gunbc/tools/review.dag`, `dag/gunbc/ci/ci_deploy_target_host.dag`) were **stale** — their sites had stopped importing `extdeps.shell.exec` merges earlier and nobody noticed, because `meta_exec_roster_sound_live` existed in the lens but ran on **no** per-PR cadence; the only enrolled roster RED was synthetic (hand-written fact rows, blind to the live roster). Measured this PR: the live receipt costs **13.5s cold** against a 5s fast-lane budget, so it cannot be enrolled per-PR as-is. The per-PR enforcement is instead a **construction wall** — `stale_count` is bounded above by roster length, so the empty roster proves soundness with no scan, and any re-added row reds `meta_exec_roster_shrunk_to_empty_holds` in the same PR that adds it. The live receipt stays as a backstop in `src/v2/test/claim/long/meta_exec_confinement_clean_tree.dag` (with a non-degeneracy control, since a clean tree makes a live scan vacuously true if the walk reads nothing). **Named residue:** that long lane is still dark (not roster-enrolled); its dissolve-on is a falsifier batch admitting live-tree lens receipts.
 
-### Wind-down PR ledger — snapshot @ 2026-07-22 (calm-ferret-849 subtree)
+### Historical wind-down ledger
 
-The state of every PR in this arc, so nothing is missed if work pauses here. **A task's real state is its branch/PR** (ROADMAP.md rule); this is that ledger.
-
-**Landed (merged to main):**
-
-| PR | owner (session) | what | note |
-| --- | --- | --- | --- |
-| #6946 | keen-deer-531 *(archived)* | **Wave C5** — typed-argv exec machinery + access-probe dissolution (4.A3) + `ssh.Session.ExecArgv` | **the foundation.** `ExecArgv` is now the shared authority every SshShell dissolution splices through. Genuine. |
-| #7007 | valiant-deer-438 *(archived)* | fleet-converge bootstrap emitter dissolution + byte-oracle vs `.github/fleet-converge.sh` | genuine (emit path, §5.C) |
-| #7004 | nimble-carp-340 *(archived)* | live_deploy/apply "Phase-2" | **⚠ RELOCATION, not dissolution** — moved the concats to `live_deploy/host_effect_script.dag`; the raw shell string still exists (4.A4). **Not truly done.** |
-| #7006 | zesty-crane-129 *(archived)* | fleet_show/host_identity "Phase-2" | **⚠ RELOCATION** — `fleet_show` is now properly dissolved by #7064 (supersedes this); `host_identity` still needs real dissolution (4.A2). **Not truly done.** |
-
-**Open (in review):**
-
-| PR | owner | what | next action |
-| --- | --- | --- | --- |
-| **#7065** | **calm-ferret-849 (me)** | **THIS doc** — §4 census + §5 Method of Action (the tracking authority) | REQUEST_CHANGES fixed (wrong-tree #41399, multiline-pattern #41467); re-review pending, then merge |
-| **#7064** | sleek-crab-621 | **PROPER `fleet_show` + `host_converge_slice1` dissolution — THE EXEMPLAR** (call the op directly; verified genuine, not relocated) | reconcile onto merged C5 (drop #7064's duplicate `ExecArgv`), re-review, merge |
-
-**Closed / deprioritized (srv\* cluster — operator wound down 2026-07-22):**
-
-- Sessions wise-crab-547 + crisp-deer-871 + still-ant-534 + sharp-heron-884 closed. PRs #7019, #7025, #7044 closed; #7020, #7026, #7011 merged before closure.
-- **Their relocations remain on main** (4.A5 srv\* rows: `srv3_*`, `host_build_cache_provision`, `host_hygiene_*`) — real debt, **deferred by operator, NOT done.**
-
-**Not started — the remaining arc (bounded, fully specified in §5; safe to pause):**
-
-- **§5.A** — **COMPLETE.** All its ops landed on #7194 and are verified in tree at their post-#7231 homes: `os.Hostname.ReadShort`/`Set` (`dag/extdeps/tools/hostname.dag`), `systemd.Systemctl.ListUnits` and `.Status` (`extdeps.systemd.systemctl` `systemd.Systemctl` `ListUnits`, `Status`), `os.Id.Uid` (`extdeps.tools.id` `os.Id` `Uid`). (`ssh.Session.ExecArgv` landed via C5; `Clock.Now` in `dag/extdeps/clock.dag` already existed and is now the single authority for every `date -Iseconds` site.) **The finite new-op list this whole arc needed is closed** — everything remaining in §5.B is calling ops that now exist.
-- **§5.B** — the call-the-op migrations are **UNPAUSED** (the `ShellOnHost` wall landed, #7184; the still-open direct `shell.Exec.Run` sink does not re-pause them). D1/D2/D3 (#7192/#7193/#7194) and bucket A discharged the hostname, systemctl-read and clock clusters. **The 2026-07-26 “non-deferred queue is empty” conclusion is superseded by merged #7298:** its deploy-access preflight wraps already-modeled C5 operations back into raw `Run.command` strings at a runtime-present edge. The bounded correction is the first current §4.J row. Outside that regression, only the **operator-deferred srv\* cluster** (4.A5, including 4.D) remains in §5.B.
-- **§5.E** — the **transport-script construction wall** — **LANDED in two steps**: #7184 walled the `ShellOnHost` record edge, and #7962 sealed `TransportScript` itself, closing the direct `shell.Exec.Run` sink and the cast form. Built as a `RetainedShellScript` RECORD edge + free-minter deletion + counted bridges + lens activation + compile-fail REDs (see §5.E ruling block; "brand `TransportScript`" was found non-walling because the brand is transparent). The 2026-07-24 wall-first ruling that paused §5.A/§5.B is therefore discharged.
-
-**⚠ Do-not-miss for wind-down:**
-
-1. ~~**#7004 and #7006 merged as "progress" but are relocations**~~ — **CLOSED by the 2026-07-26 true-up.** Both relocation sites are now genuinely dissolved: `live_deploy/host_effect_script.dag` is **deleted** (D2 #7192) with zero `ShellCommand` left in the directory, and `host_identity`'s hostname path went typed on D1 #7194. The relocation debt this item tracked no longer exists on main.
-2. **Two open PRs to land:** #7065 (census/plan) and #7064 (exemplar).
-3. **Nothing is lost by pausing** — §5 is the durable, bounded plan (ops + call-existing-op + emit-roster + wall). Resume from §5 whenever.
+The [2026-07-22 PR/session snapshot](https://github.com/gunb-ai/gunbc/blob/3e5a0f1f0dbc62e0d3589df44146858d3147c9e9/docs/plans/shell-to-dag-residual-census-and-arc-completion.md) is retained in immutable history, not presented as current dispatch. The final corrections are: #6946 established ExecArgv; #7004/#7006 relocated scripts until #7192/#7194 removed them; the finite new-op list closed; #7184/#7962 closed the retained-script construction edges, not the remaining typed-op path. §4.J owns the later site/trigger roster; operator-deferred work remains deferred unless its specific later receipt discharges it. PR/branch state is read from the PR, never this dated ledger.
 
 ### 4.I — CI foreign-executor sites the census missed (2026-07-24 audit @ `879c5a2699`)
 
@@ -879,9 +668,7 @@ This receipt is deliberately narrower than “all srv3 is gone.” `Srv3NbdProxy
 
 ### 5.E — the enabler that had to come first — **LANDED in two steps**: #7184 closed the `ShellOnHost` string sink, #7962 sealed `TransportScript` and closed direct `shell.Exec.Run`
 
-*(Trued up again 2026-08-19: the heading and premise below were written while the `shell.Exec.Run` sink was open; #7962 closed it, so the present-tense claims are now past tense for BOTH edges. Original correction note follows. (Heading and premise trued up 2026-07-26, `review 43537`. This read "THE ENABLER THAT **MUST COME** FIRST" in the imperative, and the paragraph below was written in the present tense — "can be faked" — as though the sink were still open. The `ShellOnHost` sink is closed, so both are past tense **for that edge** — but the `shell.Exec.Run` sink is **not** closed (transparent `TransportScript` brand, §4.F/§5.E), so the present tense still applies there. (Re-corrected 2026-07-27, `review 43614`.) The §5.A/§5.B rows it gates are the work that remains, not this.))*
-
-Every §5.A/§5.B row **could be** faked at the former `ShellOnHost{script}` edge and at direct `shell.Exec.Run(script)` by joining argv back into a string — sleek-crab #7064 did exactly this (`argv_join(...) + " 2>/dev/null || true"`). While those sinks were reachable from intent, relocation was the path of least resistance and a brief alone could not stop it, so the construction wall was the enabler, **not cleanup-after**. **Both sinks are now walled**: #7184 built the `ShellOnHost` record edge, #7962 sealed `TransportScript`; what survives is the counted string-taking bridges, conspicuous by design. The original plan follows, each bullet's actual fate marked:
+The construction wall landed in two steps: #7184 made the host script edge a RetainedShellScript record and #7962 sealed TransportScript, including casts. Counted string-body bridges remain. The three original proposals below have different dispositions; do not repeat completed/refuted work or retire the surviving typed-argv path.
 
 > ⚠ **The three bullets immediately below are the ORIGINAL plan, superseded by the ruling + design-correction block that follows.** Kept because the correction is only legible against them. **Each bullet failed differently, and the difference decides what a reader should do with it** — a *refuted* plan must never be retried; a *completed* one already happened; a *partially superseded* one still has live residue. Do not action them as written; read on. *(Flagged `review 43486`; classifications corrected `review 43522` — the earlier version lumped bullets 1 and 3 together as "refuted by execution", wrong for bullet 3 and exactly the conflation §4.G's method note warns about.)*
 
