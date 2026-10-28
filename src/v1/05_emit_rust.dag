@@ -2558,24 +2558,6 @@ fn coproduct_decl_ref_decl_name(body: Node, source_indices: Map<String, NewlineI
   }
 }
 
-// THE COPRODUCT REFERENCE CARRIES THE TARGET MODULE AND THE EMITTER NEVER READ IT. CoproductWireContract
-// .coproduct is a DeclarationRef { module_path, decl_name, field }, and the v1 interpreter -- the typing
-// authority -- indexes coproduct wire encodings by the PAIR (v1_interpreter.rs
-// build_coproduct_wire_contract_index), exactly so a row may live anywhere and still govern one
-// declaration. The emitter read only decl_name, so a row reachable in an emitting module's wire context
-// under a foreign target module was applied to that module's SAME-NAMED coproduct, and the target
-// validation demanded the foreign declaration be LOCAL. That is how dag/extdeps/github/github_contracts.dag
-// issue_state_wire_contract -- targeting extdeps.github.issues' IssueState -- emitted a refusal into
-// extdeps_github_github.rs, the failure gunbc.recurring_failure_mode
-// coproduct_wire_contract_target_not_local_in_emitted_extdeps_github files. Keying by (module_path,
-// decl_name) here makes the emitter agree with the authority it emits for.
-fn coproduct_decl_ref_module_path(body: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match field_value_by_name(record: body, field_name: "coproduct", source_indices: source_indices) {
-    Present { value: decl_ref_node } => record_string_field(record: decl_ref_node, field_name: "module_path", source_indices: source_indices)
-    Absent => none
-  }
-}
-
 fn optional_string_record_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
   match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
     Present { value: n } => literal_string_value(n: n)
@@ -2856,20 +2838,11 @@ fn variant_encoding_is_string_variant(encoding: Node, source_indices: Map<String
   authored_name_at(source_indices: source_indices, node: encoding) == "StringVariant"
 }
 
-// THE ROW'S OWN PAIR IS ITS JURISDICTION. The v1 interpreter -- the typing authority -- indexes
-// coproduct wire encodings by (DeclarationRef.module_path, DeclarationRef.decl_name)
-// (v1_interpreter.rs build_coproduct_wire_contract_index), so a row governs the declaration its
-// module_path names and no other, even one in another module that shares its decl_name. A row whose
-// module_path cannot be read is indexed nowhere by that authority, so it targets nothing here.
-fn coproduct_wire_contract_targets(contract_item: Node, target_module: String, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn coproduct_wire_contract_targets(contract_item: Node, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match contract_item.body {
     Present { value: body } =>
-      match coproduct_decl_ref_module_path(body: body, source_indices: source_indices) {
-        Present { value: target_module_path } =>
-          match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
-            Present { value: target_name } => target_module_path == target_module && target_name == coproduct_name
-            Absent => false
-          }
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
+        Present { value: target_name } => target_name == coproduct_name
         Absent => false
       }
     Absent => false
@@ -2929,63 +2902,39 @@ fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports:
   }
 }
 
-// THE TARGETING KEY IS THE PAIR, NOT THE NAME. The interpreter authority indexes rows by
-// (DeclarationRef.module_path, DeclarationRef.decl_name) (v1_interpreter.rs
-// build_coproduct_wire_contract_index), so a row whose module_path names ANOTHER module is not
-// this module's obligation: it is validated where it claims jurisdiction, not here. A row that
-// claims THIS module must still name a locally declared coproduct -- failing closed keeps the
-// refusal for rows that lie about a local target (the honest-corpus census shows every shipped
-// row keeps its refusal under this key).
-fn emit_coproduct_wire_contract_target_validation(contract_item: Node, target_module: String, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   match contract_item.body {
     Present { value: body } =>
-      match coproduct_decl_ref_module_path(body: body, source_indices: source_indices) {
-        Present { value: claimed_module } =>
-          if claimed_module != target_module {
+      match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
+        Present { value: target_name } =>
+          if any(local_coproduct_names, predicate: name => name == target_name) {
             ""
           } else {
-            match coproduct_decl_ref_decl_name(body: body, source_indices: source_indices) {
-              Present { value: target_name } =>
-                if any(local_coproduct_names, predicate: name => name == target_name) {
-                  ""
-                } else {
-                  emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
-                }
-              Absent =>
-                emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name")
-            }
+            emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
           }
         Absent =>
-          // AN UNREADABLE module_path IS A MALFORMED ROW, REPORTED -- symmetric with the
-          // unreadable-decl_name arm above, as DESIGN section 5 requires (every path succeeds
-          // fully or fails with a typed, located diagnostic; a silent widen is a hard reject).
-          // The authority's judgment "indexed nowhere" (build_coproduct_wire_contract_index
-          // returns None when either read fails) governs POLICY APPLICATION -- such a row
-          // governs no coproduct, which is what coproduct_wire_contract_targets encodes by
-          // matching nothing. It does not license the emitter to stay quiet: an author who
-          // wrote the row believes it governs a declaration, and it silently governs none.
-          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string module_path")
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a DeclarationRef with a string decl_name")
       }
     Absent =>
       emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")
   }
 }
 
-fn emit_coproduct_wire_contract_validations(module_items: List<Node>, imports: List<Node>, target_module: String, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_coproduct_wire_contract_validations(module_items: List<Node>, imports: List<Node>, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
   if local_coproduct_names |> count == 0 {
     ""
   } else {
     module_items
       |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices))
-      |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, target_module: target_module, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
+      |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
       |> filter(text => text != "")
       |> join(separator: "\n")
   }
 }
 
-fn resolve_local_coproduct_wire_policy(coproduct_name: String, emitting_module: String, all_unit_variants: Bool, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
+fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
   let contracts = module_items
-    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, target_module: emitting_module, coproduct_name: coproduct_name, source_indices: source_indices))
+    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
   if contracts |> count == 0 {
     none
   } else if contracts |> count == 1 {
@@ -3019,9 +2968,9 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, emitting_module: 
 // imports concatenated with its contracts sibling's (contracts_items_for_module /
 // contracts_imports_for_module), and scoped_data_items is the module's scoped data index augmented
 // with the contracts sibling's imports -- both call sites build them identically.
-fn resolve_emission_coproduct_wire_policy(coproduct_name: String, emitting_module: String, item: Node, wire_items: List<Node>, wire_imports: List<Node>, wire_contract_item: Node?, scoped_data_items: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+fn resolve_emission_coproduct_wire_policy(coproduct_name: String, item: Node, wire_items: List<Node>, wire_imports: List<Node>, wire_contract_item: Node?, scoped_data_items: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
   let all_unit_variants = item.children |> all(child => child.children |> count == 0)
-  match resolve_local_coproduct_wire_policy(coproduct_name: coproduct_name, emitting_module: emitting_module, all_unit_variants: all_unit_variants, module_items: wire_items, imports: wire_imports, source_indices: source_indices) {
+  match resolve_local_coproduct_wire_policy(coproduct_name: coproduct_name, all_unit_variants: all_unit_variants, module_items: wire_items, imports: wire_imports, source_indices: source_indices) {
     Present { value: local_policy } => local_policy
     Absent =>
       if all_unit_variants {
@@ -3159,7 +3108,6 @@ fn build_data_variant_wire_spellings(modules: List<TypedModule>, data_items: Map
         let coproduct_name = authored_name_at(source_indices: si, node: item)
         let policy = resolve_emission_coproduct_wire_policy(
           coproduct_name: coproduct_name,
-          emitting_module: module_name,
           item: item,
           wire_items: wire_items,
           wire_imports: wire_imports,
@@ -6026,7 +5974,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, target_module: this_module_name, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
+  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
   let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
@@ -8426,7 +8374,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, share
     let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
     concat(rust_visibility_prefix(), "type ", item_text, type_params, " = ", render_rust_diagnostics_carrier_applied(shared_types: shared_types), ";")
   } else {
-    let serde_policy = resolve_emission_coproduct_wire_policy(coproduct_name: item_text, emitting_module: env.module_path, item: item, wire_items: module_items, wire_imports: imports, wire_contract_item: wire_contract_item, scoped_data_items: data_items, source_indices: env.source_indices)
+    let serde_policy = resolve_emission_coproduct_wire_policy(coproduct_name: item_text, item: item, wire_items: module_items, wire_imports: imports, wire_contract_item: wire_contract_item, scoped_data_items: data_items, source_indices: env.source_indices)
     let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
     let policy_validation = match serde_policy.error_message {
       Present { value: message } => emit_rust_compile_error_item(message: message)
