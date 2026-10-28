@@ -1039,6 +1039,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
             missing_realization_fact: s(),
             span: no_span(),
         },
+        CastRealizationRefused { target: s(), missing_realization_fact: s(), span: no_span() },
         TypeNameCarriesNoRecordConstructor {
             type_name: s(),
             declared_variants: istrings(),
@@ -1514,6 +1515,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OccurrenceTransportViolation { .. } => "OccurrenceTransportViolation",
         CompilerDiagnostic::ContainerSpellingUnrecognized { .. } => "ContainerSpellingUnrecognized",
         CompilerDiagnostic::TransportEmissionNotModeled { .. } => "TransportEmissionNotModeled",
+        CompilerDiagnostic::CastRealizationRefused { .. } => "CastRealizationRefused",
         CompilerDiagnostic::ServiceConfigReferenceJudgmentDeferred { .. } => {
             "ServiceConfigReferenceJudgmentDeferred"
         }
@@ -1657,6 +1659,12 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::TransportEmissionNotModeled {
             service, operation, ..
         } => format!("{service}.{operation}"),
+        // The NAME is the refusal fact, which names the uncastable pair: the burn-down is the
+        // list of cast routes awaiting a declaration or a realization.
+        CompilerDiagnostic::CastRealizationRefused {
+            missing_realization_fact,
+            ..
+        } => missing_realization_fact.clone(),
         // The NAME is the config FIELD, not the referenced spelling: the burn-down this
         // histogram feeds is the list of service-config fields still awaiting the reference
         // judgment, and keying on the referenced name would spread one unjudged field across
@@ -1711,6 +1719,10 @@ pub fn compile_clean_diagnostic_rendered_pair(d: &Rc<ErrorNode>) -> Option<(Stri
         CompilerDiagnostic::CallNamedArgOnFunctionValue { .. } => None,
         CompilerDiagnostic::CallPositionalDeficit { .. } => None,
         CompilerDiagnostic::CallPositionalSurplus { .. } => None,
+        // The refusal carries the target NAME and the missing realization FACT, not a rendered
+        // type-shape pair: like the pairless classes its arm is None, and the census model's
+        // `Absent` is the honest reading.
+        CompilerDiagnostic::CastRealizationRefused { .. } => None,
         CompilerDiagnostic::CircularDependency { .. } => None,
         CompilerDiagnostic::CollectionKeyReachesEqualityRoute { .. } => None,
         CompilerDiagnostic::ComplexityUnknown { .. } => None,

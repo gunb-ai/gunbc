@@ -1795,8 +1795,8 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced)
-      && callable_signature_mismatch(formal: declared, actual: produced, env: scope.type_env, source_indices: si) {
+  else if either_side_is_arrow(declared: declared, produced: produced)
+      && callable_inhabitance_mismatch(declared: declared, declared_basis: declared, produced: produced, type_env: scope.type_env, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
       got: node_type_shape(n: produced, source_indices: si),
@@ -3246,6 +3246,41 @@ fn fold_init_joined_with_expected(init_type: Node, expected: Node?, scope: Infer
       if arm_is_bare_declaration_of_sibling(t: init_type, siblings: [exp], optional_owner: kernel_optional_owner_declaring(env: scope.type_env, name: "Absent")) { exp } else { init_type }
     Absent => init_type
   }
+}
+
+// A BRANCH RESULT IS ONE MORE POSITION THE CALLABLE JUDGMENT OWNS. The branches of an `if` or a `match`
+// are joined by prefer_specific_type, which keeps the first branch's type, so `if b { ProbeYes } else
+// { o.ask }` was typed ProbeAnswer and the arrow in its second branch reached no declared-type
+// position at all: the declared return judged the join, never the branch. Each live branch's VALUE
+// type (expression_value_type, so a lambda branch is its arrow and not its body) is judged against the first
+// live branch's by callable_inhabitance_mismatch; two arrows of one signature, or two non-arrows, are
+// left to the join's own judgments. A branch that carries optionality on either side is not judged
+// here: `if c { o.ask } else { none }` builds an optional arrow, which the join's cardinality rules own.
+fn branch_value_callable_diags(branches: List<Node>, scope: InferScope) -> List<ErrorNode> {
+  let si = scope.type_env.source_indices
+  let live = branches |> filter(b => !arm_body_diverges(body: b))
+  match live |> first {
+    Absent => []
+    Present { value: anchor } =>
+      let anchor_type = expression_value_type(e: anchor)
+      flat_map(live |> skip(1), b =>
+        let branch_type = expression_value_type(e: b)
+        if type_carries_optional_layer(n: anchor_type, source_indices: si) || type_carries_optional_layer(n: branch_type, source_indices: si) { [] }
+        else if either_side_is_arrow(declared: anchor_type, produced: branch_type)
+          && callable_inhabitance_mismatch(declared: anchor_type, declared_basis: anchor_type, produced: branch_type, type_env: scope.type_env, source_indices: si) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: anchor_type, source_indices: si),
+            got: node_type_shape(n: branch_type, source_indices: si),
+            span: b.span,
+            module_name: scope.module_name
+          )]
+        } else { [] })
+  }
+}
+
+fn type_carries_optional_layer(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  n.return_cardinality == CardOptional
+    || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n)) == "Optional"
 }
 
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
@@ -4709,6 +4744,7 @@ type InhabitanceRefusalReason
   | RefusedOptionalAtRequired
   | RefusedProductAtScalar
   | RefusedValueAtNever
+  | RefusedCallableMismatch
 
 
 type InhabitanceVerdict
@@ -4977,6 +5013,9 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
   }
   if optional_produced_at_required_declared(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedOptionalAtRequired }
+  } else if either_side_is_arrow(declared: declared, produced: produced)
+      && callable_inhabitance_mismatch(declared: declared, declared_basis: declared, produced: produced, type_env: scope.type_env, source_indices: source_indices) {
+    InhabitanceRefused { reason: RefusedCallableMismatch }
   } else if either_optional {
     InhabitanceUndecidable { reason: UndecidableOptionalCarrier }
   } else if value_at_never_declared_type(declared: declared, produced: produced, scope: scope) {
@@ -5807,6 +5846,26 @@ fn applied_type_argument_is_nested_application(n: Node, scope: InferScope) -> Bo
 // stays admitted. Deciding whether a Nat argument inhabits an Int one is the covariance question
 // this arm does not answer for any argument; admitting it here is the existing unjudged state, not a
 // new widen.
+// AN ARROW CHILD IS JUDGEABLE, AND THE NAME TEST CANNOT SEE IT. applied_type_argument_identity_known
+// asks whether the child NAMES A DECLARATION with structure, because a type variable resolves to
+// nothing and must stay gated out. An Arrow carries no such name (child_type_node keeps it as the
+// written arrow node, and an arrow is not a named declaration), so the name test fails it closed and
+// NOTHING judged the element pair: `List<fn() -> ProbeAnswer>` inhabited `List<ProbeAnswer>` with a
+// blocking delta of 0, the same exemption the central relation exists to close, at this one position.
+// The arrow connective is the whole fact (type_node_is_arrow), so it is tested directly, before the
+// name test; a type variable or an unresolved child is not an arrow and still falls to the name test
+// and stays gated out. MEASURED, not reasoned: probe List<fn() -> ProbeAnswer> -> List<ProbeAnswer>
+// at this head's parent refused nothing; probe List<ProbeCb> -> List<ProbeAnswer> (both named)
+// already refused at the generic type argument with this gate untouched.
+fn applied_type_argument_child_judgeable(child: Node, scope: InferScope) -> Bool {
+  if type_node_is_arrow(n: child) {
+    true
+  } else {
+    applied_type_argument_identity_known(
+      name: authored_name_at(source_indices: scope.type_env.source_indices, node: child), scope: scope)
+  }
+}
+
 fn applied_type_argument_identity_known(name: String, scope: InferScope) -> Bool {
   if name == "" {
     false
@@ -5851,6 +5910,8 @@ fn inhabitance_refusal_position_label(
       concat(base, " [RefusedProductCoproductHeadMismatch]")
     RefusedValueAtNever =>
       concat(base, " [RefusedValueAtNever]")
+    RefusedCallableMismatch =>
+      concat(base, " [RefusedCallableMismatch]")
     _ => base
   }
 }
@@ -5888,7 +5949,7 @@ fn condition_obligation_diags(label: String, typed: Node, scope: InferScope) -> 
   declared_type_obligation_diags(
     obligation: DeclaredTypeObligation {
       position: PositionCondition, subject: label, declared: bool_type,
-      produced: resolved_type(n: typed), span: typed.span
+      produced: expression_value_type(e: typed), span: typed.span
     },
     scope: scope)
 }
@@ -6681,6 +6742,9 @@ fn direct_call_sibling_effect_order_diags(
   sibling_effect_order_diags(construct: func_name, effectful: effectful, span: span, module_name: scope.module_name)
 }
 
+// A CALLABLE ON EITHER SIDE IS JUDGED ONCE at this seam, by direct_call_arg_type_mismatch, which
+// consults the same callable_inhabitance_mismatch the whole relation does; asking the relation here
+// too would report one unapplied callable twice.
 fn direct_call_argument_inhabitance_diags(
   plan: List<ResolvedCallFormal>,
   typed_args: List<Node>,
@@ -6692,7 +6756,7 @@ fn direct_call_argument_inhabitance_diags(
       match app.matched_argument_index {
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
-          if type_node_is_callable(n: app.formal.declared_type) { [] } else {
+          if type_node_is_callable(n: app.formal.declared_type) || type_node_is_arrow(n: expression_value_type(e: arg_value(n: ta))) { [] } else {
             let actual_expr = arg_value(n: ta)
             declared_type_obligation_diags(
               obligation: DeclaredTypeObligation {
@@ -6768,10 +6832,8 @@ fn direct_call_generic_type_argument_inhabitance_diags(
                   Present { value: raw_declared_child } =>
                     match actual.children |> skip(declared_pair.first) |> first {
                       Present { value: produced_child } =>
-                        if applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: raw_declared_child)), scope: scope)
-                          && applied_type_argument_identity_known(
-                            name: authored_name_at(source_indices: source_indices, node: child_type_node(ch: produced_child)), scope: scope) {
+                        if applied_type_argument_child_judgeable(child: child_type_node(ch: raw_declared_child), scope: scope)
+                          && applied_type_argument_child_judgeable(child: child_type_node(ch: produced_child), scope: scope) {
                           declared_type_obligation_diags(
                             obligation: DeclaredTypeObligation {
                               position: PositionGenericTypeArgument,
@@ -7031,7 +7093,49 @@ fn expression_value_type(e: Node) -> Node {
       func_params: e.children |> skip(1) |> map(lp => lambda_arrow_param(lambda_param: lp)),
       ret: resolved_type(n: e))
   }
-  else { resolved_type(n: e) }
+  else {
+    let carried = carried_value_type(e: e)
+    if type_node_is_arrow(n: carried) { carried } else { resolved_type(n: e) }
+  }
+}
+
+// THE ERASURE TRAVELS WITH THE VALUE. A block is typed by its last statement's resolved_type and a
+// conditional by its join, so a lambda in tail or branch position erased to its body type there too:
+// `fn mk() -> fn(Int) -> Int { fn(x) { x } }` and `if b { fn(x) { x } } else { fn(y) { y } }` read as
+// Int where an arrow is declared. That was harmless while the declared-type positions judged two
+// arrows only; the callable judgment they now consume refuses one arrow against a non-function. So
+// the value type reads the arrow the value carries -- a block's or a bodied let's tail, a
+// conditional's first live branch (the branch its join keeps, prefer_specific_type; each branch is
+// judged against it by branch_value_callable_diags) -- and is used ONLY when that is an arrow: every
+// other value keeps its resolved type exactly, so no non-function judgment moves.
+fn carried_value_type(e: Node) -> Node {
+  match e.expr_data {
+    ExprBlock =>
+      match e.children |> last {
+        Present { value: tail } => expression_value_type(e: tail)
+        Absent => resolved_type(n: e)
+      }
+    ExprLet =>
+      if (e.children |> count) == 2 {
+        match e.children |> last {
+          Present { value: tail } => expression_value_type(e: tail)
+          Absent => resolved_type(n: e)
+        }
+      } else { resolved_type(n: e) }
+    ExprIf =>
+      if (e.children |> count) == 3 {
+        first_live_branch_value_type(branches: e.children |> skip(1), fallback: e)
+      } else { resolved_type(n: e) }
+    ExprMatch => first_live_branch_value_type(branches: e.children |> skip(1) |> map(a => arm_body(n: a)), fallback: e)
+    _ => resolved_type(n: e)
+  }
+}
+
+fn first_live_branch_value_type(branches: List<Node>, fallback: Node) -> Node {
+  match branches |> filter(b => !arm_body_diverges(body: b)) |> first {
+    Present { value: b } => expression_value_type(e: b)
+    Absent => resolved_type(n: fallback)
+  }
 }
 
 fn lambda_arrow_param(lambda_param: Node) -> Node {
@@ -7044,15 +7148,6 @@ fn lambda_arrow_param(lambda_param: Node) -> Node {
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData
   }
-}
-
-// The one-sided judgment at a position whose produced value is an expression in hand (an annotated
-// `let`), guarded exactly as the direct-call seam guards it: a declared or produced type carrying
-// an unbound type variable is not established.
-fn one_sided_callable_value_mismatch(declared: Node, produced: Node, type_env: TypeEnv) -> Bool {
-  (type_node_is_arrow(n: declared) != type_node_is_arrow(n: produced))
-    && !one_sided_non_arrow_side_is_open(formal: declared, formal_basis: declared, actual: produced)
-    && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: type_env)
 }
 
 // WHETHER A VALUE IS A FUNCTION AT ALL IS THE ARROW CONNECTIVE, NOT THE ARROW'S LEAVES. A lambda
@@ -7084,6 +7179,49 @@ fn type_node_is_arrow(n: Node) -> Bool {
   n.connective == Arrow
 }
 
+// AN ARROW INHABITS ONLY AN ARROW, AND IS NEVER ITS CODOMAIN: the one callable judgment, consumed
+// at every position that judges a produced value against a declared type (the direct-call argument,
+// the declared-type chain behind an annotated let, a fn return, an early return and a data
+// initializer, the whole relation behind a list element, a generic type argument and a condition,
+// a record-literal field, and a method argument). Asked only when either side is an arrow. Two
+// arrows are compared by callable_signature_mismatch; one arrow against a value that is positively
+// not a function refuses by one_sided_callable_mismatch, unless the non-arrow side is still open.
+// These arms were written as leaves of direct_call_arg_type_mismatch and of the let seam, while the
+// other positions judged an arrow by nothing: their nominal arms exempt a callable (rightly, a
+// function type has no nominal identity) and the default arm then admitted it, so an unapplied
+// `o.ask` of type `fn() -> T` was accepted wherever T was declared
+// (gunbc.recurring_failure_mode function_typed_argument_mismatch_accepted). An arrow at a declared
+// `T?` whose T is not a function is judged at T, since an arrow is neither T nor absent. Any other
+// optional declared side -- an optional arrow, or the nominal Optional spelling -- is not judged:
+// an absent value there is not a function and is not a mismatch.
+fn either_side_is_arrow(declared: Node, produced: Node) -> Bool {
+  type_node_is_arrow(n: declared) || type_node_is_arrow(n: produced)
+}
+
+fn callable_inhabitance_mismatch(
+  declared: Node,
+  declared_basis: Node,
+  produced: Node,
+  type_env: TypeEnv,
+  source_indices: Map<String, NewlineIndex>
+) -> Bool {
+  if declared_basis.return_cardinality == CardOptional && !type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced) {
+    callable_inhabitance_mismatch(
+      declared: with_required_cardinality(n: declared), declared_basis: with_required_cardinality(n: declared_basis),
+      produced: produced, type_env: type_env, source_indices: source_indices)
+  }
+  else if type_carries_optional_layer(n: declared_basis, source_indices: source_indices) { false }
+  else if type_node_is_arrow(n: declared) && type_node_is_arrow(n: produced) {
+    callable_signature_mismatch(formal: declared, actual: produced, env: type_env, source_indices: source_indices)
+  }
+  else if either_side_is_arrow(declared: declared, produced: produced) {
+    !one_sided_non_arrow_side_is_open(
+      formal: declared, formal_basis: declared_basis, actual: produced)
+      && one_sided_callable_mismatch(formal: declared, actual: produced, type_env: type_env)
+  }
+  else { false }
+}
+
 fn direct_call_arg_type_mismatch(
   formal: Node,
   substitution_basis: Node,
@@ -7095,15 +7233,12 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   let substitution_is_optional = substitution_basis.return_cardinality == CardOptional
     || qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: substitution_basis)) == "Optional"
-  if substitution_is_optional { false }
-  else if type_node_is_arrow(n: formal) && type_node_is_arrow(n: actual) {
-    callable_signature_mismatch(formal: formal, actual: actual, env: type_env, source_indices: source_indices)
+  if either_side_is_arrow(declared: formal, produced: actual) {
+    callable_inhabitance_mismatch(
+      declared: formal, declared_basis: substitution_basis, produced: actual,
+      type_env: type_env, source_indices: source_indices)
   }
-  else if type_node_is_arrow(n: formal) || type_node_is_arrow(n: actual) {
-    !one_sided_non_arrow_side_is_open(
-      formal: formal, formal_basis: substitution_basis, actual: actual)
-      && one_sided_callable_mismatch(formal: formal, actual: actual, type_env: type_env)
-  }
+  else if substitution_is_optional { false }
   else if direct_call_formal_has_unbound_type_variable(n: substitution_basis) || direct_call_formal_has_unbound_type_variable(n: actual) { false }
   else if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else if produced_is_kernel_grounded_carrier_or_its_alias(
@@ -8899,7 +9034,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           ArgInferResult { typed_arg: make_arg_node(occurrence_identity: a.occurrence_identity, name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), emissions: infer_emissions_concat(left: ar.emissions, right: infer_emissions_of_diagnostics(diagnostics: [contract_diag])) }
         ContractKnown { types: declared_types } =>
           match declared_types |> skip(idx) |> first {
-            Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
+            Present { value: declared_type } => infer_method_arg_against_contract(arg: a, declared_type: declared_type, scope: nf_scope)
             Absent =>
               let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
               let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
@@ -9233,6 +9368,29 @@ fn fold_override_map(key: String, value: Node) -> Map<String, Node> {
 
 fn empty_override_map() -> Map<String, Node> {
   seed_override_map()
+}
+
+// A METHOD ARGUMENT WITH A DECLARED CONTRACT is inferred under that type and, where either side is
+// a function, judged by the callable relation every other argument-like position consults: a
+// callable record field's `c.consume(o.ask)` with `consume: fn(ProbeAnswer) -> Bool` handed the
+// arrow `fn() -> ProbeAnswer` to a ProbeAnswer parameter, and the position judged it by nothing.
+fn infer_method_arg_against_contract(arg: Node, declared_type: Node, scope: InferScope) -> ArgInferResult {
+  let air = infer_arg_with_element_type(arg: arg, element_type: declared_type, scope: scope)
+  let value = arg_value(n: air.typed_arg)
+  let produced = expression_value_type(e: value)
+  let si = scope.type_env.source_indices
+  if either_side_is_arrow(declared: declared_type, produced: produced)
+    && callable_inhabitance_mismatch(declared: declared_type, declared_basis: declared_type, produced: produced, type_env: scope.type_env, source_indices: si) {
+    ArgInferResult {
+      typed_arg: air.typed_arg,
+      emissions: infer_emissions_concat(left: air.emissions, right: infer_emissions_of_diagnostics(diagnostics: [type_mismatch_error(
+        expected: node_type_shape(n: declared_type, source_indices: si),
+        got: node_type_shape(n: produced, source_indices: si),
+        span: value.span,
+        module_name: scope.module_name
+      )]))
+    }
+  } else { air }
 }
 
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
@@ -10949,6 +11107,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           scope: scope
         )
       )
+      let arm_branch_diags = branch_value_callable_diags(branches: typed_arms |> map(a => arm_body(n: a)), scope: scope)
       let result_type = unified_arm_type
       let empty_arms_diags = if count(arm_infer_results) == 0 {
         match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
@@ -10997,7 +11156,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let match_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprMatch, children: concat([scrut_typed], typed_arms), inferred: Present { value: Resolved { node: result_type } }, span: span)
       InferResult {
         typed: match_texpr,
-        emissions: infer_emissions_concat_all(chunks: [scrut_emissions, arm_emissions, infer_emissions_of_diagnostics(diagnostics: concat(arm_join_diags, empty_arms_diags, exhaustiveness_diags, unresolved_present_arm_diags))])
+        emissions: infer_emissions_concat_all(chunks: [scrut_emissions, arm_emissions, infer_emissions_of_diagnostics(diagnostics: concat(concat(arm_join_diags, arm_branch_diags), empty_arms_diags, exhaustiveness_diags, unresolved_present_arm_diags))])
       }
 
     ExprIf =>
@@ -11053,10 +11212,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               module_name: scope.module_name
             )]
           }
+          let branch_callable_diags = branch_value_callable_diags(branches: [then_typed, else_typed], scope: scope)
           let if_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed, else_typed], inferred: Present { value: Resolved { node: unified } }, span: span)
           InferResult {
             typed: if_texpr,
-            emissions: infer_emissions_concat_all(chunks: [cond_emissions, then_emissions, else_emissions, infer_emissions_of_diagnostics(diagnostics: branch_diags)])
+            emissions: infer_emissions_concat_all(chunks: [cond_emissions, then_emissions, else_emissions, infer_emissions_of_diagnostics(diagnostics: concat(branch_diags, branch_callable_diags))])
           }
         Absent =>
           let if_texpr2 = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprIf, children: [cond_typed, then_typed], inferred: Present { value: Resolved { node: unit_type } }, span: span)
@@ -11090,22 +11250,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let val_annotation_diags = match declared_let_type {
         Present { value: declared } =>
           let produced_value_type = expression_value_type(e: val_typed)
-          let conformance = declared_type_conformance_diags(
+          declared_type_conformance_diags(
             position: PositionLetAnnotation,
             subject: let_name,
             declared: declared,
             produced: produced_value_type,
             span: val_expr.span,
             scope: scope)
-          if (conformance |> count) > 0 { conformance }
-          else if one_sided_callable_value_mismatch(declared: declared, produced: produced_value_type, type_env: scope.type_env) {
-            [type_mismatch_error(
-              expected: node_type_shape(n: declared, source_indices: scope.type_env.source_indices),
-              got: node_type_shape(n: produced_value_type, source_indices: scope.type_env.source_indices),
-              span: val_expr.span,
-              module_name: scope.module_name
-            )]
-          } else { [] }
         Absent => []
       }
       let val_emissions = infer_emissions_concat(left: val_result.emissions, right: infer_emissions_of_diagnostics(diagnostics: val_annotation_diags))
@@ -11154,7 +11305,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                 position: PositionListElement,
                 subject: "",
                 declared: declared_elem,
-                produced: resolved_type(n: te),
+                produced: expression_value_type(e: te),
                 span: te.span
               },
               scope: scope
@@ -12875,6 +13026,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let field_type_diags = match field_declared_type {
       Present { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
+        let got_value = expression_value_type(e: ar_typed)
         let field_cardinality_diags = if direct_call_formal_has_unbound_type_variable(n: field_conformance_type) {
           []
         } else {
@@ -12892,6 +13044,14 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
           []
         } else if (field_cardinality_diags |> count) > 0 {
           field_cardinality_diags
+        } else if either_side_is_arrow(declared: expected_node, produced: got_value)
+            && callable_inhabitance_mismatch(declared: expected_node, declared_basis: expected_node, produced: got_value, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
+          [type_mismatch_error(
+            expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+            got: node_type_shape(n: got_value, source_indices: scope.type_env.source_indices),
+            span: ar_typed.span,
+            module_name: scope.module_name
+          )]
         } else if node_type_compatible(
           left: expected_node, right: got_node, source_indices: scope.type_env.source_indices, text: TextJudgedIn { env: scope.type_env }) {
           []
@@ -15628,7 +15788,7 @@ fn infer_item(item: Node, scope: InferScope) -> TypedItemResult {
     let inferred_ret = if item.inferred != none { item.inferred } else { body_typed.inferred }
     let return_conformance_diags = if item.inferred != none {
       concat(
-        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: resolved_type(n: body_typed), span: item.body.value.span, scope: scope),
+        declared_type_conformance_diags(position: PositionDeclaredReturn, subject: "", declared: declared_return_type_node(item: item), produced: expression_value_type(e: body_typed), span: item.body.value.span, scope: scope),
         explicit_return_conformance_diags(declared: declared_return_type_node(item: item), body_typed: body_typed, scope: scope))
     } else { [] }
 
