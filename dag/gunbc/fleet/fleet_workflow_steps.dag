@@ -74,6 +74,9 @@ import v2.extdeps.languages.bash_build {
 }
 import std.types { List, String, Int, NonEmptyStr }
 
+// THE SEED-BUILD ENVIRONMENT, consumed where this file's build steps compose their `run:` text.
+import gunbc.repo.repo_self_build { repo_self_seed_build_step_run }
+
 import gunbc.roadmap.roadmap_execution_contract {
   CargoCapability,
   RustcCapability,
@@ -323,7 +326,7 @@ fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: repo_self_seed_build_step_run(command: ci_release_build_script()),
     shell: none,
     env: none,
     working_directory: none,
@@ -386,7 +389,7 @@ fn ci_release_build_step_for(pair_modes: List<String>) -> Step {
   RunStep {
     name: Present { value: "Build release bins (the dispatched mode's product)" },
     id: Present { value: "release_build" },
-    run: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script()),
+    run: repo_self_seed_build_step_run(command: release_bins_build_script_dispatch(pair_modes: pair_modes, fleet_build: ci_release_build_script())),
     shell: none,
     env: Present { value: [release_bins_mode_env_kv()] },
     working_directory: none,

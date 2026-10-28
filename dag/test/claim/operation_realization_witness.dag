@@ -1,6 +1,10 @@
 module test.claim.operation_realization_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Absent }
+import std.bytes { bytes_octets, utf8_encode_bytes }
+import std.content_hash { sha256_digest_wire_form }
+import extdeps.crypto.sha2 { sha256_computed_digest }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Read, Write, ServiceOpTree, NamespacePosition,
@@ -10,7 +14,7 @@ import std.operation_argv { OperationRef }
 import v2.std.operation_realization {
   OperationRealization, OperationBinding, OperationCall, OperationStep, DispatchRecord,
   OperationObserved, OperationWorkerKilled, ShellObserved,
-  DispatchObserved, DispatchUnbound, DispatchWorkerKilled, DispatchCallbackFailed,
+  DispatchObserved, DispatchUnbound, DispatchHarnessFault, DispatchWorkerKilled, DispatchCallbackFailed,
   HandlerFailed, AdvanceFailed,
   virtual_clock_origin, modeled_realization_admitted_in,
 }
@@ -245,6 +249,96 @@ test fn an_unbound_operation_refuses_and_is_not_mocked() -> Bool {
       refused_with(reason_part: "OperationNotBound", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
         && route_operations(route: route) == ["ChassisStatus", "SensorList"]
         && match route.skip(n: 1).first() { Present { value: r } => match r.outcome { DispatchUnbound { cause: _ } => true _ => false } Absent => false }
+    _ => false
+  }
+}
+
+// THE FRU FIXTURE IS THE COMMITTED CAPTURE, BYTE FOR BYTE. extdeps.bmc.ipmitool_observed_output
+// ipmitool_fru_print_0_mt_collins is the literal the realization answers `fru print 0` with; its cited
+// source is artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt.
+// The claim re-reads that committed artifact through the checkout-input carve-out and demands the
+// literal equals it exactly -- 894 bytes, 22 newlines, and the ABSENCE of a final newline (the last
+// byte is the last `X` of the final `Product Extra` line). A hand-typed drift, a stripped
+// trailing blank, or a normalized line ending reds here rather than silently diverging the boot's
+// retained inventory from the controller's answer. The digest projection is pinned too, so the comment's
+// cited sha cannot rot away from the bytes.
+fn fru_capture_text() -> String {
+  Filesystem.Read(path: "artifacts/bmc/mtcollins1-boot-run-40264233543/mtcollins1-boot-fru-print-0-40264233543.txt").content
+}
+
+test fn the_fru_fixture_is_the_committed_capture_byte_for_byte() -> Bool {
+  ipmitool_fru_print_0_mt_collins == fru_capture_text()
+}
+
+test fn the_fru_fixture_digest_is_the_cited_sha() -> Bool {
+  sha256_digest_wire_form(digest: sha256_computed_digest(message: bytes_octets(b: utf8_encode_bytes(s: ipmitool_fru_print_0_mt_collins))))
+    == "sha256:e3db166444d26c8a1a6ec44a398adc229f3b88b50e21c016aa8f5daf80dc3031" as NonEmptyStr
+}
+
+// THE BOOT'S `fru print 0` IS ANSWERED FROM THE CAPTURE, NOT REFUSED. The boot route dispatched
+// diagnostic.ipmi.Tool.FruPrint in its pre-power retention and REFUSED at the unbound operation before
+// ever reaching the fan gate or the identity writes (the four executed-frame claims of
+// test.claim.host.managed_host_boot_witness were the red this binding repairs). Bound beside McInfo and
+// HpmCheck in gunbc.bmc_dry_realization bmc_ipmi_bindings, the same call now returns the capture bytes,
+// the route records one FruPrint dispatched and observed against THIS realization.
+fn fru_print_0() -> String {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    fru_id: "0",
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  if r.success { r.stdout } else { "" }
+}
+
+test fn a_bound_fru_print_zero_answers_the_committed_capture() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fru_print_0() }
+  ) {
+    WitnessReturned { value, route } =>
+      value == ipmitool_fru_print_0_mt_collins
+        && route_operations(route: route) == ["FruPrint"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchObserved { observation: _ } => r.realization == (realization_identity as String) _ => false }
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+// A PRINT OF ANY OTHER FRU ID FAULTS RATHER THAN BORROWING THE BOARD'S BYTES. The capture is of FRU 0,
+// the board FRU the identity rows are read from. Answering `fru print 1` with FRU 0's stdout would be a
+// fabricated reading -- an invented observation of a device the capture never asked. The handler checks
+// the input and faults; the route shows the dispatch recorded as a harness fault, not an observation.
+fn fru_print_1() -> Bool {
+  let r = diagnostic.ipmi.Tool.FruPrint(
+    bmc_host: "bmc.test.invalid" as NonEmptyStr,
+    username: "operator" as NonEmptyStr,
+    password_file: "/nonexistent/credential" as NonEmptyStr,
+    fru_id: "1",
+    deadline: "30",
+    kill_after: "5",
+    cipher_suite_argv: ipmi_cipher_suite_argv(suite: Absent),
+  )
+  r.success
+}
+
+test fn a_fru_print_of_another_id_faults_rather_than_borrowing_the_board_capture() -> Bool {
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: bmc_dry_realization(identity: realization_identity, initial: world(power_on: true), epoch: virtual_clock_origin())),
+    subject: fn(_scope) { fru_print_1() }
+  ) {
+    WitnessRefused { diagnostic, route } =>
+      refused_with(reason_part: "harness fault", result_reason: witness_diagnostic_rendered_reason(diagnostic: diagnostic))
+        && route_operations(route: route) == ["FruPrint"]
+        && match route.first() {
+          Present { value: r } => match r.outcome { DispatchHarnessFault { reason: _ } => true _ => false }
+          Absent => false
+        }
     _ => false
   }
 }
