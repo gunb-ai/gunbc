@@ -1032,9 +1032,10 @@ fn console_debt_control_decls() -> List<DeclarationRef> {
 test fn the_console_debt_fold_reads_the_real_corpus_and_reads_discharged() -> Bool {
   let refs = boot_attempt_console_debt_refs
   let controls = console_debt_control_decls()
+  let all_names = fold(controls, init: refs, f: (acc, r) => acc.append(r))
   let facts = decl_facts_at(
     pool_roots: ["dag"],
-    qualified_names: map(refs ++ controls, r => console_debt_qualified_name(ref: r)),
+    qualified_names: map(all_names, r => console_debt_qualified_name(ref: r)),
     type_names: [],
   )
   // every RETIRED name resolves to ZERO rows: the census lacks the debt -- and the CONTROLS each
