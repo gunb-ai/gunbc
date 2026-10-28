@@ -1,0 +1,24 @@
+module gunbc.rung_drop.macos_operator_terminal_run_unbounded
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// macOS has no cgroup facility, so the user-work wrap cannot bound a run there. Ruling:
+// gunbc.design_ruling macos_operator_terminal_runs_without_a_memory_bound.
+data macos_operator_terminal_run_unbounded: RungDrop = RungDrop {
+  identity: "macos_operator_terminal_run_unbounded" as NonEmptyStr,
+
+  subject: "the user-work memory wrap (seed cli_run user_work_scope reexec_into_user_work_slice_if_owed): an operator-attended macOS run proceeds with no kernel memory bound",
+
+  declared: "2026-10-28",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: Enumerated { members: FreeSemigroup { head: "a gunbc process on macOS with GITHUB_ACTIONS unset and stdin a terminal (standing OperatorHostWithoutCgroups); a macOS run without a terminal, and every CI or Linux run, is unchanged", tail: [] } },
+    restoration_trigger: "a memory-bound mechanism the seed can install and read back on macOS, sufficient that an unbounded macOS run refuses as a Linux one does",
+  } }
+}
