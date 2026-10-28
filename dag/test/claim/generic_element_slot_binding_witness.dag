@@ -158,3 +158,64 @@ test fn a_branch_join_over_a_rebuilt_alias_list_types_test() -> Bool {
 test fn a_branch_join_without_the_rebuild_compiles_test() -> Bool {
   compile_dag_rust_emit_check(slot_branch_join_control_source(), "src/slotbind_branchjoin.rs", ["add_example"], ["compile_error"])
 }
+
+// BISECT PROBES for the join failure (round 3): each toggles ONE feature of the reproducer against
+// the failing shape, so a run tells which feature the arm trips on -- the fold's equality test, the
+// snoc generic call itself, or the multi-branch shape. Qn stays the local alias throughout.
+fn slot_join_probe_source(body: String) -> String {
+  concat("module slotbind.branchjoin\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\ntype Qn = FreeMonoid<String>\n\nfn qn_eq(a: Qn, b: Qn) -> Bool {\n  fold_list(xs: a, empty: false, cons: fn(any, e) { any || (e == \"x\") }) && fold_list(xs: b, empty: false, cons: fn(any, e) { any || (e == \"x\") })\n}\n\nfn has_example(examples: List<Qn>, module: Qn) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || qn_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<Qn>, module: Qn) -> List<Qn> {\n", body, "\n}\n")
+}
+
+// P1: else uses a DIRECT generic snoc call (the failing shape).
+fn slot_join_p1_source() -> String {
+  slot_join_probe_source(body: "  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }")
+}
+
+// P2: else calls snoc through a LOCAL GENERIC WRAPPER (is the trip the direct builtin-shaped call or any generic?).
+fn slot_join_p2_source() -> String {
+  concat(slot_join_probe_source(body: "  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    qn_snoc(xs: examples, item: module)\n  }"), "\n\nfn qn_snoc<T>(xs: List<T>, item: T) -> List<T> {\n  list_snoc_item(xs: xs, item: item)\n}\n")
+}
+
+// P3: no qn_eq in the middle condition (length only) WITH the snoc else (is the fold-equality needed?).
+fn slot_join_p3_source() -> String {
+  slot_join_probe_source(body: "  if length(xs: examples) >= 2 {\n    examples\n  } else if length(xs: examples) == 1 {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }")
+}
+
+// P4: CONCRETE element (String list, snoc of String, no alias) with the full shape (alias required?).
+fn slot_join_p4_source() -> String {
+  concat("module slotbind.branchjoin\n\nimport std.algebra { Cons, Empty, FreeMonoid, list_snoc_item, fold_list, length }\nimport std.types { List, String, Bool }\n\nfn s_eq(a: String, b: String) -> Bool {\n  a == b\n}\n\nfn has_example(examples: List<String>, module: String) -> Bool {\n  fold_list(xs: examples, empty: false, cons: fn(any, e) { any || s_eq(a: e, b: module) })\n}\n\nfn add_example(examples: List<String>, module: String) -> List<String> {\n  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }\n}\n")
+}
+
+// P5: two-branch if (no else-if chain) with the alias AND snoc (does the chain matter?).
+fn slot_join_p5_source() -> String {
+  slot_join_probe_source(body: "  if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    list_snoc_item(xs: examples, item: module)\n  }")
+}
+
+// P6: alias element WITHOUT the equality fold AND without snoc -- the module-only floor (must pass; harness control for P1-P5 shape drift).
+fn slot_join_p6_source() -> String {
+  slot_join_probe_source(body: "  if length(xs: examples) >= 2 {\n    examples\n  } else if has_example(examples: examples, module: module) {\n    examples\n  } else {\n    examples\n  }")
+}
+
+test fn join_p1_direct_snoc_alias_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p1_source(), "src/slotbind_jp1.rs", ["add_example"], ["compile_error"])
+}
+
+test fn join_p2_wrapper_snoc_alias_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p2_source(), "src/slotbind_jp2.rs", ["add_example"], ["compile_error"])
+}
+
+test fn join_p3_snoc_no_fold_equality_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p3_source(), "src/slotbind_jp3.rs", ["add_example"], ["compile_error"])
+}
+
+test fn join_p4_concrete_element_full_shape_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p4_source(), "src/slotbind_jp4.rs", ["add_example"], ["compile_error"])
+}
+
+test fn join_p5_two_branch_chain_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p5_source(), "src/slotbind_jp5.rs", ["add_example"], ["compile_error"])
+}
+
+test fn join_p6_module_floor_test() -> Bool {
+  compile_dag_rust_emit_check(slot_join_p6_source(), "src/slotbind_jp6.rs", ["add_example"], ["compile_error"])
+}
