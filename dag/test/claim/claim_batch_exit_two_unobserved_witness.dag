@@ -7,6 +7,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.inspect
 import extdeps.gunbc
 import extdeps.shell
+import extdeps.rust.cargo { cargo_default_target_dir }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -59,7 +60,7 @@ type PlantedExitTwo
 
 fn plant_exit_two(root: String, entry_source: String) -> PlantedExitTwo {
   let dir = shell.Mktemp.DirWithTemplate(
-    template: concat(root, "/target/exit-two-planted-XXXXXX") as FilePath,
+    template: concat(cargo_default_target_dir(build_root: root), "/exit-two-planted-XXXXXX") as FilePath,
   )
   if !dir.success {
     PlantedExitTwoUnwritable { detail: "mktemp under target/ failed" }
