@@ -1447,8 +1447,11 @@ fn map_insert<K, V>(m: Map<K, V>, key: K, value: V) -> Map<K, V> {
 // DISSOLUTION: the home is std.algebra for now; if #14876 moves Map's operations onto
 // FinitelySupportedFunction's own home, map_keys moves with them, because the keys are that
 // finitely supported function's support.
+fn map_keys_primitive_delegate<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
+  map_keys_primitive_delegate(m: m)
+}
 fn map_keys<K, V>(m: Map<K, V>) -> FreeMonoid<K> {
-  map_keys(m: m)
+  map_keys_primitive_delegate(m: m)
 }
 
 // LOOKUP IS TOTAL. A map either holds the key or does not, and both are answers — there is no
