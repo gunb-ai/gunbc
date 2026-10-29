@@ -109,6 +109,10 @@ fn runner_host_spec_of(deploy: RunnerHostDeploy) -> RunnerHostSpec {
 
 data runner_job_user_env_name: String = "CTRL_RUNNER_JOB_USER"
 
+// The listener's JIT registration group (ctrl scripts/session-dashboard/host/jit-runner.sh reads it
+// into runner_group_id, defaulting to the org's Default group).
+data runner_group_id_env_name: String = "RUNNER_GROUP_ID"
+
 // runner_user is the fragment's User= (the account that owns the runner tree). unit_user is the
 // depriv drop-in's User= (root mints the JIT config). job_user is CTRL_RUNNER_JOB_USER after
 // setpriv. Borrowing another host's principal for any of the three is the neighbour-row arm
