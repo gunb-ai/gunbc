@@ -714,6 +714,7 @@ fn plan_label(o: BmcAccountPlanOutcome?) -> String {
             ManagedUserNotTheAuthenticatedAccount { supplied: _, authenticated: _ } => "managed-user-not-authenticated-account"
             ChannelCloseRouteNotSupplied { channels: _ } => "channel-close-route-not-supplied"
             PlanWritesAreNotTheApprovedConvergence { approved: _, planned: _ } => "not-the-approved-convergence"
+            FailedLoginBudgetExceeded { blocked: _ } => "failed-login-budget-exceeded"
             ChannelWriteNotAdmitted { channel: _, admission: a } => join(["channel-write-not-admitted:", admission_label(a: a)], "")
           }
       }
