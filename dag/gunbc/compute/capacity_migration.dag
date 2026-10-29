@@ -43,14 +43,19 @@ type CapacityManagedUnit {
 // One row per naming authority, not one copied prefix per consumer. The source owner
 // derives patterns from its own name producer. Enumeration belongs to that owner too;
 // an unreadable or incomplete population must be supplied as Err, never as [].
+type CapacityFamilyPlacement
+  = CapacityFamilyParents { parents: Result<List<CapacityManagedUnit>, String> }
+  | CapacityActivationFamily { targets: List<CapacityManagedUnit> }
+
 type CapacityTransientFamily {
   standing: CapacityWriterStanding
   manager: SystemdManager
   source: DeclarationRef
   patterns: List<NonEmptyStr>
+  exclude_patterns: List<NonEmptyStr>
   activators: List<CapacityManagedUnit>
   // Includes destinations of self-wrap/relaunch, not only the initial service cgroup.
-  parents: Result<List<CapacityManagedUnit>, String>
+  placement: CapacityFamilyPlacement
 }
 
 // Drain scheduling consumes this projection, including unresolved placements. It cannot
@@ -66,10 +71,39 @@ fn capacity_migration_parent_requirements(population: CapacityMigrationPopulatio
     + capacity_migration_family_parent_requirements(families: population.transients)
 }
 
+// The manager owns glob matching. Read inclusions and exclusions through that same
+// reader after inhibition; never implement a second glob parser here. A failed
+// exclusion read is not an empty exclusion set. Both readings carry manager identity.
+fn capacity_migration_enumerate_family(
+  family: CapacityTransientFamily,
+  read_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>,
+) -> Result<List<CapacityManagedUnit>, String> {
+  match read_matches(family.manager, family.patterns) {
+    Err { value: why } => Err { value: why }
+    Ok { value: included } => {
+      let exclusion = if count(family.exclude_patterns) == 0 { Ok { value: [] } }
+        else { read_matches(family.manager, family.exclude_patterns) }
+      match exclusion {
+        Err { value: why } => Err { value: why }
+        Ok { value: excluded } => {
+          if any(included + excluded, unit => unit.manager != family.manager) {
+            Err { value: "family selector reading came from a different manager" }
+          } else {
+            Ok { value: filter(included, unit => !any(excluded, other => other == unit)) }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Each parent is a whole manager-scoped slice: inhibition and emptiness cover every
 // session on that host using it, not just the producer whose row requires it.
 fn capacity_migration_family_parent_requirements(families: List<CapacityTransientFamily>) -> List<CapacityMigrationParentRequirement> {
-  map(filter(families, family => family.standing != CapacityConfirmedNonWriter), family => CapacityMigrationParentRequirement { standing: family.standing, source: family.source, parents: family.parents })
+  flat_map(filter(families, family => family.standing != CapacityConfirmedNonWriter), family => match family.placement {
+    CapacityFamilyParents { parents: parents } => [CapacityMigrationParentRequirement { standing: family.standing, source: family.source, parents: parents }]
+    CapacityActivationFamily { targets: _ } => []
+  })
 }
 
 type CapacityMigrationChild {
@@ -138,6 +172,14 @@ fn capacity_migration_admit(
   if any(drained_families, family => count(family.patterns) == 0 || count(family.activators) == 0) {
     return Err { value: "transient family lacks its naming patterns or activators" }
   }
+  // An activation-only family may omit a parent only when every destination is
+  // itself in the installed drain. This is an edge to an inhibited writer, not a
+  // non-writer exemption from enumerating/quiescing the transient family.
+  if any(drained_families, family => match family.placement {
+    CapacityFamilyParents { parents: _ } => false
+    CapacityActivationFamily { targets: targets } => count(targets) == 0
+      || any(targets, target => !any(population.installed, unit => unit == target))
+  }) { return Err { value: "activation family destination is absent from the installed drain" } }
   let requirements = capacity_migration_parent_requirements(population: population)
   let placement_refusal = fold(requirements, init: none, f: (prior, family) => match prior {
     Present { value: _ } => prior

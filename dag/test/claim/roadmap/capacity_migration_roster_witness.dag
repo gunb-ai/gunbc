@@ -1,12 +1,14 @@
 module test.claim.roadmap.capacity_migration_roster_witness
 
-import std.types { Bool, List }
+import std.types { Bool, List, String }
 import std.error_primitives { Ok, Err }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_handin_activation_argv }
+import extdeps.systemd.systemctl { systemctl_binary_path, systemctl_start_verb }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, ServeRootMount }
-import gunbc.compute.capacity_migration { CapacityTransientFamily, CapacityManagedUnit, CapacityConfirmedWriter, CapacityUnclassified }
+import gunbc.compute.capacity_migration { CapacityFamilyParents, CapacityActivationFamily, CapacityTransientFamily, CapacityManagedUnit, CapacityConfirmedWriter, CapacityUnclassified }
 import gunbc.live_deploy.spec { DeploymentNames, deployment_agent_door_unit_name }
-import gunbc.roadmap.roadmap_capacity_migration { roadmap_capacity_migration_transients, roadmap_lab_capacity_installed_writer_reading }
+import gunbc.roadmap.roadmap_capacity_migration { roadmap_capacity_migration_transients, roadmap_lab_capacity_installed_writer_reading, roadmap_capacity_migration_enumerate_family }
 import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_family_patterns }
 
 fn migration_roster_names() -> DeploymentNames {
@@ -25,8 +27,8 @@ fn migration_roster_fixture() -> List<CapacityTransientFamily> {
 // This fixture deliberately does not resolve or activate a deployment.
 test fn migration_roster_keeps_both_managers_and_uncharged_producers() -> Bool {
   let rows = migration_roster_fixture()
-  count(rows) == 6
-    && count(filter(rows, row => row.manager == SystemManager)) == 1
+  count(rows) == 7
+    && count(filter(rows, row => row.manager == SystemManager)) == 2
     && count(filter(rows, row => row.manager == UserManager { uid: 1234 })) == 5
     && any(rows, row => any(row.patterns, pattern => pattern == "gunbc-audit-*-*.service"))
     && any(rows, row => any(row.patterns, pattern => pattern == "gunbc-obligation-attempt-*-*.service"))
@@ -34,10 +36,13 @@ test fn migration_roster_keeps_both_managers_and_uncharged_producers() -> Bool {
 
 test fn unresolved_redelivery_is_not_a_successful_parent_requirement() -> Bool {
   let rows = migration_roster_fixture()
-  count(filter(rows, row => match row.parents { Err { value: _ } => true Ok { value: _ } => false })) == 1
-    && all(rows, row => match row.parents {
-      Err { value: _ } => row.patterns == attempt_redelivery_wake_family_patterns()
-      Ok { value: parents } => count(parents) == 1
+  count(filter(rows, row => match row.placement { CapacityFamilyParents { parents: parents } => match parents { Err { value: _ } => true Ok { value: _ } => false } CapacityActivationFamily { targets: _ } => false })) == 1
+    && all(rows, row => match row.placement {
+      CapacityFamilyParents { parents: parents } => match parents {
+        Err { value: _ } => row.patterns == attempt_redelivery_wake_family_patterns()
+        Ok { value: values } => count(values) == 1
+      }
+      CapacityActivationFamily { targets: targets } => count(targets) == 1
     })
 }
 
@@ -56,4 +61,33 @@ test fn installed_classification_has_positive_writers_but_no_invented_negatives(
   serve.standing == CapacityConfirmedWriter && door.standing == CapacityConfirmedWriter
     && match other.standing { CapacityUnclassified { detail: _ } => true _ => false }
     && match user.standing { CapacityUnclassified { detail: _ } => true _ => false }
+}
+
+// Supplied manager readings exercise the real source-owned selector. The collision
+// is deliberately a valid String key, not a fabricated hex-only identity rule.
+test fn handin_is_excluded_from_workers_but_retained_in_its_own_family() -> Bool {
+  let rows = migration_roster_fixture()
+  let worker = CapacityManagedUnit { manager: SystemManager, unit: "gunbc-attempt-node-key.service" }
+  let handin = CapacityManagedUnit { manager: SystemManager, unit: "gunbc-attempt-node-key-handin.service" }
+  let path = CapacityManagedUnit { manager: SystemManager, unit: "gunbc-attempt-node-key-handin.path" }
+  let selected = map(filter(rows, row => row.manager == SystemManager), row =>
+    roadmap_capacity_migration_enumerate_family(family: row, read_matches: (manager, patterns) => {
+      if patterns == ["gunbc-attempt-*-*.service"] { Ok { value: [worker, handin] } }
+      else if patterns == ["gunbc-attempt-*-*-handin.service", "gunbc-attempt-*-*-handin.path"] { Ok { value: [handin, path] } }
+      else { Err { value: "unexpected selector" } }
+    }))
+  selected == [Ok { value: [worker] }, Ok { value: [handin, path] }]
+}
+
+test fn handin_activation_edge_uses_the_launcher_command_builder() -> Bool {
+  let families = filter(migration_roster_fixture(), family => match family.placement {
+    CapacityActivationFamily { targets: _ } => true
+    CapacityFamilyParents { parents: _ } => false
+  })
+  count(families) == 1 && all(families, family => match family.placement {
+    CapacityActivationFamily { targets: targets } => count(targets) == 1 && all(targets, target =>
+      attempt_system_unit_handin_activation_argv(target: target.unit)
+        == [systemctl_binary_path() as String, systemctl_start_verb as String, "fixture-belt-exit.service"])
+    CapacityFamilyParents { parents: _ } => false
+  })
 }

@@ -2,13 +2,13 @@ module gunbc.roadmap.roadmap_capacity_migration
 
 import std.types { String, NonEmptyStr, List, Int }
 import std.decl_ref { decl_ref }
-import std.error_primitives { Ok, Err }
+import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd { systemd_service_unit_suffix }
-import extdeps.systemd.manager { SystemManager, UserManager }
-import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityWriterReading, CapacityTransientFamily, CapacityMigrationParentRequirement, CapacityConfirmedWriter, CapacityUnclassified, capacity_migration_family_parent_requirements }
+import extdeps.systemd.manager { SystemdManager, SystemManager, UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityFamilyParents, CapacityActivationFamily, CapacityWriterReading, CapacityTransientFamily, CapacityMigrationParentRequirement, CapacityConfirmedWriter, CapacityUnclassified, capacity_migration_family_parent_requirements, capacity_migration_enumerate_family }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
 import gunbc.live_deploy.spec {
-  DeploymentNames, deployment_agent_door_unit_name,
+  DeploymentNames, deployment_agent_door_unit_name, deployment_belt_exit_drain_service_unit_name,
   deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name,
   deployment_publication_path_unit_name, deployment_attempt_unit_drain_path_unit_name,
   deployment_belt_credential_recovery_timer_unit_name,
@@ -19,6 +19,7 @@ import gunbc.roadmap.roadmap_belt_obligation {
 import gunbc.roadmap.roadmap_dispatch_actuator {
   dispatch_review_unit_name, dispatch_audit_unit_name, dispatch_attempt_unit_stem,
 }
+import gunbc.roadmap.attempt_system_unit_launch { attempt_system_unit_handin_wake_family_patterns }
 import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_family_patterns }
 
 // This lab-only adapter is a transient population, NOT an installed-unit census or a
@@ -73,48 +74,67 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
       standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_attempt_obligation_unit_name"),
+      exclude_patterns: [],
       patterns: [belt_attempt_obligation_unit_name(node_id: "*", attempt_key: "*")],
-      activators: activators, parents: Ok { value: [work_parent] },
+      activators: activators, placement: CapacityFamilyParents { parents: Ok { value: [work_parent] } },
     },
     CapacityTransientFamily {
       standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_instance_obligation_unit_name"),
+      exclude_patterns: [],
       patterns: map(belt_instance_obligation_kinds, kind => belt_instance_obligation_unit_name(instance_id: instance_id, kind: kind)),
-      activators: activators, parents: Ok { value: [work_parent] },
+      activators: activators, placement: CapacityFamilyParents { parents: Ok { value: [work_parent] } },
     },
     CapacityTransientFamily {
       standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_review_unit_name"),
+      exclude_patterns: [],
       patterns: [dispatch_review_unit_name(node_id: "*", attempt_key: "*", criterion_key: "*")],
-      activators: activators, parents: Ok { value: [work_parent] },
+      activators: activators, placement: CapacityFamilyParents { parents: Ok { value: [work_parent] } },
     },
     CapacityTransientFamily {
       standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_audit_unit_name"),
+      exclude_patterns: [],
       patterns: [dispatch_audit_unit_name(node_id: "*", attempt_key: "*")],
-      activators: activators, parents: Ok { value: [work_parent] },
+      activators: activators, placement: CapacityFamilyParents { parents: Ok { value: [work_parent] } },
     },
     CapacityTransientFamily {
       standing: CapacityUnclassified { detail: "process entry reachability is not covered; retain this family in the drain" },
       manager: SystemManager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_attempt_unit_stem"),
+      exclude_patterns: attempt_system_unit_handin_wake_family_patterns(),
       patterns: [join([dispatch_attempt_unit_stem(node_id: "*", attempt_key: "*"), systemd_service_unit_suffix], "") as NonEmptyStr],
       activators: activators,
-      parents: Ok { value: [CapacityManagedUnit { manager: SystemManager, unit: attempt_worker_slice_unit_name }] },
+      placement: CapacityFamilyParents { parents: Ok { value: [CapacityManagedUnit { manager: SystemManager, unit: attempt_worker_slice_unit_name }] } },
+    },
+    CapacityTransientFamily {
+      standing: CapacityUnclassified { detail: "handin service activates the installed drain; retain both service and path in migration" },
+      manager: SystemManager,
+      source: decl_ref(module_path: "gunbc.roadmap.attempt_system_unit_launch", decl_name: "attempt_system_unit_handin_wake_family_patterns"),
+      patterns: attempt_system_unit_handin_wake_family_patterns(), exclude_patterns: [],
+      activators: activators,
+      // attempt_system_unit_handin_wake_command only starts this installed service.
+      // The path/service pair is still enumerated and quiesced; its activation edge
+      // requires the destination in the installed drain, not a host-wide slice drain.
+      placement: CapacityActivationFamily { targets: [CapacityManagedUnit {
+        manager: SystemManager, unit: deployment_belt_exit_drain_service_unit_name(names: names),
+      }] },
     },
     CapacityTransientFamily {
       standing: CapacityConfirmedWriter,
       manager: user_manager,
       source: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_redelivery_wake", decl_name: "attempt_redelivery_wake_unit_name"),
+      exclude_patterns: [],
       patterns: attempt_redelivery_wake_family_patterns(), activators: activators,
       // Lab 2611d8c0508b, 2026-10-29 15:47/15:55 UTC: the triggered service
       // was read in user app.slice. The anonymous self-wrap scope still has no
       // parent reading: cwd refusal ended it before sampling. Keep the combined
       // placement unresolved until the working-directory fix permits observation.
-      parents: Err { value: "redelivery service observed in user app.slice; anonymous run-*.scope parent remains unread after workspace-root refusal; observe and bind the scope parent before migration" },
+      placement: CapacityFamilyParents { parents: Err { value: "redelivery service observed in user app.slice; anonymous run-*.scope parent remains unread after workspace-root refusal; observe and bind the scope parent before migration" } },
     },
   ]
 }
@@ -123,4 +143,19 @@ fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: St
 // discard that row and schedule a quiet window from the known subset.
 fn roadmap_capacity_migration_parent_requirements(names: DeploymentNames, instance_id: String, operating_uid: Int) -> List<CapacityMigrationParentRequirement> {
   capacity_migration_family_parent_requirements(families: roadmap_capacity_migration_transients(names: names, instance_id: instance_id, operating_uid: operating_uid))
+}
+
+// FRONTIER: worker and handin names collide for an arbitrary attempt key ending in
+// -handin. dispatch_attempt_key in gunbc.roadmap.roadmap_dispatch_actuator constructs
+// normal keys, but launch ingress still accepts String. A collision-free encoding or
+// a reserved separator enforced at that constructor AND ingress is the shrink trigger.
+// Until then inclusion-minus-exclusion assigns the ambiguous name to handin. Every
+// family is drained with descendant quiescence, and the worker parent remains a
+// whole-parent requirement even for a worker sorted into handin. The ambiguity cannot
+// remove a unit or its worker-parent obligation from the drain. No legacy rename.
+fn roadmap_capacity_migration_enumerate_family(
+  family: CapacityTransientFamily,
+  read_matches: fn(SystemdManager, List<NonEmptyStr>) -> Result<List<CapacityManagedUnit>, String>,
+) -> Result<List<CapacityManagedUnit>, String> {
+  capacity_migration_enumerate_family(family: family, read_matches: read_matches)
 }

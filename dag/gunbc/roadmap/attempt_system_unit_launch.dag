@@ -67,7 +67,7 @@ import gunbc.host.host_layout {
 import gunbc.roadmap.spool_stall { SpoolStallEntry, SpoolStallStep, spool_stall_step_text, SpoolStallListRequests, SpoolStallClaim, SpoolStallRecorded, SpoolStallUnrecorded, spool_stall_record_at }
 import gunbc.filesystem_file_observe { filesystem_entry_presence_of_path }
 import extdeps.systemd {
-  User, MemorySwapMax, SliceProperty,
+  User, MemorySwapMax, SliceProperty, systemd_service_unit_suffix,
   SystemdUnitName, systemd_service_unit_name, systemd_unit_name_wire, SystemdUnitNameAdmission,
   SystemdUnitNameAdmitted, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter,
   SystemdUnitNameOverlong,
@@ -989,8 +989,22 @@ fn attempt_system_unit_run_admitted_start(
 //
 // THE WORKER AND ITS WAKE ARE ONE START: a wake that cannot be bound stops the worker and refuses the request,
 // so no worker runs whose hand-in nothing would hear.
+fn attempt_system_unit_handin_wake_stem(node_id: String, attempt_key: String) -> String {
+  join([dispatch_attempt_unit_stem(node_id: node_id, attempt_key: attempt_key), "-handin"], "")
+}
+
+fn attempt_system_unit_handin_wake_family_patterns() -> List<NonEmptyStr> {
+  let stem = attempt_system_unit_handin_wake_stem(node_id: "*", attempt_key: "*")
+  [join([stem, systemd_service_unit_suffix], "") as NonEmptyStr, join([stem, ".path"], "") as NonEmptyStr]
+}
+
 fn attempt_system_unit_handin_wake_unit(facts: AttemptSystemUnitStartFacts) -> SystemdUnitNameAdmission {
-  systemd_service_unit_name(stem: join([dispatch_attempt_unit_stem(node_id: facts.node_id, attempt_key: facts.attempt_key), "-handin"], ""))
+  systemd_service_unit_name(stem: attempt_system_unit_handin_wake_stem(node_id: facts.node_id, attempt_key: facts.attempt_key))
+}
+
+// The activation edge's command is shared by the launcher and migration witness.
+fn attempt_system_unit_handin_activation_argv(target: NonEmptyStr) -> List<String> {
+  [systemctl_binary_path() as String, systemctl_start_verb as String, target as String]
 }
 
 fn attempt_system_unit_handin_wake_command(
@@ -1009,7 +1023,7 @@ fn attempt_system_unit_handin_wake_command(
       PathDependency { directive: After { target: worker_unit } },
       EndOfOptions,
     ],
-    command_argv: [systemctl_binary_path() as String, systemctl_start_verb as String, handin_wake_unit as String],
+    command_argv: attempt_system_unit_handin_activation_argv(target: handin_wake_unit),
   )
 }
 
