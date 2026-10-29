@@ -32,7 +32,7 @@ import gunbc.auth.approval_request_client { PollApproved }
 import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
 import gunbc.auth.privileged_effect_census { capacity_cutover_approval_root, capacity_cutover_root_helper_site }
 import gunbc.fleet.srv1_root_mutation_approval_run {
-  Srv1CutoverRequest, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
+  Srv1CutoverRequest, Srv1RootMutationSelect, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
   ExistingRootMutationRequest, srv1_root_mutation_request_for_kind, srv1_root_mutation_request,
   srv1_root_mutation_approved_scopes, srv1_cutover_digest_admission
 }
@@ -110,4 +110,25 @@ test fn an_approval_for_another_plan_is_refused_by_the_real_gate() -> Bool {
 
 test fn an_approval_for_another_helper_is_refused_by_the_real_gate() -> Bool {
   helper_fixture_substitution_refused(other_plan: helper_fixture_digest_a, other_helper: helper_fixture_digest_a)
+}
+
+
+test fn a_legacy_job_cannot_add_helper_authority_through_selection_text() -> Bool {
+  match srv1_root_mutation_request_for_kind(kind: ExistingRootMutationJob { job: "microvm_controller_install" },
+    escalation_id: "legacy-fixture", execution_revision: "fixture-revision",
+    selects: [Srv1RootMutationSelect { input: "cutover-helper-scope", value: "execute-bound-plan" }]) {
+    Ok { value: ExistingRootMutationRequest { request: request } } => request.scopes == srv1_root_mutation_approved_scopes
+    _ => false
+  }
+}
+
+test fn caller_selections_cannot_override_a_cutover_digest_binding() -> Bool {
+  match srv1_root_mutation_request_for_kind(kind: CapacityCutoverJob {
+    plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_b,
+    internal_scopes: srv1_root_mutation_approved_scopes }, escalation_id: "cutover-fixture",
+    execution_revision: "fixture-revision", selects: [Srv1RootMutationSelect {
+      input: "cutover-plan-sha256", value: helper_fixture_digest_b.hex as String }]) {
+    Err { value: _ } => true
+    _ => false
+  }
 }
