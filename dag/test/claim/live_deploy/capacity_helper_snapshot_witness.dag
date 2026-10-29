@@ -1,0 +1,67 @@
+module test.claim.live_deploy.capacity_helper_snapshot_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest }
+import extdeps.crypto.hash { sha256_digest }
+import gunbc.host.host_effect_realize { TreeFileHash, TreeObserved, TreeObservationFailed, Sha256Observed }
+import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotInstalled }
+import gunbc.live_deploy.apply_legs { ApplyLegRootHelperSnapshot, HelperSnapshotInstall }
+import gunbc.live_deploy.capacity_helper_snapshot {
+  capacity_helper_install_leg, capacity_helper_manifest, capacity_helper_manifest_admission,
+  capacity_helper_locus, capacity_helper_entry
+}
+
+data helper_snapshot_hash_a: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data helper_snapshot_hash_b: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+fn helper_snapshot_fixture(binary: String, source: String) -> Result<Sha256Digest, String> {
+  capacity_helper_manifest(revision: RevisionBoundAtEmission { revision: "fixture-release" },
+    tree: TreeObserved { entries: [
+      TreeFileHash { path: capacity_helper_entry, hex: helper_snapshot_hash_a },
+      TreeFileHash { path: "src/v2/std/node.dag", hex: source }
+    ] }, binary: Sha256Observed { digest: sha256_digest(hex: binary as NonEmptyStr) })
+}
+
+test fn the_helper_uses_the_existing_root_snapshot_install_leg() -> Bool {
+  match capacity_helper_install_leg(revision: RevisionBoundAtEmission { revision: "fixture-release" }) {
+    Ok { value: ApplyLegRootHelperSnapshot { locus: locus, spine: _, revision: revision, action: HelperSnapshotInstall } } =>
+      locus == capacity_helper_locus && locus.owner == "root"
+        && revision == RevisionBoundAtEmission { revision: "fixture-release" }
+    _ => false
+  }
+}
+
+test fn helper_manifest_covers_binary_and_non_entry_source_bytes() -> Bool {
+  match helper_snapshot_fixture(binary: helper_snapshot_hash_a, source: helper_snapshot_hash_a) {
+    Err { value: _ } => false
+    Ok { value: approved } =>
+      (match helper_snapshot_fixture(binary: helper_snapshot_hash_b, source: helper_snapshot_hash_a) {
+        Ok { value: changed } => changed != approved _ => false
+      }) && (match helper_snapshot_fixture(binary: helper_snapshot_hash_a, source: helper_snapshot_hash_b) {
+        Ok { value: changed } => changed != approved _ => false
+      })
+  }
+}
+
+test fn a_changed_installed_manifest_refuses_the_execution_admission() -> Bool {
+  match helper_snapshot_fixture(binary: helper_snapshot_hash_a, source: helper_snapshot_hash_a) {
+    Err { value: _ } => false
+    Ok { value: approved } => capacity_helper_manifest_admission(approved: approved, observed: Ok { value: approved }) == Ok { value: approved }
+      && (match capacity_helper_manifest_admission(approved: approved,
+        observed: helper_snapshot_fixture(binary: helper_snapshot_hash_b, source: helper_snapshot_hash_a)) {
+        Err { value: _ } => true _ => false
+      }) && (match capacity_helper_manifest_admission(approved: approved, observed: Err { value: "read failed" }) {
+        Err { value: _ } => true _ => false
+      })
+  }
+}
+
+test fn an_absent_release_or_missing_fixed_entry_cannot_authorize_a_helper() -> Bool {
+  (match capacity_helper_install_leg(revision: RevisionNotInstalled) { Err { value: _ } => true _ => false })
+    && (match capacity_helper_manifest(revision: RevisionBoundAtEmission { revision: "fixture-release" },
+      tree: TreeObserved { entries: [TreeFileHash { path: "dag/other.dag", hex: helper_snapshot_hash_a }] },
+      binary: Sha256Observed { digest: sha256_digest(hex: helper_snapshot_hash_a as NonEmptyStr) }) {
+      Err { value: _ } => true _ => false
+    })
+}

@@ -1,0 +1,110 @@
+module gunbc.live_deploy.capacity_helper_snapshot
+
+import std.types { String, List, Bool, NonEmptyStr }
+import std.optional { Present, Absent }
+import std.error_primitives { Result, Ok, Err }
+import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text }
+import extdeps.languages.json.emit { json_string, json_array, serialize_json }
+import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.host.host_effect_realize {
+  TreeFileHash, TreeObservation, TreeObserved, TreeObservationFailed, Sha256Observation,
+  Sha256Observed, Sha256Unobserved, sha256_unobserved_cause_text, observe_tree_hashes,
+  observe_sha256_over_transport, one_transport_route, tree_hash_lines,
+  dark_snapshot_readback_legs_at, dark_run_legs, DarkOk, DarkFailed
+}
+import gunbc.live_deploy.release_locus {
+  HelperLocus, ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
+  helper_locus_dir, release_locus_tree_subdirs, approval_broker_helper_root_principal
+}
+import gunbc.live_deploy.apply_legs { ApplyLegRootHelperSnapshot, HelperSnapshotInstall, DeployApplyLeg }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+
+// Same installer, owner and release-revision pin as the other privileged helper
+// snapshots. The manifest adds the binary to the existing complete tree census.
+// No entry, function, source-root or executable name is supplied by a caller.
+data capacity_helper_locus: HelperLocus = HelperLocus {
+  base: "/opt/gunbc/capacity-cutover-helpers", owner: approval_broker_helper_root_principal
+}
+data capacity_helper_entry: String = "dag/gunbc/live_deploy/capacity_cutover_root_cli.dag"
+data capacity_helper_function: String = "capacity_cutover_root_cli"
+
+fn capacity_helper_install_leg(revision: ReleaseRevisionBinding) -> Result<DeployApplyLeg, String> {
+  match revision {
+    RevisionNotInstalled => Err { value: "cutover helper requires an installed release revision" }
+    RevisionBoundAtEmission { revision: _ } => Ok { value: ApplyLegRootHelperSnapshot {
+      locus: capacity_helper_locus, spine: ["/opt/gunbc", capacity_helper_locus.base],
+      revision: revision, action: HelperSnapshotInstall } }
+  }
+}
+
+// Supplied observations discriminate at the same interface as the real reader.
+// This value is an identity, not an execution grant or ownership proof.
+fn capacity_helper_manifest(revision: ReleaseRevisionBinding, tree: TreeObservation,
+  binary: Sha256Observation) -> Result<Sha256Digest, String> {
+  match revision {
+    RevisionNotInstalled => Err { value: "cutover helper release revision is absent" }
+    RevisionBoundAtEmission { revision: revision } => match tree {
+      TreeObservationFailed { reason: why } => Err { value: why }
+      TreeObserved { entries: entries } => match binary {
+        Sha256Unobserved { cause: cause } => Err { value: sha256_unobserved_cause_text(cause: cause) }
+        Sha256Observed { digest: binary_digest } => {
+          if count(entries) == 0 { return Err { value: "cutover helper source snapshot is empty" } }
+          if count(filter(entries, entry => entry.path == capacity_helper_entry)) != 1 {
+            return Err { value: "cutover helper fixed entry is missing from the installed snapshot" }
+          }
+          if !all(entries, entry => capacity_helper_tree_entry_valid(entry: entry)) {
+            return Err { value: "cutover helper source manifest contains an invalid path or digest" }
+          }
+          if !all(entries, entry => count(filter(entries, other => other.path == entry.path)) == 1) {
+            return Err { value: "cutover helper source manifest repeats a path" }
+          }
+          let body = serialize_json(v: json_array(elements: [
+            json_string(s: "gunbc.capacity-helper.v1"), json_string(s: revision as String),
+            json_string(s: capacity_helper_entry), json_string(s: capacity_helper_function),
+            json_string(s: tree_hash_lines(entries: entries + [TreeFileHash {
+              path: gunbc_release_bin_name, hex: binary_digest.hex as String }]))
+          ]))
+          match sha256_hex_digest(hex: sha256_hex_of_text(text: body)) {
+            Present { value: digest } => Ok { value: digest }
+            Absent => Err { value: "cutover helper manifest digest is unreadable" }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn capacity_helper_tree_entry_valid(entry: TreeFileHash) -> Bool {
+  (starts_with(s: entry.path, prefix: "dag/") || starts_with(s: entry.path, prefix: "src/v2/"))
+    && all(split(s: entry.path, delimiter: "/"), component => component != "" && component != "." && component != "..")
+    && !string_contains(s: entry.path, pattern: "\n") && !string_contains(s: entry.path, pattern: "\r")
+    && (match sha256_hex_digest(hex: entry.hex) { Present { value: _ } => true Absent => false })
+}
+
+// Live pre-exec read: no receipt or cached manifest substitutes for these bytes.
+// The existing snapshot ownership reader covers the tree AND all ancestors;
+// neither the fleet generation writer nor another non-root principal may write.
+fn capacity_helper_manifest_read(revision: ReleaseRevisionBinding,
+  transport: HostEffectTransport) -> Result<Sha256Digest, String> {
+  match revision {
+    RevisionNotInstalled => Err { value: "cutover helper release revision is absent" }
+    RevisionBoundAtEmission { revision: _ } => {
+      let dir = helper_locus_dir(locus: capacity_helper_locus, revision: revision)
+      match dark_run_legs(legs: dark_snapshot_readback_legs_at(locus: capacity_helper_locus, dir: dir), transport: transport) {
+        DarkFailed { step: _, reason: why } => Err { value: why }
+        DarkOk => capacity_helper_manifest(revision: revision,
+          tree: observe_tree_hashes(root: dir, subs: release_locus_tree_subdirs, transport: one_transport_route(transport: transport)),
+          binary: observe_sha256_over_transport(path: join([dir, "/", gunbc_release_bin_name], ""), transport: transport))
+      }
+    }
+  }
+}
+
+fn capacity_helper_manifest_admission(approved: Sha256Digest,
+  observed: Result<Sha256Digest, String>) -> Result<Sha256Digest, String> {
+  match observed {
+    Err { value: why } => Err { value: why }
+    Ok { value: actual } => if actual == approved { Ok { value: actual } }
+      else { Err { value: "installed cutover helper manifest differs from the approved helper digest" } }
+  }
+}
