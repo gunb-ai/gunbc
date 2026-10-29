@@ -3513,6 +3513,8 @@ fn roster_rename_control_names() -> List<String> {
     "wave-prefix-home",
     "wave-bare-import",
     "wave-bare-import-plan",
+    "wave-byte-column-key",
+    "wave-scalar-column-key",
     "wave-applies-text",
     "wave-applies-half-imported",
     "wave-imported-labels"
@@ -3683,6 +3685,12 @@ fn roster_wave_control_prefix_home() -> String {
   "module c.wave\n\nimport std.nat { nat_to_decimal_string }\nimport std.nat.compat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { to_string(value: v) + to_string(value: n) }\n"
 }
 
+// A multi-byte scalar BEFORE the head on the call's line: the census's column is a 1-based unicode SCALAR column while
+// the site key is a BYTE column, so on this line the two units differ (head at byte column 33, scalar column 32).
+fn roster_wave_control_multibyte_line() -> String {
+  "module c.wave\n\nfn f(v: Int) -> String { \"é\" + to_string(v) }\n"
+}
+
 fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules) -> List<RosterControlVerdict> {
   let plain = roster_wave_control_plain()
   let named = roster_wave_control_named()
@@ -3707,6 +3715,8 @@ fn roster_wave_control_verdicts(prepared: PreparedGrammar, lex: PreparedLexRules
   roster_control_verdict(name: "wave-prefix-home", fail: roster_wave_control_expect_refusal(name: "wave-prefix-home", fixture: roster_wave_control_prefix_home(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:34"], nk: ["control/wave.dag:6:56"]), want: "REFUSE control/wave.dag wave-wrong-binding path=* name=nat_to_decimal_string expected-home=std.nat bound-home=std.nat.compat.nat_to_decimal_string", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-bare-import", fail: roster_wave_control_expect_applied(name: "wave-bare-import", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "module c.wave\n\nimport std.types { String }\n// 😀 é 日本 between the imports\nimport extdeps.tools.openssl\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-bare-import-plan", fail: roster_wave_control_expect(name: "wave-bare-import-plan", fixture: roster_wave_control_bare_import(), legs: roster_wave_control_two_legs(ik: ["control/wave.dag:7:34"], nk: ["control/wave.dag:7:49"]), want: "EDIT control/wave.dag 109 109 \\nimport std.integer { int_to_decimal_string }\\nimport std.nat { nat_to_decimal_string }\nLABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-byte-column-key", fail: roster_wave_control_expect_applied(name: "wave-byte-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:33"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\n\nfn f(v: Int) -> String { \"é\" + int_to_decimal_string(value: v) }\n", prepared: prepared, lex: lex)),
+  roster_control_verdict(name: "wave-scalar-column-key", fail: roster_wave_control_expect_refusal(name: "wave-scalar-column-key", fixture: roster_wave_control_multibyte_line(), legs: roster_wave_control_one_leg(ik: ["control/wave.dag:3:32"]), want: "REFUSE control/wave.dag occurrence-key-unmatched path=control/wave.dag call=to_string key=control/wave.dag:3:32", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-text", fail: roster_wave_control_expect_applied(name: "wave-applies-text", fixture: plain, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:3:43"], nk: ["control/wave.dag:3:58"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat, b: Bool) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) + to_string(b) }\n", prepared: prepared, lex: lex)),
   roster_control_verdict(name: "wave-applies-half-imported", fail: roster_wave_control_expect_applied(name: "wave-applies-half-imported", fixture: int_imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:5:34"], nk: ["control/wave.dag:5:49"]), want: "module c.wave\n\nimport std.integer { int_to_decimal_string }\nimport std.nat { nat_to_decimal_string }\n\nfn f(v: Int, n: Nat) -> String { int_to_decimal_string(value: v) + nat_to_decimal_string(value: n) }\n", prepared: prepared, lex: lex))]
   let imported_labels = roster_control_verdict(name: "wave-imported-labels", fail: roster_wave_control_expect(name: "wave-imported-labels", fixture: imported, legs: roster_wave_control_two_legs(ik: ["control/wave.dag:6:43"], nk: ["control/wave.dag:6:58"]), want: "LABEL control/wave.dag 144 153 to_string int_to_decimal_string\nLABEL control/wave.dag 154 154  value: \nLABEL control/wave.dag 159 168 to_string nat_to_decimal_string\nLABEL control/wave.dag 169 169  value: \n", prepared: prepared, lex: lex))
