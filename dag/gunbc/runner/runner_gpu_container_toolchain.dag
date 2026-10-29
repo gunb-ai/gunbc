@@ -194,7 +194,7 @@ import gunbc.typed_remote_file_write {
   DestinationUnchangedUntilRename,
   FleetHostLock,
 }
-import std.measure { second }
+import std.measure { Second, second }
 import gunbc.fleet.fleet_generation_execution { fleet_generation_lock }
 import extdeps.procps.pgrep {
   pgrep_user_argv,
@@ -1839,6 +1839,25 @@ fn gpu_container_provision_displacee_store_free(
 data gpu_container_provision_subordinate_write_bound: String =
   "serialized against fleet actuations; a non-fleet useradd/usermod in the read-to-rename window is detected by the re-read compare, except within the final compare-to-rename interval"
 
+// HOW LONG THIS WRITE WAITS FOR THE FLEET HOST LOCK, and what a conflict reports. Both are THIS write's
+// policy, which is why they are rows here rather than a fleet row: fleet_converge_locked_apply_script runs
+// plain `flock -x <path> bash -c ...` -- NO -w and NO --conflict-exit-code -- so the apply waits UNBOUNDED
+// and cannot distinguish a conflict from its command's own failure. There is no shared value to import,
+// and minting one the apply does not consume would be a dangling declaration (§3c) carrying a meaning the
+// apply does not honour. This write bounds its wait instead: an actuator that cannot say why it is still
+// waiting has no business holding a converge open, and the host-mutation concurrency group
+// (gunbc-host-mutation-{host}) is what is supposed to keep the two actuators off one host, so contention
+// here means that serialization is broken somewhere else -- the right answer to that is a refusal, not a
+// longer wait.
+//
+// 75 is EX_TEMPFAIL (sysexits.h): a temporary condition for which retrying is the remedy, which is exactly
+// what a lock conflict is. The corpus cites the same convention in codex_harness_turn_busy_exit and
+// native_serve_stuck_exit_code; neither row is imported, because an exit contract belongs to the subsystem
+// that reports it and this write's exit status should not depend on the codex harness.
+data gpu_container_provision_subordinate_lock_wait: Second = second(count: 120)
+
+data gpu_container_provision_subordinate_lock_conflict_exit_code: Int = 75
+
 // HOW MANY PROCESSES AN ACCOUNT MAY HAVE BEFORE THIS CONVERGE CERTIFIES THEM. The precheck below reads
 // one /proc/<pid>/map per process of the displaced account, so the cost is execs over one SSH session --
 // and an unbounded scan is a converge whose runtime is chosen by whatever the displaced account happens to
@@ -2460,9 +2479,10 @@ fn gpu_container_provision_run_action(
     // apply takes over fleet_generation_lock, and the gpu converge mode does not otherwise hold it -- so
     // this is the write taking the lock itself rather than assuming somebody else did. Taking a *private*
     // lock path would be the lie version of this: it would serialize against nothing. Contention is a
-    // refusal, not a wait-out: the wait absorbs a short overlap (the fleet apply uses the same 120s and
-    // the same 75) and the host-mutation concurrency group keeps the two actuators off one host, so an
-    // actual conflict means the serialization is broken somewhere else and the right answer is to stop.
+    // refusal, not a wait-out: the wait is this write's own bound, tighter than the fleet apply's (which
+    // waits unbounded on the same lock -- see gpu_container_provision_subordinate_lock_wait), and the
+    // host-mutation concurrency group keeps the two actuators off one host, so an actual conflict means
+    // the serialization is broken somewhere else and the right answer is to stop.
     //
     // The mode is 0644 root:root because that is what the live hosts measure, and the privilege is
     // sudo -n because /etc is not writable by the runner principal. The scope is /etc, never /home: these
@@ -2478,8 +2498,8 @@ fn gpu_container_provision_run_action(
         validation: DestinationUnchangedUntilRename { expected: e },
         lock: FleetHostLock {
           lock_path: fleet_generation_lock as NonEmptyStr,
-          wait: second(count: 120),
-          conflict_exit_code: 75,
+          wait: gpu_container_provision_subordinate_lock_wait,
+          conflict_exit_code: gpu_container_provision_subordinate_lock_conflict_exit_code,
         },
       ) {
         TypedRemoteFileConvergenceRefused { step: st, reason: r } =>

@@ -31,6 +31,7 @@ module test.claim.runner.runner_gpu_container_toolchain_witness
 import std.logic { Bool }
 import std.types { NonEmptyStr, List }
 import std.algebra { trim, string_contains }
+import std.measure { second_count }
 
 import product.host_identity { HostIdentity }
 
@@ -66,6 +67,8 @@ import gunbc.runner.runner_gpu_container_toolchain {
   GpuContainerProvisionMapMappedFromRange,
   GpuContainerProvisionMapUnreadableRow,
   gpu_container_provision_map_scan,  gpu_container_provision_subordinate_write_bound,
+  gpu_container_provision_subordinate_lock_wait,
+  gpu_container_provision_subordinate_lock_conflict_exit_code,
   VerifyKeyringFingerprint,
   gpu_container_provision_check_verdict,
   GpuContainerProvisionStep,
@@ -1318,4 +1321,21 @@ test fn the_written_content_carries_the_terminated_file_and_the_moved_row() -> B
             expected: "ghrunner:100000:65536\nubuntu:100000:65536\nbriansrls:165536:65536\n"))
     SubordinatePlanRefused { reason: _ } => false
   }
+}
+
+// THE LOCK POLICY IS THIS WRITE'S OWN, AND IT IS NOT THE FLEET APPLY'S.
+//
+// The apply runs plain `flock -x <path> bash -c ...` -- no -w, no --conflict-exit-code -- so it waits
+// UNBOUNDED on the same lock file and cannot tell a conflict from its own command failing. Nothing in the
+// fleet therefore supplies these two numbers, and a shared row the apply does not consume would be a
+// dangling declaration making a meaning claim the apply does not honour. What this write does is bound its
+// own wait and give a conflict an exit code a caller can recognise: 75 is EX_TEMPFAIL from sysexits.h, the
+// "temporary condition, retrying is the remedy" convention the corpus also cites in
+// codex_harness_turn_busy_exit and native_serve_stuck_exit_code -- cited, not imported, because an exit
+// contract belongs to the subsystem that reports it and a GPU runner converge's exit status has no
+// business depending on the codex harness. A contention here also means the host-mutation concurrency
+// group failed to keep the two actuators off one host, which is a reason to stop, not to wait longer.
+test fn the_subordinate_write_bounds_its_own_wait_and_reports_conflict_as_tempfail() -> Bool {
+  second_count(s: gpu_container_provision_subordinate_lock_wait) == 120
+    && gpu_container_provision_subordinate_lock_conflict_exit_code == 75
 }
