@@ -741,8 +741,9 @@ type BmcRedfishPasswordChangeStep {
   completed: Bool
 }
 
-// Replace ONE account record in the world's Redfish census by name (the shared rebuild every completed
-// change performs). Extracted so the shared and dedicated arms update the record the same single way.
+// Replace ONE account record in the world's Redfish census by name -- the SINGLE record-replace every Redfish
+// world writer performs (both bmc_redfish_change_password arms and bmc_redfish_note_failed_login), so a future
+// change to how a record is matched (say, by @odata.id) reaches all of them at once (DESIGN 6b: one rule, no second leaf).
 fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAccount) -> BmcWorld {
   bmc_with_redfish_accounts(
     world: world,
@@ -807,10 +808,7 @@ fn bmc_redfish_note_failed_login(world: BmcWorld, name: String, at_lockout_thres
       }
       let bumped = BmcRedfishAccount { name: account.name, credential: account.credential, role: account.role, enabled: account.enabled, locked: account.locked || should_lock, forced_password_change: account.forced_password_change, failed_logins: count }
       BmcRedfishFailedLoginStep {
-        world: bmc_with_redfish_accounts(
-          world: world,
-          accounts: map(bmc_redfish_census(world: world), a => if a.name == name { bumped } else { a }),
-        ),
+        world: bmc_redfish_set_record(world: world, name: name, cleared: bumped),
         locked_now: should_lock,
       }
   }
