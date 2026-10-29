@@ -2054,7 +2054,7 @@ fn session_reviewer_placement_settle_pass(instance: HostDashboardInstance, store
     Present { value: now } => session_reviewer_placement_settle_pass_at(
       stores: stores,
       host: instance.host_identity as String,
-      lifecycle_of: (name) => session_reviewer_unit_lifecycle_for_instance(instance: instance, name: name),
+      lifecycle_of: name => session_reviewer_unit_lifecycle_for_instance(instance: instance, name: name),
       now: now,
     )
   }
