@@ -136,7 +136,6 @@ import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 import gunbc.host.verified_archive_install { verified_archive_install, verified_archive_install_holds, verified_archive_install_text, ArchiveSha256 }
 import gunbc.host.host_effect { FleetSsh }
 import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename }
-import extdeps.tools.stat { stat_owner_user_argv }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -1345,7 +1344,7 @@ fn runner_host_run_legs(subject: RunnerHostFileSubject, files: List<FleetHostFil
               [
                 LegJobUserPasswd { job_user: deploy_slot_job_user },
                 LegElevated { command: map(executor_privileged_operation_argv(op: deploy_slot_account_operation()), w => w as String) },
-              ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: stat_owner_user_argv(path: runner_slot_dir_path(slot: d) as String) })
+              ] + map(filter(deploy_slot_identities, d => (d.host as String) == (subject.host as String)), d => LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: runner_slot_dir_path(slot: d) as String) })
             } else { [] },
           ),
         ),
@@ -1790,20 +1789,35 @@ fn deploy_slot_tree_unit(standing: DeploySlotTreeStanding) -> NonEmptyStr {
   }
 }
 
-fn deploy_slot_account_uid(standing: DeploySlotAccountStanding) -> Int? {
+fn deploy_slot_account_is_held(standing: DeploySlotAccountStanding) -> Bool {
   match standing {
-    DeploySlotAccountPresent { uid: u, passwd_line: _ } => Present { value: u }
-    DeploySlotAccountCreated { uid: u, passwd_line: _ } => Present { value: u }
-    DeploySlotAccountMissing { cause: _ } => none
-    HostHasNoDeploySlot => none
+    DeploySlotAccountPresent { uid: _, passwd_line: _ } => true
+    DeploySlotAccountCreated { uid: _, passwd_line: _ } => true
+    DeploySlotAccountMissing { cause: _ } => false
+    HostHasNoDeploySlot => false
   }
 }
 
-// The owner uid of a path, read as the administrator; a failed or non-numeric read is no reading.
-fn observe_path_owner_uid(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, path: String) -> Int? {
-  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: stat_owner_user_argv(path: path) }) {
+// WHETHER THE TREE IS THE ACCOUNT'S, asked far side by find in the module's own portable-word idiom
+// (runner_host_root_only_find_argv): the directory is printed exactly when it is a directory owned by
+// the account. A stat format would carry a percent sign the fleet transport refuses
+// (the_percent_format_stat_probe_is_refused_by_the_transport).
+fn deploy_slot_tree_owned_find_argv(slot_dir: String) -> List<String> {
+  ["find", slot_dir, "-maxdepth", "0", "-type", "d", "-user", deploy_slot_job_user as String]
+}
+
+// Printed: owned. Exit 0 and nothing printed: not owned. Anything else: not read.
+fn classify_deploy_slot_tree_owned(slot_dir: String, exit_code: Int, stdout: String) -> Bool? {
+  if exit_code != 0 { none }
+  else if trim(s: stdout) == slot_dir { Present { value: true } }
+  else if trim(s: stdout) == "" { Present { value: false } }
+  else { none }
+}
+
+fn observe_deploy_slot_tree_owned(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slot_dir: String) -> Bool? {
+  match run_fleet_host_leg(subject: fleet_subject_of(s: subject), context: context, leg: LegElevated { command: deploy_slot_tree_owned_find_argv(slot_dir: slot_dir) }) {
     TypedArgvExecRefused { reason: _ } => none
-    TypedArgvExecConverged { result: r } => if r.exit_code == 0 { parse_int(s: trim(s: r.stdout)) } else { none }
+    TypedArgvExecConverged { result: r } => classify_deploy_slot_tree_owned(slot_dir: slot_dir, exit_code: r.exit_code, stdout: r.stdout)
   }
 }
 
@@ -1812,17 +1826,17 @@ type DeploySlotTreeStep
   = DeploySlotTreeSettled { standing: DeploySlotTreeStanding }
   | DeploySlotTreeDrainThenRebuild
 
-fn deploy_slot_tree_step(unit: NonEmptyStr, account_uid: Int?, owner_uid: Int?, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotTreeStep {
-  match account_uid {
-    Absent => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "the deploy account is not held, so no tree can be owned by it" as NonEmptyStr } }
-    Present { value: a } =>
-      match owner_uid {
-        Absent => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "the tree's owner could not be read" as NonEmptyStr } }
+fn deploy_slot_tree_step(unit: NonEmptyStr, account_held: Bool, owned: Bool?, mode: FleetHostFileConvergeMode, privilege: FleetHostPrivilegeStanding) -> DeploySlotTreeStep {
+  if !account_held {
+    DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "the deploy account is not held, so no tree can be owned by it" as NonEmptyStr } }
+  } else {
+      match owned {
+        Absent => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: "whether the tree is the deploy account's could not be read" as NonEmptyStr } }
         Present { value: o } =>
-          if o == a { DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: unit } } }
+          if o { DeploySlotTreeSettled { standing: DeploySlotTreeHeld { unit: unit } } }
           else {
             match mode {
-              FleetHostFilesObserveOnly => DeploySlotTreeSettled { standing: DeploySlotTreePending { unit: unit, cause: join(["the tree is owned by uid ", to_string(o), ", not the deploy account's ", to_string(a), "; an apply drains and rebuilds it"], "") as NonEmptyStr } }
+              FleetHostFilesObserveOnly => DeploySlotTreeSettled { standing: DeploySlotTreePending { unit: unit, cause: join(["the tree is not owned by ", deploy_slot_job_user as String, "; an apply drains and rebuilds it"], "") as NonEmptyStr } }
               FleetHostFilesApply =>
                 match privilege {
                   AdministratorPrivilegeRefused { reason: r } => DeploySlotTreeSettled { standing: DeploySlotTreeRefused { unit: unit, cause: concat("the administrator holds no privilege to rebuild it: ", r) as NonEmptyStr } }
@@ -1851,7 +1865,7 @@ fn deploy_slot_tree_rebuild_commands(slot_dir: String, tarball: String) -> List<
   ]
 }
 
-fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slot: RunnerSlotIdentity, account_uid: Int) -> DeploySlotTreeStanding
+fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExecutionContext, slot: RunnerSlotIdentity) -> DeploySlotTreeStanding
 {
   let unit = runner_slot_unit_name(slot: slot)
   let dir = runner_slot_dir_path(slot: slot) as String
@@ -1869,10 +1883,10 @@ fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
       if !verified_archive_install_holds(outcome: outcome) {
         DeploySlotTreeRefused { unit: unit, cause: verified_archive_install_text(outcome: outcome) as NonEmptyStr }
       } else {
-        match observe_path_owner_uid(subject: subject, context: context, path: dir) {
-          Present { value: o } =>
-            if o == account_uid { DeploySlotTreeRebuilt { unit: unit } }
-            else { DeploySlotTreeRefused { unit: unit, cause: join(["rebuilt, but the tree reads back owned by uid ", to_string(o)], "") as NonEmptyStr } }
+        match observe_deploy_slot_tree_owned(subject: subject, context: context, slot_dir: dir) {
+          Present { value: owned_after } =>
+            if owned_after { DeploySlotTreeRebuilt { unit: unit } }
+            else { DeploySlotTreeRefused { unit: unit, cause: join(["rebuilt, but the tree does not read back owned by ", deploy_slot_job_user as String], "") as NonEmptyStr } }
           Absent => DeploySlotTreeRefused { unit: unit, cause: "rebuilt, but the tree's owner could not be read back" as NonEmptyStr }
         }
       }
@@ -1890,22 +1904,16 @@ fn converge_deploy_slot_tree(
 ) -> DeploySlotTreeStanding
 {
   let unit = runner_slot_unit_name(slot: slot)
-  let account_uid = deploy_slot_account_uid(standing: account)
-  let owner_uid = match account_uid {
-    Absent => none
-    Present { value: _ } => observe_path_owner_uid(subject: subject, context: context, path: runner_slot_dir_path(slot: slot) as String)
-  }
-  match deploy_slot_tree_step(unit: unit, account_uid: account_uid, owner_uid: owner_uid, mode: mode, privilege: privilege) {
+  let account_held = deploy_slot_account_is_held(standing: account)
+  let owned = if account_held { observe_deploy_slot_tree_owned(subject: subject, context: context, slot_dir: runner_slot_dir_path(slot: slot) as String) } else { none }
+  match deploy_slot_tree_step(unit: unit, account_held: account_held, owned: owned, mode: mode, privilege: privilege) {
     DeploySlotTreeSettled { standing: st } => st
     DeploySlotTreeDrainThenRebuild =>
       match drain_and_mask_runner_slot_over(target: subject.target, context: context, unit: unit) {
         SlotDrainPending { unit: _, cause: _ } => DeploySlotTreePending { unit: unit, cause: "masked; a job is still running or the unit is still stopping, so the rebuild waits for a later run" as NonEmptyStr }
         SlotActuationRefused { unit: _, step: st, reason: why } => DeploySlotTreeRefused { unit: unit, cause: join(["the drain refused at ", st, ": ", why], "") as NonEmptyStr }
         SlotActivated { unit: _ } => DeploySlotTreeRefused { unit: unit, cause: "the drain answered activated" as NonEmptyStr }
-        _ => match account_uid {
-          Present { value: a } => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot, account_uid: a)
-          Absent => DeploySlotTreeRefused { unit: unit, cause: "the deploy account is not held" as NonEmptyStr }
-        }
+        _ => rebuild_deploy_slot_tree(subject: subject, context: context, slot: slot)
       }
   }
 }

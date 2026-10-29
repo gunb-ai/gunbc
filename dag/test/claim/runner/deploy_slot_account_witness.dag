@@ -11,7 +11,7 @@ import gunbc.runner.runner_host_file_converge {
   DeploySlotAccountStanding, HostHasNoDeploySlot, DeploySlotAccountPresent, DeploySlotAccountCreated, DeploySlotAccountMissing,
   classify_deploy_slot_account_read, deploy_slot_account_step, admit_files_for_deploy_slot, deploy_slot_role_dropin_bar,
   DeploySlotTreeStanding, DeploySlotTreeHeld, DeploySlotTreeRebuilt, DeploySlotTreePending, DeploySlotTreeRefused,
-  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands,
+  DeploySlotTreeStep, DeploySlotTreeSettled, DeploySlotTreeDrainThenRebuild, deploy_slot_tree_step, deploy_slot_tree_rebuild_commands, classify_deploy_slot_tree_owned,
   FleetHostFileDesired, RunnerHostFileWithheld,
   FleetHostFilesApply, FleetHostFilesObserveOnly,
   AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
@@ -115,14 +115,25 @@ fn tree_rebuilds(s: DeploySlotTreeStep) -> Bool {
 
 // A TREE OWNED BY THE ACCOUNT IS HELD (control); one owned by anyone else is drained and rebuilt only
 // in a privileged apply, and an unread owner or a missing account never rebuilds (the reds).
-test fn only_a_tree_owned_by_another_uid_in_a_privileged_apply_is_rebuilt() -> Bool {
+test fn only_a_tree_owned_by_another_user_in_a_privileged_apply_is_rebuilt() -> Bool {
   let u = "actions-runner@srv1-02.service" as NonEmptyStr
-  tree_settles_held(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 996 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: none, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
-    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_uid: Present { value: 996 }, owner_uid: Present { value: 1001 }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+  tree_settles_held(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: true }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesObserveOnly, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: none, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: false, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeAvailable))
+    && !tree_rebuilds(s: deploy_slot_tree_step(unit: u, account_held: true, owned: Present { value: false }, mode: FleetHostFilesApply, privilege: AdministratorPrivilegeRefused { reason: "fixture" }))
+}
+
+// THE FAR-SIDE find ANSWERS OWNED ONLY BY PRINTING THE DIRECTORY ITSELF: printed is owned, exit 0 and
+// silent is not owned, and a failure or any other output is no reading (never "not owned", which would
+// rebuild a tree on a read that established nothing).
+test fn the_tree_owner_read_is_three_valued() -> Bool {
+  let d = "/opt/actions-runner/srv1-02"
+  classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/opt/actions-runner/srv1-02\n") == Present { value: true }
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "") == Present { value: false }
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 1, stdout: "") == none
+    && classify_deploy_slot_tree_owned(slot_dir: d, exit_code: 0, stdout: "/somewhere/else\n") == none
 }
 
 // THE REBUILD REMOVES THE WHOLE TREE, RECREATES IT OWNED BY THE ACCOUNT AND EXTRACTS AS THE ACCOUNT, in
