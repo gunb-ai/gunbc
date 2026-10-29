@@ -12,10 +12,12 @@ import product.printed_chassis.cassette_review { cassette_printable, rack_review
 import product.printed_chassis.gpu_duct {
   GpuDuctAdmitted, GpuDuctInsertReadingsDisagree, GpuDuctFinsAtTheWindowFace, GpuDuctFanMountRefused,
   GpuDuctWindowDeeperThanFan, GpuDuctPlugPassageClosed, DuctCardMount, DuctExtent, PlugAndFlange, SleeveOverCardEnd,
-  FullDuct, CardFitRing, a16_end_face, a16_duct_design, admit_gpu_duct, duct_presentation_members, duct_readme,
+  FullDuct, CardFitRing, a16_duct_design, admit_gpu_duct, duct_presentation_members, duct_readme,
   BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard, BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, a16_blower_duct_design, admit_blower_duct, blower_presentation_members, blower_readme,
   plane_on_end_duct_parts, plane_on_end_duct_joints, plane_on_end_presentation_members, plane_on_end_readme,
 }
+import std.optional { Present, Absent }
+import product.printed_chassis.duct_card_catalog { DuctCard, DuctCardDims, a16_duct_card, duct_card_dims, duct_card_unread_reason }
 import product.printed_chassis.card_cooling_route {admit_home, PlaneOnEnd, RouteAdmission, RouteAdmittedOnOperatorBound, RouteRefusedByChassis, RouteHomeUnmeasured, RouteProposalOnly, RouteAdmitted, demand_display}
 import product.printed_chassis.assembly_geometry {Printed, Purchased, Metal}
 
@@ -35,12 +37,12 @@ fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySele
       ResidentialAssemblyRefused { reason: r } => PrintableAssemblyRefused { reason: r }
     }
     CassetteRackReview => PrintableAssemblyReady { assembly: rack_review_assembly() }
-    A16PlugDuct => a16_selection(root: root, mount: PlugAndFlange, extent: FullDuct)
-    A16SleeveDuct => a16_selection(root: root, mount: SleeveOverCardEnd, extent: FullDuct)
-    A16PlugFitRing => a16_selection(root: root, mount: PlugAndFlange, extent: CardFitRing)
-    A16SleeveFitRing => a16_selection(root: root, mount: SleeveOverCardEnd, extent: CardFitRing)
-    A16BlowerDuct => a16_blower_selection(root: root)
-    A16BlowerFlatOnEndDuct => a16_plane_on_end_selection(root: root)
+    A16PlugDuct => duct_selection(root: root, card: a16_duct_card, mount: PlugAndFlange, extent: FullDuct)
+    A16SleeveDuct => duct_selection(root: root, card: a16_duct_card, mount: SleeveOverCardEnd, extent: FullDuct)
+    A16PlugFitRing => duct_selection(root: root, card: a16_duct_card, mount: PlugAndFlange, extent: CardFitRing)
+    A16SleeveFitRing => duct_selection(root: root, card: a16_duct_card, mount: SleeveOverCardEnd, extent: CardFitRing)
+    A16BlowerDuct => blower_selection(root: root, card: a16_duct_card)
+    A16BlowerFlatOnEndDuct => plane_on_end_selection(root: root, card: a16_duct_card)
   }
 }
 
@@ -49,10 +51,17 @@ fn select_printable_assembly(root: PrintedAssemblyRoot) -> PrintableAssemblySele
 // a reader cannot get a printable shape out of this root by editing the part list, and cannot get one at
 // all if the operator withdraws the bound. The refusal text is the route model's own verdict, so what the
 // operator is told is what the model actually decided rather than a paraphrase of it.
-fn a16_plane_on_end_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
+fn plane_on_end_selection(root: PrintedAssemblyRoot, card: DuctCard) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => plane_on_end_selection_of(root: root, dims: dims)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn plane_on_end_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
   match admit_home(home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => {
-      let parts = plane_on_end_duct_parts(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design)
+      let parts = plane_on_end_duct_parts(f: dims.face, card_length: dims.length, d: a16_duct_design, b: a16_blower_duct_design)
       PrintableAssemblyReady {
         assembly: PrintableAssembly {
           root: root,
@@ -76,8 +85,15 @@ fn a16_plane_on_end_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySel
   }
 }
 
-fn a16_blower_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection {
-  match admit_blower_duct(f: a16_end_face, d: a16_duct_design, b: a16_blower_duct_design) {
+fn blower_selection(root: PrintedAssemblyRoot, card: DuctCard) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => blower_selection_of(root: root, dims: dims)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn blower_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
+  match admit_blower_duct(f: dims.face, card_length: dims.length, d: a16_duct_design, b: a16_blower_duct_design) {
     BlowerDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
       assembly: PrintableAssembly {
         root: root,
@@ -101,8 +117,15 @@ fn a16_blower_selection(root: PrintedAssemblyRoot) -> PrintableAssemblySelection
 
 // Each A16 root is one (mount, extent) admission of the same duct model; the package takes the root's
 // wire spelling so the four packages cannot overwrite one another.
-fn a16_selection(root: PrintedAssemblyRoot, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
-  match admit_gpu_duct(f: a16_end_face, d: a16_duct_design, mount: mount, extent: extent) {
+fn duct_selection(root: PrintedAssemblyRoot, card: DuctCard, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
+  match duct_card_dims(card: card) {
+    Present { value: dims } => duct_selection_of(root: root, dims: dims, mount: mount, extent: extent)
+    Absent => PrintableAssemblyRefused { reason: duct_card_unread_reason(card: card) }
+  }
+}
+
+fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
+  match admit_gpu_duct(f: dims.face, card_length: dims.length, d: a16_duct_design, mount: mount, extent: extent) {
     GpuDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
       assembly: PrintableAssembly {
         root: root,

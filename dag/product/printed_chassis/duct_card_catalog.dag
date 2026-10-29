@@ -8,7 +8,8 @@ import extdeps.gpu.nvidia_a16 { a16_card_row }
 import extdeps.gpu.nvidia_t10 { t10_card_row }
 import extdeps.gpu.nvidia_t4 { t4_card_row }
 import extdeps.gpu.nvidia_a2 { a2_card_row }
-import product.printed_chassis.gpu_duct { EndFaceMeasurement, a16_end_face }
+import std.measure { Micrometer }
+import product.printed_chassis.gpu_duct { EndFaceMeasurement, a16_end_face, stated_length_of }
 
 // ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
 //
@@ -57,6 +58,25 @@ fn end_face_unread(card: DuctCard) -> List<String> {
   }
 }
 
+// What the duct geometry is fitted to on one card: the read end face and the vendor's stated length. A card
+// missing either has no dimensions to derive from, and the refusal names the reading it needs
+// (duct_card_unread_reason) rather than substituting another card's.
+type DuctCardDims { face: EndFaceMeasurement, length: Micrometer }
+
+fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
+  match card.end_face {
+    EndFaceRead { face: f } => match stated_length_of(row: card.row) {
+      Present { value: l } => Present { value: DuctCardDims { face: f, length: l } }
+      Absent => Absent
+    }
+    EndFaceNeedsReading { read_obligation: _ } => Absent
+  }
+}
+
+fn duct_card_unread_reason(card: DuctCard) -> String {
+  join([card.row.id as String, " has no duct dimensions to derive from: ", join(concat(end_face_unread(card: card), row_unread_fields(row: card.row)), "; ")], "")
+}
+
 // The reading list for every card, in roster order: the vendor fields no document has given yet, and
 // the face nobody has read yet. A card added to duct_cards appears here with no other change.
 fn duct_card_bench_list() -> List<String> {
@@ -68,5 +88,5 @@ fn duct_card_bench_list() -> List<String> {
 
 // DESIGN section 3c declared frontier: the roster's production consumer is the duct geometry.
 data duct_card_catalog_consumer_frontier: DissolutionCondition = unbound_dissolution(
-  description: "TRIGGER: the printed-chassis geometry derives every card-dependent dimension of the duct, plug and flange, fit ring, sleeve, blower duct, keep-outs and route admission from a DuctCard (its CardRow and its read end face) instead of the A16 constants, aims the blower duct's outlet from extdeps.fans.delta delta_bfb1012m_outlet (its edge, opening and frame) instead of the blower design's unread-outlet bound, and select_printable_assembly enumerates its roots from duct_cards; that refactor follows PR #15243, which rewrites the same product modules. SUFFICIENT FOR: the cited Delta outlet, the vendor rows' height class, slot count, length, auxiliary power, board power and airflow fields, and this roster, have a production consumer; until then test.claim.duct_card_catalog_witness reads them, which exercises them and is not a consumer." as NonEmptyStr
+  description: "TRIGGER: the printed-chassis geometry derives every card-dependent dimension of the duct, plug and flange, fit ring, sleeve, blower duct, keep-outs and route admission from a DuctCard (its CardRow and its read end face) instead of the A16 constants, aims the blower duct's outlet from extdeps.fans.delta delta_bfb1012m_outlet (its edge, opening and frame) instead of the blower design's unread-outlet bound, and select_printable_assembly enumerates its roots from duct_cards; PARTLY DISCHARGED: select_printable_assembly now fits the duct, blower duct and flat-on-end duct to a DuctCard (duct_card_dims: the read end face and the vendor row's stated length) and refuses an unread card by naming its reading, and the fit and tolerance numbers are product.printed_chassis.duct_fit_policy. STILL OPEN: card_cooling_route reads a16_end_face and the A16 blower and wall designs directly (shape_max_for_home, fan_pose_checks, cable_bend_path, over_the_row_height, admit_home_over); the blower duct design and outlet aim are not yet derived from delta_bfb1012m_outlet; the roots are still per-card enum arms. SUFFICIENT FOR: the cited Delta outlet, the vendor rows' height class, slot count, length, auxiliary power, board power and airflow fields, and this roster, have a production consumer; until then test.claim.duct_card_catalog_witness reads them, which exercises them and is not a consumer." as NonEmptyStr
 )
