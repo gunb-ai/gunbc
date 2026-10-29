@@ -429,6 +429,7 @@ pub enum BareOccurrenceBinding {
         declaration: Rc<Node>,
     },
     BareOccurrenceIsKernelName,
+    BareOccurrenceUnbound,
     BareOccurrenceUndecided,
 }
 impl BareOccurrenceBinding {
@@ -441,6 +442,9 @@ impl BareOccurrenceBinding {
                 declaration: __val, ..
             } => __val.clone(),
             BareOccurrenceBinding::BareOccurrenceIsKernelName => {
+                panic!("no declaration on unit variant")
+            }
+            BareOccurrenceBinding::BareOccurrenceUnbound => {
                 panic!("no declaration on unit variant")
             }
             BareOccurrenceBinding::BareOccurrenceUndecided => {
@@ -618,7 +622,7 @@ pub fn bare_occurrence_binding(
                         if overlay_skips_kernel_name(name.clone()) {
                             Rc::new(BareOccurrenceBinding::BareOccurrenceIsKernelName)
                         } else {
-                            Rc::new(BareOccurrenceBinding::BareOccurrenceUndecided)
+                            Rc::new(BareOccurrenceBinding::BareOccurrenceUnbound)
                         }
                     }
                 }
@@ -3577,7 +3581,13 @@ pub fn settled_type(
                 ) {
                     std::option::Option::None => Some(Rc::new(SettledType {
                         head: d.clone(),
-                        args: n.children.clone(),
+                        args: Rc::new({
+                            let mut __result = Vec::new();
+                            for ch in n.children.clone().iter().cloned() {
+                                __result.push(generic_actual_position_type(ch.clone()));
+                            }
+                            __result
+                        }),
                     })),
                     Some(pa) => match settled_parameterized_alias(
                         pa.clone(),
@@ -3589,7 +3599,13 @@ pub fn settled_type(
                         Some(through) => Some(through.clone()),
                         std::option::Option::None => Some(Rc::new(SettledType {
                             head: d.clone(),
-                            args: n.children.clone(),
+                            args: Rc::new({
+                                let mut __result = Vec::new();
+                                for ch in n.children.clone().iter().cloned() {
+                                    __result.push(generic_actual_position_type(ch.clone()));
+                                }
+                                __result
+                            }),
                         })),
                     },
                 },
@@ -3684,6 +3700,32 @@ pub fn parameterized_alias_of_declaration(
     }
 }
 
+pub fn is_unsolved_type_variable(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::TypeVariable { id: _, .. }) => true,
+        _ => false,
+    }
+}
+
+pub fn generic_actual_position_type(slot: Rc<Node>) -> Rc<Node> {
+    if (((slot.children.clone().len() as i64) == 0)
+        && (slot.connective.clone() == Connective::NoConnective))
+    {
+        match slot.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => {
+                if is_unsolved_type_variable(r.clone()) {
+                    slot
+                } else {
+                    r.clone()
+                }
+            }
+            _ => slot,
+        }
+    } else {
+        slot
+    }
+}
+
 pub fn settled_parameterized_alias(
     alias: Rc<ParameterizedAlias>,
     use_args: Rc<Vec<Rc<Node>>>,
@@ -3717,7 +3759,11 @@ pub fn settled_parameterized_alias(
                     .get((pair.0.clone()) as usize)
                     .cloned()
                 {
-                    Some(arg) => v1_rt::rc_map_insert(acc.clone(), pair.1.clone(), arg.clone()),
+                    Some(arg) => v1_rt::rc_map_insert(
+                        acc.clone(),
+                        pair.1.clone(),
+                        generic_actual_position_type(arg.clone()),
+                    ),
                     std::option::Option::None => acc.clone(),
                 },
             );
@@ -3992,7 +4038,13 @@ pub fn settled_rhs(
                         std::option::Option::None => {
                             break Some(Rc::new(SettledType {
                                 head: head.clone(),
-                                args: rhs.children.clone(),
+                                args: Rc::new({
+                                    let mut __result = Vec::new();
+                                    for ch in rhs.children.clone().iter().cloned() {
+                                        __result.push(generic_actual_position_type(ch.clone()));
+                                    }
+                                    __result
+                                }),
                             }));
                         }
                         Some(pa) => {
@@ -4012,7 +4064,15 @@ pub fn settled_rhs(
                                     std::option::Option::None => {
                                         break Some(Rc::new(SettledType {
                                             head: head.clone(),
-                                            args: rhs.children.clone(),
+                                            args: Rc::new({
+                                                let mut __result = Vec::new();
+                                                for ch in rhs.children.clone().iter().cloned() {
+                                                    __result.push(generic_actual_position_type(
+                                                        ch.clone(),
+                                                    ));
+                                                }
+                                                __result
+                                            }),
                                         }));
                                     }
                                 }
