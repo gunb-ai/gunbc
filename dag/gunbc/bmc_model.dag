@@ -744,22 +744,22 @@ fn bmc_redfish_authorize(
 // through the IPMI user, so there is still a single stored password); for a dedicated account it is written in the
 // record. A change that cannot fully apply -- the surface unmodeled, the account not in the census, or a shared
 // account whose IPMI user is not in the table -- returns the world UNCHANGED (flag still set, counter untouched)
-// with a typed `blocked` reason, and is not completed; a half-applied "cleared flag, no credential written" is the
+// refused with its typed reason (BmcRedfishChangeRefused); a half-applied "cleared flag, no credential written" is the
 // fabricated default DESIGN 5 refuses. The failed-login counter resets only on a completed change. The caller's
 // re-read, not this reply, decides whether the account is secured (DESIGN 4b rung discipline).
 // Why a password change did not complete -- typed, so an UNMODELED surface is never reported as "no such
 // account" and a missing shared user is never confused with either (DESIGN 5: a located reason, never a
-// widened plausible answer). `blocked` is none exactly when `completed` is true.
+// widened plausible answer).
 type BmcRedfishChangeBlocked
   = BmcRedfishChangeSurfaceUnmodeled {}
   | BmcRedfishChangeNoSuchAccount {}
   | BmcRedfishChangeSharedUserAbsent {}
 
-type BmcRedfishPasswordChangeStep {
-  world: BmcWorld
-  completed: Bool
-  blocked: BmcRedfishChangeBlocked?
-}
+// A change either completed or was refused with its reason; "completed with a reason" and "not completed with no
+// reason" have no constructor (review 87967: a sum, not a Bool beside an optional).
+type BmcRedfishPasswordChangeStep
+  = BmcRedfishChangeCompleted { world: BmcWorld }
+  | BmcRedfishChangeRefused { world: BmcWorld, reason: BmcRedfishChangeBlocked }
 
 // Replace ONE account record in the world's Redfish census by name -- the SINGLE record-replace every Redfish
 // world writer performs (both bmc_redfish_change_password arms and bmc_redfish_note_failed_login), so a future
@@ -771,13 +771,27 @@ fn bmc_redfish_set_record(world: BmcWorld, name: String, cleared: BmcRedfishAcco
   )
 }
 
+fn bmc_redfish_change_step_world(step: BmcRedfishPasswordChangeStep) -> BmcWorld {
+  match step {
+    BmcRedfishChangeCompleted { world: w } => w
+    BmcRedfishChangeRefused { world: w, reason: _ } => w
+  }
+}
+
+fn bmc_redfish_failed_login_step_world(step: BmcRedfishFailedLoginStep) -> BmcWorld {
+  match step {
+    BmcRedfishFailedLoginCounted { world: w, locked_now: _ } => w
+    BmcRedfishFailedLoginRefused { world: w, reason: _ } => w
+  }
+}
+
 fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: String) -> BmcRedfishPasswordChangeStep {
   match bmc_redfish_surface(world: world) {
     // Unmodeled surface: there is no account service to write, which is NOT the same answer as a modeled
     // surface that lacks the account. Refuse with the located reason and change nothing.
-    Absent => BmcRedfishPasswordChangeStep { world: world, completed: false, blocked: Present { value: BmcRedfishChangeSurfaceUnmodeled {} } }
+    Absent => BmcRedfishChangeRefused { world: world, reason: BmcRedfishChangeSurfaceUnmodeled {} }
     Present { value: _ } => match bmc_redfish_account(world: world, name: name) {
-      Absent => BmcRedfishPasswordChangeStep { world: world, completed: false, blocked: Present { value: BmcRedfishChangeNoSuchAccount {} } }
+      Absent => BmcRedfishChangeRefused { world: world, reason: BmcRedfishChangeNoSuchAccount {} }
       Present { value: account } =>
         // The record update: the forced flag clears and the counter resets on a completed change. A dedicated
         // credential writes the new password here; a shared credential keeps referencing the IPMI user (written
@@ -795,12 +809,12 @@ fn bmc_redfish_change_password(world: BmcWorld, name: String, new_password: Stri
           BmcRedfishCredentialSharesIpmi { ipmi_user: i } =>
             let wrote = bmc_ipmi_set_user_password(world: world, user: i, password: new_password)
             if wrote.completed {
-              BmcRedfishPasswordChangeStep { world: bmc_redfish_set_record(world: wrote.world, name: name, cleared: cleared), completed: true, blocked: none }
+              BmcRedfishChangeCompleted { world: bmc_redfish_set_record(world: wrote.world, name: name, cleared: cleared) }
             } else {
-              BmcRedfishPasswordChangeStep { world: wrote.world, completed: false, blocked: Present { value: BmcRedfishChangeSharedUserAbsent {} } }
+              BmcRedfishChangeRefused { world: wrote.world, reason: BmcRedfishChangeSharedUserAbsent {} }
             }
           BmcRedfishCredentialOwn { password: _ } =>
-            BmcRedfishPasswordChangeStep { world: bmc_redfish_set_record(world: world, name: name, cleared: cleared), completed: true, blocked: none }
+            BmcRedfishChangeCompleted { world: bmc_redfish_set_record(world: world, name: name, cleared: cleared) }
         }
     }
   }
@@ -817,27 +831,24 @@ type BmcRedfishLockoutThreshold
   = BmcRedfishLockoutNever
   | BmcRedfishLockoutAfter { count: Int }
 
-// `blocked` is none exactly when the failure was counted. A failed login against an unmodeled surface, or
-// against an account the census does not hold, is NOT "counted, not locked": nothing was counted, so the step
-// refuses with the same located reason bmc_redfish_change_password gives (it gates on bmc_redfish_surface
-// first, as every writer here does) and returns the world unchanged. It never yields SharedUserAbsent: counting
-// a failure writes no credential.
-type BmcRedfishFailedLoginStep {
-  world: BmcWorld
-  locked_now: Bool
-  blocked: BmcRedfishChangeBlocked?
-}
+// A failed login against an unmodeled surface, or against an account the census does not hold, is NOT "counted,
+// not locked": nothing was counted, so the step refuses with the same located reason bmc_redfish_change_password
+// gives (it gates on bmc_redfish_surface first, as every writer here does) and returns the world unchanged. It
+// never yields SharedUserAbsent: counting a failure writes no credential. locked_now exists only on a count.
+type BmcRedfishFailedLoginStep
+  = BmcRedfishFailedLoginCounted { world: BmcWorld, locked_now: Bool }
+  | BmcRedfishFailedLoginRefused { world: BmcWorld, reason: BmcRedfishChangeBlocked }
 
 fn bmc_redfish_note_failed_login(world: BmcWorld, name: String, at_lockout_threshold: BmcRedfishLockoutThreshold) -> BmcRedfishFailedLoginStep {
   match bmc_redfish_surface(world: world) {
-    Absent => BmcRedfishFailedLoginStep { world: world, locked_now: false, blocked: Present { value: BmcRedfishChangeSurfaceUnmodeled {} } }
+    Absent => BmcRedfishFailedLoginRefused { world: world, reason: BmcRedfishChangeSurfaceUnmodeled {} }
     Present { value: _ } => bmc_redfish_count_failed_login(world: world, name: name, at_lockout_threshold: at_lockout_threshold)
   }
 }
 
 fn bmc_redfish_count_failed_login(world: BmcWorld, name: String, at_lockout_threshold: BmcRedfishLockoutThreshold) -> BmcRedfishFailedLoginStep {
   match bmc_redfish_account(world: world, name: name) {
-    Absent => BmcRedfishFailedLoginStep { world: world, locked_now: false, blocked: Present { value: BmcRedfishChangeNoSuchAccount {} } }
+    Absent => BmcRedfishFailedLoginRefused { world: world, reason: BmcRedfishChangeNoSuchAccount {} }
     Present { value: account } =>
       let count = account.failed_logins + 1
       let should_lock = match at_lockout_threshold {
@@ -845,10 +856,9 @@ fn bmc_redfish_count_failed_login(world: BmcWorld, name: String, at_lockout_thre
         BmcRedfishLockoutAfter { count: threshold } => count >= threshold
       }
       let bumped = BmcRedfishAccount { name: account.name, credential: account.credential, role: account.role, enabled: account.enabled, locked: account.locked || should_lock, forced_password_change: account.forced_password_change, failed_logins: count }
-      BmcRedfishFailedLoginStep {
+      BmcRedfishFailedLoginCounted {
         world: bmc_redfish_set_record(world: world, name: name, cleared: bumped),
         locked_now: should_lock,
-        blocked: none,
       }
   }
 }

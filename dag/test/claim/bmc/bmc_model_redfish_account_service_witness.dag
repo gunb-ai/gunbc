@@ -20,6 +20,8 @@ import gunbc.bmc_model {
   bmc_world, bmc_with_ipmi_users, bmc_with_redfish_accounts, bmc_ipmi_user_accepts,
   BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, BmcRedfishCredentialOwn,
   BmcRedfishLockoutThreshold, BmcRedfishLockoutNever, BmcRedfishLockoutAfter, BmcRedfishFailedLoginStep,
+  BmcRedfishFailedLoginCounted, BmcRedfishFailedLoginRefused, BmcRedfishPasswordChangeStep, BmcRedfishChangeCompleted, BmcRedfishChangeRefused,
+  bmc_redfish_change_step_world, bmc_redfish_failed_login_step_world,
   bmc_redfish_authorize, bmc_redfish_change_password, bmc_redfish_note_failed_login, bmc_redfish_account,
   bmc_redfish_surface, bmc_redfish_census,
   RedfishAuthTransport, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange,
@@ -81,19 +83,19 @@ test fn the_forced_change_cycle_turns_a_factory_root_into_a_managed_one() -> Boo
     _ => false
   }
   let step = bmc_redfish_change_password(world: world, name: "root", new_password: managed_password)
-  let managed_authenticates = match bmc_redfish_authorize(world: step.world, name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let managed_authenticates = match bmc_redfish_authorize(world: bmc_redfish_change_step_world(step: step), name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthAccepted { via: _ } => true
     _ => false
   }
-  let published_refused = match bmc_redfish_authorize(world: step.world, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let published_refused = match bmc_redfish_authorize(world: bmc_redfish_change_step_world(step: step), name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthUnauthorized {} => true
     _ => false
   }
-  let flag_cleared = match bmc_redfish_account(world: step.world, name: "root") {
+  let flag_cleared = match bmc_redfish_account(world: bmc_redfish_change_step_world(step: step), name: "root") {
     Absent => false
     Present { value: account } => !account.forced_password_change
   }
-  forced_basic && forced_session && patch_admitted && step.completed && managed_authenticates && published_refused && flag_cleared
+  forced_basic && forced_session && patch_admitted && change_completed(step: step) && managed_authenticates && published_refused && flag_cleared
 }
 
 // RED: a wrong password is 401, and a 401 is NOT a secured state -- neither as an ordinary request nor as an
@@ -122,11 +124,11 @@ test fn a_password_write_to_another_account_leaves_this_one_forced() -> Bool {
   let operator = BmcRedfishAccount { name: "operator", credential: BmcRedfishCredentialOwn { password: factory_password }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 0 }
   let world = world_with([forced_root(), operator])
   let step = bmc_redfish_change_password(world: world, name: "operator", new_password: managed_password)
-  let root_still_forced = match bmc_redfish_authorize(world: step.world, name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let root_still_forced = match bmc_redfish_authorize(world: bmc_redfish_change_step_world(step: step), name: "root", password: factory_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthForcedPasswordChange { body: _ } => true
     _ => false
   }
-  let operator_now_free = match bmc_redfish_authorize(world: step.world, name: "operator", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let operator_now_free = match bmc_redfish_authorize(world: bmc_redfish_change_step_world(step: step), name: "operator", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthAccepted { via: _ } => true
     _ => false
   }
@@ -146,12 +148,12 @@ test fn a_shared_root_password_write_moves_the_one_ipmi_store_not_a_copy() -> Bo
     _ => false
   }
   let step = bmc_redfish_change_password(world: seeded, name: "root", new_password: managed_password)
-  let one_store_moved = bmc_ipmi_user_accepts(world: step.world, user: root_id, password: managed_password) && !bmc_ipmi_user_accepts(world: step.world, user: root_id, password: factory_password)
-  let managed_authenticates = match bmc_redfish_authorize(world: step.world, name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let one_store_moved = bmc_ipmi_user_accepts(world: bmc_redfish_change_step_world(step: step), user: root_id, password: managed_password) && !bmc_ipmi_user_accepts(world: bmc_redfish_change_step_world(step: step), user: root_id, password: factory_password)
+  let managed_authenticates = match bmc_redfish_authorize(world: bmc_redfish_change_step_world(step: step), name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthAccepted { via: _ } => true
     _ => false
   }
-  reaches_forced && step.completed && one_store_moved && managed_authenticates
+  reaches_forced && change_completed(step: step) && one_store_moved && managed_authenticates
 }
 
 // A SHARED ACCOUNT whose IPMI user the table does not hold has no credential to authenticate -- it fails
@@ -188,9 +190,37 @@ test fn disabled_locked_and_unknown_read_401_not_access() -> Bool {
 // a build that serves no lockout is modelled without a sentinel). After the lock the correct credential no
 // longer authenticates (401), so a locked account cannot be secured until the lockout lane lifts it.
 fn was_counted(step: BmcRedfishFailedLoginStep) -> Bool {
-  match step.blocked {
-    Absent => true
-    Present { value: _ } => false
+  match step {
+    BmcRedfishFailedLoginCounted { world: _, locked_now: _ } => true
+    BmcRedfishFailedLoginRefused { world: _, reason: _ } => false
+  }
+}
+
+fn locked_now_of(step: BmcRedfishFailedLoginStep) -> Bool {
+  match step {
+    BmcRedfishFailedLoginCounted { world: _, locked_now: l } => l
+    BmcRedfishFailedLoginRefused { world: _, reason: _ } => false
+  }
+}
+
+fn failed_login_reason(step: BmcRedfishFailedLoginStep) -> BmcRedfishChangeBlocked? {
+  match step {
+    BmcRedfishFailedLoginCounted { world: _, locked_now: _ } => none
+    BmcRedfishFailedLoginRefused { world: _, reason: r } => Present { value: r }
+  }
+}
+
+fn change_completed(step: BmcRedfishPasswordChangeStep) -> Bool {
+  match step {
+    BmcRedfishChangeCompleted { world: _ } => true
+    BmcRedfishChangeRefused { world: _, reason: _ } => false
+  }
+}
+
+fn change_reason(step: BmcRedfishPasswordChangeStep) -> BmcRedfishChangeBlocked? {
+  match step {
+    BmcRedfishChangeCompleted { world: _ } => none
+    BmcRedfishChangeRefused { world: _, reason: r } => Present { value: r }
   }
 }
 
@@ -199,22 +229,22 @@ test fn the_failed_login_counter_locks_under_after_and_never_under_never() -> Bo
   let after_three: BmcRedfishLockoutThreshold = BmcRedfishLockoutAfter { count: 3 }
   let never: BmcRedfishLockoutThreshold = BmcRedfishLockoutNever
   let first = bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: after_three)
-  let second = bmc_redfish_note_failed_login(world: first.world, name: "root", at_lockout_threshold: after_three)
-  let third = bmc_redfish_note_failed_login(world: second.world, name: "root", at_lockout_threshold: after_three)
-  let counted = match bmc_redfish_account(world: third.world, name: "root") {
+  let second = bmc_redfish_note_failed_login(world: bmc_redfish_failed_login_step_world(step: first), name: "root", at_lockout_threshold: after_three)
+  let third = bmc_redfish_note_failed_login(world: bmc_redfish_failed_login_step_world(step: second), name: "root", at_lockout_threshold: after_three)
+  let counted = match bmc_redfish_account(world: bmc_redfish_failed_login_step_world(step: third), name: "root") {
     Absent => false
     Present { value: account } => account.failed_logins == 3
   }
-  let locked_now = third.locked_now && match bmc_redfish_account(world: third.world, name: "root") {
+  let locked_now = locked_now_of(step: third) && match bmc_redfish_account(world: bmc_redfish_failed_login_step_world(step: third), name: "root") {
     Absent => false
     Present { value: account } => account.locked
   }
-  let locked_refuses = match bmc_redfish_authorize(world: third.world, name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
+  let locked_refuses = match bmc_redfish_authorize(world: bmc_redfish_failed_login_step_world(step: third), name: "root", password: managed_password, transport: RedfishBasicAuth {}, request: RedfishOrdinaryRequest {}, forced_message_id: base_1_16_0) {
     RedfishAuthUnauthorized {} => true
     _ => false
   }
-  let never_world = bmc_redfish_note_failed_login(world: bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: never).world, name: "root", at_lockout_threshold: never)
-  let never_locked = !never_world.locked_now && match bmc_redfish_account(world: never_world.world, name: "root") {
+  let never_world = bmc_redfish_note_failed_login(world: bmc_redfish_failed_login_step_world(step: bmc_redfish_note_failed_login(world: base, name: "root", at_lockout_threshold: never)), name: "root", at_lockout_threshold: never)
+  let never_locked = !locked_now_of(step: never_world) && match bmc_redfish_account(world: bmc_redfish_failed_login_step_world(step: never_world), name: "root") {
     Absent => true
     Present { value: account } => !account.locked
   }
@@ -339,17 +369,17 @@ test fn a_shared_password_write_to_an_absent_ipmi_user_changes_nothing() -> Bool
   let orphan = BmcRedfishAccount { name: "root", credential: BmcRedfishCredentialSharesIpmi { ipmi_user: missing_id }, role: admin_role(), enabled: true, locked: false, forced_password_change: true, failed_logins: 3 }
   let seeded = world_with([orphan])
   let step = bmc_redfish_change_password(world: seeded, name: "root", new_password: managed_password)
-  let not_completed = !step.completed
-  let flag_and_counter_untouched = match bmc_redfish_account(world: step.world, name: "root") {
+  let not_completed = !change_completed(step: step)
+  let flag_and_counter_untouched = match bmc_redfish_account(world: bmc_redfish_change_step_world(step: step), name: "root") {
     Present { value: a } => a.forced_password_change && a.failed_logins == 3
     Absent => false
   }
-  let no_credential_written = !bmc_ipmi_user_accepts(world: step.world, user: missing_id, password: managed_password)
-  let blocked_reason = match step.blocked {
+  let no_credential_written = !bmc_ipmi_user_accepts(world: bmc_redfish_change_step_world(step: step), user: missing_id, password: managed_password)
+  let blocked_reason = match change_reason(step: step) {
     Present { value: BmcRedfishChangeSharedUserAbsent {} } => true
     _ => false
   }
-  not_completed && blocked_reason && flag_and_counter_untouched && no_credential_written && step.world == seeded
+  not_completed && blocked_reason && flag_and_counter_untouched && no_credential_written && bmc_redfish_change_step_world(step: step) == seeded
 }
 
 // RED (review 87866): an UNMODELED Redfish surface (the world field is none) must NOT be answered as "no such
@@ -371,38 +401,38 @@ test fn an_unmodeled_surface_refuses_as_unmodeled_not_as_no_such_account() -> Bo
     _ => false
   }
   // the change: unmodeled is blocked SurfaceUnmodeled, modeled-empty is blocked NoSuchAccount -- the two refusals differ.
-  let write_unmodeled = match bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password).blocked {
+  let write_unmodeled = match change_reason(step: bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password)) {
     Present { value: BmcRedfishChangeSurfaceUnmodeled {} } => true
     _ => false
   }
-  let write_modeled_empty = match bmc_redfish_change_password(world: modeled_empty, name: "root", new_password: managed_password).blocked {
+  let write_modeled_empty = match change_reason(step: bmc_redfish_change_password(world: modeled_empty, name: "root", new_password: managed_password)) {
     Present { value: BmcRedfishChangeNoSuchAccount {} } => true
     _ => false
   }
   // and neither refusal changed the world it was handed.
-  let untouched = bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password).world == unmodeled
+  let untouched = bmc_redfish_change_step_world(step: bmc_redfish_change_password(world: unmodeled, name: "root", new_password: managed_password)) == unmodeled
   auth_unmodeled && auth_modeled_empty && write_unmodeled && write_modeled_empty && untouched
 }
 
 // A FAILED LOGIN NOBODY COULD COUNT IS NOT "NOT LOCKED" (review 87961). Against an unmodeled surface the step
 // refuses SurfaceUnmodeled, against a modeled surface without the account it refuses NoSuchAccount; both return
-// the world they were handed. The counted case above carries no `blocked` (paired control).
+// the world they were handed. The counted case above is a BmcRedfishFailedLoginCounted (paired control).
 test fn a_failed_login_against_an_unmodeled_surface_or_unknown_account_is_refused_not_counted() -> Bool {
   let unmodeled = bmc_world(power: BmcPowerOn)
   let modeled = world_with([free_root(managed_password)])
   let after_three: BmcRedfishLockoutThreshold = BmcRedfishLockoutAfter { count: 3 }
   let on_unmodeled = bmc_redfish_note_failed_login(world: unmodeled, name: "root", at_lockout_threshold: after_three)
   let on_unknown = bmc_redfish_note_failed_login(world: modeled, name: "ghost", at_lockout_threshold: after_three)
-  (match on_unmodeled.blocked {
+  (match failed_login_reason(step: on_unmodeled) {
     Present { value: BmcRedfishChangeSurfaceUnmodeled {} } => true
     _ => false
   })
-    && (match on_unknown.blocked {
+    && (match failed_login_reason(step: on_unknown) {
       Present { value: BmcRedfishChangeNoSuchAccount {} } => true
       _ => false
     })
-    && on_unmodeled.world == unmodeled
-    && on_unknown.world == modeled
-    && !on_unmodeled.locked_now
-    && !on_unknown.locked_now
+    && bmc_redfish_failed_login_step_world(step: on_unmodeled) == unmodeled
+    && bmc_redfish_failed_login_step_world(step: on_unknown) == modeled
+    && !locked_now_of(step: on_unmodeled)
+    && !locked_now_of(step: on_unknown)
 }
