@@ -62,6 +62,8 @@ import extdeps.linux.user_namespaces {
   user_namespace_map_row_column_count,
   user_namespace_map_outside_column,
   user_namespace_map_length_column,
+  user_namespace_link_path,
+  init_user_namespace_link_path,
 }
 import extdeps.docker.cli {
   docker_gpu_cdi_probe_run_command,
@@ -1904,8 +1906,8 @@ data gpu_container_provision_namespace_scan_pid_limit: Int = 4096
 // user_namespace_map_outside_column, user_namespace_map_length_column).
 //
 // The OUTER column is the one this converge asks about, and it is a range in the PARENT namespace of the
-// namespace the row belongs to (extdeps.linux.user_namespaces:
-// user_namespace_map_outside_is_parent_relative) -- a row whose outer range reaches into the subordinate
+// namespace the row belongs to (extdeps.linux.user_namespaces,
+// the PARENT-relative outside column) -- a row whose outer range reaches into the subordinate
 // range being moved is a namespace reading subordinate ids out of that range RIGHT NOW, and moving the range
 // under it reassigns what its uids mean. Whether a given process's rows mean anything at all is decided
 // BEFORE this row is read, by the namespace identity fold below: a process in the initial user namespace has
@@ -1960,7 +1962,7 @@ fn gpu_container_provision_map_row(row: String, first: Int, count: Int) -> GpuCo
 // WHICH USER NAMESPACE A PROCESS IS IN, RELATIVE TO THE HOST'S OWN -- and what that makes its map rows mean.
 // This is decided by NAMESPACE IDENTITY, never by the shape of a row: /proc/<pid>/ns/user and
 // /proc/1/ns/user name the namespaces they belong to, and equal targets are the same namespace
-// (extdeps.linux.user_namespaces: user_namespace_link_target_identifies_namespace, namespaces(7)). A process
+// (extdeps.linux.user_namespaces: the namespace-identity link rule, namespaces(7)). A process
 // whose target equals the reference is in the INITIAL user namespace -- the one with no parent, whose outside
 // column is its own identity across the whole id space, and which therefore maps NOTHING from any account's
 // subordinate range.
@@ -1992,12 +1994,7 @@ type GpuContainerProvisionNamespaceLink
 
 // THE LINK OF THE HOST'S OWN NAMESPACE, read once per map scan and compared against every pid. /proc/1 is the
 // init task, which is in the initial user namespace on any Linux that has user namespaces at all.
-data gpu_container_provision_init_user_namespace_link: String = "/proc/1/ns/user"
-
 // THE LINK OF ONE PROCESS, by pid.
-fn gpu_container_provision_pid_namespace_link(pid: Int) -> String {
-  join(["/proc/", to_string(pid), "/ns/user"], "")
-}
 
 // WHAT SCOPE A LINK SAYS AGAINST THE REFERENCE. Fail closed on the link: "cannot compare" is not "not
 // mapped", and it is reported rather than resolved in either direction.
@@ -2160,7 +2157,7 @@ fn gpu_container_provision_namespace_batch(
   pids: List<Int>,
   transport: HostEffectTransport,
 ) -> GpuContainerProvisionNamespaceBatch {
-  let paths = map(pids, pid => gpu_container_provision_pid_namespace_link(pid: pid))
+  let paths = map(pids, pid => user_namespace_link_path(pid: pid))
   match run_argv_over_host_effect_transport(
     command: sudo_elevate_command(command: gpu_container_provision_namespace_batch_argv(paths: paths)),
     transport: transport) {
@@ -2174,8 +2171,8 @@ fn gpu_container_provision_namespace_batch(
 
 // WHAT THE MAP SAYS ABOUT ONE RANGE SET, for one process. The rows are compared ONLY for a process the
 // namespace evidence puts in a CHILD user namespace, because the outside column is relative to that child's
-// parent and only there can it reach an id of the range being moved (extdeps.linux.user_namespaces:
-// user_namespace_map_outside_is_parent_relative). A process in the host's own namespace is certified clear
+// parent and only there can it reach an id of the range being moved (extdeps.linux.user_namespaces,
+// the PARENT-relative outside column). A process in the host's own namespace is certified clear
 // WITHOUT its rows being consulted -- not because its rows look harmless, but because a namespace with no
 // parent maps nothing FROM anywhere.
 //
@@ -2316,7 +2313,7 @@ fn gpu_container_provision_displaced_maps(
                   // namespace can be told apart from it, and "cannot compare" is not "not mapped" -- so a
                   // reference this model cannot read ends the scan, it does not degrade it.
                   match gpu_container_provision_namespace_link_read(
-                    path: gpu_container_provision_init_user_namespace_link, transport: transport) {
+                    path: init_user_namespace_link_path, transport: transport) {
                     GpuContainerProvisionNamespaceLinkUnreadable { path: p, cause: why } =>
                       Present { value: join(
                         ["cannot read the initial user namespace (", p, ": ", why, "); no process's namespace can be told apart from it"],
@@ -2352,7 +2349,7 @@ fn gpu_container_provision_displaced_maps(
                                 account: account, pid: pid, map_name: map_name, ranges: ranges,
                                 scope: gpu_container_provision_namespace_scope(
                                   link: gpu_container_provision_namespace_link_read(
-                                    path: gpu_container_provision_pid_namespace_link(pid: pid),
+                                    path: user_namespace_link_path(pid: pid),
                                     transport: transport),
                                   init_namespace: reference),
                                 transport: transport)

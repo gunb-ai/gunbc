@@ -17,7 +17,7 @@ module extdeps.linux.user_namespaces
 // the range?" without first answering "which namespace is this row's outside column relative to?" -- the
 // question this module exists to answer.
 
-import std.types { Int, NonEmptyStr }
+import std.types { Int, String }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -66,8 +66,7 @@ data user_namespace_map_length_column: Int = 2
 // more than the contract gives: for a namespace nested two levels deep the outside column is relative to its
 // IMMEDIATE parent, so relating that namespace to the host's ids needs the maps of the namespaces between
 // them COMPOSED, which no single read of one /proc/<pid>/uid_map supplies.
-data user_namespace_map_outside_is_parent_relative: NonEmptyStr =
-  "the second column of /proc/<pid>/uid_map and /proc/<pid>/gid_map is a range of ids in the PARENT user namespace of the namespace of <pid>, not in the namespace of the process reading the file and not in the initial user namespace (user_namespaces(7))"
+// (user_namespaces(7)): the second column of uid_map and gid_map is a range of ids in the PARENT user namespace, not the reader's and not the initial one.
 
 // THE NAMESPACE ITSELF IS NAMED BY A LINK, NOT BY A ROW (namespaces(7)). /proc/<pid>/ns/user is a symbolic
 // link whose target is `user:[<inode>]`, and that target identifies the namespace: two processes are in the
@@ -75,5 +74,9 @@ data user_namespace_map_outside_is_parent_relative: NonEmptyStr =
 // link is not a readable file. A process that has created or joined no user namespace is in the INITIAL one,
 // so its target equals the target of /proc/1/ns/user -- which is what makes "is this process in a namespace
 // at all" a decidable question about identity rather than a guess from the shape of a map row.
-data user_namespace_link_target_identifies_namespace: NonEmptyStr =
-  "/proc/<pid>/ns/user is a symbolic link whose target `user:[<inode>]` identifies the user namespace of <pid>; equal targets are the same namespace, and a process in no user namespace is in the initial one (namespaces(7))"
+// (namespaces(7)) equal targets are the same namespace; the target of /proc/1/ns/user is the initial one.
+fn user_namespace_link_path(pid: Int) -> String {
+  join(["/proc/", to_string(pid), "/ns/user"], "")
+}
+
+data init_user_namespace_link_path: String = "/proc/1/ns/user"
