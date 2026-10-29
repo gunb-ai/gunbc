@@ -11,7 +11,9 @@ module test.claim.live_deploy.live_deploy_apply_run_witness
 import gunbc.live_deploy.apply_legs { ApplyLegInstallUnit, apply_unit_install_command, apply_unit_install_preview }
 
 import std.types { Bool, String, Int, NonEmptyStr, List }
-import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, FabricBlobReading, fabric_blob_reading_digest }
+import std.error_primitives { Ok, Err }
+import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_blob }
+import std.fabric_blob { fabric_blob_reading_path, read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, FabricBlobReading, fabric_blob_reading_digest }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall, CapturedUnitDocument }
 import extdeps.systemd.manager { SystemManager }
 import extdeps.crypto.hash { sha256sum_file_command }
@@ -713,12 +715,13 @@ fn captured_unit_ports(blob: FabricBlobReading, bad_destination: Bool) -> Deploy
 // The reading mint uses the existing committed empty-blob fixture and the blob
 // owner's hermetic handlers. Installation runs only over supplied command ports.
 test fn captured_unit_bytes_use_the_typed_file_copy_not_stdin_rendering() -> Bool {
-  match read_staged_fabric_blob(path: "dag/test/fixture/fabric_blob/empty.bin") {
-    FabricBlobReadRefused { fault: _ } => false
-    FabricBlobRead { reading: blob } => {
-      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { blob: blob } }
+  match capture_fixture_blob() {
+    Err { value: _ } => false
+    Ok { value: capture } => {
+      let blob = capture.reading
+      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { capture: capture } }
       match deploy_apply_run_legs(legs: [ApplyLegInstallUnit { step: "captured", install: install }], ports: captured_unit_ports(blob: blob, bad_destination: false)) {
-        ApplyRunOk { legs_run: n, reports: _ } => n == 1 && any(apply_unit_install_command(install: install).arguments, word => word == "dag/test/fixture/fabric_blob/empty.bin")
+        ApplyRunOk { legs_run: n, reports: _ } => n == 1 && any(apply_unit_install_command(install: install).arguments, word => word == (fabric_blob_reading_path(reading: blob) as String))
         _ => false
       }
     }
@@ -726,10 +729,11 @@ test fn captured_unit_bytes_use_the_typed_file_copy_not_stdin_rendering() -> Boo
 }
 
 test fn captured_unit_destination_digest_mismatch_stops_apply() -> Bool {
-  match read_staged_fabric_blob(path: "dag/test/fixture/fabric_blob/empty.bin") {
-    FabricBlobReadRefused { fault: _ } => false
-    FabricBlobRead { reading: blob } => {
-      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { blob: blob } }
+  match capture_fixture_blob() {
+    Err { value: _ } => false
+    Ok { value: capture } => {
+      let blob = capture.reading
+      let install = DeploymentUnitInstall { manager: SystemManager, unit: "unit.service", destination: "/fixture/unit.service", file: CapturedUnitDocument { capture: capture } }
       match deploy_apply_run_legs(legs: [ApplyLegInstallUnit { step: "captured", install: install }], ports: captured_unit_ports(blob: blob, bad_destination: true)) {
         ApplyRunFailed { step: _, reason: _, legs_run: _ } => true
         _ => false

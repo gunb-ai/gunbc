@@ -26,7 +26,7 @@ type CapacityProbeRequirement
 
 fn capacity_probe_requirement(install: DeploymentUnitInstall) -> CapacityProbeRequirement {
   match install.file {
-    CapturedUnitDocument { blob: _ } => CapacityProbeUnknown { cause: "captured unit document needs a separately recorded source drain binding" }
+    CapturedUnitDocument { capture: _ } => CapacityProbeUnknown { cause: "captured unit document needs a separately recorded source drain binding" }
     ModeledUnitDocument { file: file } => capacity_probe_modeled_requirement(install: install, file: file)
   }
 }

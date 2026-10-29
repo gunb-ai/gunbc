@@ -6299,10 +6299,10 @@ fn deploy_apply_unit_install_failure(install: DeploymentUnitInstall, ports: Depl
   match install.file {
     ModeledUnitDocument { file: file } => deploy_retract_command_failure(outcome: ports.stdin(
       apply_unit_install_command(install: install), apply_modeled_unit_install_payload(file: file)))
-    CapturedUnitDocument { blob: blob } => {
+    CapturedUnitDocument { capture: capture } => {
       let command = ports.command
-      let source = fabric_blob_reading_path(reading: blob) as String
-      let digest = sha256_digest(hex: fabric_blob_reading_digest(reading: blob).hex as NonEmptyStr)
+      let source = fabric_blob_reading_path(reading: capture.reading) as String
+      let digest = sha256_digest(hex: fabric_blob_reading_digest(reading: capture.reading).hex as NonEmptyStr)
       match deploy_apply_digest_failure(path: source, digest: digest, outcome: command(sha256sum_file_command(path: source))) {
         Present { value: why } => Present { value: why }
         Absent => match deploy_retract_command_failure(outcome: command(apply_unit_install_command(install: install))) {

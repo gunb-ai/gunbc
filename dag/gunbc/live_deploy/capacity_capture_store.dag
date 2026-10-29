@@ -1,0 +1,68 @@
+module gunbc.live_deploy.capacity_capture_store
+
+import std.types { String, NonEmptyStr }
+import std.error_primitives { Result, Ok, Err }
+import std.scoped_authorization { AttemptIdentity }
+import std.content_hash { Sha256Digest }
+import std.fabric_blob { FabricBlobReading, fabric_blob_reading_path, fabric_blob_reading_digest }
+import extdeps.access.posix { FilePermissions, file_mode_octal }
+import gunbc.runner.runner_microvm_attempt_identity { attempt_segment, AttemptSegmentAccepted, AttemptSegmentRefused, attempt_segment_refusal_text }
+import gunbc.runner.runner_microvm_cell_readiness { StoreRootOwned }
+import gunbc.runner.runner_microvm_cell_readiness_store { StoreOwnershipReading, OwnershipRead, OwnershipUnread }
+
+// The cutover owns this root independently of revision staging/materialization.
+// Fleet provisioning must ensure root:root 0700 for the base and each attempt
+// directory, with protected ancestors, before any capture. These declarations
+// name the provider boundary; a directory's mere existence is not admission.
+data capacity_capture_base: NonEmptyStr = "/var/lib/gunbc/cutover-capture"
+
+type CapacityCaptureStore sole_constructor {
+  attempt: AttemptIdentity
+  root: NonEmptyStr
+}
+
+fn capacity_capture_root(attempt: AttemptIdentity) -> Result<NonEmptyStr, String> {
+  match attempt_segment(spelling: attempt as String) {
+    AttemptSegmentRefused { refusal: why } => Err { value: attempt_segment_refusal_text(r: why) }
+    AttemptSegmentAccepted { segment: segment } => Ok { value: join([capacity_capture_base as String, "/", segment.value as String], "") as NonEmptyStr }
+  }
+}
+
+// OwnershipRead is the existing store owner's reading. Exact permissions are
+// additional policy: StoreRootOwned alone permits readable group/other modes.
+fn capacity_capture_store_admit(attempt: AttemptIdentity, ownership: StoreOwnershipReading,
+  permissions: Result<FilePermissions, String>) -> Result<CapacityCaptureStore, String> {
+  match ownership {
+    OwnershipUnread { reason: why } => Err { value: why as String }
+    OwnershipRead { ownership: StoreRootOwned } => match permissions {
+      Err { value: why } => Err { value: why }
+      Ok { value: actual } => {
+        if actual.ownership.uid != 0 || actual.ownership.gid != 0 || file_mode_octal(mode: actual.mode) != "0700" {
+          Err { value: "cutover capture root must be root:root mode 0700" }
+        } else { match capacity_capture_root(attempt: attempt) {
+          Err { value: why } => Err { value: why }
+          Ok { value: root } => Ok { value: CapacityCaptureStore { attempt: attempt, root: root } }
+        } }
+      }
+    }
+    _ => Err { value: "cutover capture store is not exclusively root-owned" }
+  }
+}
+
+fn capacity_capture_blob_path(store: CapacityCaptureStore, digest: Sha256Digest) -> NonEmptyStr {
+  join([store.root as String, "/", digest.hex as String], "") as NonEmptyStr
+}
+
+type CapturedUnitBlob sole_constructor {
+  store: CapacityCaptureStore
+  reading: FabricBlobReading
+}
+
+// The provider must publish create-only at this direct-child content address,
+// as root, and retain it through recovery/discharge. A mutable staging reading
+// cannot be turned into a root install merely by carrying a matching digest.
+fn capacity_capture_blob_admit(store: CapacityCaptureStore, reading: FabricBlobReading) -> Result<CapturedUnitBlob, String> {
+  if fabric_blob_reading_path(reading: reading) != capacity_capture_blob_path(store: store, digest: fabric_blob_reading_digest(reading: reading)) {
+    Err { value: "unit blob is outside the admitted root-owned capture address" }
+  } else { Ok { value: CapturedUnitBlob { store: store, reading: reading } } }
+}

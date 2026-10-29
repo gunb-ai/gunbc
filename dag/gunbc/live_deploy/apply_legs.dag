@@ -594,7 +594,7 @@ fn apply_unit_install_command(install: DeploymentUnitInstall) -> ArgvCommand {
   sudo_elevate_command(command: coreutils_install_file_owned_argv(
     mode: install_file_shared_mode,
     owner: approval_broker_helper_root_principal, group: approval_broker_helper_root_principal,
-    source: match install.file { ModeledUnitDocument { file: _ } => "/dev/stdin" CapturedUnitDocument { blob: blob } => fabric_blob_reading_path(reading: blob) as String }, dest: install.destination as String))
+    source: match install.file { ModeledUnitDocument { file: _ } => "/dev/stdin" CapturedUnitDocument { capture: capture } => fabric_blob_reading_path(reading: capture.reading) as String }, dest: install.destination as String))
 }
 
 fn apply_modeled_unit_install_payload(file: SystemdUnitFile) -> String {
@@ -606,7 +606,7 @@ fn apply_modeled_unit_install_payload(file: SystemdUnitFile) -> String {
 fn apply_unit_install_preview(install: DeploymentUnitInstall) -> String {
   match install.file {
     ModeledUnitDocument { file: file } => apply_modeled_unit_install_payload(file: file)
-    CapturedUnitDocument { blob: blob } => concat("captured unit blob: ", fabric_blob_reading_path(reading: blob) as String)
+    CapturedUnitDocument { capture: capture } => concat("captured unit blob: ", fabric_blob_reading_path(reading: capture.reading) as String)
   }
 }
 
