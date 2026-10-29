@@ -15,7 +15,10 @@ import gunbc.auth.privileged_effect_census {
 }
 import gunbc.cloudflare.zone_authorization {
   zone_dns_record_copy_effect, zone_r2_custom_domain_bind_effect,
+  zone_routes_unrealized, zone_token_accessor_cell_landed, convergence_principal,
 }
+import gunbc.cloudflare.zone { zone_route_gap, SelectedRouteUnrealized, CloudflareRecordListUnread }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -78,4 +81,33 @@ test fn the_dns_copy_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
 
 test fn the_bind_site_is_enrolled_and_diverges_with_a_reason() -> Bool {
   row_diverges_with_reason(decl_name: "zone_r2_custom_domain_bind_effect")
+}
+
+// THE ONE CHAIN, executed. The standing is a fold over the real roster: no row names the zone token today,
+// so the selected federated grant is unrealized, the zone carries SelectedRouteUnrealized, and the census
+// rows (which read the same standing) diverge. The control below flips the standing's input.
+test fn no_roster_cell_names_the_zone_token_so_the_standing_is_unlanded() -> Bool {
+  !zone_token_accessor_cell_landed()
+}
+
+test fn the_unlanded_standing_surfaces_as_the_zones_selected_route_unrealized_gap() -> Bool {
+  match zone_routes_unrealized() {
+    Present { value: _ } => match zone_route_gap() {
+      SelectedRouteUnrealized { missing: _, basis: _ } => true
+      _ => false
+    }
+    Absent => match zone_route_gap() {
+      CloudflareRecordListUnread { missing: _, basis: _ } => true
+      _ => false
+    }
+  }
+}
+
+// DISCRIMINATING: the zone gap and the landed standing agree in both directions, so the gap cannot be
+// SelectedRouteUnrealized once the cell has landed.
+test fn the_gap_arm_follows_the_landed_standing() -> Bool {
+  zone_token_accessor_cell_landed() == match zone_route_gap() {
+    CloudflareRecordListUnread { missing: _, basis: _ } => true
+    _ => false
+  }
 }

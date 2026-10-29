@@ -1,19 +1,32 @@
 module gunbc.cloudflare.zone_authorization
 
 import std.types { NonEmptyStr }
+import std.optional { Absent, Optional, Present }
+import std.algebra { FreeSemigroup, non_empty_append, non_empty_singleton }
+import std.decl_ref { declaration_ref_eq }
 import std.human_intervention { FleetOnce }
+import gunbc.spark.bootstrap_provision {
+  fleet_cloud_principal_standing,
+  CloudPrincipalAllocated, CloudPrincipalReported, CloudPrincipalUnallocated,
+}
+import gunbc.secret_provision { fleet_secret_ref }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
+import gunbc.auth.fleet_secret_accessor_roster { fleet_accessor_grant_roster }
 import gunbc.auth.authorization_pattern_selection {
-  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding,
+  PrivilegedEffect, ApiSurface, WorkloadIdentityStanding, WorkloadIdentityBindable, WorkloadIdentityUnbindable,
   MintsNoCredential, ReversibleByReapply, NoBillingConsequence, NoWitnessDischarge,
+  PatternSelected, FederatedScopedGrant, select_authorization_pattern, pattern_identity,
 }
 
 // ── THE AUTHORIZATION ROUTE FOR THE TWO PRIVILEGED CLOUDFLARE ZONE EFFECTS ───────────────────
-// gunbc.cloudflare.zone reports CloudflareCredentialRouteMissing: the zone standing and the bind both
-// stop at a Cloudflare credential no pattern under gunbc.auth names. This module supplies the
+// gunbc.cloudflare.zone reports SelectedRouteUnrealized: the zone standing and the bind both
+// stop at a Cloudflare credential the selected pattern has no cell for. This module supplies the
 // missing half that is a MODELING fact: each zone effect is a PrivilegedEffect, the existing
 // selection (gunbc.auth.authorization_pattern_selection select_authorization_pattern) is run over it,
 // and the census (gunbc.auth.privileged_effect_census, which consumes both effects and runs site_verdict
-// over them) carries the returned pattern. No second encoding of the selection lives here.
+// over them) carries the returned pattern. No second encoding of the selection lives here. The chain is
+// one: effect -> selection -> realization standing (zone_routes_unrealized) -> the zone's typed gap, with
+// the census auditing that same standing.
 //
 // WHAT THE CHARACTERISTICS ARE. Both effects are single-shot (FleetOnce), reversible by reapply (a
 // record or a custom-domain binding is deleted or re-put), reach a provider API, and mint nothing:
@@ -53,5 +66,77 @@ fn zone_r2_custom_domain_bind_effect(identity: WorkloadIdentityStanding) -> Priv
     minted_reach: MintsNoCredential,
     billing: NoBillingConsequence,
     witness_discharge: NoWitnessDischarge,
+  }
+}
+
+// THE FLEET IDENTITY THE ZONE EFFECTS ARE SELECTED UNDER, resolved from the standing and never spelled: an
+// unallocated principal is an unbindable identity, the truthful input to the selection. It lives here so the
+// zone fold (gunbc.cloudflare.zone) and the census (gunbc.auth.privileged_effect_census) read ONE resolution;
+// the census imports it rather than carrying a second copy.
+fn convergence_principal() -> WorkloadIdentityStanding {
+  match fleet_cloud_principal_standing() {
+    CloudPrincipalAllocated { principal: _, member: m, readback: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalReported { principal: _, reported_member: m, source: _ } => WorkloadIdentityBindable { member: m as NonEmptyStr }
+    CloudPrincipalUnallocated { principal: _ } =>
+      WorkloadIdentityUnbindable { cause: "no allocated member is recorded for the fleet cloud principal" as NonEmptyStr }
+  }
+}
+
+// ── THE REALIZATION STANDING: does the selected route have a credential to fetch? ─────────────
+// The selected federated grant fetches a zone-scoped token from Secret Manager over workload identity, so it
+// is realized exactly when the fleet accessor roster carries a cell on that secret. The standing is a fold
+// over the real roster: landing the zone-token row in gunbc.auth.fleet_secret_accessor_roster flips it, and
+// the census row for these effects reads the same fold.
+data cloudflare_zone_token_secret_id: NonEmptyStr = "cloudflare-zone-token"
+
+fn cloudflare_zone_token_secret_ref() -> SecretRef {
+  fleet_secret_ref(secret_id: cloudflare_zone_token_secret_id)
+}
+
+fn zone_token_accessor_cell_landed() -> Bool {
+  fleet_accessor_grant_roster.any(row => row.target.secret == cloudflare_zone_token_secret_id)
+}
+
+// What a selected-but-unrealized route is missing, named once. Deleted with the roster row that lands the cell
+// (gunbc.auth.privileged_effect_census zone_token_accessor_cell_unlanded binds its dissolution to this
+// declaration's retirement).
+data zone_token_accessor_unlanded: FreeSemigroup<NonEmptyStr> = non_empty_append(
+  left: non_empty_append(
+    left: non_empty_singleton(
+      item: "a zone-scoped Cloudflare API token (zone-read, DNS-edit and R2 custom-domain scopes) minted through the mint route, never pasted by the operator"
+    ),
+    right: non_empty_singleton(
+      item: "its Secret Manager container (secret id cloudflare-zone-token under the fleet secrets project)"
+    )
+  ),
+  right: non_empty_singleton(
+    item: "the accessor cell: a FleetAccessorGrantRow on that secret in gunbc.auth.fleet_secret_accessor_roster, converged by gunbc.auth.gcp_iam_converge"
+  )
+)
+
+// THE SELECTION, CONSUMED: run select_authorization_pattern on the effect and report what stands between the
+// selected arm and a credential. Absent means the selected route is realized. The only arm with a modeled
+// realization is the federated grant; any other selection is itself reported, not defaulted to it.
+fn zone_selected_route_unrealized(effect: PrivilegedEffect) -> Optional<FreeSemigroup<NonEmptyStr>> {
+  match select_authorization_pattern(e: effect) {
+    PatternSelected { pattern: p, receipt: _ } =>
+      if declaration_ref_eq(a: pattern_identity(p: p), b: pattern_identity(p: FederatedScopedGrant)) {
+        if zone_token_accessor_cell_landed() {
+          Absent
+        } else {
+          Present { value: zone_token_accessor_unlanded }
+        }
+      } else {
+        Present { value: non_empty_singleton(item: "the selection did not return the federated grant, and no other pattern has a modeled zone-token route") }
+      }
+    _ => Present { value: non_empty_singleton(item: "the authorization-pattern selection returned no pattern for the zone effect") }
+  }
+}
+
+// BOTH ZONE EFFECTS, one gap: the first effect whose selected route is unrealized.
+fn zone_routes_unrealized() -> Optional<FreeSemigroup<NonEmptyStr>> {
+  match zone_selected_route_unrealized(effect: zone_dns_record_copy_effect(identity: convergence_principal())) {
+    Present { value: m } => Present { value: m }
+    Absent => zone_selected_route_unrealized(effect: zone_r2_custom_domain_bind_effect(identity: convergence_principal()))
   }
 }
