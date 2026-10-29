@@ -3297,7 +3297,7 @@ fn native_self_host_frontier_output(manifest_text: String, verdict_text: String,
 // minimise the demand graph before paying for it; DESIGN 3: module a.b.c is stored at one path, so a
 // target is one lookup and one parse, never an index over the corpus). The plan is one text pass: the
 // name-to-read storage lookup, and which files spell DeclarationRef (a necessary condition for a
-// literal, and for an alias of it) or are in the prose scope. Candidates are normalized WITHOUT a
+// literal, and for an alias of it), call one of std.decl_ref's constructors, or are in the prose scope. Candidates are normalized WITHOUT a
 // resolver and their literal heads identified by their own import rows (decl_ref_census); only the
 // modules those literals and prose spans name are then normalized, for the one context the references
 // resolve in.
@@ -3309,7 +3309,7 @@ type NativeDeclRefCensusPlan {
 }
 
 fn native_decl_ref_census_read_spells(read: DagSourceReadWitness) -> Bool {
-  string_contains(s: read.source.carried, pattern: "DeclarationRef")
+  string_contains(s: read.source.carried, pattern: "DeclarationRef") || string_contains(s: read.source.carried, pattern: "decl_ref(") || string_contains(s: read.source.carried, pattern: "decl_field_ref(") || string_contains(s: read.source.carried, pattern: "decl_type_parameter_ref(")
 }
 
 fn native_decl_ref_census_plan(ingest: SourceRootIngest) -> NativeDeclRefCensusPlan {
