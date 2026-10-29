@@ -138,10 +138,11 @@ fn classify_boot_publish(object: BootBundleObject, answer: BootPutAnswer) -> Boo
 // the edge the module header always named). The Allocated arm is now DERIVED, not declarable: it requires
 // BOTH that a real custom-domain readback reports itself serving (the verdict's BindingAllocated, which
 // extdeps reaches only through a vendor response — the readback data row is ReadbackNotTaken today) AND
-// that the operator recorded the FQDN (boot_origin_fqdn_is_decided, whose Decided arm cannot be built
-// without the operator's citation). Flipping this arm is therefore not an edit beside it: it requires a
-// dispatched bind, a real response and a recorded operator decision, and §5 is exactly the rule that
-// forbids making that up. Today both gates are shut, so Unallocated is DERIVED, and its intervention
+// that the operator recorded the FQDN — the Decided arm of boot_origin_fqdn_decision, which cannot be
+// built without the operator's citation — AND THAT THE TWO NAME THE SAME HOST (review 87806): the host
+// is CONSTRUCTED out of the Decided arm, so a serving domain nobody chose cannot be allocated. Flipping
+// this arm is therefore not an edit beside it: it requires a dispatched bind, a real response and a
+// recorded operator decision that agree, and §5 is exactly the rule that forbids making that up. Today both gates are shut, so Unallocated is DERIVED, and its intervention
 // names what must happen — and now points at where its completion will be evidenced, instead of claiming
 // no discharge site is modeled when one now is.
 type BootOriginHostnameStanding
