@@ -1,0 +1,60 @@
+module extdeps.gpu.nvidia_a2
+
+import std.types { NonEmptyStr }
+import std.measure { micrometer, watt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.gpu.passive_card_row {
+  CardRow, FromCitedFigure, NeedsReading, CardLength, LengthFromBracketFace, AirflowBidirectional,
+}
+import extdeps.standards.pcie_cem { CemLowProfile, CemLowProfileBracket, CemFullHeightBracket }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority }
+import extdeps.uri { Uri, Https }
+
+// NVIDIA A2 Tensor Core GPU, product brief PB-10727-001_v01 (November 2021, initial release). NVIDIA's
+// own paths for it did not answer the 2026-10-26 probe; the copy read here was fetched 2026-10-29 from
+// a distributor mirror and is pinned by its digest, sha256
+// 9c80fef97fcf0595c50488391ba2f0cbb31aab2d8bfadfebc138ca9c0cfcb2d5 -- the mirror is a locator, and a
+// reader holding NVIDIA's copy can compare. Every page carries NVIDIA's PB number and version. Read from
+// the text layer and from Figures 3 and 4 rendered:
+//   Overview: "a half-height (low profile), half-length, single slot card ... a 60 W maximum power
+//     limit ... a passively cooled card ... that requires system airflow".
+//   Table 1: total board power 60 W default, 60 W maximum, 40 W minimum; thermal solution Passive;
+//     mechanical form factor HHHL-SS; physical x8 PCIe lanes. Full-height and half-height brackets are
+//     both listed by weight.
+//   Airflow Direction Support: a bidirectional heat sink, left-to-right or right-to-left. No CFM.
+//   Figure 3 (full-height bracket) and Figure 4 (low-profile bracket): height 68.90; length (167.64),
+//     a reference dimension, from the bracket's inner mounting face; "nominal dimensions are shown".
+//   The brief has no power-connector section, Table 1 lists no auxiliary input, and neither figure
+//     draws one: the card is powered from the slot.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gzhls.at/blob/ldb/8/2/3/a/d70dbbb2bf5a2fdd25bc8029f93e3527cae7.pdf" }
+}
+
+data a2_brief_sha256: NonEmptyStr = "9c80fef97fcf0595c50488391ba2f0cbb31aab2d8bfadfebc138ca9c0cfcb2d5"
+
+data a2_brief_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+data a2_card_row: CardRow = CardRow {
+  id: "a2",
+  product: "NVIDIA A2 (PG179 SKU 220)",
+  height_class: FromCitedFigure { value: CemLowProfile, standing: a2_brief_standing },
+  slot_count: FromCitedFigure { value: 1, standing: a2_brief_standing },
+  length: FromCitedFigure { value: CardLength { length: micrometer(count: 167640), reference: LengthFromBracketFace }, standing: a2_brief_standing },
+  height: FromCitedFigure { value: micrometer(count: 68900), standing: a2_brief_standing },
+  brackets: FromCitedFigure { value: [CemLowProfileBracket, CemFullHeightBracket], standing: a2_brief_standing },
+  auxiliary_power: FromCitedFigure { value: [], standing: a2_brief_standing },
+  board_power: FromCitedFigure { value: watt(count: 60), standing: a2_brief_standing },
+  required_airflow: NeedsReading { read_obligation: "NVIDIA document, not read by this repository: the A2's required airflow. PB-10727-001_v01 states only that the card requires system airflow; read the figure (CFM or m3/h, with its inlet temperature and static pressure) from NVIDIA's System Design Guide for Enterprise GPU Products (DG-07562-001) or a later A2 document, and convert to ml/s. A smaller TDP is not assumed to mean less air: a smaller heatsink can need more airflow per watt." },
+  airflow_direction: FromCitedFigure { value: AirflowBidirectional, standing: a2_brief_standing },
+  sources: [
+    "NVIDIA A2 Tensor Core GPU product brief PB-10727-001_v01 (November 2021), distributor mirror gzhls.at/blob/ldb/8/2/3/a/d70dbbb2bf5a2fdd25bc8029f93e3527cae7.pdf, sha256 9c80fef97fcf0595c50488391ba2f0cbb31aab2d8bfadfebc138ca9c0cfcb2d5, read 2026-10-29: Overview, Table 1, Airflow Direction Support, Figures 3 and 4",
+  ],
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef { module_path: "extdeps.gpu.nvidia_a2", decl_name: "a2_card_row", field: WholeDeclaration }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}

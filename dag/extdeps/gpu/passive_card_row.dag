@@ -1,28 +1,27 @@
 module extdeps.gpu.passive_card_row
 
 import std.types {Bool, Int, NonEmptyStr, String, List}
+import std.nat {Nat}
 import std.measure {Micrometer, MillilitrePerSecond, Watt}
+import extdeps.standards.pcie_cem {CemHeightClass, CemBracket}
 import std.optional {Present, Absent}
 import extdeps.external_authority {CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt}
 
 // ═══ A CARD ROW: ONE DUCT DESIGN, CARDS AS DATA ═══
 //
-// The duct is ONE concept (DESIGN.md section 2): a blower, a plug and flange onto a card's measured end
-// face, and a route into that card's fin opening. What differs per card is the ENVELOPE the duct has to
-// match and the AIR the card needs. So a card is a row, and a fourth card is one more row -- nothing in
-// product.printed_chassis.card_cooling_route branches on which card it is.
+// The duct is ONE concept (DESIGN.md section 2): a fan, a plug and flange onto a card's end face, and a
+// route into that card's fin opening. What differs per card is the ENVELOPE the duct has to match and
+// the AIR the card needs. So a card is a row, held in its own vendor product's module
+// (extdeps.gpu.nvidia_a16, nvidia_t4, nvidia_a2, nvidia_t10), and nothing in product.printed_chassis
+// branches on which card it is.
 //
 // A row's field is populated in exactly one of two ways and there is no third:
 //
 //   FromCitedFigure   it was read off a named vendor document, with the standing that document earns
 //                     (CitedToAuthority when this repository read the figure, TranscribedUncited when it
 //                     was transcribed second-hand -- which always carries the obligation to read it back).
-//   NeedsReading      no document in this repository carries it, and no number stands here until one
-//                     does. The field names what to read, on which physical feature, and by whom.
-//
-// A passive card's REQUIRED AIRFLOW is never a guess: a vendor page that says "passive cooling" and
-// publishes no CFM has told us the card needs airflow and NOT told us how much, and a duct sized to a
-// feeling is how a fleet of cards cooks. Absent airflow means the row is not printable.
+//   NeedsReading      no document this repository holds carries it, and no number stands here until one
+//                     does. The field names what to read and where.
 
 type RowField<V>
   = FromCitedFigure { value: V, standing: CitedFigureStanding }
@@ -48,37 +47,69 @@ fn row_field_stands_on_authority<V>(field: RowField<V>) -> Bool {
   match field { FromCitedFigure {value: _, standing: CitedToAuthority {authority: _}} => true FromCitedFigure {value: _, standing: _} => false NeedsReading {read_obligation: _} => false }
 }
 
-// What a physical card must be measured on before its row can print. Kept as data on the row, not as a
-// paragraph in a PR: the operator carries the row's obligations to the bench, and a row whose list is
-// non-empty is by construction not printable.
+// ═══ WHAT THE ROW CARRIES: THE VENDOR'S FACTS ABOUT THE CARD, AND NOTHING THIS REPOSITORY MEASURED ═══
+//
+// A card row is what its vendor publishes: the PCIe envelope class it is built to, how many slots it
+// takes, its drawn length and height, the brackets it ships with, its auxiliary power inputs, its board
+// power, the airflow its passive heatsink needs and the directions that air may come from. The duct is
+// derived from these and from the chassis and fan rows, so a fourth card is one more row.
+//
+// What a caliper reads on a held card -- the end face the duct seats on, its fin window, the threaded
+// inserts in its end cap, where the 8-pin header sits on that face -- is NOT here: it is a receipt of
+// this repository's observation, not a fact of NVIDIA's (DESIGN section 3, external upstream
+// decomposition), so it lives in the observing layer (product.printed_chassis.duct_card_catalog), and a
+// card that has not been read there is a coverage obligation of that layer, never an Unobserved field of
+// this one.
+
+// How a vendor dimensions a card's length. NVIDIA's drawings measure from the I/O bracket's inner
+// mounting face to the far end; a brief that states only a length class ("10.5-inch") does not say
+// whether the bracket is included, and a consumer must carry that ambiguity rather than resolve it.
+type CardLengthReference = LengthFromBracketFace | BracketInclusionUnstated
+
+type CardLength { length: Micrometer, reference: CardLengthReference }
+
+// The edge a connector is on, in the vendor's own drawing vocabulary: EAST is the far end, opposite
+// the I/O bracket -- the end the duct seats on. TOP is the edge opposite the PCIe edge connector.
+type CardEdge = CardEastEdge | CardTopEdge
+
+type AuxiliaryPowerConnectorKind = CpuEightPin | PcieEightPin
+
+type AuxiliaryPowerInput { connector: AuxiliaryPowerConnectorKind, edge: CardEdge }
+
+// A bidirectional heatsink accepts air from either end; the duct may push into the far end.
+type CardAirflowDirection = AirflowBidirectional | AirflowBracketToFarEnd | AirflowFarEndToBracket
+
 type CardRow {
+  // The card's short spelling, which is also how a printed part for it is named on the wire
+  // ("a16" -> "a16-plug-fit-ring").
   id: NonEmptyStr
-  // The card's own end face, the thing the duct's plug and flange seat against. For the A16 this is
-  // MEASURED (product.printed_chassis.gpu_duct a16_end_face); the vendor briefs publish no end-face
-  // drawing for any of these cards, so every other row starts where the A16 started -- with a caliper.
-  end_face_length: RowField<Micrometer>
-  end_face_width: RowField<Micrometer>
-  card_thickness: RowField<Micrometer>
-  // The opening the duct's outlet must reach: the cooler's fin face, its extent, and how deep the fins
-  // sit behind that face. "Passive" tells us this exists; it never tells us where.
-  fin_face_extent: RowField<Micrometer>
-  fin_face_depth: RowField<Micrometer>
-  // Power and air. TDP without airflow is not a cooling requirement, and airflow without TDP is not a
-  // claim about this card -- both are separate fields with separate obligations.
-  tdp: RowField<Watt>
+  product: NonEmptyStr
+  height_class: RowField<CemHeightClass>
+  slot_count: RowField<Nat>
+  length: RowField<CardLength>
+  height: RowField<Micrometer>
+  brackets: RowField<List<CemBracket>>
+  // An EMPTY list is a cited fact -- the card has no auxiliary power input and is powered from the slot
+  // -- and it is distinct from NeedsReading. A part derived from a card with no connector has no
+  // connector keep-out; that is the point of carrying the empty list rather than an Absent.
+  auxiliary_power: RowField<List<AuxiliaryPowerInput>>
+  board_power: RowField<Watt>
+  // A passive card's REQUIRED AIRFLOW is never a guess: a brief that says "requires system airflow" and
+  // publishes no CFM has told us the card needs air and NOT how much. Absent airflow means no powered
+  // operation is admitted on this row; it does not stop a fit print.
   required_airflow: RowField<MillilitrePerSecond>
-  bracket: RowField<NonEmptyStr>
-  // The documents this row was built from, or the probe that looked for them and found nothing. A row
-  // with no sources asserts nothing and says where to look.
+  airflow_direction: RowField<CardAirflowDirection>
+  // The documents this row was built from (title, number, version, locator, digest), or the probe that
+  // looked for them and found nothing. A row with no sources asserts nothing and says where to look.
   sources: List<NonEmptyStr>
 }
 
 fn row_fields(row: CardRow) -> List<RowField<Int>> {
   // Every field, as one list, so "is this row sealed" cannot quietly forget a field the way a hand-written
   // conjunction does. The Int here is a witness only; the fields' values are never read through it.
-  [witness(field: row.end_face_length), witness(field: row.end_face_width), witness(field: row.card_thickness),
-   witness(field: row.fin_face_extent), witness(field: row.fin_face_depth), witness(field: row.tdp),
-   witness(field: row.required_airflow), witness(field: row.bracket)]
+  [witness(field: row.height_class), witness(field: row.slot_count), witness(field: row.length), witness(field: row.height),
+   witness(field: row.brackets), witness(field: row.auxiliary_power), witness(field: row.board_power),
+   witness(field: row.required_airflow), witness(field: row.airflow_direction)]
 }
 
 fn witness<V>(field: RowField<V>) -> RowField<Int> {
@@ -92,20 +123,19 @@ fn unread(name: NonEmptyStr, field: RowField<Int>) -> List<String> {
   }
 }
 
-// The row's bench list, in the order a person would read it at the machine. Built from the same field
-// list the seal test reads, so a field cannot be sealed in one place and missing from the other.
+// The row's reading list, field by field. Built from the same field list the seal test reads, so a
+// field cannot be sealed in one place and missing from the other.
 fn row_unread_fields(row: CardRow) -> List<String> {
-  concat(
-    concat(concat(unread(name: "end face length", field: witness(field: row.end_face_length)), unread(name: "end face width", field: witness(field: row.end_face_width))),
-           concat(unread(name: "card thickness", field: witness(field: row.card_thickness)), unread(name: "fin face extent", field: witness(field: row.fin_face_extent)))),
-    concat(concat(unread(name: "fin depth behind fin face", field: witness(field: row.fin_face_depth)), unread(name: "TDP", field: witness(field: row.tdp))),
-           concat(unread(name: "required airflow", field: witness(field: row.required_airflow)), unread(name: "bracket", field: witness(field: row.bracket)))))
+  concat(concat(concat(unread(name: "height class", field: witness(field: row.height_class)), unread(name: "slot count", field: witness(field: row.slot_count))),
+                concat(unread(name: "length", field: witness(field: row.length)), unread(name: "height", field: witness(field: row.height)))),
+         concat(concat(concat(unread(name: "brackets", field: witness(field: row.brackets)), unread(name: "auxiliary power", field: witness(field: row.auxiliary_power))),
+                       concat(unread(name: "board power", field: witness(field: row.board_power)), unread(name: "required airflow", field: witness(field: row.required_airflow)))),
+                unread(name: "airflow direction", field: witness(field: row.airflow_direction))))
 }
 
-// A row prints only when EVERY field carries a value AND every value carries a standing that permits
-// printing. A TranscribedUncited figure is a number somebody typed and prints nothing until it is read
-// back against the document; an operator reading (ObservedByReceipt) is evidence about one physical card
-// and seals a field for THAT card, which is exactly how the A16's end face was sealed.
+// A row is sealed when EVERY field carries a value AND every value carries a standing that permits
+// relying on it. A TranscribedUncited figure is a number somebody typed and seals nothing until it is
+// read back against the document.
 fn row_is_sealed(row: CardRow) -> Bool {
   row_fields(row: row).all(field => match field {
     FromCitedFigure {value: _, standing: CitedToAuthority {authority: _}} => true
