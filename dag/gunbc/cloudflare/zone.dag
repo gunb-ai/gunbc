@@ -23,7 +23,9 @@ module gunbc.cloudflare.zone
 // authorization pattern (WIF / ntfy approval / explicit refusal), and no token ever passes through here.
 
 import std.types { Bool, Duration, Int, List, NonEmptyStr }
-import std.optional { Absent, Optional }
+import std.optional { Absent, Optional, optional_is_absent }
+import std.algebra { FreeSemigroup, non_empty_singleton, non_empty_append, non_empty_to_list }
+import std.human_intervention { HumanInterventionIdentity }
 import extdeps.time.rfc3339 { Rfc3339Timestamp }
 import extdeps.dns.domain_name { HostName, DomainName, DnsLabel, FullyQualified, host_name_eq }
 import extdeps.external_authority { FactCitation }
@@ -344,22 +346,29 @@ data copy_observed_at: Rfc3339Timestamp = "2026-10-27T22:44:54Z" as Rfc3339Times
 // cannot prove — so the arm cannot be reached without the list read, and says so.
 type ZoneRecordCopyStanding
   = CopyCompleteAgainstRecordList { copied: List<CloudflareDnsRecord>, observed_at: Rfc3339Timestamp, basis: FactCitation }
+  // gap, not reason (review 87595): which blocker this arm waits on is DECIDED here, where the blocking
+  // observation was made — the nine proxied rows answer with Cloudflare's own addresses, so only the
+  // zone's record list can confirm their stored content. A prose cause downstream could only be
+  // re-guessed; this arm states the typed gap, and the verdict passes it through unchanged.
   | CopyPendingRecordList {
       copied: List<CloudflareDnsRecord>,
       outstanding: List<CloudflareDnsRecord>,
       unproxied_contents_agree: Bool,
-      reason: NonEmptyStr,
+      gap: BootOriginBindEffectGap,
       observed_at: Rfc3339Timestamp,
       basis: FactCitation,
     }
-  | CopyRefused { reason: NonEmptyStr }
+  // The future arm: the copy refused outright (a served row that contradicts the observation, once the
+  // record list is readable). Its remedy is the same read — the list is how a contradiction is settled —
+  // so it carries the record-list gap too, and the verdict forwards it rather than inventing one.
+  | CopyRefused { outstanding: List<CloudflareDnsRecord>, gap: BootOriginBindEffectGap }
 
 fn zone_record_copy_standing() -> ZoneRecordCopyStanding {
   CopyPendingRecordList {
     copied: namecheap_copied_records(),
     outstanding: unverified_copied_records(),
     unproxied_contents_agree: unproxied_contents_agree(),
-    reason: "the four apex A, four apex AAAA and the www CNAME are proxied on the Cloudflare side, so their answers carry Cloudflare's own addresses and cannot confirm the stored content a copy must match; the zone's record list (GET /client/v4/dns/records) is the only complete source and no Cloudflare credential route reaches this session",
+    gap: record_list_gap(),
     observed_at: copy_observed_at,
     basis: dns_record_api_citation,
   }
@@ -382,22 +391,29 @@ data boot_origin_nxdomain_answers: Int = 6
 
 type FleetGunbAiZoneStanding
   = ZoneObservedActive { zone: CloudflareZone, soa: NonEmptyStr, observed_at: Rfc3339Timestamp, basis: FactCitation }
+  // The zone is live — the parent delegates and both servers answer with a Cloudflare-minted SOA — but
+  // its 32-hex id and holding account come only from GET /client/v4/zones, which this session has no
+  // route to. The evidence IS the receipt (nameservers, soa, observed_at, basis); the blocker is the
+  // typed gap, stated here rather than paraphrased for a downstream keyword match (review 87595).
   | ZoneLiveButIdentityUnobserved {
       apex: HostName,
       nameservers: List<NonEmptyStr>,
       soa: NonEmptyStr,
-      reason: NonEmptyStr,
+      gap: BootOriginBindEffectGap,
       observed_at: Rfc3339Timestamp,
       basis: FactCitation,
     }
-  | ZoneNotObserved { apex: HostName, reason: NonEmptyStr }
+  // No zone visible for the apex at all. The remedy is still the same read — GET /client/v4/zones?name=
+  // is how you learn whether a zone exists for an apex — so the same gap is carried honestly, and the
+  // two arms stay distinct by their EVIDENCE, not by an interchangeable sentence.
+  | ZoneNotObserved { apex: HostName, gap: BootOriginBindEffectGap }
 
 fn fleet_gunb_ai_zone_standing() -> FleetGunbAiZoneStanding {
   ZoneLiveButIdentityUnobserved {
     apex: gunb_ai_apex,
     nameservers: gunb_ai_delegated_nameservers,
     soa: gunb_ai_served_soa,
-    reason: "the .ai parent delegates gunb.ai to alexandra/austin.ns.cloudflare.com and both answer authoritatively with a Cloudflare-minted SOA, which is what an active zone looks like from the outside; the zone's 32-hex id and the account that holds it come only from GET /client/v4/zones, and no Cloudflare credential route reaches this session, so the zone is live but not yet addressable from here",
+    gap: credential_route_gap(),
     observed_at: zone_identity_observed_at,
     basis: r2_custom_domain_requires_zone_citation,
   }
@@ -452,8 +468,8 @@ data boot_origin_zone_hold_read_citation: FactCitation = zone_hold_api_citation
 // rather than waved through: each unmade observation refuses for its own reason.
 fn boot_origin_zone_admissibility() -> Optional<R2CustomDomainZoneStanding> {
   match fleet_gunb_ai_zone_standing() {
-    ZoneNotObserved { reason: _ } => Absent
-    ZoneLiveButIdentityUnobserved { reason: _ } => Absent
+    ZoneNotObserved { apex: _, gap: _ } => Absent
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap: _, observed_at: _, basis: _ } => Absent
     ZoneObservedActive { zone, soa: _, observed_at: _, basis: _ } =>
       Present { value: r2_custom_domain_zone_admissible(zone: zone, bucket_account: gunb_ai_bucket_account, hold: boot_origin_zone_hold_observation) }
   }
@@ -463,34 +479,44 @@ type BootOriginHostnameBindingVerdict
   = BindingAllocated { binding: CloudflareR2CustomDomainBinding, observed_at: Rfc3339Timestamp }
   | BindingAwaitingZoneIdentity { gap: BootOriginBindEffectGap }
   | BindingAwaitingCompleteCopy { outstanding: List<CloudflareDnsRecord>, gap: BootOriginBindEffectGap }
-  | BindingNotServing { binding: CloudflareR2CustomDomainBinding, reason: NonEmptyStr }
+  // The arm today's truth lands on once the zone and the copy are settled: no binding exists yet because
+  // nothing may dispatch its creation. Distinct from BindingNotServing, which requires a binding that
+  // EXISTS and reports not serving — collapsing the two would tell the operator to debug a domain that
+  // was never created.
+  | BindingAwaitingDispatch { gap: BootOriginBindEffectGap }
+  // No reason string (review 87595): the binding ALREADY carries the three typed fields that make this
+  // arm true — enabled, ownership, ssl — so a sentence describing them would be a second home for the
+  // same fact, and prose is the weaker copy of it. The reader reads the receipt.
+  | BindingNotServing { binding: CloudflareR2CustomDomainBinding }
 
 fn boot_origin_hostname_binding_verdict() -> BootOriginHostnameBindingVerdict {
+  // Pure pass-through: the gap the standing carries IS the verdict's gap. Nothing here infers a cause
+  // from text, so no rewording can re-route the operator (review 87595).
   match fleet_gunb_ai_zone_standing() {
-    ZoneNotObserved { reason } => BindingAwaitingZoneIdentity { gap: boot_origin_bind_effect_gap(reason: reason) }
-    ZoneLiveButIdentityUnobserved { reason } => BindingAwaitingZoneIdentity { gap: boot_origin_bind_effect_gap(reason: reason) }
+    ZoneNotObserved { apex: _, gap } => BindingAwaitingZoneIdentity { gap: gap }
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } => BindingAwaitingZoneIdentity { gap: gap }
     ZoneObservedActive { zone, observed_at } => boot_origin_verdict_for_zone(zone: zone, observed_at: observed_at)
   }
 }
 
 fn boot_origin_verdict_for_zone(zone: CloudflareZone, observed_at: Rfc3339Timestamp) -> BootOriginHostnameBindingVerdict {
   match zone_record_copy_standing() {
-    CopyRefused { reason } => BindingAwaitingCompleteCopy {
-      outstanding: unverified_copied_records(),
-      gap: boot_origin_bind_effect_gap(reason: reason),
-    }
-    CopyPendingRecordList { outstanding } => BindingAwaitingCompleteCopy {
-      outstanding: outstanding,
-      gap: boot_origin_bind_effect_gap(reason: "record list unread"),
-    }
+    CopyRefused { outstanding, gap } => BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
+    CopyPendingRecordList { outstanding, gap, copied: _, unproxied_contents_agree: _, observed_at: _, basis: _ } =>
+      BindingAwaitingCompleteCopy { outstanding: outstanding, gap: gap }
     CopyCompleteAgainstRecordList { copied: _, observed_at: _, basis: _ } => {
       if cloudflare_r2_custom_domain_readback_serving() {
         BindingAllocated { binding: boot_origin_binding_readback_pending, observed_at: observed_at }
+      } else if optional_is_absent(boot_origin_binding_readback_pending.zone_id) {
+        // AWAITING DISPATCH, not "not serving" (review 87595 closes the last prose-inferred arm): the
+        // readback carries no zone identity, so NO BINDING EXISTS — the honest statement is that the
+        // bind has never been dispatched, and why: a privileged Cloudflare write has no ad-hoc site and
+        // no fleet-converge mode covers the custom domain. This is bind_dispatch_gap()'s real route.
+        BindingAwaitingDispatch { gap: bind_dispatch_gap() }
       } else {
-        BindingNotServing {
-          binding: boot_origin_binding_readback_pending,
-          reason: "the custom domain exists but does not serve: enabled and both status dimensions active are required",
-        }
+        // Reachable only with a real readback (zone identity Present, statuses from an actual read):
+        // the domain exists and reports itself, and it does not serve.
+        BindingNotServing { binding: boot_origin_binding_readback_pending }
       }
     }
   }
@@ -510,57 +536,106 @@ fn cloudflare_r2_custom_domain_readback_serving() -> Bool {
 // gap cannot be argued away by someone who has not read the page.
 // --------------------------------------------------------------------------------
 
+// WHICH CAUSE, decided BY THE STANDING, never guessed from prose (review 87595). These arms used to be
+// selected by keyword-matching a NonEmptyStr reason — a silent widening §5 forbids, because rewording a
+// sentence re-routed the operator to the wrong remedy. Each standing arm now CARRIES one of these, built
+// where the blocking observation actually was; the prose reasons they replace are gone, so there is
+// nothing left to misread.
+//
+// missing is std.algebra::FreeSemigroup<NonEmptyStr> — the §3b cardinality home for a list that cannot be
+// empty. An unreported gap (a concealment, not a deficit) is now UNREPRESENTABLE: no arm of this sum can
+// be built without a remedy, so the runtime length check this declaration used to carry is deleted rather
+// than asserted (review 87595, §4b: rung inflation is worse than sitting low — this is rung 4, honestly).
 type BootOriginBindEffectGap =
-    CloudflareCredentialRouteMissing { missing: List<NonEmptyStr>, basis: FactCitation }
-  | CloudflareRecordListUnread { missing: List<NonEmptyStr>, basis: FactCitation }
-  | BindDispatchUnmodeled { missing: List<NonEmptyStr>, basis: FactCitation }
-  | NamecheapApiReceiptUnobserved { missing: List<NonEmptyStr>, basis: FactCitation }
+    CloudflareCredentialRouteMissing { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+  | CloudflareRecordListUnread { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
+  | BindDispatchUnmodeled { missing: FreeSemigroup<NonEmptyStr>, basis: FactCitation }
 
-fn boot_origin_bind_effect_gap(reason: NonEmptyStr) -> BootOriginBindEffectGap {
-  if string_contains(s: reason, pattern: "record list") {
-    CloudflareRecordListUnread {
-      missing: [
-        "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern",
-      ],
-      basis: dns_record_api_citation,
-    }
-  } else if string_contains(s: reason, pattern: "credential") {
-    CloudflareCredentialRouteMissing {
-      missing: [
-        "a Cloudflare API token holding the zone-read and R2 custom-domain scopes, minted and held through the gunbc.auth authorization pattern (WIF federation, or the ntfy approval route, or an explicit refusal) — never pasted by the operator",
-        "the fleet's Cloudflare accessor: the roster and the converge workflow carry bucket, object and token-mint modes and NO zone-read or custom-domain mode",
-      ],
-      basis: r2_custom_domain_requires_zone_citation,
-    }
-  } else {
-    BindDispatchUnmodeled {
-      missing: [
-        "the fleet-converge mode and entry module that run the bind: a privileged Cloudflare write has no ad-hoc site, so it belongs behind the authorization pattern as a converge",
-      ],
-      basis: r2_custom_domain_requires_zone_citation,
-    }
+// The credential-route gap as the ZONE STANDING carries it. Its remedies name both halves of what is
+// missing — the token and the fleet's accessor into Cloudflare — because minting a token without a place
+// to route it would only move the gap.
+fn credential_route_gap() -> BootOriginBindEffectGap {
+  CloudflareCredentialRouteMissing {
+    missing: non_empty_append(
+      left: non_empty_singleton(
+        item: "a Cloudflare API token holding the zone-read and R2 custom-domain scopes, minted and held through the gunbc.auth authorization pattern (WIF federation, or the ntfy approval route, or an explicit refusal) — never pasted by the operator"
+      ),
+      right: non_empty_singleton(
+        item: "the fleet's Cloudflare accessor: the roster and the converge workflow carry bucket, object and token-mint modes and NO zone-read or custom-domain mode"
+      )
+    ),
+    basis: r2_custom_domain_requires_zone_citation,
   }
 }
 
+// The record-list gap as the COPY STANDING carries it: proxied records answer with the proxy's own
+// addresses, so the zone's record list is the only complete source, and reading it needs the token.
+fn record_list_gap() -> BootOriginBindEffectGap {
+  CloudflareRecordListUnread {
+    missing: non_empty_singleton(
+      item: "a Cloudflare API token scoped to read the zone's DNS records (GET /client/v4/dns/records), obtained through the gunbc.auth authorization pattern"
+    ),
+    basis: dns_record_api_citation,
+  }
+}
+
+// The dispatch gap, produced where it is true: the bind is a privileged Cloudflare WRITE, and no site may
+// run one ad hoc — it belongs behind the gunbc.auth authorization pattern as a fleet-converge mode, and
+// no such mode exists (r2_bucket_admin_mint is the precedent shape, and none covers the custom domain).
+// This arm is reached from the verdict's serving path, never from a keyword.
+fn bind_dispatch_gap() -> BootOriginBindEffectGap {
+  BindDispatchUnmodeled {
+    missing: non_empty_singleton(
+      item: "the fleet-converge mode and entry module that run the bind: a privileged Cloudflare write has no ad-hoc site, so it belongs behind the authorization pattern as a converge"
+    ),
+    basis: r2_custom_domain_requires_zone_citation,
+  }
+}
+
+// RENDERING, not validation: the remedies are non-empty by construction, so this only flattens them for
+// whoever reports the gap.
 fn boot_origin_bind_gap_names(gap: BootOriginBindEffectGap) -> List<NonEmptyStr> {
   match gap {
-    CloudflareCredentialRouteMissing { missing } => missing
-    CloudflareRecordListUnread { missing } => missing
-    BindDispatchUnmodeled { missing } => missing
-    NamecheapApiReceiptUnobserved { missing } => missing
+    CloudflareCredentialRouteMissing { missing } => non_empty_to_list(xs: missing)
+    CloudflareRecordListUnread { missing } => non_empty_to_list(xs: missing)
+    BindDispatchUnmodeled { missing } => non_empty_to_list(xs: missing)
   }
 }
 
-// A gap with no named remedy is not a gap, it is a concealment; the type makes that unrepresentable rather
-// than leaving it to review.
-fn boot_origin_bind_gap_is_reported(gap: BootOriginBindEffectGap) -> Bool {
-  list_length(items: boot_origin_bind_gap_names(gap: gap)) > 0
+// --------------------------------------------------------------------------------
+// (4) THE FQDN DECISION, as the pending thing it is.
+//
+// gunbc.cloudflare.boot_origin's own instruction says the zone and FQDN "is an operator decision this
+// repository cannot derive", and its intervention carries completion_evidence NoDischargeSiteModeled — so
+// no agent may flip boot_origin_hostname_standing from here, and this module does not.
+//
+// Modelled (review 87595) instead of stored as a sentence: a decision status is a status, and §4c puts a
+// status in a typed carrier. Pending carries the candidate plus WHO recommended it and WHEN; Decided
+// requires the citation, so a decided FQDN without a source cannot be written. Today's value is Pending
+// with the parent's recommendation — the carrier is read by boot_origin_fqdn_is_decided, so it is not
+// commentary. When the operator answers, the Decided arm is built from their citation and the hostname
+// standing flips in the follow-up that cites it; this file cannot pre-fill it.
+// --------------------------------------------------------------------------------
+
+type BootOriginFqdnDecision
+  = PendingFqdnRecommendation { hostname: HostName, recommended_by: NonEmptyStr, at: Rfc3339Timestamp }
+  // citation, not prose: which operator decision, recorded where. The arm cannot be built without it.
+  | FqdnDecided { hostname: HostName, decided_by: HumanInterventionIdentity, citation: FactCitation }
+
+data boot_origin_fqdn_decision: BootOriginFqdnDecision = PendingFqdnRecommendation {
+  hostname: boot_origin_hostname,
+  recommended_by: "bright-swift-248",
+  at: boot_origin_fqdn_recommendation_at,
 }
 
-// The one gap that is NOT a credential. gunbc.cloudflare.boot_origin's own instruction says the zone and
-// FQDN "is an operator decision this repository cannot derive", and its intervention carries
-// completion_evidence NoDischargeSiteModeled — so no agent may flip boot_origin_hostname_standing from
-// here, and this module does not. The FQDN this carrier models (boot.gunb.ai, from
-// boot_origin_bundle_relative_path) is the one recorded as the parent's recommendation on 2026-10-27; the
-// arm that treats it as decided belongs in the follow-up that cites the operator's answer.
-data boot_origin_fqdn_decision: NonEmptyStr = "recommended boot.gunb.ai by bright-swift-248 2026-10-27, operator answer outstanding"
+data boot_origin_fqdn_recommendation_at: Rfc3339Timestamp = "2026-10-28T00:00:00Z" as Rfc3339Timestamp
+
+// The consumer: nothing may treat the hostname as allocated on a recommendation alone. Today this is
+// false, and that IS the module's honest state — the follow-up that cites the operator's answer builds
+// the Decided arm and this reads true.
+fn boot_origin_fqdn_is_decided() -> Bool {
+  match boot_origin_fqdn_decision {
+    FqdnDecided { hostname: _, decided_by: _, citation: _ } => true
+    PendingFqdnRecommendation { hostname: _, recommended_by: _, at: _ } => false
+  }
+}

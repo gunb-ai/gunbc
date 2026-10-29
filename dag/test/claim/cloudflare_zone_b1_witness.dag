@@ -30,6 +30,7 @@ import extdeps.cloudflare.zone {
   CloudflareR2CustomDomainStatus,
   OwnershipStatusUnknown, SslStatusUnknown,
   r2_ownership_status_of_text, r2_ssl_status_of_text,
+  OwnershipBlocked, SslActive,
   r2_ownership_status_wire, r2_ssl_status_wire,
 }
 import gunbc.cloudflare.zone {
@@ -39,8 +40,12 @@ import gunbc.cloudflare.zone {
   namecheap_apex_txt, namecheap_apex_mx, namecheap_registrar_soa,
   cloudflare_apex_txt, cloudflare_apex_mx, fleet_gunb_ai_zone_standing,
   ZoneLiveButIdentityUnobserved, boot_origin_hostname_binding_verdict, BindingAwaitingZoneIdentity,
-  boot_origin_bind_effect_gap, CloudflareRecordListUnread,
-  boot_origin_bind_gap_is_reported, boot_origin_bind_gap_names,
+  BindingAwaitingDispatch, BindingNotServing,
+  credential_route_gap, record_list_gap, bind_dispatch_gap,
+  BootOriginBindEffectGap, CloudflareCredentialRouteMissing, CloudflareRecordListUnread, BindDispatchUnmodeled,
+  boot_origin_bind_gap_names,
+  zone_record_copy_standing, CopyPendingRecordList,
+  boot_origin_fqdn_decision, boot_origin_fqdn_is_decided,
   gunb_ai_bucket_account, boot_origin_bucket, gunb_ai_apex, boot_origin_hostname,
   gunb_ai_delegated_nameservers, boot_origin_binding_readback_pending, boot_origin_nxdomain_answers,
   boot_origin_zone_admissibility, boot_origin_zone_hold_observation, copied_record_of_type,
@@ -405,28 +410,111 @@ test fn an_unread_bucket_account_refuses_for_its_own_reason() -> Bool {
        }
 }
 
-// THE VERDICT SITS ON THE GAP IT REPORTS, and the current truth is awaiting-zone-identity. A gap that
-// names no remedy is a concealment rather than a deficit, so every arm — including the catch-all — must
-// carry at least one remedy, and the record-list reason must select its OWN arm rather than fall through
-// to the generic credential one.
-test fn verdict_awaits_zone_identity_on_a_reported_gap() -> Bool {
-  match boot_origin_hostname_binding_verdict() {
-    BindingAwaitingZoneIdentity { gap } => boot_origin_bind_gap_is_reported(gap: gap)
+// WHICH GAP, DECIDED WHERE THE OBSERVATION WAS MADE (review 87595). These used to feed a prose reason
+// through a keyword search, which meant a rewording could re-route the operator to the wrong remedy. The
+// search is gone; what is claimed instead is the ROUTING itself, three ways:
+//
+// (a) each constructor lands on its OWN arm with its own remedy count — no constructor can land on
+//     another's arm, because there is no longer anything to match except the call site;
+// (b) the standing CARRIES the gap and the verdict REPEATS it — the verdict's gap and the zone standing's
+//     gap are the same arm, so the verdict is a pass-through, not a second decision;
+// (c) a gap that reports nothing is UNREPRESENTABLE (missing is std.algebra FreeSemigroup), so the
+//     runtime length check and its comment are deleted; what remains is the countable one.
+fn gap_reports(gap: BootOriginBindEffectGap) -> Int {
+  list_length(items: boot_origin_bind_gap_names(gap: gap))
+}
+
+test fn each_gap_constructor_lands_on_its_own_arm() -> Bool {
+  match credential_route_gap() {
+    CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: credential_route_gap()) == 2
+    _ => false
+  }
+    && match record_list_gap() {
+         CloudflareRecordListUnread { missing: _, basis: _ } => gap_reports(gap: record_list_gap()) == 1
+         _ => false
+       }
+    && match bind_dispatch_gap() {
+         BindDispatchUnmodeled { missing: _, basis: _ } => gap_reports(gap: bind_dispatch_gap()) == 1
+         _ => false
+       }
+}
+
+// (b) THE PASS-THROUGH. Today the zone's identity is unread, so the standing carries the credential-route
+// gap and the verdict must report THAT gap — same arm, same remedy count. A verdict that re-derived a gap
+// from text could report a different arm than the standing carries; this claim is what makes that
+// impossible to land quietly.
+test fn the_verdict_reports_the_zone_standings_own_gap() -> Bool {
+  match fleet_gunb_ai_zone_standing() {
+    ZoneLiveButIdentityUnobserved { apex: _, nameservers: _, soa: _, gap, observed_at: _, basis: _ } =>
+      match gap {
+        CloudflareCredentialRouteMissing { missing: _, basis: _ } => {
+          match boot_origin_hostname_binding_verdict() {
+            BindingAwaitingZoneIdentity { gap: verdict_gap } => match verdict_gap {
+              CloudflareCredentialRouteMissing { missing: _, basis: _ } => gap_reports(gap: verdict_gap) == gap_reports(gap: gap)
+              _ => false
+            }
+            _ => false
+          }
+        }
+        _ => false
+      }
     _ => false
   }
 }
 
-test fn every_gap_arm_reports_a_remedy() -> Bool {
-  list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "no Cloudflare credential route reaches this session"))) > 0
-    && list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "the record list is unread"))) > 0
-    && list_length(items: boot_origin_bind_gap_names(gap: boot_origin_bind_effect_gap(reason: "nothing matched at all"))) > 0
-}
-
-test fn record_list_reason_selects_its_own_arm() -> Bool {
-  match boot_origin_bind_effect_gap(reason: "the record list is unread") {
-    CloudflareRecordListUnread { missing } => list_length(items: missing) == 1
+// The COPY standing carries the record-list gap, not the credential one: the two blockers are distinct
+// (read the records vs mint the token) and each standing names its own, so neither is inferred from a
+// sentence and the operator is sent to the right remedy.
+test fn the_copy_standing_carries_the_record_list_gap() -> Bool {
+  match zone_record_copy_standing() {
+    CopyPendingRecordList { copied: _, outstanding: _, unproxied_contents_agree: _, gap, observed_at: _, basis: _ } =>
+      match gap {
+        CloudflareRecordListUnread { missing: _, basis: _ } => gap_reports(gap: gap) == 1
+        _ => false
+      }
     _ => false
   }
+}
+
+// AWAITING DISPATCH IS NOT NOT-SERVING. A binding that was never created must not be reported as a
+// binding that exists and fails to serve — that would send the operator to debug a domain that was never
+// made. Both arms are constructible, so their distinctness is claimed rather than asserted.
+test fn awaiting_dispatch_is_not_not_serving() -> Bool {
+  match BindingAwaitingDispatch { gap: bind_dispatch_gap() } {
+    BindingAwaitingDispatch { gap } => gap_reports(gap: gap) == 1
+    _ => false
+  }
+    && match BindingNotServing { binding: binding_with(ownership: "blocked", ssl: "active", enabled: true) } {
+         // NOT-SERVING carries the receipt, not a sentence: the typed status dimensions are the reason,
+         // and the readback that reaches this arm is one the vendor RETURNED (zone identity Present).
+         // Read the receipt through the type: the blocking dimension is the Blocked arm, the other is
+         // Active, and that is exactly why serving fails — no sentence needed to say it.
+         BindingNotServing { binding: reported } => {
+           match reported.status.ownership {
+             OwnershipBlocked => true
+             _ => false
+           }
+             && match reported.status.ssl {
+                  SslActive => true
+                  _ => false
+                }
+             && !cloudflare_r2_custom_domain_is_serving(binding: reported)
+         }
+         _ => false
+       }
+}
+
+// THE FQDN IS RECOMMENDED, NOT DECIDED (review 87595: a decision status in a String is §4c). The carrier
+// names the candidate, who recommended it and when; the Decided arm additionally REQUIRES an operator
+// citation, so nothing here can pre-fill the decision — and the hostname standing stays Unallocated until
+// a follow-up builds that arm.
+test fn the_fqdn_is_recommended_and_not_yet_decided() -> Bool {
+  !boot_origin_fqdn_is_decided()
+    && match boot_origin_fqdn_decision {
+         PendingFqdnRecommendation { hostname, recommended_by, at: _ } => host_name_eq(a: hostname, b: boot_origin_hostname)
+           && (recommended_by as String) == "bright-swift-248"
+         FqdnDecided { hostname: _, decided_by: _, citation: _ } => false
+       }
 }
 
 // THE TWO STATUS DIMENSIONS ARE TYPED, not strings (review 38602): the six published values decode to
