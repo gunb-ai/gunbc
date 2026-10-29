@@ -343,7 +343,7 @@ fn session_placement_open_for_acquisition(
   record: AttemptRecord,
   resume: Bool,
 ) -> SessionPlacementOpen {
-  if not resume {
+  if !resume {
     match attempt_open(root: stores.slots_root, record: record) {
       AttemptAdvanced { state: _, generation: g } => SessionPlacementOpened { slot: record, generation: g }
       AttemptLostRace { expected: e, observed: o } =>
