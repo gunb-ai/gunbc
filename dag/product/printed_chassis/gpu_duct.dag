@@ -15,7 +15,7 @@ import extdeps.fans.noctua {
   noctua_nf_a9_pwm_figures_standing,
 }
 import extdeps.fans.delta {
-  delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
+  delta_bfb1012m_envelope, delta_bfb1012m_envelope_standing, delta_bfb1012m_outlet, delta_bfb1012m_outlet_standing, delta_bfb1012m_rating,
   delta_bfb1012m_rating_standing, delta_bfb1012m_listing_current, delta_bfb1012m_current_reconciliation,
   delta_bfb_series_datasheet_sha256,
 }
@@ -399,24 +399,16 @@ type BlowerDuctDesign {
 
 // The screw-tool radius is a design allowance: an M3 x 4 pan head (about 5.5 mm) and the driver tip
 // reaching it through the open socket, with room to spare.
+// Which housing edge carries the outlet, off the fan row's cited outlet.
+fn outlet_edge_of(edge: RadialBlowerHousingEdge) -> BlowerOutletEdge {
+  match edge { BlowerLengthEdge => OutletOnLengthEdge BlowerDepthEdge => OutletOnDepthEdge }
+}
+
 data a16_blower_duct_design: BlowerDuctDesign = BlowerDuctDesign {
   blower: delta_bfb1012m_envelope,
-  // feature:blower-outlet-edge-consumed -- dissolve-on: the straight-back socket below is sized to the CITED
-  // outlet edge. #15369 rendered that edge off the DIMENSIONS DRAWING of the pinned BFB sheet
-  // (extdeps.fans.delta delta_bfb1012m_outlet, standing CitedToAuthority): an opening 29.3 across the thickness
-  // and 53.9 long inside a 57.9 +/- 0.5 frame, on the DEPTH edge -- the 94.4 mm one -- flush to the corner
-  // shared with the 97.2 mm edge. This record still bounds BOTH orientations, and that is a different claim
-  // from the one this file used to make: it is not that the drawing is silent (it is not), it is that this
-  // socket -- the a16-blower-duct root, a part this PR does not print -- has never been re-cut against the
-  // cited figure, and re-cutting it is a change to someone else's printable part, with its own fit print and
-  // its own witnesses. Taking the cited arm moves blower_cavity_edge from 97.2 to 94.4 (a tighter cavity, so
-  // the friction fit changes), leaves blower_reach_behind at 97.2, and moves exactly two claims:
-  // w_the_face_fit_is_derived_per_outlet_edge and
-  // w_a_narrow_open_passage_with_no_reachable_insert_refuses. The flat-on-end part this PR does print is
-  // insensitive to the choice: its pocket is open over the whole peripheral band, which is witnessed against
-  // the cited figures themselves in test.claim.gpu_duct_witness
-  // (w_the_open_band_covers_the_cited_outlet_whichever_end_the_builder_turns).
-  outlet_edge: OutletEdgeUnread,
+  // The outlet edge is the one Delta's DIMENSIONS DRAWING cites (extdeps.fans.delta delta_bfb1012m_outlet,
+  // standing CitedToAuthority), read off the row, not chosen here.
+  outlet_edge: outlet_edge_of(edge: delta_bfb1012m_outlet.edge),
   socket_clearance: micrometer(count: 500),
   socket_depth: micrometer(count: 10000),
   screw_tool_clearance_radius: micrometer(count: 3500),
