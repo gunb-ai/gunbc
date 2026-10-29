@@ -630,6 +630,14 @@ type RetirementMethod
 
 // THE GRACEFUL METHOD IS MODELLED AND ITS EXECUTION IS EXPLICITLY UNAVAILABLE. It is the right
 // method where a workload's service commitment requires completion, and it is not implemented here.
+// Qualification triggers (operator cutover ruling, 2026-10-29): either a public
+// GitHub REST contract establishes atomic rejection of runner deletion while a job
+// is running, or an operator-approved disposable-runner qualification deliberately
+// races job assignment against deletion and records the result. An idle reading
+// before DELETE does not close that race. ARC scaleset JobStillRunningError is a
+// different API and is not a guarantee of the public repository/organization REST
+// endpoint. Until a trigger is qualified, use only separately authorized disruptive
+// retirement, named INTERRUPTING in the reviewed plan; never silently fall back.
 // Selecting it must therefore RETURN UNAVAILABLE -- never a successful no-op, and never a fabricated
 // `RetirementComplete`, which is the shape that would let an unimplemented path report success.
 type RetirementMethodAvailability
