@@ -26,6 +26,7 @@ type CapacityManagedUnit {
 // derives patterns from its own name producer. Enumeration belongs to that owner too;
 // an unreadable or incomplete population must be supplied as Err, never as [].
 type CapacityTransientFamily {
+  manager: SystemdManager
   source: DeclarationRef
   patterns: List<NonEmptyStr>
   activators: List<CapacityManagedUnit>
@@ -41,7 +42,13 @@ type CapacityMigrationParentRequirement {
 }
 
 fn capacity_migration_parent_requirements(population: CapacityMigrationPopulation) -> List<CapacityMigrationParentRequirement> {
-  map(population.transients, family => CapacityMigrationParentRequirement { source: family.source, parents: family.parents })
+  population.writer_parents + capacity_migration_family_parent_requirements(families: population.transients)
+}
+
+// Each parent is a whole manager-scoped slice: inhibition and emptiness cover every
+// session on that host using it, not just the producer whose row requires it.
+fn capacity_migration_family_parent_requirements(families: List<CapacityTransientFamily>) -> List<CapacityMigrationParentRequirement> {
+  map(families, family => CapacityMigrationParentRequirement { source: family.source, parents: family.parents })
 }
 
 type CapacityMigrationChild {
@@ -52,6 +59,7 @@ type CapacityMigrationChild {
 type CapacityMigrationPopulation {
   source: DeclarationRef
   installed: List<CapacityManagedUnit>
+  writer_parents: List<CapacityMigrationParentRequirement>
   transients: List<CapacityTransientFamily>
   children: List<CapacityMigrationChild>
 }
@@ -108,7 +116,8 @@ fn capacity_migration_admit(
   if any(population.transients, family => count(family.patterns) == 0 || count(family.activators) == 0) {
     return Err { value: "transient family lacks its naming patterns or activators" }
   }
-  let placement_refusal = fold(population.transients, init: none, f: (prior, family) => match prior {
+  let requirements = capacity_migration_parent_requirements(population: population)
+  let placement_refusal = fold(requirements, init: none, f: (prior, family) => match prior {
     Present { value: _ } => prior
     Absent => match family.parents {
       Err { value: why } => Present { value: why }
@@ -116,10 +125,11 @@ fn capacity_migration_admit(
     }
   })
   match placement_refusal { Present { value: why } => { return Err { value: why } } Absent => {} }
-  let inhibited = population.installed + flat_map(population.transients, family => family.activators + match family.parents {
-    Ok { value: parents } => parents
-    Err { value: _ } => []
-  })
+  let inhibited = population.installed + flat_map(population.transients, family => family.activators)
+    + flat_map(requirements, row => match row.parents {
+      Ok { value: parents } => parents
+      Err { value: _ } => []
+    })
   let refusal = fold(inhibited, init: none, f: (prior, unit) => match prior {
     Present { value: _ } => prior
     Absent => capacity_migration_unit_refusal(subject: unit, observed: observed)
@@ -133,10 +143,12 @@ fn capacity_migration_admit(
         Present { value: _ } => prior
         Absent => match enumerate(family) {
           Err { value: why } => Present { value: why }
-          Ok { value: units } => fold(units, init: none, f: (previous, unit) => match previous {
+          Ok { value: units } => if any(units, unit => unit.manager != family.manager) {
+            Present { value: "transient enumeration returned a unit from a different manager" }
+          } else { fold(units, init: none, f: (previous, unit) => match previous {
             Present { value: _ } => previous
             Absent => capacity_migration_unit_refusal(subject: unit, observed: observed)
-          })
+          }) }
         }
       })
       match transient_refusal {
