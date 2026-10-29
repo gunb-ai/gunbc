@@ -856,7 +856,12 @@ test fn the_clears_echo_is_a_firmware_keyed_derived_row() -> Bool {
 // reply that reaches this consumer carries the derived standing with its bytes. A reply that handed the
 // guessed line over unlabelled -- or handed back a capture's citation for a line that is not one -- faults
 // the route here, which is what keeps the standing from being an inert field someone matches with '_'.
-fn standing_carrying_clear_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> {
+// THE CLEAR PRINTS THE BYTES OF THE ROW IT WAS GIVEN -- and nothing else. The derived echo exists in exactly
+// one place (extdeps.bmc.ipmitool_observed_output ObservedBootdevReply, review 87774); this binding delegates
+// the clear to the PRODUCTION reply function and faults the route if what it printed is not that row's bytes,
+// so a second hand-written copy of the guess cannot appear at the one site that prints it. The world change
+// and the parameter-5 readback afterwards are the real ones.
+fn clear_prints_the_row_it_is_given_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> {
   OperationRealization {
     identity: realization_identity,
     initial: initial,
@@ -869,14 +874,15 @@ fn standing_carrying_clear_realization(initial: BmcWorld) -> OperationRealizatio
         handler: fn(world, call) {
           match bmc_bootdev_clear_reply(world: world, call: call) {
             BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
-            BmcReplied { stdout: out, bootdev_standing: Present { value: BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _, read_on_release: _ } }, world: w } =>
+            BmcReplied { stdout: out, world: w } => if out == ipmitool_bootdev_none_reply.bytes {
               OperationObserved {
                 observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
                 state: w,
                 elapsed: second(count: 1),
               }
-            BmcReplied { stdout: _, bootdev_standing: _, world: _ } =>
-              OperationHarnessFault { reason: "the clear's derived echo reached its consumer without the standing that says it is derived" as NonEmptyStr }
+            } else {
+              OperationHarnessFault { reason: "the dry clear printed something other than the bytes of the firmware-keyed row it is given" as NonEmptyStr }
+            }
           }
         }
       },
@@ -885,10 +891,10 @@ fn standing_carrying_clear_realization(initial: BmcWorld) -> OperationRealizatio
   }
 }
 
-test fn the_clears_reply_reaches_its_consumer_wearing_its_standing() -> Bool {
+test fn the_clear_prints_the_bytes_of_the_row_it_is_given() -> Bool {
   let seeded = bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot)
   match evaluate_in_witness_frame(
-    frame: modeled_frame(realization: standing_carrying_clear_realization(initial: seeded)),
+    frame: modeled_frame(realization: clear_prints_the_row_it_is_given_realization(initial: seeded)),
     subject: fn(_scope) {
       let cleared = bootdev_clear(device: ipmi_boot_device_none)
       let after = bootparam5_read()

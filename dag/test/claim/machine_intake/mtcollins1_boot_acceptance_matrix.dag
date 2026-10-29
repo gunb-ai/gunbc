@@ -14,6 +14,7 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.bmc_dry_realization { bmc_bootdev_clear_reply, BmcReplied, BmcReplyFault }
 import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
 import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
@@ -1505,6 +1506,70 @@ test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
         && starts_with(s: override_release_words(a: value), prefix: "not required: ")
     _ => false
   }
+}
+
+// ─── THE BOOTDEV ECHO CARRIES NO VERDICT (review 87856, DESIGN §4d) ──────────────────────────────────
+// WHAT THE CLEAR PRINTS IS NOT EVIDENCE OF ANYTHING. One of the two bootdev echoes this model answers with
+// is not a capture: `Set Boot Device to none` is built from the shape of two captured echoes of the same
+// command, on one firmware release, and stands until boot 7's real capture retires it
+// (extdeps.bmc.ipmitool_observed_output). A label on the reply would not be a guarantee -- bmc_lift turns
+// any reply into ShellProcessExited, which has nowhere to put one -- so the guarantee here is behavioral:
+// the same run, with the clear's own line replaced by a HOSTILE one, produces the same commands, the same
+// outcome, the same receipt, and the same standings. The world change underneath is the production one; only
+// the printed line lies. If anything ever judges a clear by its echo, this row is the one that goes red.
+fn lying_bootdev_echo_handler(w: MtCollins1BootWorld, call: OperationCall) -> OperationStep<MtCollins1BootWorld> {
+  match bmc_bootdev_clear_reply(world: w.bmc, call: call) {
+    BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+    BmcReplied { world: after } => OperationObserved {
+      observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: "Set Boot Device to pxe\n", stderr: "" } },
+      state: with_bmc(w: w, bmc: after),
+      elapsed: second(count: 1),
+    }
+  }
+}
+
+fn matrix_lying_bootdev_echo_frame(world: MtCollins1BootWorld) -> WitnessEvaluationFrame<MtCollins1BootWorld> {
+  let production = mtcollins1_boot_dry_realization(identity: realization_identity, initial: world, epoch: virtual_clock_origin())
+  let standing = first_where(xs: production.bindings, keep: fn(b) { b.at.operation == "ChassisBootDev" })
+  matrix_frame_over(realization: OperationRealization {
+    identity: production.identity,
+    initial: production.initial,
+    epoch: production.epoch,
+    advance: production.advance,
+    bindings: concat(xs: filter(production.bindings, b => !(b.at.operation == "ChassisBootDev")), ys: match standing {
+      // As above: if the clear ever stops being bound in production, the bindings stand and this row fails
+      // rather than passing on a frame that never swapped anything. The row itself re-checks the swap below.
+      Present { value: b } => [OperationBinding { at: b.at, handler: lying_bootdev_echo_handler }]
+      Absent => []
+    }),
+  })
+}
+
+test fn a_lying_bootdev_echo_moves_no_verdict() -> Bool {
+  let seeded = world_with_stale_override(lines: [])
+  // THE SWAP REALLY HAPPENED -- asserted, not commented: the production realization must carry a plain
+  // ChassisBootDev binding for this frame to have had anything to replace.
+  any(xs: mtcollins1_boot_dry_realization(identity: realization_identity, initial: seeded, epoch: virtual_clock_origin()).bindings, b => b.at.operation == "ChassisBootDev")
+    && match evaluate_in_witness_frame(
+         frame: matrix_lying_bootdev_echo_frame(world: seeded),
+         subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) },
+       ) {
+         WitnessReturned { value: lied, route: lied_route, state: lied_state } =>
+           match run_attempt(world: seeded) {
+             WitnessReturned { value, route, state } =>
+               (outcome_reason(a: lied) == outcome_reason(a: value))
+                 && (override_stale_words(a: lied) == "stale override cleared")
+                 && (override_stale_words(a: lied) == override_stale_words(a: value))
+                 && (override_release_words(a: lied) == "cleared")
+                 && (override_release_words(a: lied) == override_release_words(a: value))
+                 && (count_named(route: lied_route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev"))
+                 && (count_named(route: lied_route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") == count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions"))
+                 && !controller_left_the_override_pending(w: lied_state)
+                 && !controller_left_the_override_pending(w: state)
+             _ => false
+           }
+         _ => false
+       }
 }
 
 // ─── THE UNREADABLE INITIAL PARAMETER 5 (side-chat REQUEST_CHANGES at 3a890b02, §5) ────────────────────
