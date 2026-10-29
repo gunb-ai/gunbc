@@ -1694,11 +1694,7 @@ fn dry_read_bmc_redfish_account_census(
   lockout_threshold: BmcRedfishLockoutThreshold,
 ) -> BmcRedfishAccountCensusReading
   admit_callers: [
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_served_census_enumerates_every_account"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_foreign_enabled_account_is_enumerated"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "an_unmodeled_surface_reads_as_absence"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_wrong_managed_credential_refuses_the_census_and_counts_the_login"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_factory_forced_world_refuses_the_authenticated_read"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "census_of"),
   ]
 {
   match bmc_redfish_surface(world: world) {
@@ -1860,7 +1856,7 @@ fn confirm_forced_first_rotation_build(
 ) -> ForcedFirstRotationBuildConfirmation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_forced_change_applies_once_and_the_second_run_is_a_noop"),
-    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_wrong_build_answered_after_the_write_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "confirm_build_confirms_the_inferred_build_and_refuses_another"),
   ]
 {
   if (admitted.forced.endpoint.host as String) != (post_read.endpoint.host as String) {
@@ -3039,6 +3035,7 @@ fn dry_read_bmc_account_state(
   redfish_surface_served: Bool,
 ) -> BmcAccountStateObservation
   admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "read_with"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root"),
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_shared_store_witness", decl_name: "read_root_on"),

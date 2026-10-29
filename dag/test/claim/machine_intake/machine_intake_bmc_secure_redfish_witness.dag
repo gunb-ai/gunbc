@@ -11,11 +11,11 @@ module test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness
 // NO live effect: the whole file is the dry model plus witnesses.
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
-import std.optional { Option, Absent, Present }
+import std.optional { Absent, Present }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.bmc.endpoint { OpenBmc, BmcControllerEndpoint }
-import extdeps.bmc.types { AccountRoleAdministrator }
+import extdeps.bmc.types { AccountRoleAdministrator, AccountRoleOperator }
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.ipmi_channel {
   IpmiControllerChannelCensus, IpmiMedium8023Lan, IpmiPrivilegeAdministrator, IpmiUserId,
@@ -31,7 +31,7 @@ import gunbc.deployment_risk { TestRisk }
 import gunbc.machine_intake.phase { machine_qualification_policy }
 import gunbc.bmc_model {
   BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access,
-  bmc_with_redfish_accounts, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, RedfishRole, bmc_redfish_account,
+  bmc_with_redfish_accounts, BmcRedfishAccount, BmcRedfishCredentialSharesIpmi, bmc_redfish_account,
   BmcRedfishLockoutThreshold, BmcRedfishLockoutAfter, bmc_redfish_change_step_world,
 }
 import extdeps.board_authority { BoardAuthorityRef }
@@ -117,7 +117,7 @@ fn root_account(forced: Bool) -> BmcRedfishAccount {
   BmcRedfishAccount {
     name: "root",
     credential: BmcRedfishCredentialSharesIpmi { ipmi_user: root_user },
-    role: RedfishRole.Administrator,
+    role: AccountRoleAdministrator,
     enabled: true,
     locked: false,
     forced_password_change: forced,
@@ -129,7 +129,7 @@ fn operator_account() -> BmcRedfishAccount {
   BmcRedfishAccount {
     name: "operator",
     credential: BmcRedfishCredentialSharesIpmi { ipmi_user: 2 },
-    role: RedfishRole.Operator,
+    role: AccountRoleOperator,
     enabled: true,
     locked: false,
     forced_password_change: false,
@@ -207,7 +207,7 @@ fn served_accounts(reading: BmcRedfishAccountCensusReading) -> List<BmcRedfishAc
 }
 
 fn has_entry(reading: BmcRedfishAccountCensusReading, name: String, enabled: Bool, managed: Bool) -> Bool {
-  filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.credential_is_managed == managed).length > 0
+  list_length(items: filter(served_accounts(reading), a => a.name == name && a.enabled == enabled && a.credential_is_managed == managed)) > 0
 }
 
 fn is_refused(reading: BmcRedfishAccountCensusReading) -> Bool {
@@ -268,14 +268,14 @@ test fn the_served_census_enumerates_every_account() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [])
   let reading = census_of(w: w, password: managed_generation)
   // rung: an authenticated read of a controller with one root account yields exactly that account, managed.
-  is_served(reading: reading) && served_accounts(reading: reading).length == 1 && has_entry(reading: reading, name: "root", enabled: true, managed: true)
+  is_served(reading: reading) && list_length(items: served_accounts(reading: reading)) == 1 && has_entry(reading: reading, name: "root", enabled: true, managed: true)
 }
 
 test fn a_foreign_enabled_account_is_enumerated() -> Bool {
   let w = served_world(password: managed_generation, forced: false, extra: [operator_account()])
   let reading = census_of(w: w, password: managed_generation)
   // rung: the census names EVERY account, and marks the foreign enabled one as NOT the managed credential.
-  is_served(reading: reading) && served_accounts(reading: reading).length == 2
+  is_served(reading: reading) && list_length(items: served_accounts(reading: reading)) == 2
     && has_entry(reading: reading, name: "root", enabled: true, managed: true)
     && has_entry(reading: reading, name: "operator", enabled: true, managed: false)
 }
@@ -284,7 +284,7 @@ test fn an_unmodeled_surface_reads_as_absence() -> Bool {
   let w = surface_world(password: managed_generation)
   let reading = census_of(w: w, password: managed_generation)
   // rung: a controller with no Redfish account service reads as an UNMODED surface, never an empty list.
-  is_unmodeled(reading: reading) && served_accounts(reading: reading).length == 0
+  is_unmodeled(reading: reading) && list_length(items: served_accounts(reading: reading)) == 0
 }
 
 test fn a_wrong_managed_credential_refuses_the_census_and_counts_the_login() -> Bool {
@@ -382,7 +382,6 @@ test fn confirm_build_confirms_the_inferred_build_and_refuses_another() -> Bool 
       let w = served_world(password: managed_generation, forced: false, extra: [])
       let right = confirm_forced_first_rotation_build(admitted: a, post_read: read_with(w: w, managed: root_ref(version: "1", epoch: 1), password: managed_generation, census_reading: census_of(w: w, password: managed_generation), surface_served: true, firmware: build_3_22(), at: 1793145650000))
       let wrong = confirm_forced_first_rotation_build(admitted: a, post_read: read_with(w: w, managed: root_ref(version: "1", epoch: 1), password: managed_generation, census_reading: census_of(w: w, password: managed_generation), surface_served: true, firmware: other_build(), at: 1793145650000))
-      let elsewhere = confirm_forced_first_rotation_build(admitted: a, post_read: read_with(w: w, managed: root_ref(version: "1", epoch: 1), password: managed_generation, census_reading: census_of(w: w, password: managed_generation), surface_served: true, firmware: build_3_22(), at: 1793145650000))
       // rung: the inferred build is confirmed only by a readback that names the forced state's own build.
       is_confirmed(confirmation: right) && refused_build_differs(confirmation: wrong)
     }
