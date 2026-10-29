@@ -43,7 +43,9 @@ import gunbc.auth.secret_ref_credential {
   SecretCredentialFetchRefused,
   SecretCredentialResolvedVersionMismatch,
 }
-import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access }
+import gunbc.bmc_model { BmcWorld, BmcIpmiSetUserPasswordStep, bmc_ipmi_set_user_password, bmc_ipmi_user_accepts, bmc_ipmi_set_user_access, bmc_redfish_surface, bmc_redfish_authorize, bmc_redfish_note_failed_login, bmc_redfish_account_collection_body, bmc_redfish_account_member_body, RedfishAuthAccepted, RedfishAuthUnauthorized, RedfishAuthForcedPasswordChange, RedfishAuthSurfaceUnmodeled, RedfishOrdinaryRequest, RedfishBasicAuth, BmcRedfishLockoutThreshold, bmc_redfish_change_password, bmc_redfish_change_step_world, BmcRedfishPasswordChangeStep, BmcRedfishChangeCompleted, BmcRedfishChangeRefused }
+import extdeps.bmc.redfish { redfish_manager_account_collection_from_json, redfish_manager_account_from_json, redfish_manager_account_name_from_odata_id, RedfishAccountCollection, RedfishAccountCollectionUnreadable, RedfishAccountResource, RedfishAccountResourceUnreadable, RedfishRoleIdServed, RedfishRoleIdAbsent, RedfishRoleIdUnknown, RedfishRoleIdMalformed, redfish_account_password_patch_body }
+import extdeps.languages.json.parse { FieldRead, FieldAbsent, FieldMalformed }
 import gunbc.machine_intake.bmc_rotation_route {
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
@@ -359,6 +361,11 @@ type BmcSecureRefusalCause
   | PublishedCredentialProbeUnmatched { channel: IpmiChannelNumber }
   | PublishedCredentialRetainedNotAdmittedByProdRiskPolicy
   | PublishedCredentialNotRetained { channel: IpmiChannelNumber }
+  // THE REDFISH ACCOUNT CENSUS GATE (operator round-2). A controller that serves Redfish but whose census was
+  // not fully read (Unmodeled) or refused a read (Refused) is UNESTABLISHED, not secured; and a fully-read
+  // census holding another ENABLED account whose credential is not the managed one is not a secured controller.
+  | RedfishCensusUnestablished { detail: String }
+  | RedfishForeignEnabledAccount { account: String }
   | PhaseReceiptForAnotherSubject { expected: MachineIntakeSubject, found: MachineIntakeSubject }
 
 // NO ARM RETURNS UnitHardware, AND THAT IS THE POINT (design §6: a non-working
@@ -396,6 +403,11 @@ fn bmc_secure_refusal_owner(cause: BmcSecureRefusalCause) -> QualificationRefusa
     PublishedCredentialProbeUnmatched { channel: _ } => QualificationPolicy
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => QualificationPolicy
     PublishedCredentialNotRetained { channel: _ } => OperatorAction
+    // The Redfish census gate is a qualification-policy refusal: it is the conjunction's security decision, not
+    // an operator action and not a credential owner's -- an unenumerated controller or an unmanaged enabled
+    // account is a policy that has not been met.
+    RedfishCensusUnestablished { detail: _ } => QualificationPolicy
+    RedfishForeignEnabledAccount { account: _ } => QualificationPolicy
     PhaseReceiptForAnotherSubject { expected: _, found: _ } => QualificationPolicy
   }
 }
@@ -427,6 +439,8 @@ fn bmc_secure_refusal_label(cause: BmcSecureRefusalCause) -> NonEmptyStr {
     PublishedCredentialProbeUnmatched { channel: _ } => "a published-credential probe matched no census LAN member"
     PublishedCredentialRetainedNotAdmittedByProdRiskPolicy => "a retained BMC backdoor is not admitted under a ProdRisk-admitting qualification policy; a fresh census pass that retires or disables the published credential is required"
     PublishedCredentialNotRetained { channel: _ } => "the declared factory-credential retention was not observed on a census LAN member"
+    RedfishCensusUnestablished { detail: detail } => join(["the Redfish account census was not established: ", detail], "")
+    RedfishForeignEnabledAccount { account: account } => join(["an enabled Redfish account whose credential is not the managed one is present: ", account], "")
     PhaseReceiptForAnotherSubject { expected: _, found: _ } => "the converged phase receipt was read for another intake subject"
   }
 }
@@ -1338,6 +1352,26 @@ fn observed_published_account(kind: PublishedAccountKind, evidence: EvidenceRef,
 // row declares one. With firmware it is the credential-policy key (gunbc.machine_intake
 // bmc_credential_policy BmcCredentialPolicyKey) a derived retirement must have been grounded by: the key is
 // read from here, never supplied beside the reading, and an undeclared board grounds no derivation.
+// THE REDFISH ACCOUNT CENSUS, AS READ. One entry per ManagerAccount the collection listed, carrying only
+// the facts the served bytes published (the name, whether it is Enabled) plus the join fact the fold needs:
+// whether THAT account's credential is the managed one. On the shared-store build (ALTRAD8UD 03.22.00) the
+// managed account is named by the goal, so `credential_is_managed` is whether this account IS that one --
+// any OTHER enabled account therefore holds a credential we do not manage, and the conjunction refuses.
+type BmcRedfishAccountCensusEntry {
+  name: String
+  enabled: Bool
+  credential_is_managed: Bool
+}
+
+// The census is a TYPED reading, never a list that stands in for "we did not look". A controller that serves
+// no Redfish AccountService is `Unmodeled` (an absence, not an empty census); a Redfish controller whose
+// collection or a member could not be read, or whose managed credential did not authenticate, is `Refused`.
+// `Served` is the only census that enumerates accounts, and it enumerates EVERY account the collection listed.
+type BmcRedfishAccountCensusReading
+  = BmcRedfishCensusServed { accounts: List<BmcRedfishAccountCensusEntry> }
+  | BmcRedfishCensusUnmodeled
+  | BmcRedfishCensusRefused { detail: String }
+
 type BmcAccountStateObservation sole_constructor {
   subject: MachineIntakeSubject
   endpoint: BmcControllerEndpoint
@@ -1356,6 +1390,14 @@ type BmcAccountStateObservation sole_constructor {
   published_account: ObservedPublishedAccount
   break_glass: ManagedCredentialReference
   break_glass_probe: ObservedCredentialProbe
+  // THE REDFISH ACCOUNT CENSUS, part of the account-state reading: another ENABLED account whose credential
+  // is not the managed one refuses the conjunction (operator round-2). An IPMI-only controller -- or an
+  // IPMI-only caller of the read -- passes `BmcRedfishCensusUnmodeled`, a typed absence, never an empty list.
+  redfish_accounts: BmcRedfishAccountCensusReading
+  // Whether THIS controller presents a Redfish account service at all. It is a distinct fact from the census:
+  // an IPMI-only controller reads `false` and its `Unmodeled` census is legitimate, while a controller that
+  // serves Redfish (`true`) but reports an `Unmodeled`/`Refused` census is unestablished, not secured.
+  redfish_surface_served: Bool
   controller_clock: ControllerClockReading?
 }
 
@@ -1377,6 +1419,8 @@ fn observed_bmc_account_state(
   published_account: ObservedPublishedAccount,
   break_glass: ManagedCredentialReference,
   break_glass_probe: ObservedCredentialProbe,
+  redfish_accounts: BmcRedfishAccountCensusReading,
+  redfish_surface_served: Bool,
   controller_clock: ControllerClockReading?,
 ) -> BmcAccountStateObservation
   admit_callers: [
@@ -1402,6 +1446,8 @@ fn observed_bmc_account_state(
     published_account: published_account,
     break_glass: break_glass,
     break_glass_probe: break_glass_probe,
+    redfish_accounts: redfish_accounts,
+    redfish_surface_served: redfish_surface_served,
     controller_clock: controller_clock,
   }
 }
@@ -1451,6 +1497,8 @@ fn observation_with_controller_clock(base: BmcAccountStateObservation, controlle
     published_account: base.published_account,
     break_glass: base.break_glass,
     break_glass_probe: base.break_glass_probe,
+    redfish_accounts: base.redfish_accounts,
+    redfish_surface_served: base.redfish_surface_served,
     controller_clock: controller_clock,
   )
 }
@@ -1593,16 +1641,212 @@ fn conjunction_cause_class(cause: BmcSecureRefusalCause) -> ConjunctionCauseClas
     // an assessment never sees it. Named so the match stays the forcing function DESIGN §4b wants — a
     // cause added to the coproduct must be classified here before anything compiles.
     PhaseReceiptForAnotherSubject { expected: _, found: _ } => CauseRefusesAssessment
+    // The Redfish census gate: an unenumerated Redfish controller is an unestablished reading (we cannot act on
+    // accounts we have not enumerated); another enabled unmanaged account refuses assessment outright -- it is
+    // not remediable by the one managed-account action this fold plans (disabling a foreign account is not a
+    // grounded operation here), so it fails closed rather than pretending a plan would clear it.
+    RedfishCensusUnestablished { detail: _ } => CauseUnestablishedReading
+    RedfishForeignEnabledAccount { account: _ } => CauseRefusesAssessment
   }
 }
 
+// THE REDFISH CENSUS GATE on the conjunction. On a controller that serves NO Redfish account service the
+// census is not part of the desired state (an IPMI-only reading passes). On one that DOES serve Redfish, an
+// Unmodeled or Refused census is UNESTABLISHED -- never secured -- and a fully-read census holding another
+// ENABLED account whose credential is not the managed one is a foreign credential the conjunction refuses
+// (operator round-2: every account enumerated; an unmanaged enabled account refuses).
+fn bmc_secure_redfish_census_refusal(observed: BmcAccountStateObservation) -> BmcSecureRefusalCause? {
+  if !observed.redfish_surface_served {
+    none
+  } else {
+    match observed.redfish_accounts {
+      BmcRedfishCensusUnmodeled =>
+        Present { value: RedfishCensusUnestablished { detail: "the controller serves a Redfish account service but its account census was never read" } }
+      BmcRedfishCensusRefused { detail: detail } =>
+        Present { value: RedfishCensusUnestablished { detail: detail } }
+      BmcRedfishCensusServed { accounts: _ } => match bmc_redfish_census_foreign_enabled_account(reading: observed.redfish_accounts) {
+        Present { value: name } => Present { value: RedfishForeignEnabledAccount { account: name } }
+        Absent => none
+      }
+    }
+  }
+}
+
+// THE DRY REDFISH ACCOUNT READ. The census is EARNED BY PARSING BYTES: the read authenticates against the
+// controller's Redfish account service (bmc_redfish_authorize) and then reads the AccountService/Accounts
+// collection and each ManagerAccount member from the bytes THE SIMULATED CONTROLLER SERVES
+// (gunbc.bmc_model.bmc_redfish_account_collection_body / bmc_redfish_account_member_body), parsing them back
+// through the extdeps.bmc.redfish wire readers -- never a structure handed to it. This is the realization the
+// frontier gunbc.machine_intake.bmc_secure_redfish_frontier binds (bmc_secure_redfish_read_realization): the
+// surface, the authorize outcome (200 / 401 / the 403-forced read refusal, and the failed-login a wrong
+// password drives via bmc_redfish_note_failed_login), and every wire reader named there, all reach a consumer
+// through this one function. An unmodeled surface is BmcRedfishCensusUnmodeled (a typed absence, NEVER an
+// empty census); a controller that answers but whose census cannot be fully read, or whose managed credential
+// did not authenticate, is BmcRedfishCensusRefused; only a fully-enumerated collection is Served.
+// consumer-frontier: gunbc.machine_intake.bmc_secure_redfish_frontier
+fn dry_read_bmc_redfish_account_census(
+  world: BmcWorld,
+  managed_account: String,
+  managed_password: String,
+  forced_message_id: String,
+  lockout_threshold: BmcRedfishLockoutThreshold,
+) -> BmcRedfishAccountCensusReading
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_served_census_enumerates_every_account"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_foreign_enabled_account_is_enumerated"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "an_unmodeled_surface_reads_as_absence"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_wrong_managed_credential_refuses_the_census_and_counts_the_login"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_factory_forced_world_refuses_the_authenticated_read"),
+  ]
+{
+  match bmc_redfish_surface(world: world) {
+    Absent => BmcRedfishCensusUnmodeled
+    Present { value: _ } => match bmc_redfish_authorize(
+      world: world,
+      name: managed_account,
+      password: managed_password,
+      transport: RedfishBasicAuth {},
+      request: RedfishOrdinaryRequest {},
+      forced_message_id: forced_message_id,
+    ) {
+      RedfishAuthUnauthorized {} =>
+        match bmc_redfish_note_failed_login(world: world, name: managed_account, at_lockout_threshold: lockout_threshold) {
+          BmcRedfishFailedLoginCounted { world: _counted, locked_now: locked_now } =>
+            BmcRedfishCensusRefused {
+              detail: if locked_now {
+                "the managed credential did not authenticate over Redfish and the account locked on this attempt"
+              } else {
+                "the managed credential did not authenticate over the Redfish account service"
+              },
+            }
+          BmcRedfishFailedLoginRefused { world: _counted, reason: _ } =>
+            BmcRedfishCensusRefused { detail: "the managed credential did not authenticate and the failed login could not be counted" }
+        }
+      RedfishAuthForcedPasswordChange { body: _ } =>
+        BmcRedfishCensusRefused { detail: "the controller answered the forced-change 403 to the authenticated account read; the census is not served until the forced change completes" }
+      RedfishAuthSurfaceUnmodeled {} => BmcRedfishCensusUnmodeled
+      RedfishAuthAccepted { via: _ } => dry_read_bmc_redfish_census_members(world: world, managed_account: managed_account)
+    }
+  }
+}
+
+// PARSE THE SERVED COLLECTION BYTES into an enumeration, then fold the member resources: each ManagerAccount
+// the collection listed becomes an entry, and any member that cannot be read -- an odata id that is not a
+// member, a listed account the controller does not serve, an unreadable Enabled or RoleId -- refuses the whole
+// census rather than letting a partially-read enumeration pass as secured ("every account enumerated").
+fn dry_read_bmc_redfish_census_members(world: BmcWorld, managed_account: String) -> BmcRedfishAccountCensusReading {
+  match redfish_manager_account_collection_from_json(body: bmc_redfish_account_collection_body(world: world)) {
+    RedfishAccountCollectionUnreadable { cause: cause } =>
+      BmcRedfishCensusRefused { detail: join(["the AccountService/Accounts collection could not be read: ", cause], "") }
+    RedfishAccountCollection { member_odata_ids: ids, members_odata_count: _ } =>
+      fold(
+        ids,
+        init: BmcRedfishCensusServed { accounts: [] },
+        f: (acc, id) => match acc {
+          BmcRedfishCensusRefused { detail: detail } => BmcRedfishCensusRefused { detail: detail }
+          BmcRedfishCensusUnmodeled => BmcRedfishCensusUnmodeled
+          BmcRedfishCensusServed { accounts: seen } => dry_read_bmc_redfish_one_member(world: world, managed_account: managed_account, id: id, seen: seen)
+        },
+      )
+  }
+}
+
+// READ AND PARSE ONE member resource. credential_is_managed is whether this account IS the managed account the
+// read is authenticating as: on the shared-store build the managed credential is that one account's password,
+// so every OTHER account holds a credential we do not manage, and the fold refuses another ENABLED one.
+fn dry_read_bmc_redfish_one_member(world: BmcWorld, managed_account: String, id: String, seen: List<BmcRedfishAccountCensusEntry>) -> BmcRedfishAccountCensusReading {
+  match redfish_manager_account_name_from_odata_id(id: id) {
+    Absent => BmcRedfishCensusRefused { detail: join(["a ManagerAccount member odata id is not an account member: ", id], "") }
+    Present { value: name } => match bmc_redfish_account_member_body(world: world, name: name) {
+      Absent => BmcRedfishCensusRefused { detail: join(["the collection listed an account the controller does not serve: ", name], "") }
+      Present { value: member_body } => match redfish_manager_account_from_json(body: member_body) {
+        RedfishAccountResourceUnreadable { cause: cause } =>
+          BmcRedfishCensusRefused { detail: join(["a ManagerAccount member could not be read: ", cause], "") }
+        RedfishAccountResource { account: account } => match account.enabled {
+          FieldRead { value: enabled } => match account.role_id {
+            RedfishRoleIdServed { role: _ } =>
+              BmcRedfishCensusServed { accounts: seen.append(BmcRedfishAccountCensusEntry { name: name, enabled: enabled, credential_is_managed: name == managed_account }) }
+            RedfishRoleIdAbsent {} => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served no RoleId: ", name], "") }
+            RedfishRoleIdUnknown { word: word } => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served an unknown RoleId: ", word], "") }
+            RedfishRoleIdMalformed { cause: cause } => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served a malformed RoleId: ", cause], "") }
+          }
+          FieldAbsent => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served no Enabled property: ", name], "") }
+          FieldMalformed { cause: cause } => BmcRedfishCensusRefused { detail: join(["an enumerated ManagerAccount served an unreadable Enabled property: ", cause], "") }
+        }
+      }
+    }
+  }
+}
+
+// A foreign enabled account: an ENABLED entry whose credential is not the managed one. The conjunction refuses
+// when the served census holds one (operator round-2: every account enumerated, and another enabled account
+// with an unmanaged credential is not a secured controller).
+fn bmc_redfish_census_foreign_enabled_account(reading: BmcRedfishAccountCensusReading) -> String? {
+  match reading {
+    BmcRedfishCensusServed { accounts: accounts } =>
+      filter(accounts, a => a.enabled && !a.credential_is_managed)
+        |> fold(init: none, f: (acc, a) => match acc { Absent => Present { value: a.name }  Present { value: _ } => acc })
+    BmcRedfishCensusUnmodeled => none
+    BmcRedfishCensusRefused { detail: _ } => none
+  }
+}
+
+// THE DRY REDFISH Password PATCH. This is the write realization the frontier
+// gunbc.machine_intake.bmc_secure_redfish_frontier binds (bmc_secure_redfish_write_realization): it is the
+// arm of the plan's dry apply that realizes a RedfishAccountPasswordWrite, and it consumes both the world's
+// Password PATCH (bmc_redfish_change_password) and the extdeps wire builder that renders the PATCH body
+// (redfish_account_password_patch_body), neither of which had a consumer before it. The world applies the
+// change ALL-OR-NOTHING -- writing the credential AND clearing the forced-change flag together -- and a change
+// that cannot fully apply (the surface unmodeled, the account absent from the census, or a shared account whose
+// IPMI user is not in the table) returns the SAME world and a refused step, so the fold that records this write
+// never mutates a controller it could not fully write (DESIGN 5, decision C: completed:false leaves the world
+// unchanged). The caller's post-write authenticated read, not this reply, decides the account is secured
+// (DESIGN 4b rung discipline); this only performs the write and reports its rung.
+// consumer-frontier: gunbc.machine_intake.bmc_secure_redfish_frontier
+fn dry_apply_bmc_redfish_password_write(
+  world: BmcWorld,
+  account: String,
+  new_password: String,
+) -> BmcRedfishPasswordWriteDryStep
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.bmc_secure", decl_name: "dry_apply_bmc_account_plan"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_completed_patch_writes_the_credential_and_clears_the_forced_flag"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "a_failed_patch_changes_nothing_and_mints_no_receipt"),
+    decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_redfish_witness", decl_name: "the_forced_change_applies_once_and_the_second_run_is_a_noop"),
+  ]
+{
+  BmcRedfishPasswordWriteDryStep {
+    step: bmc_redfish_change_password(world: world, name: account, new_password: new_password),
+    request_body: redfish_account_password_patch_body(password: new_password),
+  }
+}
+
+fn bmc_redfish_password_write_completed(step: BmcRedfishPasswordWriteDryStep) -> Bool {
+  match step.step {
+    BmcRedfishChangeCompleted { world: _ } => true
+    BmcRedfishChangeRefused { world: _, reason: _ } => false
+  }
+}
+
+type BmcRedfishPasswordWriteDryStep {
+  step: BmcRedfishPasswordChangeStep
+  request_body: String
+}
+
+
 fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateObservation) -> BmcSecureOutcome {
   let floor = observer_instant_millis(instant: observed.read_floor)
-  match observed.managed_probe {
-    ObservedCredentialRejected { reading: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
-    ObservedCredentialUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
-    ObservedCredentialAccepted { reading: mr } => {
-      let me = mr.evidence
+  // THE REDFISH CENSUS GATE FIRST: on a controller that serves Redfish, an unenumerated/refused census or a
+  // foreign enabled account is not secured, whatever else the reading shows. An IPMI-only observation (surface
+  // not served) passes straight through, so the IPMI conjunction below is unchanged for those controllers.
+  match bmc_secure_redfish_census_refusal(observed: observed) {
+    Present { value: census_cause } => BmcSecureRefused { cause: census_cause }
+    Absent =>
+      match observed.managed_probe {
+        ObservedCredentialRejected { reading: _ } => BmcSecureRefused { cause: ManagedCredentialRejected }
+        ObservedCredentialUnestablished { detail: d } => BmcSecureRefused { cause: ManagedCredentialUnestablished { detail: d } }
+        ObservedCredentialAccepted { reading: mr } => {
+          let me = mr.evidence
       let at = mr.observed_at
       if observer_instant_precedes(earlier: at, later: observed.read_floor) {
         BmcSecureRefused { cause: ManagedCredentialProbePrecedesRotation { applied_at: floor, probed_at: observer_instant_millis(instant: at) } }
@@ -1629,6 +1873,7 @@ fn conjunction_over_observation(goal: BmcSecureGoal, observed: BmcAccountStateOb
         }
       }
     }
+  }
   }
 }
 
@@ -2740,6 +2985,8 @@ fn dry_read_bmc_account_state(
   published_reading: DryPublishedReading,
   attempt: AttemptIdentity,
   read_at_millis: EpochMs,
+  redfish_accounts: BmcRedfishAccountCensusReading,
+  redfish_surface_served: Bool,
 ) -> BmcAccountStateObservation
   admit_callers: [
     decl_ref(module_path: "test.claim.machine_intake.machine_intake_bmc_secure_state_witness", decl_name: "read_in"),
@@ -2776,6 +3023,8 @@ fn dry_read_bmc_account_state(
     break_glass: break_glass,
     break_glass_probe: dry_probe(world: world, user: published_user, password: break_glass_password, what: "break-glass", at: at),
     controller_clock: none,
+    redfish_accounts: redfish_accounts,
+    redfish_surface_served: redfish_surface_served,
   )
 }
 
@@ -2846,7 +3095,18 @@ fn dry_apply_bmc_account_plan(
         BmcChannelWritesDryStep { world: step.world, completed: acc.completed && step.completed }
       }
       IpmiSetUserPassword { user: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
-      RedfishAccountPasswordWrite { account: _, transport_operation: _, action_shape: _ } => BmcChannelWritesDryStep { world: acc.world, completed: false }
+      // THE REDFISH Password PATCH ARM (decision C). Its new password is the managed generation, resolved
+      // through the same fetch that authorizes the managed IPMI write -- the shared-store premise means the one
+      // root credential moves once, whether it lands over IPMI or Redfish. A refused PATCH (world unchanged)
+      // completes nothing; the post-read, not here, decides the account is secured.
+      RedfishAccountPasswordWrite { account: name, transport_operation: _, action_shape: _ } =>
+        match dry_fetch_resolves(fetch: managed_fetch, write: plan.managed_write) {
+          Absent => BmcChannelWritesDryStep { world: acc.world, completed: false }
+          Present { value: pw } => {
+            let step = dry_apply_bmc_redfish_password_write(world: acc.world, account: name, new_password: pw)
+            BmcChannelWritesDryStep { world: bmc_redfish_change_step_world(step: step.step), completed: acc.completed && bmc_redfish_password_write_completed(step: step) }
+          }
+        }
     })
   let request_text = join(
     concat(
