@@ -149,7 +149,7 @@ fn ledger_first_key(instance: HostDashboardInstance) -> String {
 test fn the_ledger_row_for_the_dispatch_branch_is_observed() -> Bool {
   let instance = fresh_instance(tag: "ledger")
   let node = "n-wt-ledger"
-  let key = "wt-ledger-1"
+  let key = "1a2b3c4d5e6f7081"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
   cleaned(instance: instance, verdict: laid && ledger_first_key(instance: instance) == key)
 }
@@ -161,7 +161,7 @@ test fn the_ledger_row_for_the_dispatch_branch_is_observed() -> Bool {
 test fn the_gate_reads_the_seeded_lineage_as_resumable() -> Bool {
   let instance = fresh_instance(tag: "gate")
   let node = "n-wt-gate"
-  let key = "wt-gate-1"
+  let key = "2b3c4d5e6f708192"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
   let pk = ledger_first_key(instance: instance)
@@ -174,7 +174,7 @@ test fn the_gate_reads_the_seeded_lineage_as_resumable() -> Bool {
 test fn the_worktree_is_absent_before_the_restore() -> Bool {
   let instance = fresh_instance(tag: "absent")
   let node = "n-wt-absent"
-  let key = "wt-absent-1"
+  let key = "3c4d5e6f70819213"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -193,7 +193,7 @@ test fn the_worktree_is_absent_before_the_restore() -> Bool {
 test fn the_restore_returns_the_restored_arm() -> Bool {
   let instance = fresh_instance(tag: "arm")
   let node = "n-wt-arm"
-  let key = "wt-arm-1"
+  let key = "4d5e6f7081921324"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -205,7 +205,7 @@ test fn the_restore_returns_the_restored_arm() -> Bool {
 test fn the_restored_worktree_exists_after_the_restore() -> Bool {
   let instance = fresh_instance(tag: "after")
   let node = "n-wt-after"
-  let key = "wt-after-1"
+  let key = "5e6f708192132435"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -223,7 +223,7 @@ test fn the_restored_worktree_exists_after_the_restore() -> Bool {
 test fn the_restored_head_equals_the_branch_head() -> Bool {
   let instance = fresh_instance(tag: "head")
   let node = "n-wt-head"
-  let key = "wt-head-1"
+  let key = "6f70819213243546"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && seed_request_pending_events(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
@@ -241,7 +241,7 @@ test fn the_restored_head_equals_the_branch_head() -> Bool {
 test fn an_already_present_tree_is_not_needed() -> Bool {
   let instance = fresh_instance(tag: "restore-present")
   let node = "n-wt-present"
-  let key = "wt-present-1"
+  let key = "7081921324354657"
   let branch = dispatch_branch_name(node_id: node, attempt_key: key)
   let worktree = dispatch_worktree_path_for_instance(instance: instance, node_id: node, attempt_key: key)
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
@@ -258,7 +258,7 @@ test fn an_already_present_tree_is_not_needed() -> Bool {
 test fn a_lineage_without_a_request_pending_stream_is_not_needed() -> Bool {
   let instance = fresh_instance(tag: "restore-none")
   let node = "n-wt-none"
-  let key = "wt-none-1"
+  let key = "8192132435465768"
   let laid = lay_repo_with_dispatch_branch(instance: instance, node: node, attempt_key: key)
     && prepare_claim_store(instance: instance, node: node, attempt_key: key)
   let step = belt_attempt_worktree_restore_for_instance(instance: instance, node_id: node)
