@@ -22,3 +22,92 @@ test fn the_census_executes_the_same_selection_for_the_planned_site() -> Bool {
       _ => false
     })
 }
+
+import std.types { String }
+import std.content_hash { Sha256Digest, serialize_content_hash }
+import std.error_primitives { Result, Ok, Err }
+import gunbc.auth.authorization_pattern_selection { PatternSelected, ApprovedConvergenceGrant }
+import gunbc.auth.approval_decision_store { request_revision_of }
+import gunbc.auth.approval_request_client { PollApproved }
+import gunbc.auth.approval_gate { approval_gate_from_poll, GateAdmitted, GateRefused }
+import gunbc.auth.privileged_effect_census { capacity_cutover_approval_root, capacity_cutover_root_helper_site }
+import gunbc.fleet.srv1_root_mutation_approval_run {
+  Srv1CutoverRequest, CapacityCutoverJob, CapacityCutoverRequest, ExistingRootMutationJob,
+  ExistingRootMutationRequest, srv1_root_mutation_request_for_kind, srv1_root_mutation_request,
+  srv1_root_mutation_approved_scopes, srv1_cutover_digest_admission
+}
+
+data helper_fixture_digest_a: Sha256Digest = Sha256Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+data helper_fixture_digest_b: Sha256Digest = Sha256Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+
+fn helper_fixture_request(plan: Sha256Digest, helper: Sha256Digest) -> Result<Srv1CutoverRequest, String> {
+  match srv1_root_mutation_request_for_kind(kind: CapacityCutoverJob { plan_digest: plan,
+    helper_digest: helper, internal_scopes: srv1_root_mutation_approved_scopes },
+    escalation_id: "cutover-fixture", execution_revision: "fixture-revision", selects: []) {
+    Ok { value: CapacityCutoverRequest { cutover: cutover } } => Ok { value: cutover }
+    _ => Err { value: "cutover fixture refused" }
+  }
+}
+
+test fn legacy_jobs_keep_the_exact_existing_request_and_scope_list() -> Bool {
+  let prior = srv1_root_mutation_request(job: "microvm_controller_install", escalation_id: "legacy-fixture",
+    execution_revision: "fixture-revision", selects: [])
+  match srv1_root_mutation_request_for_kind(kind: ExistingRootMutationJob { job: "microvm_controller_install" },
+    escalation_id: "legacy-fixture", execution_revision: "fixture-revision", selects: []) {
+    Ok { value: ExistingRootMutationRequest { request: request } } => request == prior
+      && request.scopes == srv1_root_mutation_approved_scopes
+    _ => false
+  }
+}
+
+test fn bound_census_selects_the_existing_convergence_pattern() -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: cutover } => capacity_cutover_approval_root(cutover: cutover).approved_scopes == cutover.request.scopes
+      && (match site_verdict(row: capacity_cutover_root_helper_site(cutover: cutover)).selection {
+        PatternSelected { pattern: ApprovedConvergenceGrant, receipt: _ } => true
+        _ => false
+      })
+  }
+}
+
+test fn observed_plan_and_helper_must_match_the_bound_request() -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: cutover } => srv1_cutover_digest_admission(cutover: cutover,
+      plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_b) == Ok { value: cutover }
+      && (match srv1_cutover_digest_admission(cutover: cutover,
+        plan_digest: helper_fixture_digest_b, helper_digest: helper_fixture_digest_b) { Err { value: _ } => true _ => false })
+      && (match srv1_cutover_digest_admission(cutover: cutover,
+        plan_digest: helper_fixture_digest_a, helper_digest: helper_fixture_digest_a) { Err { value: _ } => true _ => false })
+  }
+}
+
+fn helper_fixture_substitution_refused(other_plan: Sha256Digest, other_helper: Sha256Digest) -> Bool {
+  match helper_fixture_request(plan: helper_fixture_digest_a, helper: helper_fixture_digest_b) {
+    Err { value: _ } => false
+    Ok { value: approved } => match helper_fixture_request(plan: other_plan, helper: other_helper) {
+      Err { value: _ } => false
+      Ok { value: other } => {
+        let poll = PollApproved { revision: request_revision_of(request: approved.request), decided_by: "fixture-operator",
+          decided_at: "2026-10-26T12:00:00Z", execute_by: "2026-10-26T12:30:00Z" }
+        approved.request.subject != other.request.subject && approved.request.purpose != other.request.purpose
+          && serialize_content_hash(hash: approved.request.intent_hash) != serialize_content_hash(hash: other.request.intent_hash)
+          && (match approval_gate_from_poll(poll: poll, request: approved.request, observed_at: "2026-10-26T12:01:00Z") {
+            GateAdmitted { authorization: _ } => true _ => false
+          })
+          && (match approval_gate_from_poll(poll: poll, request: other.request, observed_at: "2026-10-26T12:01:00Z") {
+            GateRefused { cause: _ } => true _ => false
+          })
+      }
+    }
+  }
+}
+
+test fn an_approval_for_another_plan_is_refused_by_the_real_gate() -> Bool {
+  helper_fixture_substitution_refused(other_plan: helper_fixture_digest_b, other_helper: helper_fixture_digest_b)
+}
+
+test fn an_approval_for_another_helper_is_refused_by_the_real_gate() -> Bool {
+  helper_fixture_substitution_refused(other_plan: helper_fixture_digest_a, other_helper: helper_fixture_digest_a)
+}
