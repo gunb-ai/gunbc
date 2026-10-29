@@ -54,13 +54,14 @@ fn capacity_controller_plan(request: CapacityMigrationApplyRequest, install_plan
   match capacity_controller_installs(plan: install_plan) {
     Err { value: why } => Err { value: why }
     Ok { value: installs } => {
-      if count(installs) == 0 { return Err { value: "cutover has no writer generation to install" } }
-      Ok { value: CapacityControllerPlan { legs:
-        [CapacityControllerDrain { request: request }]
+      if count(installs) == 0 { Err { value: "cutover has no writer generation to install" } }
+      else {
+      let legs = [CapacityControllerDrain { request: request }]
         + map(installs, install => CapacityControllerInstall { install: install })
         + map(capacity_controller_reload_managers(installs: installs), manager => CapacityControllerReload { manager: manager })
         + [CapacityControllerDischarge]
-      } }
+      Ok { value: CapacityControllerPlan { legs: legs } }
+      }
     }
   }
 }
