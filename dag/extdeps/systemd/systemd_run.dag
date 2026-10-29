@@ -2,10 +2,17 @@ module extdeps.systemd.systemd_run
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { NonEmptyStr, List, Bool, Int, Unit, String }
+import std.types { NonEmptyStr, List, Bool, Int, Unit, String, EpochSecs }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.algebra { trim }
+// THE WALLCLOCK INSTANT -> CALENDAR SPELLING reuses the ONE civil-from-days authority; the systemd
+// SPELLING (systemd.time(7)) is this module's own fact. The instant is admitted at a typed position,
+// never brand-cast.
+import extdeps.units.iso8601_calendar {
+  iso8601_civil_from_days, iso8601_floor_div, iso8601_two_digits,
+  iso8601_seconds_per_day, iso8601_seconds_per_hour, iso8601_seconds_per_minute,
+}
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -114,6 +121,9 @@ type SystemdRunOption
   = RunUnit { unit: NonEmptyStr }
   | RunUserManager
   | RunScope
+  // systemd-run(1) --on-calendar=EXPR: start the transient unit at a wallclock instant, then (with
+  // --collect) let it fall away. One wake per instant -- not a cadence, not a scheduler.
+  | OnCalendar { expression: NonEmptyStr }
   | PropertyShort { property: SystemdRunProperty }
   | PropertyLong { property: SystemdRunProperty }
   | PathTrigger { directive: SystemdPathDirective }
@@ -139,6 +149,7 @@ type SystemdRunOptionWordsRefusedCause
   | CredentialIdentifierInvalid
   | CredentialSourceNotOneAbsolutePath
   | PathPropertyMultiline
+  | OnCalendarMultiline
 
 type SystemdRunPropertyAssignmentReading
   = SystemdRunPropertyAssignmentReady { assignment: String }
@@ -178,6 +189,7 @@ fn systemd_run_option_words_refused_cause_detail(cause: SystemdRunOptionWordsRef
     CredentialIdentifierInvalid => "a credential ID is one file name with no : (systemd.exec(5) LoadCredential=ID:PATH)"
     CredentialSourceNotOneAbsolutePath => "a LoadCredential= source is one line naming an absolute path, which the manager reads"
     PathPropertyMultiline => "a --path-property= setting is one line"
+    OnCalendarMultiline => "a --on-calendar= expression is one line (systemd.time(7))"
   }
 }
 
@@ -288,6 +300,12 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
           }
         RunUserManager => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--user"]) }
         RunScope => SystemdRunOptionWordsProjected { words: list_append(left: words, right: ["--scope"]) }
+        OnCalendar { expression: e } =>
+          if systemd_run_option_word_has_newline(s: e as String) {
+            systemd_run_option_word_refused(cause: OnCalendarMultiline)
+          } else {
+            SystemdRunOptionWordsProjected { words: list_append(left: words, right: [concat("--on-calendar=", e as String)]) }
+          }
         PathTrigger { directive: d } => systemd_run_path_property_word(words: words, line: systemd_path_directive_line(directive: d))
         PathDependency { directive: d } => systemd_run_path_property_word(words: words, line: systemd_unit_directive_line(directive: d))
         PropertyShort { property: p } =>
@@ -400,6 +418,36 @@ fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<System
   systemd_run_command_of(
     options: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions]))),
     command_argv: command_argv,
+  )
+}
+
+// A ONE-SHOT WALLCLOCK CALENDAR EXPRESSION (systemd.time(7)): "YYYY-MM-DD HH:MM:SS UTC" -- a single
+// instant, fired once. The civil split is the ONE authority (extdeps.units.iso8601_calendar's
+// civil-from-days); only the SPELLING is systemd's, and it lives here beside --on-calendar. The
+// instant is admitted at typed positions (EpochSecs is an Int subtype), never brand-cast.
+fn systemd_onetime_calendar_expression(instant: EpochSecs) -> String {
+  let days = iso8601_floor_div(a: instant, b: iso8601_seconds_per_day())
+  let rem = instant - days * iso8601_seconds_per_day()
+  let hour = rem / iso8601_seconds_per_hour()
+  let within_hour = rem - hour * iso8601_seconds_per_hour()
+  let minute = within_hour / (iso8601_seconds_per_minute() as Int)
+  let second = within_hour - minute * (iso8601_seconds_per_minute() as Int)
+  let date = iso8601_civil_from_days(days: days)
+  join([
+    to_string(date.year), "-", iso8601_two_digits(n: date.month), "-", iso8601_two_digits(n: date.day),
+    " ", iso8601_two_digits(n: hour), ":", iso8601_two_digits(n: minute), ":", iso8601_two_digits(n: second),
+    " UTC",
+  ], "")
+}
+
+// THE USER-MANAGER TRANSIENT ONE-SHOT TIMER: `systemd-run --user --on-calendar=EXPR --unit=NAME
+// --collect --setenv=K=V ... -- CMD`. ONE wake at the named instant; --collect lets the unit fall away
+// after it runs, so a re-arm (same NAME) replaces the pending wake instead of stacking. No cadence,
+// no scheduler: systemd's own wallclock timer fires the command once.
+fn systemd_run_user_oneshot_timer_command(unit: NonEmptyStr, on_calendar: NonEmptyStr, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
+  systemd_run_command_of(
+    options: list_append(left: [RunUserManager, OnCalendar { expression: on_calendar }, RunUnit { unit: unit }, Collect], right: systemd_run_setenv_options(bindings: setenv_bindings)),
+    command_argv: list_append(left: [EndOfOptions], right: command_argv),
   )
 }
 
