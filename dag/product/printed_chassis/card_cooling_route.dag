@@ -19,11 +19,12 @@ import product.printed_chassis.exhaust_thermal {exhaust_rise}
 // The operator's chassis (product.printed_chassis.chassis_clearances) ALLOWS 70 mm from a card's plug end
 // to the rear chassis fan -- their word, authored as a conservative bound under a rough ~73 mm reading,
 // not a caliper reading (DeclaredConservativeByOperator, and gunbc.design_ruling
-// a16_rear_clearance_and_sides_are_operator_declared_bounds for the ruling and the quotes). The existing straight-back duct does not fit in it: with the outlet's
-// edge on Delta's drawing still unread (extdeps.fans.delta delta_bfb1012m_outlet_standing), the socket
+// a16_rear_clearance_and_sides_are_operator_declared_bounds for the ruling and the quotes). The existing straight-back duct does not fit in it: the socket
 // bounds the housing at its LONGER edge behind the end -- product.printed_chassis.gpu_duct
-// blower_reach_behind = 97.2 mm -- plus the socket's 10 mm depth and a wall, so the straight-back home
-// asks the chassis for about 108 mm where it has 70. The duct has to curve.
+// blower_reach_behind = 97.2 mm, which is the bound whether the outlet edge is read as the drawing cites it
+// (extdeps.fans.delta delta_bfb1012m_outlet, on the 94.4 mm depth edge) or bounded over both orientations --
+// plus the socket's 10 mm depth and a wall, so the straight-back home asks the chassis for about 108 mm where
+// it has 70. The duct has to curve.
 //
 // WHAT THE CURVE ACTUALLY BUYS, AND WHAT IT COSTS. A radial blower is a box whose intake axis is its
 // thickness axis and whose outlet lies on the periphery. Two orientations are available and each spends
@@ -43,8 +44,9 @@ import product.printed_chassis.exhaust_thermal {exhaust_rise}
 // bound is a ruling about what the design may spend and not a report of what the chassis is. Their ruling
 // also carried the print: the fit print is the instrument a wrong allowance is caught by, and it costs one
 // PLA plate. What did NOT change is the arithmetic of the other homes (deck-to-lid and the free side lane
-// are still unread and still refuse), the outlet's unread position on Delta's housing, and the fact that
-// nobody has measured anything here.
+// are still unread and still refuse), the outlet -- whose EDGE #15369 has since cited, leaving only the
+// rotation nothing keys in a pocket, which is a fit instruction now (outlet_alignment_obligation) -- and the
+// fact that nobody has measured anything here.
 //
 //   PLANE-ACROSS-ROW  the fan stands on its side wall, its outlet facing the window directly, as the
 //                     existing duct does: only the 33 mm thickness crosses the slot, which the 40.64 mm
@@ -413,13 +415,17 @@ fn finish(home: BlowerHome, needs: List<RouteDemand>, gap: ChassisGap, unmet: Ro
 
 // ═══ THE ONE OBLIGATION THAT NO GEOMETRY HERE CAN CLOSE ═══
 //
-// The outlet has to line up with the cooler's window, and Delta's drawing does not attribute the outlet's
-// position on the housing (extdeps.fans.delta delta_bfb1012m_outlet_standing). Every home above assumes
-// the outlet CAN be aimed at the window; none of them can prove it. The straight-back duct already lives
-// with that ambiguity and says so (product.printed_chassis.gpu_duct); these homes inherit the same caveat
-// rather than inventing a check that would be a guess about where the fan blows.
+// THE OUTLET'S POSITION IS NO LONGER THE BLANK IT WAS. #15369 rendered it off the DIMENSIONS DRAWING of the
+// pinned BFB sheet (extdeps.fans.delta delta_bfb1012m_outlet, standing CitedToAuthority): 29.3 mm across the
+// thickness by 53.9 mm long, inside a 57.9 +/- 0.5 frame, on the DEPTH edge -- the 94.4 mm one -- flush to the
+// corner shared with the 97.2 mm edge. What the drawing does not settle, and no drawing of the fan can, is
+// which way the builder turns the blower in a pocket nothing keys. So this is now a FIT obligation rather than
+// a missing measurement: the flat-on-end pocket leaves its whole peripheral band open and the collector catches
+// the outlet at either end (witnessed against the cited figures themselves in test.claim.gpu_duct_witness
+// w_the_open_band_covers_the_cited_outlet_whichever_end_the_builder_turns), and at the fit print the cited
+// outlet is turned to face the cooler window product.printed_chassis.gpu_duct a16_end_face records.
 fn outlet_alignment_obligation() -> NonEmptyStr {
-  join(["operator or a clearer Delta drawing: where the outlet lies on the housing's periphery (its angle from the volute's tangent and its extent). Every home here needs the outlet aimed at the cooler window product.printed_chassis.gpu_duct a16_end_face records; the model refuses to guess the angle."], "")
+  join(["at the fit print, turn the blower so its cited outlet -- 29.3 mm across the thickness by 53.9 mm long on the 94.4 mm depth edge, flush to the corner shared with the 97.2 mm edge (extdeps.fans.delta delta_bfb1012m_outlet) -- faces the cooler window this part's own end-face record carries, and report whether the collector sits over it. Nothing keys the blower in its pocket, so the pocket is open over the whole peripheral band and either rotation feeds the window; what this model will not do is guess the rotation and then certify the aim."], "")
 }
 
 // ================================================================================================
@@ -1121,9 +1127,10 @@ fn side_display(s: BlockedSide) -> String {
 // std.checked_arithmetic.checked_int_to_nat, which refuses an impossible count rather than fabricating one:
 // Absent here means the inputs asked for a flow that cannot be named.
 // feature:missing-volume-flow-carrier-in-imperial -- dissolve-on: std.measure gains a cubic-foot-per-minute
-// volume-flow carrier; until then mL/s is the corpus's only volumetric-flow authority (each card row's
-// required_airflow obligation in extdeps.gpu says so in as many words: convert CFM to ml/s when
-// transcribing, never store the raw number under the field's name), and CFM exists below only as a rendering of it.
+// volume-flow carrier; until then mL/s is the corpus's only volumetric-flow authority (the GPU card rows say
+// so in as many words -- extdeps.gpu.nvidia_a16 and its siblings, joined by product.printed_chassis
+// .duct_card_catalog: convert CFM to mL/s when transcribing, never store the raw number under the field's
+// name), and CFM exists below only as a rendering of it.
 fn required_flow(heat: Watt, rise: CelsiusDelta) -> MillilitrePerSecond? {
   let rho = gram_per_cubic_metre_count(d: dry_air_at_20c.density)
   let cp = joule_per_kilogram_kelvin_count(c: dry_air_at_20c.specific_heat_cp)

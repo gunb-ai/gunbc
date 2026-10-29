@@ -132,9 +132,9 @@ type BmcWorld {
   // A typed surface read, NOT a defaulted collection (DESIGN 5): `none` means the Redfish surface was
   // never modeled for this scenario (an unreadable surface, which the dry read reports as absence, never
   // as an empty census); `Present { [] }` means the surface is modeled and serves zero accounts. The two
-  // are distinct facts and the dry read must not collapse them. Default `none` keeps an IPMI-only world
-  // (which never touches Redfish) honest as "unmodeled" without forcing every literal to name it.
-  redfish_accounts: List<BmcRedfishAccount>? = none
+  // are distinct facts and the dry read must not collapse them. Every literal names it (explicit-present
+  // authoring policy): an IPMI-only world writes `none`.
+  redfish_accounts: List<BmcRedfishAccount>?
 }
 
 fn bmc_world(power: BmcPower) -> BmcWorld {
