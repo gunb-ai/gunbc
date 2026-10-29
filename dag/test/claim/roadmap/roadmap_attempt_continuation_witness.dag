@@ -384,7 +384,7 @@ test fn a_pending_request_with_a_recorded_capture_holds_or_resumes_never_refused
 // NotAttempted, so the refusal never cleared. The projection fix makes it owed; this witness pins that a
 // NOT-attempted capture is still refused, so the fix lives upstream in the projection, not in loosening here.
 test fn a_pending_request_with_no_recorded_capture_is_still_refused_for_owed_capture() -> Bool {
-  match continuation_decision(prior: pending_pri(CaptureNotAttempted)) {
+  match continuation_decision(prior: pending_pri(CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" })) {
     ContinuationRefused { reason } => true
     _ => false
   }

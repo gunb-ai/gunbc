@@ -834,6 +834,7 @@ test fn a_fold_event_is_locked_for_every_locked_class() -> Bool {
            TerminalityCompleted { activity: _ } => true
            TerminalityRefused => true
            TerminalityEventsRefused => true
+           TerminalityPending { activity: _ } => true
            TerminalityNotStarted => false
            TerminalityWorking => false
          },
