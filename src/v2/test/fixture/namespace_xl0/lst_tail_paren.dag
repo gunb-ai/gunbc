@@ -1,6 +1,6 @@
 // Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
 // Read as a module by the native lane. Discriminator: a braced arm block whose tail statement begins with a parenthesized expression, the shape dag/gunbc/instruments/compute_run_unit_cold.dag:97 authors. If this refuses while lst_tail_call lowers, a statement expression cannot begin with '(', which is where the residual refusal lives.
-module v2.test.fixture.namespace_xl0.lst_lst_tail_paren
+module v2.test.fixture.namespace_xl0.lst_tail_paren
 
 import v2.std.logic { Bool }
 import v2.std.integer { Int }

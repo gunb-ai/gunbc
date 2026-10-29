@@ -1,6 +1,6 @@
 // Materialized fixture for the statement-position claim suite (v2.test.claim.namespace_xl0.let_statement_position).
 // Read as a module by the native lane. Shape of both gap files: the braced block is the LAST arm of the match, preceded by an arm whose body is a plain value. Must lower.
-module v2.test.fixture.namespace_xl0.lst_lst_last_arm_block
+module v2.test.fixture.namespace_xl0.lst_last_arm_block
 
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
