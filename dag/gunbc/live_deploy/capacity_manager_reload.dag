@@ -1,5 +1,13 @@
 module gunbc.live_deploy.capacity_manager_reload
 
+import std.decl_ref { decl_ref }
+import std.optional { Present, Absent }
+import std.cache_identity { cutover_capture_artifact_kind }
+import extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStoreBracket, LocalStoreFamilyHeld,
+  local_store_binding_path, local_store_held_session, local_store_bind_retention }
+import gunbc.durable_cas_file_store { SlotStore }
+import gunbc.live_deploy.capacity_capture_store { CapacityCaptureStore }
+import gunbc.live_deploy.capacity_capture_provider { capacity_cutover_journal_read }
 import std.types { String, NonEmptyStr, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { sha256_hex_of_text }
@@ -58,7 +66,9 @@ fn capacity_reload_claim_admission(outcome: AuthorizationClaimOutcome) -> Result
 // phase's capability. The port is the existing apply manager transport.
 fn capacity_reload_run_authorized(approval: CapacityCutoverAuthorization, record: CapacityCutoverRecord,
   manager: SystemdManager, boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
-  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<ShellResponse, String> {
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<ShellResponse, String>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_journal_held")]
+{
   let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
   match capacity_reload_record_admission(approval: approval, record: record, manager: manager, boundary: boundary, at: at) {
     Err { value: why } => { return Err { value: why } } Ok { value: _ } => {}
@@ -75,4 +85,39 @@ fn capacity_reload_run_authorized(approval: CapacityCutoverAuthorization, record
     ExitSuccess => Ok { value: result }
     ExitFailure { code: _, reason: why } => Err { value: why }
   }
+}
+
+
+// Read phase and spend under the same family hold used by every journal writer.
+// Consent is checked before acquiring that effectful hold and again inside it.
+fn capacity_reload_from_journal(store: CapacityCaptureStore, provider: LocalStoreCapability,
+  journal: SlotStore, key: NonEmptyStr, approval: CapacityCutoverAuthorization, manager: SystemdManager,
+  boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<LocalStoreBracket<Result<ShellResponse, String>>, String> {
+  if local_store_binding_path(b: provider.binding) != (store.root as String) || store.attempt != approval.intent.attempt {
+    return Err { value: "reload provider or approval belongs to another apply" }
+  }
+  let at = match now() { Err { value: why } => { return Err { value: why } } Ok { value: value } => value }
+  match capacity_cutover_reload_admission(authorization: approval, manager: manager, boundary: boundary, at: at) {
+    Err { value: why } => Err { value: why }
+    Ok { value: _ } => Ok { value: local_store_held_session(capability: provider, family: cutover_capture_artifact_kind,
+      run: held => capacity_reload_journal_held(store: store, journal: journal, key: key, held: held,
+        approval: approval, manager: manager, boundary: boundary, now: now, run: run)) }
+  }
+}
+
+fn capacity_reload_journal_held(store: CapacityCaptureStore, journal: SlotStore, key: NonEmptyStr,
+  held: LocalStoreFamilyHeld, approval: CapacityCutoverAuthorization, manager: SystemdManager,
+  boundary: CapacityReloadBoundary, now: fn() -> Result<Timestamp, String>,
+  run: fn(SystemdManager) -> Result<ShellResponse, String>) -> Result<ShellResponse, String>
+  admit_callers: [decl_ref(module_path: "gunbc.live_deploy.capacity_manager_reload", decl_name: "capacity_reload_from_journal")]
+{
+  let reading = match capacity_cutover_journal_read(store: store, journal: journal, key: key) {
+    Err { value: why } => { return Err { value: why } } Ok { value: value } => value
+  }
+  let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
+  match local_store_bind_retention(held: held, scope: scope) {
+    Present { value: _ } => { return Err { value: "reload journal retention hold is not current" } } Absent => {}
+  }
+  capacity_reload_run_authorized(approval: approval, record: reading.record, manager: manager, boundary: boundary, now: now, run: run)
 }
