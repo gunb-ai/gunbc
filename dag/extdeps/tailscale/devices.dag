@@ -27,6 +27,21 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 // Where this model and that fixture agree, the field is real. Where a field is Optional, that is the
 // model naming a fact it is not certain of rather than a fact it believes untrue (DESIGN 11.5).
 //
+// THE CITATIONS WERE RE-READ AGAINST UPSTREAM WHILE THIS MODULE WAS UNDER REVIEW, and three of them
+// were wrong the first time -- which is the whole reason they are cited. The current client
+// (https://github.com/tailscale/tailscale-client-go-v2/blob/main/devices.go) states the two naming
+// facts this module now carries: `ID string json:"id" // The legacy identifier for a device. Use
+// NodeId instead.` and `NodeID string json:"nodeId" // The preferred identifier for a device.` -- and
+// its `LastSeen *Time json:"lastSeen" // Will be nil if ConnectedToControl is true.` plus
+// `UpdateAvailable bool json:"updateAvailable"` set the nullability and the type. The recorded fixture
+// (https://github.com/tailscale/tailscale-client-go-v2/blob/main/testdata/devices.json) shows ids
+// "50052"/"50053" -- opaque short decimal strings, NOT a "dev"+hex shape -- nodeIds
+// "nTESTJ30"/"nTESTJ31", and machineKeys spelled "mkey:"+64hex, not "machinekey:". And
+// https://github.com/tailscale/tailscale/blob/main/tailcfg/tailcfg.go is why the provider's `nodeId`
+// and a node's own `Self.ID` are the SAME identity kind and may be compared at all: "StableNodeID is a
+// string form of NodeID ... But in general, Tailscale APIs can accept either a [NodeID] integer or a
+// [StableNodeID] string when referring to a node."
+//
 // READ-ONLY, BY CONSTRUCTION. This module declares the response types, the identity types, and ONE
 // operation. It declares no POST, no PATCH, no DELETE, no key expiry, no tag mutation, no ACL write,
 // and no device creation -- the plan's out-of-scope list (fleet_naming_reach_access section 8) is
@@ -44,40 +59,54 @@ import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 
 // ── The identities, each its own brand ────────────────────────────────────────────────────────
 
-// THE DEVICE ID: the management API's handle for a device. It appears in the list response as `id`
-// and as the {id} segment of the device sub-resource paths the vendor client builds
-// (/api/v2/device/{id}, .../routes, .../tags, .../key). Upstream form is the literal "dev" plus 16
-// hex characters, e.g. "dev5B71A6FC02420C15". `tailscale status --json` does NOT report it, which is
-// exactly why it is not the member-side join key; it keys the provider side.
+// THE DEVICE ID: the management API's LEGACY handle for a device. It appears in the list response as
+// `id` and as the {id} segment of the device sub-resource paths the vendor client builds
+// (/api/v2/device/{id}, .../routes, .../tags, .../key). The current vendor client comments it `ID
+// string json:"id" // The legacy identifier for a device. Use NodeId instead.` and its recorded
+// fixture carries ids "50052" and "50053" -- short opaque decimal strings. It is therefore modelled as
+// OPAQUE: no shape is asserted beyond non-empty and whitespace-free, because a shape asserted here
+// would be a fact about Tailscale's allocation policy that no cited source gives, and a parser built on
+// it would refuse real devices. `tailscale status --json` does NOT report it, which is exactly why it
+// is not the member-side join key; it keys the provider side and names a refusal's subject.
 type DeviceId = NonEmptyStr where brand("DeviceId")
 
 // THE NODE KEY: the device's WireGuard public key in node-key form. The device list carries it as
-// `nodeKey`; a node reports the SAME string about itself -- `tailscale status --json` keys each Peer
-// by it and prints it as Self's key (gunbc.fleet.fleet_probe_identity_observe reads exactly that
-// value on srv2, where it observes
-// "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927"). THIS is the pairable
-// identity between provider and member, and it is the census's join key. Form: "nodekey:" then 64
-// hex characters.
+// `nodeKey`; a node reports the SAME string about itself -- `tailscale status --json` keys each Peer by
+// it and prints it for Self under the member `PublicKey` (ipnstate.PeerStatus: `PublicKey
+// key.NodePublic`, whose MarshalText is the "nodekey:"+64hex form; srv2's real document of 2026-10-28
+// carries "PublicKey":"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927" and
+// NO member named "Key"). THIS is the pairable identity between provider and member, and it is the
+// census's join key. Form: "nodekey:" then 64 hex characters.
 type DeviceKey = NonEmptyStr where brand("DeviceKey")
 
-// THE LEGACY MACHINE KEY, upstream `machineKey` ("machinekey:" + 64 hex). The vendor's own struct
-// documents it: "LegacyMachineKey contains the device machine key. Deprecated, use NodeKey instead."
-// Optional, so a response carrying it is not silently dropped -- and never joined on: a field upstream
-// calls deprecated is precisely where two sources can disagree.
+// THE LEGACY MACHINE KEY, upstream `machineKey`, spelled "mkey:" + 64 hex in the vendor's own recorded
+// fixture ("mkey:30dc1b46973e01432b6c23e20e26f00e53bf514d2308665dd68030c93d2d708b"). The vendor's own
+// struct documents it: "LegacyMachineKey contains the device machine key. Deprecated, use NodeKey
+// instead." Optional, so a response carrying it is not silently dropped -- and never joined on: a field
+// upstream calls deprecated is precisely where two sources can disagree.
 type LegacyMachineKey = NonEmptyStr where brand("LegacyMachineKey")
 
-// THE NODE ID: the numeric node identifier the control plane assigns, printed by `tailscale status
-// --json` as Self.NodeID (ipnstate.PeerStatus.NodeID, upstream comment: "NodeID is a unique (within a
-// Tailnet) persistent identifier, assigned by the control server. Currently this is a sequential
-// integer beginning at 1"; observed on srv2: 5112399786040428). The provider device list does NOT
-// carry it, so it pairs nothing by itself; it is recorded so a row can name the node the member
-// reported, and so "my observations name different nodes" is a refusal the census can state.
+// THE NODE ID: the NUMERIC node identifier the control plane assigns, printed by `tailscale status
+// --json` as Self.NodeID -- a JSON NUMBER, not a string (ipnstate.PeerStatus: `NodeID tailcfg.NodeID`;
+// tailcfg: "NodeID is a unique integer ID for a node ... global within a control plane URL ... NodeIDs
+// are not stable across control plane URLs"; observed on srv2: "NodeID": 5112399786040428, unquoted).
+// The provider device list does NOT carry this integer -- it carries the string form, `nodeId`, which
+// is StableNodeId below -- so this brand pairs nothing by itself; it is recorded so a row can name the
+// node the member reported, and so "my observations name different nodes" is a refusal the census can
+// state. Modelled as the decimal digits of that number, because a brand over a lexeme the wire prints
+// as a number is only honest if the reader converts the number to that lexeme.
 type NodeId = NonEmptyStr where brand("NodeId")
 
-// THE STABLE NODE ID: `Self.ID` in `tailscale status --json` (ipnstate: "ID is an opaque public
-// identifier that apps such as Minecraft rely on", observed on srv2: "nm17WF5Rvg11CNTRL"). It
-// survives key rotation, which is exactly when the node key changes -- so a row carries it WITH the
-// key, not instead of it.
+// THE STABLE NODE ID, and the reason this module is the home of the join. A node reports it about
+// itself as `Self.ID` in `tailscale status --json` (ipnstate.PeerStatus: `ID tailcfg.StableNodeID`;
+// observed on srv2: "nm17WF5Rvg11CNTRL"), and the provider reports the SAME identifier about the same
+// device as `nodeId` -- the current vendor client's `NodeID string json:"nodeId" // The preferred
+// identifier for a device.`, fixture "nTESTJ30". tailcfg says why those are one kind of thing and may
+// be compared: "StableNodeID is a string form of NodeID ... Tailscale APIs can accept either a [NodeID]
+// integer or a [StableNodeID] string when referring to a node." So the census's pairing is checked on
+// TWO identities the two sides each report independently: the node key (which changes on key rotation)
+// and this one (which survives it). It survives key rotation, which is exactly when the node key
+// changes -- so a row carries it WITH the key, not instead of it.
 type StableNodeId = NonEmptyStr where brand("StableNodeId")
 
 // WHAT A CENSUS ROW CARRIES AS "WHICH DEVICE IS THIS": the pair both sides can be checked against.
@@ -208,12 +237,20 @@ fn prefixed_hex_check(text: String, prefix: String, body_len: Int) -> ShapeCheck
   }
 }
 
-// THE DEVICE ID: "dev" + 16 hex. Case is NOT folded -- upstream carries "dev5B71A6FC02420C15" and the
-// vendor client round-trips it verbatim, so spelling is part of the identity.
+// THE DEVICE ID is OPAQUE, because upstream says it is legacy and its own fixture shows what it holds:
+// ids "50052" and "50053" (tailscale-client-go-v2 testdata/devices.json), short decimal strings, while
+// the vendor comment says "The legacy identifier for a device. Use NodeId instead." The only rules are
+// therefore non-empty and whitespace-free, and the value minted is the TRIMMED one -- asserting a shape
+// here ("dev" + 16 hex, which an earlier version of this module did) would have refused every device in
+// the vendor's own recorded response, and no upstream source was ever cited for it.
 fn parse_device_id(text: String) -> DeviceIdParse {
-  match prefixed_hex_check(text: text, prefix: "dev", body_len: 16) {
-    ShapeBad { reason: r } => DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: r } }
-    ShapeOk { value: v } => DeviceIdOk { value: (v as String) as DeviceId }
+  let trimmed = trim(s: text)
+  if string_length(s: trimmed) == 0 {
+    DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: "an empty device id is a missing device id: the provider names no device with it" as NonEmptyStr } }
+  } else if carries_whitespace(text: trimmed, pos: 0) {
+    DeviceIdBad { failure: IdentityParseFailure { field: "DeviceId" as NonEmptyStr, reason: "an id carrying whitespace is a rendering, not an id -- and the id is used as a path segment upstream" as NonEmptyStr } }
+  } else {
+    DeviceIdOk { value: trimmed as DeviceId }
   }
 }
 
@@ -225,21 +262,27 @@ fn parse_device_key(text: String) -> DeviceKeyParse {
   }
 }
 
-// THE LEGACY MACHINE KEY: "machinekey:" + 64 hex. Never joined on; see its type.
+// THE LEGACY MACHINE KEY: "mkey:" + 64 hex -- the spelling the vendor's own recorded fixture carries
+// ("mkey:30dc1b46973e01432b6c23e20e26f00e53bf514d2308665dd68030c93d2d708b"). An earlier version of this
+// parser required the prefix "machinekey:", which no upstream body carries, so it refused every machine
+// key in the fixture while claiming to validate the field. Never joined on; see its type.
 fn parse_legacy_machine_key(text: String) -> LegacyMachineKeyParse {
-  match prefixed_hex_check(text: text, prefix: "machinekey:", body_len: 64) {
+  match prefixed_hex_check(text: text, prefix: "mkey:", body_len: 64) {
     ShapeBad { reason: r } => LegacyMachineKeyBad { failure: IdentityParseFailure { field: "LegacyMachineKey" as NonEmptyStr, reason: r } }
     ShapeOk { value: v } => LegacyMachineKeyOk { value: (v as String) as LegacyMachineKey }
   }
 }
 
-// THE NODE ID is digits only -- ipnstate says it is a decimal integer, so a value with a sign, a space,
-// or any non-digit is not one (an integer-coercion parse would swallow the first two).
+// THE NODE ID is decimal digits only -- tailcfg declares `NodeID ID` where ID is an int64 and the
+// comment reads "NodeID is a unique integer ID for a node ... global within a control plane URL", and
+// ipnstate prints it as a JSON NUMBER. A value with a sign, a space, or any non-digit is not one (an
+// integer-coercion parse would swallow the first two, and a JSON-string-only reader would refuse every
+// real document -- both were defects here once).
 fn parse_node_id(text: String) -> NodeIdParse {
   if string_length(s: text) == 0 {
     NodeIdBad { failure: IdentityParseFailure { field: "NodeId" as NonEmptyStr, reason: "an empty node id is a missing node id, not a node id" as NonEmptyStr } }
   } else if !all_in_alphabet(text: text, alphabet: "0123456789") {
-    NodeIdBad { failure: IdentityParseFailure { field: "NodeId" as NonEmptyStr, reason: "ipnstate reports NodeID as a decimal integer (\"a sequential integer beginning at 1\"); any non-digit makes it something else" as NonEmptyStr } }
+    NodeIdBad { failure: IdentityParseFailure { field: "NodeId" as NonEmptyStr, reason: "tailcfg reports NodeID as an integer and ipnstate prints it as a JSON number (srv2: \"NodeID\": 5112399786040428); any non-digit makes it something else" as NonEmptyStr } }
   } else {
     NodeIdOk { value: text as NodeId }
   }
@@ -265,9 +308,9 @@ fn parse_stable_node_id(text: String) -> StableNodeIdParse {
 
 // WHY THE PROVIDER'S IDENTITIES ARE RE-VALIDATED RATHER THAN TRUSTED, and why this is what makes the
 // provider-side parsers real rather than witness-only: list_devices calls it, so parse_device_id,
-// parse_device_key and parse_legacy_machine_key each have a production consumer, and a malformed provider
-// identity is caught on the path the census actually takes (DESIGN 5: done means a real consumer green by
-// execution, not a witness asserting that a parser exists).
+// parse_device_key, parse_stable_node_id and parse_legacy_machine_key each have a production consumer,
+// and a malformed provider identity is caught on the path the census actually takes (DESIGN 5: done means
+// a real consumer green by execution, not a witness asserting that a parser exists).
 //
 // THE PROVIDER IDENTITY GATE. WHY IT READS STRINGS, NOT DEVICES. The wire decoder mints a brand by cast
 // -- it has nothing else -- and it does NOT call the parsers below. So `id: DeviceId from "id"` hands back
@@ -280,16 +323,24 @@ fn parse_stable_node_id(text: String) -> StableNodeIdParse {
 // census that quietly reports nine machines when the provider listed ten -- one of them with a corrupt key
 // -- is reporting something untrue. The first offender is returned with its field and reason so the census
 // says what it found rather than that it found nothing.
-fn provider_identity_failure(id: String, node_key: String, legacy_machine_key: String?) -> IdentityParseFailure? {
+fn provider_identity_failure(
+  id: String,
+  node_key: String,
+  node_id: String,
+  legacy_machine_key: String?,
+) -> IdentityParseFailure? {
   match parse_device_id(text: id) {
     DeviceIdBad { failure: f } => Present { value: f }
     DeviceIdOk { value: _ } => match parse_device_key(text: node_key) {
       DeviceKeyBad { failure: f } => Present { value: f }
-      DeviceKeyOk { value: _ } => match legacy_machine_key {
-        Absent => Absent
-        Present { value: k } => match parse_legacy_machine_key(text: k) {
-          LegacyMachineKeyBad { failure: f } => Present { value: f }
-          LegacyMachineKeyOk { value: _ } => Absent
+      DeviceKeyOk { value: _ } => match parse_stable_node_id(text: node_id) {
+        StableNodeIdBad { failure: f } => Present { value: f }
+        StableNodeIdOk { value: _ } => match legacy_machine_key {
+          Absent => Absent
+          Present { value: k } => match parse_legacy_machine_key(text: k) {
+            LegacyMachineKeyBad { failure: f } => Present { value: f }
+            LegacyMachineKeyOk { value: _ } => Absent
+          }
         }
       }
     }
@@ -299,6 +350,7 @@ fn provider_identity_failure(id: String, node_key: String, legacy_machine_key: S
 type ProviderIdentityStrings {
   id: String
   node_key: String
+  node_id: String
   legacy_machine_key: String?
 }
 
@@ -306,9 +358,14 @@ fn device_identity_strings(device: Device) -> ProviderIdentityStrings {
   ProviderIdentityStrings {
     id: device.id as String,
     node_key: device.node_key as String,
+    node_id: device.node_id as String,
+    // WHY AN EMPTY MACHINE KEY IS READ AS ABSENT AND NOT AS A KEY: the vendor's own recorded response
+    // carries "machineKey": "" for its first device -- upstream spells "no machine key" as the empty
+    // string, not as a missing member. Passing that to the parser would refuse a real listing over a
+    // field the census never joins on; pretending it is a key would mint a brand over nothing.
     legacy_machine_key: match device.legacy_machine_key {
       Absent => Absent
-      Present { value: k } => Present { value: k as String }
+      Present { value: k } => if string_length(s: k as String) == 0 { Absent } else { Present { value: k as String } }
     },
   }
 }
@@ -322,7 +379,7 @@ fn first_bad_provider_identity(devices: List<Device>) -> IdentityParseFailure? {
     f: (acc, d) => match acc {
       Present { value: f0 } => Present { value: f0 }
       Absent => match device_identity_strings(device: d) {
-        ProviderIdentityStrings { id: id, node_key: node_key, legacy_machine_key: legacy } => provider_identity_failure(id: id, node_key: node_key, legacy_machine_key: legacy)
+        ProviderIdentityStrings { id: id, node_key: node_key, node_id: node_id, legacy_machine_key: legacy } => provider_identity_failure(id: id, node_key: node_key, node_id: node_id, legacy_machine_key: legacy)
       }
     },
   )
@@ -332,30 +389,40 @@ fn first_bad_provider_identity(devices: List<Device>) -> IdentityParseFailure? {
 
 // ONE DEVICE FROM `GET /api/v2/tailnet/{tailnet}/devices`. Names follow the vendor client's Device
 // struct and the decoded wire fixture cited at the module head, through the language's own wire-name
-// reading (extdeps.languages.json). The identity pair is REQUIRED -- a device the census cannot
-// identify is not a row, it is a refusal the census states. Everything the census does not read today
-// is Optional rather than absent, because P3/P4 want some of it (a reachability verdict needs
-// `blocksIncomingConnections`, an ACL target needs `tags`), and Optional says "exists upstream, not
-// certain here" where absence says "not true".
+// reading (extdeps.languages.json). The identity TRIPLE is REQUIRED -- `id` (legacy), `nodeId`
+// (preferred; the current client says "The preferred identifier for a device.", fixture "nTESTJ30") and
+// `nodeKey` -- because a device the census cannot identify is not a row, it is a refusal the census
+// states, and because the census's pairing is only checkable if the provider's preferred identifier is
+// in the model at all: an earlier version of this record omitted `nodeId` entirely, which is what made
+// the join unable to tell a re-keyed machine from a cloned one. `updateAvailable` is a Bool upstream
+// (`UpdateAvailable bool`, fixture false) -- it was modelled as a String here, which is a type error
+// against the vendor's own struct. `tags` and `lastSeen` are Optional because the fixture shows them
+// missing: no device in tailscale-client-go-v2's testdata/devices.json carries `tags` at all, and its
+// third device carries no `lastSeen` (the v2 client: "LastSeen *Time ... Will be nil if
+// ConnectedToControl is true"). Everything the census does not read today is Optional rather than
+// absent, because P3/P4 want some of it (a reachability verdict needs `blocksIncomingConnections`, an
+// ACL target needs `tags`), and Optional says "exists upstream, not certain here" where absence says
+// "not true" (DESIGN 11.5).
 type Device {
   id: DeviceId from "id"
+  node_id: StableNodeId from "nodeId"
   node_key: DeviceKey from "nodeKey"
   name: NonEmptyStr from "name"
   hostname: NonEmptyStr from "hostname"
   addresses: List<NonEmptyStr> from "addresses"
   user: NonEmptyStr from "user"
   authorized: Bool from "authorized"
-  tags: List<NonEmptyStr> from "tags"
+  tags: List<NonEmptyStr>? from "tags"
   is_external: Bool from "isExternal"
   blocks_incoming_connections: Bool from "blocksIncomingConnections"
   os: NonEmptyStr from "os"
-  last_seen: String from "lastSeen"
+  last_seen: String? from "lastSeen"
   created: String from "created"
   expires: String from "expires"
   key_expiry_disabled: Bool from "keyExpiryDisabled"
   client_version: String from "clientVersion"
   legacy_machine_key: LegacyMachineKey? from "machineKey"
-  update_available: String from "updateAvailable"
+  update_available: Bool from "updateAvailable"
 }
 
 // The envelope: {"devices": [ ... ]}. The fixture's top-level member is `devices`, and the vendor

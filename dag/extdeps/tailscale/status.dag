@@ -157,21 +157,29 @@ type NodeField =
   NodeHere { value: NodeId }
   | NodeGone { field: NonEmptyStr, cause: NonEmptyStr }
 
-// Self's "Key" -- ipnstate: "the wireguard public key of the peer", in the form ipnstate prints it,
-// "nodekey:<64 lowercase hex>". This is THE JOIN KEY of the census, and it is validated here in exactly the
-// form the provider's "nodeKey" is validated in devices.dag, because the join is only as honest as the two
-// sides that meet in it.
+// Self's "PublicKey" -- ipnstate.PeerStatus declares `PublicKey key.NodePublic`, and key.NodePublic
+// marshals to "nodekey:<64 lowercase hex>", the same text the provider's "nodeKey" carries. This is THE
+// JOIN KEY of the census, and it is validated here in exactly the form the provider's "nodeKey" is
+// validated in devices.dag, because the join is only as honest as the two sides that meet in it.
+//
+// WHY THE MEMBER IS "PublicKey" AND NOT "Key". An earlier version of this reader asked for "Key", which
+// is not a member of the document at all: srv2's real `tailscale status --json` of 2026-10-28 carries
+// "PublicKey":"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927" and no "Key"
+// anywhere, and ipnstate has no such field. A reader for an absent member cannot fail loudly here -- it
+// returns Absent -- so the invented spelling sat one step from a census reporting "no local node
+// identity" about a machine that has one. The refusal below, and the witness that runs this document and
+// one with the invented member, are what keep that difference visible.
 fn device_key_field(document: JsonValue) -> DeviceKeyField {
-  match member_string(document: document, key: "Key") {
+  match member_string(document: document, key: "PublicKey") {
     Absent => DeviceKeyGone {
       field: "DeviceKey" as NonEmptyStr,
-      cause: "the status document's Self record carries no readable \"Key\" member, whose upstream form is \"nodekey:<64 lowercase hex>\"" as NonEmptyStr,
+      cause: "the status document's Self record carries no readable \"PublicKey\" member, whose upstream form is \"nodekey:<64 lowercase hex>\" (ipnstate.PeerStatus.PublicKey)" as NonEmptyStr,
     }
     Present { value: text } => match parse_device_key(text: text) {
       DeviceKeyOk { value: k } => DeviceKeyHere { value: k }
       DeviceKeyBad { failure: f } => DeviceKeyGone {
         field: "DeviceKey" as NonEmptyStr,
-        cause: string_concat_join(fields: ["the status document's \"Key\" member is not a node key: ", f.reason], separator: "") as NonEmptyStr,
+        cause: string_concat_join(fields: ["the status document's \"PublicKey\" member is not a node key: ", f.reason], separator: "") as NonEmptyStr,
       }
     }
   }

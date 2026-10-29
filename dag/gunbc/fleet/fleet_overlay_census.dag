@@ -130,7 +130,7 @@ type OverlayCensusRow {
   provider_authorized: Bool
 // The provider's tags, carried toward P4's ACL target. Reading them is a read; this module has no way
 // to write them.
-  provider_tags: List<NonEmptyStr>
+  provider_tags: List<NonEmptyStr>?
 // The fleet-slot-side facts, and how they were obtained.
   host_facts: HostFacts
 }
@@ -168,7 +168,20 @@ type OverlayCensusRefusal =
 // OBSERVATIONS NAMING DIFFERENT NODES. More than one status observation was taken for what is presented
 // as one member, and they report different nodes. The census holds two accounts of one machine with no
 // basis to pick, so it refuses rather than averaging.
-  | ObservationsNameDifferentNodes { member: NonEmptyStr, observed_node_keys: List<DeviceKey> }
+  | ObservationsNameDifferentNodes {
+    member: NonEmptyStr
+    observed_node_keys: List<DeviceKey>
+    observed_stable_node_ids: List<StableNodeId>
+  }
+// NODE KEY MATCHES, NODE ID DISAGREES. The provider device carrying the member's node key names a
+// different node id than the member reports about itself. The plan joins on device AND node identity, so
+// agreement on one half only is not a pairing: it is a re-keyed or cloned machine, and no row is minted.
+  | NodeKeyMatchWithDifferentNodeId {
+    member: NonEmptyStr
+    candidate: DeviceIdentity
+    provider_node_id: StableNodeId
+    observed_stable_node_id: StableNodeId
+  }
 // THE PROVIDER LIST ITSELF IS UNAVAILABLE -- kept distinct from an EMPTY list, because an empty list is
 // a fact about the fleet and a refusal is a fact about the credential. This census is exactly the
 // instrument that must not report the second as the first.
@@ -217,22 +230,47 @@ fn host_facts_for(identity: DeviceIdentity, bindings: List<OverlayHostBinding>) 
   }
 }
 
-// The distinct node keys the observations named. A refused observation contributes nothing: it is not a
-// second account of the node, it is a missing account, and its own arm reports it.
-fn observed_node_keys(observations: List<StatusObservation>) -> List<DeviceKey> {
+// The refusals among the observations. A refused observation is a missing account of the node, so a member
+// with ANY of them is not censused on the strength of the others: [Observed, Refused] and
+// [Refused, Observed] must answer alike.
+fn refused_failures(observations: List<StatusObservation>) -> List<StatusObservationFailure> {
   fold(
     observations,
     init: [],
     f: (acc, observation) => match observation {
-      Observed { identity: i } => {
-        if any(acc, existing => device_key_eq(a: existing, b: i.node_key)) {
-          acc
-        } else {
-          append(acc, [i.node_key])
-        }
-      }
+      Observed { identity: _ } => acc
+      Refused { failure: f } => append(acc, [f])
+    },
+  )
+}
+
+fn admitted_identities(observations: List<StatusObservation>) -> List<StatusIdentity> {
+  fold(
+    observations,
+    init: [],
+    f: (acc, observation) => match observation {
+      Observed { identity: i } => append(acc, [i])
       Refused { failure: _ } => acc
     },
+  )
+}
+
+// The distinct node keys the admitted observations named, in first-seen order.
+fn observed_node_keys(identities: List<StatusIdentity>) -> List<DeviceKey> {
+  fold(
+    identities,
+    init: [],
+    f: (acc, i) => if any(acc, existing => device_key_eq(a: existing, b: i.node_key)) { acc } else { append(acc, [i.node_key]) },
+  )
+}
+
+// The distinct stable node ids the admitted observations named. Two observations with one node key and
+// two stable ids are two accounts of one machine that cannot both be true.
+fn observed_stable_node_ids(identities: List<StatusIdentity>) -> List<StableNodeId> {
+  fold(
+    identities,
+    init: [],
+    f: (acc, i) => if any(acc, existing => (existing as String) == (i.stable_node_id as String)) { acc } else { append(acc, [i.stable_node_id]) },
   )
 }
 
@@ -260,22 +298,28 @@ fn census_member(
   devices: List<Device>,
   bindings: List<OverlayHostBinding>,
 ) -> OverlayCensusEntry {
-  let keys = observed_node_keys(observations: observations)
-  if keys.count() > 1 {
+  let admitted = admitted_identities(observations: observations)
+  let keys = observed_node_keys(identities: admitted)
+  let stable_ids = observed_stable_node_ids(identities: admitted)
+  if keys.count() > 1 || stable_ids.count() > 1 {
     CensusRefused {
-      refusal: ObservationsNameDifferentNodes { member: member, observed_node_keys: keys },
+      refusal: ObservationsNameDifferentNodes {
+        member: member,
+        observed_node_keys: keys,
+        observed_stable_node_ids: stable_ids,
+      },
     }
   } else {
-    match observations.first() {
+    match refused_failures(observations: observations).first() {
+      Present { value: f } => CensusRefused { refusal: refusal_of(member: member, failure: f) }
+      Absent => match admitted.first() {
       Absent => CensusRefused {
         refusal: NoLocalNodeIdentity {
           member: member,
           cause: "no status observation was taken of this member at all: an unobserved member is not an absent member" as NonEmptyStr,
         },
       }
-      Present { value: observation } => match observation {
-        Refused { failure: f } => CensusRefused { refusal: refusal_of(member: member, failure: f) }
-        Observed { identity: observed } => {
+      Present { value: observed } => {
           let candidates = devices_matching_node_key(devices: devices, key: observed.node_key)
           if candidates.count() > 1 {
             CensusRefused {
@@ -305,20 +349,31 @@ fn census_member(
                   },
                 }
               }
-              Present { value: device } => CensusRow {
-                row: OverlayCensusRow {
-                  identity: DeviceIdentity { device_id: device.id, node_key: device.node_key },
-                  provider_device_name: device.name,
-                  provider_hostname: device.hostname,
-                  observed_host_name: observed.host_name,
-                  observed_tailscale_ips: observed.tailscale_ips,
-                  provider_authorized: device.authorized,
-                  provider_tags: device.tags,
-                  host_facts: host_facts_for(
+              Present { value: device } => if (device.node_id as String) == (observed.stable_node_id as String) {
+                CensusRow {
+                  row: OverlayCensusRow {
                     identity: DeviceIdentity { device_id: device.id, node_key: device.node_key },
-                    bindings: bindings,
-                  ),
-                },
+                    provider_device_name: device.name,
+                    provider_hostname: device.hostname,
+                    observed_host_name: observed.host_name,
+                    observed_tailscale_ips: observed.tailscale_ips,
+                    provider_authorized: device.authorized,
+                    provider_tags: device.tags,
+                    host_facts: host_facts_for(
+                      identity: DeviceIdentity { device_id: device.id, node_key: device.node_key },
+                      bindings: bindings,
+                    ),
+                  },
+                }
+              } else {
+                CensusRefused {
+                  refusal: NodeKeyMatchWithDifferentNodeId {
+                    member: member,
+                    candidate: DeviceIdentity { device_id: device.id, node_key: device.node_key },
+                    provider_node_id: device.node_id,
+                    observed_stable_node_id: observed.stable_node_id,
+                  },
+                }
               }
             }
           }
@@ -327,6 +382,7 @@ fn census_member(
     }
   }
 }
+
 
 // THE CENSUS OVER A READ OF THE PROVIDER AND ONE OBSERVATION SET PER MEMBER. The provider arm is
 // checked first, because with no list every member would otherwise refuse as "no matching device" -- an

@@ -43,7 +43,7 @@ import std.algebra { string_concat_join, string_contains }
 import std.integer { int_to_decimal_string }
 import product.host_identity { HostIdentity }
 import extdeps.tailscale.devices {
-  Device, DeviceId, DeviceKey, DevicesListed, DevicesListRefused,
+  Device, DeviceId, DeviceKey, StableNodeId, DevicesListed, DevicesListRefused,
   DeviceIdParse, DeviceKeyParse, LegacyMachineKeyParse, NodeIdParse, StableNodeIdParse,
   DeviceIdOk, DeviceIdBad, DeviceKeyOk, DeviceKeyBad, LegacyMachineKeyOk, LegacyMachineKeyBad,
   NodeIdOk, NodeIdBad, StableNodeIdOk, StableNodeIdBad,
@@ -56,7 +56,8 @@ import extdeps.tailscale.status {
 }
 import gunbc.fleet.fleet_overlay_census {
   CensusRefused, CensusRow, HostFactsBound, HostFactsUnbound, MemberObservations,
-  NameMatchWithDifferentIdentity, NoLocalNodeIdentity, NoMatchingDevice, ObservationsNameDifferentNodes,
+  NameMatchWithDifferentIdentity, NodeKeyMatchWithDifferentNodeId, NoLocalNodeIdentity, NoMatchingDevice,
+  ObservationsNameDifferentNodes,
   OverlayCensus, OverlayCensusEntry, OverlayCensusRefusal, OverlayCensusRow, OverlayHostBinding,
   ProviderListUnavailable, SeveralMatchingDevices, StatusObservationUnavailable,
   census_fleet_overlay, census_member, provider_device_list,
@@ -75,26 +76,27 @@ import gunbc.fleet.fleet_overlay_census {
 // answer over every fixture this builds, so a fixture identity outside its upstream form turns the witness
 // red instead of passing quietly. Values this witness REQUIRES to be identities -- member-side observations,
 // join inputs -- are never built here: they come from the reader and from device_identity_of.
-fn device(id: String, key: String, name: String, hostname: String) -> Device {
+fn device(id: String, node_id: String, key: String, name: String, hostname: String) -> Device {
   Device {
     id: id as DeviceId,
+    node_id: node_id as StableNodeId,
     node_key: key as DeviceKey,
     name: name as NonEmptyStr,
     hostname: hostname as NonEmptyStr,
     addresses: ["100.73.169.40" as NonEmptyStr],
     user: "https://api.tailscale.com/api/v2/user/110635973" as NonEmptyStr,
     authorized: true,
-    tags: ["tag:fleet" as NonEmptyStr],
+    tags: Present { value: ["tag:fleet" as NonEmptyStr] },
     is_external: false,
     blocks_incoming_connections: false,
     os: "linux" as NonEmptyStr,
-    last_seen: "2026-10-27T18:00:00Z" as String,
+    last_seen: Present { value: "2026-10-27T18:00:00Z" as String },
     created: "2025-03-03T17:04:55Z" as String,
     expires: "2026-03-03T17:04:55Z" as String,
     key_expiry_disabled: false,
     client_version: "1.104.2" as String,
     legacy_machine_key: Absent,
-    update_available: "" as String,
+    update_available: false,
   }
 }
 
@@ -117,7 +119,8 @@ data key_fixture: String = "nodekey:6dbb081b91a41f1931419657224296243ffa65691a76
 data key_near_miss: String = "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a926"
 
 data device_srv2: Device = device(
-  id: "dev5B71A6FC02420C15",
+  id: "50052",
+  node_id: "nm17WF5Rvg11CNTRL",
   key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927",
   name: "srv2",
   hostname: "srv2",
@@ -127,7 +130,8 @@ data device_srv2: Device = device(
 // state the provider can genuinely be in during a re-registration, and the one the census must refuse to
 // choose between.
 data device_srv2_duplicate: Device = device(
-  id: "devA7E42B82137001A2",
+  id: "50053",
+  node_id: "nm17WF5Rvg11CNTRL",
   key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927",
   name: "srv2-old",
   hostname: "srv2",
@@ -136,7 +140,8 @@ data device_srv2_duplicate: Device = device(
 // The lookalike: srv2's NAME and hostname, a DIFFERENT node key -- a machine rebuilt in place, or a name
 // reused. This is the fixture a name-joining census cannot tell apart from the real device.
 data device_lookalike: Device = device(
-  id: "dev0C15B71A6FC02425",
+  id: "50054",
+  node_id: "nLookalike0CNTRL",
   key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a926",
   name: "srv2",
   hostname: "srv2",
@@ -149,8 +154,8 @@ data device_lookalike: Device = device(
 // identity therefore cannot be an observation at all -- it comes back Refused, which is what c18–c21 pin.
 fn status_document(node_key: String, stable: String, node_id: String, host_name: String) -> String {
   string_concat_join(fields: [
-    "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"", host_name, "\",\"TailscaleIPs\":[\"100.73.169.40\"],\"Key\":\"",
-    node_key, "\",\"ID\":\"", stable, "\",\"NodeID\":\"", node_id "\"}}",
+    "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"", host_name, "\",\"TailscaleIPs\":[\"100.73.169.40\"],\"PublicKey\":\"",
+    node_key, "\",\"ID\":\"", stable, "\",\"NodeID\":\"", node_id, "\"}}",
   ], separator: "") as String
 }
 
@@ -177,7 +182,7 @@ data srv2_status_other_node: StatusObservation = observation(
 
 // The document text is the fixture form of what `tailscale status --json` prints -- srv2's real Self record,
 // with the fields the model reads.
-data srv2_status_document: String = "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv2\",\"TailscaleIPs\":[\"100.73.169.40\"],\"Key\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\"}}"
+data srv2_status_document: String = "{\"BackendState\":\"Running\",\"Self\":{\"HostName\":\"srv2\",\"TailscaleIPs\":[\"100.73.169.40\"],\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\"}}"
 
 // ── The check plumbing ────────────────────────────────────────────────────────────────────────
 
@@ -235,7 +240,8 @@ fn refusal_member(refusal: OverlayCensusRefusal) -> NonEmptyStr {
     NoMatchingDevice { member: m, observed_node_key: _, observed_stable_node_id: _, observed_node_id: _ } => m
     SeveralMatchingDevices { member: m, node_key: _, device_ids: _ } => m
     NameMatchWithDifferentIdentity { member: m, agreed_name: _, observed_node_key: _, candidate: _ } => m
-    ObservationsNameDifferentNodes { member: m, observed_node_keys: _ } => m
+    ObservationsNameDifferentNodes { member: m, observed_node_keys: _, observed_stable_node_ids: _ } => m
+    NodeKeyMatchWithDifferentNodeId { member: m, candidate: _, provider_node_id: _, observed_stable_node_id: _ } => m
     ProviderListUnavailable { cause: _ } => "provider" as NonEmptyStr
     StatusObservationUnavailable { member: m, cause: _ } => m
   }
@@ -247,7 +253,8 @@ fn refusal_arm(refusal: OverlayCensusRefusal) -> String {
     NoMatchingDevice { member: _, observed_node_key: _, observed_stable_node_id: _, observed_node_id: _ } => "NoMatchingDevice"
     SeveralMatchingDevices { member: _, node_key: _, device_ids: _ } => "SeveralMatchingDevices"
     NameMatchWithDifferentIdentity { member: _, agreed_name: _, observed_node_key: _, candidate: _ } => "NameMatchWithDifferentIdentity"
-    ObservationsNameDifferentNodes { member: _, observed_node_keys: _ } => "ObservationsNameDifferentNodes"
+    ObservationsNameDifferentNodes { member: _, observed_node_keys: _, observed_stable_node_ids: _ } => "ObservationsNameDifferentNodes"
+    NodeKeyMatchWithDifferentNodeId { member: _, candidate: _, provider_node_id: _, observed_stable_node_id: _ } => "NodeKeyMatchWithDifferentNodeId"
     ProviderListUnavailable { cause: _ } => "ProviderListUnavailable"
     StatusObservationUnavailable { member: _, cause: _ } => "StatusObservationUnavailable"
   }
@@ -304,15 +311,15 @@ fn device_key_refusal_cause(result: DeviceKeyParse) -> String {
 
 // What the provider boundary gate answers for one set of identity strings: nothing when they are all in
 // form, and the offending field plus its reason when they are not.
-fn gate_cause(id: String, node_key: String, legacy_machine_key: String?) -> String {
-  match provider_identity_failure(id: id, node_key: node_key, legacy_machine_key: legacy_machine_key) {
+fn gate_cause(id: String, node_key: String, node_id: String, legacy_machine_key: String?) -> String {
+  match provider_identity_failure(id: id, node_key: node_key, node_id: node_id, legacy_machine_key: legacy_machine_key) {
     Absent => "" as String
     Present { value: f } => string_concat_join(fields: [f.field as String, ": ", f.reason as String], separator: "") as String
   }
 }
 
-fn gate_admits(id: String, node_key: String, legacy_machine_key: String?) -> Bool {
-  optional_is_absent(opt: provider_identity_failure(id: id, node_key: node_key, legacy_machine_key: legacy_machine_key))
+fn gate_admits(id: String, node_key: String, node_id: String, legacy_machine_key: String?) -> Bool {
+  optional_is_absent(opt: provider_identity_failure(id: id, node_key: node_key, node_id: node_id, legacy_machine_key: legacy_machine_key))
 }
 
 fn host_identity_of(label: String) -> HostIdentity {
@@ -344,9 +351,11 @@ fn census_witness_checks() -> List<Check> {
     why: "one character outside the alphabet fails the whole value; a permissive parser would accept a key the provider could never have issued",
   )
   let c13 = check(
-    name: "device id refuses a value that is not a Tailscale device id",
-    holds: !device_id_accepted(result: parse_device_id(text: "srv2"))
-      && device_id_accepted(result: parse_device_id(text: "dev5B71A6FC02420C15")),
+    name: "device id is opaque: refuses empty or whitespace, accepts the vendor fixture ids",
+    holds: !device_id_accepted(result: parse_device_id(text: ""))
+      && !device_id_accepted(result: parse_device_id(text: "5 0052"))
+      && device_id_accepted(result: parse_device_id(text: "50052"))
+      && device_id_accepted(result: parse_device_id(text: "50053")),
     why: "the device id is what a duplicate-identity refusal has to name, so an id that is not an id would print a member name where a device id belongs",
   )
   let c16 = check(
@@ -397,7 +406,7 @@ fn census_witness_checks() -> List<Check> {
   )
   let c20 = check(
     name: "a malformed identity field names the field",
-    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"Key\":\"nodekey:not-hex\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:not-hex\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
       Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "DeviceKey"
       _ => false
     },
@@ -405,7 +414,7 @@ fn census_witness_checks() -> List<Check> {
   )
   let c21 = check(
     name: "a missing identity field is refused rather than defaulted",
-    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"Key\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"PublicKey\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
       Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "StableNodeId"
       Observed { identity: _ } => false
       _ => false
@@ -430,13 +439,14 @@ fn census_witness_checks() -> List<Check> {
     name: "POSITIVE CONTROL: identity agreement yields a row that names the agreed identity",
     holds: match entry_row(entry: control) {
       Absent => false
-      Present { value: r } => (r.identity.device_id as String) == "dev5B71A6FC02420C15"
+      Present { value: r } => (r.identity.device_id as String) == "50052"
         && (r.identity.node_key as String) == key_srv2
         && (r.provider_device_name as String) == "srv2"
         && (r.observed_host_name as String) == "srv2"
         && r.provider_authorized
         && r.observed_tailscale_ips.count() == 1
-        && r.provider_tags.count() == 1
+        && (match r.provider_tags { Present { value: t } => t.count() == 1
+             Absent => false })
     },
     why: "the row must carry the pair it paired on, plus the facts a reader needs to check it; a row with an empty payload is not evidence the join works",
   )
@@ -472,7 +482,7 @@ fn census_witness_checks() -> List<Check> {
     holds: match rebuilt {
       CensusRefused { refusal: NameMatchWithDifferentIdentity { member: _, agreed_name: n, observed_node_key: k, candidate: c } } =>
         (n as String) == "srv2" && (k as String) == key_near_miss
-          && (c.node_key as String) == key_near_miss && (c.device_id as String) == "dev0C15B71A6FC02425"
+          && (c.node_key as String) == key_near_miss && (c.device_id as String) == "50054"
       _ => false
     },
     why: "a refusal that hides which identities disagreed is not actionable; the agreed name and both identities have to be in the arm",
@@ -529,8 +539,8 @@ fn census_witness_checks() -> List<Check> {
       CensusRefused { refusal: SeveralMatchingDevices { member: _, node_key: k, device_ids: ids } } =>
         (k as String) == key_srv2
           && ids.count() == 2
-          && any(ids, i => (i as String) == "dev5B71A6FC02420C15")
-          && any(ids, i => (i as String) == "devA7E42B82137001A2")
+          && any(ids, i => (i as String) == "50052")
+          && any(ids, i => (i as String) == "50053")
       _ => false
     },
     why: "ids, not a count: 'two devices share this key' is actionable only if they are named",
@@ -552,7 +562,7 @@ fn census_witness_checks() -> List<Check> {
   let c26 = check(
     name: "the two-observation refusal names both node keys it could not reconcile",
     holds: match two_nodes {
-      CensusRefused { refusal: ObservationsNameDifferentNodes { member: _, observed_node_keys: ks } } =>
+      CensusRefused { refusal: ObservationsNameDifferentNodes { member: _, observed_node_keys: ks, observed_stable_node_ids: _ } } =>
         ks.count() == 2
           && any(ks, k => (k as String) == key_srv2)
           && any(ks, k => (k as String) == (key_fixture as String))
@@ -653,7 +663,7 @@ fn census_witness_checks() -> List<Check> {
     holds: match fleet.rows.first() {
       Present { value: r } => fleet.rows.count() == 1
         && fleet.refusals.count() == 1
-        && (r.identity.device_id as String) == "dev5B71A6FC02420C15"
+        && (r.identity.device_id as String) == "50052"
         && refused_with(census: fleet, member: "srv9", arm: "NoMatchingDevice")
       Absent => false
     },
@@ -703,7 +713,7 @@ fn census_witness_checks() -> List<Check> {
     ) {
       CensusRow { row: r } => match r.host_facts {
         HostFactsBound { host: _, established_by: _, canonical_hostname: _, enrolled_for: _ } => false
-        HostFactsUnbound { cause: c } => string_contains(s: c as String, pattern: "dev5B71A6FC02420C15")
+        HostFactsUnbound { cause: c } => string_contains(s: c as String, pattern: "50052")
       }
       CensusRefused { refusal: _ } => false
     },
@@ -717,32 +727,32 @@ fn census_witness_checks() -> List<Check> {
 // parser, so trusting the brand is trusting the wire's own spelling.
   let c33 = check(
     name: "the gate admits every fixture device identity",
-    holds: gate_admits(id: "dev5B71A6FC02420C15", node_key: key_srv2, legacy_machine_key: Absent)
-      && gate_admits(id: "dev0C15B71A6FC02425", node_key: key_near_miss, legacy_machine_key: Absent)
-      && gate_admits(id: "devA7E42B82137001A2", node_key: key_fixture, legacy_machine_key: Absent),
+    holds: gate_admits(id: "50052", node_key: key_srv2, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent)
+      && gate_admits(id: "50054", node_key: key_near_miss, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent)
+      && gate_admits(id: "50053", node_key: key_fixture, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent),
     why: "the positive control for the gate: if it refused real identities, every live census would refuse the whole fleet and the instrument would be a refusal machine",
   )
   let c34 = check(
     name: "a malformed node key from the provider is refused by name, not dropped",
-    holds: !gate_admits(id: "dev5B71A6FC02420C15", node_key: "nodekey:zz", legacy_machine_key: Absent)
-      && string_contains(s: gate_cause(id: "dev5B71A6FC02420C15", node_key: "nodekey:zz", legacy_machine_key: Absent), pattern: "nodeKey")
-      && string_contains(s: gate_cause(id: "dev5B71A6FC02420C15", node_key: "nodekey:zz", legacy_machine_key: Absent), pattern: "hex"),
+    holds: !gate_admits(id: "50052", node_key: "nodekey:zz", node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent)
+      && string_contains(s: gate_cause(id: "50052", node_key: "nodekey:zz", node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent), pattern: "DeviceKey")
+      && string_contains(s: gate_cause(id: "50052", node_key: "nodekey:zz", node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent), pattern: "hex"),
     why: "the provider's word for its own node key is \"nodeKey\" (client.go) and the census must say so; naming the wrong field sends whoever reads the refusal looking in the wrong place",
   )
   let c35 = check(
     name: "the gate reads the provider's other two identity fields too",
-    holds: !gate_admits(id: "not a device id", node_key: key_srv2, legacy_machine_key: Absent)
-      && string_contains(s: gate_cause(id: "", node_key: key_srv2, legacy_machine_key: Absent), pattern: "id")
-      && !gate_admits(id: "dev5B71A6FC02420C15", node_key: key_srv2, legacy_machine_key: Present { value: "mkey:short" })
-      && string_contains(s: gate_cause(id: "dev5B71A6FC02420C15", node_key: key_srv2, legacy_machine_key: Present { value: "mkey:short" }), pattern: "machineKey"),
+    holds: !gate_admits(id: "not a device id", node_key: key_srv2, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent)
+      && string_contains(s: gate_cause(id: "", node_key: key_srv2, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Absent), pattern: "id")
+      && !gate_admits(id: "50052", node_key: key_srv2, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Present { value: "mkey:short" })
+      && string_contains(s: gate_cause(id: "50052", node_key: key_srv2, node_id: "nm17WF5Rvg11CNTRL", legacy_machine_key: Present { value: "mkey:short" }), pattern: "MachineKey"),
     why: "a gate over only the join key leaves the id the duplicate refusal prints and the legacy key unvalidated; an absent legacy machine key must stay admissible, because current tailscale nodes no longer carry one (client.go: \"LegacyMachineKey... will be empty for nodes which no longer support it\")",
   )
   let c36 = check(
     name: "one malformed device refuses the WHOLE list; no device is silently dropped",
     holds: match first_bad_provider_identity(devices: [device_srv2, device_lookalike, device(
-             id: "devBAD", key: "nodekey:zz", name: "srv7", hostname: "srv7",
+             id: "50099", node_id: "nm17WF5Rvg11CNTRL", key: "nodekey:zz", name: "srv7", hostname: "srv7",
            )]) {
-      Present { value: f } => (f.field as String) == "nodeKey"
+      Present { value: f } => (f.field as String) == "DeviceKey"
       Absent => false
     } && optional_is_absent(opt: first_bad_provider_identity(devices: [device_srv2, device_lookalike, device_srv2_duplicate])),
     why: "a census that dropped the offending device would report nine machines when ten were listed, and report it green; the offender has to come back named, and a clean list has to come back clean",
@@ -758,9 +768,57 @@ fn census_witness_checks() -> List<Check> {
     why: "the member side of the join is gated by construction: a document whose Key is malformed yields no identity value at all, so there is nothing for a device to pair with -- the refusal is not a courtesy, it is the absence of an input",
   )
 
+  let wrong_node_id = census_member(
+    member: "srv2" as NonEmptyStr,
+    observations: [srv2_status],
+    devices: [device(id: "50055", node_id: "nOtherNode0CNTRL", key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927", name: "srv2", hostname: "srv2")],
+    bindings: [],
+  )
+  let c38 = check(
+    name: "a node key match whose provider nodeId disagrees with the member's stable node id refuses",
+    holds: refused_with(census: census_of(entry: wrong_node_id), member: "srv2", arm: "NodeKeyMatchWithDifferentNodeId")
+      && !entry_is_row(entry: wrong_node_id),
+    why: "the plan joins on device AND node identity; a key-only pairing mints a clean row for a re-keyed or cloned machine",
+  )
+  let refused_obs = Refused { failure: MemberDocumentUnreadable { cause: "second status read failed" as NonEmptyStr } }
+  let observed_then_refused = census_member(member: "srv2" as NonEmptyStr, observations: [srv2_status, refused_obs], devices: [device_srv2], bindings: [])
+  let refused_then_observed = census_member(member: "srv2" as NonEmptyStr, observations: [refused_obs, srv2_status], devices: [device_srv2], bindings: [])
+  let c39 = check(
+    name: "[Observed, Refused] and [Refused, Observed] both refuse; observation order is irrelevant",
+    holds: !entry_is_row(entry: observed_then_refused) && !entry_is_row(entry: refused_then_observed)
+      && refused_with(census: census_of(entry: observed_then_refused), member: "srv2", arm: "StatusObservationUnavailable")
+      && refused_with(census: census_of(entry: refused_then_observed), member: "srv2", arm: "StatusObservationUnavailable"),
+    why: "reading only the first observation lets a member with an unreadable second account pass as clean depending on list order",
+  )
+  let conflicting_ids = census_member(
+    member: "srv2" as NonEmptyStr,
+    observations: [srv2_status, observation(
+      node_key: "nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927",
+      stable: "nDifferentStable0",
+      node_id: "5112399786040428",
+      host_name: "srv2",
+    )],
+    devices: [device_srv2],
+    bindings: [],
+  )
+  let c40 = check(
+    name: "same node key with different stable node ids is observations naming different nodes",
+    holds: refused_with(census: census_of(entry: conflicting_ids), member: "srv2", arm: "ObservationsNameDifferentNodes")
+      && !entry_is_row(entry: conflicting_ids),
+    why: "two accounts of one machine that disagree on its node id cannot both be true; taking the first is the census choosing a story",
+  )
+  let c41 = check(
+    name: "a status document using the invented member Key (not PublicKey) yields no identity",
+    holds: match observe_local_node_identity(document_text: "{\"Self\":{\"Key\":\"nodekey:50f6ff04a6bd8766b08bbdef0151af66db7de290bffd414cf023f9a9eb49a927\",\"ID\":\"nm17WF5Rvg11CNTRL\",\"NodeID\":\"5112399786040428\",\"HostName\":\"srv2\"}}") {
+      Refused { failure: MemberIdentityFieldMalformed { field: f, cause: _ } } => (f as String) == "DeviceKey"
+      _ => false
+    },
+    why: "ipnstate.PeerStatus names the key PublicKey; a reader for the invented spelling would refuse every real document, and the RED here pins that the invented one is not accepted",
+  )
+
   return [c1, c2, c3, c4, c13, c16, c17, c18, c19, c14, c15, c20, c21,
     c22, c23, c5, c24, c25, c6, c7, c8, c9, c26, c10, c11, c12,
-    c27, c28, c29, c30, c30b, c31, c32, c33, c34, c35, c36, c37]
+    c27, c28, c29, c30, c30b, c31, c32, c33, c34, c35, c36, c37, c38, c39, c40, c41]
 }
 
 // THE CLAIM. Pure over the fixtures above -- no live tree, no substrate, no credential -- which is what
