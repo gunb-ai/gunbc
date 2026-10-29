@@ -40,7 +40,16 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // parse_label, and no gate compares the Rust registry against gunbc.instrument_targets
 // instrument_bindings. That is the same rung and the same reason v1_compiler.required_regen_host
 // sits at mitigatable while v2.workflow.required_regen holds the ordering by construction. What is
-// NOT claimed is that the mirror is checked; what IS claimed is that it is enumerated.
+// NOT claimed is that the mirror is checked on the required path; what IS claimed is that it is
+// enumerated, and that the registry-versus-rows join (label, producer kind, entry, function) is
+// executed BY HAND: target_invocation_host registry_rows_identity_tests, `cargo test
+// registry_matches_rows`. No required job runs it (gunbc.rung_drop v1_required_lanes_withdrawn).
+//
+// THE REGISTRY IS FROZEN X. A new LABEL row is admitted, each with a seed-growth receipt, as an
+// enrolled obligation that dissolves with the cutover; any STRUCTURAL change to instrument_registry
+// or its dispatcher (new arm, producer kind, dispatch path) is not admitted. The identity check
+// above joins every admitted label to its row. It and the registry delete with the
+// target_invocation_host subset, on the trigger below.
 //
 // WHAT THE HOST MIRROR DELIBERATELY DOES NOT CARRY. The model's TargetHasNoProducer refusal has no
 // arm here, because the host registry is a list of PAIRS -- a registered target with no producer
@@ -232,6 +241,21 @@ data target_invocation_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef {
       module_path: "v1_compiler.target_invocation_host",
       decl_name: "instrument_registry",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "registry_rows_identity_tests",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "registry_matches_rows",
+      field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.target_invocation_host",
+      decl_name: "a_mutated_registry_entry_fails_by_name",
       field: WholeDeclaration
     },
     DeclarationRef {

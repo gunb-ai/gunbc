@@ -15,13 +15,14 @@ import extdeps.provisioning.dhcp_client_arch { UefiArm64, UefiX86_64 }
 import extdeps.provisioning.network_boot { NotAuthenticated, network_boot_loader_chain_is_chainloader_only }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_amd64_uefi_network_boot_chain, noble_numbat_2404_3_live_server_amd64, noble_numbat_2404_5_live_server_arm64, noble_numbat_2404_3_live_server_arm64 }
 import std.decl_ref { decl_ref }
+import gunbc.systemctl_show_read { systemctl_show_property_value_from_stdout }
 import extdeps.firmware.ipxe { IpxeBuildTarget, ipxe_arm64_efi_snponly }
 import product.host_identity { HostIdentity }
 import gunbc.machine_intake.mtcollins1_netboot_client_observation { mtcollins1_host_nic_mac }
 import gunbc.machine_intake.srv14_host_nic_observation { srv14_host_nic_mac }
-import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
+import gunbc.site_pxe_edge { SiteEdgeRoster, BootNetworkProbe, BootNetworkProbeSucceeded, BootNetworkProbeFailed, BootNetworkProbeUnobserved, first_onboarding_known_client_mac, site_edge_served_loader_chain, EveryKnownClient, InstallBoundClients }
 import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64_network_boot_member_pins }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address }
 import gunbc.fleet.site_pxe_edge_converge {
   SitePxeEdgeChainloaderPin,
@@ -134,6 +135,11 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_http_listen_poll_settled,
+  site_pxe_edge_http_listen_samples,
+  site_pxe_edge_run_text,
+  site_pxe_edge_unit_active_standing,
+  site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
   site_pxe_edge_http_unit_file,
   site_pxe_edge_http_listen_standing,
@@ -157,6 +163,8 @@ import gunbc.fleet.site_pxe_edge_converge {
   InstallSeedRefused,
   InstallRequestClientUnparseable,
   site_pxe_edge_seed_origin_resolution,
+  site_pxe_edge_seed_origin_probe,
+  srv14_install_client,
   PlacementNotNeeded,
   PlacementRefused,
   PlacementVerified,
@@ -920,6 +928,40 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
   }
 }
 
+// EVERY WRITE CREATES ITS OWN PARENT: a binding's seed documents sit in a per-client directory nothing else
+// creates (srv4 refused both on its first apply), so each file's write starts with that directory.
+test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let files = install_files_of(b: b, image: servable_image())
+    any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe"])
+      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
+      && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
+  })
+}
+
+// THE UNIT'S ACTIVE STATE IS READ FROM THE `--value` ANSWER: srv4 answered `active` for a running edge (run
+// 40816615074), which the probe must hold; a failed unit is a finding and a blank answer is no observation.
+test fn the_unit_active_probe_reads_the_bare_state_word() -> Bool {
+  (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "active\n")) {
+    SitePxeEdgeProbeHeld => true
+    SitePxeEdgeProbeObservedNegative { reason: _ } => false
+    SitePxeEdgeProbeUnobservable { reason: _ } => false
+    SitePxeEdgeProbeNotAttempted { reason: _ } => false
+  })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "failed\n")) {
+      SitePxeEdgeProbeObservedNegative { reason: r } => r == "unit gunbc-site-pxe-edge.service ActiveState=failed"
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeUnobservable { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
+    && (match site_pxe_edge_unit_active_standing(capture: systemctl_show_property_value_from_stdout(success: true, stdout: "\n")) {
+      SitePxeEdgeProbeUnobservable { reason: _ } => true
+      SitePxeEdgeProbeHeld => false
+      SitePxeEdgeProbeObservedNegative { reason: _ } => false
+      SitePxeEdgeProbeNotAttempted { reason: _ } => false
+    })
+}
+
 // TWO HOSTS, TWO ROUTES: each host's grub configuration names its own seed's URL. This is routing only -- seeds are
 // public, and any host on the segment can fetch either URL.
 test fn each_hosts_configuration_routes_to_its_own_seed() -> Bool {
@@ -971,9 +1013,37 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
   }
 }
 
-// THE PRODUCTION HEAD SERVES NO INSTALL: no install is requested and the name resolution is unobserved.
-test fn the_landed_edge_has_no_install_binding() -> Bool {
-  length(site_pxe_edge_install_requests) == 0 && site_pxe_edge_seed_origin_resolution == BootNetworkProbeUnobserved
+// THE PRODUCTION HEAD'S ONE REQUEST, srv14, is admitted by the public seed authority, which refuses any credential
+// field by name, and binds its measured NIC to the arm64 chain: nothing is withheld and no gate cause is raised.
+test fn the_production_request_binds_srv14_from_an_admitted_seed() -> Bool {
+  let admissions = map(site_pxe_edge_install_requests, r => site_pxe_edge_request_admission(request: r))
+  length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
+    && length(site_pxe_edge_request_gate_causes(admissions: admissions)) == 0
+    && (match srv14_install_client {
+      MacParsed { address: srv14 } =>
+        length(filter(site_pxe_edge_request_bindings(admissions: admissions), b => public_nocloud_seed_client_mac(seed: b.seed) == srv14 && b.architecture == Aarch64)) == 1
+      MacParseFailed { error: _ } => false
+    })
+}
+
+// THE SEGMENT ANSWERS FOR THE SEED ORIGIN WITH THE EDGE'S OWN ADDRESS, so the production probe is a success.
+test fn the_segment_resolves_the_seed_origin_to_the_edge() -> Bool {
+  match site_pxe_edge_seed_origin_resolution {
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => true
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => false
+    BootNetworkProbeUnobserved => false
+  }
+}
+
+// RED: a resolver answering with any other address fails the probe rather than passing a name that reaches
+// another host.
+test fn a_resolver_answer_other_than_the_edge_fails_the_probe() -> Bool {
+  let o = decl_ref(module_path: "test.claim.fleet.site_pxe_edge_converge_witness", decl_name: "a_resolver_answer_other_than_the_edge_fails_the_probe")
+  match site_pxe_edge_seed_origin_probe(answer: parse_ipv4_address(text: "192.168.1.197"), origin: parse_ipv4_address(text: "192.168.1.196"), observation: o, observed_at: 1793190171000) {
+    BootNetworkProbeFailed { observation: _, observed_at: _ } => true
+    BootNetworkProbeSucceeded { observation: _, observed_at: _ } => false
+    BootNetworkProbeUnobserved => false
+  }
 }
 
 // ── Install requests: admission is the only route to a binding ──────────────────────────────────
@@ -1049,6 +1119,18 @@ test fn the_listening_socket_must_be_the_onboarding_address() -> Bool {
     && site_pxe_edge_http_listen_standing(output: "LISTEN 0      4096   0.0.0.0:22      0.0.0.0:*\n", bind: edge_server) == HttpListenAbsent
 }
 
+// THE LISTENER READBACK WAITS OUT A BIND, AND ONLY A BIND: srv4's run 40835829838 read ABSENT right after the restart
+// while the port answered. ABSENT is sampled again until the budget's last sample; every other finding stops the poll.
+test fn the_listener_poll_retries_only_absent_and_stops_at_its_budget() -> Bool {
+  !site_pxe_edge_http_listen_poll_settled(standing: HttpListenAbsent, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenAbsent, remaining: 1)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenBoundTo { address: "192.168.1.196:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenWildcard { local: "0.0.0.0:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenOtherAddress { local: "127.0.0.1:8080" }, remaining: 5)
+    && site_pxe_edge_http_listen_poll_settled(standing: HttpListenUnobservable { reason: "ss -ltnH exit=127" }, remaining: 5)
+    && site_pxe_edge_http_listen_samples > 1
+}
+
 // AN APPLY WHOSE HTTP LISTENER IS A WILDCARD IS NOT CONVERGED.
 test fn an_apply_with_a_wildcard_http_listener_is_refused() -> Bool {
   let base = apply_run(post: PostActivationDigestHeld)
@@ -1063,6 +1145,17 @@ test fn an_unobservable_listener_probe_is_its_own_arm_and_not_converged() -> Boo
   let base = apply_run(post: PostActivationDigestHeld)
   let blind = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenUnobservable { reason: "ss -ltnH exit=127 ss: not found" } } }
   !site_pxe_edge_run_succeeded(run: blind) && HttpListenUnobservable { reason: "x" } != HttpListenAbsent
+}
+
+// THE RECEIPT SAYS WHY THE HTTP LEG DECIDED THE VERDICT: srv4's run 40825621987 ended REFUSED with every printed
+// line holding, because the one failing term was never rendered. Each listener arm prints its own finding.
+test fn the_receipt_renders_the_http_leg_that_decided_the_verdict() -> Bool {
+  let base = apply_run(post: PostActivationDigestHeld)
+  let other = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenOtherAddress { local: "127.0.0.1:8080" } } }
+  let bound = SitePxeEdgeRun { mode: base.mode, package: base.package, chains: base.chains, gate_causes: base.gate_causes, installs: base.installs, placement: base.placement, files: base.files, activation: base.activation, unit_active: base.unit_active, post_activation: base.post_activation, http: HttpLegActivation { activation: SitePxeEdgeProbeHeld, listen: HttpListenBoundTo { address: "192.168.1.196:8080" } } }
+  contains(site_pxe_edge_run_text(run: other), "\nhttp=activation held listen OTHER-ADDRESS 127.0.0.1:8080\nterminal=REFUSED\n")
+    && contains(site_pxe_edge_run_text(run: bound), "\nhttp=activation held listen bound 192.168.1.196:8080\nterminal=succeeded\n")
+    && contains(site_pxe_edge_run_text(run: base), "\nhttp=not-needed\n")
 }
 
 // ONE ds= TOKEN (review 86171): the seeded-media string builder now composes the shared token through GRUB's quoting

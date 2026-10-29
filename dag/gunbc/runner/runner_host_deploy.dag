@@ -842,8 +842,8 @@ type RunnerHostSubordinateIdsResolution
 data runner_host_subordinate_id_rows: List<RunnerHostSubordinateIdRow> = [
   // srv1 /etc/subuid as read: briansrls 100000:65536, ghrunner 100000:65536 (COLLIDE),
   // gunbc-fleet 165536:65536, ubuntu 231072:65536, gunbc-worker 296608:65536. The plan therefore keeps
-  // ghrunner at 100000:65536 — which it already holds, so it costs no usermod — drops briansrls's
-  // colliding range, and re-grants briansrls above gunbc-worker's end at 362143.
+  // ghrunner at 100000:65536 — which it already holds, so it costs no write — drops briansrls's
+  // colliding range, and re-grants briansrls at 362144, the first start clear of gunbc-worker's end.
   RunnerHostSubordinateIdRow {
     host: operator_host_srv1,
     ids: SubordinateIdsRowDeclared { ids: RunnerHostSubordinateIds {

@@ -1348,8 +1348,9 @@ data gunbc_ci_approval_broker_dark_install_target: GunbcRunStepTarget = GunbcRun
   function: "approval_broker_dark_install_wet",
 }
 
-// THE microVM SLOT CONTROLLER INSTALL follows the dark install's convention exactly: the wet fold
-// under ci_deploy_srv1_access, invoked on the host-pinned runner, never through apply_dispatch.
+// THE microVM SLOT CONTROLLER INSTALL is invoked on the host-pinned runner, never through
+// apply_dispatch, like the dark install; unlike it, its elevated legs run as the fleet administrator
+// over the SSH edge under the job's inherited approval, not under ci_deploy_srv1_access's sudo.
 data gunbc_ci_microvm_controller_install_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/live_deploy/apply.dag",
   function: "microvm_controller_install_wet",
