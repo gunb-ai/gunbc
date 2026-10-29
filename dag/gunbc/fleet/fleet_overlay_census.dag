@@ -17,9 +17,16 @@ import extdeps.tailscale.status {
   observe_local_node_identity,
 }
 
-// THE LIVE CENSUS OF THE FLEET OVERLAY (plan gunbc.plans.fleet_naming_reach_access, P1: "A live
+// THE IDENTITY-JOINED CENSUS OF THE FLEET OVERLAY (plan gunbc.plans.fleet_naming_reach_access, P1: "A live
 // census. The provider device list and every member's status --json, joined on device and node
 // identity with the allocation and the enrollment roster.").
+//
+// CONSUMPTION, DECLARED (DESIGN 3c). The only executing consumer in this change is the claim witness
+// (dag/test/claim/fleet_overlay_census_witness.dag). The LIVE run -- a gunbc.instrument_targets row that
+// observes each member's `tailscale status --json`, takes the provider credential from
+// gunbc.auth.authorization_pattern_selection.select_authorization_pattern, and calls census_fleet_overlay --
+// is a NAMED LATER CHANGE. Trigger: a provisioned devices:read credential and an available runner; until
+// then nothing here claims a live read.
 //
 // WHAT THIS IS NOT. Not an enroll tool, not an ACL tool, not a writer: nothing reachable from here can
 // add a device, expire a key, set tags, or push a policy -- extdeps.tailscale.devices declares exactly
@@ -56,10 +63,8 @@ type OverlayHostBinding {
   established_by: NonEmptyStr
 }
 
-// P1 declares no bindings, because P1 is a census and not an enrollment: establishing a binding is an
-// action on the fleet, and this phase's scope forbids actions. It is `data` rather than a function so an
-// empty census is visibly empty rather than computed to emptiness by a filter that could be wrong.
-data overlay_host_bindings: List<OverlayHostBinding> = []
+// P1 declares no bindings: establishing one is an action on the fleet, and this phase's scope forbids
+// actions. Bindings are a parameter of the census, supplied by the caller that established them.
 
 // ── Identity comparisons, in exactly one place ────────────────────────────────────────────────
 
@@ -417,7 +422,7 @@ fn census_fleet_overlay(
   }
 }
 
-// THE LIVE READ OF THE PROVIDER LIST. The credential is whatever gunbc.auth's selection produced
+// THE READ OF THE PROVIDER LIST (live wiring is the later change named at the module head). The credential is whatever gunbc.auth's selection produces
 // (gunbc.auth.authorization_pattern_selection.select_authorization_pattern) -- this module never reads a
 // token from a variable it can see and never asks a human to paste one: an operator-supplied token is a
 // pattern the existing selector knows about, chosen by the census that already exists, not by a prompt
