@@ -19,9 +19,14 @@ import gunbc.host.fleet_keypair_mint {
   fleet_keypair_mint_ruling_words, fleet_keypair_mint_ruling_date,
 }
 import extdeps.github.actions { Step, RunStep, UsesStep, workflow_dispatch_max_inputs }
+import extdeps.filesystem.filesystem_io
+import gunbc.repo.repo_self_build { repo_self_build_command }
+import gunbc.shell_command_text { shell_command_text_refused_poison }
+import gunbc.fleet.fleet_workflow_steps { gunbc_ci_release_build_step_timeout_minutes }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_fleet_keypair_mint_job, fleet_converge_fleet_keypair_mint_step_if,
   fleet_converge_fleet_keypair_mint_step_id, fleet_converge_dispatch_inputs,
+  fleet_converge_hosted_gunbc_build_step,
 }
 import gunbc.host.mtcollins1_ssh_host_key_mint {
   HostKeypair, HostKeypairGeneration, HostKeypairGenerated, HostKeypairRefused,
@@ -482,4 +487,126 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
 // silently stop checking anything when a third key is added.
 fn fleet_keypair_mint_other_entry(subject: FleetKeypairMintSubject) -> String {
   match filter(fleet_keypair_mint_subject_rows(), s => s.mint_entry != subject.mint_entry).first() { Present { value: other } => other.mint_entry  Absent => "" }
+}
+
+// ── THE COMMITTED BUILD STEP IS THE BUILDER'S OWN EMISSION, NOT A HAND-CARRIED LOOK ───────────────────────
+//
+// WHY THIS ROW EXISTS (review 87458's remaining blocker, review 87481). The mint job's build step was emitted
+// by `fleet_converge_hosted_gunbc_build_step(purpose:)`, whose `run` body passes through the bash fold in
+// src/v2/workflow/bash_command_fold_serialize.dag -- a Dag fold my local interpreter predates, so it returns
+// the refusal marker where the folded script belongs, and the committed workflow's body had to be carried
+// from the committed grant-wait job's step (which calls the SAME builder with a different purpose). A carry
+// is only honest if the committed bytes equal the builder's emission modulo the declared name difference,
+// and "trust me" is not a witness (DESIGN §6: a projection must be checked, not asserted). Three legs, in
+// order of how much interpreter they need:
+//   1. (any interpreter) the builder's BODY does not depend on `purpose` -- only its NAME interpolates it.
+//      Together with leg 2 this is the structural half of the equality: carried bytes for one purpose can
+//      equal the emission for the other purpose exactly because the bodies are purpose-independent BY
+//      CONSTRUCTION, which these tests pin against a future edit threading purpose into the run.
+//   2. (any interpreter) the committed file's two build steps are byte-identical bodies under their declared
+//      names, each header appearing once, and the skeleton around the body (run marker, timeout, nothing else)
+//      is what the builder's field list produces.
+//   3. (an interpreter current with the fold) the committed body equals the builder's rendered `run` itself.
+//      On an older interpreter that leg's premise (the fold renders) is false, and the test says so by
+//      asserting the refusal marker is what that interpreter sees -- a disclosed gap, not a silent pass.
+
+data fleet_keypair_mint_build_step_name: String = "Build the gunbc binary the fleet keypair mint runs"
+
+data grant_wait_build_step_name: String = "Build the gunbc binary the grant wait runs"
+
+fn committed_workflow_lines() -> List<String> {
+  filesystem_read(path: ".github/workflows/fleet-converge.yml").content.split(delimiter: "\n")
+}
+
+fn step_header_index(step_name: String) -> Int {
+  let header = join(["      - name: ", step_name], "")
+  match filter(enumerate(committed_workflow_lines()), p => p.second == header).first() {
+    Present { value: p } => p.first
+    Absent => 0 - 1
+  }
+}
+
+fn header_occurrences(step_name: String) -> Int {
+  let header = join(["      - name: ", step_name], "")
+  count(filter(committed_workflow_lines(), l => l == header))
+}
+
+fn collect_body(lines: List<String>, from: Int, acc: List<String>) -> List<String> {
+  match get(xs: lines, index: from) {
+    Present { value: l } => if l.starts_with("          ") {
+      collect_body(lines: lines, from: from + 1, acc: append(acc, items: [l.substring(start: 10, end: l.length())]))
+    } else { acc }
+    Absent => acc
+  }
+}
+
+fn committed_body(step_name: String) -> List<String> {
+  let i = step_header_index(step_name: step_name)
+  collect_body(lines: committed_workflow_lines(), from: i + 2, acc: [])
+}
+
+fn committed_run_marker_ok(step_name: String) -> Bool {
+  let i = step_header_index(step_name: step_name)
+  match get(xs: committed_workflow_lines(), index: i + 1) {
+    Present { value: l } => l == "        run: |"
+    Absent => false
+  }
+}
+
+fn committed_line_after_body(step_name: String) -> String {
+  let i = step_header_index(step_name: step_name)
+  let body = committed_body(step_name: step_name)
+  match get(xs: committed_workflow_lines(), index: i + 2 + count(body)) {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+fn model_build_name(purpose: String) -> String {
+  match fleet_converge_hosted_gunbc_build_step(purpose: purpose) {
+    RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match n { Present { value: v } => v  Absent => "" }
+    UsesStep { name: n, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => match n { Present { value: v } => v  Absent => "" }
+  }
+}
+
+fn model_build_run(purpose: String) -> String {
+  match fleet_converge_hosted_gunbc_build_step(purpose: purpose) {
+    RunStep { name: _, id: _, run: r, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => r
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => ""
+  }
+}
+
+test fn the_build_step_body_is_purpose_independent_and_only_the_name_interpolates_purpose() -> Bool {
+  model_build_run(purpose: "the fleet keypair mint") == model_build_run(purpose: "the grant wait")
+    && model_build_name(purpose: "the fleet keypair mint") == fleet_keypair_mint_build_step_name
+    && model_build_name(purpose: "the grant wait") == grant_wait_build_step_name
+    && model_build_name(purpose: "the fleet keypair mint") != model_build_name(purpose: "the grant wait")
+}
+
+test fn the_committed_mint_build_step_is_the_grant_wait_build_step_byte_for_byte_under_its_name() -> Bool {
+  header_occurrences(step_name: fleet_keypair_mint_build_step_name) == 1
+    && header_occurrences(step_name: grant_wait_build_step_name) == 1
+    && count(committed_body(step_name: fleet_keypair_mint_build_step_name)) > 5
+    && committed_body(step_name: fleet_keypair_mint_build_step_name) == committed_body(step_name: grant_wait_build_step_name)
+    && match committed_body(step_name: fleet_keypair_mint_build_step_name).first() { Present { value: l } => l == "GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')"  Absent => false }
+    && match committed_body(step_name: fleet_keypair_mint_build_step_name).last() { Present { value: l } => l == repo_self_build_command(bins: ["gunbc"])  Absent => false }
+}
+
+test fn the_committed_build_step_skeleton_is_the_builders_field_list() -> Bool {
+  committed_run_marker_ok(step_name: fleet_keypair_mint_build_step_name)
+    && committed_line_after_body(step_name: fleet_keypair_mint_build_step_name)
+       == join(["        timeout-minutes: ", gunbc_ci_release_build_step_timeout_minutes as String], "")
+}
+
+test fn where_the_fold_can_render_the_committed_body_is_the_builders_run_itself() -> Bool {
+  let model = model_build_run(purpose: "the fleet keypair mint")
+  let committed = concat(join(committed_body(step_name: fleet_keypair_mint_build_step_name), "\n"), "\n")
+  if starts_with(s: model, prefix: shell_command_text_refused_poison) {
+    // This interpreter predates the seed-build fold, so the model side cannot be rendered HERE -- disclosed,
+    // not hidden: the marker itself must name the fold that refused, and legs 1 and 2 carry the equality.
+    model.contains(needle: "bash_command_fold_serialize")
+      && model.contains(needle: "bash_fold_serialize_stmt_list_shape_refused")
+  } else {
+    model == committed
+  }
 }
