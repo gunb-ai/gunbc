@@ -1,5 +1,6 @@
 module test.claim.live_deploy.capacity_migration_approval_witness
 
+import std.decl_ref { decl_ref }
 import std.types { Bool, NonEmptyStr, String, Timestamp, ShellResponse }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest }
@@ -23,6 +24,7 @@ import gunbc.live_deploy.capacity_migration_approval {
 
 fn approval_fixture_intent() -> CapacityCutoverIntent {
   CapacityCutoverIntent {
+    instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"),
     host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
     reloads: [], generations: [], captures: [CapacityCaptureOperation { source: "/etc/systemd/system/fixture.service", root: "/var/lib/gunbc/cutover-capture/cutover-fixture" }],
@@ -235,7 +237,7 @@ test fn an_independently_substituted_intent_refuses_before_the_claim() -> Bool {
   let request = match approval_fixture_request(intent: intent, escalation_id: "fixture-approval") {
     Err { value: _ } => { return false } Ok { value: value } => value
   }
-  let other = CapacityCutoverIntent { host: intent.host, revision: intent.revision, attempt: intent.attempt,
+  let other = CapacityCutoverIntent { instance_id: intent.instance_id, selected_identity: intent.selected_identity, host: intent.host, revision: intent.revision, attempt: intent.attempt,
     operations: [], file_operations: intent.file_operations, captures: intent.captures,
     reloads: intent.reloads, generations: intent.generations }
   match capacity_cutover_claim(intent: other, request: request, authorization: approval_fixture_grant(request: request),

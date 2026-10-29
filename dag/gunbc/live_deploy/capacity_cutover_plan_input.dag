@@ -2,6 +2,7 @@ module gunbc.live_deploy.capacity_cutover_plan_input
 
 import std.types { String, NonEmptyStr, List, Int, CommitSha, Timestamp }
 import std.algebra { list_at_optional }
+import std.decl_ref { decl_ref }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
 import std.content_hash { Sha256Digest, sha256_hex_digest, sha256_hex_of_text, sha1_hex_digest }
@@ -139,9 +140,9 @@ fn capacity_cutover_plan_input(text: String, approved: Sha256Digest) -> Result<C
     JsonDocumentUnreadable { gap: gap } => { return Err { value: json_document_gap_text(gap: gap) } }
     JsonDocumentParsed { value: value } => value
   }
-  let row = match capacity_plan_array(value: document, size: 9) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let row = match capacity_plan_array(value: document, size: 11) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   let schema = match capacity_plan_text(rows: row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
-  if schema != "gunbc.capacity-cutover.v5" { return Err { value: "unknown cutover plan schema" } }
+  if schema != "gunbc.capacity-cutover.v6" { return Err { value: "unknown cutover plan schema" } }
   let host = match capacity_plan_text(rows: row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   let revision = match capacity_plan_text(rows: row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   match sha1_hex_digest(hex: revision as String) { Absent => { return Err { value: "invalid cutover release revision" } } Present { value: _ } => {} }
@@ -151,7 +152,15 @@ fn capacity_cutover_plan_input(text: String, approved: Sha256Digest) -> Result<C
   let generations = match capacity_plan_population(rows: row, index: 6, decode: capacity_plan_generation) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   let captures = match capacity_plan_population(rows: row, index: 7, decode: capacity_plan_capture) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
   let files = match capacity_plan_population(rows: row, index: 8, decode: capacity_plan_file) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
-  let intent = CapacityCutoverIntent { host: host, revision: revision as CommitSha, attempt: attempt as AttemptIdentity,
+  let instance_id = match capacity_plan_text(rows: row, index: 9) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_value = match capacity_plan_at(rows: row, index: 10) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_row = match capacity_plan_array(value: identity_value, size: 3) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_module = match capacity_plan_text(rows: identity_row, index: 0) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_name = match capacity_plan_text(rows: identity_row, index: 1) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  let identity_kind = match capacity_plan_text(rows: identity_row, index: 2) { Err { value: why } => { return Err { value: why } } Ok { value: v } => v }
+  if identity_kind != "whole" { return Err { value: "cutover selection must name a whole desired-deployment declaration" } }
+  let intent = CapacityCutoverIntent { instance_id: instance_id,
+    selected_identity: decl_ref(module_path: identity_module, decl_name: identity_name), host: host, revision: revision as CommitSha, attempt: attempt as AttemptIdentity,
     operations: operations, file_operations: files, captures: captures, reloads: reloads, generations: generations }
   if (capacity_cutover_intent_text(intent: intent) as String) != text { Err { value: "cutover plan input is not the canonical operation manifest" } }
   else { Ok { value: intent } }

@@ -16,7 +16,7 @@ import test.claim.live_deploy.capacity_migration_approval_witness { approval_fix
 
 fn plan_input_fixture() -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
-  CapacityCutoverIntent { host: prior.host, revision: prior.revision, attempt: prior.attempt,
+  CapacityCutoverIntent { instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: prior.revision, attempt: prior.attempt,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
     reloads: [CapacityManagerReload { manager: UserManager { uid: 1000 },
       boundaries: [CapacityAfterInhibition, CapacityAfterInstall, CapacityAfterRemoval] }],
@@ -69,6 +69,11 @@ fn plan_input_rejects_even_if_digest_is_approved(text: String) -> Bool {
 
 test fn source_and_unknown_operation_shapes_are_not_plan_data() -> Bool {
   plan_input_rejects_even_if_digest_is_approved(text: "module attacker\nfn main() {}")
-    && plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v5\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[[\"system\",\"fixture.service\",\"exec-arbitrary\"]],[],[],[],[]]")
+    && plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v6\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[[\"system\",\"fixture.service\",\"exec-arbitrary\"]],[],[],[],[],\"fixture-deployment\",[\"test.claim.live_deploy.capacity_migration_approval_witness\",\"approval_fixture_intent\",\"whole\"]]")
     && plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v999\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[],[],[],[],[]]")
+}
+
+
+test fn a_v5_manifest_without_source_selection_is_not_upgraded() -> Bool {
+  plan_input_rejects_even_if_digest_is_approved(text: "[\"gunbc.capacity-cutover.v5\",\"srv1\",\"1111111111111111111111111111111111111111\",\"fixture\",[],[],[],[],[]]")
 }

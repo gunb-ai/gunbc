@@ -7,6 +7,7 @@ import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload, ApplyP
 import gunbc.live_deploy.unit_install { ModeledUnitDocument, CapturedUnitDocument }
 import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path, capacity_capture_blob_admit }
 import gunbc.live_deploy.capacity_controller_plan { capacity_controller_plan, capacity_controller_bind_publications }
+import std.decl_ref { decl_ref }
 import std.types { Bool, String, NonEmptyStr }
 import std.scoped_authorization { ClaimLost, ClaimUndecided, AttemptIdentity, AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy }
 import std.durable_compare_and_set { cas_generation_first }
@@ -75,7 +76,7 @@ test fn rendered_digest_must_match_the_approved_digest() -> Bool {
 }
 
 fn generation_fixture_approval(plan: CapacityPlannedGeneration) -> Result<CapacityCutoverAuthorization, String> {
-  let intent = CapacityCutoverIntent { host: "srv1", revision: "1111111111111111111111111111111111111111",
+  let intent = CapacityCutoverIntent { instance_id: "fixture-deployment", selected_identity: decl_ref(module_path: "test.claim.live_deploy.capacity_migration_approval_witness", decl_name: "approval_fixture_intent"), host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: plan.store.attempt, operations: [], file_operations: [], captures: [], reloads: [], generations: [plan.operation] }
   let request = match approval_fixture_request(intent: intent, escalation_id: "generation-fixture") {
     Err { value: why } => { return Err { value: why } } Ok { value: value } => value

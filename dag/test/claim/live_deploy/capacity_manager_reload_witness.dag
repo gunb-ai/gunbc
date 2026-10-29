@@ -16,7 +16,7 @@ import gunbc.live_deploy.capacity_cutover_recovery { CapacityCutoverRecord, Capa
 fn reload_fixture_intent(rows: List<CapacityManagerReload>) -> CapacityCutoverIntent {
   let prior = approval_fixture_intent()
   let record = recovery_fixture_record()
-  CapacityCutoverIntent { host: prior.host, revision: record.target_revision, attempt: record.attempt,
+  CapacityCutoverIntent { instance_id: prior.instance_id, selected_identity: prior.selected_identity, host: prior.host, revision: record.target_revision, attempt: record.attempt,
     operations: prior.operations, file_operations: prior.file_operations, captures: prior.captures,
     generations: prior.generations, reloads: rows }
 }
