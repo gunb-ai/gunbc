@@ -34,10 +34,10 @@ import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import extdeps.exec.command { argv_words }
 
-const wake_now: EpochSecs = 1_700_000_000
-const wake_user: NonEmptyStr = "srv1lab"
-const wake_key: String = "e5a42384c6a5e13d"
-const wake_node: String = "roadmap-belt"
+data wake_now: EpochSecs = 1700000000
+data wake_user: NonEmptyStr = "srv1lab"
+data wake_key: String = "e5a42384c6a5e13d"
+data wake_node: String = "roadmap-belt"
 
 fn wedged_recovery(last_delivery: EpochSecs) -> SessionRecovery {
   SessionRecoveryRequestPending {
@@ -154,7 +154,7 @@ test fn a_plain_hold_maps_to_no_spawn_not_a_wake() -> Bool {
 
 // A DUE-NOW RESUME IS NOT WOKEN. Its re-delivery is already due, so the running route re-delivers it now.
 test fn a_resume_due_now_maps_to_a_resume_route_not_a_wake() -> Bool {
-  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: 1_699_900_000, worker_terminal: true, now: Present { value: wake_now }) })
+  let decision = continuation_decision(prior: Present { value: wedged_pri(capture: CaptureAbsent, last_delivery: 1699900000, worker_terminal: true, now: Present { value: wake_now }) })
   let route = belt_spawn_route_for_decision(decision: decision)
   match route {
     SpawnRouteResume { attempt_key, ordinal: _ } => attempt_key == wake_key
