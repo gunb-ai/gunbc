@@ -192,7 +192,7 @@ fn continuation_from_request_pending(prior: PriorAttemptFacts, cause: String, si
         if transport_retry_redelivery_due(policy: harness_transport_retry_policy_now, last_delivery_at: last_delivery_at, re_deliveries: re_deliveries, session_key: prior.attempt_key, at: now) {
           ContinuationResume {
             reason: join(["the prior attempt ", prior.attempt_key, " is request-pending and its next re-delivery is due: the same round of its own session is RE-DELIVERED (re-delivery ", to_string(value: re_deliveries + 1),
-              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending ", to_string(value: now - since), " seconds ago: ", cause], ""),
+              ", the S3 resume count of ", to_string(value: session_resume_bound), " is not spent by a re-delivery); the request began pending at epoch ", to_string(value: since), ": ", cause], ""),
             attempt_key: prior.attempt_key,
             ordinal: wakes_made + 1,
             causes: [cause],
