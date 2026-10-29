@@ -20,6 +20,7 @@ import gunbc.runner.runner_host_file_converge {
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.runner.runner_slot_job_role { deploy_slot_account_operation }
 import gunbc.executor_privileged_operation { executor_privileged_operation_argv }
+import extdeps.sudo.elevation { sudo_program }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -147,7 +148,7 @@ test fn the_rebuild_removes_the_tree_and_extracts_as_the_account() -> Bool {
     && string_contains(s: nth(xs: lines, i: 1), pattern: "/opt/actions-runner/srv1-02")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "-u ghdeploy")
     && string_contains(s: nth(xs: lines, i: 2), pattern: "/var/lib/gunbc/stage/runner.tar.gz")
-    && starts_with(s: nth(xs: lines, i: 3), prefix: "sudo ")
+    && starts_with(s: nth(xs: lines, i: 3), prefix: elevated_prefix())
     && string_contains(s: nth(xs: lines, i: 3), pattern: "-rf /var/lib/gunbc/stage")
 }
 
@@ -161,12 +162,18 @@ test fn the_runner_archive_stage_is_written_by_root_alone() -> Bool {
   starts_with(s: stage, prefix: "/var/lib/gunbc/")
     && !starts_with(s: stage, prefix: "/tmp")
     && length(lines) == 3
-    && all(lines, l => starts_with(s: l, prefix: "sudo "))
+    && all(lines, l => starts_with(s: l, prefix: elevated_prefix()))
     && string_contains(s: nth(xs: lines, i: 0), pattern: join(["-rf ", stage], ""))
     && string_contains(s: nth(xs: lines, i: 1), pattern: "-o root -g root")
     && string_contains(s: nth(xs: lines, i: 1), pattern: stage)
     && string_contains(s: nth(xs: lines, i: 2), pattern: "curl")
     && string_contains(s: nth(xs: lines, i: 2), pattern: join([stage, "/runner.tar.gz"], ""))
+}
+
+// AN ELEVATED LEG BEGINS WITH SUDO AS extdeps.sudo.elevation INVOKES IT, read from that authority
+// rather than spelled here.
+fn elevated_prefix() -> String {
+  join([sudo_program().invocation as String, " "], "")
 }
 
 fn nth(xs: List<String>, i: Int) -> String {
