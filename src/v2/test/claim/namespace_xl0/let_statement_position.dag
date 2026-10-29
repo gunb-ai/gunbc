@@ -84,6 +84,8 @@ data lst_arm_block_let_source: String = "module v2.test.lst_arm_block_let\n\nimp
 data lst_arm_block_two_let_source: String = "module v2.test.lst_arm_block_two_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int, y: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    let q = i\n    lst_uses(x: r, y: q)\n  }\n  LstB => i\n} }\n"
 
 data lst_arm_tail_let_source: String = "module v2.test.lst_arm_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_if_match_source: String = "module v2.test.lst_arm_block_if_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The shape dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 authored: a braced arm block\n// whose first statement binds an `if` whose branches are matches, and whose last statement reads that\n// binding. Resolving it means the block is read as a statement sequence, not as a head.\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let chosen = if lst_predicate(i: v) {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => i\n      }\n    } else {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => 0\n      }\n    }\n    let shifted = chosen + 1\n    lst_uses(x: shifted)\n  }\n  LstB => i\n} }\n"
+data lst_if_match_branch_source: String = "module v2.test.lst_if_match_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The SIBLING leaf of the arm block (DESIGN \u00a76b root generalization): an `if` at term position whose\n// branches are braced statement sequences. One rule reads a braced block in term position, so a braced\n// if-branch must be read the same way as a braced arm body -- or the fix is a per-leaf patch.\nfn lst_probe(s: LstS, i: Int) -> Int { if lst_predicate(i: i) {\n  let left = lst_uses(x: i)\n  let scaled = left * 2\n  lst_uses(x: scaled)\n} else {\n  match s {\n    LstA { v: v } => lst_uses(x: v)\n    LstB => 0\n  }\n} }\n"
 
 data lst_arm_rest_und_source: String = "module v2.test.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
 
@@ -121,8 +123,14 @@ data lst_ingest: SourceRootIngest = Cons {
     tail: Cons {
     head: lst_read(source: lst_arm_tail_let_source, id: ^lst_arm_tail_let_artifact, unit: ^lst_arm_tail_let_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_tail_let.dag"),
     tail: Cons {
+    head: lst_read(source: lst_arm_block_if_match_source, id: ^lst_arm_block_if_match_artifact, unit: ^lst_arm_block_if_match_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_block_if_match.dag"),
+    tail: Cons {
+    head: lst_read(source: lst_if_match_branch_source, id: ^lst_if_match_branch_artifact, unit: ^lst_if_match_branch_cu, path: "src/v2/test/fixture/namespace_xl0/lst_if_match_branch.dag"),
+    tail: Cons {
     head: lst_read(source: lst_arm_rest_und_source, id: ^lst_arm_rest_und_artifact, unit: ^lst_arm_rest_und_cu, path: "src/v2/test/fixture/namespace_xl0/lst_arm_rest_und.dag"),
     tail: Empty
+  }
+  }
   }
   }
   }
@@ -158,6 +166,8 @@ type LstOutcomes
       arm_block_let: LstVerdict
       arm_block_two_let: LstVerdict
       arm_tail_let: LstVerdict
+      arm_block_if_match: LstVerdict
+      if_match_branch: LstVerdict
       arm_rest_und: LstVerdict
     }
 
@@ -226,6 +236,8 @@ fn lst_outcomes() -> LstOutcomes {
         arm_block_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_let", unit: ^lst_arm_block_let_cu),
         arm_block_two_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu),
         arm_tail_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu),
+        arm_block_if_match: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu),
+        if_match_branch: lst_verdict_in(context: context, module_name: "v2.test.lst_if_match_branch", unit: ^lst_if_match_branch_cu),
         arm_rest_und: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu)
       }
   }
@@ -257,28 +269,28 @@ fn lst_unbound_at(v: LstVerdict, atom: Symbol) -> Bool {
 // inside a function value's braced body.
 test fn a_body_top_level_let_with_a_following_statement_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: v, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn a_braced_arm_of_one_expression_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: v, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn a_let_in_an_if_branch_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: v, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn a_let_in_a_function_value_body_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: v, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
@@ -288,14 +300,14 @@ test fn a_let_in_a_function_value_body_is_accepted() -> Bool {
 // to a shape the compiler already lowers.
 test fn a_tail_statement_let_in_a_fn_body_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: v, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn a_tail_statement_let_after_another_let_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: v, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: v, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
@@ -304,7 +316,7 @@ test fn a_tail_statement_let_after_another_let_is_accepted() -> Bool {
 // of the body is a let whose value is a match.
 test fn a_tail_statement_let_bound_to_a_match_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: v, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: v, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
@@ -314,21 +326,21 @@ test fn a_tail_statement_let_bound_to_a_match_is_accepted() -> Bool {
 // what rules out the cheap answer of dropping the binding — the rest names it.
 test fn a_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: v, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn two_lets_in_a_braced_match_arm_block_are_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: v, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
 
 test fn a_tail_statement_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: v, arm_rest_und: _ } => lst_is_resolved(v: v)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: v, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
@@ -337,14 +349,31 @@ test fn a_tail_statement_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
 // name in either refuses unbound AT ITS OWN ATOM rather than being dropped on the floor.
 test fn a_tail_statement_let_reads_its_value_and_refuses_unbound_at_its_atom() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _ } => lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: v, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: _ } => lst_unbound_at(v: v, atom: ^lst_undeclared_tail_value)
     LstContextRefused => false
   }
 }
 
 test fn the_rest_of_a_braced_arm_block_after_a_let_refuses_unbound_at_its_atom() -> Bool {
   match lst_outcomes() {
-    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: v } => lst_unbound_at(v: v, atom: ^lst_undeclared_arm_rest)
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_block_if_match: _, if_match_branch: _, arm_rest_und: v } => lst_unbound_at(v: v, atom: ^lst_undeclared_arm_rest)
+    LstContextRefused => false
+  }
+}
+
+// The fabric shape: an `if` bound by a statement let inside a braced arm block, read back by the last
+// statement. This is the gap the census reports at fabric_control_plane_live_probe.dag:1053:3.
+test fn an_if_bound_by_a_let_in_a_braced_match_arm_block_is_accepted() -> Bool {
+  match lst_outcomes() {
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: v, if_match_branch: _ } => lst_is_resolved(v: v)
+    LstContextRefused => false
+  }
+}
+
+// The sibling leaf: braced `if` branches at term position, each a statement sequence with its own lets.
+test fn lets_in_braced_if_branches_at_term_position_are_accepted() -> Bool {
+  match lst_outcomes() {
+    LstOutcomesDecided { ctl_body_let: _, ctl_arm_expr: _, ctl_arm_block: _, ctl_if_branch: _, ctl_fn_value: _, tail_let: _, tail_let_after_let: _, tail_let_match: _, tail_let_und: _, arm_block_let: _, arm_block_two_let: _, arm_tail_let: _, arm_rest_und: _, arm_block_if_match: _, if_match_branch: v } => lst_is_resolved(v: v)
     LstContextRefused => false
   }
 }
