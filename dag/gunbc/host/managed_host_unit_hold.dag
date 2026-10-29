@@ -3,7 +3,7 @@ module gunbc.host.managed_host_unit_hold
 import gunbc.process_hold_identity {
   process_hold_text, process_hold_marker, process_hold_decode, text_at, self_process_identity, SelfIdentified, SelfUnidentified, holder_process_liveness,
 }
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
 import std.optional { Present, Absent }
@@ -33,6 +33,7 @@ import extdeps.linux.proc_pid_stat {
 import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_exact_read, FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
   FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_listing_observation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
 }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
@@ -54,6 +55,10 @@ import gunbc.host.host_maintenance_hold_reason {
 }
 import extdeps.tools.hostname
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
+import gunbc.host_state_root { HostStateTree, host_state_tree_path, host_state_tree }
+import gunbc.owned_directory { OwnedDirectoryTarget, OwnedDirectoryDeclared, ForeignOwnershipRefuses }
+import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerAllEveryoneTraverse }
+import extdeps.posix.identity { PosixOwnerNames }
 
 // ── THE INTERLOCK THE PER-RUN APPROVAL WAS PROVIDING WITHOUT SAYING SO ────────────────────────
 //
@@ -79,7 +84,78 @@ import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 // where the boot job runs and where the operator's own session takes the hold. An undecodable slot
 // or an unavailable store REFUSES the boot: an interlock that cannot be read is not released.
 
-data unit_hold_store_root: NonEmptyStr = "/var/lib/gunbc/unit-holds" as NonEmptyStr
+// THE UNIT HOLD STORE'S ONE DECLARATION (operator ruling, sealed-store lane): the member the store
+// lives under in the ONE host-state tree (gunbc.host_state_root host_state_tree_root), and the mode its
+// directory is created with. The store mint (unit_hold_store), the provisioning target
+// (unit_hold_store_directory) and the path every consumer reads (unit_hold_store_path) all derive from
+// THIS data -- there is no second literal. THE MODE IS THE OBSERVED FACT: provisioning/srv1/gunbc-ghrunner.sudoers
+// creates the directory `install -d -m 00755 -o ghrunner -g ghrunner`, and the executor row that creates
+// it (gunbc.runner.runner_host_grants unit_hold_store_plan) uses the executor's managed mode,
+// which is 0755 (DirectoryOwnerAllEveryoneTraverse). Owner-ONLY would be wrong here: the acquisition
+// entry runs in ghrunner's group and the hold library's DefaultAccessCreateOnly publication relies on
+// the directory being group-reachable, so the historical mode is carried, not invented.
+type UnitHoldSlotsDeclaration { member: NonEmptyStr, mode: DeclaredDirectoryMode }
+
+data unit_hold_slots: UnitHoldSlotsDeclaration = UnitHoldSlotsDeclaration {
+  member: "unit-holds" as NonEmptyStr,
+  mode: DirectoryOwnerAllEveryoneTraverse,
+}
+
+// THE ROOT, DERIVED: the tree's path plus this store's member. Never a literal, and only this module's
+// mint and provisioning target read it.
+fn unit_hold_store_path(tree: HostStateTree) -> NonEmptyStr {
+  join([host_state_tree_path(tree: tree) as String, "/", unit_hold_slots.member as String], "") as NonEmptyStr
+}
+
+// THE SEALED STORE: data only (the operator's sealed-store shape -- operations are the plain functions
+// below, each taking the record), sole_constructor, non-generic, never a variant arm (the seal does not
+// reach those: test.claim.sole_constructor_completeness_audit_probe f13/f19). Construction is sealed:
+// unit_hold_store is the only place this module builds one, and no other module can -- so no caller can
+// forge a hold store or point one at another directory. A FIELD READ is not sealed (declared residual:
+// gunbc.recurring_failure_mode a_slot_store_is_built_over_a_literal_path_by_any_module); the rung claimed
+// here is construction only.
+type UnitHoldStore sole_constructor {
+  root: NonEmptyStr
+}
+
+type UnitHoldStoreReading
+  = UnitHoldStoreReady { store: UnitHoldStore }
+  | UnitHoldStoreUnready { detail: String }
+
+// THE ONE MINT, AND IT TAKES NO PATH: the sealed tree value plus nothing else. It observes the derived
+// directory (lists it, the reference mint's route) and refuses when the store cannot be read -- the hold
+// library's own law, that an interlock which cannot be read is not released, now enforced at the mint.
+fn unit_hold_store(tree: HostStateTree) -> UnitHoldStoreReading {
+  let root = unit_hold_store_path(tree: tree)
+  let listing = Filesystem.List(path: root as String)
+  match filesystem_listing_observation(directory: root as String, success: listing.success, entries: listing.entries, error: listing.error) {
+    FilesystemDirectorySubjectRefused { directory: _, cause: c } => UnitHoldStoreUnready { detail: join(["the unit hold store's directory is not admissible: ", c], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => UnitHoldStoreUnready { detail: join(["the unit hold store's directory could not be listed: ", e], "") }
+    FilesystemDirectoryListed(_) => UnitHoldStoreReady { store: UnitHoldStore { root: root } }
+  }
+}
+
+// THE PRODUCTION CALLER'S ONE LINE: the store from the declared tree, refused if it cannot be read.
+fn unit_hold_store_on_production_host() -> UnitHoldStoreReading {
+  unit_hold_store(tree: host_state_tree())
+}
+
+// THE STORE ROOT IS A DEMANDED DIRECTORY, derived from the same declaration as the path above and
+// enrolled where the tree's children are (gunbc.runner.runner_host_grants unit_hold_store_plan).
+// The mint refuses a root it cannot list rather than reading it as empty, so a root nothing creates
+// refuses every take, release and boot: the creator the corpus names for a store root
+// (gunbc.dispatch_credential_acquisition credential_acquisition_slots_directory).
+fn unit_hold_store_directory(tree: HostStateTree, owner: PosixOwnerNames) -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: unit_hold_slots.member,
+    path: unit_hold_store_path(tree: tree) as String as FilePath,
+    owner: owner,
+    mode: unit_hold_slots.mode,
+    // A hold slot names who holds a unit; a directory another principal left is a foreign subtree and
+    // is refused outright -- ownership of an interlock store is never adopted.
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
 
 // ── THE ADMISSION: WHICH HOSTS HAVE A HOLD AT ALL ─────────────────────────────────────────────
 // Taking, releasing or checking a unit hold is an operation on a managed host, and its policy is that
@@ -227,7 +303,7 @@ fn unit_hold_store_hosts() -> List<NonEmptyStr> {
 }
 
 // ── THE STORE IS A LOCAL DIRECTORY, SO THE PROCESS MUST BE ON THE STORE HOST ───────────────────
-// unit_hold_store_root is a path on whatever machine runs this code. An admitted subject names the
+// unit_hold_store_path(tree) is a path on whatever machine runs this code. An admitted subject names the
 // host its store lives on, and a take, release or acquire run anywhere else would succeed against that
 // other machine's empty directory while the real store stayed free: an interlock held where nobody
 // looks. So every store effect below is fed a UnitHoldStoreExecutor, and that carrier exists only
@@ -278,19 +354,29 @@ fn unit_hold_store_executor_refusal(key: NonEmptyStr, decision: UnitHoldStoreExe
 type UnitHoldStoreExecutor sole_constructor {
   subject: AdmittedUnitHoldSubject
   observed_hostname: NonEmptyStr
+  store: UnitHoldStore
 }
 
 type UnitHoldStoreExecutorStanding
   = UnitHoldOnStoreHost { executor: UnitHoldStoreExecutor }
   | UnitHoldNotOnStoreHost { reason: NonEmptyStr }
+  | UnitHoldStoreUnreadyOnExecutor { detail: String }
 
-// THE ONE MINT OF THE EXECUTOR CARRIER, and it reads the hostname itself.
-fn unit_hold_store_executor(subject: AdmittedUnitHoldSubject) -> UnitHoldStoreExecutorStanding {
+// THE ONE MINT OF THE EXECUTOR CARRIER, and it reads the hostname itself. The sealed store is minted
+// HERE, from the tree the caller passes (production callers pass gunbc.host_state_root host_state_tree();
+// witnesses pass isolated_host_state_tree(dir)), so a store effect runs only when the derived directory
+// was actually listed -- the mint's refusal is an unreadable interlock, and an interlock that cannot be
+// read is not released.
+fn unit_hold_store_executor(subject: AdmittedUnitHoldSubject, tree: HostStateTree) -> UnitHoldStoreExecutorStanding {
   let read = os.Hostname.ReadShort()
   let observed = if read.success { Present { value: read.value } } else { none }
   let decision = unit_hold_store_executor_decision(subject: subject, observed: observed)
   match decision {
-    UnitHoldExecutorIsStoreHost { observed: o } => UnitHoldOnStoreHost { executor: UnitHoldStoreExecutor { subject: subject, observed_hostname: o } }
+    UnitHoldExecutorIsStoreHost { observed: o } =>
+      match unit_hold_store(tree: tree) {
+        UnitHoldStoreReady { store: s } => UnitHoldOnStoreHost { executor: UnitHoldStoreExecutor { subject: subject, observed_hostname: o, store: s } }
+        UnitHoldStoreUnready { detail: d } => UnitHoldStoreUnreadyOnExecutor { detail: d }
+      }
     UnitHoldExecutorElsewhere { observed: _, store_host: _, allocated: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
     UnitHoldStoreHostUnallocated { store_host: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
     UnitHoldExecutorUnread { store_host: _ } => unit_hold_not_on_store_host(key: subject.key, decision: decision)
@@ -452,6 +538,7 @@ type UnitHoldProof sole_constructor {
   subject: AdmittedUnitHoldSubject
   owner: DurableHoldOwnerRef
   generation: CasGeneration
+  store: UnitHoldStore
 }
 
 type UnitHoldAcquisition
@@ -528,7 +615,7 @@ fn unit_hold_live_owner(holder: DurableHoldOwnerRef) -> DurableHoldHolderLivenes
   }
 }
 
-fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration) -> DeadHolderRecovery
+fn unit_hold_recover_dead_holder(store: UnitHoldStore, key: NonEmptyStr, holder: DurableHoldOwnerRef, generation: CasGeneration) -> DeadHolderRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
@@ -538,7 +625,7 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
   // root is also admitted to. What stays here is the unit root's own half -- WHICH holders this root
   // can observe at all, and what a refusal means to a managed host -- passed in as the liveness
   // function and the refusal sentence.
-  match file_hold_recover_dead_holder(root: root, slot_key: key, holder: holder, generation: generation, released_by: join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef, live_owner: unit_hold_live_owner) {
+  match file_hold_recover_dead_holder(root: store.root, slot_key: key, holder: holder, generation: generation, released_by: join(["recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef, live_owner: unit_hold_live_owner) {
     FileHoldDeadHolderRecovered { dead_holder: h, evidence: e } => DeadHolderRecovered { dead_holder: h, evidence: e }
     FileHoldDeadHolderHolderLive { holder: h, evidence: e } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderLive { generation: generation, holder: h, evidence: e }) }
     FileHoldDeadHolderHolderUnobservable { holder: h, cause: c } => DeadHolderNotRecovered { reason: recovery_refusal_text(key: key, r: HoldRecoveryHolderUnobservable { generation: generation, holder: h, cause: c }) }
@@ -551,14 +638,14 @@ fn unit_hold_recover_dead_holder(root: NonEmptyStr, key: NonEmptyStr, holder: Du
 
 // The proof is built here, from an outcome only unit_hold_acquire's own live acquires produce: the
 // admission is what keeps a supplied FileHoldAcquired from becoming a proof.
-fn unit_hold_minted(subject: AdmittedUnitHoldSubject, outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisition
+fn unit_hold_minted(subject: AdmittedUnitHoldSubject, outcome: FileHoldAcquireOutcome, store: UnitHoldStore) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire_on_store_host"),
   ]
 {
   match outcome {
     FileHoldAcquired { slot_key: _, owner: o, generation: g } =>
-      UnitHeld { proof: UnitHoldProof { subject: subject, owner: o, generation: g } }
+      UnitHeld { proof: UnitHoldProof { subject: subject, owner: o, generation: g, store: store } }
     FileHoldOccupied { slot_key: _, holder: _, generation: _ } => unit_hold_not_acquired(outcome: outcome)
     FileHoldAcquireLost { slot_key: _ } => unit_hold_not_acquired(outcome: outcome)
     FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_not_acquired(outcome: outcome)
@@ -579,7 +666,7 @@ fn unit_hold_not_acquired(outcome: FileHoldAcquireOutcome) -> UnitHoldAcquisitio
 // further question -- is its holder observed dead? -- and only an observed-dead holder's hold is freed,
 // after which this caller acquires once more like any acquirer. There is no loop: a slot taken by
 // someone else in between refuses as occupied, naming them.
-fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
+fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRef, tree: HostStateTree) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "boot_run_acquire_unit_hold"),
     decl_ref(module_path: "gunbc.host.host_reset_return_run", decl_name: "host_reset_return_wet"),
@@ -587,32 +674,34 @@ fn unit_hold_acquire(subject: AdmittedUnitHoldSubject, owner: DurableHoldOwnerRe
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "qualification_acquire_unit_hold"),
   ]
 {
-  match unit_hold_store_executor(subject: subject) {
+  match unit_hold_store_executor(subject: subject, tree: tree) {
     UnitHoldNotOnStoreHost { reason: r } => UnitHoldRefused { reason: join([r as String, "; controller untouched"], "") as NonEmptyStr }
+    UnitHoldStoreUnreadyOnExecutor { detail: d } => UnitHoldRefused { reason: join(["the unit hold store refused to open (", d, "); controller untouched"], "") as NonEmptyStr }
     UnitHoldOnStoreHost { executor: e } => unit_hold_acquire_on_store_host(executor: e, owner: owner)
   }
 }
 
-// The store effect itself, reachable only with the executor carrier and only from the mint above.
+// The store effect itself, reachable only with the executor carrier and only from the mint above. The
+// root is the carrier's sealed store -- the effect cannot be pointed anywhere else.
 fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: DurableHoldOwnerRef) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
   ]
 {
   let subject = executor.subject
-  let outcome = file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner)
+  let outcome = file_hold_acquire(root: executor.store.root, slot_key: subject.key, requested_owner: owner)
   match outcome {
     FileHoldOccupied { slot_key: _, holder: h, generation: g } =>
-      match unit_hold_recover_dead_holder(root: unit_hold_store_root, key: subject.key, holder: h, generation: g) {
+      match unit_hold_recover_dead_holder(store: executor.store, key: subject.key, holder: h, generation: g) {
         DeadHolderNotRecovered { reason: r } => UnitHoldRefused { reason: r }
         DeadHolderRecovered { dead_holder: _, evidence: _ } =>
-          unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: unit_hold_store_root, slot_key: subject.key, requested_owner: owner))
+          unit_hold_minted(subject: subject, outcome: file_hold_acquire(root: executor.store.root, slot_key: subject.key, requested_owner: owner), store: executor.store)
       }
-    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => unit_hold_minted(subject: subject, outcome: outcome)
-    FileHoldAcquireLost { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
-    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_minted(subject: subject, outcome: outcome)
-    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => unit_hold_minted(subject: subject, outcome: outcome)
-    FileHoldKeyNotSlotAddressable { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome)
+    FileHoldAcquired { slot_key: _, owner: _, generation: _ } => unit_hold_minted(subject: subject, outcome: outcome, store: executor.store)
+    FileHoldAcquireLost { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome, store: executor.store)
+    FileHoldAcquireStoreUnavailable { slot_key: _, cause: _ } => unit_hold_minted(subject: subject, outcome: outcome, store: executor.store)
+    FileHoldSlotUndecodable { slot_key: _, generation: _, detail: _ } => unit_hold_minted(subject: subject, outcome: outcome, store: executor.store)
+    FileHoldKeyNotSlotAddressable { slot_key: _ } => unit_hold_minted(subject: subject, outcome: outcome, store: executor.store)
   }
 }
 
@@ -620,7 +709,7 @@ fn unit_hold_acquire_on_store_host(executor: UnitHoldStoreExecutor, owner: Durab
 // know their unit by its HostIdentity; the label is admitted against the managed rows before anything
 // touches the store, and a host that is not managed, or has no hold, refuses with that cause. The
 // acquire itself takes only the admitted subject.
-fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
+fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.mtcollins1_boot_run", decl_name: "mtcollins1_boot_under_live_unit_hold"),
   ]
@@ -634,7 +723,7 @@ fn boot_run_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHo
         SelfUnidentified { cause: c } =>
           UnitHoldRefused { reason: join(["this boot cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
         SelfIdentified { process: p, pid_namespace: n } =>
-          unit_hold_acquire(subject: subject, owner: boot_run_owner(run_id: run_id, process: p, pid_namespace: n))
+          unit_hold_acquire(subject: subject, owner: boot_run_owner(run_id: run_id, process: p, pid_namespace: n), tree: tree)
       }
   }
 }
@@ -651,7 +740,7 @@ fn unit_hold_not_admitted(admission: UnitHoldHostAdmission) -> UnitHoldAcquisiti
 // that seat under this hold and REFUSES its handoff when the seat is busy -- so a probe that did not
 // hold the unit could make a concurrent boot refuse, and an operator's maintenance would see a viewer
 // nobody accounted for. Holding the unit makes the probe, the boot and maintenance exclude each other.
-fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> UnitHoldAcquisition
+fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> UnitHoldAcquisition
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_observe"),
   ]
@@ -665,7 +754,7 @@ fn kvm_observer_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Un
         SelfUnidentified { cause: c } =>
           UnitHoldRefused { reason: join(["this probe cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; controller untouched"], "") as NonEmptyStr }
         SelfIdentified { process: p, pid_namespace: n } =>
-          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: run_id, process: p, pid_namespace: n }))
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: KvmObserverProbeKind, run_id: run_id, process: p, pid_namespace: n }), tree: tree)
       }
   }
 }
@@ -690,7 +779,7 @@ fn qualification_acquire_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> U
         SelfUnidentified { cause: c } =>
           UnitHoldRefused { reason: join(["this qualification run cannot name its own process (", c as String, "), and a hold it could never be shown dead in would lock the unit out if it died; nothing started"], "") as NonEmptyStr }
         SelfIdentified { process: p, pid_namespace: n } =>
-          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: run_id, process: p, pid_namespace: n }))
+          unit_hold_acquire(subject: subject, owner: unit_hold_owner_ref(o: ProcessHeldRun { kind: QualificationRunKind, run_id: run_id, process: p, pid_namespace: n }), tree: host_state_tree())
       }
   }
 }
@@ -790,7 +879,7 @@ fn probe_hold_release_step_exit(o: ProbeHoldReleaseOutcome, context_line: String
   }
 }
 
-fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> ProbeHoldReleaseOutcome
+fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr, tree: HostStateTree) -> ProbeHoldReleaseOutcome
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake.megarac_kvm_observer_observe", decl_name: "megarac_kvm_observer_release"),
   ]
@@ -800,8 +889,9 @@ fn kvm_observer_release_unit_hold(host: HostIdentity, run_id: NonEmptyStr) -> Pr
     UnitHoldHostNotRequired { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostNotRequired { host: h })
     UnitHoldHostUndecided { host: h } => kvm_observer_release_not_admitted(admission: UnitHoldHostUndecided { host: h })
     UnitHoldHostAdmitted { subject: subject } =>
-      match unit_hold_store_executor(subject: subject) {
+      match unit_hold_store_executor(subject: subject, tree: tree) {
         UnitHoldNotOnStoreHost { reason: r } => ProbeHoldUnreleased { cause: r as String }
+        UnitHoldStoreUnreadyOnExecutor { detail: d } => ProbeHoldUnreleased { cause: d }
         UnitHoldOnStoreHost { executor: e } => kvm_observer_release_on_store_host(executor: e, run_id: run_id)
       }
   }
@@ -813,12 +903,12 @@ fn kvm_observer_release_on_store_host(executor: UnitHoldStoreExecutor, run_id: N
   ]
 {
   let key = executor.subject.key
-  match probe_hold_release_decision(observed: observe_file_hold(root: unit_hold_store_root, key: key), run_id: run_id) {
+  match probe_hold_release_decision(observed: observe_file_hold(root: executor.store.root, key: key), run_id: run_id) {
     ProbeHoldFreeNoop => ProbeHoldAlreadyFree
     ProbeHoldForeignNoop { holder: h } => ProbeHoldNotOurs { holder: h }
     ProbeHoldUnobservable { cause: c } => ProbeHoldUnreleased { cause: c }
     ProbeHoldReleaseAt { owner: o, generation: g } =>
-      match file_hold_release_assess(root: unit_hold_store_root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
+      match file_hold_release_assess(root: executor.store.root, slot_key: key, owner: o, acquired_generation: g, released_by: concat("kvm-observer-always-release:", run_id as String) as DurableHoldReleaseRef) {
         FileHoldReleaseNotEligible { slot_key: _, refusal: r } => probe_hold_release_refused(refusal: r)
         FileHoldReleasePlanned { plan: p } => probe_hold_release_committed(outcome: file_hold_release_commit(plan: p))
       }
@@ -840,7 +930,7 @@ type UnitHoldReleaseOutcome
   | UnitHoldLeftHeld { cause: NonEmptyStr }
 
 fn unit_hold_release_outcome(proof: UnitHoldProof) -> UnitHoldReleaseOutcome {
-  match file_hold_release_assess(root: unit_hold_store_root, slot_key: proof.subject.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
+  match file_hold_release_assess(root: proof.store.root, slot_key: proof.subject.key, owner: proof.owner, acquired_generation: proof.generation, released_by: proof.owner as String as DurableHoldReleaseRef) {
     FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => UnitHoldLeftHeld { cause: "the slot no longer showed this run's hold" as NonEmptyStr }
     FileHoldReleasePlanned { plan: p } =>
       match file_hold_release_commit(plan: p) {
@@ -958,14 +1048,15 @@ fn maintenance_hold_take_admitted(hold: AdmittedMaintenanceHold) -> ProcessExit
   ]
 {
   let label = maintenance_hold_label(hold: hold)
-  match unit_hold_store_executor(subject: hold.subject) {
+  match unit_hold_store_executor(subject: hold.subject, tree: host_state_tree()) {
     UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldStoreUnreadyOnExecutor { detail: d } => exit_failure(reason: join(["maintenance hold: the unit hold store refused to open (", d, ")"], ""))
     UnitHoldOnStoreHost { executor: e } => {
       let reason = actions_variable_trimmed(name: hold.reason_env)
       if reason == "" {
         exit_failure(reason: concat(hold.reason_env as String, " is unset; a maintenance hold names why the unit is held"))
       } else {
-        match file_hold_acquire(root: unit_hold_store_root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
+        match file_hold_acquire(root: e.store.root, slot_key: e.subject.key, requested_owner: operator_maintenance_owner(reason: reason as NonEmptyStr)) {
           FileHoldAcquired { slot_key: _, owner: _, generation: _ } => ExitSuccess
           FileHoldOccupied { slot_key: _, holder: h, generation: _ } =>
             exit_failure(reason: join([label, ": unit already held by ", h as String], ""))
@@ -997,8 +1088,9 @@ fn maintenance_hold_release_admitted(hold: AdmittedMaintenanceHold) -> ProcessEx
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "maintenance_hold_release"),
   ]
 {
-  match unit_hold_store_executor(subject: hold.subject) {
+  match unit_hold_store_executor(subject: hold.subject, tree: host_state_tree()) {
     UnitHoldNotOnStoreHost { reason: r } => exit_failure(reason: concat("maintenance hold: ", r as String))
+    UnitHoldStoreUnreadyOnExecutor { detail: d } => exit_failure(reason: join(["maintenance hold: the unit hold store refused to open (", d, ")"], ""))
     UnitHoldOnStoreHost { executor: e } => maintenance_hold_release_on_store_host(executor: e)
   }
 }
@@ -1012,7 +1104,7 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
   ]
 {
   let label = concat("maintenance hold on ", executor.subject.key as String)
-  match observe_file_hold(root: unit_hold_store_root, key: executor.subject.key) {
+  match observe_file_hold(root: executor.store.root, key: executor.subject.key) {
     HoldSlotAbsent => exit_failure(reason: concat(label, ": no hold was ever taken"))
     HoldSlotFree { generation: _, released_by: b } => exit_failure(reason: join([label, ": already free (released by ", b as String, ")"], ""))
     HoldSlotUndecodable { generation: _, detail: d } => exit_failure(reason: join([label, ": slot undecodable: ", d as String], ""))
@@ -1026,7 +1118,7 @@ fn maintenance_hold_release_on_store_host(executor: UnitHoldStoreExecutor) -> Pr
         UnitHoldOwnerDecoded { owner: HostResetReturn { attempt: a } } =>
           exit_failure(reason: join([label, ": held by ", unit_hold_owner_label(o: HostResetReturn { attempt: a }), ", not by maintenance; that run frees its own hold"], ""))
         UnitHoldOwnerDecoded { owner: OperatorMaintenance { reason: _ } } =>
-          match file_hold_release_assess(root: unit_hold_store_root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
+          match file_hold_release_assess(root: executor.store.root, slot_key: executor.subject.key, owner: o, acquired_generation: g, released_by: "operator-maintenance-release" as DurableHoldReleaseRef) {
             FileHoldReleaseNotEligible { slot_key: _, refusal: _ } => exit_failure(reason: concat(label, ": slot moved before release; re-run"))
             FileHoldReleasePlanned { plan: p } =>
               match file_hold_release_commit(plan: p) {

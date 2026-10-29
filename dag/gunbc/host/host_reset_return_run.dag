@@ -6,6 +6,7 @@ import gunbc.host.managed_host_unit_hold {
   UnitHoldProof, UnitHeld, UnitHoldRefused, unit_hold_acquire, unit_hold_release, unit_hold_proof_refusal,
   host_reset_owner, UnitHoldSubjectAdmitted, UnitHoldNotRequired, UnitHoldUndecided,
 }
+import gunbc.host_state_root { host_state_tree }
 import std.decl_ref { decl_ref }
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_range_inclusive }
@@ -750,7 +751,7 @@ fn host_reset_return_wet(evidence: MegaRacOperationEvidence) -> ProcessExit
                   remedy: "the subject's maintenance hold lives on the store host; a reset observed from anywhere else would take a hold in a store the operator never sees",
                 )
               } else {
-                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject))) {
+                match unit_hold_acquire(subject: held, owner: host_reset_owner(attempt: host_reset_return_attempt_label(observer: observer, subject: subject)), tree: host_state_tree()) {
                   UnitHoldRefused { reason: r } =>
                     host_reset_return_preflight_exit(
                       refusal: UnitHeldForMaintenance { subject: subject, reason: r },

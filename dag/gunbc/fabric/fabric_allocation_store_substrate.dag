@@ -1,6 +1,7 @@
 module gunbc.fabric.fabric_allocation_store_substrate
 
 import std.types { String, Bool, NonEmptyStr }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.fabric.fabric_control_plane { fabric_control_plane_store_root }
 import gunbc.fabric.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
 import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
@@ -38,11 +39,16 @@ type AllocationStoreSubstrateSpec {
 }
 
 fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
+  let ancestor = host_state_tree_path(tree: host_state_tree())
+  let parent_entry = "fabric" as NonEmptyStr
   AllocationStoreSubstrateSpec {
     path: fabric_control_plane_store_root(),
-    namespace_path: "/var/lib/gunbc/fabric" as NonEmptyStr,
-    presence_ancestor: "/var/lib/gunbc" as NonEmptyStr,
-    presence_parent_entry: "fabric" as NonEmptyStr,
+    // namespace_path is presence_ancestor + "/" + presence_parent_entry (the record's own
+    // invariant, allocation_store_presence_coordinates_match_path), so it is DERIVED from the
+    // same tree the ancestor derives from -- one fact, one place (DESIGN.md §3).
+    namespace_path: join([ancestor as String, "/", parent_entry as String], "") as NonEmptyStr,
+    presence_ancestor: ancestor,
+    presence_parent_entry: parent_entry,
     presence_target_entry: "allocation" as NonEmptyStr,
     owner: CellSubstrateRootOwned,
     mode: declared_directory_mode(m: DirectoryOwnerOnly),
