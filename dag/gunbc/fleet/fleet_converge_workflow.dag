@@ -15,7 +15,7 @@ import gunbc.auth.branch_dispatch_federation {
   TrustedBranchBootIdentity, boot_grant_required_at_ref, boot_grant_required_at_ref_with,
 }
 // THE READER KEY'S STATE, AS A TYPE. The grant term's ONE exception depends on whether the branch boot route
-// exists, and the route exists exactly when that key is minted (PR #15329). So the ref-aware rules below take
+// exists, and the route exists exactly when that key is minted (gunbc.host.fleet_keypair_mint). So the ref-aware rules below take
 // the state as an input: the render path reads the world (and today renders NO exception, because the route is
 // closed and every branch boot still waits for its grant), while a witness can stand on the far side of the
 // mint and ask the same function what it would render. Two implementations of "does this ref need a grant" --

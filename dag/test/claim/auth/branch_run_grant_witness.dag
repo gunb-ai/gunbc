@@ -746,7 +746,7 @@ fn branch_boot_verdict_matches_todays_binding() -> Bool {
             s: mtcollins1_boot_branch_route_refusal_text(
               cause: ReaderKeyUnusable { fault: NotMinted }
             ),
-            pattern: "#15329"
+            pattern: "boot_medium_reader_keypair_mint_subject"
           )
         Present { value: _ } => false
       }
@@ -754,7 +754,7 @@ fn branch_boot_verdict_matches_todays_binding() -> Bool {
         Absent => false
         Present { value: r } => match r.divergence_reason {
           Absent => false
-          Present { value: reason } => string_contains(s: reason.statement, pattern: "#15329")
+          Present { value: reason } => string_contains(s: reason.statement, pattern: "boot_medium_reader_keypair_mint_subject")
         }
       }
   }
@@ -1112,7 +1112,7 @@ test fn an_unnameable_environment_leaves_no_federation_and_no_admissible_rule() 
 // ── THE BRANCH ACCOUNT HOLDS NO FLEET-WIDE CREDENTIAL (review 87197) ──────────────────────────
 // WHAT THE POLICY LOOKS LIKE ON THE FAR SIDE OF THE MINT. The reader secret at a concrete version is the
 // ONLY difference from the standing today, which is version "pending" -- so this is the minted credential
-// #15329 will install, constructed rather than read, because reading it would hand back the unminted
+// gunbc.host.fleet_keypair_mint installs, constructed rather than read, because reading it would hand back the unminted
 // standing and the claim would prove nothing about the state it is meant to describe.
 // THE MINT'S RECEIPT, AS THE STATE TYPE REQUIRES IT. BootMediumReaderKeyState.Minted demands a pinned
 // version WITH a content hash, the public half and its fingerprint -- all four, because that is what
@@ -1220,7 +1220,7 @@ test fn the_branch_route_is_closed_until_the_reader_key_is_minted() -> Bool {
         && match mtcollins1_boot_branch_route_refusal_cause() {
              Present { value: cause } =>
                string_contains(s: cause as String, pattern: "reader key")
-                 && string_contains(s: cause as String, pattern: "#15329")
+                 && string_contains(s: cause as String, pattern: "boot_medium_reader_keypair_mint_subject")
              Absent => false
            }
   }
@@ -1267,7 +1267,7 @@ test fn a_half_minted_reader_key_keeps_the_route_closed_by_its_own_reason() -> B
       // and the sentence still points at the one place to act
       && string_contains(
         s: mtcollins1_boot_branch_route_refusal_text(cause: ReaderKeyUnusable { fault: PartlyMinted { why: w } }),
-        pattern: "#15329"
+        pattern: "boot_medium_reader_keypair_mint_subject"
       )
     Present { value: _ } => false
   }

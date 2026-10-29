@@ -474,12 +474,12 @@ fn mtcollins1_boot_branch_route_refusal_text(cause: BootBranchRouteRefusal) -> N
       "the boot federation names no environment, so its environment pin cannot be mirrored without dropping the conjunct" as NonEmptyStr
     ReaderKeyUnusable { fault: fault } => match fault {
       NotMinted =>
-        "the boot medium reader key is not minted, so the branch account could only be given an incomplete policy (the BMC credential without the key the served-medium readback runs over); mint it through the FleetKeypairMint converge mode over gunbc.host.boot_medium_reader_key boot_medium_reader_ssh_privkey_secret (tracked as PR #15329) to open this route" as NonEmptyStr
+        "the boot medium reader key is not minted, so the branch account could only be given an incomplete policy (the BMC credential without the key the served-medium readback runs over); mint it through the fleet_keypair_mint converge mode (arm FleetKeypairMint of type FleetConvergeWorkflowMode in gunbc.fleet.fleet_converge_workflow, subject row gunbc.host.fleet_keypair_mint boot_medium_reader_keypair_mint_subject), over gunbc.host.boot_medium_reader_key boot_medium_reader_ssh_privkey_secret, to open this route" as NonEmptyStr
       PartlyMinted { why: w } =>
         // THE STATE'S OWN REASON INSIDE THE SENTENCE: "not yet minted" and "minted without its public half"
         // are different faults a single generic sentence would flatten, so the why is carried verbatim --
         // while both point the operator at the one place to act.
-        concat("the boot medium reader key's mint landed only part of its receipt, so the branch route stays closed; finish the mint through the FleetKeypairMint converge mode (tracked as PR #15329): ", w) as NonEmptyStr
+        concat("the boot medium reader key's mint landed only part of its receipt, so the branch route stays closed; finish the mint through the fleet_keypair_mint converge mode (arm FleetKeypairMint of type FleetConvergeWorkflowMode in gunbc.fleet.fleet_converge_workflow, subject row gunbc.host.fleet_keypair_mint boot_medium_reader_keypair_mint_subject): ", w) as NonEmptyStr
     }
     NoBmcCredential =>
       "the host's boot federation carries no admitted credential for this host's BMC, so the branch account could only be given a policy that cannot boot it" as NonEmptyStr
@@ -642,7 +642,7 @@ fn mtcollins1_boot_branch_reader_grant() -> SecretAccessGrant? {
 // gunbc.auth.gcp_iam_converge_targets entirely: no pool, no provider, no service account, and
 // boot_credential_source_from_branch_selection refuses by name. Nothing is created half-way.
 // THE LAW, WITH THE READER CREDENTIAL AS AN INPUT. The reader standing is a parameter rather than a
-// global read so BOTH sides of this law are assertable: today, with the key unminted, and after #15329
+// global read so BOTH sides of this law are assertable: today, with the key unminted, and after the fleet_keypair_mint mode lands it
 // converges the mint. mtcollins1_boot_branch_secret_grants below is the only caller that matters -- it
 // feeds the real standing in -- and the witnesses pass a standing they construct. A law that can only be
 // evaluated in the state the world happens to be in is a law that cannot be tested at its boundary.

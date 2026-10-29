@@ -40,7 +40,7 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
 // review 87627 found two consumers comparing the secret's version against the literal "pending", so the
 // question "is the key minted?" now has exactly one home (gunbc.host.boot_medium_reader_key
 // BootMediumReaderKeyState) and every reader below takes it as a parameter. The parameter, not a global read,
-// is the point -- the route is closed until #15329 mints the key, and the only way to assert the law on BOTH
+// is the point -- the route is closed until the fleet_keypair_mint mode mints the key, and the only way to assert the law on BOTH
 // sides of a mint that has not happened is to ask the law with the receipt in hand.
 import gunbc.host.boot_medium_reader_key { BootMediumReaderKeyState, boot_medium_reader_key_state }
 
@@ -620,7 +620,7 @@ fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection
 }
 
 // THE SAME SELECTION, ASKED OF A GIVEN READER KEY STATE. The state is an input for one reason: the route
-// is closed until the reader keypair is minted (PR #15329), so the ONLY way to test what the selection does
+// is closed until the reader keypair is minted (gunbc.host.fleet_keypair_mint), so the ONLY way to test what the selection does
 // on the other side of that mint -- without minting it, and without mutating the world to pretend -- is to
 // ask the law directly. mtcollins1_boot_branch_route_refusal_cause_with is the same function the federation
 // builder consults, and the effect handed to the selection algebra is built from the very same state, so the
@@ -686,7 +686,7 @@ fn select_boot_credential_source_at_ref(on_reviewed_main: Bool, branch: String) 
 // THE SAME LAW, ASKED OF A GIVEN READER KEY STATE -- see
 // boot_credential_source_from_branch_selection_with for why the state is an input rather than a
 // global read here. The default form above is what production calls; this form is what lets a witness
-// stand on the far side of the reader-key mint (PR #15329) and ask what the branch boot selects there,
+// stand on the far side of the reader-key mint (gunbc.host.fleet_keypair_mint) and ask what the branch boot selects there,
 // without minting anything and without editing the world to pretend.
 fn select_boot_credential_source_at_ref_with(state: BootMediumReaderKeyState, on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
   if !on_reviewed_main && mtcollins1_boot_branch_is_trusted(branch: branch) {

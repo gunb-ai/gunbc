@@ -109,7 +109,7 @@ type BootMediumReaderKeyState
 
 // THE DECISION OVER THE THREE CARRIERS, AS A FUNCTION OF THEM. Parameters rather than global reads, so the
 // state AFTER the mint converges can be asserted before it happens: the witnesses hand in a receipt of the
-// shape #15329 will land and check what the route does with it. `boot_medium_reader_key_state` below is the
+// shape gunbc.host.fleet_keypair_mint installs, and check what the route does with it. `boot_medium_reader_key_state` below is the
 // only reader of the real standings.
 fn boot_medium_reader_key_state_of(reference: SecretRef, public_key: SshPublicKey?, fingerprint: NonEmptyStr?) -> BootMediumReaderKeyState {
   match reference.hash_state {
