@@ -50,7 +50,14 @@ data a_rust_test_target_that_does_not_compile_reads_green: RecurringFailureMode 
     `--bin claim_executor` variant. The pre-push hook (`.githooks/pre-push`) is `cargo fmt --all --check`
     plus a binary and `instrument_targets` discovery check, neither of which builds tests. So there is
     no path from 'the PR is green' to 'the test target compiles', and every green surface — fmt, the
-    hook, `v2-bootstrap`, heal, the seed census — is fully consistent with the tests being dead source.",
+    hook, `v2-bootstrap`, heal, the seed census — is fully consistent with the tests being dead source.
+    This is not an inference from my reading of two files. DESIGN's own "What a green `v2-bootstrap` does
+    not say" states that "Nothing on the required path evaluates a witness, refuses a module outside the two
+    emitted closures, runs clippy or the v1 unit tests, or compares a generated artifact — this document
+    included — with its authority", and it names the declared drop that loss carries,
+    `gunbc.rung_drop` `v1_required_lanes_withdrawn`. So the grep is the re-derivable check that the state
+    still holds, and the sentence is the authority that it was ruled that way — which is also why the
+    trigger below is a NARROWING of that drop rather than a new lane: the compile half was taken with it.",
 
     "**HOW IT WAS FOUND, which is the incident that earns the row: by accident, on the way to measuring
     something else.** A Rust RED/GREEN re-run for the `Value`-drop repair died at its build step with the
@@ -69,13 +76,19 @@ data a_rust_test_target_that_does_not_compile_reads_green: RecurringFailureMode 
     A `cargo build --release --locked -p v1-compiler --bin gunbc --bin claim_executor` — verbatim the
     required-path command from `.github/workflows`, and the one that must come back clean for the row's
     premise to hold; and
-    B `cargo test --no-run --locked -p v1-compiler --features trmc_runtime` — which no required job runs,
-    and which refuses the same source with `error[E0425]: cannot find function map_value in this scope`,
-    three `error[E0433]: failed to resolve: use of undeclared type` on `HamtMap`/`CanonKey`, and
-    `could not compile v1-compiler (lib test) due to 4 previous errors`. A=0 with B refusing is the
-    invalid state itself, measured on one tree. The commands are the instrument; the scratch log of my
-    own run is not, and no number from it is being asked of any reader. Where the pair has not been run,
-    the row's claim is the command set, which is checkable in `.github/workflows`.",
+    B `cargo test --no-run --locked -p v1-compiler` — which no required job runs, and which refuses the
+    same source: `error[E0425]: cannot find function map_value in this scope`, three
+    `error[E0433]: failed to resolve: use of undeclared type` on `HamtMap`/`CanonKey`, and `could not
+    compile v1-compiler (lib test) due to 4 previous errors`. A=0 with B refusing is the invalid state
+    itself, measured on one tree.
+    Note the shape of B's argument, because getting it wrong is its own near-miss and the guard has to
+    reject it: `cargo test` fails on a *bad flag* in about zero seconds — an unknown `--features` name
+    returns rc=101 with `does not contain this feature` and compiles nothing, which is a nonzero exit that
+    proves nothing. So B's refusal counts only when it carries the compiler's own
+    `could not compile v1-compiler (lib test)` line and at least one `error[E04xx]`; a bare nonzero rc is
+    NOT-A-VERDICT. The commands are the instrument; the scratch log of my own run is not, and no number
+    from it is being asked of any reader. Where the pair has not been run, the row's claim is the command
+    set, which is checkable in `.github/workflows`.",
 
     "**CONSUMPTION.** The derived `gunbc.recurring_failure_mode.roster` `recurring_failure_mode_roster`
     includes this per-class declaration, and the consumer that reads the rung is the instrument
