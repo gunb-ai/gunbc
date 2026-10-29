@@ -1,6 +1,6 @@
 module v1.compiler.infer_resolve
 
-import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter }
 import std.occurrence_identity { OccurrenceSynthetic }
 
 import std.types { SourceSpan, container_param_name }
