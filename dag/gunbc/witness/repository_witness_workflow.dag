@@ -55,8 +55,6 @@ import gunbc.ci.repository_ci_profile {
   ComposedOverlayInterpreterRoster,
   AnnotationStep,
   repository_ci_profile_refusal,
-  roster_route_is_instrument_dispatcher,
-  profile_uses_public_seed
 }
 import gunbc.ci.repository_compose_overlay {
   composed_source_roots,
@@ -174,14 +172,18 @@ fn repository_witness_lane_refusal(profile: RepositoryCiProfile, program: Roster
   match repository_ci_profile_refusal(profile: profile) {
     Present { value: reason } => Present { value: reason }
     Absent =>
-      if roster_route_is_instrument_dispatcher(profile: profile) {
-        Present { value: "REFUSE: this profile's roster runs through the instrument dispatcher, which is the compiler-emission lane (gunbc.witness.compiler_gate_workflow). Do not emit a second required gate for the same repository: two workflows claiming one required context means whichever runs last decides promotion." }
-      } else if profile_uses_public_seed(profile: profile) == false {
-        Present { value: "REFUSE: the composed-overlay roster needs the seed repository whose compiler runs the claims (gunbc.ci.repository_ci_profile PublicSeed). A repository that builds its own compiler takes the instrument lane instead." }
-      } else if count(enforced_entries(entries: program.entries)) == 0 {
-        Present { value: "REFUSE: a required gate that runs no enforced row is a check that cannot fail. Enroll a roster entry, or delete the workflow." }
-      } else {
-        Absent
+      match profile.roster.route {
+        InstrumentLabelRows => Present { value: "REFUSE: this profile's roster runs through the instrument dispatcher, which is the compiler-emission lane (gunbc.witness.compiler_gate_workflow). Do not emit a second required gate for the same repository: two workflows claiming one required context means whichever runs last decides promotion." }
+        ComposedOverlayInterpreterRoster { overlay: _ } =>
+          match profile.public_seed {
+            Absent => Present { value: "REFUSE: the composed-overlay roster needs the seed repository whose compiler runs the claims (gunbc.ci.repository_ci_profile PublicSeed). A repository that builds its own compiler takes the instrument lane instead." }
+            Present { value: _ } =>
+              if count(enforced_entries(entries: program.entries)) == 0 {
+                Present { value: "REFUSE: a required gate that runs no enforced row is a check that cannot fail. Enroll a roster entry, or delete the workflow." }
+              } else {
+                Absent
+              }
+          }
       }
   }
 }

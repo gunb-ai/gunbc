@@ -11,7 +11,7 @@ import gunbc.ci.repository_ci_profile {
   PublicSeed, OverlayIngest, AnnotationStep, ProjectionDrift, HealSeal, HealPublisherPolicy,
   DagInvocation, gunbc_repository_ci_profile, repository_ci_profile_refusal,
   fleet_runner_group_target,
-  github_hosted_publisher_runner_target, dag_invocation_argv,
+  github_hosted_publisher_runner_target,
 }
 import gunbc.ci.ci_runner_target { CiRunnerTarget, FleetSelfHosted }
 import gunbc.runner.runner_group_restriction_ensure { restricted_runner_groups }
@@ -204,10 +204,21 @@ test fn the_must_not_compile_arm_compares_the_refusal_not_the_exit_code() -> Boo
 // assembled at each call site, because the difference between two repositories' CI must be the row and
 // never the command construction.
 test fn a_subject_is_invoked_through_its_own_roots_entry_and_function() -> Bool {
-  let argv = dag_invocation_argv(invocation: DagInvocation { entry: "dag/claim/wit.dag", function: "wit_main" }, source_roots: ["dag", "src/v2"])
-  string_contains(s: argv, pattern: "--source-root dag --source-root src/v2")
-    && string_contains(s: argv, pattern: "--entry dag/claim/wit.dag")
-    && string_contains(s: argv, pattern: "--function wit_main")
+  match expected_projection_drift_workflow_yml(
+    profile: mirror_profile(seal: true, publish: true),
+    seed: fixture_seed(),
+    overlay: fixture_overlay(),
+    program: mirror_drift_program()
+  ) {
+    ProjectionDriftWorkflowGenerated { content: text } =>
+      string_contains(
+        s: text,
+        pattern: "'--source-root' 'dag' '--source-root' 'src/v2' '--source-root' 'overlay/dag'"
+      ) &&
+      string_contains(s: text, pattern: "'--entry' 'overlay/dag/dag/claim/projections.dag'") &&
+      string_contains(s: text, pattern: "'--function' 'projection_check'")
+    ProjectionDriftWorkflowGenerationRefused { reason: _ } => false
+  }
 }
 
 fn with_roster_timeout(limit: Minute) -> RepositoryCiProfile {

@@ -16,7 +16,7 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 //      A frozen literal bound certifies it and goes red; the derived bound refuses it and stays green.
 //      The companion arm shows a dispatch-only fixture with the same runner is NOT in the population.
 //   4. THE POPULATION IS THE RULING'S: non-empty, every member selects the fleet pool, and the member
-//      the ruling names — v2-bootstrap at compiler_gate_emit_build_timeout_minutes (90 today) — is in
+//      the ruling names — v2-bootstrap at compiler_gate_emit_build_timeout (minute(90) today) — is in
 //      it, at its declared timeout.
 //   5. THE ENCLOSED BRACKET BUDGETS FOLD OVER THE BOUND AND STILL BOUND IT: the step budget grows
 //      with wait_bound; the bracket step's timeout covers the step budget; the fleet-converge job

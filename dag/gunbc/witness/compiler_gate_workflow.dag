@@ -95,7 +95,7 @@ import gunbc.witness.witness_floor_workflow {
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
 import gunbc.ci.ci_runner_target { ci_runner_target_spec }
-import gunbc.ci.repository_ci_profile { gunbc_roster_gate, roster_route_is_instrument_dispatcher, gunbc_repository_ci_profile }
+import gunbc.ci.repository_ci_profile { gunbc_roster_gate, gunbc_repository_ci_profile }
 import gunbc.fleet.fleet_workflow_steps { ci_cache_cargo_step_under }
 import gunbc.ci.ci_failure_class { wrap_command_with_floor_attempt_receipt, wrap_command_is_renderable }
 // The fork clause is heal's authorship; the required job inherited the work it guarded.
@@ -832,10 +832,9 @@ data compiler_gate_wrong_lane_refusal_reason: String = "REFUSED gunbc.witness.co
 // WHAT THE ROW FORBIDS BEFORE THE ADMISSIONS RUN: the required context has one owner, and the row says
 // which lane this repository's gate is.
 fn compiler_gate_row_refusal() -> Optional<NonEmptyStr> {
-  if roster_route_is_instrument_dispatcher(profile: gunbc_repository_ci_profile()) == false {
-    Present { value: compiler_gate_wrong_lane_refusal_reason }
-  } else {
-    Absent
+  match gunbc_repository_ci_profile().roster.route {
+    InstrumentLabelRows => Absent
+    ComposedOverlayInterpreterRoster { overlay: _ } => Present { value: compiler_gate_wrong_lane_refusal_reason }
   }
 }
 

@@ -41,7 +41,6 @@ import gunbc.ci.repository_ci_profile {
   RepositoryCiProfile,
   gunbc_roster_gate,
   profile_overlay,
-  repository_declares_drift_job
 }
 import gunbc.ci.repository_compose_overlay {
   SealEnvBinding,
@@ -92,21 +91,25 @@ data drift_no_seed_refusal_reason: String = "REFUSED gunbc.ci.repository_project
 
 data drift_no_overlay_refusal_reason: String = "REFUSED gunbc.ci.repository_projection_drift_workflow: the mirror's drift check and seal both run from the composed overlay, so the profile must declare the ingest (RepositoryCiProfile.roster.route.Overlay.composition). Without that row the emitted job could not name the copy it reads, and the copy is precisely the step that must be visible in the committed YAML."
 
+// PRESENCE READ BY MATCHING, NOT BY COMPARING AN OPTIONAL TO A SENTINEL. Each arm of the row that this
+// emitter cannot work without -- the drift check, the seed it regenerates from, the overlay ingest that
+// says where the mirror's rows are copied -- is matched, and its absence refuses with the reason an
+// operator can act on. A Bool asking each arm "are you there" would put the decision one `if` away from
+// the render, which is exactly the distance a fabricated fallback used to fill.
 fn projection_drift_refusal(profile: RepositoryCiProfile) -> Optional<String> {
-  if repository_declares_drift_job(profile: profile) == false {
-    Present { value: drift_no_job_refusal_reason }
-  } else if profile.public_seed == no_seed() {
-    Present { value: drift_no_seed_refusal_reason }
-  } else if profile_overlay(profile: profile) == no_overlay() {
-    Present { value: drift_no_overlay_refusal_reason }
-  } else {
-    Absent
+  match profile.drift {
+    Absent => Present { value: drift_no_job_refusal_reason }
+    Present { value: _ } =>
+      match profile.public_seed {
+        Absent => Present { value: drift_no_seed_refusal_reason }
+        Present { value: _ } =>
+          match profile_overlay(profile: profile) {
+            Absent => Present { value: drift_no_overlay_refusal_reason }
+            Present { value: _ } => Absent
+          }
+      }
   }
 }
-
-data no_seed: Optional<PublicSeed> = Absent
-
-data no_overlay: Optional<OverlayIngest> = Absent
 
 // WHAT THE REPOSITORY SAYS AT EACH STEP, as opposed to what each step DOES. The names and banners are the
 // voice of the job; the invocations, the artifact and the timeouts are rows.
