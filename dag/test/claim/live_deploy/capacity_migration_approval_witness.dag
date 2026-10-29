@@ -9,7 +9,9 @@ import std.scoped_authorization {
 }
 import extdeps.systemd.manager { SystemManager }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
-import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart }
+import gunbc.runner.runner_slot_retirement { cutover_interruption_authorization, authorized_retirement_actuation, RetirementActuationAuthorized, RetirementActuationRefused }
+import gunbc.host.host_operation_exec { SystemctlMaskNow }
+import gunbc.live_deploy.capacity_quiescence { CapacityPlantStart, CapacityContainStart, CapacityInhibitUnit }
 import gunbc.live_deploy.capacity_migration_approval {
   CapacityCutoverIntent, capacity_cutover_request, capacity_cutover_claim,
   capacity_cutover_operation_admission,
@@ -19,7 +21,8 @@ fn approval_fixture_intent() -> CapacityCutoverIntent {
   CapacityCutoverIntent {
     host: "srv1", revision: "1111111111111111111111111111111111111111",
     attempt: "cutover-fixture" as NonEmptyStr as AttemptIdentity,
-    operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } }],
+    operations: [CapacityPlantStart { subject: CapacityManagedUnit { manager: SystemManager, unit: "fixture.service" } },
+      CapacityInhibitUnit { subject: CapacityManagedUnit { manager: SystemManager, unit: "actions-runner@srv1-02.service" } }],
   }
 }
 
@@ -59,5 +62,34 @@ test fn an_already_claimed_capability_cannot_start_a_second_execution() -> Bool 
     claim: (id, attempt, at) => ClaimLost { holder: attempt }) {
     Err { value: _ } => true
     Ok { value: _ } => false
+  }
+}
+
+
+test fn claimed_interruption_reaches_the_existing_retirement_actuator() -> Bool {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+    Err { value: _ } => false
+    Ok { value: approval } => match cutover_interruption_authorization(approval: approval, units: ["actions-runner@srv1-02.service"], at: "2026-10-29T00:02:00Z") {
+      Err { value: _ } => false
+      Ok { value: auth } => match authorized_retirement_actuation(auth: auth, unit: "actions-runner@srv1-02.service") {
+        RetirementActuationAuthorized { unit: unit, operation: operation } =>
+          unit == "actions-runner@srv1-02.service" && operation == SystemctlMaskNow { unit: "actions-runner@srv1-02.service" }
+        RetirementActuationRefused { unit: _, cause: _ } => false
+      }
+    }
+  }
+}
+
+test fn another_runner_cannot_borrow_cutover_interruption_permission() -> Bool {
+  let request = capacity_cutover_request(intent: approval_fixture_intent(), escalation_id: "fixture-approval")
+  match capacity_cutover_claim(request: request, authorization: approval_fixture_grant(), at: "2026-10-29T00:01:00Z",
+    claim: (id, attempt, at) => ClaimHeld { state: ClaimedBy { attempt: attempt, claimed_at: at }, generation: cas_generation_first() }) {
+    Err { value: _ } => false
+    Ok { value: approval } => match cutover_interruption_authorization(approval: approval, units: ["actions-runner@srv1-03.service"], at: "2026-10-29T00:02:00Z") {
+      Err { value: _ } => true
+      Ok { value: _ } => false
+    }
   }
 }
