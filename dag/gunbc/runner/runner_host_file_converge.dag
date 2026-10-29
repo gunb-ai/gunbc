@@ -45,7 +45,8 @@ import gunbc.ci.ci_runner_placement {
   host_deployment_refusal_text,
   CapacityQuota, NoCpuCeiling,
 }
-import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate }
+import extdeps.sudo.elevation { ElevatedInvocation, sudo_elevate, sudo_elevate_command }
+import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import extdeps.needrestart {
   NeedrestartServiceSelectionOverride,
   RestartDeferredByDefault,
@@ -135,8 +136,6 @@ import gunbc.host.verified_archive_install { verified_archive_install, verified_
 import extdeps.github.actions_runner { actions_runner_download_url, actions_runner_release_digest, actions_runner_tarball_filename }
 import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
-import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.sudo.elevation { sudo_elevate_as_command }
 import gunbc.runner.runner_slot_actuation {
   SlotActuationOutcome, SlotActuationRefused, SlotDrainPending, SlotActivated, DrainPendingJobRunning,
@@ -1838,17 +1837,38 @@ fn deploy_slot_tree_step(unit: NonEmptyStr, account_held: Bool, owned: Bool?, mo
 // THE REBUILD, AS ONE VERIFIED INSTALL: the archive is fetched by the administrator into a stage of
 // its own, verified against the release's pinned digest, and only then is the tree removed,
 // recreated owned by the deploy account, and extracted AS that account, so no file in it is owned by
-// anyone else; the archive is removed last.
-data deploy_slot_runner_stage_dir: String = "/tmp/gunbc-deploy-slot-runner"
+// anyone else; the stage is removed last.
+//
+// THE STAGE IS WRITABLE BY ROOT ALONE FROM BEFORE THE FETCH UNTIL AFTER THE EXTRACT, because the digest
+// is checked by one leg and the bytes are read by a later one: an archive any other account could
+// replace between them would be extracted unverified under the deploy key while the run reports it
+// verified. So the stage is not in /tmp (the CI slots' jobs share it, gunbc.plans.srv1_deploy_principal_split)
+// but a member of the host-state tree, which root owns and nobody else writes
+// (gunbc.host_state_root host_state_tree_root); it is removed and recreated root-owned before the
+// fetch, so nothing left in it by an earlier run survives, and the fetch itself runs as root, so the
+// archive is root's file.
+fn deploy_slot_runner_stage_dir() -> String {
+  join([host_state_tree_path(tree: host_state_tree()) as String, "/deploy-slot-runner-stage"], "")
+}
 
-fn deploy_slot_tree_rebuild_commands(slot_dir: String, tarball: String) -> List<ArgvCommand> {
+fn deploy_slot_runner_stage_fetch_commands(stage: String, url: String, tarball: String) -> List<ArgvCommand> {
+  [
+    executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
+    executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
+      path: stage as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, mode: executor_managed_directory_mode,
+    }),
+    sudo_elevate_command(command: argv_words(command: curl_download_command(url: url, destination: tarball))),
+  ]
+}
+
+fn deploy_slot_tree_rebuild_commands(slot_dir: String, stage: String, tarball: String) -> List<ArgvCommand> {
   [
     executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: slot_dir as NonEmptyStr }),
     executor_privileged_operation_elevated_command(op: EnsureOwnedDirectory {
       path: slot_dir as NonEmptyStr, owner: deploy_slot_job_user, group: deploy_slot_job_user, mode: executor_managed_directory_mode,
     }),
     sudo_elevate_as_command(user: deploy_slot_job_user, command: argv_words(command: tar_extract_command(archive: tarball, into_directory: slot_dir, strip_components: 0))),
-    rm_force_command(path: tarball),
+    executor_privileged_operation_elevated_command(op: RemoveDirectoryTree { path: stage as NonEmptyStr }),
   ]
 }
 
@@ -1859,12 +1879,13 @@ fn rebuild_deploy_slot_tree(subject: RunnerHostFileSubject, context: FleetSshExe
   match fleet_runner_slot_artifact() {
     Absent => DeploySlotTreeRefused { unit: unit, cause: "no published runner artifact for the fleet's architecture" as NonEmptyStr }
     Present { value: a } => {
-      let tarball = join([deploy_slot_runner_stage_dir, "/", actions_runner_tarball_filename(artifact: a)], "")
+      let stage = deploy_slot_runner_stage_dir()
+      let tarball = join([stage, "/", actions_runner_tarball_filename(artifact: a)], "")
       let outcome = verified_archive_install(
-        fetch: [mkdir_parents_command(path: deploy_slot_runner_stage_dir), curl_download_command(url: actions_runner_download_url(artifact: a), destination: tarball)],
+        fetch: deploy_slot_runner_stage_fetch_commands(stage: stage, url: actions_runner_download_url(artifact: a), tarball: tarball),
         archive: tarball as NonEmptyStr,
         pin: ArchiveSha256 { hex: actions_runner_release_digest(artifact: a).hex },
-        install: deploy_slot_tree_rebuild_commands(slot_dir: dir, tarball: tarball),
+        install: deploy_slot_tree_rebuild_commands(slot_dir: dir, stage: stage, tarball: tarball),
         transport: FleetSsh { target: subject.target, context: context },
       )
       if !verified_archive_install_holds(outcome: outcome) {
