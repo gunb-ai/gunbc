@@ -28,13 +28,14 @@ import extdeps.bmc.megarac_observed_output {
   megarac_session_body, megarac_write_ack_body,
 }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable }
+import gunbc.machine_intake.mtcollins1_access_observation { mtcollins1_firmware }
 import gunbc.machine_intake.megarac_media_attach { json_string_member, json_number_member }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_hpm_check_bmc0_32,
   ipmitool_fru_print_0_mt_collins,
   ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
-  ipmitool_bootdev_none_reply_for, bootdev_echo_bytes_of, bootdev_echo_firmware_release,
+  ipmitool_bootdev_none_reply_for, BootdevEchoStanding, ipmitool_bootdev_cdrom_reply_standing,
   ipmitool_sel_elist_line,
 }
 
@@ -66,11 +67,20 @@ fn bmc_ipmi_operation(operation: String) -> OperationRef {
 // world after it, or a harness fault. Handlers are written over the BMC world alone; bmc_bindings lifts
 // them through a lens into whatever scenario state embeds the world.
 type BmcReply
-  = BmcReplied { stdout: String, world: BmcWorld }
+  = BmcReplied { stdout: String, bootdev_standing: BootdevEchoStanding?, world: BmcWorld }
   | BmcReplyFault { reason: NonEmptyStr }
 
+// WHAT THE STANDING FIELD IS FOR (review 87774, DESIGN §4b(1)/(c), §4d). The bootdev echo family is the one
+// place this model answers a command with bytes that may be a GUESS rather than a capture, and a guess may
+// not look like a capture by the time it is consumed: the reply that carries `Set Boot Device to none`
+// carries the derived standing too, and the reply that carries the captured `Set Boot Device to cdrom`
+// carries its citation. `none` says this stdout is not one of those rows -- the model's own rendering of
+// world state, or a fixture answer to a different command. A match that merely ignored the field would be an
+// inert gate, so the two bootdev sites below are what give it content: same command family, one Transcribed,
+// one DerivedFromShape, both visible where the bytes are consumed.
+
 fn bmc_chassis_status_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world }
+  BmcReplied { stdout: ipmitool_chassis_status_power_line(power_on: bmc_power_is_on(world: world)), world: world , bootdev_standing: none }
 }
 
 fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
@@ -78,7 +88,7 @@ fn bmc_chassis_power_control_reply(world: BmcWorld, call: OperationCall) -> BmcR
     Absent => BmcReplyFault { reason: "ChassisPowerControl was dispatched without an action input" as NonEmptyStr }
     Present { value: verb } => match ipmi_chassis_control_action_of_verb(verb: verb) {
       Absent => BmcReplyFault { reason: join(["ChassisPowerControl action `", verb, "` names no IPMI chassis control action the model carries"], "") as NonEmptyStr }
-      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action, now: call.now).world }
+      Present { value: action } => BmcReplied { stdout: ipmitool_chassis_power_control_reply(action: action), world: bmc_chassis_control(world: world, action: action, now: call.now).world , bootdev_standing: none }
     }
   }
 }
@@ -93,6 +103,7 @@ fn input_is(call: OperationCall, name: String, expected: String) -> Bool {
 fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "parameter", expected: "5") {
     BmcReplied {
+      bootdev_standing: none,
       stdout: match world.boot_override {
         BootOverrideNone => ipmitool_bootparam5_no_override
         BootOverrideCdromEfiNextBoot => ipmitool_bootparam5_cdrom_efi_next_boot
@@ -108,7 +119,8 @@ fn bmc_bootparam_get_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // device or option set is a request the model does not carry, and it refuses rather than guessing.
 fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "device", expected: "cdrom") && input_is(call: call, name: "options", expected: "efiboot") {
-    BmcReplied { stdout: ipmitool_bootdev_cdrom_reply, world: bmc_with_override(world: world, over: BootOverrideCdromEfiNextBoot) }
+    // CAPTURED: the cdrom echo is a retained row of the 32-DIMM capture, cited where it comes from.
+    BmcReplied { stdout: ipmitool_bootdev_cdrom_reply, bootdev_standing: Present { value: ipmitool_bootdev_cdrom_reply_standing }, world: bmc_with_override(world: world, over: BootOverrideCdromEfiNextBoot) }
   } else {
     BmcReplyFault { reason: "the model carries the cdrom boot override with options=efiboot only" as NonEmptyStr }
   }
@@ -135,22 +147,23 @@ fn bmc_bootdev_clear_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   } else {
     match ipmitool_bootdev_none_reply_for(firmware_release: bmc_dry_bmc_firmware_release) {
       Absent => BmcReplyFault { reason: "no retained bootdev echo shape for this controller's firmware release; the clear's readback would still answer, but its stdout would be invented" as NonEmptyStr }
-      // The standing travels WITH the bytes: bootdev_echo_bytes_of will not hand them over unless the
-      // caller passes the carrier that says what they are, so a derived echo cannot arrive here looking
-      // like a capture (review 87698, DESIGN §4d). What it is not used for matters as much: no verdict is
-      // judged from this stdout -- the clear's verdict is the parameter-5 readback the route takes next.
-      Present { value: reply } => BmcReplied { stdout: bootdev_echo_bytes_of(reply: reply), world: bmc_with_override(world: world, over: BootOverrideNone) }
+      // THE STANDING TRAVELS WITH THE BYTES into the reply itself (review 87774): the consumer of this
+      // stdout sees `BootdevEchoDerivedFromShape` beside it, so the guess cannot be quoted as the capture
+      // it is not -- contrast bmc_bootdev_reply above, whose same command family answers Transcribed. And
+      // what it is NOT used for matters as much: no verdict is judged from this stdout, because the verdict
+      // of a clear is the parameter-5 readback the route takes next.
+      Present { value: reply } => BmcReplied { stdout: reply.bytes, bootdev_standing: Present { value: reply.standing }, world: bmc_with_override(world: world, over: BootOverrideNone) }
     }
   }
 }
 
 fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
+  BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world , bootdev_standing: none }
 }
 
 // `mc info` answers whenever the management controller does, whatever the host's power or SOL state.
 fn bmc_mc_info_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world }
+  BmcReplied { stdout: ipmitool_mc_info_mt_collins, world: world , bootdev_standing: none }
 }
 
 // `sdr type <sensor_type>`: the controller's IPMI sensor records of that type, one line each, in the
@@ -161,7 +174,7 @@ fn bmc_sdr_type_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
     Absent => BmcReplyFault { reason: "the world does not model the controller's IPMI SDR surface" as NonEmptyStr }
     Present { value: records } => match operation_input_text(invocation: call.invocation, name: "sensor_type") {
       Absent => BmcReplyFault { reason: "SdrTypeList was dispatched without a sensor type" as NonEmptyStr }
-      Present { value: t } => BmcReplied { stdout: join(map(filter(records, r => (r.sensor_type as String) == t), r => concat(sdr_type_line_text(line: r.line), "\n")), ""), world: world }
+      Present { value: t } => BmcReplied { stdout: join(map(filter(records, r => (r.sensor_type as String) == t), r => concat(sdr_type_line_text(line: r.line), "\n")), ""), world: world , bootdev_standing: none }
     }
   }
 }
@@ -169,16 +182,16 @@ fn bmc_sdr_type_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 // THE COMPONENT TABLE AS THE CONTROLLER PRINTED IT: the one retained capture, a layout fixture of
 // BMC 0.32 (extdeps.bmc.ipmitool_observed_output ipmitool_hpm_check_bmc0_32), not a modeled version.
 fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
-  BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
+  BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world , bootdev_standing: none }
 }
 
-// THE FIRMWARE THE DRY BMC IS -- ONE FACT, ONE PLACE (DESIGN §3, review 87698). The literal lives with the
-// captures it describes, in extdeps.bmc.ipmitool_observed_output (bootdev_echo_firmware_release): this world
-// answers `hpm check` and `mc info` with that release's committed bytes, and the rows keyed to it
-// (ipmitool_bootdev_none_reply_for) are keyed to the same value, so the model's self-description and the
-// fixture key cannot drift apart. ipmitool_mc_info_prints_release keeps the pair honest against the `mc info`
-// bytes themselves, and a witness reds if the model's own answer ever changes release.
-data bmc_dry_bmc_firmware_release: NonEmptyStr = bootdev_echo_firmware_release
+// THE FIRMWARE THE DRY BMC IS, taken from the reading that established it -- `ipmitool mc info` against the
+// unit (gunbc.machine_intake.mtcollins1_access_observation mtcollins1_firmware), not retyped here (DESIGN §3,
+// review 87774). This is what the world answers `hpm check` and `mc info` with, and what the firmware-keyed
+// rows are compared against: ipmitool_bootdev_none_reply_for reads the release its derived row was READ ON
+// out of that row's own standing and answers only when it matches -- two independent values meeting in a
+// typed comparison, not one number written twice and guarded by a string search.
+data bmc_dry_bmc_firmware_release: NonEmptyStr = mtcollins1_firmware.raw_version
 
 
 // THE BOARD INVENTORY AS THE CONTROLLER PRINTED IT: the one retained capture, of boot run
@@ -188,7 +201,7 @@ data bmc_dry_bmc_firmware_release: NonEmptyStr = bootdev_echo_firmware_release
 // answering it with FRU 0's bytes would be an invented reading.
 fn bmc_fru_print_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   if input_is(call: call, name: "fru_id", expected: "0") {
-    BmcReplied { stdout: ipmitool_fru_print_0_mt_collins, world: world }
+    BmcReplied { stdout: ipmitool_fru_print_0_mt_collins, world: world , bootdev_standing: none }
   } else {
     BmcReplyFault { reason: "the model carries the board FRU capture for fru print 0 only" as NonEmptyStr }
   }
@@ -199,7 +212,7 @@ fn bmc_lift<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S, reply: fn(BmcW
   fn(state, call) {
     match reply(get(state), call) {
       BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
-      BmcReplied { stdout: out, world: w } => OperationObserved {
+      BmcReplied { stdout: out, bootdev_standing: _, world: w } => OperationObserved {
         observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
         state: put(state, w),
         elapsed: second(count: 1),

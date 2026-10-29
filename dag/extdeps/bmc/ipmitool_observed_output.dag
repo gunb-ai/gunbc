@@ -2,7 +2,6 @@ module extdeps.bmc.ipmitool_observed_output
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
-import std.algebra { string_contains }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import std.content_hash { Sha256Digest }
 import extdeps.crypto.sha2 { sha256_computed_digest }
@@ -152,8 +151,16 @@ data ipmitool_hpm_upgrade_app_row_bmc0_45_3: String = "|*  1|APP          |   0.
 // next boot that runs the real clear on mtcollins1 retains its stdout, replaces this row with it, and
 // names that run here.
 
+// THE CDROM ECHO, AS CAPTURED -- cited once. The same citation serves twice over: it is the first of the two
+// shape captures below, and it is the standing the dry BMC carries when it answers `chassis bootdev cdrom`
+// (gunbc.bmc_dry_realization bmc_bootdev_set_reply), so a capture and a guess about that same command cannot
+// disagree about where the capture is.
+data bootdev_cdrom_echo_capture: NonEmptyStr = "artifacts/bmc/mtcollins1-32dimm/30-bootdev.txt (sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba) line 2: 'Set Boot Device to cdrom'" as NonEmptyStr
+
+data ipmitool_bootdev_cdrom_reply_standing: BootdevEchoStanding = BootdevEchoTranscribed { capture: bootdev_cdrom_echo_capture }
+
 data bootdev_echo_shape_captures: List<NonEmptyStr> = [
-  "artifacts/bmc/mtcollins1-32dimm/30-bootdev.txt (sha256 6488554239e12f033203c9589285bd6ce27dfb5716658be931e2422ea238c4ba) line 2: 'Set Boot Device to cdrom'" as NonEmptyStr,
+  bootdev_cdrom_echo_capture,
   "artifacts/bmc/mtcollins1-intake-write-exercise.json, 'result': 'Set Boot Device to pxe'" as NonEmptyStr
 ]
 
@@ -161,19 +168,27 @@ data bootdev_echo_shape_captures: List<NonEmptyStr> = [
 // interchangeable in a type: a transcribed row can be quoted as what ipmitool printed, a derived row only
 // as what the vendor's shape says it prints -- which is why the derived arm names the captures its shape
 // came from and the read that would retire it.
+// read_on_release names the firmware the shape captures were READ ON. It travels with the row rather than
+// sitting beside it as a separate key, so the row states the only condition under which it may be used and a
+// consumer compares against a typed value instead of re-typing the number (review 87774: a second source of
+// one fact, guarded by a .contains() grep, is a second representation of it).
 type BootdevEchoStanding
   = BootdevEchoTranscribed { capture: NonEmptyStr }
-  | BootdevEchoDerivedFromShape { shape_captures: List<NonEmptyStr>, read_obligation: NonEmptyStr }
+  | BootdevEchoDerivedFromShape { shape_captures: List<NonEmptyStr>, read_obligation: NonEmptyStr, read_on_release: NonEmptyStr }
 
 data ipmitool_bootdev_none_reply_standing: BootdevEchoStanding = BootdevEchoDerivedFromShape {
   shape_captures: bootdev_echo_shape_captures,
-  read_obligation: "a retained stdout of `ipmitool chassis bootdev none` against the Mt. Collins BMC on MegaRAC 0.32, cited by digest and by the run that took it" as NonEmptyStr
+  read_obligation: "a retained stdout of `ipmitool chassis bootdev none` against the Mt. Collins BMC on MegaRAC 0.32, cited by digest and by the run that took it" as NonEmptyStr,
+  // Both shape captures are MegaRAC 0.32 output: the 32-DIMM capture is that build's own bootdev block, and
+  // the pxe exercise predates the 2026-10-02 reflash to 0.45.x (ipmitool_hpm_upgrade_app_row_bmc0_45_3 below
+  // shows 0.32 as the image being replaced).
+  read_on_release: "0.32" as NonEmptyStr
 }
 
 // A LINE OF ipmitool OUTPUT WITH ITS STANDING IN THE SAME VALUE. Bytes and standing may not travel apart:
 // separated, a consumer can quote a guess as a capture, and DESIGN §4d puts the defect on that reader --
 // 'an inference is a bet: typed as a bet, neither deleted nor promoted'. So the row IS { bytes, standing },
-// and the only way to the bytes is through the value that says what they are (bootdev_echo_bytes_of).
+// and every consumer that wants the bytes takes the standing with them.
 type ObservedBootdevReply {
   bytes: String
   standing: BootdevEchoStanding
@@ -186,39 +201,16 @@ data ipmitool_bootdev_none_reply: ObservedBootdevReply = ObservedBootdevReply {
   standing: ipmitool_bootdev_none_reply_standing,
 }
 
-// THE BYTES, ASKED OF THEIR CARRIER. The standing must be handed over to get them -- matched, not ignored --
-// so nothing downstream can receive a derived line without the value that labels it. NOTHING may judge a
-// verdict from these bytes: the clear's verdict is the parameter-5 readback the route takes after it, which
-// is grounded by ipmitool_bootparam5_no_override; this line is at most logged.
-fn bootdev_echo_bytes_of(reply: ObservedBootdevReply) -> String {
-  match reply.standing {
-    BootdevEchoTranscribed { capture: _ } => reply.bytes
-    BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _ } => reply.bytes
-  }
-}
-
-// THE FIRMWARE THESE ECHO BYTES WERE READ ON -- AND THE FIRMWARE THE DRY BMC CLAIMS TO BE, which is the same
-// fact written exactly once (DESIGN §3). Both shape captures are MegaRAC 0.32 output: the 32-DIMM capture is
-// that build's own bootdev block, and the pxe exercise predates the 2026-10-02 reflash to 0.45.x
-// (ipmitool_hpm_upgrade_app_row_bmc0_45_3 below shows 0.32 as the image being replaced). The dry world's
-// firmware release (gunbc.bmc_dry_realization bmc_dry_bmc_firmware_release) REFERENCES this one rather than
-// retyping it, and ipmitool_mc_info_prints_release keeps it honest against the committed `mc info` bytes.
-data bootdev_echo_firmware_release: NonEmptyStr = "0.32"
-
-// DOES THIS MODEL'S BMC PRINT THAT RELEASE -- asked of the committed `mc info` bytes above rather than of
-// a second typing of the number, so the key cannot drift from what the model actually answers.
-fn ipmitool_mc_info_prints_release(firmware_release: NonEmptyStr) -> Bool {
-  string_contains(s: ipmitool_mc_info_mt_collins, pattern: concat("Firmware Revision         : ", firmware_release as String) as String)
-}
-
-// THE ANSWER TO `chassis bootdev none`, FOR THE FIRMWARE THESE BYTES WERE READ ON -- and no answer for
-// any other release, which is the whole point of keying it: the caller gets Absent and decides what a
-// missing shape means (gunbc.bmc_dry_realization bmc_bootdev_clear_reply answers BmcReplyFault there,
-// rather than guessing a print for a controller this corpus never read).
+// THE ANSWER TO `chassis bootdev none`, OFFERED ONLY TO THE FIRMWARE THE ROW WAS READ ON. The key is read
+// OUT OF THE STANDING -- one copy of the number, in the value that carries the guess -- and compared against
+// the release the caller's BMC reports, so a model on any other release gets Absent and must bring its own
+// capture (gunbc.bmc_dry_realization bmc_bootdev_clear_reply answers BmcReplyFault there rather than
+// guessing a print for a controller this corpus never read). A transcribed row, if one ever replaces this
+// one, answers on any release: that is what being a capture buys.
 fn ipmitool_bootdev_none_reply_for(firmware_release: NonEmptyStr) -> ObservedBootdevReply? {
-  if (firmware_release as String) == (bootdev_echo_firmware_release as String) && ipmitool_mc_info_prints_release(firmware_release: firmware_release) {
-    Present { value: ipmitool_bootdev_none_reply }
-  } else {
-    Absent
+  match ipmitool_bootdev_none_reply.standing {
+    BootdevEchoTranscribed { capture: _ } => Present { value: ipmitool_bootdev_none_reply }
+    BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _, read_on_release: keyed } =>
+      if firmware_release == keyed { Present { value: ipmitool_bootdev_none_reply } } else { Absent }
   }
 }

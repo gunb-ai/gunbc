@@ -42,12 +42,13 @@ import gunbc.bmc_model {
 import gunbc.bmc_dry_realization {
   bmc_dry_realization, bmc_ipmi_operation, bmc_chassis_power_control_handler,
   bmc_lift, bmc_chassis_status_reply, bmc_bootparam_get_reply, bmc_dry_bmc_firmware_release,
+  bmc_bootdev_clear_reply, BmcReplied, BmcReplyFault,
 }
 import extdeps.bmc.ipmi_boot_selection { ipmi_boot_device_none }
 import extdeps.bmc.ipmitool_observed_output {
   ipmitool_bootdev_none_reply, ipmitool_bootdev_none_reply_for, ipmitool_bootdev_none_reply_standing,
-  bootdev_echo_bytes_of, bootdev_echo_firmware_release, ipmitool_mc_info_prints_release,
   BootdevEchoStanding, BootdevEchoDerivedFromShape, BootdevEchoTranscribed,
+  bootdev_cdrom_echo_capture, ipmitool_bootdev_cdrom_reply_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -784,7 +785,7 @@ fn lying_clear_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> 
         at: bmc_ipmi_operation(operation: "ChassisBootDev"),
         handler: fn(world, call) {
           OperationObserved {
-            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: bootdev_echo_bytes_of(reply: ipmitool_bootdev_none_reply), stderr: "" } },
+            observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: ipmitool_bootdev_none_reply.bytes, stderr: "" } },
             state: world,
             elapsed: second(count: 1),
           }
@@ -820,13 +821,19 @@ test fn a_clear_that_did_not_land_is_still_read_as_pending() -> Bool {
 // deleting the key.
 test fn the_clears_echo_is_a_firmware_keyed_derived_row() -> Bool {
   match ipmitool_bootdev_none_reply_standing {
-    BootdevEchoDerivedFromShape { shape_captures: captures, read_obligation: _ } =>
+    BootdevEchoDerivedFromShape { shape_captures: captures, read_obligation: _, read_on_release: keyed } =>
       list_length(items: captures) == 2
         && any(captures, c => string_contains(s: c as String, pattern: "30-bootdev.txt"))
         && any(captures, c => string_contains(s: c as String, pattern: "intake-write-exercise.json"))
+        // THE KEY IS THE ROW'S OWN, and it is the release the model runs: the derived row states the
+        // firmware its two shape captures were read on, and the model's identity comes from the `mc info`
+        // reading (gunbc.machine_intake.mtcollins1_access_observation mtcollins1_firmware). Two independent
+        // values meeting in a typed comparison -- not one number written twice and guarded by a string
+        // search (DESIGN §3/§5, review 87774). If either moves, the clear stops answering at all.
+        && (keyed == bmc_dry_bmc_firmware_release)
     BootdevEchoTranscribed { capture: _ } => false
   }
-    && match ipmitool_bootdev_none_reply_for(firmware_release: bootdev_echo_firmware_release) {
+    && match ipmitool_bootdev_none_reply_for(firmware_release: bmc_dry_bmc_firmware_release) {
          Present { value: reply } => reply == ipmitool_bootdev_none_reply
          Absent => false
        }
@@ -834,14 +841,66 @@ test fn the_clears_echo_is_a_firmware_keyed_derived_row() -> Bool {
          Absent => true
          Present { value: _ } => false
        }
-  // THE BYTES COME OUT OF THE CARRIER, and the carrier is the only way to them: a consumer that wants the
-  // line has to hold the value that says it is derived (review 87698, DESIGN §4d).
-    && (bootdev_echo_bytes_of(reply: ipmitool_bootdev_none_reply) == "Set Boot Device to none\n")
-  // ONE FACT, ONE PLACE (DESIGN §3, review 87698): the firmware the dry BMC says it is IS the release these
-  // bytes were read on -- one literal in extdeps -- and it is the release the committed `mc info` capture
-  // actually prints, so the key cannot drift from the model's own self-description.
-    && (bmc_dry_bmc_firmware_release == bootdev_echo_firmware_release)
-    && ipmitool_mc_info_prints_release(firmware_release: bmc_dry_bmc_firmware_release)
+    && (ipmitool_bootdev_none_reply.bytes == "Set Boot Device to none\n")
+  // THE CAPTURE AND THE GUESS ARE CITED DIFFERENTLY, in the same command family: the cdrom echo names the
+  // file and digest it was read out of -- the same citation that seeds the derived row's shape captures, so
+  // the two cannot disagree about where the capture is.
+    && match ipmitool_bootdev_cdrom_reply_standing {
+         BootdevEchoTranscribed { capture: c } => c == bootdev_cdrom_echo_capture
+         BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _, read_on_release: _ } => false
+       }
+}
+
+// THE STANDING IS AT THE POINT OF CONSUMPTION, NOT BESIDE IT (review 87774, DESIGN §4b(1)). Delegating
+// handler: it asks the PRODUCTION bmc_bootdev_clear_reply for the clear's answer and completes only if the
+// reply that reaches this consumer carries the derived standing with its bytes. A reply that handed the
+// guessed line over unlabelled -- or handed back a capture's citation for a line that is not one -- faults
+// the route here, which is what keeps the standing from being an inert field someone matches with '_'.
+fn standing_carrying_clear_realization(initial: BmcWorld) -> OperationRealization<BmcWorld> {
+  OperationRealization {
+    identity: realization_identity,
+    initial: initial,
+    epoch: virtual_clock_origin(),
+    bindings: [
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisStatus"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_chassis_status_reply) },
+      OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: fn(w) { w }, put: fn(w, next) { next }, reply: bmc_bootparam_get_reply) },
+      OperationBinding {
+        at: bmc_ipmi_operation(operation: "ChassisBootDev"),
+        handler: fn(world, call) {
+          match bmc_bootdev_clear_reply(world: world, call: call) {
+            BmcReplyFault { reason: r } => OperationHarnessFault { reason: r }
+            BmcReplied { stdout: out, bootdev_standing: Present { value: BootdevEchoDerivedFromShape { shape_captures: _, read_obligation: _, read_on_release: _ } }, world: w } =>
+              OperationObserved {
+                observation: ShellObserved { observation: ShellProcessExited { exit_code: 0, stdout: out, stderr: "" } },
+                state: w,
+                elapsed: second(count: 1),
+              }
+            BmcReplied { stdout: _, bootdev_standing: _, world: _ } =>
+              OperationHarnessFault { reason: "the clear's derived echo reached its consumer without the standing that says it is derived" as NonEmptyStr }
+          }
+        }
+      },
+    ],
+    advance: bmc_advance,
+  }
+}
+
+test fn the_clears_reply_reaches_its_consumer_wearing_its_standing() -> Bool {
+  let seeded = bmc_with_override(world: world(power_on: true), over: BootOverrideCdromEfiNextBoot)
+  match evaluate_in_witness_frame(
+    frame: modeled_frame(realization: standing_carrying_clear_realization(initial: seeded)),
+    subject: fn(_scope) {
+      let cleared = bootdev_clear(device: ipmi_boot_device_none)
+      let after = bootparam5_read()
+      cleared && string_contains(s: after, pattern: "Boot parameter data: 0000000000")
+    }
+  ) {
+    WitnessReturned { value, route, state } =>
+      value
+        && route_operations(route: route) == ["ChassisBootDev", "ChassisBootParamGet"]
+        && override_is_cleared(w: state)
+    _ => false
+  }
 }
 
 // THE CLEAR'S DEVICE WORD IS THE ONE THE MODEL CARRIES, and the plain operation carries nothing else: a
