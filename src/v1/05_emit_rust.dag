@@ -1671,9 +1671,11 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
 // beside the Rc<HashMap<K, V>> its callers pass to v1_rt::map_get / rc_map_insert /
 // sorted_map_keys (the 26 E0308/E0282 in v1-stage0-std-core). Same predicate, same lowering,
 // same fallback_base shape as the sibling -- no new mechanism
-// (gunbc.recurring_failure_mode
-// one_name_two_representations_kernel_map_and_finitely_supported_function, rung
-// keyed_lowering_asked_by_every_render_path).
+// (carrier: gunbc.recurring_failure_mode
+// one_name_two_representations_kernel_map_and_finitely_supported_function -- this render path was
+// the standing case of one name emitting as two host shapes: the keyed arm asked here is the same
+// one node_is_keyed_collection answers, so the spelling Map<K, V> and its declaration's host table
+// lower as one type at every position, declared return types included).
 fn render_rust_applied_nonpeeling_type(n: Node, base_name: String, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let base = match rust_seed_host_container_base(name: base_name) {
     Present { value: host } => host
