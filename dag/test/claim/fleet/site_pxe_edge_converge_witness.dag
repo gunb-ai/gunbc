@@ -134,6 +134,7 @@ import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_image_standing,
   site_pxe_edge_install_standing,
   site_pxe_edge_install_files,
+  site_pxe_edge_file_parent_argv,
   site_pxe_edge_host_grub_cfg,
   site_pxe_edge_http_unit_file,
   site_pxe_edge_http_listen_standing,
@@ -920,6 +921,17 @@ test fn an_admitted_binding_renders_its_own_grub_configuration_and_seed() -> Boo
         })
       }
   }
+}
+
+// EVERY WRITE CREATES ITS OWN PARENT: a binding's seed documents sit in a per-client directory nothing else
+// creates (srv4 refused both on its first apply), so each file's write starts with that directory.
+test fn each_install_file_write_creates_its_own_parent_directory() -> Bool {
+  with_binding(mac: x86_mac, claim: b => {
+    let files = install_files_of(b: b, image: servable_image())
+    any(files, f => f.path == "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe/user-data" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/http/seed/ac-1f-6b-e3-f7-fe"])
+      && any(files, f => f.path == "/srv/gunbc-site-pxe-edge/tftp/grub/grub.cfg-01-ac-1f-6b-e3-f7-fe" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/srv/gunbc-site-pxe-edge/tftp/grub"])
+      && any(files, f => f.path == "/etc/systemd/system/gunbc-site-pxe-edge-http.service" && site_pxe_edge_file_parent_argv(file: f) == ["mkdir", "-p", "--", "/etc/systemd/system"])
+  })
 }
 
 // TWO HOSTS, TWO ROUTES: each host's grub configuration names its own seed's URL. This is routing only -- seeds are
