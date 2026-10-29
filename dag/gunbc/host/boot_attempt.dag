@@ -309,6 +309,67 @@ fn boot_override_consumption(before: BootOverrideStanding, after: BootOverrideSt
   }
 }
 
+// ── THE CLEARS AROUND THE SET ─────────────────────────────────────────────────────────────────────
+// WHAT THE ROUTE OWES THE PARAMETER IT SETS (merry-otter-837 ruling msg_36b81708). A pending override
+// that predates the attempt can NEVER have its consumption attributed to the attempt -- the bytes stood
+// there before the attempt wrote anything -- and that is the whole reason the before-read exists. So the
+// pre-power step CLEARS what it finds pending, reads the clear back, and only then sets its own; and
+// EVERY exit path after a set clears what it set, with a readback, including the refusals and the stops
+// that never reached a console. An attempt that ends with the flag pending hands its own override to the
+// next attempt: boot 5 run 40258937016 read 'Boot parameter data: a014000000' byte-identical before AND
+// after its set and refused with 'a boot override matching this attempt's was already pending before it
+// was set'; boot 6 run 40264233543 ended pending the same way. Protocol-neutral: a controller's adapter
+// reduces its own read to these standings and keeps the bytes -- this module names no protocol.
+
+// WHAT AN EXIT-PATH CLEAR OF THIS ATTEMPT'S OWN OVERRIDE SAID.
+type BootOverrideClear
+  = OverrideClearNotRequired { reason: NonEmptyStr }   // no set was ever issued: this attempt owns nothing to clear
+  | OverrideCleared                                    // the readback said the override is gone
+  | OverrideClearLeftPending                           // the readback STILL showed it pending: the next attempt inherits this one's
+  | OverrideClearUnread { reason: NonEmptyStr }        // the clear or its readback never answered
+
+// HOW THIS ROUTE HANDLED AN OVERRIDE THAT WAS ALREADY PENDING BEFORE ITS OWN SET. There is deliberately
+// NO Noop arm: 'the pending bytes already match this attempt's' is not a reason to skip the clear, it is
+// the reason not to trust either read at all.
+type StaleOverrideClearance
+  = StaleOverrideNoneFound                        // the before-read answered, and nothing was pending
+  | StaleOverrideCleared                          // pending found, cleared, and the readback said so
+  | StaleOverrideWouldNotClear                    // cleared, and the readback still showed it pending: the attempt refuses
+  | StaleOverrideUnread { reason: NonEmptyStr }   // the clear or its readback never answered
+
+fn boot_override_clear_text(c: BootOverrideClear) -> String {
+  match c {
+    OverrideClearNotRequired { reason: r } => concat("not required: ", r as String)
+    OverrideCleared => "cleared"
+    OverrideClearLeftPending => "left pending"
+    OverrideClearUnread { reason: r } => concat("unread: ", r as String)
+  }
+}
+
+fn stale_override_clearance_text(c: StaleOverrideClearance) -> String {
+  match c {
+    StaleOverrideNoneFound => "none found"
+    StaleOverrideCleared => "stale override cleared"
+    StaleOverrideWouldNotClear => "would not clear"
+    StaleOverrideUnread { reason: r } => concat("unread: ", r as String)
+  }
+}
+
+// WHAT THE BEFORE-READ MEANS FOR THE CONSUMPTION JUDGMENT, once the pre-power clear has run. A clear
+// that LANDED replaces the pending it found: what stood when this attempt's set went in is what the
+// clear's OWN readback said, not what the pre-clear read said. Left uncorrected, a stale override turns
+// every later attempt into OverridePendingBeforeAttempt -- and that arm returns before the after-read is
+// ever inspected, so the after-read becomes dead information (clever-bat-328's finding).
+// Clear-then-re-set is what makes the after-read informative again.
+fn boot_override_standing_after_clear(before: BootOverrideStanding, clearance: StaleOverrideClearance) -> BootOverrideStanding {
+  match clearance {
+    StaleOverrideNoneFound => before
+    StaleOverrideCleared => OverrideFlagNotPending
+    StaleOverrideWouldNotClear => OverrideFlagPending
+    StaleOverrideUnread { reason: r } => OverrideReadUnanswered { reason: concat("the stale override's clear never answered: ", r as String) }
+  }
+}
+
 fn override_consumption_text(c: BootOverrideConsumption) -> String {
   match c {
     OverrideConsumedByAttempt => "consumed by this attempt: cleared after a terminal marker, which only a boot of the override's device prints"
@@ -407,6 +468,8 @@ type DerivedFinding
   | HandoffWithheldAtRecheck { handoff: HandoffMedia }
   | HandoffUnconfirmed { handoff: HandoffMedia }
   | OverrideNotConsumed { consumption: BootOverrideConsumption }
+  | OverrideStaleNotCleared { clearance: StaleOverrideClearance }
+  | OverrideLeftPendingAtRelease { clear: BootOverrideClear }
   | PoweredOffWithoutTerminalMarker
   | PresentationAfterHandoff { presentation: BootPresentation }
 
@@ -422,6 +485,12 @@ fn derived_finding_text(f: DerivedFinding) -> String {
     HandoffWithheldAtRecheck { handoff: _ } => "the pre-handoff recheck withheld the handoff, so no boot-device or power write was made"
     HandoffUnconfirmed { handoff: _ } => "the boot-device and power handoff was attempted and not confirmed"
     OverrideNotConsumed { consumption: c } => override_not_consumed_text(c: c)
+    // The two clear findings route through the two state renderers beside their sums, so one vocabulary
+    // renders one sum (the same rule the override finding above already follows).
+    OverrideStaleNotCleared { clearance: c } =>
+      concat("an override was already pending before this attempt set one and would not clear (", stale_override_clearance_text(c: c) as String, "), so the attempt refused and nothing was attributed to it")
+    OverrideLeftPendingAtRelease { clear: r } =>
+      concat("this attempt set a boot override and its release clear did not land (", boot_override_clear_text(c: r) as String, "); the next attempt will find it pending")
     PoweredOffWithoutTerminalMarker => "the host was powered off after the attempt without an observed terminal: the image did not reach its end"
     PresentationAfterHandoff { presentation: p } => concat("after the handoff the presentation was still served: ", presentation_text(p: p))
   }
@@ -462,6 +531,13 @@ type BootRunRecord {
   handoff_media: HandoffMedia,
   media: MediaAttachRecord,
   override: BootOverrideConsumption,
+  // WHAT THE ROUTE DID ABOUT AN OVERRIDE THAT WAS ALREADY PENDING, and about the one it set itself. Both
+  // are standings, not bytes: the bytes stay with the adapter that read them (same rule as `override`
+  // above, and the reason the two of them live here rather than being folded into one classification --
+  // a stale override that refused the attempt and a release that left the flag pending are DIFFERENT
+  // failures, and the boot-5/6 lockout was only visible because they could be told apart).
+  override_stale: StaleOverrideClearance,
+  override_release: BootOverrideClear,
   power_after: PowerAfterAttempt,
   timing: BootPhaseTiming,
   identity: AttemptIdentityReading,
@@ -547,12 +623,31 @@ fn run_record_derived_findings(record: BootRunRecord) -> List<DerivedFinding> {
       OverrideNotHandedOff { reason: _ } => []
       OverrideConsumptionUnread { reason: _ } => []
     }
+  // THE TWO CLEARS, read out of the fields the record holds. A stale override that would not clear is the
+  // boot-5 refusal (run 40258937016); a release that left the flag pending is the boot-6 ending (run
+  // 40264233543) -- each raises its own finding because each is a different thing to fix. An UNREAD clear
+  // raises the release finding too: "we do not know the override was cleared" is the same exposure to the
+  // NEXT attempt as "it is still pending", and the release is the only thing standing between them.
+  let stale =
+    match record.override_stale {
+      StaleOverrideNoneFound => []
+      StaleOverrideCleared => []
+      StaleOverrideWouldNotClear => [OverrideStaleNotCleared { clearance: record.override_stale }]
+      StaleOverrideUnread { reason: _ } => []
+    }
+  let released =
+    match record.override_release {
+      OverrideClearNotRequired { reason: _ } => []
+      OverrideCleared => []
+      OverrideClearLeftPending => [OverrideLeftPendingAtRelease { clear: record.override_release }]
+      OverrideClearUnread { reason: _ } => [OverrideLeftPendingAtRelease { clear: record.override_release }]
+    }
   let power =
     match record.power_after {
       PoweredOffWithoutTerminal => [PoweredOffWithoutTerminalMarker]
       _ => []
     }
-  attach + handoff + override + power
+  attach + handoff + override + stale + released + power
 }
 
 // THE RUN RECORD, RENDERED. The run section's text, one line per classification, in the order the

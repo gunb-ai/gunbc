@@ -14,6 +14,7 @@ import extdeps.bmc.ipmi_chassis_control {
   ipmi_chassis_control_action_of_verb, ipmitool_chassis_status_power_line, ipmitool_chassis_power_control_reply,
 }
 import extdeps.bmc.ipmi_sdr { sdr_type_line_text }
+import extdeps.bmc.ipmi_boot_selection { ipmi_boot_device_none }
 import gunbc.bmc_model {
   BmcWorld, bmc_chassis_control, bmc_power_is_on, bmc_advance, bmc_with_override,
   BootOverrideNone, BootOverrideCdromEfiNextBoot,
@@ -33,6 +34,7 @@ import extdeps.bmc.ipmitool_observed_output {
   ipmitool_fru_print_0_mt_collins,
   ipmitool_mc_info_mt_collins,
   ipmitool_bootparam5_no_override, ipmitool_bootparam5_cdrom_efi_next_boot, ipmitool_bootdev_cdrom_reply,
+  ipmitool_bootdev_none_reply_for,
   ipmitool_sel_elist_line,
 }
 
@@ -112,6 +114,32 @@ fn bmc_bootdev_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   }
 }
 
+// THE CLEAR OF THE OVERRIDE, bound at last. `Tool.ChassisBootDev` (extdeps.bmc.ipmi
+// ipmi_chassis_bootdev_operation -- the plain form, with NO options input) previously had no binding and
+// no production caller, so a route that wanted to drop a pending override had no operation to dispatch
+// and parameter 5 stayed set across the exit -- the boot-5/6 lockout (runs 40258937016, 40264233543).
+// `none` is the one device this operation carries: it drops the valid bit, which in the world IS
+// BootOverrideNone, so the readback afterwards answers from ipmitool_bootparam5_no_override -- bytes that
+// are a capture. Any other device here is refused, not modelled: setting an override is
+// ChassisBootDevWithOptions's job, and letting the plain operation set one would print the clear's reply
+// over a write. The echo's own bytes are the firmware-keyed derived row
+// (ipmitool_bootdev_none_reply_for); a controller on another release gets a fault, not a guess -- and no
+// consumer judges the clear from this stdout anyway, because the verdict of a clear is the parameter-5
+// readback above.
+fn bmc_bootdev_clear_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
+  if !input_is(call: call, name: "device", expected: ipmi_boot_device_none as String) {
+    match operation_input_text(invocation: call.invocation, name: "device") {
+      Absent => BmcReplyFault { reason: "ChassisBootDev was dispatched without a device input" as NonEmptyStr }
+      Present { value: device } => BmcReplyFault { reason: join(["the plain ChassisBootDev operation carries the clear device `none` only; `", device, "` would SET an override, which is ChassisBootDevWithOptions's operation"], "") as NonEmptyStr }
+    }
+  } else {
+    match ipmitool_bootdev_none_reply_for(firmware_release: bmc_dry_bmc_firmware_release) {
+      Absent => BmcReplyFault { reason: "no retained bootdev echo shape for this controller's firmware release; the clear's readback would still answer, but its stdout would be invented" as NonEmptyStr }
+      Present { value: reply } => BmcReplied { stdout: reply, world: bmc_with_override(world: world, over: BootOverrideNone) }
+    }
+  }
+}
+
 fn bmc_sel_elist_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: join(map(world.sel, r => ipmitool_sel_elist_line(record_id_hex: r.id_hex, date: r.date, time: r.time, sensor: r.sensor, event: r.event, state: r.state)), ""), world: world }
 }
@@ -139,6 +167,14 @@ fn bmc_sdr_type_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
 fn bmc_hpm_check_reply(world: BmcWorld, call: OperationCall) -> BmcReply {
   BmcReplied { stdout: ipmitool_hpm_check_bmc0_32, world: world }
 }
+
+// THE FIRMWARE THE DRY BMC IS, stated once: it answers `hpm check` and `mc info` with MegaRAC 0.32's
+// committed bytes, so 0.32 is what this world says about itself and this is the only place the model
+// names it as a value. Rows whose bytes were read on that release key on it (extdeps.bmc.ipmitool_observed_output
+// ipmitool_bootdev_none_reply_for), and a witness pins this against the `mc info` bytes it is read from --
+// if the model's own answer ever changes release, that witness reds instead of this number drifting.
+data bmc_dry_bmc_firmware_release: NonEmptyStr = "0.32"
+
 
 // THE BOARD INVENTORY AS THE CONTROLLER PRINTED IT: the one retained capture, of boot run
 // 40264233543 (extdeps.bmc.ipmitool_observed_output ipmitool_fru_print_0_mt_collins), not a modeled
@@ -173,6 +209,7 @@ fn bmc_bindings<S>(get: fn(S) -> BmcWorld, put: fn(S, BmcWorld) -> S) -> List<Op
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisPowerControl"), handler: bmc_lift(get: get, put: put, reply: bmc_chassis_power_control_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootParamGet"), handler: bmc_lift(get: get, put: put, reply: bmc_bootparam_get_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootDevWithOptions"), handler: bmc_lift(get: get, put: put, reply: bmc_bootdev_reply) },
+    OperationBinding { at: bmc_ipmi_operation(operation: "ChassisBootDev"), handler: bmc_lift(get: get, put: put, reply: bmc_bootdev_clear_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticated"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "SelListAuthenticatedCached"), handler: bmc_lift(get: get, put: put, reply: bmc_sel_elist_reply) },
     OperationBinding { at: bmc_ipmi_operation(operation: "McInfo"), handler: bmc_lift(get: get, put: put, reply: bmc_mc_info_reply) },

@@ -14,7 +14,8 @@ import v2.std.witness_evaluation {
   evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count }
+import gunbc.bmc_model { BmcWorld, BmcRecordSurfaces, BmcSdrRecord, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled, BmcPower, BmcPowerOff, BmcPowerOn, bmc_world, bmc_with_power, bmc_with_sol_session, bmc_with_sol_drop_after_boot, bmc_sol_drop_fired, bmc_advance, bmc_power_is_on, Second, second, second_count, BmcBootOverride, BootOverrideNone, BootOverrideCdromEfiNextBoot, bmc_with_override }
+import gunbc.host.boot_attempt { BootOverrideClear, StaleOverrideClearance, StaleOverrideCleared, StaleOverrideWouldNotClear, StaleOverrideNoneFound, OverrideCleared, OverrideClearLeftPending, OverrideClearNotRequired, stale_override_clearance_text, boot_override_clear_text }
 import gunbc.host.host_reset_return { host_reset_observer_label_env }
 import gunbc.filesystem_model { ModeledFilesystem, ModeledFile, ModeledPathStat, fs_refusing_reads_of, fs_with_file }
 import gunbc.process_environment_model { ModeledVariable }
@@ -514,6 +515,7 @@ fn is_hold_write(r: DispatchRecord) -> Bool {
 // The effects that change the controller or start a process against it.
 data controller_writes: List<String> = [
   "diagnostic.ipmi.Tool.ChassisPowerControl", "diagnostic.ipmi.Tool.ChassisBootDevWithOptions",
+  "diagnostic.ipmi.Tool.ChassisBootDev",
   "megarac.Media.StartMedia", "megarac.Media.StopMedia", "diagnostic.ipmi.Tool.SolDeactivate",
   "gunbc.machine_intake.sol_hold.ActivateHeld",
 ]
@@ -981,7 +983,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 
 // THE RUN RECORD THE RECEIPT BUNDLE RENDERS, built from the attempt as the conclusion builds it.
 fn attempt_run_record(a: MtCollins1BootAttempt) -> MegaRacRunRecord {
-  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
+  mtcollins1_boot_run_record(media: a.media, handoff_media: a.handoff_media, end_media: a.end_media, stage: a.stage, before: a.override_before, after: a.override_after, clears: a.override_clears, power_after: a.power_after, timing: a.timing, fan_gate: a.fan_gate)
 }
 
 // THE CONTROL: THE SAME LOSS AFTER THE FAN GATE HAS PASSED keeps the existing teardown. At boot+90s the
@@ -1410,6 +1412,97 @@ test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool {
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticated") == 0
         && count_named(route: route, name: "diagnostic.ipmi.Tool.SelListAuthenticatedCached") == 0
         && reached_no_power_action(route: route)
+    _ => false
+  }
+}
+
+// ─── THE CLEARS AROUND THE SET (boot 7: mtcollins1's lockout) ─────────────────────────────────────
+// THE WORLD AN EARLIER ATTEMPT LEFT BEHIND: parameter 5 still carries a cdrom/EFI next-boot override.
+// This is not a hypothetical state -- boot 5 (run 40258937016) and boot 6 (run 40264233543) both ENDED
+// that way, and boot 5 refused with 'a boot override matching this attempt's was already pending before it
+// was set' while parameter 5 read 'Boot parameter data: a014000000' byte-identical before AND after its
+// set. An override that predates the attempt can never be attributed to it, so the pre-power step clears
+// what it finds pending and reads the clear back BEFORE the set, and every exit after a set clears what the
+// attempt itself set. The two rows below are the two required reds of that ruling (msg_36b81708): each was
+// run against the route WITHOUT the clear (the release gated off) and fails there.
+
+fn world_with_stale_override(lines: List<TimedConsoleLine>) -> MtCollins1BootWorld {
+  let w = world_with_console(lines: lines)
+  with_bmc(w: w, bmc: bmc_with_override(world: w.bmc, over: BootOverrideCdromEfiNextBoot))
+}
+
+// The two standings as the SINGLE-HOMED vocabulary renders them: a row that pins the words pins the
+// vocabulary, and a rename that skips the text fn turns these rows red instead of quietly reprinting.
+fn override_stale_words(a: MtCollins1BootAttempt) -> String { stale_override_clearance_text(c: a.override_clears.stale) }
+fn override_release_words(a: MtCollins1BootAttempt) -> String { boot_override_clear_text(c: a.override_clears.released) }
+
+fn controller_left_the_override_pending(w: MtCollins1BootWorld?) -> Bool {
+  match w {
+    Absent => false
+    Present { value: world } => match world.bmc.boot_override {
+      BootOverrideNone => false
+      BootOverrideCdromEfiNextBoot => true
+    }
+  }
+}
+
+// (B) A PRE-EXISTING PENDING OVERRIDE IS NEVER Noop'ED. The override seeded here is byte-for-byte this
+// attempt's own selection -- the exact state that made boot 5 skip its clear -- so a route that reasoned
+// 'the bytes already match, nothing to do' would dispatch NO plain ChassisBootDev at all and the row would
+// pass without the clear. It does not: the clear goes out on the plain operation, BEFORE the set, and the
+// stale override is recorded as cleared rather than as a match. The route ends with the controller holding
+// no override at all, and the receipt says the stale one was cleared.
+test fn a_pending_override_is_cleared_before_this_attempt_sets_its_own() -> Bool {
+  match run_attempt(world: world_with_stale_override(lines: [])) {
+    WitnessReturned { value, route, state } =>
+      count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") >= 2
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") >= 0
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions")
+        && override_stale_words(a: value) == "stale override cleared"
+        && override_release_words(a: value) == "cleared"
+        && !controller_left_the_override_pending(w: state)
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_stale=stale override cleared")
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
+        && controller_writes_are_under_the_hold(route: route)
+    _ => false
+  }
+}
+
+// (A) A REFUSED ATTEMPT RELEASES WHAT IT SET. This is boot 5's shape: the console never prints a census, so
+// the attempt refuses at its deadline -- the refusal happens AFTER the set, which is the only part of the
+// sequence that matters here. The release clear goes out after the set, the record's release standing is
+// 'cleared' rather than 'not required', and the controller is left holding nothing. With the release gated
+// off, the first two assertions fail: this is the row that makes a param5 left pending across an exit red.
+test fn a_refused_attempt_releases_the_override_it_set() -> Bool {
+  match run_attempt(world: world_with_console(lines: [])) {
+    WitnessReturned { value, route, state } =>
+      string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 1
+        && first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDevWithOptions") < first_ordinal(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev")
+        && override_release_words(a: value) == "cleared"
+        && !controller_left_the_override_pending(w: state)
+        && string_contains(s: megarac_run_record_text(row: mtcollins1_boot_row_value, r: attempt_run_record(a: value)), pattern: "override_release=cleared")
+    _ => false
+  }
+}
+
+// THE RELEASE IS OWED ONLY BY AN ATTEMPT THAT SET SOMETHING. An attempt refused before it ever reached the
+// controller -- here a receipt path outside artifacts/receipts/, refused before any BMC read -- dispatches
+// no clear at all and says so, rather than clearing a parameter it never touched: a route that cleared
+// unconditionally would trip the count, and one that claimed 'cleared' without a readback would trip the
+// words. The standing's reason is what the operator reads, so it is pinned too.
+test fn an_attempt_that_never_set_an_override_owes_no_clear() -> Bool {
+  // THE PRESENTATION IS WITHDRAWN BETWEEN THE ATTACH AND THE HANDOFF: the route reaches its exit tail --
+  // the SOL and media teardown run, the reads are taken -- but the set was withheld at the pre-handoff
+  // recheck, so this attempt owns no override. It dispatches no clear at all and says why, rather than
+  // clearing a parameter it never touched: an ungated release would trip the count, and a clear claimed
+  // without a readback would trip the words.
+  match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 5) }))) {
+    WitnessReturned { value, route } =>
+      string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
+        && reached_no_power_action(route: route)
+        && count_named(route: route, name: "diagnostic.ipmi.Tool.ChassisBootDev") == 0
+        && starts_with(s: override_release_words(a: value), prefix: "not required: ")
     _ => false
   }
 }
