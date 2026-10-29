@@ -33,7 +33,7 @@ import gunbc.compute.host_capacity {
   SliceLimitReading, SliceLimitObserved, SliceLimitUnbounded, SliceLimitAbsent, SliceLimitUnreadable,
   ReviewerSliceBudget, SliceBudgetObserved, SliceBudgetDeclared, SliceBudgetZero,
   ComputeSliceLeg, ComputeSliceRoom, ComputeSliceRefusedForRoom, compute_slice_arithmetic,
-  reviewer_slice_budget_from_reading, slice_limit_from_shell, compute_slice_leg,
+  reviewer_slice_budget_from_reading, slice_limit_from_shell, compute_slice_leg, reviewer_seat_ceiling,
 }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_review_unit_name, dispatch_review_unit_properties }
 import gunbc.roadmap.roadmap_dashboard_instance { srv2_deploy_dashboard_instance }
@@ -210,7 +210,15 @@ test fn the_slice_leg_admits_to_the_byte_and_refuses_for_room_never_for_failure(
     SliceBudgetObserved { budget: b, detail: _ } => kibibyte_count(k: b) == 1000
     _ => false
   }
-  fits && one_over && unreadable_refuses && absent_falls_declared && zero_holds_nothing && observed_below_declared
+  // THE SLICE CEILING TRAVELS INTO THE SEAT CAS (review 87576): with the slice free the seat keeps
+  // its plain backing figure (the worker-identical positive control); once a sibling has spent the
+  // slice the seat's ceiling is the REMAINING room, not the backing -- that is what refuses the
+  // second of two concurrent reviewers at commit time after both passed the same room snapshot;
+  // and a fully spent slice gives the seat no ceiling at all, which refuses as room, never failure.
+  let seat_keeps_backing = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 0))) == 23068672
+  let seat_tightens_to_room = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 44000000))) == 2137344
+  let seat_spent_is_zero = kibibyte_count(k: reviewer_seat_ceiling(backing: kibibyte(count: 23068672), budget: budget, sibling: kibibyte(count: 46137344))) == 0
+  fits && one_over && unreadable_refuses && absent_falls_declared && zero_holds_nothing && observed_below_declared && seat_keeps_backing && seat_tightens_to_room && seat_spent_is_zero
 }
 
 // THE INSTRUMENT NEVER INVENTS A NUMBER. Only an exited, successful, parseable reading is a peak;

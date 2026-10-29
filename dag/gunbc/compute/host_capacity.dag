@@ -422,6 +422,26 @@ type ComputeSliceLeg
   = ComputeSliceRoom { budget: Kibibyte }
   | ComputeSliceRefusedForRoom { detail: String }
 
+// THE SLICE INEQUALITY BINDS AT THE GENERATION THE SEAT COMMITS (review 87576). The slice leg
+// above READS the committed standings and answers room; a read is not a lock -- two criteria of
+// one head acquire concurrently (their per-criterion attempt CAS at
+// roadmap_session_placement:attempt_open does not serialize them), so both can pass the same
+// snapshot, and the seat's own compare-and-set would otherwise be bounded only by the backing
+// ceiling, letting the committed total cross the slice silently while the ledger called every
+// admission justified. The room answer therefore hands its budget to the seat: ceiling =
+// min(backing, budget - sibling), which the CAS enforces as own_committed + request <= budget -
+// sibling -- the slice inequality itself, re-checked at the partition generation the seat commits
+// at, so the later contender is refused room (SeatFull -> deferral), not admitted on stale room.
+// SIBLINGS (agent and build partitions) cannot enter the CAS: their committed totals live in other
+// ledgers, so a sibling's growth after this read is the declared cross-partition residual, not a
+// bound this pool can give. The worker path is untouched (scope ruling: byte-identical); this
+// tightening is the reviewer arm's alone.
+fn reviewer_seat_ceiling(backing: Kibibyte, budget: Kibibyte, sibling: Kibibyte) -> Kibibyte {
+  let room = kibibyte_count(k: budget) - kibibyte_count(k: sibling)
+  let room_k = if room > 0 { kibibyte(count: room) } else { kibibyte(count: 0) }
+  if kibibyte_count(k: room_k) < kibibyte_count(k: backing) { room_k } else { backing }
+}
+
 // ── THE APPROPRIATION, AND WHAT IT REPLACES ────────────────────────────────────────────────────
 //
 // THE SHARE OF THE HOST THIS PROVIDER MAY COMMIT, denominated in the bytes the old count was
@@ -672,9 +692,12 @@ fn host_capacity_reserve_reviewer(
                               ReviewerRoomEstablished { budget: budget, sibling: sibling, own: own } =>
                                 match compute_slice_leg(budget: budget, sibling_committed: sibling, own_committed: own, request: subject.request) {
                                   ComputeSliceRefusedForRoom { detail: d } => ComputeCapacityFull { wire: d }
-                                  ComputeSliceRoom { budget: _ } => compute_seat(
+                                  ComputeSliceRoom { budget: b } => compute_seat(
                                     subject: subject, reference: reference, now: now, term_seconds: term_seconds,
-                                    ceiling: compute_backing_ceiling(subject: subject, available: available),
+                                    ceiling: reviewer_seat_ceiling(
+                                      backing: compute_backing_ceiling(subject: subject, available: available),
+                                      budget: b, sibling: sibling,
+                                    ),
                                   )
                                 }
                             }
