@@ -14,7 +14,7 @@ import gunbc.live_deploy.capacity_inhibition { CapacityInhibitionPath }
 import gunbc.live_deploy.capacity_cutover_recovery {
   CapacityGenerationFile, CapacityCutoverRecord, CapacityInstalling,
   CapacityResume, CapacityRollback, capacity_recovery_plan, capacity_recovery_finding, CapacityRecoveryOrphanMasks,
-  CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration,
+  CapacityRecoveryInstall, CapacityRecoveryVerifyGeneration, capacity_generation_same_subjects,
 }
 
 fn recovery_fixture_file(name: NonEmptyStr, digest: NonEmptyStr) -> CapacityGenerationFile? {
@@ -60,5 +60,14 @@ test fn masks_without_a_record_are_reported_and_never_adopted() -> Bool {
   match capacity_recovery_finding(record: CasObservedReadable { readable: CasReadableAbsent }, owned_masks: Ok { value: record.created_paths }) {
     CapacityRecoveryOrphanMasks { paths: paths, remedy: _ } => paths == record.created_paths
     _ => false
+  }
+}
+
+
+test fn recovery_generation_membership_includes_the_source_host() -> Bool {
+  match recovery_fixture_file(name: "fixture.service", digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: file } => !capacity_generation_same_subjects(left: [file], right: [CapacityGenerationFile {
+      host: "other-host", manager: file.manager, unit: file.unit, destination: file.destination, digest: file.digest }])
   }
 }

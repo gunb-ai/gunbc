@@ -97,7 +97,7 @@ fn capacity_recovery_has_inhibition(paths: List<CapacityInhibitionPath>, file: C
 // This first recovery domain replaces existing units only. It refuses additions
 // rather than silently leaving a new writer behind during rollback.
 fn capacity_generation_has_file(files: List<CapacityGenerationFile>, file: CapacityGenerationFile) -> Bool {
-  count(filter(files, candidate => candidate.manager == file.manager
+  count(filter(files, candidate => candidate.host == file.host && candidate.manager == file.manager
     && candidate.unit == file.unit && candidate.destination == file.destination)) == 1
 }
 
