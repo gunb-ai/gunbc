@@ -282,6 +282,19 @@ fn ipmi_lan_attempt_count_reset_window(served: IpmiLanBadPasswordThreshold) -> S
   second(count: served.attempt_count_reset_secs)
 }
 
+// IS THE FAILED-ATTEMPT COUNTER IN FORCE ON THIS CHANNEL AT ALL? The LAN section's
+// Invalid password disable parameter is the switch: ipmitool's LAN Print Section
+// prints it as `Invalid password disable : yes|no`, and with it not set the BMC does
+// not disable the user on bad passwords, so the Bad Password Threshold byte is not
+// what locks an account out — the counter still increments, but nothing acts on it.
+// Declared here rather than read field-wise by the product layer, so the vendor's
+// shape stays in this module (ipmi_lan_bad_password_threshold_locks_after states the
+// same rule for the THRESHOLD; this one states it for the counter's effect).
+// CONSUMER: gunbc.machine_intake.bmc_secure.bmc_failed_attempt_window.
+fn ipmi_lan_failed_attempts_drive_lockout(served: IpmiLanBadPasswordThreshold) -> Bool {
+  served.invalid_password_disable
+}
+
 fn ipmi_lan_bad_password_threshold_locks_after(
   channel: IpmiChannelNumber,
   served: IpmiLanBadPasswordThreshold,

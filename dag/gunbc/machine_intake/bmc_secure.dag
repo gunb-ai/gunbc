@@ -50,6 +50,7 @@ import extdeps.bmc.ipmi_channel {
   IpmiLanUsersAreNotLockedOut,
   IpmiLanLocksAfter,
   ipmi_lan_bad_password_threshold_locks_after,
+  ipmi_lan_failed_attempts_drive_lockout,
 }
 import extdeps.cloud.gcp.secret_manager {
   SmResolvedVersionIdentity,
@@ -3738,7 +3739,7 @@ fn bmc_failed_attempt_window(surface: BmcFailedLoginSurface, reading: BmcControl
           }
         }
       LockoutPolicyServed { served: ServedFromIpmiLanBadPasswordThreshold { parameters: p } } =>
-        if !p.invalid_password_disable {
+        if !ipmi_lan_failed_attempts_drive_lockout(served: p) {
           FailedAttemptsNeverReset { reason: join([bmc_failed_login_surface_text(surface: surface), ": invalid password disable is off, so a lockout on this channel is not driven by the failed-attempt counter at all"], "") }
         } else {
           FailedAttemptsCountedFor { window: ipmi_lan_attempt_count_reset_window(served: p) }
