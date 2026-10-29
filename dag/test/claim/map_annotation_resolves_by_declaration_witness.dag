@@ -121,13 +121,18 @@ test fn a_lookalike_record_named_finitely_supported_function_aliased_as_map_is_n
   }
 }
 
-// THE FAIL-OPEN FIX (review 87351 finding 2) AND ITS EXECUTABLE CONSUMER. The unbound-container
-// refusal in v1.compiler.resolve (src/v1/04_resolve.dag, unbound_container_diagnostics) once read
-// `unresolved_map_spelling_refusal(name: name) && map_is_empty(m: env.source_visible_names) == false
-// && map_has(m: env.source_visible_names, key: name) == false`. The middle conjunct switched the
-// refusal OFF in exactly the context where NOTHING is visible -- an empty visible set -- which is the
-// strongest case for refusing, not an escape. Absence is now judged by `map_has == false` alone:
-// fail-closed on absence, never 'the set is non-empty and misses it'.
+// THE FAIL-OPEN FIX, AND ITS EXECUTABLE CONSUMER. The refusal in v1.compiler.resolve
+// (src/v1/04_resolve.dag, unimported_map_diagnostics) once read
+// `map_builtin_spelling(name: name) && map_is_empty(m: env.source_visible_names) == false &&
+// map_has(m: env.source_visible_names, key: name) == false`. The middle conjunct switched the refusal
+// OFF in exactly the context where NOTHING is visible -- an empty visible set -- which is the strongest
+// case for refusing, not an escape. Absence is now judged by the module's own visibility predicate
+// alone (import_visible_name, the one the unlisted-import check reads), so it is fail-closed on absence,
+// never 'the set is non-empty and misses it'. WHAT THE REFUSAL DECIDES, STATED AS MEASURED: it is a
+// VISIBILITY refusal, not an unbound-name refusal -- an unimported spelling can still bind through
+// global_bare_lookup, since the gate that refuses global-bare resolution for an unlisted name covers one
+// spelling only. So a name can resolve somewhere in the corpus and still be refused here for not being in
+// this module's visible names; that is the point of the check, not an accident of it.
 //
 // THE CONSUMER IS a_map_annotation_without_an_import_refuses_as_unbound ABOVE: it feeds source that
 // hits the guard (mad.user imports mad.definer { MadFunction } but NOT Map, so Map is absent from
