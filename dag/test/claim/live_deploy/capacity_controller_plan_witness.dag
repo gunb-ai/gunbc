@@ -1,0 +1,40 @@
+module test.claim.live_deploy.capacity_controller_plan_witness
+
+import std.types { Bool }
+import std.error_primitives { Ok, Err }
+import extdeps.systemd.manager { SystemManager }
+import extdeps.systemd.systemctl { systemctl_start_command }
+import extdeps.systemd.unit_file { ServiceUnitFile, NotInstallable }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.apply_legs { ApplyPlanReady, ApplyLegInstallUnit, ApplyLegCommand, ApplyLegDiagnosedCommand, ApplyLegRepairDirectoryEntries }
+import gunbc.live_deploy.capacity_controller_plan { capacity_controller_installs, capacity_controller_reload_managers }
+
+fn controller_fixture_install() -> DeploymentUnitInstall {
+  DeploymentUnitInstall { manager: SystemManager, unit: "fixture.service", destination: "/fixture/fixture.service",
+    file: ServiceUnitFile { unit: [], service: [], install: NotInstallable } }
+}
+
+test fn typed_unit_install_survives_the_closed_projection() -> Bool {
+  let install = controller_fixture_install()
+  capacity_controller_installs(plan: ApplyPlanReady { legs: [ApplyLegInstallUnit { step: "fixture", install: install }] }) == Ok { value: [install] }
+}
+
+test fn an_argv_start_leg_refuses_instead_of_disappearing() -> Bool {
+  let install = controller_fixture_install()
+  capacity_controller_installs(plan: ApplyPlanReady { legs: [
+    ApplyLegInstallUnit { step: "fixture", install: install },
+    ApplyLegCommand { step: "start-writer", command: systemctl_start_command(unit: "fixture.service") },
+  ] }) == Err { value: "outside the closed cutover controller: start-writer" }
+}
+
+test fn diagnostic_and_repair_argv_are_not_controller_effect_evidence() -> Bool {
+  let command = systemctl_start_command(unit: "fixture.service")
+  let diagnosed = capacity_controller_installs(plan: ApplyPlanReady { legs: [ApplyLegDiagnosedCommand { step: "diagnosed", command: command, diagnosis: command }] })
+  let repair = capacity_controller_installs(plan: ApplyPlanReady { legs: [ApplyLegRepairDirectoryEntries { command: command }] })
+  diagnosed == Err { value: "outside the closed cutover controller: diagnosed" }
+    && repair == Err { value: "outside the closed cutover controller: repair-directory-entries" }
+}
+
+test fn reload_is_once_per_installed_manager() -> Bool {
+  capacity_controller_reload_managers(installs: [controller_fixture_install(), controller_fixture_install()]) == [SystemManager]
+}

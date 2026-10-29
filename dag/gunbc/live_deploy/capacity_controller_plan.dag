@@ -1,0 +1,72 @@
+module gunbc.live_deploy.capacity_controller_plan
+
+import std.types { String, List, Bool }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.systemd.manager { SystemdManager }
+import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
+import gunbc.live_deploy.apply_legs { DeployApplyPlan, ApplyPlanReady, ApplyPlanRefused, ApplyLegInstallUnit, deploy_apply_leg_step }
+import gunbc.live_deploy.capacity_migration_apply { CapacityMigrationApplyRequest }
+
+// The exception covers this closed program, never the general apply interpreter.
+// Drain includes the source-owned observation and lifecycle protocol. Install does
+// not start a unit. Reload only publishes unit definitions to the named manager.
+// The last leg ends the exception; a general apply is a separate continuation.
+type CapacityControllerLeg
+  = CapacityControllerDrain { request: CapacityMigrationApplyRequest }
+  | CapacityControllerInstall { install: DeploymentUnitInstall }
+  | CapacityControllerReload { manager: SystemdManager }
+  | CapacityControllerDischarge
+
+type CapacityControllerPlan sole_constructor {
+  legs: List<CapacityControllerLeg>
+}
+
+// Unlike deploy_apply_unit_installs, this is NOT a filtering projection. Every
+// supplied leg must belong to the closed installation vocabulary; ignoring an
+// arbitrary command would conceal an effect in the purported non-reserving plan.
+fn capacity_controller_installs(plan: DeployApplyPlan) -> Result<List<DeploymentUnitInstall>, String> {
+  match plan {
+    ApplyPlanRefused { step: step, reason: why } => Err { value: join([step, ": ", why], "") }
+    ApplyPlanReady { legs: legs } => fold(legs, init: Ok { value: [] }, f: (prior, leg) => match prior {
+      Err { value: why } => Err { value: why }
+      Ok { value: installs } => match leg {
+        ApplyLegInstallUnit { step: _, install: install } => Ok { value: installs + [install] }
+        _ => Err { value: concat("outside the closed cutover controller: ", deploy_apply_leg_step(leg: leg)) }
+      }
+    })
+  }
+}
+
+fn capacity_controller_reload_managers(installs: List<DeploymentUnitInstall>) -> List<SystemdManager> {
+  fold(installs, init: [], f: (managers, install) =>
+    if capacity_controller_has_manager(managers: managers, manager: install.manager) { managers }
+    else { managers + [install.manager] })
+}
+
+fn capacity_controller_has_manager(managers: List<SystemdManager>, manager: SystemdManager) -> Bool {
+  fold(managers, init: false, f: (found, previous) => found || previous == manager)
+}
+
+// This is a plan, not a drain/install receipt. The realization must retain
+// inhibition across writing the unit file and reload; a successful write alone
+// does not prove that. It must discharge the slot exception before general apply.
+fn capacity_controller_plan(request: CapacityMigrationApplyRequest, install_plan: DeployApplyPlan) -> Result<CapacityControllerPlan, String> {
+  match capacity_controller_installs(plan: install_plan) {
+    Err { value: why } => Err { value: why }
+    Ok { value: installs } => {
+      if count(installs) == 0 { return Err { value: "cutover has no writer generation to install" } }
+      Ok { value: CapacityControllerPlan { legs:
+        [CapacityControllerDrain { request: request }]
+        + map(installs, install => CapacityControllerInstall { install: install })
+        + map(capacity_controller_reload_managers(installs: installs), manager => CapacityControllerReload { manager: manager })
+        + [CapacityControllerDischarge]
+      } }
+    }
+  }
+}
+
+// DECLARED FRONTIER: general apply is not covered by the controller exception.
+// ApplyLegCommand, ApplyLegDiagnosedCommand and ApplyLegRepairDirectoryEntries
+// carry argv without typed effect evidence; their absence of a compute_reserve
+// variant is not a negative proof. Trigger: a later need to exempt general apply
+// requires effect evidence at those existing constructors, not an argv whitelist.
