@@ -1,0 +1,555 @@
+module extdeps.swift_toolchain
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.content_hash { Sha256Digest, Sha256DigestHex, content_hash_eq_cryptographic }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import extdeps.external_authority {
+  ExternalAuthority,
+  CitedFigureStanding,
+  CitedToAuthority,
+  TranscribedUncited,
+  ObservedByReceipt
+}
+import extdeps.uri { Uri, Https }
+import extdeps.version { VersionIdentity }
+
+// THE SWIFT COMPILER TOOLCHAIN, PINNED AS AN EXTERNAL UPSTREAM.
+//
+// swiftc is an external tool in DESIGN section 3's sense: the Swift project's release archive is the
+// authority over what `swiftc -typecheck` accepts, so the version that produced a receipt and the
+// content identity of the archive that carried it are facts a rung must state before its verdict means
+// anything. A rung whose compiler floats can be re-run into a different answer. This names ONE archived
+// swift.org release as the toolchain a Linux swiftc rung is stated against, the way extdeps.rust pins
+// rustup and extdeps.provisioning.ubuntu_install_media pins a downloaded image.
+//
+// WHAT IT IS FOR, AND WHAT IT IS NOT. The one Linux rung this pin was established for is the L1 probe
+// of apps/approve-ios: -typecheck over the Foundation-only generated sources, and the ApproveTests
+// vector suites against dag/test/fixture/approval_device_redemption/vectors.json through
+// swift-corelibs-xctest. NOT as a CI job: the CI roster is closed to growth and nothing here registers
+// one. A rung citing a different archive is a different rung and says so.
+//
+// WHAT READS THIS MODULE TODAY, STATED HONESTLY. The claims in
+// dag/test/claim/swift_toolchain_pin_witness.dag are the only consumers right now, and they are
+// interpreter-executed (claim_batch --entry, or gunbc test with the target naming a claim FUNCTION).
+// THERE ARE NO PROCEDURE ROWS HERE, AND THAT IS A DECISION WITH A REASON. An earlier version of this
+// module carried a verification-order list, a typecheck file set, a test file set, a runtime dependency
+// closure and a FoundationNetworking gap list, each "for the instrument". No instrument can exist from a
+// .dag PR: `gunbc test <label>` realizes an instrument only through the hand-written Rust
+// `instrument_registry` and its `match` on producers (src/v1/stage0/src/target_invocation_host.rs) and
+// never consults gunbc.instrument_targets or gunbc.target_binding -- and the operator ruled the seed is
+// not to be grown for this lane. So those rows had exactly one reader: a claim that string-matched them.
+// A claim that echoes a row does not consume it, and the claim language has no way to read a file or run a
+// process, so no claim could ever have followed them. They are deleted; DESIGN 3c (name the consumer and
+// the executing route) is the reason. WHAT REMAINS HERE IS WHAT A CLAIM CAN EXERCISE: the pin, the
+// signature authorities, and the gate -- driven with candidates and asserted on the named refusal it
+// returns. The procedure facts those rows used to hold (which files, which suite, which fixture, which
+// gap file) now live in gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall,
+// where they are the population and trigger of a DECLARED stall: the run is by hand, that is admitted,
+// and the row says what would have to be dispatchable to stop needing a person.
+//
+// WHY A DISTRIBUTION IS PART OF THE SUBJECT, NOT A FOOTNOTE ON THE VERSION. swift.org ships the same
+// version per distribution with no guarantees across them: the tarballs differ in content and in loader
+// expectations. "6.4.1" alone therefore does not name an artifact. The distribution the BuildBuddy amd64
+// runner image reports (Debian 13 trixie) is the row that was fetched and verified.
+//
+// THREE FACTS, THREE HOMES -- NO FIELD IS WRITTEN TWICE. A row stores what is OBSERVED (which artifact,
+// how many bytes, which digest). Everything derivable is a PROJECTION, not a stored field: the download
+// URL is computed from (distribution, version) by swift_toolchain_archive_url, so no row can carry a URL
+// that disagrees with its own subject, and no check has to compare them. Sizes are std.measure.ByteSize
+// and digests are std.content_hash.Sha256Digest, so "is the size positive" and "is the digest 64 lower
+// hex" are conditions a row cannot be written in violation of, rather than validators a caller must
+// remember to call.
+//
+// DECLARED IS NOT PINNED, AND THE TYPES SAY SO. An archive nobody has fetched is recorded as
+// SwiftToolchainUnverifiedArchive, which has NO size field and NO digest field -- so it cannot be read as a
+// pin, and there is no empty string standing in for a number. A row for a release nobody fetched is
+// therefore a statement about a future fetch, never something that can travel as a verified one.
+//
+// THE TRANSPORT GAP, RECORDED NOT SILENTLY PATCHED. On swift-corelibs-foundation the HTTP transport
+// types (URLRequest, URLResponse, HTTPURLResponse, URLSession) live in a separate FOUNDATIONNETWORKING
+// module; on Apple platforms they are inside Foundation. apps/approve-ios/Approve/Wire.swift imports
+// only Foundation and uses all four, so on Linux it does not compile unedited (observed: 8 typecheck
+// errors, all at those uses in the transport functions). The hand run reaches green only by ADDING a
+// separate harness-owned file that re-exports that module: no shipped file is edited and the iOS build
+// is untouched, and the added file stays a harness file -- its existence IS the declared gap, and it must
+// never become the place where behavior is patched. Protocol.swift and EnrolmentMachine.swift typecheck against Foundation alone;
+// Protocol.swift still cannot be typechecked on its own, because it reads `Route`, declared in
+// Wire.swift -- so the three are ONE unit, compiled together as the module Approve. That file set is a
+// fact about a hand run, not a row: nothing in the seed dispatches the run (see the guarantee_stall row
+// gunbc.guarantee_stall.approve_ios_linux_swift_receipt_not_dispatchable_stall, which carries it), and a
+// row a claim only echoes is a second place to keep a list nobody reads.
+
+// THE MODULE'S ANCHOR, per the per-module convention every extdeps module carries.
+// It is the upstream release index this artifact was located through, and it is what gunbc-side readers
+// expect to find under this name -- gunbc.extdeps_scope_frontier, gunbc.design.catalog, gunbc.citation.*,
+// and the read-grained fork census, whose ground is that per-module conventions like this one are not
+// ambiguous reads. Deleting it would make this module the exception those readers trip over, so it is
+// declared here even though the authority that VERIFIES an archive is the .sig below, never this index:
+// a claim asserts that distinction, so "we knew the release was published" is never mistaken for "upstream
+// signed these bytes".
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "swift.org/download/#releases"
+  }
+}
+
+// The distribution the archive was built for. `OtherLinux` is representable so an unlisted distribution
+// has to be named rather than mapped onto a neighbouring row.
+type SwiftToolchainDistribution
+  = Debian13
+  | Ubuntu2404
+  | Ubuntu2204
+  | OtherLinux { name: NonEmptyStr }
+
+// The path segment swift.org uses for this distribution in its release tree. This is where the
+// distribution's spelling lives: the URL and every label both derive from here.
+fn swift_toolchain_distribution_segment(distribution: SwiftToolchainDistribution) -> NonEmptyStr {
+  match distribution {
+    Debian13 => "debian13"
+    Ubuntu2404 => "ubuntu2404"
+    Ubuntu2204 => "ubuntu2204"
+    OtherLinux { name: n } => n
+  }
+}
+
+// The distribution name as it appears in the archive filename, which is not the same string as the
+// directory segment (ubuntu2404 vs ubuntu24.04). Both spellings exist upstream; neither is invented.
+fn swift_toolchain_distribution_archive_name(distribution: SwiftToolchainDistribution) -> NonEmptyStr {
+  match distribution {
+    Debian13 => "debian13"
+    Ubuntu2404 => "ubuntu24.04"
+    Ubuntu2204 => "ubuntu22.04"
+    OtherLinux { name: n } => n
+  }
+}
+
+// WHICH ARCHIVE, and nothing else. Version is carried as the repo's VersionIdentity carrier rather than
+// a free string, because "12.4" and "12.4.0" are different versions and the distinction is what selects
+// an artifact.
+type SwiftToolchainArchiveSubject {
+  distribution: SwiftToolchainDistribution
+  version: VersionIdentity
+}
+
+// The download location, DERIVED. swift.org's release tree is a mechanical function of distribution and
+// version, so storing it as well as deriving it would be the same fact written twice, and the two could
+// be made to disagree. Nothing in this module stores a URL.
+fn swift_toolchain_archive_url(subject: SwiftToolchainArchiveSubject) -> Uri {
+  let v = swift_toolchain_version_text(subject.version)
+  let dist = swift_toolchain_distribution_segment(distribution: subject.distribution)
+  let archive = swift_toolchain_distribution_archive_name(distribution: subject.distribution)
+  Uri {
+    scheme: Https
+    locator: concat(
+      "download.swift.org/swift-", v, "-release/", dist,
+      "/swift-", v, "-RELEASE/swift-", v, "-RELEASE-", archive, ".tar.gz")
+  }
+}
+
+// VersionIdentity is a branded string, so the text is read off the carrier rather than kept beside it.
+fn swift_toolchain_version_text(version: VersionIdentity) -> NonEmptyStr {
+  version as NonEmptyStr
+}
+
+// AN ARCHIVE SOMEONE HAS FETCHED AND CHECKED AGAINST THE UPSTREAM AUTHORITY. Size and digest are typed
+// carriers, so the two questions the pin answers are questions its type cannot misstate: a ByteSize is a
+// byte count (its unit cannot be re-minted or forgotten), and a Sha256Digest is 64 lowercase hex or the
+// row does not construct. `standing` is required, not optional, and cannot be left blank: a verified row
+// that could omit the authority it was verified against is one that could be cited by a receipt nobody
+// can re-run -- which is exactly the shape this pin previously had.
+type SwiftToolchainVerifiedArchive {
+  subject: SwiftToolchainArchiveSubject
+  observed_size: ByteSize
+  expected_identity: Sha256Digest
+  standing: CitedFigureStanding
+}
+
+// AN ARCHIVE SOMEONE HAS ONLY DECLARED. Deliberately has no size and no digest: an unverified row that
+// could carry them is one keystroke from being believed, and a placeholder zero is a fact nobody
+// observed. `reason` says what is missing in the row itself, so the gap travels with the row.
+type SwiftToolchainUnverifiedArchive {
+  subject: SwiftToolchainArchiveSubject
+  reason: NonEmptyStr
+}
+
+// What is known about the toolchain, verified or not. Two arms because the two states carry different
+// FIELDS, not just different confidence -- which is why this is a coproduct of two records rather than
+// one record with two optional-looking fields.
+type SwiftToolchainArchive
+  = Verified { archive: SwiftToolchainVerifiedArchive }
+  | Unverified { declared: SwiftToolchainUnverifiedArchive }
+
+fn swift_toolchain_archive_subject(archive: SwiftToolchainArchive) -> SwiftToolchainArchiveSubject {
+  match archive {
+    Verified { archive: a } => a.subject
+    Unverified { declared: d } => d.subject
+  }
+}
+
+
+// THE PIN, AND WHAT ITS DIGEST IS CITED TO.
+//
+// The digest is cited TO THE UPSTREAM SIGNATURE, not to any download of the archive. swift.org publishes
+// a detached GPG signature beside each tarball, and its own install instructions say to verify it and to
+// NOT USE THE TOOLCHAIN if it reports BAD signature. So the authority over "which bytes are the 6.4.1
+// debian13 toolchain" is `swift-6.4.1-RELEASE-debian13.tar.gz.sig` checked against the published signing
+// key; a download is only a way of obtaining bytes to test against that authority, and two downloads
+// agreeing says nothing about whether the bytes are upstream's -- both can agree and both be wrong, and
+// one can agree with a value that was never produced by a fetch at all.
+//
+// THAT LAST SENTENCE IS NOT HYPOTHETICAL HERE, AND THE ROW CARRIES THE SCAR. An earlier revision of this
+// pin recorded hex 350260329794a6... as "read off two independent fetches of this URL on the runner,
+// which agreed byte for byte". No fetch log ever contained that value: every fetch this lane actually
+// ran printed 3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47, which is what gpg now
+// confirms upstream signed. The cited observation was authored, not read, and the citation's wording was
+// designed to end an enquiry rather than invite one. The standing below therefore points at an authority
+// a reader can re-run (fetch the .sig, import the published keys, `gpg --verify`), not at a receipt
+// whose text I would have to be trusted. The fabricated digest survives only inside the claim that refuses it,
+// so the refusal is demonstrated rather than asserted.
+// WHICH ARTIFACT, SPOKE ONCE. The pinned subject lives here and nowhere else: the pin's own subject field
+// and the URL of the .sig its standing cites are both projections of this row. Spelling the version and
+// distribution a second time beside the pin is what let a bumped pin go on citing the signature of the
+// release it no longer was.
+data swift_toolchain_pinned_subject: SwiftToolchainArchiveSubject = SwiftToolchainArchiveSubject {
+  distribution: Debian13
+  version: "6.4.1" as VersionIdentity
+}
+
+data pinned_swift_toolchain: SwiftToolchainArchive = Verified {
+  archive: SwiftToolchainVerifiedArchive {
+    subject: swift_toolchain_pinned_subject
+    observed_size: byte_size(count: 1122730813)
+    expected_identity: Sha256Digest {
+      hex: "3273c647a4e29231e1d0962a170f4ba14eca06675591dfe384e7c22b0e476a47" as Sha256DigestHex
+    }
+    standing: CitedToAuthority {
+      authority: swift_toolchain_signature_authority
+    }
+  }
+}
+
+// THE AUTHORITIES A READER CAN RE-RUN: the signature file beside the archive, the keyring swift.org tells
+// you to import, and the instructions that define what a good signature means. `gpg --verify` on the pair
+// either reports Good signature from the Swift 6.x Release Signing Key or the archive is not to be used --
+// there is no third answer in which our own measurements settle it.
+//
+// THE .sig IS NOT A SECOND URL. It is the archive URL with `.sig` appended, so it is DERIVED from the
+// same subject the archive is derived from: bump the pin's version or distribution and the authority the
+// standing cites moves with it. It was hand-typed before, which meant a bumped pin kept "citing the
+// signature" of 6.4.1/debian13 -- the check passed while pointing somewhere other than what it verified.
+fn swift_toolchain_signature_authority_for(subject: SwiftToolchainArchiveSubject) -> ExternalAuthority {
+  ExternalAuthority { uri: swift_toolchain_signature_url(subject: subject) }
+}
+
+fn swift_toolchain_signature_url(subject: SwiftToolchainArchiveSubject) -> Uri {
+  let archive = swift_toolchain_archive_url(subject: subject)
+  Uri { scheme: archive.scheme, locator: concat(archive.locator, ".sig") }
+}
+
+// The authority the CURRENT PIN is verified against -- one call, no literals. Named rather than inlined at
+// the standing because the standing, the refusal text, and any reader's `gpg --verify` command all have to
+// mean the same file, and a second spelling of it is what drifted.
+data swift_toolchain_signature_authority: ExternalAuthority = swift_toolchain_signature_authority_for(
+  subject: swift_toolchain_pinned_subject)
+
+data swift_toolchain_signing_keyring_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "swift.org/keys/all-keys.asc"
+  }
+}
+
+data swift_toolchain_verification_instructions_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "swift.org/install/linux/tarball/"
+  }
+}
+
+// THE KEY THE SIGNATURE MUST BE MADE BY, AND WHO SAYS IT IS swift.org's. A fingerprint rather than a keyid or
+// a key name, because a revoked or substituted key is what this check exists to refuse. The fingerprint is a
+// figure like the digest, so it carries its standing in its type the way the digest does: the gate compares
+// a candidate's signer against this value, and a value nobody can re-derive would make SignedByUnlistedKey a
+// refusal against a number we authored. The standing cites the keyring swift.org tells you to import --
+// `gpg --show-keys --with-fingerprint` over it lists this fingerprint as "Swift 6.x Release Signing Key" --
+// because that file is the upstream authority over which keys sign releases; a gpg run of ours could only say
+// which key signed one archive, not that the key is upstream's.
+//
+// THE KEYRING IS LIVE, SO THE STANDING IS NOT TIMELESS. swift.org/keys/all-keys.asc is a mutable document:
+// keys are re-signed and their expiries extended, and a 7.x release brings a new signing key. A citation to
+// it therefore proves the fingerprint only against the reading of that file it was taken from -- exactly the
+// failure `CitedFigureStanding` was minted for, one level up, when a truncated size went true forever. So the
+// record names the PIN its standing was derived for: `derived_for` is the archive subject the keyring was read
+// against, and the gate refuses a key whose `derived_for` is not the module's current pin, with the rule
+// reading `swift_toolchain_pinned_subject` inside the module (a caller cannot supply a pin to match). The
+// obligation is typed, not a comment (4c), and it binds to the pin (4d): bump `swift_toolchain_pinned_subject`
+// and the key stops being listed until someone re-derives the fingerprint against the live keyring and ships
+// the new `derived_for` with it -- the standing cannot survive a bump silently.
+type SwiftToolchainSigningKey {
+  fingerprint: NonEmptyStr
+  standing: CitedFigureStanding
+  derived_for: SwiftToolchainArchiveSubject
+}
+
+data swift_toolchain_signing_key: SwiftToolchainSigningKey = SwiftToolchainSigningKey {
+  fingerprint: "52BB7E3DE28A71BE22EC05FFEF80A866B47A981F"
+  standing: CitedToAuthority {
+    authority: swift_toolchain_signing_keyring_authority
+  }
+  // The pin this reading of the live keyring was taken for, spelled as its OWN subject -- not an alias of
+  // `swift_toolchain_pinned_subject`. An alias would move with the pin silently, which is exactly the
+  // survival this field exists to forbid: bumping the pin must break `swift_toolchain_signing_key_as_listed`
+  // until a person re-runs the keyring read for the new release and ships the new subject here with it.
+  derived_for: SwiftToolchainArchiveSubject {
+    distribution: Debian13
+    version: "6.4.1" as VersionIdentity
+  }
+}
+
+// THE RULE FOR THE KEY, TAKING DATA -- the fingerprint's counterpart of swift_toolchain_archive_as_pin. A key
+// reads as listed only when its standing cites the published keyring AND its standing was derived against the
+// live keyring for the CURRENT PIN; anything else yields nothing, so neither an uncited fingerprint nor a
+// standing left over from a previous pin can become the thing a signer is compared against. The pin is read
+// from `swift_toolchain_pinned_subject` inside this module, so a caller cannot hand the rule a stale pin to
+// agree with.
+fn swift_toolchain_signing_key_as_listed(key: SwiftToolchainSigningKey) -> SwiftToolchainSigningKey? {
+  match key.standing {
+    CitedToAuthority { authority: c } =>
+      if c.uri == swift_toolchain_signing_keyring_authority.uri {
+        if key.derived_for == swift_toolchain_pinned_subject { Present { value: key } } else { Absent }
+      } else { Absent }
+    TranscribedUncited { read_obligation: _ } => Absent
+    ObservedByReceipt { observed: _ } => Absent
+  }
+}
+
+// Explains a "no" the rule above already reached, so it cannot disagree about whether, only say why.
+fn swift_toolchain_signing_key_absence_refusal(key: SwiftToolchainSigningKey) -> SwiftToolchainRefusal {
+  match key.standing {
+    CitedToAuthority { authority: c } =>
+      if c.uri == swift_toolchain_signing_keyring_authority.uri {
+        KeyStandingDerivedForOtherPin {
+          derived_for: key.derived_for
+          pinned: swift_toolchain_pinned_subject
+        }
+      } else {
+        KeyStandingDoesNotCiteKeyring {
+          expected: swift_toolchain_signing_keyring_authority
+          detail: "cites an authority other than the published signing keyring"
+        }
+      }
+    TranscribedUncited { read_obligation: _ } => KeyStandingDoesNotCiteKeyring {
+      expected: swift_toolchain_signing_keyring_authority
+      detail: "standing is a transcription: a fingerprint read off a gpg run is not upstream listing the key"
+    }
+    ObservedByReceipt { observed: _ } => KeyStandingDoesNotCiteKeyring {
+      expected: swift_toolchain_signing_keyring_authority
+      detail: "standing is an observation receipt from inside this repository, which cannot make a key upstream's"
+    }
+  }
+}
+
+// THE ORDER OF VERIFICATION LIVES IN ONE PLACE: `verify_against`, which checks signature, then key, then
+// digest, then size, and returns the FIRST refusal it reaches. It used to be spelled a second time here as
+// a List<NonEmptyStr> of step names -- and the two copies already disagreed, that list put compare-size
+// before compare-digest while the gate does the reverse, and its only reader was a claim string-matching
+// the list. A roster that nothing follows is a second representation of a fact the code already carries
+// (DESIGN section 3), so the list is gone. WHAT STILL HOLDS, AND IS CLAIMED THROUGH THE GATE RATHER THAN
+// BESIDE IT: swift.org's instructions make the signature the gate ("If gpg fails to verify and reports BAD
+// signature, do not use the downloaded toolchain"), so signature precedes every hash. That order is
+// observable without a roster, because an archive that is unsigned AND hashes wrong is refused as
+// SignatureUnverified, not DigestDiffersFromPin -- swap the gate's order and that claim turns red. Same
+// shape for digest-before-size. That is the order measured, where the list was only the order described.
+
+// What gpg yields: a Good signature made by a key with a fingerprint, or a BAD one with its detail. A Bool
+// beside a fingerprint was an undeclared sum -- a bad signature could still carry a listed fingerprint -- so
+// the fingerprint exists only on the arm that has a signature to have been made by a key.
+type SignatureOutcome
+  = GoodSignature { fingerprint: NonEmptyStr }
+  | BadSignature { detail: NonEmptyStr }
+
+// A candidate archive, as measured by a run: what the signature check said and what the bytes hashed to.
+// Held as a record so the instrument reports the same three facts every time and cannot report a subset.
+type SwiftToolchainCandidate {
+  signature: SignatureOutcome
+  observed_digest: Sha256Digest
+  observed_size: ByteSize
+}
+
+// Why a candidate was refused, with the specific value that caused it. Reasons are named rather than
+// collapsed into a Bool because "signature failed", "wrong key" and "hash differs from the pin" send a
+// reader to three different places, and the last of those is the one that used to be confused with the
+// others -- a hash that differed from a PIN THAT WAS ITSELF WRONG was reported as if the archive were
+// suspect.
+// A refusal is the ONLY thing this module says to a human, so a refusal carries what the reader needs to
+// re-run rather than making them hunt for it: the signature refusals name the keyring to import and the
+// instructions that define "good signature", both read from the authority rows below. That is those rows'
+// consumer -- the gate itself, on the path a mismatched archive actually takes -- and it is why the hint
+// cannot drift from the authority: there is no second place to type it.
+type SwiftToolchainRefusal
+  = SignatureUnverified {
+      detail: NonEmptyStr
+      keyring: ExternalAuthority
+      instructions: ExternalAuthority
+    }
+  | SignedByUnlistedKey { observed_fingerprint: NonEmptyStr }
+  | DigestDiffersFromPin { observed: Sha256Digest, pinned: Sha256Digest }
+  | SizeDiffersFromPin { observed: ByteSize, pinned: ByteSize }
+  | PinCarriesNoVerifiedArchive
+  // A `Verified` row whose standing does not cite the .sig is not a pin. Named separately from
+  // PinCarriesNoVerifiedArchive because the fixes differ: that row is missing its measurements, this one
+  // has them and cannot say who says they are upstream's -- which is how this lane shipped a pin over a
+  // digest no fetch ever produced.
+  | PinStandingDoesNotCiteSignature { expected: ExternalAuthority, detail: NonEmptyStr }
+  // The same defect for the key: a fingerprint whose standing does not cite the published keyring is not a
+  // listed key, so a signer cannot be judged against it -- in either direction.
+  | KeyStandingDoesNotCiteKeyring { expected: ExternalAuthority, detail: NonEmptyStr }
+  // The keyring swift.org publishes is LIVE: keys are re-signed, expiries extended, and a 7.x release brings
+  // a new key. A fingerprint's citation proves it only against the reading of that keyring taken for one pin,
+  // so the standing names its pin and a standing derived for any other pin is refused -- both names carried,
+  // so the reader sees which reading to re-take. This is the 4d obligation: bumping `swift_toolchain_pinned_subject`
+  // must make re-derivation a condition of the key's standing, not something a comment hopes someone does.
+  | KeyStandingDerivedForOtherPin { derived_for: SwiftToolchainArchiveSubject, pinned: SwiftToolchainArchiveSubject }
+
+// THE GATE. Returns Absent (usable) only when the signature verified against the published key's
+// fingerprint AND the digest and size both equal the pin's. Anything else is a named refusal. The key, like
+// the pin, is resolved through its rule first: verify_against takes the LISTED key, never the raw row.
+//
+// Note what is NOT here: no parameter accepts an expected digest or size. Both are read out of
+// `pinned_swift_toolchain` by the helpers below, so a caller cannot confirm its own expected value -- the
+// shape that let a wrong pin pass for a verified one.
+fn swift_toolchain_verify(candidate: SwiftToolchainCandidate) -> SwiftToolchainRefusal? {
+  match swift_toolchain_pinned_archive() {
+    // The pin itself unreadable is its own refusal, not a zero-sized archive to compare against. It can
+    // only happen if the data literal below were edited to Unverified, and naming it keeps that from
+    // becoming a code path that returns a plausible-looking archive.
+    // Pin-level refusals come BEFORE any candidate is measured: a row that cannot be the pin cannot be the
+    // thing candidate bytes are compared against, and comparing them anyway yields a confident green or a
+    // confident refusal with no upstream behind it either way.
+    Absent => Present { value: swift_toolchain_pin_absence_refusal(archive: pinned_swift_toolchain) }
+    Present { value: pinned } => match swift_toolchain_signing_key_as_listed(key: swift_toolchain_signing_key) {
+      Absent => Present { value: swift_toolchain_signing_key_absence_refusal(key: swift_toolchain_signing_key) }
+      Present { value: key } => verify_against(candidate: candidate, pinned: pinned, key: key)
+    }
+  }
+}
+
+// The comparison, with the pin RESOLVED and typed as SwiftToolchainVerifiedArchive. No arm here has to
+// invent a size or a digest for the case where the pin is missing, because that case never reaches this
+// function -- which is the difference between a type that cannot misstate and a call order that happens
+// not to let it.
+fn verify_against(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, key: SwiftToolchainSigningKey) -> SwiftToolchainRefusal? {
+  match candidate.signature {
+    BadSignature { detail: _ } => Present {
+      value: SignatureUnverified {
+        detail: "gpg did not report a Good signature; swift.org's instructions forbid using the toolchain"
+        keyring: swift_toolchain_signing_keyring_authority
+        instructions: swift_toolchain_verification_instructions_authority
+      }
+    }
+    GoodSignature { fingerprint: f } => verify_digest_and_size(candidate: candidate, pinned: pinned, key: key, fingerprint: f)
+  }
+}
+
+fn verify_digest_and_size(candidate: SwiftToolchainCandidate, pinned: SwiftToolchainVerifiedArchive, key: SwiftToolchainSigningKey, fingerprint: NonEmptyStr) -> SwiftToolchainRefusal? {
+  if fingerprint != key.fingerprint {
+    Present { value: SignedByUnlistedKey { observed_fingerprint: fingerprint } }
+  } else if !content_hash_eq_cryptographic(
+      left: candidate.observed_digest,
+      right: swift_toolchain_expected_digest(archive: pinned)) {
+    Present {
+      value: DigestDiffersFromPin {
+        observed: candidate.observed_digest,
+        pinned: swift_toolchain_expected_digest(archive: pinned)
+      }
+    }
+  } else if byte_size_count(b: candidate.observed_size) != byte_size_count(b: swift_toolchain_expected_size(archive: pinned)) {
+    Present {
+      value: SizeDiffersFromPin {
+        observed: candidate.observed_size,
+        pinned: swift_toolchain_expected_size(archive: pinned)
+      }
+    }
+  } else {
+    Absent
+  }
+}
+
+// The one answer to "which .sig must this row cite": the row's OWN subject's. The citation check and the
+// refusal that explains it both read this, so they cannot name different signatures.
+fn swift_toolchain_expected_signature(archive: SwiftToolchainVerifiedArchive) -> ExternalAuthority {
+  swift_toolchain_signature_authority_for(subject: archive.subject)
+}
+
+// The pin, readable only as a verified archive. A caller gets the typed row or nothing -- there is no
+// path by which an unverified row is handed out as a pin.
+fn swift_toolchain_pinned_archive() -> SwiftToolchainVerifiedArchive? {
+  swift_toolchain_archive_as_pin(archive: pinned_swift_toolchain)
+}
+
+// WHY A ROW THAT BUILDS IS NOT YET A PIN. `Verified { ... }` is a constructor, not evidence: the field that
+// says WHO says these are upstream's measurements is `standing`, and it is a coproduct. A row built with
+// `standing: TranscribedUncited { read_obligation: "two independent fetches agreed" }` compiles, looks
+// verified, and would be handed out as the thing candidate bytes are compared against -- which is precisely
+// the artifact this lane shipped once, over a digest no fetch ever produced. A claim reading the standing
+// could not prevent that: it would only report on the pin that already exists. So the RULE says no, in the
+// one place that decides whether a row is a pin (swift_toolchain_archive_as_pin), and the refusal below
+// only has to explain a "no" the classifier already reached -- it cannot disagree about whether, only
+// spell out why.
+fn swift_toolchain_pin_absence_refusal(archive: SwiftToolchainArchive) -> SwiftToolchainRefusal {
+  match archive {
+    Unverified { declared: _ } => PinCarriesNoVerifiedArchive
+    Verified { archive: a } => match a.standing {
+      // Reachable only when the classifier already refused the row, so a CitedToAuthority landing here
+      // cites some authority that is not this subject's .sig -- an index, a keyring, a page that says the
+      // release exists without saying these bytes are its.
+      CitedToAuthority { authority: _ } => PinStandingDoesNotCiteSignature {
+        expected: swift_toolchain_expected_signature(archive: a)
+        detail: "cites an authority other than the .sig of this very subject"
+      }
+      TranscribedUncited { read_obligation: _ } => PinStandingDoesNotCiteSignature {
+        expected: swift_toolchain_expected_signature(archive: a)
+        detail: "standing is a transcription: a figure cited to fetches, agreed or not, is not a citation to upstream"
+      }
+      ObservedByReceipt { observed: _ } => PinStandingDoesNotCiteSignature {
+        expected: swift_toolchain_expected_signature(archive: a)
+        detail: "standing is an observation receipt from inside this repository, which cannot make bytes upstream's"
+      }
+    }
+  }
+}
+
+// THE RULE, TAKING DATA. The row above is one archive, so an arm on it alone is a rule no caller can
+// exercise: nothing can hand `swift_toolchain_pinned_archive` an unverified row to see what it does, and
+// the claim that the boundary holds would be the module asserting it about itself. This is the same rule
+// with the archive as an argument, which is what lets a claim drive the boundary from BOTH sides -- an
+// unverified row built in the claim yields nothing, the pin yields its typed archive.
+fn swift_toolchain_archive_as_pin(archive: SwiftToolchainArchive) -> SwiftToolchainVerifiedArchive? {
+  match archive {
+    // Not enough to be `Verified`: a row reads as a pin only when its standing points at the signature
+    // file of the very subject it describes. An uncited row yields nothing, so it cannot travel as a pin.
+    Verified { archive: a } => match a.standing {
+      // The row's OWN subject's .sig: a Debian citation on an Ubuntu row is a different Uri. Uri is a
+      // plain record, so `==` is the one equality (scheme and locator together).
+      CitedToAuthority { authority: c } =>
+        if c.uri == swift_toolchain_expected_signature(archive: a).uri { Present { value: a } } else { Absent }
+      TranscribedUncited { read_obligation: _ } => Absent
+      ObservedByReceipt { observed: _ } => Absent
+    }
+    Unverified { declared: _ } => Absent
+  }
+}
+
+// The byte count a fetch must match before the toolchain is used, as data the instrument reads rather
+// than a number transcribed into its own body.
+fn swift_toolchain_expected_size(archive: SwiftToolchainVerifiedArchive) -> ByteSize {
+  archive.observed_size
+}
+
+fn swift_toolchain_expected_digest(archive: SwiftToolchainVerifiedArchive) -> Sha256Digest {
+  archive.expected_identity
+}
+
