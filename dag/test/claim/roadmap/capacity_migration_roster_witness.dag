@@ -1,6 +1,6 @@
 module test.claim.roadmap.capacity_migration_roster_witness
 
-import std.types { Bool, List, Port }
+import std.types { Bool, List }
 import std.error_primitives { Ok, Err }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import extdeps.tailscale.serve { TailscaleServeEndpoint, ServeRootMount }
@@ -13,7 +13,7 @@ fn migration_roster_fixture() -> List<CapacityTransientFamily> {
   roadmap_capacity_migration_transients(
     names: DeploymentNames {
       unit_name: "fixture.service",
-      tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: 443 as Port, mount: ServeRootMount, backend: "http://127.0.0.1:1" },
+      tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: 443, mount: ServeRootMount, backend: "http://127.0.0.1:1" },
       tree_sync_unit_name: "fixture-tree-sync.service", tree_sync_env_path: "/fixture/tree.env", publication_principal: "fixture",
     }, instance_id: "fixture", operating_uid: 1234)
 }
