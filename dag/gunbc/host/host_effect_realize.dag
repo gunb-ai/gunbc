@@ -10002,16 +10002,20 @@ fn microvm_controller_step_name(step: MicrovmControllerInstallStep) -> String {
   }
 }
 
-fn microvm_controller_step_words(step: MicrovmControllerInstallStep) -> List<String> {
+// Keep command boundaries for composite receipt/account legs. A program census over
+// the first flattened word would see getent but miss later id/sudo commands.
+fn microvm_controller_step_commands(step: MicrovmControllerInstallStep) -> List<ArgvCommand> {
   match step {
-    MicrovmControllerArgvStep { command: c } => argv_words(command: c)
-    MicrovmControllerVerifyStep { command: c } => argv_words(command: c)
-    MicrovmControllerReceiptStep { observe: o, observe2: t, write: w } =>
-      concat(argv_words(command: o), concat(argv_words(command: t), argv_words(command: w)))
+    MicrovmControllerArgvStep { command: c } => [c]
+    MicrovmControllerVerifyStep { command: c } => [c]
+    MicrovmControllerReceiptStep { observe: o, observe2: t, write: w } => [o, t, w]
     MicrovmControllerTreeStep { name: _ } => []
-    MicrovmControllerAccountStep { name: _, user: user } =>
-      flat_map(revision_account_possible_commands(user: user), command => argv_words(command: command))
+    MicrovmControllerAccountStep { name: _, user: user } => revision_account_possible_commands(user: user)
   }
+}
+
+fn microvm_controller_step_words(step: MicrovmControllerInstallStep) -> List<String> {
+  flat_map(microvm_controller_step_commands(step: step), command => argv_words(command: command))
 }
 
 // THE WORDS A STEP RUNS, AS TEXT -- the surface a shell claim is made against.
