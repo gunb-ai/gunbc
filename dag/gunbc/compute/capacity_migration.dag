@@ -26,6 +26,7 @@ type CapacityManagedUnit {
 // derives patterns from its own name producer. Enumeration belongs to that owner too;
 // an unreadable or incomplete population must be supplied as Err, never as [].
 type CapacityTransientFamily {
+  manager: SystemdManager
   source: DeclarationRef
   patterns: List<NonEmptyStr>
   activators: List<CapacityManagedUnit>
@@ -133,10 +134,12 @@ fn capacity_migration_admit(
         Present { value: _ } => prior
         Absent => match enumerate(family) {
           Err { value: why } => Present { value: why }
-          Ok { value: units } => fold(units, init: none, f: (previous, unit) => match previous {
+          Ok { value: units } => if any(units, unit => unit.manager != family.manager) {
+            Present { value: "transient enumeration returned a unit from a different manager" }
+          } else { fold(units, init: none, f: (previous, unit) => match previous {
             Present { value: _ } => previous
             Absent => capacity_migration_unit_refusal(subject: unit, observed: observed)
-          })
+          }) }
         }
       })
       match transient_refusal {

@@ -1,0 +1,43 @@
+module test.claim.roadmap.capacity_migration_roster_witness
+
+import std.types { Bool, List, Port }
+import std.error_primitives { Ok, Err }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import extdeps.tailscale.serve { TailscaleServeEndpoint, ServeRootMount }
+import gunbc.compute.capacity_migration { CapacityTransientFamily }
+import gunbc.live_deploy.spec { DeploymentNames }
+import gunbc.roadmap.roadmap_capacity_migration { roadmap_capacity_migration_transients }
+import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_family_patterns }
+
+fn migration_roster_fixture() -> List<CapacityTransientFamily> {
+  roadmap_capacity_migration_transients(
+    names: DeploymentNames {
+      unit_name: "fixture.service",
+      tailscale_serve_endpoint: TailscaleServeEndpoint { https_port: 443 as Port, mount: ServeRootMount, backend: "http://127.0.0.1:1" },
+      tree_sync_unit_name: "fixture-tree-sync.service", tree_sync_env_path: "/fixture/tree.env", publication_principal: "fixture",
+    }, instance_id: "fixture", operating_uid: 1234)
+}
+
+// Inhabitance: run the real family producer, including auditor and worker naming homes.
+// This fixture deliberately does not resolve or activate a deployment.
+test fn migration_roster_keeps_both_managers_and_uncharged_producers() -> Bool {
+  let rows = migration_roster_fixture()
+  count(rows) == 6
+    && count(filter(rows, row => row.manager == SystemManager)) == 1
+    && count(filter(rows, row => row.manager == UserManager { uid: 1234 })) == 5
+    && any(rows, row => any(row.patterns, pattern => pattern == "gunbc-audit-*-*.service"))
+    && any(rows, row => any(row.patterns, pattern => pattern == "gunbc-obligation-attempt-*-*.service"))
+}
+
+test fn unresolved_redelivery_is_not_a_successful_parent_requirement() -> Bool {
+  let rows = migration_roster_fixture()
+  count(filter(rows, row => match row.parents { Err { value: _ } => true Ok { value: _ } => false })) == 1
+    && all(rows, row => match row.parents {
+      Err { value: _ } => row.patterns == attempt_redelivery_wake_family_patterns()
+      Ok { value: parents } => count(parents) == 1
+    })
+}
+
+test fn timer_collection_does_not_remove_its_service_from_the_family() -> Bool {
+  attempt_redelivery_wake_family_patterns() == ["gunbc-attempt-redeliver-*-*-*.timer", "gunbc-attempt-redeliver-*-*-*.service"]
+}

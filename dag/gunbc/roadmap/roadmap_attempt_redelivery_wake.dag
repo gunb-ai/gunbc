@@ -33,7 +33,7 @@ module gunbc.roadmap.roadmap_attempt_redelivery_wake
 // evidencing the effect the fold execs), the credential-free / reversible / unattended user-manager unit
 // selects FederatedScopedGrant -- NOT attempt_system_unit_launch's system-manager pattern.
 
-import std.types { Bool, String, NonEmptyStr, EpochSecs }
+import std.types { Bool, String, NonEmptyStr, EpochSecs, List }
 import gunbc.auth.authorization_pattern_selection {
   FederatedScopedGrant,
   NoBillingConsequence,
@@ -106,7 +106,19 @@ fn attempt_redelivery_wake_needs_no_witness(operating_user: NonEmptyStr) -> Bool
 // a fresh unit and is genuinely armed -- it is never masked by the old one. Combined with
 // --timer-property=RemainAfterElapse=no (an elapsed one-shot unloads), the name is free once it fires.
 fn attempt_redelivery_wake_unit_stem(node_id: String, attempt_key: String, instant: EpochSecs) -> NonEmptyStr {
-  join([attempt_redelivery_unit_prefix, node_id, "-", attempt_key, "-", to_string(value: instant)], "") as NonEmptyStr
+  attempt_redelivery_wake_identity_stem(node_id: node_id, attempt_key: attempt_key, instant_text: to_string(value: instant))
+}
+
+// Shared by concrete identities and the migration population. A fired timer's service
+// remains in the population even after the timer itself has been collected.
+fn attempt_redelivery_wake_identity_stem(node_id: String, attempt_key: String, instant_text: String) -> NonEmptyStr {
+  join([attempt_redelivery_unit_prefix, node_id, "-", attempt_key, "-", instant_text], "") as NonEmptyStr
+}
+
+fn attempt_redelivery_wake_family_patterns() -> List<NonEmptyStr> {
+  let stem = attempt_redelivery_wake_identity_stem(node_id: "*", attempt_key: "*", instant_text: "*")
+  [join([stem as String, ".timer"], "") as NonEmptyStr,
+   join([stem as String, ".service"], "") as NonEmptyStr]
 }
 
 // THE TRANSIENT TIMER UNIT NAME: the stem above with systemd's .timer suffix. Derived from the same

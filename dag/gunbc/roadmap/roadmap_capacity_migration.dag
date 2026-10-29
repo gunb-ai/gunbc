@@ -1,0 +1,89 @@
+module gunbc.roadmap.roadmap_capacity_migration
+
+import std.types { String, NonEmptyStr, List, Int }
+import std.decl_ref { decl_ref }
+import std.error_primitives { Ok, Err }
+import extdeps.systemd { systemd_service_unit_suffix }
+import extdeps.systemd.manager { SystemManager, UserManager }
+import gunbc.compute.capacity_migration { CapacityManagedUnit, CapacityTransientFamily }
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name, attempt_worker_slice_unit_name }
+import gunbc.live_deploy.spec {
+  DeploymentNames, deployment_agent_door_unit_name,
+  deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name,
+  deployment_publication_path_unit_name, deployment_attempt_unit_drain_path_unit_name,
+  deployment_belt_credential_recovery_timer_unit_name,
+}
+import gunbc.roadmap.roadmap_belt_obligation {
+  belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, belt_instance_obligation_kinds,
+}
+import gunbc.roadmap.roadmap_dispatch_actuator {
+  dispatch_review_unit_name, dispatch_audit_unit_name, dispatch_attempt_unit_stem,
+}
+import gunbc.roadmap.roadmap_attempt_redelivery_wake { attempt_redelivery_wake_family_patterns }
+
+// This lab-only adapter is a transient population, NOT an installed-unit census or a
+// deployment admission. The installed side must project the same typed unit-install
+// rows consumed by live_deploy's emitter. DeploymentSpec.steps alone is insufficient:
+// one BeltEventPathUnit emits multiple services and activators.
+//
+// The UID is supplied from the deployment's operating-principal reading, not guessed
+// from a username. All rows have manager identity, including enumerated timer/service
+// pairs. Whole-parent inhibition covers anonymous self-wrap scopes as well as named
+// units; it needs a quiet window across EVERY session using those parents on the host.
+fn roadmap_capacity_migration_activators(names: DeploymentNames) -> List<CapacityManagedUnit> {
+  map([
+    deployment_belt_exit_path_unit_name(names: names),
+    deployment_belt_answer_path_unit_name(names: names),
+    deployment_publication_path_unit_name(names: names),
+    deployment_attempt_unit_drain_path_unit_name(names: names),
+    deployment_belt_credential_recovery_timer_unit_name(names: names),
+    deployment_agent_door_unit_name(names: names),
+  ], name => CapacityManagedUnit { manager: SystemManager, unit: name })
+}
+
+fn roadmap_capacity_migration_transients(names: DeploymentNames, instance_id: String, operating_uid: Int) -> List<CapacityTransientFamily> {
+  let activators = roadmap_capacity_migration_activators(names: names)
+  let user_manager = UserManager { uid: operating_uid }
+  let work_parent = CapacityManagedUnit { manager: user_manager, unit: user_work_slice_unit_name }
+  [
+    CapacityTransientFamily {
+      manager: user_manager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_attempt_obligation_unit_name"),
+      patterns: [belt_attempt_obligation_unit_name(node_id: "*", attempt_key: "*")],
+      activators: activators, parents: Ok { value: [work_parent] },
+    },
+    CapacityTransientFamily {
+      manager: user_manager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_belt_obligation", decl_name: "belt_instance_obligation_unit_name"),
+      patterns: map(belt_instance_obligation_kinds, kind => belt_instance_obligation_unit_name(instance_id: instance_id, kind: kind)),
+      activators: activators, parents: Ok { value: [work_parent] },
+    },
+    CapacityTransientFamily {
+      manager: user_manager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_review_unit_name"),
+      patterns: [dispatch_review_unit_name(node_id: "*", attempt_key: "*", criterion_key: "*")],
+      activators: activators, parents: Ok { value: [work_parent] },
+    },
+    CapacityTransientFamily {
+      manager: user_manager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_audit_unit_name"),
+      patterns: [dispatch_audit_unit_name(node_id: "*", attempt_key: "*")],
+      activators: activators, parents: Ok { value: [work_parent] },
+    },
+    CapacityTransientFamily {
+      manager: SystemManager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_attempt_unit_stem"),
+      patterns: [join([dispatch_attempt_unit_stem(node_id: "*", attempt_key: "*"), systemd_service_unit_suffix], "") as NonEmptyStr],
+      activators: activators,
+      parents: Ok { value: [CapacityManagedUnit { manager: SystemManager, unit: attempt_worker_slice_unit_name }] },
+    },
+    CapacityTransientFamily {
+      manager: user_manager,
+      source: decl_ref(module_path: "gunbc.roadmap.roadmap_attempt_redelivery_wake", decl_name: "attempt_redelivery_wake_unit_name"),
+      patterns: attempt_redelivery_wake_family_patterns(), activators: activators,
+      // No timer has yet been observed on this lab. Do not assume app.slice or
+      // borrow user-work merely because the executable can self-wrap into it.
+      parents: Err { value: "redelivery timer/service initial parent unresolved; its executable may additionally self-wrap into gunbc-user-work.slice as an anonymous run-*.scope; observe and bind both before migration" },
+    },
+  ]
+}
