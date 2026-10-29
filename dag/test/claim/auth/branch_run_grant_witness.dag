@@ -2,7 +2,7 @@ module test.claim.auth.branch_run_grant_witness
 
 import extdeps.github.workflow_runs { GitHubWorkflowRunId }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, Int, List, String, Timestamp, CommitSha }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp, CommitSha }
 import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell, IamCondition, gcp_policy_cells, gcp_cell_in }
 import extdeps.cloud.hetzner_cloud_api { HetznerTokenRead }
@@ -36,6 +36,15 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_service_account, mtcollins1_boot_branch_provider_resource, first_trusted_branch,
   mtcollins1_boot_branch_claim_pins, mtcollins1_boot_branch_attribute_condition,
   mtcollins1_boot_branch_provider, mtcollins1_boot_branch_federation, mtcollins1_boot_trusted_environment_pin,
+  mtcollins1_boot_branch_federation_with, mtcollins1_boot_branch_secret_grants_with,
+  mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
+  mtcollins1_boot_branch_route_refusal_cause, mtcollins1_boot_branch_bmc_secret_id,
+}
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_privkey_secret }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
+import gunbc.auth.branch_dispatch_federation {
+  select_boot_credential_source_at_ref_with, boot_grant_required_at_ref_with,
+  boot_credential_source_from_branch_selection_with,
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_grant_required_at_ref, fleet_converge_grant_wait_admits_at_ref, GrantWaitSkipped, GrantWaitSucceeded, GrantWaitFailed, GrantWaitCancelled,
@@ -51,7 +60,8 @@ import std.algebra { string_contains }
 import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import extdeps.cloud.gcp.secret_ref { SecretRef }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -431,11 +441,19 @@ test fn branch_boot_roster_is_rostered_and_pinned() -> Bool {
 // selects a THIRD credential source: neither the reviewed-main dedicated identity nor the
 // approval-gated run-scoped grant, but the dedicated branch-boot identity. This is the row the PR body
 // says plainly -- anyone with branch push in gunb-ai/gunbc can now drive mtcollins1's BMC at that ref.
+// ...WHILE THE ROUTE IS CLOSED, IT DOES NOT. This is the state on main today, because the reader keypair
+// is unminted (see the mint-gate claims below): the rostered ref falls back to the approval-gated
+// run-scoped grant rather than selecting an identity that was never converged. Asserting the old form here
+// would have been rung inflation of the opposite sign -- advertising the widening as delivered when the
+// credential that makes it complete does not exist yet.
 test fn branch_boot_selects_the_approval_free_identity() -> Bool {
   match select_boot_credential_source_at_ref(on_reviewed_main: false, branch: trusted_boot_branch()) {
     BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
       !boot_grant_required_at_ref(on_reviewed_main: false, branch: trusted_boot_branch())
-    _ => false
+    // closed route: no approval-free selection, and the grant is still required -- degraded, never bypassed
+    BootCredentialSourceRefused { cause: _ } =>
+      boot_grant_required_at_ref(on_reviewed_main: false, branch: trusted_boot_branch())
+    BootCredentialSourceSelected { source: _ } => false
   }
 }
 
@@ -645,4 +663,118 @@ test fn an_unnameable_environment_leaves_no_federation_and_a_poisoned_pin() -> B
     // all, and the pin the provider would have used is the value no dispatch can present
     Absent => mtcollins1_boot_trusted_environment_pin().value == "__GUNBC_MTCOLLINS1_BOOT_NO_ENVIRONMENT__"
   }
+}
+
+// ── THE BRANCH ACCOUNT HOLDS NO FLEET-WIDE CREDENTIAL (review 87197) ──────────────────────────
+// WHAT THE POLICY LOOKS LIKE ON THE FAR SIDE OF THE MINT. The reader secret at a concrete version is the
+// ONLY difference from the standing today, which is version "pending" -- so this is the minted credential
+// #15329 will install, constructed rather than read, because reading it would hand back the unminted
+// standing and the claim would prove nothing about the state it is meant to describe.
+fn minted_reader_grant() -> SecretAccessGrant? {
+  Present { value: secret_accessor_grant(target: SecretRef {
+    project: boot_medium_reader_ssh_privkey_secret.project,
+    secret: boot_medium_reader_ssh_privkey_secret.secret,
+    version: "1" as NonEmptyStr,
+    hash_state: boot_medium_reader_ssh_privkey_secret.hash_state,
+  }) }
+}
+
+fn branch_grant_secrets(grants: List<SecretAccessGrant>) -> List<String> {
+  map(grants, g => g.target.secret as String)
+}
+
+// THE BLOCKING FINDING, FIXED AND HELD. An earlier draft mirrored the boot federation's own secret grants
+// onto the branch account. One of those cells is the fleet automation private key -- a single key that
+// authenticates as the automation principal against EVERY enrolled host -- and the branch identity is one
+// that unreviewed branch code can federate at will, because the workflow_ref pin is a heads-prefix
+// starts_with and the environment is declared in the file the branch edits. Mirroring therefore handed
+// fleet-wide reach to anyone with branch push, while the census row recorded the reach as
+// resource-scoped: a rung reported above the evidence that established it (DESIGN.md §4b).
+//
+// ASKED FROM BOTH SIDES SO IT CANNOT PASS BY ACCIDENT: the fleet key must be ABSENT from the branch
+// policy and PRESENT in the boot's -- if someone re-mirrors f.secret_grants, or "helpfully" adds the fleet
+// key because the main boot holds it, the second half fails instead of converging quietly.
+test fn the_branch_policy_never_holds_the_fleet_automation_key() -> Bool {
+  let f = boot_federation_for(host: operator_host_mtcollins1)
+  let branch_secrets = branch_grant_secrets(grants: mtcollins1_boot_branch_secret_grants_with(f: f, reader: minted_reader_grant()))
+  let boot_secrets = branch_grant_secrets(grants: f.secret_grants)
+  let fleet_key = fleet_automation_ssh_privkey_secret.secret as String
+  // the narrowing itself
+  !any(branch_secrets, sec => sec == fleet_key)
+    // ...and it is a narrowing: the boot really does hold that key, so the claim above is not vacuous
+    && any(boot_secrets, sec => sec == fleet_key)
+    // the branch policy is exactly the two cells that were ruled, nothing else
+    && branch_secrets.length() == 2
+    && all(branch_secrets, sec =>
+      sec == (mtcollins1_boot_branch_bmc_secret_id as String)
+        || sec == (boot_medium_reader_ssh_privkey_secret.secret as String))
+}
+
+// THE BMC CELL IS INHERITED, NOT RE-DERIVED: same secret, same pinned version, same condition. A rotation
+// moves both identities together, and a branch boot cannot read an unpinned or older version. Matched BY
+// SECRET ID -- an index-0 grab would become a silent fleet-key handover the first time someone reorders
+// the boot federation's cells, which is exactly the failure this section exists to close.
+test fn the_bmc_cell_is_the_boot_federations_own() -> Bool {
+  let f = boot_federation_for(host: operator_host_mtcollins1)
+  match mtcollins1_boot_branch_bmc_grant(f: f) {
+    Absent => false
+    Present { value: g } =>
+      (g.target.secret as String) == (mtcollins1_boot_branch_bmc_secret_id as String)
+        && any(f.secret_grants, b => (b.target.secret as String) == (g.target.secret as String)
+          && (b.target.version as String) == (g.target.version as String))
+  }
+}
+
+// CLOSED TODAY, AND THE REFUSAL NAMES THE REASON. The route is not provisioned while the reader key is
+// unminted: no pool, no provider, no service account, and the selection refuses. This is the fail-closed
+// state the manager ruled for (option A, 2026-10-29) -- the alternative was a branch boot that advertises
+// a readback it cannot perform and then refuses at the evidence step, which reports a capability the
+// executed evidence does not establish.
+test fn the_branch_route_is_closed_until_the_reader_key_is_minted() -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    Present { value: _ } => false
+    Absent =>
+      // nothing is converged for a route that does not exist
+      match mtcollins1_boot_branch_reader_grant() { Absent => true  Present { value: _ } => false }
+        // and the refusal is actionable: it names the missing credential and the change that installs it
+        && match mtcollins1_boot_branch_route_refusal_cause() {
+             Present { value: cause } =>
+               string_contains(s: cause as String, pattern: "reader key")
+                 && string_contains(s: cause as String, pattern: "#15329")
+             Absent => false
+           }
+  }
+}
+
+// THE MINT IS THE ONLY GATE. Same builder, same pins, same account -- the reader credential is the sole
+// input that decides whether the route exists. Asserted from both sides in one claim, because a route that
+// was closed by something ELSE as well would pass a one-sided version of this.
+test fn the_reader_mint_is_the_only_thing_that_opens_the_route() -> Bool {
+  match mtcollins1_boot_branch_federation_with(reader: minted_reader_grant()) {
+    Absent => false
+    Present { value: fed } =>
+      // the policy it converges is the narrowed one, not the boot's
+      !any(branch_grant_secrets(grants: fed.secret_grants), sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+        && fed.secret_grants.length() == 2
+        // with no reader credential the very same builder declares nothing at all
+        && match mtcollins1_boot_branch_federation_with(reader: none) { Absent => true  Present { value: _ } => false } { true => true  false => false }
+  }
+}
+
+// THE WIDENING, ASSERTED WHERE IT IS TRUE -- on the far side of the mint. On a rostered ref the boot needs
+// NO per-run grant; on the same ref with the route closed (today) it still does, which is what keeps the
+// closed route from being a silent bypass: a branch boot that cannot get the narrowed identity falls back
+// to the approval-gated grant rather than booting unattended.
+test fn branch_boot_selects_the_approval_free_identity_once_the_key_is_minted() -> Bool {
+  let b = trusted_boot_branch()
+  // post-mint: the dedicated branch identity, and no grant required at that ref. THE BODY STARTS WITH A
+  // PRIMARY ON PURPOSE -- a leading '&&' here is parsed as a continuation of the let's initializer.
+  match select_boot_credential_source_at_ref_with(reader: minted_reader_grant(), on_reviewed_main: false, branch: b) {
+       BootCredentialSourceSelected { source: TrustedBranchBootIdentity } =>
+         !boot_grant_required_at_ref_with(reader: minted_reader_grant(), on_reviewed_main: false, branch: b)
+       _ => false
+     }
+  // today (route closed): the same ref still requires the grant -- closed means degraded to the old route,
+  // never means approved-free by accident
+  && boot_grant_required_at_ref_with(reader: none, on_reviewed_main: false, branch: b)
 }

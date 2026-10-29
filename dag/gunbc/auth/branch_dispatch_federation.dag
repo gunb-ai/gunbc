@@ -32,7 +32,10 @@ import gunbc.auth.authorization_pattern_selection {
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
   select_authorization_pattern,
 }
-import gunbc.auth.mtcollins1_branch_boot_trust { mtcollins1_boot_branch_federation, mtcollins1_boot_branch_is_trusted }
+import gunbc.auth.mtcollins1_branch_boot_trust {
+  mtcollins1_boot_branch_federation, mtcollins1_boot_branch_is_trusted, mtcollins1_boot_branch_reader_grant,
+  mtcollins1_boot_branch_route_refusal_cause_with,
+}
 
 // ── A FLEET-CONVERGE RUN FROM A BRANCH, ADMITTED ONE RUN AT A TIME ─────────────────────────────
 // The main-only federation (gunbc.auth.fleet_convergence_federation) keeps every account it reaches
@@ -586,11 +589,24 @@ fn branch_boot_workload_identity() -> WorkloadIdentityStanding {
 // select_boot_credential_source_at_ref asks the roster first, and every other ref falls through to the
 // per-run grant. So every other row of run_scoped_modes() keeps its grant, at the trusted ref included.
 fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection) -> BootCredentialStanding {
+  boot_credential_source_from_branch_selection_with(reader: mtcollins1_boot_branch_reader_grant(), s: s)
+}
+
+// THE SAME SELECTION, ASKED OF A GIVEN READER CREDENTIAL. The credential is an input for one reason: the
+// route is closed until the reader keypair is minted (PR #15329), so the ONLY way to test what the
+// selection does on the other side of that mint -- without minting it, and without mutating the world to
+// pretend -- is to ask the law directly. mtcollins1_boot_branch_route_refusal_cause_with is the same
+// function the federation builder consults, so the cause a refusal reports cannot drift from the reason
+// the route is absent, and a witness that passes a minted credential gets the real post-mint answer
+// rather than a paraphrase of it.
+fn boot_credential_source_from_branch_selection_with(reader: SecretAccessGrant?, s: AuthorizationPatternSelection) -> BootCredentialStanding {
   match s {
     PatternSelected { pattern: FederatedScopedGrant, receipt: _ } =>
-      match mtcollins1_boot_branch_federation() {
-        Absent => BootCredentialSourceRefused { cause: "the branch boot identity is unprovisioned: no branch boot credential" as NonEmptyStr }
-        Present { value: _ } => BootCredentialSourceSelected { source: TrustedBranchBootIdentity }
+      match mtcollins1_boot_branch_route_refusal_cause_with(reader: reader) {
+        // THE CAUSE IS THE ROUTE'S OWN WORDS, carried through rather than restated here. Today it names
+        // the unminted reader key; it never says "unprovisioned" when the reason is something else.
+        Present { value: cause } => BootCredentialSourceRefused { cause: cause }
+        Absent => BootCredentialSourceSelected { source: TrustedBranchBootIdentity }
       }
     PatternSelected { pattern: _, receipt: _ } => BootCredentialSourceRefused { cause: "the branch boot selected a pattern that mints no branch boot credential" as NonEmptyStr }
     ManualStepRequired { step: _, receipt: _ } => BootCredentialSourceRefused { cause: "the branch boot selection requires a manual step" as NonEmptyStr }
@@ -607,16 +623,41 @@ fn boot_credential_source_from_branch_selection(s: AuthorizationPatternSelection
 // its own environment -- keeps the run-scoped grant, because the roster is the one door and it opens for
 // this mode alone.
 //
-// WHY THIS IS NOT A WORKFLOW-TEXT BYPASS. This function only chooses which IAM identity to federate as.
-// That identity is admitted solely by a WIF condition GCP evaluates over issuer-signed claims
-// (gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_attribute_condition), which pins the
-// same roster, the repository's NUMERIC identity, the fleet-converge workflow file, and the job's
-// environment name -- none of which a branch can change from inside fleet-converge.yml, which is precisely
-// why the 2026-09-23 ruling put the authority on the IAM side. A branch that rewrites this workflow file
-// and asks for the approval-free source gets a token its own provider refuses.
+// WHY THIS IS NOT A WORKFLOW-TEXT BYPASS -- AND WHAT THE PINS DO NOT DO (review 87197).
+// This function only chooses which IAM identity to federate as; the admission decision is GCP's, made by a
+// WIF condition over issuer-signed claims (gunbc.auth.mtcollins1_branch_boot_trust
+// mtcollins1_boot_branch_attribute_condition). Be exact about what that condition can and cannot bind,
+// because an earlier draft of this comment overstated it and DESIGN.md section 4b does not allow a
+// safety argument to be reported stronger than its evidence.
+//
+// IT BINDS WHO MAY FEDERATE: the repository's NUMERIC identity and owner id, the event, and the ref roster.
+// Those four hold even against a branch that rewrites its own workflow file -- they are signed by GitHub
+// and evaluated in GCP, and a fork cannot present this repository's numeric id at all. That is the
+// authority the 2026-09-23 ruling put on the IAM side, and it is why this is not a workflow-text bypass.
+//
+// IT DOES NOT BIND WHAT THE JOB THEN DOES. workflow_ref is a heads-prefix starts_with and the environment
+// name is declared inside the very file that runs, so a rostered branch CAN edit its own copy of
+// fleet-converge.yml -- change the steps, and even re-declare the environment. Anyone who reads the pins
+// as a tamper-proof on job behaviour is reading them wrong. What makes that edit harmless is NOT the pins.
+//
+// THE REACH IS BOUNDED BY THE POLICY, NOT BY THE PINS: the identity a rostered branch federates as holds
+// only this host's pinned BMC credential and the boot medium reader key -- see
+// mtcollins1_boot_branch_secret_grants, which refuses to mirror the boot federation's fleet automation key
+// onto it. A branch that rewrites its job to print every secret it can read prints one host's BMC
+// credential and a force-commanded digest reader, not a fleet credential. THAT is the wall, so the
+// narrowing is load-bearing, not incidental: weaken it and the pins do not catch you.
 fn select_boot_credential_source_at_ref(on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
+  select_boot_credential_source_at_ref_with(reader: mtcollins1_boot_branch_reader_grant(), on_reviewed_main: on_reviewed_main, branch: branch)
+}
+
+// THE SAME LAW, ASKED OF A GIVEN READER CREDENTIAL -- see
+// boot_credential_source_from_branch_selection_with for why the credential is an input rather than a
+// global read here. The default form above is what production calls; this form is what lets a witness
+// stand on the far side of the reader-key mint (PR #15329) and ask what the branch boot selects there,
+// without minting anything and without editing the world to pretend.
+fn select_boot_credential_source_at_ref_with(reader: SecretAccessGrant?, on_reviewed_main: Bool, branch: String) -> BootCredentialStanding {
   if !on_reviewed_main && mtcollins1_boot_branch_is_trusted(branch: branch) {
-    boot_credential_source_from_branch_selection(s: select_authorization_pattern(e: branch_boot_credential_effect_approval_free()))
+    boot_credential_source_from_branch_selection_with(reader: reader, s: select_authorization_pattern(e: branch_boot_credential_effect_approval_free()))
   } else {
     select_boot_credential_source(on_reviewed_main: on_reviewed_main)
   }
@@ -628,7 +669,13 @@ fn select_boot_credential_source_at_ref(on_reviewed_main: Bool, branch: String) 
 // its own grant run queued behind it for that same runner). Every other ref, and every other mode at
 // every ref, still needs the grant and still waits for it.
 fn boot_grant_required_at_ref(on_reviewed_main: Bool, branch: String) -> Bool {
-  match select_boot_credential_source_at_ref(on_reviewed_main: on_reviewed_main, branch: branch) {
+  boot_grant_required_at_ref_with(reader: mtcollins1_boot_branch_reader_grant(), on_reviewed_main: on_reviewed_main, branch: branch)
+}
+
+// THE SAME ANSWER, FOR A GIVEN READER CREDENTIAL. Both sides of the mint are assertable: closed today, and
+// grant-free on a rostered ref once the key exists.
+fn boot_grant_required_at_ref_with(reader: SecretAccessGrant?, on_reviewed_main: Bool, branch: String) -> Bool {
+  match select_boot_credential_source_at_ref_with(reader: reader, on_reviewed_main: on_reviewed_main, branch: branch) {
     BootCredentialSourceSelected { source: s } => match s { TrustedBranchBootIdentity => false  _ => true }
     BootCredentialSourceRefused { cause: _ } => true
   }

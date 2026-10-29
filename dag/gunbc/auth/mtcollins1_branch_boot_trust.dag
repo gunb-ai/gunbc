@@ -11,7 +11,10 @@ import gunbc.auth.oidc_claim_pins {
 }
 import gunbc.repository { gunbc_repository_numeric_identity }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolImpersonation }
-import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of }
+import gunbc.auth.managed_host_boot_federation { boot_federation_for, provisioned_federation_of, ManagedHostBootFederation }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_accessor_grant }
+import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_key, boot_medium_reader_ssh_privkey_secret }
+import gunbc.fleet.fleet_ssh_access { fleet_automation_ssh_privkey_secret }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1 }
 
 // ── THE APPROVAL-FREE mtcollins1 BOOT FROM A SAME-REPOSITORY BRANCH (operator rulings 2026-10-22/23) ──
@@ -233,30 +236,62 @@ fn mtcollins1_boot_branch_provider_resource() -> String {
   wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtcollins1_boot_branch_provider())
 }
 
-// THE FEDERATION, or none while the boot's own standing identity is unprovisioned -- the same refusal
-// the run-scoped route uses, so a host with no admitted boot identity gets no branch route either. Its
-// secret grants are THE ADMITTED BOOT FEDERATION'S OWN, taken from it rather than restated: that is
-// what makes a branch boot able to do exactly what a main boot does with those two reads, and nothing
-// more. An empty roster, an unprovisioned boot, or a boot identity with no environment all refuse it.
+// THE FEDERATION, or none. Four states refuse it, each named so a witness can ask about the one it
+// cares about: an EMPTY ROSTER (no branch may federate this identity), an UNPROVISIONED BOOT identity (the
+// same refusal the run-scoped route uses, so a host with no admitted boot identity gets no branch route
+// either), an UNNAMEABLE ENVIRONMENT (the fail-open guard below), and AN INCOMPLETE POLICY (a branch boot
+// that could not read its BMC credential, or could not do the readback it advertises -- see
+// mtcollins1_boot_branch_secret_grants). Refusing means NO pool, NO provider and NO service account: the
+// route disappears from gunbc.auth.gcp_iam_converge_targets rather than existing with a policy nobody
+// accounted for.
 fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
+  mtcollins1_boot_branch_federation_with(reader: mtcollins1_boot_branch_reader_grant())
+}
+
+// WHY THE ROUTE DOES NOT EXIST, OR NONE WHEN IT DOES. ONE function holds every refusal, so a refusal can
+// never name a reason that is not the reason, and the builder below cannot drift from the explanation it
+// gives. Each state is named because an operator reading a refusal should learn what to DO.
+fn mtcollins1_boot_branch_route_refusal_cause_with(reader: SecretAccessGrant?) -> NonEmptyStr? {
   match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
-    Absent => none
+    Absent =>
+      Present { value: "the host's own boot identity is unprovisioned, so there is no boot policy for a branch to be narrowed from" as NonEmptyStr }
     Present { value: f } =>
-      // THE ROSTER IS THE PERMISSION, so this asks the roster what it HOLDS -- not whether one named
-      // entry is trusted, which is true by construction for any entry taken from the roster itself and
-      // would read as a trust check while being an emptiness check. An empty roster means no branch may
-      // federate this identity, so the route is not declared at all and its provider is never converged.
       if mtcollins1_boot_trusted_branches.length() == 0 {
-        none
+        // THE ROSTER IS THE PERMISSION, so this asks what the roster HOLDS -- not whether one named entry
+        // is trusted, which is true by construction for an entry taken from the roster itself and would
+        // read as a trust check while being an emptiness check.
+        Present { value: "no branch is rostered for the approval-free boot, so the route is not declared at all" as NonEmptyStr }
       } else if match mtcollins1_boot_trusted_environment() { Absent => true  Present { value: _ } => false } {
-        // NOT REDUNDANT WITH THE OUTER MATCH. The two states are the same TODAY -- an unprovisioned boot
-        // is exactly the one with no environment -- and a guard that is only accidentally equivalent to
-        // the thing it protects is the shape that lets the next refactor reopen the hole. Name the state,
-        // so the route is unprovisionable on the environment alone even if the provisioning model changes
-        // and the pins stay poisoned either way.
-        none
+        // NOT REDUNDANT WITH THE ARM ABOVE. The two states coincide TODAY -- an unprovisioned boot is
+        // exactly the one with no environment -- and a guard that is only accidentally equivalent to the
+        // thing it protects is the shape that lets the next refactor reopen the hole.
+        Present { value: "the boot federation names no environment, so its environment pin cannot be mirrored without dropping the conjunct" as NonEmptyStr }
+      } else if mtcollins1_boot_branch_secret_grants_with(f: f, reader: reader).length() == 0 {
+        // THE STATE TODAY, AND THE ONLY STATE THAT SHOULD PRODUCE IT: the reader key is unminted. Naming
+        // the missing credential and the change that installs it makes the refusal actionable instead of
+        // a mystery. Both cells or nothing -- see mtcollins1_boot_branch_secret_grants.
+        Present { value: "the boot medium reader key is not minted, so the branch account could only be given an incomplete policy (the BMC credential without the key the served-medium readback runs over); mint it through the FleetKeypairMint converge mode (PR #15329) to open this route" as NonEmptyStr }
       } else {
-        Present { value: DedicatedFederation {
+        none
+      }
+  }
+}
+
+// THE REFUSAL FOR THE ROUTE AS IT ACTUALLY STANDS, with the reader credential the world currently provides.
+fn mtcollins1_boot_branch_route_refusal_cause() -> NonEmptyStr? {
+  mtcollins1_boot_branch_route_refusal_cause_with(reader: mtcollins1_boot_branch_reader_grant())
+}
+
+// THE SAME BUILDER, ASKED ABOUT A READER CREDENTIAL IT MAY OR MAY NOT BE GIVEN. Everything else about the
+// route -- pool, provider, pins, account, role -- is identical in both states, so the ONLY thing the mint
+// changes is whether this returns a federation at all. That is the property the witnesses assert: pass a
+// minted reader grant and you get the post-mint shape (exactly two cells, the fleet key absent); pass none,
+// which is what mtcollins1_boot_branch_federation does today, and you get nothing.
+fn mtcollins1_boot_branch_federation_with(reader: SecretAccessGrant?) -> DedicatedFederation? {
+  match mtcollins1_boot_branch_route_refusal_cause_with(reader: reader) {
+    Present { value: _ } => none
+    Absent =>
+      Present { value: DedicatedFederation {
           label: "mtcollins1 boot from a trusted gunbc branch (approval-free, per the operator rulings 2026-10-22/23)",
           pool_id: mtcollins1_boot_branch_wif_pool_id,
           pool_display_name: mtcollins1_boot_branch_wif_pool_display_name,
@@ -272,9 +307,146 @@ fn mtcollins1_boot_branch_federation() -> DedicatedFederation? {
           service_account_id: mtcollins1_boot_branch_service_account_id,
           service_account_display_name: "Mt. Collins boot from a trusted branch (WIF-only, no keys)",
           service_account_member: federated_service_account_member(email: mtcollins1_boot_branch_service_account),
-          secret_grants: f.secret_grants,
-        } }
+          // NOT f.secret_grants. The boot federation carries TWO cells (managed_host_boot_federation
+          // admit_boot_federation:171-174): this host's pinned BMC credential AND
+          // fleet_automation_ssh_privkey_secret. The fleet key is FLEET-WIDE -- one private key that
+          // authenticates to every enrolled host -- and the main boot identity earns it because the
+          // reviewed main job uses it for the census served-medium readback (mtcollins1_boot_run:2577,
+          // 3231 -> boot_medium_served_readback, over ssh to the store host). This route has no reviewed
+          // job text behind it: a rostered branch is the author of its own fleet-converge.yml. Handing
+          // the same key to an identity that unreviewed code can federate at will converts "anyone with
+          // branch push can cycle mtcollins1's power" (which the operator ruled) into "anyone with branch
+          // push can SSH into the whole fleet as the automation principal" (which nobody ruled, and which
+          // DESIGN.md section 4b rung honesty would call reach inflation if the census called it narrow).
+          // So the account holds EXACTLY what a boot of this one host needs, and the readback that needs
+          // ssh goes over the forced-command reader key instead -- see
+          // mtcollins1_boot_branch_secret_grants.
+          // THE SAME LIST THE GUARD ABOVE TESTED: one computation decides both whether the route exists and
+          // what it holds, so the guard cannot be satisfied by a different set than the one converged.
+          // THE SAME LIST THE REFUSAL ABOVE TESTED: one computation decides both whether the route exists
+          // and what it holds, so the guard cannot be satisfied by a set other than the one converged.
+          secret_grants: mtcollins1_boot_branch_secret_grants_with(f: boot_federation_for(host: operator_host_mtcollins1), reader: reader),
+      } }
+  }
+}
+
+// ── THE BRANCH ACCOUNT'S POLICY: TWO CELLS, OR THE ROUTE DOES NOT EXIST ──────────────────────
+// WHY THE MIRROR WAS A DEFECT. The boot federation carries TWO cells (this module's own source,
+// managed_host_boot_federation admit_boot_federation:171-174): this host's pinned BMC credential AND
+// fleet_automation_ssh_privkey_secret. That second cell is FLEET-WIDE -- one private key that
+// authenticates as the automation principal to every enrolled host, which is why
+// gunbc.fleet.fleet_ssh_access models it as the fleet's own credential rather than a host's. The main
+// boot identity earns it because the reviewed main boot job uses it for the census served-medium
+// readback: mtcollins1_boot_run:2577 and :3231 call boot_medium_served_readback, which ssh's to the
+// store host over the agent the job materializes.
+//
+// Copying f.secret_grants onto the branch account therefore handed an identity that UNREVIEWED CODE can
+// federate at will -- a rostered branch authors its own fleet-converge.yml, and the workflow_ref pin is a
+// heads-prefix starts_with, not an equality (review 87197) -- the key that opens the fleet. Nobody ruled
+// that. The operator's words cover the BMC of ONE machine; they do not cover ssh into every machine.
+//
+// THE CENSUS ROW WAS WRONG BECAUSE OF IT. branch_boot_credential_effect_approval_free claims
+// MintsResourceScopedCredential. A token that unlocks a project-wide-usable ssh key is not
+// resource-scoped, so the row recorded a reach narrower than the credential actually minted -- rung
+// inflation in DESIGN.md section 4b's exact sense ("the reported rung equals the rung established by
+// executed evidence"; "rung inflation is worse than sitting low"). Narrowing the policy is what makes the
+// row true again; the row is not being re-labelled to match a wider account.
+data mtcollins1_boot_branch_bmc_secret_id: NonEmptyStr = "bmc-mtcollins1-gunbc"
+
+// THE BMC CELL, TAKEN FROM THE ADMITTED BOOT FEDERATION RATHER THAN RE-DERIVED: the same secret, the
+// same pinned version, the same version-condition expression. One pin, two identities -- a rotation moves
+// both together and a branch boot cannot read an unpinned or older version.
+//
+// Matched BY SECRET ID, never by position. An index-0 grab would be a silent fleet-key handover the first
+// time someone reorders the boot federation's cells, which is the failure mode this whole section exists
+// to close.
+fn mtcollins1_boot_branch_bmc_grant(f: ManagedHostBootFederation) -> SecretAccessGrant? {
+  let bmc = filter(f.secret_grants, g => g.target.secret == mtcollins1_boot_branch_bmc_secret_id)
+  match bmc.first() {
+    Present { value: g } => Present { value: g }
+    Absent => none
+  }
+}
+
+// READ OVER THE READER KEY, NOT THE FLEET KEY -- AND THE CORPUS ASKED FOR THIS FIRST.
+// gunbc.host.boot_medium_served_readback:269-272 already names this change: "the branch account narrowed
+// to the BMC credential and THIS KEY -- which is the third change of the mtcollins1 approval-free branch
+// boot plan (work item adhoc-0abea207-7ec)". The reader key is forced-command to one sha256sum of one
+// served-link path, with no agent forwarding, no pty and no port forwarding
+// (boot_medium_reader_key.boot_medium_reader_restrictions): on the store host it can read the digest of
+// one path, which is exactly what the readback needs and nothing more.
+//
+// IT IS NOT MINTED YET, AND THE ROUTE REFUSES FOR THAT REASON, NOT DESPITE IT.
+// boot_medium_reader_ssh_key is none and boot_medium_reader_ssh_privkey_secret is version "pending"; the
+// module says so in its own header (boot_medium_reader_key:31-34): "until then there is no authorized
+// entry to converge and no readback over this key, and both refuse by that name rather than fall back to
+// the fleet key." Minting it is a wet action through the approval route -- not mine to take.
+//
+// WHY NOT JUST GIVE IT THE BMC CELL AND LET THE READBACK FAIL? It would fail closed (remote_answer_of
+// yields exit 255 -> boot_medium_served_refusal_before_attach, media attach and power untouched), so
+// nothing unsound would happen -- but the model would be advertising an approval-free boot that cannot
+// complete, and a capability that is advertised and then refused at the evidence step is the same
+// dishonesty as a rung reported above its evidence. Refusing at SELECTION, with a named cause, before any
+// runner is occupied, is the honest shape.
+fn mtcollins1_boot_branch_reader_grant() -> SecretAccessGrant? {
+  match boot_medium_reader_ssh_key {
+    Absent => none
+    Present { value: _ } =>
+      if boot_medium_reader_ssh_privkey_secret.version == "pending" {
+        none
+      } else {
+        Present { value: secret_accessor_grant(target: boot_medium_reader_ssh_privkey_secret) }
       }
+  }
+}
+
+// BOTH CELLS OR NO ROUTE. Neither cell is optional, so there is no reachable state in which the branch
+// identity exists with a SUBSET of this policy -- a partially-provisioned policy is how an account ends up
+// holding a credential nobody accounted for, or booting without the evidence it claims to have. An empty
+// list makes mtcollins1_boot_branch_federation return none, which drops the route from
+// gunbc.auth.gcp_iam_converge_targets entirely: no pool, no provider, no service account, and
+// boot_credential_source_from_branch_selection refuses by name. Nothing is created half-way.
+// THE LAW, WITH THE READER CREDENTIAL AS AN INPUT. The reader standing is a parameter rather than a
+// global read so BOTH sides of this law are assertable: today, with the key unminted, and after #15329
+// converges the mint. mtcollins1_boot_branch_secret_grants below is the only caller that matters -- it
+// feeds the real standing in -- and the witnesses pass a standing they construct. A law that can only be
+// evaluated in the state the world happens to be in is a law that cannot be tested at its boundary.
+fn mtcollins1_boot_branch_secret_grants_with(f: ManagedHostBootFederation, reader: SecretAccessGrant?) -> List<SecretAccessGrant> {
+  match mtcollins1_boot_branch_bmc_grant(f: f) {
+    Absent => []
+    Present { value: bmc } => match reader {
+      Absent => []
+      Present { value: r } => [bmc, r]
+    }
+  }
+}
+
+fn mtcollins1_boot_branch_secret_grants(f: ManagedHostBootFederation) -> List<SecretAccessGrant> {
+  mtcollins1_boot_branch_secret_grants_with(f: f, reader: mtcollins1_boot_branch_reader_grant())
+}
+
+// WHY THE POLICY IS NARROWER THAN THE BOOT'S, AS A PREDICATE THE WITNESSES CAN ASK. The fleet key must be
+// ABSENT from the branch account's cells while PRESENT in the boot's -- so if a refactor re-mirrors
+// f.secret_grants, or someone "helpfully" adds the fleet key because the main boot has it, this fails
+// instead of converging.
+fn mtcollins1_boot_branch_policy_excludes_the_fleet_key(f: ManagedHostBootFederation) -> Bool {
+  let branch_secrets = map(mtcollins1_boot_branch_secret_grants(f: f), g => g.target.secret as String)
+  let boot_secrets = map(f.secret_grants, g => g.target.secret as String)
+  !any(branch_secrets, sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+    && any(boot_secrets, sec => sec == (fleet_automation_ssh_privkey_secret.secret as String))
+    && all(branch_secrets, sec => sec == (mtcollins1_boot_branch_bmc_secret_id as String)
+      || sec == (boot_medium_reader_ssh_privkey_secret.secret as String))
+}
+
+// THE ROUTE IS CLOSED UNTIL THE READER KEY EXISTS. True today, because the keypair is unminted; a witness
+// asserts it so that the closure is a stated property and not an accident, and so that minting the key is
+// the ONLY thing that can open the route.
+fn mtcollins1_boot_branch_route_is_closed_until_the_reader_key_is_minted() -> Bool {
+  match mtcollins1_boot_branch_federation() {
+    Absent => true
+    Present { value: _ } =>
+      boot_medium_reader_ssh_key != none
+        && boot_medium_reader_ssh_privkey_secret.version != "pending"
   }
 }
 
