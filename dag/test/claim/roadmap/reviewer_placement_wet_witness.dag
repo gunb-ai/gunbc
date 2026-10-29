@@ -412,7 +412,7 @@ test fn the_real_slice_reader_reads_a_unit_the_witness_started() -> Bool {
   let dir = fresh_dir(tag: "c7")
   let token = string_replace(source: dir, needle: FreeSemigroup { head: path_separator, tail: Empty }, replacement: "-")
   let unit = join(["gunbc-witness-g5r-", token, ".service"], "") as NonEmptyStr
-  let started = shell.Exec.RunArgv(program: "systemd-run", arguments: ["--user", "--unit", unit as String, "-p", "MemoryMax=20971520", "-p", "RuntimeMaxSec=60", "--collect", "/bin/sleep", "60"]).exit_code == 0
+  let started = shell.Exec.RunArgv(program: "systemd-run" as NonEmptyStr, arguments: ["--user", "--unit", unit as String, "-p", "MemoryMax=20971520", "-p", "RuntimeMaxSec=60", "--collect", "/bin/sleep", "60"]).exit_code == 0
   let reading = observe_slice_limit_for(unit: unit)
   let bytes_exact = match reading {
     SliceLimitObserved { limit } => byte_size_count(b: limit) == 20971520
