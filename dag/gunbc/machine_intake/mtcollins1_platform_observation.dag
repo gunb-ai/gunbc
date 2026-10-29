@@ -11,6 +11,7 @@ import gunbc.machine_intake.ethernet {
   BmcDedicated,
   ConfiguredLink,
   EthernetPortUnit,
+  FunctionObserved,
   FunctionUnobserved,
   ObservedEthernetLan,
   EthernetFunctionBinding,
@@ -196,7 +197,7 @@ data mtcollins1_second_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
 data mtcollins1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
   binding: EthernetFunctionBinding {
     port: mtcollins1_dedicated_mgmt_port,
-    function: BmcDedicated,
+    function: FunctionObserved { function: BmcDedicated },
   },
   network_address: Present { value: mtcollins1_dedicated_bmc_address },
   link: ConfiguredLink {
@@ -260,7 +261,7 @@ data mtcollins1_host_data_port: PhysicalEthernetPort = PhysicalEthernetPort {
 data mtcollins1_host_nic_interface: ObservedEthernetLan = ObservedEthernetLan {
   binding: EthernetFunctionBinding {
     port: mtcollins1_host_data_port,
-    function: HostData,
+    function: FunctionObserved { function: HostData },
   },
   network_address: Present { value: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 230) },
   link: ConfiguredLink { configured: mtcollins1_host_nic_mac },
@@ -286,7 +287,7 @@ data mtcollins1_host_nic_reading: InterfaceReadingProvenance = InterfaceReadingP
 // off the shape: the address the plan nearly bound a BMC anchor to is NOT this row's address, and this
 // row's function is the host's own. A reader who swaps the two addresses changes the answer.
 fn mtcollins1_host_nic_is_host_data_port() -> Bool {
-  mtcollins1_host_nic_interface.binding.function == HostData
+  mtcollins1_host_nic_interface.binding.function == FunctionObserved { function: HostData }
     && mac_addresses_are_equal(
       left: lan_link_address(lan: mtcollins1_host_nic_interface),
       right: lan_link_address(lan: mtcollins1_dedicated_bmc_lan),
@@ -303,14 +304,10 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
     b: mtcollins1_second_bmc_lan.binding.port,
   )
     && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
-    && mtcollins1_dedicated_bmc_lan.binding.function == BmcDedicated
+    && mtcollins1_dedicated_bmc_lan.binding.function == FunctionObserved { function: BmcDedicated }
     && match mtcollins1_second_bmc_lan.binding.function {
       FunctionUnobserved { discriminator: _ } => true
-      BmcDedicated => false
-      BmcNcsi => false
-      BmcHostBus => false
-      HostData => false
-      PrebootNetwork => false
+      FunctionObserved { function: _ } => false
     }
 }
 

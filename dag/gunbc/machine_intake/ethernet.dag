@@ -39,12 +39,18 @@ type PhysicalEthernetPort {
   attachment: EthernetAttachment
 }
 
-type EthernetFunction
+// THE FUNCTIONS AN INTERFACE CAN BE OBSERVED TO HAVE, kept apart from the unobserved arm so a carrier that
+// must NAME a function (a gap saying which function nobody read) holds this sum and cannot hold
+// `FunctionUnobserved` by construction, with no second vocabulary beside it (DESIGN.md section 3).
+type ObservedEthernetFunction
   = BmcDedicated
   | BmcNcsi
   | BmcHostBus
   | HostData
   | PrebootNetwork
+
+type EthernetFunction
+  = FunctionObserved { function: ObservedEthernetFunction }
   | FunctionUnobserved { discriminator: NonEmptyStr }
 
 type EthernetFunctionBinding {
@@ -230,11 +236,7 @@ fn ethernet_ports_are_distinct(a: PhysicalEthernetPort, b: PhysicalEthernetPort)
 
 fn ethernet_function_is_unobserved(f: EthernetFunction) -> Bool {
   match f {
-    BmcDedicated => false
-    BmcNcsi => false
-    BmcHostBus => false
-    HostData => false
-    PrebootNetwork => false
+    FunctionObserved { function: _ } => false
     FunctionUnobserved { discriminator: _ } => true
   }
 }

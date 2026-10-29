@@ -49,6 +49,7 @@ import gunbc.machine_intake.ethernet {
   BmcNcsi,
   ConfiguredLink,
   EthtoolDriverInfo,
+  FunctionObserved,
   FunctionUnobserved,
   EthernetFunctionBinding,
   HostData,
@@ -64,6 +65,7 @@ import gunbc.machine_intake.ethernet {
   OperatorAtController,
   PhysicalEthernetPort,
   PortUnitUnobserved,
+  ObservedEthernetFunction,
   PrebootNetwork,
   ReadAt,
   ReadBefore,
@@ -154,7 +156,7 @@ data srv1_host_data_port: PhysicalEthernetPort = PhysicalEthernetPort {
 }
 
 data srv1_host_os_lan: ObservedEthernetLan = ObservedEthernetLan {
-  binding: EthernetFunctionBinding { port: srv1_host_data_port, function: HostData },
+  binding: EthernetFunctionBinding { port: srv1_host_data_port, function: FunctionObserved { function: HostData } },
   network_address: Present { value: srv1_primary_network_receipt_2026_10_25.lease.address },
   link: ConfiguredLink { configured: srv1_i210_mac },
   provenance: srv1_host_nic_reading,
@@ -179,7 +181,7 @@ data srv1_shared_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
 }
 
 data srv1_shared_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
-  binding: EthernetFunctionBinding { port: srv1_shared_bmc_port, function: BmcHostBus },
+  binding: EthernetFunctionBinding { port: srv1_shared_bmc_port, function: FunctionObserved { function: BmcHostBus } },
   network_address: none,
   link: ConfiguredLink { configured: srv1_bmc_usb_nic_mac },
   provenance: srv1_bmc_usb_nic_reading,
@@ -240,7 +242,7 @@ data mtjade1_dedicated_bmc_port: PhysicalEthernetPort = PhysicalEthernetPort {
 }
 
 data mtjade1_dedicated_bmc_lan: ObservedEthernetLan = ObservedEthernetLan {
-  binding: EthernetFunctionBinding { port: mtjade1_dedicated_bmc_port, function: BmcDedicated },
+  binding: EthernetFunctionBinding { port: mtjade1_dedicated_bmc_port, function: FunctionObserved { function: BmcDedicated } },
   network_address: mtjade1_bmc_observed_address(),
   link: ConfiguredLink { configured: mtjade1_bmc_link_mac() },
   provenance: mtjade1_bmc_link_reading,
@@ -290,22 +292,16 @@ data host_network_interfaces: List<HostNetworkInterface> = [
 // specific function that has no reading and the reason there is no row for it. A caller cannot
 // mistake "nothing here" for "nobody looked", and S2's anchor refuses on a reading about the gap
 // rather than on a zero.
-// WHICH FUNCTION IS UNACCOUNTED FOR, named positively and without the arm that would say nothing.
-// `EthernetFunction.FunctionUnobserved` cannot be stored here by construction: a gap that named it would
-// be an empty list wearing a carrier. This is the gap's own vocabulary -- the functions an interface can
-// have and nobody has read -- not a second function taxonomy: a gap names a function by the arm the
-// missing row WOULD have carried, and a row's function is always the lan's own `EthernetFunction`.
-type UnreadFunction
-  = HostDataUnread
-  | BmcDedicatedUnread
-  | BmcNcsiUnread
-  | PrebootNetworkUnread
+// WHICH FUNCTION IS UNACCOUNTED FOR is `ethernet.dag` `ObservedEthernetFunction`, the same sum a row's
+// function is built from. The unobserved arm is not in it, so a gap that named it -- an empty list
+// wearing a carrier -- is unwritable, and there is no second function vocabulary to drift (it had:
+// review 88308).
 
 // WHY A HOST HAS NO ROW FOR A FUNCTION, as two different facts. Either something was consulted and
 // carried no reading of that function (what was consulted is named by declaration, what it lacked is
 // the statement), or the host appears in neither the rows nor the declared gaps and was never looked at.
 type HostInterfaceGap
-  = FunctionUnread { host: HostIdentity, function: UnreadFunction, consulted: List<DeclarationRef>, statement: NonEmptyStr }
+  = FunctionUnread { host: HostIdentity, function: ObservedEthernetFunction, consulted: List<DeclarationRef>, statement: NonEmptyStr }
   | HostNeverInventoried { host: HostIdentity }
 
 type HostInterfaceInventory
@@ -315,7 +311,7 @@ type HostInterfaceInventory
 data host_interface_gaps: List<HostInterfaceGap> = [
   FunctionUnread {
     host: operator_host_mtjade1,
-    function: HostDataUnread,
+    function: HostData,
     consulted: [
       decl_ref(module_path: "gunbc.machine_intake.mtjade1_factory_network", decl_name: "mtjade1_bmc_observed_network"),
     ],
@@ -367,7 +363,7 @@ fn host_interface_rows(host: HostIdentity) -> List<HostNetworkInterface> {
 // later symptom says so. When the dedicated interface is absent the honest answer is Absent, and the
 // correction is an inventory row -- not a fallback.
 fn host_controller_dedicated_interface(host: HostIdentity) -> ObservedEthernetLan? {
-  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == BmcDedicated) {
+  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: BmcDedicated }) {
     Absent => none
     Present { value: row } => row.lan
   }
@@ -377,7 +373,7 @@ fn host_controller_dedicated_interface(host: HostIdentity) -> ObservedEthernetLa
 // host with no read host-OS interface is a gap this inventory REPORTS (see host_interface_gaps) and it
 // is S2's anchor that refuses.
 fn host_operating_system_interface(host: HostIdentity) -> ObservedEthernetLan? {
-  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == HostData) {
+  match first_where(xs: host_interface_rows(host: host), keep: row => row.lan.binding.function == FunctionObserved { function: HostData }) {
     Absent => none
     Present { value: row } => row.lan
   }
@@ -394,11 +390,13 @@ fn host_operating_system_interface(host: HostIdentity) -> ObservedEthernetLan? {
 // address nobody read as a controller's.
 fn host_controller_interfaces(host: HostIdentity) -> List<HostNetworkInterface> {
   filter(xs: host_interface_rows(host: host), predicate: row => match row.lan.binding.function {
-    BmcDedicated => true
-    BmcNcsi => true
-    BmcHostBus => false
-    HostData => false
-    PrebootNetwork => false
+    FunctionObserved { function: observed } => match observed {
+      BmcDedicated => true
+      BmcNcsi => true
+      BmcHostBus => false
+      HostData => false
+      PrebootNetwork => false
+    }
     FunctionUnobserved { discriminator: _ } => false
   })
 }

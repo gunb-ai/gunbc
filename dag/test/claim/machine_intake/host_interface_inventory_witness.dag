@@ -19,7 +19,7 @@ import gunbc.fleet.fleet_host_identity {
 import gunbc.machine_intake.ethernet {
   BmcDedicated,
   BmcHostBus,
-  BmcNcsi,
+  FunctionObserved,
   FunctionUnobserved,
   lan_link_address,
 }
@@ -42,17 +42,13 @@ import gunbc.machine_intake.host_interface_inventory {
 // correctly; it would fail here, and it would fail the moment the reading was corrected.
 test fn every_row_address_is_the_observation_s_own() -> Bool {
   let rows = host_interface_rows(host: operator_host_mtcollins1)
-  match first_where(xs: rows, keep: row => row.lan.binding.function == BmcDedicated) {
+  match first_where(xs: rows, keep: row => row.lan.binding.function == FunctionObserved { function: BmcDedicated }) {
     Absent => false
     Present { value: dedicated } =>
       mac_addresses_are_equal(left: lan_link_address(lan: dedicated.lan), right: lan_link_address(lan: mtcollins1_dedicated_bmc_lan))
         && match first_where(xs: rows, keep: row => match row.lan.binding.function {
           FunctionUnobserved { discriminator: _ } => true
-          BmcDedicated => false
-          BmcNcsi => false
-          BmcHostBus => false
-          HostData => false
-          PrebootNetwork => false
+          FunctionObserved { function: _ } => false
         }) {
           Absent => false
           Present { value: second } => mac_addresses_are_equal(left: lan_link_address(lan: second.lan), right: lan_link_address(lan: mtcollins1_second_bmc_lan))
@@ -72,7 +68,7 @@ test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
     Absent => false
     Present { value: host_os } =>
       mac_addresses_are_equal(left: lan_link_address(lan: host_os), right: srv1_i210_mac)
-        && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == BmcHostBus) {
+        && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == FunctionObserved { function: BmcHostBus }) {
           Absent => false
           Present { value: shared } => mac_addresses_are_equal(left: lan_link_address(lan: shared.lan), right: srv1_bmc_usb_nic_mac)
         }
