@@ -7,7 +7,7 @@ import std.measure { kibibyte }
 import product.capacity.event_chain { PartitionId }
 import extdeps.systemd.manager { SystemManager, UserManager }
 import gunbc.compute.capacity_migration {
-  CapacityManagedUnit, CapacityTransientFamily, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
+  CapacityManagedUnit, CapacityTransientFamily, CapacityFamilyParents, CapacityActivationFamily, capacity_migration_enumerate_family, CapacityMigrationChild, CapacityConfirmedWriter, CapacityConfirmedNonWriter, CapacityUnclassified, capacity_migration_family_parent_requirements,
   CapacityMigrationPopulation, CapacityUnitDrain, CapacityMigrationAdmission, capacity_migration_admit,
 }
 import gunbc.compute.host_capacity { ComputeCapacityStanding, ComputeCapacityStandingRead }
@@ -29,9 +29,9 @@ fn migration_fixture_population(placement_known: Bool) -> CapacityMigrationPopul
       standing: CapacityConfirmedWriter,
       manager: SystemManager,
       source: decl_ref(module_path: "test.claim.compute.capacity_migration_witness", decl_name: "migration_fixture_unit"),
-      patterns: ["fixture-*.service"], activators: [activator],
-      parents: if placement_known { Ok { value: [migration_fixture_unit(name: "fixture.slice")] } }
-        else { Err { value: "self-wrap destination unobserved" } },
+      patterns: ["fixture-*.service"], exclude_patterns: [], activators: [activator],
+      placement: CapacityFamilyParents { parents: if placement_known { Ok { value: [migration_fixture_unit(name: "fixture.slice")] } }
+        else { Err { value: "self-wrap destination unobserved" } } },
     }],
     children: [CapacityMigrationChild { root: "/fixture", partition: "child" as PartitionId }],
   }
@@ -90,12 +90,12 @@ test fn only_confirmed_nonwriters_leave_the_family_parent_requirements() -> Bool
   let base = migration_fixture_population(placement_known: true)
   let source = base.source
   let family = CapacityTransientFamily {
-    manager: SystemManager, source: source, patterns: ["fixture-*.service"], activators: base.installed,
-    standing: CapacityConfirmedNonWriter, parents: Err { value: "unobserved parent" },
+    manager: SystemManager, source: source, patterns: ["fixture-*.service"], exclude_patterns: [], activators: base.installed,
+    standing: CapacityConfirmedNonWriter, placement: CapacityFamilyParents { parents: Err { value: "unobserved parent" } },
   }
   let unknown = CapacityTransientFamily {
-    manager: family.manager, source: source, patterns: family.patterns, activators: family.activators,
-    standing: CapacityUnclassified { detail: "service-call reach not covered" }, parents: family.parents,
+    manager: family.manager, source: source, patterns: family.patterns, exclude_patterns: family.exclude_patterns, activators: family.activators,
+    standing: CapacityUnclassified { detail: "service-call reach not covered" }, placement: family.placement,
   }
   count(capacity_migration_family_parent_requirements(families: [family])) == 0
     && count(capacity_migration_family_parent_requirements(families: [unknown])) == 1
@@ -107,8 +107,8 @@ test fn an_unclassified_family_can_admit_only_after_its_known_parent_is_drained(
   let population = CapacityMigrationPopulation {
     source: base.source, installed: base.installed, writer_parents: base.writer_parents,
     transients: map(base.transients, family => CapacityTransientFamily {
-      manager: family.manager, source: family.source, patterns: family.patterns, activators: family.activators,
-      parents: family.parents, standing: CapacityUnclassified { detail: "service edge unresolved" },
+      manager: family.manager, source: family.source, patterns: family.patterns, exclude_patterns: family.exclude_patterns, activators: family.activators,
+      placement: family.placement, standing: CapacityUnclassified { detail: "service edge unresolved" },
     }), children: base.children,
   }
   match capacity_migration_admit(population: population,
@@ -123,5 +123,62 @@ test fn an_unclassified_family_can_admit_only_after_its_known_parent_is_drained(
       Err { value: _ } => true
       Ok { value: _ } => false
     }
+  }
+}
+
+// Exclusion failure or cross-manager data must never erase a live population.
+test fn exclusion_read_failures_refuse_instead_of_becoming_empty() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let family = CapacityTransientFamily {
+    manager: SystemManager, source: base.source, standing: CapacityConfirmedWriter,
+    patterns: ["fixture-*.service"], exclude_patterns: ["fixture-*-handin.service"],
+    activators: base.installed,
+    placement: CapacityFamilyParents { parents: Ok { value: [migration_fixture_unit(name: "fixture.slice")] } },
+  }
+  let unread = capacity_migration_enumerate_family(family: family, read_matches: (manager, patterns) =>
+    if patterns == family.patterns { Ok { value: [migration_fixture_unit(name: "fixture-worker.service")] } }
+    else { Err { value: "exclusion listing unavailable" } })
+  let wrong = capacity_migration_enumerate_family(family: family, read_matches: (manager, patterns) =>
+    Ok { value: [CapacityManagedUnit { manager: UserManager { uid: 1000 }, unit: "fixture-worker.service" }] })
+  match unread { Err { value: _ } => true Ok { value: _ } => false }
+    && match wrong { Err { value: _ } => true Ok { value: _ } => false }
+}
+
+// Activation-only removes a parent requirement, never the family drain or its
+// destination's inhibition. A missing destination makes this admission refuse.
+test fn an_activation_family_requires_its_destination_in_the_installed_drain() -> Bool {
+  let base = migration_fixture_population(placement_known: true)
+  let population = CapacityMigrationPopulation {
+    source: base.source, installed: base.installed, writer_parents: [], children: base.children,
+    transients: [CapacityTransientFamily {
+      manager: SystemManager, source: base.source, standing: CapacityUnclassified { detail: "activation edge" },
+      patterns: ["fixture-handin.*"], exclude_patterns: [], activators: base.installed,
+      placement: CapacityActivationFamily { targets: [migration_fixture_unit(name: "missing.service")] },
+    }],
+  }
+  let bound = CapacityMigrationPopulation {
+    source: population.source, installed: population.installed, writer_parents: [], children: population.children,
+    transients: map(population.transients, family => CapacityTransientFamily {
+      manager: family.manager, source: family.source, standing: family.standing,
+      patterns: family.patterns, exclude_patterns: family.exclude_patterns, activators: family.activators,
+      placement: CapacityActivationFamily { targets: base.installed },
+    }),
+  }
+  let admitted = capacity_migration_admit(population: bound,
+    target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+    observed: [migration_fixture_drain(name: "fixture.path", populated: false)],
+    enumerate: family => Ok { value: [] }, read_child: child => migration_fixture_empty())
+  let live = capacity_migration_admit(population: bound,
+    target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+    observed: [migration_fixture_drain(name: "fixture.path", populated: false)],
+    enumerate: family => Ok { value: [migration_fixture_unit(name: "fixture-handin.service")] }, read_child: child => migration_fixture_empty())
+  (match admitted { Ok { value: _ } => true Err { value: _ } => false })
+    && (match live { Err { value: _ } => true Ok { value: _ } => false })
+    && match capacity_migration_admit(population: population,
+    target_revision: "0123456789012345678901234567890123456789" as CommitSha,
+    observed: [migration_fixture_drain(name: "fixture.path", populated: false)],
+    enumerate: family => Ok { value: [] }, read_child: child => migration_fixture_empty()) {
+    Err { value: _ } => true
+    Ok { value: _ } => false
   }
 }
