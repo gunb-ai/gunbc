@@ -8,8 +8,7 @@ import extdeps.gpu.nvidia_a16 { a16_card_row }
 import extdeps.gpu.nvidia_t10 { t10_card_row }
 import extdeps.gpu.nvidia_t4 { t4_card_row }
 import extdeps.gpu.nvidia_a2 { a2_card_row }
-import std.measure { Micrometer }
-import product.printed_chassis.gpu_duct { EndFaceMeasurement, a16_end_face, stated_length_of }
+import product.printed_chassis.gpu_duct { EndFaceMeasurement, CardEnvelope, a16_end_face, card_envelope_of }
 
 // ═══ THE CARDS A DUCT IS PRINTED FOR: A VENDOR ROW JOINED TO WHAT THIS REPOSITORY HAS READ ON THE CARD ═══
 //
@@ -61,12 +60,12 @@ fn end_face_unread(card: DuctCard) -> List<String> {
 // What the duct geometry is fitted to on one card: the read end face and the vendor's stated length. A card
 // missing either has no dimensions to derive from, and the refusal names the reading it needs
 // (duct_card_unread_reason) rather than substituting another card's.
-type DuctCardDims { face: EndFaceMeasurement, length: Micrometer }
+type DuctCardDims { face: EndFaceMeasurement, card: CardEnvelope }
 
 fn duct_card_dims(card: DuctCard) -> DuctCardDims? {
   match card.end_face {
-    EndFaceRead { face: f } => match stated_length_of(row: card.row) {
-      Present { value: l } => Present { value: DuctCardDims { face: f, length: l } }
+    EndFaceRead { face: f } => match card_envelope_of(row: card.row) {
+      Present { value: l } => Present { value: DuctCardDims { face: f, card: l } }
       Absent => Absent
     }
     EndFaceNeedsReading { read_obligation: _ } => Absent

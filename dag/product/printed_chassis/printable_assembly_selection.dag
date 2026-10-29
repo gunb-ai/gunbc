@@ -61,7 +61,7 @@ fn plane_on_end_selection(root: PrintedAssemblyRoot, card: DuctCard) -> Printabl
 fn plane_on_end_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
   match admit_home(home: PlaneOnEnd) {
     RouteAdmittedOnOperatorBound {home: _, needs: _, on_bound: _, governed_by: _, margin: _} => {
-      let parts = plane_on_end_duct_parts(f: dims.face, card_length: dims.length, d: a16_duct_design, b: a16_blower_duct_design)
+      let parts = plane_on_end_duct_parts(f: dims.face, card: dims.card, d: a16_duct_design, b: a16_blower_duct_design)
       PrintableAssemblyReady {
         assembly: PrintableAssembly {
           root: root,
@@ -93,7 +93,7 @@ fn blower_selection(root: PrintedAssemblyRoot, card: DuctCard) -> PrintableAssem
 }
 
 fn blower_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims) -> PrintableAssemblySelection {
-  match admit_blower_duct(f: dims.face, card_length: dims.length, d: a16_duct_design, b: a16_blower_duct_design) {
+  match admit_blower_duct(f: dims.face, card: dims.card, d: a16_duct_design, b: a16_blower_duct_design) {
     BlowerDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
       assembly: PrintableAssembly {
         root: root,
@@ -125,7 +125,7 @@ fn duct_selection(root: PrintedAssemblyRoot, card: DuctCard, mount: DuctCardMoun
 }
 
 fn duct_selection_of(root: PrintedAssemblyRoot, dims: DuctCardDims, mount: DuctCardMount, extent: DuctExtent) -> PrintableAssemblySelection {
-  match admit_gpu_duct(f: dims.face, card_length: dims.length, d: a16_duct_design, mount: mount, extent: extent) {
+  match admit_gpu_duct(f: dims.face, card: dims.card, d: a16_duct_design, mount: mount, extent: extent) {
     GpuDuctAdmitted { parts: parts, interfaces: joints } => PrintableAssemblyReady {
       assembly: PrintableAssembly {
         root: root,
