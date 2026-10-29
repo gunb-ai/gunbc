@@ -13,13 +13,16 @@ import gunbc.machine_intake.ethernet {
   EthernetPortUnit,
   FunctionObserved,
   FunctionUnobserved,
+  LanAddressUnobserved,
+  LanAddressesDistinct,
+  LanAddressesSame,
   ObservedEthernetLan,
   EthernetFunctionBinding,
   PhysicalEthernetPort,
   PortOnUnit,
   PortUnitUnobserved,
   ethernet_ports_are_distinct,
-  lan_link_address,
+  lan_configured_address,
   observed_lans_have_distinct_addresses,
   InterfaceReadingProvenance,
   BootstrapFactoryCredentialUnrotated,
@@ -289,12 +292,12 @@ data mtcollins1_host_nic_reading: InterfaceReadingProvenance = InterfaceReadingP
 fn mtcollins1_host_nic_is_host_data_port() -> Bool {
   mtcollins1_host_nic_interface.binding.function == FunctionObserved { function: HostData }
     && mac_addresses_are_equal(
-      left: lan_link_address(lan: mtcollins1_host_nic_interface),
-      right: lan_link_address(lan: mtcollins1_dedicated_bmc_lan),
+      left: lan_configured_address(lan: mtcollins1_host_nic_interface),
+      right: lan_configured_address(lan: mtcollins1_dedicated_bmc_lan),
     ) == false
     && mac_addresses_are_equal(
-      left: lan_link_address(lan: mtcollins1_host_nic_interface),
-      right: lan_link_address(lan: mtcollins1_second_bmc_lan),
+      left: lan_configured_address(lan: mtcollins1_host_nic_interface),
+      right: lan_configured_address(lan: mtcollins1_second_bmc_lan),
     ) == false
 }
 
@@ -303,7 +306,11 @@ fn mtcollins1_bmc_interfaces_are_distinct_ports() -> Bool {
     a: mtcollins1_dedicated_bmc_lan.binding.port,
     b: mtcollins1_second_bmc_lan.binding.port,
   )
-    && observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan)
+    && match observed_lans_have_distinct_addresses(a: mtcollins1_dedicated_bmc_lan, b: mtcollins1_second_bmc_lan) {
+      LanAddressesDistinct => true
+      LanAddressesSame => false
+      LanAddressUnobserved { discriminator: _ } => false
+    }
     && mtcollins1_dedicated_bmc_lan.binding.function == FunctionObserved { function: BmcDedicated }
     && match mtcollins1_second_bmc_lan.binding.function {
       FunctionUnobserved { discriminator: _ } => true

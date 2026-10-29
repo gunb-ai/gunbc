@@ -69,7 +69,7 @@ import gunbc.machine_intake.ethernet {
   PrebootNetwork,
   ReadAt,
   ReadBefore,
-  lan_link_address,
+  lan_configured_address,
 }
 import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_mac, mtjade1_bmc_observed_address }
 import gunbc.machine_intake.mtcollins1_platform_observation {
@@ -409,5 +409,5 @@ fn host_interface_addresses_are_disjoint() -> Bool {
   non_empty(xs: host_network_interfaces)
     && for_all(xs: host_network_interfaces, predicate: row =>
       count_where(xs: host_network_interfaces, predicate: other =>
-        mac_addresses_are_equal(left: lan_link_address(lan: row.lan), right: lan_link_address(lan: other.lan))) == 1)
+        mac_addresses_are_equal(left: lan_configured_address(lan: row.lan), right: lan_configured_address(lan: other.lan))) == 1)
 }

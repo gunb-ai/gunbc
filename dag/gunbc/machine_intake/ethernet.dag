@@ -283,24 +283,33 @@ fn ethernet_port_may_carry_multiple_functions(
   }
 }
 
-fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> Bool {
+// WHETHER TWO LAN RECORDS HOLD THE SAME NETWORK ADDRESS, as a standing and not a Bool. An address that
+// was never read on either side is not "not distinct": `false` there reported an observation nobody
+// made (DESIGN.md section 5), and the srv1 host-bus controller NIC has no network address at all.
+type LanAddressStanding
+  = LanAddressesDistinct
+  | LanAddressesSame
+  | LanAddressUnobserved { discriminator: NonEmptyStr }
+
+fn observed_lans_have_distinct_addresses(a: ObservedEthernetLan, b: ObservedEthernetLan) -> LanAddressStanding {
   match a.network_address {
     Present { value: left } => match b.network_address {
-      Present { value: right } => ipv4_address_eq(a: left, b: right) == false
-      Absent => false
+      Present { value: right } =>
+        if ipv4_address_eq(a: left, b: right) { LanAddressesSame } else { LanAddressesDistinct }
+      Absent => LanAddressUnobserved { discriminator: "the second lan carries no network address; absence is not distinctness" }
     }
-    Absent => false
+    Absent => LanAddressUnobserved { discriminator: "the first lan carries no network address; absence is not distinctness" }
   }
 }
 
-// THE ADDRESS A LAN RECORD CARRIES, however it came. `permanent` when the reading reported one (that
-// is the burnable MAC burned into the interface, which is what a per-host inventory is for), and
-// `configured` otherwise (the address seen answering on the wire, which is evidence of an interface
-// and not a promise about its burned-in address -- the distinction EthernetLinkAddress was created to
-// keep, so it is kept here too rather than flattened by the accessor).
-fn lan_link_address(lan: ObservedEthernetLan) -> Eui48Address {
+// THE ADDRESS A LAN RECORD WAS SEEN ANSWERING WITH. Both arms carry one; it is the configured address,
+// the one on the wire, and it is never the burned-in one: `PermanentAndConfigured` keeps that in a field
+// this accessor does not return, so nothing comparing two of these can mistake a permanent address for a
+// configured one. A permanent-address accessor is added when a consumer needs one (none reads it today).
+fn lan_configured_address(lan: ObservedEthernetLan) -> Eui48Address {
   match lan.link {
     ConfiguredLink { configured: c } => c
-    PermanentAndConfigured { permanent: p, configured: _ } => p
+    PermanentAndConfigured { permanent: _, configured: c } => c
   }
+}
 }

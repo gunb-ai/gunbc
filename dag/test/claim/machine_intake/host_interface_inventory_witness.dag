@@ -21,7 +21,7 @@ import gunbc.machine_intake.ethernet {
   BmcHostBus,
   FunctionObserved,
   FunctionUnobserved,
-  lan_link_address,
+  lan_configured_address,
 }
 import gunbc.machine_intake.mtjade1_factory_network { mtjade1_bmc_link_is_read, mtjade1_bmc_link_mac }
 import gunbc.machine_intake.mtcollins1_platform_observation {
@@ -45,17 +45,17 @@ test fn every_row_address_is_the_observation_s_own() -> Bool {
   match first_where(xs: rows, keep: row => row.lan.binding.function == FunctionObserved { function: BmcDedicated }) {
     Absent => false
     Present { value: dedicated } =>
-      mac_addresses_are_equal(left: lan_link_address(lan: dedicated.lan), right: lan_link_address(lan: mtcollins1_dedicated_bmc_lan))
+      mac_addresses_are_equal(left: lan_configured_address(lan: dedicated.lan), right: lan_configured_address(lan: mtcollins1_dedicated_bmc_lan))
         && match first_where(xs: rows, keep: row => match row.lan.binding.function {
           FunctionUnobserved { discriminator: _ } => true
           FunctionObserved { function: _ } => false
         }) {
           Absent => false
-          Present { value: second } => mac_addresses_are_equal(left: lan_link_address(lan: second.lan), right: lan_link_address(lan: mtcollins1_second_bmc_lan))
+          Present { value: second } => mac_addresses_are_equal(left: lan_configured_address(lan: second.lan), right: lan_configured_address(lan: mtcollins1_second_bmc_lan))
         }
         && match host_operating_system_interface(host: operator_host_mtcollins1) {
           Absent => false
-          Present { value: host_os } => mac_addresses_are_equal(left: lan_link_address(lan: host_os), right: lan_link_address(lan: mtcollins1_host_nic_interface))
+          Present { value: host_os } => mac_addresses_are_equal(left: lan_configured_address(lan: host_os), right: lan_configured_address(lan: mtcollins1_host_nic_interface))
         }
   }
 }
@@ -67,10 +67,10 @@ test fn srv1_rows_come_from_the_primary_network_receipt() -> Bool {
   match host_operating_system_interface(host: operator_host_srv1) {
     Absent => false
     Present { value: host_os } =>
-      mac_addresses_are_equal(left: lan_link_address(lan: host_os), right: srv1_i210_mac)
+      mac_addresses_are_equal(left: lan_configured_address(lan: host_os), right: srv1_i210_mac)
         && match first_where(xs: host_interface_rows(host: operator_host_srv1), keep: row => row.lan.binding.function == FunctionObserved { function: BmcHostBus }) {
           Absent => false
-          Present { value: shared } => mac_addresses_are_equal(left: lan_link_address(lan: shared.lan), right: srv1_bmc_usb_nic_mac)
+          Present { value: shared } => mac_addresses_are_equal(left: lan_configured_address(lan: shared.lan), right: srv1_bmc_usb_nic_mac)
         }
   }
 }
@@ -84,7 +84,7 @@ test fn mtjade1_controller_address_is_a_reading_not_a_placeholder() -> Bool {
   mtjade1_bmc_link_is_read()
     && match host_controller_dedicated_interface(host: operator_host_mtjade1) {
       Absent => false
-      Present { value: dedicated } => mac_addresses_are_equal(left: lan_link_address(lan: dedicated), right: mtjade1_bmc_link_mac())
+      Present { value: dedicated } => mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: mtjade1_bmc_link_mac())
     }
 }
 
@@ -105,7 +105,7 @@ test fn a_missing_host_interface_is_reported_and_not_filled_in() -> Bool {
       Absent => false
       Present { value: dedicated } => match host_operating_system_interface(host: operator_host_mtcollins1) {
         Absent => false
-        Present { value: some_host_os } => !mac_addresses_are_equal(left: lan_link_address(lan: dedicated), right: lan_link_address(lan: some_host_os))
+        Present { value: some_host_os } => !mac_addresses_are_equal(left: lan_configured_address(lan: dedicated), right: lan_configured_address(lan: some_host_os))
       }
     }
     Present { value: _ } => false
