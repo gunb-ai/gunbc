@@ -12,8 +12,14 @@ import extdeps.external_authority { CitedFigure, CitedFigureStanding, ObservedBy
 // layer-split persistence; Python frontend unchanged), whose one-slot admission receipt is under checkpoint-qualification/wire.
 // The binary digest is the post-swap executable recorded in that swap's receipt (private#249,
 // docs/strategy/2026-10-28-srv4-checkpoint/receipt.json); ca210071 was the pre-swap build.
+// The served Python frontend is upstream 8183c6b6 plus one pinned local patch (request-bound save, gunbc#15344
+// commit 2c77e18a700, dag/extdeps/strata/patches/request-bound-save-8183c6b6.patch); 8c5fafc1, recorded here
+// before, is an ARM patch commit, not what srv4 serves. The patch edits no qualified reasoning, effort, admission
+// or context behaviour (eager-lynx-183's provenance check, 2026-10-29).
 type Srv4StrataWireQualification {
   engine_source_commit: NonEmptyStr
+  engine_source_patch_sha256: NonEmptyStr
+  served_frontend_sha256: NonEmptyStr
   engine_native_commit: NonEmptyStr
   engine_binary_sha256: NonEmptyStr
   record_directory: NonEmptyStr
@@ -32,7 +38,9 @@ type Srv4StrataWireQualification {
 }
 
 data srv4_strata_wire_qualification_receipt: Srv4StrataWireQualification = Srv4StrataWireQualification {
-  engine_source_commit: "8c5fafc1fa84d1af1d3f1459ae86fe55d604774c" as NonEmptyStr,
+  engine_source_commit: "8183c6b67162340c09b67360860177c577a65f2e" as NonEmptyStr,
+  engine_source_patch_sha256: "56f20cb522f1534bc30f170febbd9b61d0ef7ae60242495acd98a090d1c12287" as NonEmptyStr,
+  served_frontend_sha256: "c387b3bcda8df95e5341af9ed57c698dd6d307740d45db9b3b18e8fc9bad3673" as NonEmptyStr,
   engine_native_commit: "406c9de18cef885946be0e42a3b01c46531272ac" as NonEmptyStr,
   engine_binary_sha256: "1af9a21ce77d9d2377843b6a1eacf19bef5f645dc685d40cbc38364b18828af2" as NonEmptyStr,
   record_directory: "/opt/gunbc-serving/srv4-daily/state/checkpoint-qualification" as NonEmptyStr,
