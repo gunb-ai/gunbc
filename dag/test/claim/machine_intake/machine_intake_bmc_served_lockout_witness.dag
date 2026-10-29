@@ -32,10 +32,10 @@ module test.claim.machine_intake.machine_intake_bmc_served_lockout_witness
 // fixture's served reading; the live read that would replace the fixture is
 // gunbc.machine_intake.bmc_secure::bmc_served_lockout_live_read_frontier.
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, split }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Absent, Present }
-import std.algebra { list_head }
+import std.algebra { length, list_head }
 import std.scoped_authorization { AttemptIdentity }
 import gunbc.clock_read { ObserverClockInstant }
 import gunbc.machine_intake.receipt { EvidenceRef }
@@ -55,11 +55,11 @@ import gunbc.machine_intake.bmc_secure {
   bmc_secure_convergence_approval,
   BmcControllerLockoutReading, BmcFailedLoginSurface, BmcFailedLoginBudgetKey,
   BmcPlanFailedLoginRoster, BmcPlanFailedLoginSpend, BmcCountedFailedLogin,
-  BmcFailedLoginBudgetVerdict, FailedLoginBudgetAdmitted, FailedLoginBudgetRefused,
+  BmcFailedLoginBudgetVerdict, BmcFailedLoginBudgetBlockReading, FailedLoginBudgetAdmitted, FailedLoginBudgetRefused,
   BmcFailedLoginBudgetBlock, CostExceedsTheServedHeadroom, FailingLoginsWithNoServedThreshold,
   BmcFailedLoginHeadroom, BmcLockoutThreshold, AccountLockedOutAfter, AccountNeverLockedOutByThisController, LockoutThresholdUnread,
   RedfishAccountServiceLogin, IpmiLanPlusLogin,
-  BmcDeclaredLoginRetry,
+  BmcDeclaredLoginRetry, SurfaceOfThePlannedWriteUndetermined, DeclaredRetryLogin,
   bmc_plan_failing_logins, bmc_failed_login_budget_verdict, bmc_known_failed_logins_of,
   bmc_spend_count, bmc_lockout_threshold, bmc_lockout_reading_not_read,
   dry_read_bmc_account_state, plan_bmc_account_action, dry_bmc_account_instant,}
@@ -67,6 +67,7 @@ import test.fixture.machine_intake.bmc_lockout {
   lockout_both_served, lockout_redfish_only, lockout_redfish_window,
   lockout_redfish_never_locked, lockout_unread,
   lockout_redfish_served_ipmi_unread, lockout_ipmi_served_redfish_unread,
+  lockout_served_channels,
 }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
 import test.claim.machine_intake.machine_intake_bmc_credential_policy_witness { srv13_forced_change_body, srv13_capture, controller_reading }
@@ -498,4 +499,105 @@ test fn each_surface_serves_its_own_counter_window() -> Bool {
     FailedAttemptsNeverReset { reason: _ } => false
   }
   redfish_counts && ipmi_counts && dark_is_unread
+}
+
+// RUNG: the budget function on a login whose surface the plan cannot name — the
+// two undetermined surfaces of bmc_secure's BmcFailedLoginSurface. This rung is
+// stated as function level because that is the only place it is reachable:
+// plan_bmc_account_action refuses a route with no named request at the WRITE
+// ADMISSION, before the budget ever runs (main's own
+// an_ungrounded_route_with_approval_refuses_the_apply witnesses exactly that
+// ordering), so the arm below is the day a plan mints a write whose request it
+// cannot name, charged here rather than somewhere it could be skipped.
+//
+// THREE SHAPES, because this is the one place the gate could quietly invent a
+// threshold. (1) Redfish serves 20, the one read LAN channel serves 2: three
+// logins REFUSE — the login may move either counter, and a gate that asked Redfish
+// would admit it. (2) Both transports serve 20: the same three logins ADMIT, the
+// positive control on the same function, so a fold that refused everything fails
+// here too. (3) Only Redfish was read, however generously: the same three logins
+// REFUSE, with the cause naming the transport that was never read — the tightest
+// number on hand is not a worst case over a transport nobody looked at, and
+// treating it as one is the fabrication this gate exists to prevent.
+// The fourth shape keeps the strictness in its lane: the identical three logins,
+// NAMED to the Redfish surface, admit on the skewed reading — an unnamed surface
+// being judged by the tightest policy does not leak onto named ones.
+test fn a_login_the_plan_cannot_name_a_surface_for_is_bounded_by_what_was_actually_read() -> Bool {
+  let skewed = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 2)
+  let both_generous = lockout_served_channels(read_at: t_read, redfish_threshold: 20, ipmi_channels: [1], ipmi_threshold: 20)
+  let one_transport = lockout_redfish_only(read_at: t_read, redfish_threshold: 20)
+  let unnamed = unnamed_surface_roster(count: 3)
+  let named = named_redfish_roster(count: 3)
+  let skewed_refuses = refused_verdict(bmc_failed_login_budget_verdict(roster: unnamed, reading: skewed, known: [], now: t_plan))
+  let generous_admits = admitted_verdict(bmc_failed_login_budget_verdict(roster: unnamed, reading: both_generous, known: [], now: t_plan))
+  let half_a_reading_refuses_by_cause = match list_head(blocks_of(bmc_failed_login_budget_verdict(roster: unnamed, reading: one_transport, known: [], now: t_plan))) {
+    Absent => false
+    Present { value: b } => match b.block {
+      CostExceedsTheServedHeadroom { cost: _, may_fail: _, threshold: _, known_failures_in_window: _ } => false
+      FailingLoginsWithNoServedThreshold { cost: c, cause: why } => c == 3 && length(split(why, on: "transport")) > 1
+    }
+  }
+  let named_surface_keeps_its_own_policy = admitted_verdict(bmc_failed_login_budget_verdict(roster: named, reading: skewed, known: [], now: t_plan))
+  skewed_refuses && generous_admits && half_a_reading_refuses_by_cause && named_surface_keeps_its_own_policy
+}
+
+// A ROSTER OF `count` LOGINS ON THE SURFACE A WRITE WITH NO NAMED REQUEST GETS.
+// DeclaredRetryLogin is the one arm that carries a surface without implying which
+// transport authenticated, which is exactly the shape of the undetermined write.
+fn unnamed_surface_roster(count: Int) -> BmcPlanFailedLoginRoster {
+  BmcPlanFailedLoginRoster {
+    spends: [BmcPlanFailedLoginSpend {
+      key: BmcFailedLoginBudgetKey { account: root_user, surface: SurfaceOfThePlannedWriteUndetermined },
+      logins: unnamed_logins(count: count),
+    }],
+    exempt: [],
+  }
+}
+
+fn unnamed_logins(count: Int) -> List<BmcCountedFailedLogin> {
+  if count <= 0 { [] } else { concat([DeclaredRetryLogin {
+    account: root_user,
+    surface: SurfaceOfThePlannedWriteUndetermined,
+    of: "a login the plan cannot name a surface for",
+  }], unnamed_logins(count: count - 1)) }
+}
+
+// THE SAME THREE LOGINS, NAMED. The judgement must stay the named surface's own.
+fn named_redfish_roster(count: Int) -> BmcPlanFailedLoginRoster {
+  BmcPlanFailedLoginRoster {
+    spends: [BmcPlanFailedLoginSpend {
+      key: BmcFailedLoginBudgetKey { account: root_user, surface: RedfishAccountServiceLogin },
+      logins: named_logins(count: count),
+    }],
+    exempt: [],
+  }
+}
+
+fn named_logins(count: Int) -> List<BmcCountedFailedLogin> {
+  if count <= 0 { [] } else { concat([DeclaredRetryLogin {
+    account: root_user,
+    surface: RedfishAccountServiceLogin,
+    of: "a login named to the Redfish AccountService",
+  }], named_logins(count: count - 1)) }
+}
+
+fn admitted_verdict(verdict: BmcFailedLoginBudgetVerdict) -> Bool {
+  match verdict {
+    FailedLoginBudgetAdmitted { spends: _, exempt: _ } => true
+    FailedLoginBudgetRefused { blocked: _, spends: _, exempt: _ } => false
+  }
+}
+
+fn refused_verdict(verdict: BmcFailedLoginBudgetVerdict) -> Bool {
+  match verdict {
+    FailedLoginBudgetAdmitted { spends: _, exempt: _ } => false
+    FailedLoginBudgetRefused { blocked: _, spends: _, exempt: _ } => true
+  }
+}
+
+fn blocks_of(verdict: BmcFailedLoginBudgetVerdict) -> List<BmcFailedLoginBudgetBlockReading> {
+  match verdict {
+    FailedLoginBudgetAdmitted { spends: _, exempt: _ } => []
+    FailedLoginBudgetRefused { blocked: b, spends: _, exempt: _ } => b
+  }
 }

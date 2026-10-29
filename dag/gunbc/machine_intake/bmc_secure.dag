@@ -3799,13 +3799,54 @@ fn bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey, reading: BmcControlle
   }
 }
 
-// The threshold for a key, dispatching the undetermined-channel surface to the
-// tightest served LAN channel and the no-request surface to a refusal.
+// The threshold for a key, dispatching the two surfaces the PLAN cannot name to the
+// tightest thing actually read, and every named surface to its own reading.
+//
+// WHY WORST-CASE-RATHER-THAN-REFUSAL FOR THE TWO UNDETERMINED SURFACES: the plan
+// cannot say which counter its login moves — the lanplus transport picks the
+// channel, and a write whose request the plan cannot name says nothing about the
+// transport either. That is not a reason to let the login through (fail open), and
+// it is not a reason to refuse every such plan out of hand either: an ungrounded or
+// unnamed route already has a SHARPER refusal waiting for it upstream, at the write
+// admission, where the account and the request are named — refusing here too would
+// tell an operator to go read a lockout policy that was never the obstacle. So the
+// login is charged against the TIGHTEST policy read anywhere it could have landed,
+// which licenses nothing it should not: if every surface we read is tighter than the
+// plan, the plan still refuses.
+//
+// AND WHY A PARTIAL READING IS NOT "WORST CASE", IT IS NO CASE: a login of unknown
+// transport could land on the Redfish AccountService counter or on any LAN channel's.
+// Taking the tightest of what happens to be read when only ONE transport was read
+// would spend against the read one and treat the unread one as if it did not exist —
+// the exact fabrication this whole gate exists to prevent. So the unknown-transport
+// arm demands BOTH transports were read (a Redfish AccountService surface and at
+// least one read LAN channel) and otherwise answers unread, which refuses.
+// DEFENSIVE ARM: today plan_bmc_account_action cannot reach it — the write
+// admissions refuse a route that carries no named request before the budget ever
+// runs — so this exists for the day a plan mints a write whose request it cannot
+// name, and is witnessed at function level for exactly that reason.
 fn bmc_lockout_threshold_for_key(key: BmcFailedLoginBudgetKey, reading: BmcControllerLockoutReading) -> BmcLockoutThreshold {
   match key.surface {
     IpmiLanPlusLoginChannelUndetermined => bmc_tightest_ipmi_threshold(reading: reading)
-    SurfaceOfThePlannedWriteUndetermined => LockoutThresholdUnread { cause: "the plan's write route carries no request, so no surface is known and no threshold can be read" }
+    SurfaceOfThePlannedWriteUndetermined => bmc_tightest_any_surface(reading: reading)
     _ => bmc_lockout_threshold(surface: key.surface, reading: reading)
+  }
+}
+
+// The tightest served threshold across EVERY surface the reader reached, but only
+// when the reader reached both transports an unnamed login could authenticate on:
+// some Redfish AccountService surface AND at least one read LAN channel. Anything
+// less answers with its own unread arm, carrying why.
+// CONSUMER: bmc_lockout_threshold_for_key, for a login whose surface the plan cannot
+// name.
+fn bmc_tightest_any_surface(reading: BmcControllerLockoutReading) -> BmcLockoutThreshold {
+  let surfaces = reading.surfaces
+  let saw_redfish = length(filter(surfaces, s => match s.surface { RedfishAccountServiceLogin => true, _ => false })) > 0
+  let saw_lan = length(filter(surfaces, s => match s.surface { IpmiLanPlusLogin { channel: _ } => true, _ => false })) > 0
+  if !(saw_redfish && saw_lan) {
+    LockoutThresholdUnread { cause: "this login's surface is not named by the plan and the reading did not cover every transport it could authenticate on — the Redfish AccountService policy and a LAN channel policy are both needed to bound it" }
+  } else {
+    bmc_tightest_of(map(surfaces, s => bmc_lockout_threshold(surface: s.surface, reading: reading)))
   }
 }
 

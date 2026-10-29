@@ -45,7 +45,7 @@ import gunbc.machine_intake.receipt { EvidenceRef, ReceiptSatisfied, ReceiptRefu
 import std.scoped_authorization { AttemptIdentity }
 import std.scoped_authorization { ScopedAuthorization }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_convergence }
-import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
+import test.fixture.machine_intake.bmc_lockout { lockout_served_channels }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
 import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
 import gunbc.machine_intake.bmc_rotation_route {
@@ -390,7 +390,12 @@ fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentia
     published_reading: DryProbePublished,
     attempt: attempt as AttemptIdentity,
     read_at_millis: at,
-    lockout: lockout_both_served(read_at: at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+    // Both LAN channels of this controller's census are read, not just one: the
+    // published probes the reading carries cross channels 1 and 8, and a lockout
+    // reading that covered only one of them would leave the other's logins with no
+    // threshold — which the gate answers by refusing the plan (fail closed), so the
+    // claims below would be testing the fixture's gap instead of the behaviour.
+    lockout: lockout_served_channels(read_at: at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
 }
 

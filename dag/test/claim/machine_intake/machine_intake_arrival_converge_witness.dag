@@ -9,7 +9,7 @@ import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc, SupermicroAten, BmcController
 import product.host_identity { HostIdentity, host_identity_eq }
 import std.scoped_authorization { ScopedAuthorization }
 import test.fixture.machine_intake.bmc_write_approval { approved_bmc_write, approved_bmc_convergence }
-import test.fixture.machine_intake.bmc_lockout { lockout_both_served }
+import test.fixture.machine_intake.bmc_lockout { lockout_served_channels }
 import gunbc.machine_intake.phase { Arrival, AccessDiscover, IdentityBindProvisional, PriorLifeBoundary, BmcSecure, BootDeliveryEstablish, IntakePhase, machine_qualification_policy }
 import gunbc.machine_intake.subject {
   AssemblyManifest, BoardSerialObservation, BmcFru, HostSmbios, ChassisComponent, ComponentIdentity, BoardSerialAbsent,
@@ -448,7 +448,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
     published_reading: DryProbePublished,
     attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
-  lockout: lockout_both_served(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+  lockout: lockout_served_channels(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
   match mtjade1_fetched_generation(current: mtjade1_bmc_goal().managed, secret: "bmc-lab-o1b-gunbc", version: "2", bytes: mtjade1_managed_password_v2) {
     Absent => none
@@ -514,7 +514,7 @@ fn mtjade1_dry_applied_bmc(subject: MachineIntakeSubject) -> BmcSecureApplyInput
                 published_reading: DryProbePublished,
                 attempt: (subject.attempt_id as NonEmptyStr) as AttemptIdentity,
                 read_at_millis: mtjade1_bmc_readback_at,
-                lockout: lockout_both_served(read_at: mtjade1_bmc_readback_at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+                lockout: lockout_served_channels(read_at: mtjade1_bmc_readback_at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
               )
               Present { value: BmcSecureApplyInputs { application: step.application, post_read: post_read } }
             }
@@ -612,7 +612,7 @@ test fn w_mtjade1_converges_through_bmc_secure_noop_on_the_real_prefix() -> Bool
     published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
-  lockout: lockout_both_served(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+  lockout: lockout_served_channels(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
   match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none, apply: none, capability: none)) {
     ArrivalRunFolded { verdict: v } =>
@@ -652,7 +652,7 @@ test fn w_mtjade1_bmc_secure_apply_inputs_missing_refuses_on_the_real_path() -> 
     published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
-  lockout: lockout_both_served(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+  lockout: lockout_served_channels(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
   match converge_mtjade1_arrival_through_bmc_secure(run: run_a, prior_life: prior_life_minimal_dry_world(), bmc: mtjade1_bmc_inputs(reading: reading, grant: none, apply: none, capability: none)) {
     ArrivalRunFolded { verdict: v } =>
@@ -1396,7 +1396,7 @@ test fn w_bmc_secure_apply_of_another_channel_state_is_refused() -> Bool {
     published_reading: DryProbePublished,
     attempt: "o1c1-witness-run-a" as AttemptIdentity,
     read_at_millis: mtjade1_bmc_read_at,
-  lockout: lockout_both_served(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channel: 1, ipmi_threshold: 20),
+  lockout: lockout_served_channels(read_at: mtjade1_bmc_read_at, redfish_threshold: 20, ipmi_channels: [1, 8], ipmi_threshold: 20),
   )
   match mtjade1_dry_applied_bmc(subject: mtjade1_intake_subject()) {
     Absent => false
