@@ -35,7 +35,7 @@ import gunbc.host.host_axis_caps {
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired, RunnerSlotDesired }
 import gunbc.runner.runner_host_cap_bracket { CapWriteAdmitted, CapWriteRefused, cap_write_gate_of, BracketDrained, BracketAdmissionNotClosed, BracketBoundExceeded, BracketWaiting, BracketRefusedAdmissionNotClosed, BracketRefusedBoundExceeded, HostAdmitting, drain_until_quiescent_over, bracket_start_over, BracketStartAt, BracketStartRefused, runner_host_cap_step_budget_env_name, bracket_refusal_wire, host_left_wire, host_left_of_readmit, host_cap_drain_ticks, runner_host_cap_drain_policy, release_envelope_wire, acquire_bracket_over, BracketAcquired, BracketNotAcquired, write_bracket_obligation, read_bracket_obligation, release_decision_of, release_owned_slots_over, ReleaseDecision, release_verdict_of, release_verdict_is_settled, release_receipt_text, runner_host_cap_obligation_identity, ReleaseNothingOwed, ReleaseOwes, ReleaseAlreadyDischarged, ReleaseObligationUntrusted , stop_admitted_listener_over, listener_restart_refusal, listener_restart_unit, CertifiedListener, certified_listener_line, bracket_holder_identify, BracketHolder, bracket_units_to_bracket, HolderIdentified, HolderNotOnSubject, HolderUnidentified, holder_deferral_ledger_read, holder_ledger_after_verdict, }
-import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
+import gunbc.runner.runner_slot_cap_converge { SlotCapOutcome, SlotCapsLeftInPlace, SlotCapsRestartedAndRead, SlotCapsSelfAtDesired, SlotCapsSelfDeferred, SlotCapsHolderLedgerRefused, SlotCapsRefused, HostCapPlan, HostPendingReloads, HostNoReloadPending, HostReloadsPending, HostPopulationUnobserved, UnitPendingReload, PendingReloadKind, PendingReloadOwed, PendingReloadUnobserved, PendingReloadOwedInertUntilActivated, HostCapsLeaveInPlace, HostCapsDrainWriteRestart, HostCapsWithheld, CapFilesState, CapFilesSettled, CapFilesDiffer, CapFilesUnreadable, host_cap_plan, read_host_cap_standings_over, activate_and_read_back_slot_caps_over, slot_cap_outcome_settled, slot_cap_outcome_host_settled, slot_cap_outcome_wire, SlotCapStanding, SlotCapsUnread, SlotCapUnitStanding, slot_cap_standing_wire, slot_cap_holder_standing_over, HolderDeferralLedger }
 import gunbc.runner.runner_slot_actuation { activate_runner_slot_over, slot_actuation_outcome_wire, slot_current_registration_over_unit, UnitRegistrationRead, UnitRegistrationUnreadable }
 import gunbc.runner.runner_host_withdraw_record { runner_host_withdraw_observe_line_for }
 import gunbc.ci.ci_spec { gunbc_ci_runner_host_file_converge_receipt_path, gunbc_ci_runner_host_cap_release_receipt_path }
@@ -2859,16 +2859,17 @@ fn runner_host_cap_pending_reloads(population: RunnerSlotPopulation, bracket_uni
   }
 }
 
-// An inert owed reload is admitted ONLY for a unit the bracket never touches: activation unmasks, enables
-// and starts every unit in the bracket's set, so there a masked unit stops being inert mid-bracket and its
-// pending change would load onto a live cgroup. Fabric members are outside that set by construction
-// (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
+// An inert owed reload contributes nothing for a unit the bracket never touches. Inside the bracket's set it
+// is kept, typed as inert: the bracket's activation unmasks, enables and starts every unit in that set, so
+// there a masked unit stops being inert mid-bracket and its pending change would load onto a live cgroup;
+// host_cap_plan withholds the bracket arm on it and nothing else. Fabric members are outside that set by
+// construction (desired_runner_slot_members), and the width phase only masks and stops them, never unmasks.
 fn slot_reload_pending_kind(status: SlotReloadStatus, reach: SlotReloadReach, in_bracket: Bool) -> PendingReloadKind? {
   match status {
     SlotReloadNotPending => none
     SlotReloadOwed => match reach {
       ReachesLiveCgroup => Present { value: PendingReloadOwed }
-      ReloadInert => if in_bracket { Present { value: PendingReloadOwed } } else { none }
+      ReloadInert => if in_bracket { Present { value: PendingReloadOwedInertUntilActivated } } else { none }
     }
     SlotReloadUnobserved => Present { value: PendingReloadUnobserved }
   }
