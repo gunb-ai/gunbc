@@ -20,8 +20,11 @@ module gunbc.roadmap.roadmap_attempt_redelivery_wake
 // (never recomputed here), the unit name includes the re-delivery instant so one name can name only one
 // wake (arming the same instant twice is refused by systemd and read as already-armed -- one wake per
 // pending window; a re-pend to a later instant is a different name and is genuinely re-armed), and the
-// timer execs the instance's OWN belt_dispatch_node_cli route -- the same route a door dispatch takes --
-// so the wake re-delivers the same key by the same path, never a parallel spawn. The authorization
+// timer execs the instance's OWN re-delivery route, roadmap_belt_tick_cli.belt_redeliver_attempt_cli
+// (belt_redeliver_cli_function), which resolves the instance by repo root and ends in the SAME
+// belt_dispatch_node_for_instance a door dispatch ends in -- so the wake re-delivers the same key by
+// the same node-dispatch path, never a parallel spawn. It is deliberately NOT belt_dispatch_node_cli,
+// whose narrow admitted-instance list refuses this lab's instance id. The authorization
 // pattern is DERIVED, not borrowed: characterized against
 // gunbc.auth.authorization_pattern_selection.select_authorization_pattern (consumed by the witness and
 // evidencing the effect the fold execs), the credential-free / reversible / unattended user-manager unit
