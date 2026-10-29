@@ -242,6 +242,10 @@ test fn witness_roster_holds_the_five_claimed_rows_and_each_named_host_once() ->
     && gunbc_fleet_hostname_allocations.all(row =>
       operator_hosts.any(host => host == row.fleet_slot)
         && count_matching(rows: gunbc_fleet_hostname_allocations, slot: row.fleet_slot) == 1)
+    // AND THE REVERSE LEG: every operator host holds exactly one allocation, so a host that
+    // silently loses its row is red too -- the join is a bijection, not an inclusion.
+    && operator_hosts.all(host =>
+      count_matching(rows: gunbc_fleet_hostname_allocations, slot: host) == 1)
     // EVERY CLAIMED SLOT IS ALLOCATED, and asked of the roster itself rather than of a count.
     && p2_drawn_slots.all(slot => fleet_slot_is_allocated(slot: slot, roster: gunbc_fleet_hostname_allocations))
     // THE NEGATIVE ANSWER IS SAYABLE. A census that reports unmanaged members has to be able to ask "is
