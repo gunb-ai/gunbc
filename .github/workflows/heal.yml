@@ -74,19 +74,19 @@ jobs:
         id: build_witness_fold
         run: |+
           GUNBC_SEED_CHECKOUT=$('git' 'rev-parse' '--show-toplevel')
-          '[' -n "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
-          GUNBC_SEED_TARGET=${CARGO_TARGET_DIR:-$GUNBC_SEED_CHECKOUT'/target'}
-          GUNBC_SEED_CARGO_HOME=${CARGO_HOME:-$HOME'/.cargo'}
+          '[' '-n' "$GUNBC_SEED_CHECKOUT" ']' || ('echo' '::error title=seedBuildRemap CheckoutRootUnread::the checkout root read back empty, so a remap prefix would name nothing and the seed binary would keep absolute paths baked in; refusing to build'; exit 1)
+          if '[' '-n' "$CARGO_TARGET_DIR" ']'; then GUNBC_SEED_TARGET="$CARGO_TARGET_DIR"; else GUNBC_SEED_TARGET="$GUNBC_SEED_CHECKOUT"'/target'; fi
+          if '[' '-n' "$CARGO_HOME" ']'; then GUNBC_SEED_CARGO_HOME="$CARGO_HOME"; else GUNBC_SEED_CARGO_HOME="$HOME"'/.cargo'; fi
           GUNBC_SEED_SYSROOT=$('rustc' '--print' 'sysroot')
-          '[' -n "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)
-          RUSTFLAGS="-D warnings --remap-path-prefix=$GUNBC_SEED_CHECKOUT=/build/checkout --remap-path-prefix=$GUNBC_SEED_TARGET=/build/target --remap-path-prefix=$GUNBC_SEED_CARGO_HOME=/build/cargo-home --remap-path-prefix=$GUNBC_SEED_SYSROOT=/build/rust"
-          export RUSTFLAGS
-          if '[' -z "${GUNBC_MATERIALIZED_TREE_IDENTITY:-}" ']' && '[' -z "$('git' 'status' '--porcelain=1' '--untracked-files=no')" ']'; then
-          GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format')
-          '[' -n "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1)
-          GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'"$('git' 'rev-parse' 'HEAD^{tree}')"
-          export GUNBC_MATERIALIZED_TREE_IDENTITY
-          fi
+          '[' '-n' "$GUNBC_SEED_SYSROOT" ']' || ('echo' '::error title=seedBuildRemap SysrootUnread::the rustc sysroot read back empty, so the sysroot remap would name nothing; refusing to build'; exit 1)
+          RUSTFLAGS=' -D warnings'' --remap-path-prefix='"$GUNBC_SEED_CHECKOUT"'=/build/checkout'' --remap-path-prefix='"$GUNBC_SEED_TARGET"'=/build/target'' --remap-path-prefix='"$GUNBC_SEED_CARGO_HOME"'=/build/cargo-home'' --remap-path-prefix='"$GUNBC_SEED_SYSROOT"'=/build/rust'
+          'export' 'RUSTFLAGS'
+          'export' 'GUNBC_SEED_CHECKOUT'
+          'export' 'GUNBC_SEED_TARGET'
+          'export' 'GUNBC_SEED_CARGO_HOME'
+          'export' 'GUNBC_SEED_SYSROOT'
+          if '[' '-z' "$GUNBC_MATERIALIZED_TREE_IDENTITY" ']' && '[' '-z' $('git' 'status' '--porcelain=1' '--untracked-files=no') ']'; then GUNBC_SEED_OBJECT_FORMAT=$('git' 'rev-parse' '--show-object-format'); '[' '-n' "$GUNBC_SEED_OBJECT_FORMAT" ']' || ('echo' '::error title=seedBuildIdentity ObjectFormatUnread::the git object format read back empty, so the pinned identity would be malformed; refusing to build'; exit 1); GUNBC_MATERIALIZED_TREE_IDENTITY='tree:'"$GUNBC_SEED_OBJECT_FORMAT"':'$('git' 'rev-parse' 'HEAD^{tree}'); 'export' 'GUNBC_MATERIALIZED_TREE_IDENTITY'; fi
+
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
           'set' '+e'
           'set' '-o' 'pipefail'

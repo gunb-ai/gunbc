@@ -321,6 +321,25 @@ fn bash_build_if_else(cond: Node, then_body: Node, else_body: Node) -> Node {
   }
 }
 
+// if/else built FROM STATEMENT LISTS — the ONE builder for the shape the serializer's arms read.
+// bash_build_if_else takes its two arms already built, and the fold reads positional children 2 and
+// 3 as statement LIST nodes: bash_fold_serialize_if_else_node hands each to
+// bash_fold_serialize_stmt_list_semi, whose flatten accepts only the snoc pair (left list, statement),
+// the single (statement), or the empty list. A bare statement is NOT that shape — an assign is
+// (tag, name, value), three children — so it is refused with
+// bash_fold_serialize_stmt_list_shape_refused, which is what //dag/test/claim/live_deploy/
+// apply_no_refused_marker_witness claims the refusal for. This is to bash_build_if_else what
+// bash_build_if_from_stmts is to bash_build_if and bash_build_subshell_from_stmts to
+// bash_build_subshell: the caller states its arms as statements and the list shape is BUILT, never
+// hand-carried.
+fn bash_build_if_else_from_stmts(cond: Node, then_stmts: List<Node>, else_stmts: List<Node>) -> Node {
+  bash_build_if_else(
+    cond: cond,
+    then_body: bash_build_stmt_list_from_nodes(stmts: then_stmts),
+    else_body: bash_build_stmt_list_from_nodes(stmts: else_stmts)
+  )
+}
+
 fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
