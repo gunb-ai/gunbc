@@ -362,13 +362,6 @@ fn roster_acquired_name(m: AcquiredModule) -> String {
   m.name
 }
 
-fn roster_closure_home(c: RosterHomeClosure) -> String {
-  match c {
-    RosterClosureRead { home: h, modules: _ } => h
-    RosterClosureUnread { home: h } => h
-  }
-}
-
 // The cycle verdict for importing `home` into `module`: Absent admits; a refusal names both. A home with no closure entry
 // at all is unread, never assumed acyclic.
 fn roster_cycle_refusal(closures: List<RosterHomeClosure>, home: String, module: String) -> Optional<RosterRefusalReason> {
