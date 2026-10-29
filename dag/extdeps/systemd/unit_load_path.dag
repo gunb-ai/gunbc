@@ -1,0 +1,35 @@
+module extdeps.systemd.unit_load_path
+
+import std.types { String, NonEmptyStr, List }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "www.freedesktop.org/software/systemd/man/261/systemd.unit.html#Unit%20File%20Load%20Path" }
+}
+
+// systemd.unit(5), Unit File Load Path, systemd 261. These are the leading
+// control directories, NOT a complete search path and NOT a host observation.
+// Earlier entries override later entries. SYSTEMD_UNIT_PATH can replace the
+// default path; consumers must read effective precedence and LoadState.
+data systemd_system_control_directories: List<NonEmptyStr> = [
+  "/etc/systemd/system.control", "/run/systemd/system.control",
+]
+
+data systemd_persistent_system_control_directory: NonEmptyStr = "/etc/systemd/system.control"
+
+// The caller supplies the user's resolved XDG_CONFIG_HOME (or its documented
+// HOME/.config default) and XDG_RUNTIME_DIR. They are not the controller's env.
+fn systemd_user_control_directories(config_home: NonEmptyStr, runtime_dir: NonEmptyStr) -> Result<List<NonEmptyStr>, String> {
+  if !starts_with(s: (config_home as String), prefix: "/") || !starts_with(s: (runtime_dir as String), prefix: "/") {
+    Err { value: "systemd user load-path roots must be absolute resolved paths" }
+  } else {
+    Ok { value: [concat(config_home as String, "/systemd/user.control") as NonEmptyStr,
+      concat(runtime_dir as String, "/systemd/user.control") as NonEmptyStr] }
+  }
+}
+
+// A unit file symlinked to /dev/null is masked. This target is an upstream
+// mechanism, not proof that a particular link wins the host's effective search.
+data systemd_mask_link_target: NonEmptyStr = "/dev/null"
