@@ -1,6 +1,7 @@
 module test.claim.repository_ci_profile_witness
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
+import std.measure { byte_size }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -232,7 +233,7 @@ fn with_roster_timeout(minutes: Int) -> RepositoryCiProfile {
       timeout_minutes: minutes,
       source_roots: base.roster.source_roots,
       schedule: base.roster.schedule,
-      memory_budget_bytes: base.roster.memory_budget_bytes,
+      memory_budget: base.roster.memory_budget,
       route: base.roster.route,
       aggregate: base.roster.aggregate,
       annotation: base.roster.annotation
@@ -278,7 +279,7 @@ fn mirror_profile_on_group_named(group: CiRunnerTarget, seal: Bool, publish: Boo
           day_of_week: Wildcard
         }
       },
-      memory_budget_bytes: Present { value: 1073741824 },
+      memory_budget: Present { value: byte_size(1073741824) },
       route: ComposedOverlayInterpreterRoster {
         overlay: fixture_overlay(),
         roster_main: DagInvocation { entry: "dag/claim/roster.dag", function: "roster_main" },
@@ -531,7 +532,7 @@ fn gate_profile_without_schedule() -> RepositoryCiProfile {
       timeout_minutes: base.roster.timeout_minutes,
       source_roots: base.roster.source_roots,
       schedule: Absent,
-      memory_budget_bytes: base.roster.memory_budget_bytes,
+      memory_budget: base.roster.memory_budget,
       route: base.roster.route,
       aggregate: base.roster.aggregate,
       annotation: base.roster.annotation

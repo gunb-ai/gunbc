@@ -1,6 +1,7 @@
 module gunbc.ci.repository_ci_profile
 
 import std.types { NonEmptyStr, String, List, Bool, Int, gt_zero }
+import std.measure { ByteSize }
 import std.optional { Optional, Present, Absent }
 import std.dissolution { DissolutionCondition }
 import extdeps.cron.schedule_model { CronSchedule, Exact, Listed, Wildcard }
@@ -135,7 +136,7 @@ type RosterGate {
   timeout_minutes: Int
   source_roots: List<String>
   schedule: Optional<CronSchedule>
-  memory_budget_bytes: Optional<Int>
+  memory_budget: Optional<ByteSize>
   route: RosterRoute
   aggregate: Optional<RosterAggregate>
   annotation: Optional<AnnotationStep>
@@ -241,7 +242,7 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       timeout_minutes: 90,
       source_roots: witness_layer_roots,
       schedule: Absent,
-      memory_budget_bytes: Absent,
+      memory_budget: Absent,
       route: InstrumentLabelRows,
       aggregate: Absent,
       annotation: Absent

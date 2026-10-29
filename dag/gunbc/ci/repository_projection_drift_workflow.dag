@@ -1,6 +1,7 @@
 module gunbc.ci.repository_projection_drift_workflow
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { byte_size_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_map }
 import std.dissolution { DissolutionCondition, dissolution_description }
@@ -116,8 +117,8 @@ type DriftProgram {
 // THE MEMORY CEILING, as a row rather than a constant: the budget belongs to the machine the job runs on,
 // and a runner with different RAM is a row edit rather than an edit to a shell string.
 fn memory_budget_rows(profile: RepositoryCiProfile) -> List<YamlKeyValue> {
-  match profile.roster.memory_budget_bytes {
-    Present { value: budget } => [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: budget))]
+  match profile.roster.memory_budget {
+    Present { value: budget } => [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: byte_size_count(b: budget)))]
     Absent => []
   }
 }

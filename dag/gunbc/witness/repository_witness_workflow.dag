@@ -1,6 +1,7 @@
 module gunbc.witness.repository_witness_workflow
 
 import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.measure { byte_size_count }
 import std.optional { Optional, Present, Absent }
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import std.dissolution { dissolution_description, DissolutionCondition }
@@ -203,7 +204,7 @@ fn build_seed_step(seed: PublicSeed) -> Step {
 }
 
 // THE ROSTER RUN: compose, then one process per row, with the arms that read each row's declared causes.
-// The memory budget is a row (profile.roster.memory_budget_bytes) rather than a constant because the
+// The memory budget is a row (profile.roster.memory_budget) rather than a constant because the
 // ceiling belongs to the machine the job runs on: a hosted runner with a different RAM figure is a row
 // edit, not an edit to a shell string.
 fn run_roster_step(profile: RepositoryCiProfile, seed: PublicSeed, program: RosterProgram) -> Step {
@@ -228,8 +229,8 @@ fn roster_run_step_name(profile: RepositoryCiProfile) -> NonEmptyStr {
 }
 
 fn memory_budget_env(profile: RepositoryCiProfile) -> Optional<List<YamlKeyValue>> {
-  match profile.roster.memory_budget_bytes {
-    Present { value: bytes } => Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: bytes))] }
+  match profile.roster.memory_budget {
+    Present { value: bytes } => Present { value: [kv(key: "GUNBC_MEMORY_BUDGET_BYTES", value: yaml_int(n: byte_size_count(b: bytes)))] }
     Absent => none
   }
 }
@@ -328,6 +329,15 @@ fn annotation_compile_step(profile: RepositoryCiProfile, seed: PublicSeed, annot
   }
 }
 
+// THE COMPILER'S OWN TERMINAL SUMMARY LINE, named rather than spelled twice inside a script. `gunbc compile`
+// closes its output with one count line on stderr - "<n> error(s)", beside the policy-suffixed
+// "<n> blocking error(s), <m> advisory diagnostic(s)" form - at src/v1/stage0/src/main.rs, and that line is
+// the only channel between the compile process and this check. The check reads it instead of trusting the
+// exit code alone: a compile that exited 1 without ever printing its summary died before it could report,
+// and that is a REFUSE rather than a pass. Named here so the pattern cannot drift from the line the seed
+// prints; if that line changes, the check goes red rather than quietly matching nothing.
+data compile_terminal_error_count_pattern: NonEmptyStr = "error\\(s\\)"
+
 // THE 4c SCRIPT. Three properties make it a check rather than a compile: the composed root must exist
 // (a step that observed nothing is a REFUSE, not a pass), the compile may only exit 0 or 1 (any other
 // code means it never got as far as reporting), and the refusal reader's exit status is read - grep exits
@@ -359,12 +369,12 @@ fn annotation_compile_script(profile: RepositoryCiProfile, seed: PublicSeed, ann
       "  echo \"::error::REFUSE section 4c check observed nothing: gunbc compile exited $code, which is neither a clean compile nor a rendered refusal.\"\n",
       "  exit 1\n",
       "fi\n",
-      "if [ \"$code\" = \"1\" ] && ! grep -qE 'error\\(s\\)' \"$OUT.log\"; then\n",
+      "if [ \"$code\" = \"1\" ] && ! grep -qE '", compile_terminal_error_count_pattern as String, "' \"$OUT.log\"; then\n",
       "  tail -n 40 \"$OUT.log\"\n",
       "  echo \"::error::REFUSE section 4c check observed nothing: gunbc compile exited 1 without its terminal error-count line.\"\n",
       "  exit 1\n",
       "fi\n",
-      "grep -E 'error\\(s\\)' \"$OUT.log\" | tail -n 1 || true\n",
+      "grep -E '", compile_terminal_error_count_pattern as String, "' \"$OUT.log\" | tail -n 1 || true\n",
       "if grep -F -- \"", annotation.refusal_prefix as String, "\" \"$OUT.log\" > \"$OUT.annotations\"; then\n",
       "  cat \"$OUT.annotations\"\n",
       "  echo \"::error::FAIL section 4c: source annotations outside module-item grain, each located above. Move each above the module-scope declaration it describes.\"\n",
