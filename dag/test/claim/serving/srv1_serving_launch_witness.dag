@@ -178,8 +178,6 @@ test fn a_port_override_changes_only_the_port() -> Bool {
       "--env", "LMCACHE_L2_ODIRECT=1",
       "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
       "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
-  "--env", "LMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5",
-  "--env", "LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800",
       "--",
       "--port", "18001",
       "--ssl-keyfile", "/root/serve/tls.key",
