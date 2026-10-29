@@ -1563,9 +1563,13 @@ test fn a_blind_clear_still_replaces_the_pending_it_could_not_see() -> Bool {
   (boot_override_standing_after_clear(before: OverrideFlagPending,
     clearance: StaleOverrideClearedUnread { reason: "the before-read could not be read" })
     == OverrideFlagNotPending)
-    && (boot_override_standing_after_clear(before: OverrideFlagPending,
-      clearance: StaleOverrideUnread { reason: "the clear never answered" })
-      == OverrideFlagPending)
+    && (match boot_override_standing_after_clear(before: OverrideFlagPending,
+      clearance: StaleOverrideUnread { reason: "the clear never answered" }) {
+        // An unanswered clear does not leave the route entitled to say the flag is still there either: the
+        // standing is unanswered, which is why the pre-power step refuses the set on it.
+        OverrideReadUnanswered { reason: _ } => true
+        _ => false
+      })
 }
 
 // AND IT RAISES ITS OWN FINDING. 'We cleared something we never saw' is an exposure the receipt owes the

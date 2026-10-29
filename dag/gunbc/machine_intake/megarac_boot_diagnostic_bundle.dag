@@ -1392,14 +1392,7 @@ fn megarac_stale_override_clearance(before: BootParam5Reading, clear: BootParam5
         StaleOverrideNoneFound
       }
     BootParam5ClearIssued { write_answered: _, readback: read } => match read {
-      BootParam5Read { readback: rb2, at: _ } =>
-        if boot_param5_override_is_pending(readback: rb2) {
-          StaleOverrideWouldNotClear
-        } else if boot_param5_standing_established(read: before) {
-          StaleOverrideCleared
-        } else {
-          StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
-        }
+      BootParam5Read { readback: rb2, at: _ } => stale_clear_verdict(before: before, readback: rb2)
       BootParam5Unread { cause: c } => StaleOverrideUnread { reason: bmc_read_cause_text(cause: c) }
       BootParam5NotTaken { reason: r } => StaleOverrideUnread { reason: r }
     }
@@ -1507,6 +1500,29 @@ fn boot_param5_standing_not_established(read: BootParam5Reading) -> NonEmptyStr 
     BootParam5Read { readback: _, at: _ } => "the controller read back, which establishes a standing"
     BootParam5Unread { cause: c } => concat("the before-read could not be read (", bmc_read_cause_text(cause: c), ")") as NonEmptyStr
     BootParam5NotTaken { reason: r } => concat("the before-read was not taken (", r as String, ")") as NonEmptyStr
+  }
+}
+
+// THE VERDICT WHEN THE CLEAR DID READ BACK -- asked of BOTH readings, because each half of the receipt's
+// claim comes from a different one. What the clear left is judged from the clear's own readback: a flag
+// still in force there is WouldNotClear whatever the before-read said (the route did not leave a clear
+// controller, and must not report one). What was there to clear is judged from the BEFORE-read: 'cleared'
+// is said only when the controller had reported a flag in force, 'none found' only when it reported none,
+// and the blind case -- where nobody ever read what stood -- is StaleOverrideClearedUnread, which is neither.
+fn stale_clear_verdict(before: BootParam5Reading, readback: String) -> StaleOverrideClearance {
+  if boot_param5_override_is_pending(readback: readback) {
+    StaleOverrideWouldNotClear
+  } else {
+    stale_clear_verdict_of_unchanged_standings(before: before, readback: readback)
+  }
+}
+
+fn stale_clear_verdict_of_unchanged_standings(before: BootParam5Reading, readback: String) -> StaleOverrideClearance {
+  match before {
+    BootParam5Read { readback: rb, at: _ } =>
+      if boot_param5_override_is_pending(readback: rb) { StaleOverrideCleared } else { StaleOverrideNoneFound }
+    BootParam5Unread { cause: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
+    BootParam5NotTaken { reason: _ } => StaleOverrideClearedUnread { reason: boot_param5_standing_not_established(read: before) }
   }
 }
 
