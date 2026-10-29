@@ -10330,7 +10330,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
               span: span,
               name_span: node_name_span(n: texpr)
             ),
-            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope, if func_name == "to_string" { tostr_census_diags(route: "algebra", target: "-", value: method_receiver, span: span, scope: scope) } else { [] }))))
+            emissions: infer_emissions_concat(left: arg_emissions, right: infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, template_subst_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: func_name, semantics: method_resolution.semantics, receiver: method_receiver, args: remaining, result_type: bridge_result_type, scope: scope), if func_name == "to_string" { tostr_census_diags(route: "algebra", target: "-", value: method_receiver, span: span, scope: scope) } else { [] })))
           }
         } else if !callee_is_body_binding && is_empty_map_constructor(name: func_name) && match resolved_plain_call_target_for_outcome(outcome: call_target) { RuntimePrimitiveCall { primitive_name: _, projected_from: _ } => true, _ => false } {
           let bare_m = bare_map_node()
@@ -10721,7 +10721,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       )
       InferResult {
         typed: mc_texpr,
-        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope, if method_name == "to_string" { tostr_census_diags(route: "method", target: "-", value: recv_typed, span: span, scope: scope) } else { [] })))])
+        emissions: infer_emissions_concat_all(chunks: [recv_emissions, mc_arg_emissions, infer_emissions_of_diagnostics(diagnostics: concat(relocated_algebra_evidence_diags(diags: pipe_fb.kernel_diags, span: span, module_name: scope.module_name), relocated_algebra_evidence_diags(diags: concat(method_resolution.diagnostics, mc_template_diags), span: span, module_name: scope.module_name), algebra_method_host_text_crossing_diags(method_name: method_name, semantics: method_resolution.semantics, receiver: recv_typed, args: typed_mc_args, result_type: result_type, scope: scope), if method_name == "to_string" { tostr_census_diags(route: "method", target: "-", value: recv_typed, span: span, scope: scope) } else { [] }))])
       }
       }
 
