@@ -363,14 +363,29 @@ type BootBranchRouteStanding
 // THE ONE DERIVATION OF THE ROUTE'S STANDING. Ordered so the first thing wrong is the thing named, and every
 // step yields either its cause or the material the federation is built from -- never a placeholder standing
 // in for a missing one (DESIGN.md §5: "no plausible output is fabricated").
-fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> BootBranchRouteStanding {
-  match provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1)) {
+// THE STANDING AS A FUNCTION OF EVERYTHING IT DEPENDS ON -- boot identity, roster, conjunct list, key state,
+// admitted cells -- with the world-reading wrapper below supplying all five. The parameterization is not
+// decoration: four of the five refusal arms are unreachable in the live world (the host IS provisioned, the
+// roster IS non-empty, the environment IS named, the BMC cell IS admitted), so while the standing read the
+// world directly, a claim could not drive any of them and swapping one cause for another -- the very failure
+// review 88050 was about, only now inside a typed sum -- would have kept every claim green. An arm no claim can
+// reach is not a refusal, it is a comment. Production consumers call the wrapper; only counterfactual claims
+// call this, so "the list checked here IS the list published" still holds on every path that converges
+// anything.
+fn mtcollins1_boot_branch_route_standing_with(
+  boot: ManagedHostBootFederation?,
+  rostered_branches: List<NonEmptyStr>,
+  pins: List<OidcClaimPin>?,
+  key_state: BootMediumReaderKeyState,
+  grants: List<SecretAccessGrant>,
+) -> BootBranchRouteStanding {
+  match boot {
     Absent => Refused { cause: BootIdentityUnprovisioned }
-    Present { value: boot } =>
+    Present { value: provided_boot } =>
       // THE ROSTER IS THE PERMISSION, so this asks what the roster HOLDS -- not whether one named entry is
       // trusted, which is true by construction for an entry taken from the roster itself and would read as a
       // trust check while being an emptiness check.
-      if mtcollins1_boot_trusted_branches.length() == 0 {
+      if rostered_branches.length() == 0 {
         Refused { cause: NoRosteredBranch }
       } else {
         // THE PINS DECIDE THE ENVIRONMENT QUESTION, so there is no separate emptiness probe left to drift:
@@ -378,12 +393,9 @@ fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> Boo
         // and mirroring the rule WITHOUT its environment conjunct would make the provider less restrictive
         // than the route it stands for (the fail-open caught at 18c3e1d0). The roster was ruled out above,
         // which is what licenses naming this cause EnvironmentUnnamed rather than a shrug.
-        match mtcollins1_boot_branch_claim_pins_with(
-          ref_pin: mtcollins1_boot_trusted_ref_pin(),
-          environment_pin: mtcollins1_boot_trusted_environment_pin(),
-        ) {
+        match pins {
           Absent => Refused { cause: EnvironmentUnnamed }
-          Present { value: pins } => match boot_medium_reader_key_fault(state: state) {
+          Present { value: admitted_pins } => match boot_medium_reader_key_fault(state: key_state) {
             // THE KEY'S OWN FAULT, CARRIED NOT RESTATED: both-cells-or-nothing -- a route reopened on a
             // half-landed mint would converge an account against a credential whose public half nobody can
             // check. See mtcollins1_boot_branch_secret_grants for why the reader cell is not optional here.
@@ -392,7 +404,6 @@ fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> Boo
               // ONE COMPUTATION DECIDES BOTH whether the route exists and what it holds, so the guard cannot
               // be satisfied by a set other than the one converged -- the list checked here IS the list
               // published below.
-              let grants = mtcollins1_boot_branch_secret_grants_with(f: boot, state: state)
               if grants.length() == 0 {
                 // A Minted key reaching here means the BOOT federation itself carries no admitted cell for
                 // this host's BMC (mtcollins1_boot_branch_bmc_grant selects by EXCLUSION of the fleet key,
@@ -404,8 +415,8 @@ fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> Boo
                 // have moved since the refusal asked.
                 Admitted {
                   facts: BootBranchRouteAdmission {
-                    boot: boot,
-                    attribute_condition: claim_pins_attribute_condition(pins: pins),
+                    boot: provided_boot,
+                    attribute_condition: claim_pins_attribute_condition(pins: admitted_pins),
                     secret_grants: grants,
                   }
                 }
@@ -415,6 +426,28 @@ fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> Boo
         }
       }
   }
+}
+
+// THE STANDING AS THE WORLD ACTUALLY IS: the one place that reads the host's boot federation, the roster, the
+// pins and the admitted cells, and hands them to the derivation above. Every projection of the route --
+// federation, provider, refusal, converged IAM -- goes through here, so none of them can be handed a standing
+// that differs from another's.
+fn mtcollins1_boot_branch_route_standing(state: BootMediumReaderKeyState) -> BootBranchRouteStanding {
+  let boot = provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1))
+  let cells = match boot {
+    Absent => []
+    Present { value: provided_boot } => mtcollins1_boot_branch_secret_grants_with(f: provided_boot, state: state)
+  }
+  mtcollins1_boot_branch_route_standing_with(
+    boot: boot,
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: mtcollins1_boot_branch_claim_pins_with(
+      ref_pin: mtcollins1_boot_trusted_ref_pin(),
+      environment_pin: mtcollins1_boot_trusted_environment_pin(),
+    ),
+    key_state: state,
+    grants: cells,
+  )
 }
 
 // WHY THE ROUTE DOES NOT EXIST, OR NONE WHEN IT DOES -- now a projection of the one derivation above rather

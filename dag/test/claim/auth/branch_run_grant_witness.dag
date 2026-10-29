@@ -57,6 +57,7 @@ import gunbc.auth.mtcollins1_branch_boot_trust {
   mtcollins1_boot_branch_bmc_grant, mtcollins1_boot_branch_reader_grant,
   mtcollins1_boot_branch_route_refusal_cause, mtcollins1_boot_branch_route_refusal_cause_with,
   mtcollins1_boot_branch_route_refusal_text, mtcollins1_boot_branch_route_standing,
+  mtcollins1_boot_branch_route_standing_with, mtcollins1_boot_branch_secret_grants_with,
   ReaderKeyUnusable, Refused, Admitted,
   mtcollins1_boot_branch_bmc_secret_id, mtcollins1_boot_branch_bmc_grants,
   mtcollins1_boot_branch_principal_set, mtcollins1_boot_branch_wif_pool_id,
@@ -98,7 +99,7 @@ import gunbc.auth.branch_dispatch_federation { BranchRunFacts, BranchRunAdmitted
 import gunbc.auth.oidc_claim_pins { with_presented_value, without_presented_claim, OidcClaimPin }
 import std.algebra { string_contains }
 import gunbc.auth.managed_host_boot_federation {
-  boot_federation_for, provisioned_federation_of, boot_federation_principal_set,
+  ManagedHostBootFederation, boot_federation_for, provisioned_federation_of, boot_federation_principal_set,
 }
 import extdeps.cloud.gcp.gcp { wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number }
@@ -1328,6 +1329,120 @@ test fn the_refusal_and_the_federation_are_projections_of_one_standing() -> Bool
             }
           }
     }
+  }
+}
+
+// ── DRIVING EVERY REFUSAL ARM ────────────────────────────────────────────────────────────────────────
+// The standing's inputs, from the world, so the counterfactual claims below change exactly one of them.
+fn route_world_boot() -> ManagedHostBootFederation? {
+  provisioned_federation_of(s: boot_federation_for(host: operator_host_mtcollins1))
+}
+
+fn route_world_pins() -> List<OidcClaimPin>? {
+  mtcollins1_boot_branch_claim_pins_with(
+    ref_pin: mtcollins1_boot_trusted_ref_pin(),
+    environment_pin: mtcollins1_boot_trusted_environment_pin(),
+  )
+}
+
+// The absent cases, given a home so their element type is declared rather than inferred: a bare `none` in an
+// argument position reaches the checker as Optional<Unit>, which is the wrong thing to hand a
+// List<OidcClaimPin>?/ManagedHostBootFederation? parameter -- and "it compiled because the literal happened to
+// infer" is not a property anyone reading the claim can check.
+fn route_no_boot() -> ManagedHostBootFederation? {
+  none
+}
+
+fn route_no_pins() -> List<OidcClaimPin>? {
+  none
+}
+
+fn route_world_grants() -> List<SecretAccessGrant> {
+  match route_world_boot() {
+    Absent => []
+    Present { value: boot } => mtcollins1_boot_branch_secret_grants_with(f: boot, state: minted_reader_state())
+  }
+}
+
+// EVERY REFUSAL ARM IS DRIVEN, ONE CLAIM PER ARM (review 88050's reason for wanting a sum in the first place).
+// Four of the five arms are unreachable in the live world -- the host IS provisioned, the roster IS non-empty,
+// the boot federation DOES name its environment, the BMC cell IS admitted -- so while the standing read the
+// world directly no claim could tell which cause it carried, and swapping two of them would have kept every
+// claim green. gunbc.auth.mtcollins1_branch_boot_trust mtcollins1_boot_branch_route_standing_with takes the
+// standing's whole input surface, so each arm can be put in front of it and named. Each claim below changes
+// exactly one input and matches the arm by name: an arm that stops being reachable, or a cause swapped for
+// another, turns that claim red.
+test fn an_unprovisioned_boot_identity_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_no_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: BootIdentityUnprovisioned } => true
+    _ => false
+  }
+}
+
+test fn an_empty_roster_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: [] as List<NonEmptyStr>,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    // NOT NoRosteredBranch-by-accident: an empty roster is the permission being absent, which is a different
+    // fact from the boot federation naming no environment -- the two must not collapse into one sentence.
+    Refused { cause: NoRosteredBranch } => true
+    _ => false
+  }
+}
+
+test fn an_environment_the_boot_does_not_name_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_no_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: EnvironmentUnnamed } => true
+    _ => false
+  }
+}
+
+test fn an_unadmitted_bmc_credential_refuses_by_name() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    // the key is fine here; only the cells are missing, and the refusal must say so rather than blame the key
+    grants: [] as List<SecretAccessGrant>,
+  ) {
+    Refused { cause: NoBmcCredential } => true
+    _ => false
+  }
+}
+
+test fn a_complete_standing_is_admitted_and_carries_its_own_material() -> Bool {
+  match mtcollins1_boot_branch_route_standing_with(
+    boot: route_world_boot(),
+    rostered_branches: mtcollins1_boot_trusted_branches,
+    pins: route_world_pins(),
+    key_state: minted_reader_state(),
+    grants: route_world_grants(),
+  ) {
+    Refused { cause: _ } => false
+    Admitted { facts: facts } =>
+      // the material is the input it was given, not a re-read: same cells, and a condition folded from the
+      // pins handed in -- which is what the federation then publishes.
+      branch_grant_secrets(grants: facts.secret_grants) == branch_grant_secrets(grants: route_world_grants())
+        && branch_grant_secrets(grants: facts.secret_grants).length() >= 1
+        && string_contains(s: facts.attribute_condition, pattern: "environment")
+        && string_contains(s: facts.attribute_condition, pattern: "ref")
   }
 }
 
