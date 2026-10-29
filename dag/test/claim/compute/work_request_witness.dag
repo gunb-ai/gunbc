@@ -46,7 +46,10 @@ import gunbc.compute.work_provider_local {
   ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, NoComputeDependency,
   compute_dependency_decide, ComputeDependencyResolved, ComputeDependencyRefused,
 }
-import std.materialization_object { StoreLookupMiss, StoreLookupRefused, StoreLookupObjectMalformed }
+import std.materialization_object {
+  StoreLookupMiss, StoreLookupRefused, StoreLookupObjectMalformed,
+  StoreLookupOutputContentRefused, StoreRequiredBytePartMissing, StoreRequiredBytePartDifferent,
+}
 import extdeps.realization.materialization_store_local { LocalStorePartsLookup }
 import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
@@ -632,11 +635,24 @@ test fn the_ladder_memoizes_repeatable_compute_and_exempts_a_wet_claim_run() -> 
 // over a store it cannot read.
 test fn a_refused_store_lookup_is_never_a_miss() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  (match compute_store_read_decide(lookup: StoreLookupMiss { key: k }) { ComputeStoreAbsent => true  _ => false })
-    && (match compute_store_read_decide(lookup: StoreLookupRefused { key: k, refusal: StoreLookupObjectMalformed { cause: "fixture" } }) {
-      ComputeStoreRefused { detail } => string_contains(s: detail, pattern: "fixture")
-      _ => false
-    })
+  match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+    Absent => false
+    Present { value: expected } => match sha256_hex_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
+      Absent => false
+      Present { value: found } => {
+        let refusals = [
+          StoreLookupObjectMalformed { cause: "fixture" },
+          StoreLookupOutputContentRefused { cause: StoreRequiredBytePartMissing { part: "fixture" as ArtifactOutputId } },
+          StoreLookupOutputContentRefused { cause: StoreRequiredBytePartDifferent { part: "fixture" as ArtifactOutputId, expected: expected, found: found } },
+        ]
+        (match compute_store_read_decide(lookup: StoreLookupMiss { key: k }) { ComputeStoreAbsent => true  _ => false })
+          && all(refusals, r => match compute_store_read_decide(lookup: StoreLookupRefused { key: k, refusal: r }) {
+            ComputeStoreRefused { detail } => string_contains(s: detail, pattern: "fixture")
+            _ => false
+          })
+      }
+    }
+  }
 }
 
 fn windowed(w: ClaimDiffWindow) -> WorkOperation {
