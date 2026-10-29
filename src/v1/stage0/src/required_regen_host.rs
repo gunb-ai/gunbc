@@ -3840,22 +3840,23 @@ fn journal_paths_for_subject(
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
 
-/// One file of the generated mirror population, as it sits in a commit.
-struct BaseMirrorFile {
-    path: String,
-    basename: String,
-}
-
-/// The generated-mirror population of `src/v1/stage0/src` AS COMMITTED IN `commit`: every top-level
-/// `.rs` file git tracks there, minus the hand-maintained roster. A directory (`bin`,
-/// `v1_claim_executable`) is not part of this population — those are hand-authored (DESIGN §6b)
-/// and a base checkout touching them could damage hand-written code.
-fn base_mirror_population(
-    workspace: &Path,
-    commit: &str,
-) -> Result<BTreeMap<String, BaseMirrorFile>, String> {
+/// The BASE SEED'S SOURCE AS COMMITTED IN `commit`: every file git tracks under `src/v1/stage0/src`
+/// (generated mirrors, hand-maintained files, and the hand-authored directories alike), keyed by
+/// its path relative to that directory. This is the whole of what the seed build compiles from
+/// the stage0 crate, so a seed built from it is the base commit's seed and not a mixture of two
+/// commits (DESIGN §6b: a hand-written file calling a generated function the base never emitted
+/// cannot build beside the base's mirrors).
+fn base_seed_population(workspace: &Path, commit: &str) -> Result<BTreeSet<String>, String> {
     let output = Command::new("git")
-        .args(["ls-tree", "-r", "--name-only", commit, "--", STAGE0_SRC_REL])
+        .args([
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "-z",
+            commit,
+            "--",
+            STAGE0_SRC_REL,
+        ])
         .current_dir(workspace)
         .output()
         .map_err(|e| format!("git ls-tree {commit}: {e}"))?;
@@ -3865,57 +3866,13 @@ fn base_mirror_population(
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    let mut population = BTreeMap::new();
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let path = line.trim_end_matches('\r');
-        if path.is_empty() {
-            continue;
-        }
-        let Some(basename) = path
-            .strip_prefix(&format!("{STAGE0_SRC_REL}/"))
-            .filter(|rest| !rest.contains('/') && rest.ends_with(".rs"))
-        else {
-            continue;
-        };
-        if is_hand_maintained_stage0_basename(basename) {
-            continue;
-        }
-        population.insert(
-            basename.to_string(),
-            BaseMirrorFile {
-                path: path.to_string(),
-                basename: basename.to_string(),
-            },
-        );
-    }
-    Ok(population)
-}
-
-/// The generated-mirror population that CURRENTLY SITS in the worktree, top level only. Read from
-/// the filesystem rather than from git so an uncommitted generated edit is part of the subject.
-fn worktree_mirror_population(stage0_src: &Path) -> Result<BTreeSet<String>, String> {
-    let mut present = BTreeSet::new();
-    for entry in fs::read_dir(stage0_src)
-        .map_err(|e| format!("enumerate stage0 src {}: {e}", stage0_src.display()))?
-    {
-        let entry = entry.map_err(|e| format!("read stage0 src entry: {e}"))?;
-        if !entry.path().is_file() {
-            continue;
-        }
-        let Some(basename) = entry.file_name().to_str().map(str::to_string) else {
-            continue;
-        };
-        if !basename.ends_with(".rs") || is_hand_maintained_stage0_basename(&basename) {
-            continue;
-        }
-        present.insert(basename);
-    }
-    Ok(present)
-}
-
-fn is_hand_maintained_stage0_basename(basename: &str) -> bool {
-    HAND_MAINTAINED_STAGE0_FILES.contains(&basename)
-        || EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES.contains(&basename)
+    let prefix = format!("{STAGE0_SRC_REL}/");
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter_map(|path| path.strip_prefix(&prefix))
+        .filter(|rest| !rest.is_empty())
+        .map(str::to_string)
+        .collect())
 }
 
 /// What the round-1 bootstrap did, in the receipt's vocabulary.
@@ -3924,51 +3881,45 @@ struct BaseRestore {
     /// The base commit, exactly as the step named it. The receipt NAMES it (sleek-owl-397
     /// caution, RFM #14963).
     base_commit: String,
-    /// The generated mirrors whose bytes the round-1 seed actually built from the base commit.
+    /// The files under `src/v1/stage0/src` whose bytes differed from the base commit's and were
+    /// replaced by them for the round-1 seed build.
     basenames: Vec<String>,
 }
 
-/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5, `gunbc.recurring_failure_mode`
+/// THE HEAL ROUND'S BOOTSTRAP AUTHORITY — DESIGN §5 and §6b, `gunbc.recurring_failure_mode`
 /// `heal_round_one_bootstraps_from_the_mirror_the_change_must_repair` (RFM #14963).
 ///
-/// Round 1 of the heal round compiles the seed against the BASE ref's committed stage0 mirror,
-/// never against the mirror carried by the pull request's own head. The head's mirror is precisely
-/// what the PR's `.dag` edits exist to repair: when it already carries a refusal the fix removes,
-/// the installed compiler refuses in round 1 before the regenerated seed can produce the
-/// correction — the deadlock hit on PR #13936 (run 40064940799, job 120786085841, step 7:
-/// `regen-round-cost: refused: stage seed build refused … cargo build
-/// (round.rebuild_from_installed) failed with exit status: 101`, five rows of
-/// `error: shared layer refused for 'Nat': TypeDeclNotDeclared — wrap/deref/Copy of a user type
-/// requires one declaration identity`, each pointing at `../../stage0/src/std_measure.rs:650:34`,
-/// `:652:90`, `:1389:12` and `../../stage0/src/std_checked_arithmetic.rs:316:28`, `:320:70` — the
-/// committed mirror, compiled as `src/v1/stage0_std_core/src/../../stage0/src/…`. Those
-/// `compile_error!` rows are what the PR's `.dag` edits remove, so the round was refused by the
-/// artifact its own repair regenerates).
+/// The bootstrap's contract is "a seed that can regenerate": round 1 builds the BASE commit's seed
+/// IN FULL — its generated mirrors AND its hand-written seed source — and uses it only to run the
+/// first regeneration over the head's `.dag`. The head's mirrors are precisely what the PR's `.dag`
+/// edits exist to repair (PR #13936, run 40064940799: the head mirror carried `compile_error!`
+/// rows the fix removes, so the installed compiler refused before the regenerated seed could
+/// produce the correction). The head's hand-written files are the other half of the same fact: a
+/// PR whose hand-written code calls a generated function the base never emitted cannot build
+/// beside the base's mirrors (gunbc#15015 run 40847092257, E0425; gunbc#15290 run 40616715648,
+/// E0061/E0425). Building base mirrors beside head hand-written code is a seed that exists in no
+/// commit, so it is not a seed that can regenerate.
 ///
 /// THIS IS NOT A FALLBACK AND IS NEVER TAKEN AFTER A FAILURE. The heal round step passes
 /// `--base-mirror` unconditionally and the commit arrives as `HEAL_BASE_MIRROR_COMMIT`; a round
-/// that is not a
-/// heal round simply does not ask for it. One path runs per invocation — there is no second
-/// attempt, no retry, and nothing to fall back TO (§5).
+/// that is not a heal round simply does not ask for it. One path runs per invocation (§5).
 ///
 /// Scope, and why it is exactly this wide:
-/// - Round 1's seed build ONLY. Rounds 2+ regenerate, install and re-measure from what the PR's own
-///   `.dag` produces, so the transaction still converges to the PR seed's own fixed point and the
-///   published candidate carries no base byte (`sleek-owl-397` caution, RFM #14963).
-/// - The GENERATED POPULATION ONLY. Hand-maintained files, the declared emitter-divergent row, and
-///   every directory (`bin`, `v1_claim_executable`, …) are left exactly as the head wrote them —
-///   restoring hand-authored code from base would damage the very change under repair.
-/// - Only mirrors present in BOTH base and the worktree get base bytes. A mirror the PR added has
-///   no base form and stays as written; one the PR deleted is absent on both sides. A population
-///   shape only one side has is a generation fact, not a refusal to repair, and the emitter's own
-///   population walk — which regenerates every mirror before anything is published — decides it.
-/// - Every mirror it overwrites is journalled FIRST, under the same checkpoint subject the install
-///   path uses: the snapshot holds the tree's OWN bytes, so the transaction's single existing
-///   restore returns the worktree to the head state on every exit path. This is the same rollback,
-///   not a second one beside it.
+/// - Round 1's seed build ONLY. The caller returns the head's bytes through the journal as soon as
+///   that build is done and BEFORE the first regeneration is compared, installed or rebuilt, so
+///   `round.rebuild_from_installed` compiles the head's hand-written code beside the mirrors this
+///   PR's own `.dag` regenerates, and the published candidate carries no base byte.
+/// - Every tracked file under `src/v1/stage0/src` at the base commit, with no per-file rule: the
+///   generated population, the hand-maintained roster and the hand-authored directories are one
+///   seed. A file the base has and the head deleted is recreated (the base `lib.rs` declares it);
+///   a file only the head has stays as written (the base build never names it).
+/// - Every path whose bytes it changes is journalled FIRST, under the same checkpoint subject the
+///   install path uses: the snapshot holds the tree's OWN bytes, so the transaction's single
+///   existing restore returns the worktree to the head state on every exit path. This is the same
+///   rollback, not a second one beside it.
 ///
-/// Idempotent: the heal round step runs once per image (a seed-handoff re-exec re-runs it), and
-/// base bytes written over base bytes are the same bytes.
+/// Idempotent, and a path already holding the base's bytes is not rewritten (its mtime is what
+/// cargo's freshness check reads).
 fn bootstrap_round_one_from_base_mirror(
     workspace: &Path,
     stage0_src: &Path,
@@ -3976,41 +3927,75 @@ fn bootstrap_round_one_from_base_mirror(
     subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<BaseRestore, String> {
     let (base_commit, from_base) = resolve_base_mirror_authority(workspace, base_commit_env)?;
-    let in_worktree = worktree_mirror_population(stage0_src)?;
-    let subjects: BTreeSet<String> = from_base
-        .keys()
-        .filter(|basename| in_worktree.contains(*basename))
-        .cloned()
-        .collect();
-
-    // JOURNAL THE TREE'S OWN BYTES BEFORE ANY WRITE, under THE SAME SUBJECT the install path uses.
-    // One rollback, not a second one beside it: the pre-stage snapshot holds the head's bytes, and
-    // the transaction's existing restore returns every path the bootstrap touched. A path the
-    // install journals later keeps this first snapshot — the head's bytes, never base's.
-    let basenames = subjects.iter().cloned().collect::<Vec<_>>();
-    journal_stage0_paths_for_subject(workspace, stage0_src, &basenames, subject)?;
-
-    for basename in &subjects {
-        let file = &from_base[basename];
+    let mut changes: Vec<(String, Vec<u8>)> = Vec::new();
+    for relative in &from_base {
         let output = Command::new("git")
-            .args(["show", &format!("{}:{}", base_commit, file.path)])
+            .args([
+                "show",
+                &format!("{base_commit}:{STAGE0_SRC_REL}/{relative}"),
+            ])
             .current_dir(workspace)
             .output()
-            .map_err(|e| format!("git show {}:{}: {e}", base_commit, file.path))?;
+            .map_err(|e| format!("git show {base_commit}:{relative}: {e}"))?;
         if !output.status.success() {
             return Err(format!(
-                "BootstrapBaseMirrorUnreadable: git show {}:{}: {}",
-                base_commit,
-                file.path,
+                "BootstrapBaseMirrorUnreadable: git show {base_commit}:{STAGE0_SRC_REL}/{relative}: {}",
                 String::from_utf8_lossy(&output.stderr)
             ));
         }
-        fs::write(stage0_src.join(basename), &output.stdout)
-            .map_err(|e| format!("write {}: {e}", basename))?;
+        if fs::read(stage0_src.join(relative)).ok().as_deref() != Some(output.stdout.as_slice()) {
+            changes.push((relative.clone(), output.stdout));
+        }
+    }
+
+    // JOURNAL THE TREE'S OWN BYTES BEFORE ANY WRITE, under THE SAME SUBJECT the install path uses.
+    // A path the install journals later keeps this first snapshot — the head's bytes, never base's.
+    let entries = changes
+        .iter()
+        .map(|(relative, _)| {
+            (
+                format!("{STAGE0_SRC_REL}/{relative}"),
+                stage0_src.join(relative),
+            )
+        })
+        .collect::<Vec<_>>();
+    journal_paths_for_subject(workspace, &entries, subject)?;
+
+    for (relative, bytes) in &changes {
+        let destination = stage0_src.join(relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
+        fs::write(&destination, bytes).map_err(|e| format!("write {relative}: {e}"))?;
     }
     Ok(BaseRestore {
         base_commit,
-        basenames: subjects.into_iter().collect(),
+        basenames: changes.into_iter().map(|(relative, _)| relative).collect(),
+    })
+}
+
+/// What the first image's bootstrap did, read back by the image that continues its transaction:
+/// the journal holds exactly the paths the bootstrap replaced (no install has run yet), and the
+/// commit is re-validated through the same authority the bootstrap used.
+fn base_restore_from_journal(
+    workspace: &Path,
+    base_commit_env: Option<&str>,
+) -> Result<BaseRestore, String> {
+    let (base_commit, _) = resolve_base_mirror_authority(workspace, base_commit_env)?;
+    let manifest_path = regen_convergence_journal_path(workspace).join("journal.json");
+    let manifest: RegenConvergenceJournal = serde_json::from_slice(
+        &fs::read(&manifest_path).map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
+    )
+    .map_err(|e| format!("parse {}: {e}", manifest_path.display()))?;
+    let prefix = format!("{STAGE0_SRC_REL}/");
+    Ok(BaseRestore {
+        base_commit,
+        basenames: manifest
+            .entries
+            .iter()
+            .filter_map(|entry| entry.relative_path.strip_prefix(&prefix))
+            .map(str::to_string)
+            .collect(),
     })
 }
 
@@ -4037,7 +4022,7 @@ fn bootstrap_round_one_from_base_mirror(
 fn resolve_base_mirror_authority(
     workspace: &Path,
     raw_commit: Option<&str>,
-) -> Result<(String, BTreeMap<String, BaseMirrorFile>), String> {
+) -> Result<(String, BTreeSet<String>), String> {
     let env = REGEN_ROUND_COST_BASE_MIRROR_ENV;
     let raw = match raw_commit {
         None => {
@@ -4093,10 +4078,10 @@ fn resolve_base_mirror_authority(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let population = base_mirror_population(workspace, base_commit)?;
+    let population = base_seed_population(workspace, base_commit)?;
     if population.is_empty() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
+            "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no seed source \
              population under {STAGE0_SRC_REL}; a round cannot bootstrap from a mirror that does \
              not exist"
         ));
@@ -4121,6 +4106,9 @@ struct SeedHandoff {
     cost: SeedBuildCost,
     source: String,
     built_exe: String,
+    /// Whether the head's tree was dirty BEFORE the bootstrap wrote the base seed into it. The
+    /// built image sees that written tree, so it cannot observe this itself.
+    tree_dirty: bool,
 }
 
 /// Why the seed handoff refuses. Standing: runtime mitigation (guarantee-ladder rung 1) -- a
@@ -4219,8 +4207,13 @@ impl SeedHandoff {
             .cpu_ms
             .map_or("unreadable".to_string(), |c| c.to_string());
         format!(
-            "crates={};wall_ms={};cpu_ms={};source={};built_exe={}",
-            self.cost.compiled_crates, self.cost.wall_ms, cpu, self.source, self.built_exe
+            "crates={};wall_ms={};cpu_ms={};source={};built_exe={};tree_dirty={}",
+            self.cost.compiled_crates,
+            self.cost.wall_ms,
+            cpu,
+            self.source,
+            self.built_exe,
+            self.tree_dirty
         )
     }
 
@@ -4245,6 +4238,7 @@ impl SeedHandoff {
         };
         let source = field("source")?;
         let built_exe = field("built_exe")?;
+        let tree_dirty = field("tree_dirty")?.parse::<bool>().map_err(|_| bad())?;
         Ok(SeedHandoff {
             cost: SeedBuildCost {
                 compiled_crates,
@@ -4253,6 +4247,7 @@ impl SeedHandoff {
             },
             source,
             built_exe,
+            tree_dirty,
         })
     }
 
@@ -4273,6 +4268,7 @@ fn decide_seed_handoff(
     exe_after: &str,
     source: &str,
     cost: &SeedBuildCost,
+    tree_dirty: bool,
 ) -> Result<SeedHandoffDecision, SeedHandoffRefusal> {
     if let Some(h) = incoming {
         if h.source != source {
@@ -4302,6 +4298,7 @@ fn decide_seed_handoff(
         cost: cost.clone(),
         source: source.to_string(),
         built_exe: exe_after.to_string(),
+        tree_dirty,
     }))
 }
 
@@ -6437,47 +6434,52 @@ pub fn run_regen_round_cost(
     let host = host_name();
     let exe_before = running_image_digest()?;
 
+    // THE IMAGE THAT FOLLOWS A SEED-BUILD HANDOFF CONTINUES THE FIRST IMAGE'S TRANSACTION. Its
+    // journal is that transaction's, and its worktree already holds the bytes the first image
+    // built: restoring and re-bootstrapping would rewrite every file with a newer mtime, and the
+    // rebuild below would compile the whole seed a second time to produce the identical artifact.
+    let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
+
     // Recover an interrupted transaction before attempting to build or observe a new subject.
-    restore_regen_convergence_journal(&workspace)?;
+    if handoff_in.is_none() {
+        restore_regen_convergence_journal(&workspace)?;
+    }
 
-    // THE SUBJECT IS READ AFTER THE RESTORE, which is what that comment has always claimed and
-    // what the round-1 bootstrap makes load-bearing rather than incidental. A heal round WRITES
-    // the base mirror into the worktree (the journal holds the head's bytes, restored on every
-    // exit path), and the seed build may relink this image and re-exec: the second image compares
-    // the identity it observes against the one the first image carried (`SourceChangedAcrossHandoff`).
-    // Read before the restore, the first image would see the committed head and the second would
-    // see whatever the previous image had written, and the round would refuse for a defect in the
-    // observation order rather than in the source. Read here, every image of one round observes
-    // one tree: the committed state, journal recovered.
+    // THE SUBJECT IS READ AFTER THE RESTORE, so a heal round's journal recovery cannot shift it.
     let tree = git_head_sha(&workspace)?;
-    let tree_dirty = git_tree_dirty(&workspace)?;
-    let source_identity = source_identity(&workspace, &tree)?;
+    let tree_dirty = match handoff_in.as_ref() {
+        Some(handoff) => handoff.tree_dirty,
+        None => git_tree_dirty(&workspace)?,
+    };
 
-    // THE ROUND-1 BOOTSTRAP (DESIGN §5, RFM #14963): when the caller is the heal round, the seed
-    // build below compiles the BASE ref's committed mirror instead of the head's. Unconditional
-    // for a heal round — never a step taken after a failure — and scoped to round 1: everything
-    // after the first seed build runs on bytes this PR's own `.dag` regenerates, and the journal
-    // restore returns the head's bytes before any install or publication.
+    // THE ROUND-1 BOOTSTRAP (DESIGN §5 and §6b, RFM #14963): when the caller is the heal round,
+    // the seed build below compiles the BASE commit's seed in full (generated mirrors and
+    // hand-written source) instead of the head's. Unconditional for a heal round, never a step
+    // taken after a failure. The base bytes live in the worktree only until the seed build is
+    // done: the journal restore below returns the head's bytes before the first regeneration is
+    // compared, installed or rebuilt.
     //
-    // A round's identity keys on the committed source roots, so the restore below (worktree bytes
-    // under `src/v1/stage0/src/` only) cannot shift it; and the install's own checkpoint subject,
-    // read later through the same helper this bootstrap uses, agrees with this one by construction.
+    // The ref is read HERE, from the environment, and passed as a value: a branch name is
+    // pull-request-controlled text and the workflow admit gate refuses any argv word containing
+    // `${{`, so the ref never reaches argv. The subject is the one the install path reads later,
+    // so the journal this bootstrap creates is the journal the round restores.
     let base_bootstrap = if base_mirror {
-        v1_rt::trace_mark("round.base_mirror_bootstrap.begin".to_string());
-        // The ref is read HERE, from the environment, and passed as a value: a branch name is
-        // pull-request-controlled text and the workflow admit gate refuses any argv word
-        // containing `${{`, so the ref never reaches argv. The subject is the one the install path
-        // reads later, so the journal this bootstrap creates is the journal the round restores.
         let base_commit_env = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
-        let restored = bootstrap_round_one_from_base_mirror(
-            &workspace,
-            &stage0_src,
-            base_commit_env.as_deref(),
-            &current_convergence_checkpoint_subject(&workspace)?,
-        )?;
-        v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
+        let restored = if handoff_in.is_none() {
+            v1_rt::trace_mark("round.base_mirror_bootstrap.begin".to_string());
+            let restored = bootstrap_round_one_from_base_mirror(
+                &workspace,
+                &stage0_src,
+                base_commit_env.as_deref(),
+                &current_convergence_checkpoint_subject(&workspace)?,
+            )?;
+            v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
+            restored
+        } else {
+            base_restore_from_journal(&workspace, base_commit_env.as_deref())?
+        };
         println!(
-            "regen-round-cost: round 1 bootstraps from the base mirror commit={} files={}",
+            "regen-round-cost: round 1 bootstraps from the base seed commit={} files={}",
             restored.base_commit,
             restored.basenames.len()
         );
@@ -6485,6 +6487,10 @@ pub fn run_regen_round_cost(
     } else {
         None
     };
+
+    // The identity of the tree the seed is built from. Read after the bootstrap in BOTH images, so
+    // the first and the built image observe one tree.
+    let source_identity = source_identity(&workspace, &tree)?;
 
     v1_rt::trace_ledger_arm();
     let rustfmt_spawns_before = rustfmt_spawn_count();
@@ -6497,7 +6503,6 @@ pub fn run_regen_round_cost(
         _ => None,
     };
     let exe_after = current_exe_digest()?;
-    let handoff_in = SeedHandoff::from_env().map_err(|cause| cause.to_string())?;
     let seed_build_cost = SeedBuildCost {
         compiled_crates: seed_build.compiled_crates,
         wall_ms: seed_build_wall_ms,
@@ -6509,10 +6514,19 @@ pub fn run_regen_round_cost(
         &exe_after,
         &source_identity,
         &seed_build_cost,
+        tree_dirty,
     )
     .map_err(|cause| cause.to_string())?
     {
-        SeedHandoffDecision::Proceed => {}
+        SeedHandoffDecision::Proceed => {
+            // THE SEED IS BUILT; THE HEAD'S BYTES COME BACK NOW. From here every build is the
+            // head's own source beside the mirrors this PR's `.dag` regenerates, and the
+            // journal is the transaction's one rollback, so no base byte survives to a rebuild
+            // or a publication.
+            if base_bootstrap.is_some() {
+                restore_regen_convergence_journal(&workspace)?;
+            }
+        }
         SeedHandoffDecision::ReExec(carry) => {
             // ROOT CAUSE: the build's output path IS this process's image path, so a build that
             // relinks replaces the executable that is running it. The emit below runs in this
@@ -7079,6 +7093,11 @@ mod heal_round_one_base_mirror_tests {
             "// base hand-maintained main\n",
         )
         .unwrap();
+        fs::write(
+            stage0.join("fixture_deleted_by_pr.rs"),
+            "// base mirror the PR deleted -- the base lib.rs still declares it\n",
+        )
+        .unwrap();
         git(&["init", "-q", "--initial-branch=main"]);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "base"]);
@@ -7106,6 +7125,7 @@ mod heal_round_one_base_mirror_tests {
             "// a mirror with no base form\n",
         )
         .unwrap();
+        fs::remove_file(stage0.join("fixture_deleted_by_pr.rs")).unwrap();
         git(&["add", "-A"]);
         git(&["commit", "-qm", "head"]);
         (root, stage0, base_commit)
@@ -7147,8 +7167,16 @@ mod heal_round_one_base_mirror_tests {
         .expect("the round-1 bootstrap runs");
         assert_eq!(restored.base_commit, base_commit);
         assert_eq!(
-            restored.basenames,
-            vec!["fixture_emitted.rs".to_string()],
+            restored.basenames.iter().cloned().collect::<BTreeSet<_>>(),
+            [
+                "bin/fixture_main.rs",
+                "fixture_deleted_by_pr.rs",
+                "fixture_emitted.rs",
+                "std_logic.rs",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>(),
             "the bootstrap claimed a different set of files than it seeded"
         );
         assert!(
@@ -7158,12 +7186,17 @@ mod heal_round_one_base_mirror_tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// HAND-MAINTAINED CODE IS NEVER REVERTED, in a file or in a directory. It is what the PR came
-    /// to author; a base byte there would undo the repair under review.
+    /// THE BOOTSTRAP SEED IS THE BASE COMMIT'S SEED IN FULL (DESIGN §6b). The head's hand-written
+    /// code may call a generated function the base mirrors never emitted (gunbc#15015, E0425), so
+    /// building base mirrors beside it builds a seed that exists in no commit. The hand-maintained
+    /// file and the hand-authored directory hold the base's bytes for the seed build, a file the
+    /// PR deleted is recreated (the base `lib.rs` declares it), and a file only the head has is
+    /// left alone (the base build never names it). Red at main, where the hand-maintained file
+    /// and directory stayed at the head's bytes.
     #[test]
-    fn hand_maintained_files_and_directories_survive_the_bootstrap() {
+    fn the_bootstrap_seed_is_the_base_commits_seed_in_full() {
         let (root, stage0, base_commit) = base_mirror_fixture();
-        bootstrap_round_one_from_base_mirror(
+        let restored = bootstrap_round_one_from_base_mirror(
             &root,
             &stage0,
             Some(&base_commit),
@@ -7171,28 +7204,48 @@ mod heal_round_one_base_mirror_tests {
         )
         .expect("the round-1 bootstrap runs");
         assert!(
-            read(&stage0.join("std_logic.rs")).contains("head hand-maintained"),
-            "the bootstrap reverted a hand-maintained file to base"
+            read(&stage0.join("std_logic.rs")).contains("base hand-maintained"),
+            "the seed build would compile the head's hand-written file beside base mirrors"
         );
         assert!(
-            read(&stage0.join("bin").join("fixture_main.rs")).contains("head hand-maintained"),
-            "the bootstrap reverted a hand-maintained directory to base"
+            read(&stage0.join("bin").join("fixture_main.rs")).contains("base hand-maintained"),
+            "the seed build would compile the head's hand-authored directory beside base mirrors"
+        );
+        assert!(
+            read(&stage0.join("fixture_deleted_by_pr.rs")).contains("the PR deleted"),
+            "a file the base declares and the PR deleted was not recreated"
         );
         assert!(
             read(&stage0.join("fixture_added_by_pr.rs")).contains("no base form"),
-            "the bootstrap damaged a mirror the PR added"
-        );
-        // …and it is not in the roster the bootstrap may write, because base has no bytes for it.
-        let (_, population) =
-            resolve_base_mirror_authority(&root, Some(&base_commit)).expect("base resolves");
-        assert!(
-            !population.contains_key("fixture_added_by_pr.rs"),
-            "base reported a population it never committed"
+            "the bootstrap damaged a file the PR added"
         );
         assert!(
-            !population.contains_key("std_logic.rs"),
-            "base's population included a hand-maintained roster member"
+            !restored
+                .basenames
+                .contains(&"fixture_added_by_pr.rs".to_string()),
+            "base claimed a file it never committed"
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// THE HEAD'S HAND-WRITTEN CODE ENTERS AT THE REBUILD, not before the seed build and not
+    /// never: the one journal returns every byte the bootstrap replaced, in a file, in a directory,
+    /// and the removal of a recreated file, so `round.rebuild_from_installed` and the published
+    /// candidate carry the PR's own source.
+    #[test]
+    fn the_head_hand_written_source_returns_through_the_journal() {
+        let (root, stage0, base_commit) = base_mirror_fixture();
+        let subject = fixture_subject(&root);
+        bootstrap_round_one_from_base_mirror(&root, &stage0, Some(&base_commit), &subject)
+            .expect("the round-1 bootstrap runs");
+        restore_regen_convergence_journal_for_subject(&root, &subject).expect("restore");
+        assert!(read(&stage0.join("std_logic.rs")).contains("head hand-maintained"));
+        assert!(read(&stage0.join("bin").join("fixture_main.rs")).contains("head hand-maintained"));
+        assert!(
+            !stage0.join("fixture_deleted_by_pr.rs").exists(),
+            "a file the PR deleted survived the restore"
+        );
+        assert!(read(&stage0.join("fixture_added_by_pr.rs")).contains("no base form"));
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -7587,12 +7640,12 @@ mod regen_round_cost_tests {
             "an edited untracked file changes the identity"
         );
         let c = cost(1, 1, None);
-        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "a", "b", &with_new, &c, false).unwrap() {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c),
+            decide_seed_handoff(Some(&carry), "b", "b", &edited_id, &c, false),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
     }
@@ -7611,16 +7664,16 @@ mod regen_round_cost_tests {
         let id_two = compose_source_identity("H", b"d", &mut two);
         let id_one = compose_source_identity("H", b"d", &mut one);
         assert_ne!(id_two, id_one);
-        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "a", "b", &id_two, &c, false).unwrap() {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c),
+            decide_seed_handoff(Some(&carry), "b", "b", &id_one, &c, false),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c),
+            decide_seed_handoff(Some(&carry), "b", "b", &id_two, &c, false),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -7654,7 +7707,7 @@ mod regen_round_cost_tests {
     fn exec_target_admission_compares_with_the_build_output_and_never_overwrites() {
         let c = cost(1, 1, None);
         // production decision: build output B is what the carry names
-        let carry = match decide_seed_handoff(None, "old", "B", "S", &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "old", "B", "S", &c, false).unwrap() {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!(),
         };
@@ -7669,7 +7722,7 @@ mod regen_round_cost_tests {
         assert_eq!(admitted, carry);
         // and the receiver still proceeds on the admitted carry
         assert!(matches!(
-            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c),
+            decide_seed_handoff(Some(&admitted), "B", "B", "S", &c, false),
             Ok(SeedHandoffDecision::Proceed)
         ));
     }
@@ -7693,6 +7746,7 @@ mod regen_round_cost_tests {
             cost: c.clone(),
             source: "S".into(),
             built_exe: built.clone(),
+            tree_dirty: false,
         };
         // rewrite the same inode, then put B back at the installed path
         let mut rewritten = fs::OpenOptions::new().write(true).open(&path).unwrap();
@@ -7705,17 +7759,17 @@ mod regen_round_cost_tests {
         );
         // receiver: running image C, installed path B again -> the old path-reopen said Proceed
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &running, &built, "S", &c),
+            decide_seed_handoff(Some(&carry), &running, &built, "S", &c, false),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         // installed/running mismatch with the carried artifact running
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &running, "S", &c),
+            decide_seed_handoff(Some(&carry), &built, &running, "S", &c, false),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same artifact everywhere proceeds
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), &built, &built, "S", &c),
+            decide_seed_handoff(Some(&carry), &built, &built, "S", &c, false),
             Ok(SeedHandoffDecision::Proceed)
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -7724,33 +7778,33 @@ mod regen_round_cost_tests {
     #[test]
     fn handoff_decisions_are_typed_and_round_trip() {
         let c = cost(4, 5, Some(6));
-        let carry = match decide_seed_handoff(None, "a", "b", "T", &c).unwrap() {
+        let carry = match decide_seed_handoff(None, "a", "b", "T", &c, false).unwrap() {
             SeedHandoffDecision::ReExec(h) => h,
             SeedHandoffDecision::Proceed => panic!("replaced exe must hand off"),
         };
         assert_eq!(carry.built_exe, "b", "the carry names the built artifact");
         assert_eq!(SeedHandoff::decode(&carry.encode()).unwrap(), carry);
         assert!(matches!(
-            decide_seed_handoff(None, "a", "a", "T", &c),
+            decide_seed_handoff(None, "a", "a", "T", &c, false),
             Ok(SeedHandoffDecision::Proceed)
         ));
         // positive: the re-exec'd image is the built artifact, same source, build is a no-op
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "b", "T", &c, false),
             Ok(SeedHandoffDecision::Proceed)
         ));
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "c", "T", &c),
+            decide_seed_handoff(Some(&carry), "b", "c", "T", &c, false),
             Err(SeedHandoffRefusal::ExecutableReplacedAfterHandoff { .. })
         ));
         // same commit, different uncommitted source
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "b", "b", "T-other-diff", &c),
+            decide_seed_handoff(Some(&carry), "b", "b", "T-other-diff", &c, false),
             Err(SeedHandoffRefusal::SourceChangedAcrossHandoff { .. })
         ));
         // wrong artifact: running image is not the one the first image built
         assert!(matches!(
-            decide_seed_handoff(Some(&carry), "z", "z", "T", &c),
+            decide_seed_handoff(Some(&carry), "z", "z", "T", &c, false),
             Err(SeedHandoffRefusal::WrongArtifactAcrossHandoff { .. })
         ));
         assert!(matches!(

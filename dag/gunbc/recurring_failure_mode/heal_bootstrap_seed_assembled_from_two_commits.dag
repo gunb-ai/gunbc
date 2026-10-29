@@ -1,0 +1,35 @@
+module gunbc.recurring_failure_mode.heal_bootstrap_seed_assembled_from_two_commits
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data heal_bootstrap_seed_assembled_from_two_commits: RecurringFailureMode = RecurringFailureMode {
+  identity: "heal_bootstrap_seed_assembled_from_two_commits" as NonEmptyStr,
+
+  rung: RungRead { found_at: FoundOnRung { rung: Mitigatable }, standing: BelowCeiling { current: FoundOnRung { rung: Mitigatable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: "the heal round's bootstrap seed being one commit's stage0 source (the base commit's generated mirrors AND its hand-written seed source), used only to run the first regeneration over the head's .dag, with the head's hand-written source returned by the one journal before the first regeneration is compared, installed or rebuilt. Sufficient for: no pull request whose hand-written seed code calls a generated function the base never emitted can be refused by the bootstrap build." } },
+
+  receipts: [
+    "**heal's bootstrap seed was assembled from two commits.** Round 1 restored the BASE commit's generated stage0 mirrors and built them beside the HEAD's hand-written seed files. A seed whose halves come from different commits exists in no commit, so it cannot be a seed that can regenerate.",
+
+    "INVALID STATE: a bootstrap build whose generated half and hand-written half disagree about the generated functions' signatures. Any pull request whose hand-written seed code calls a NEW generated function (or a changed signature) cannot build beside the base's mirrors, by construction, though its committed mirrors may already be the fixed point.",
+
+    "SPECIMENS: gunb-ai/gunbc#15015, heal run 40847092257, E0425 undeclared_transport_node (a srv1 reproduction converged on the same branch); gunb-ai/gunbc#15290, heal run 40616715648, E0061/E0425 from #15277. In #15290's log the round.base_mirror_bootstrap and round.seed_build pair ran twice back to back: the image that follows the seed-build re-exec restored and re-bootstrapped, which rewrote every file with a newer mtime and recompiled the identical seed.",
+
+    "REMEDY USED: none by hand; the pull requests sat red.",
+
+    "RUNG: mitigatable. The refusal is loud (a cargo error in the bootstrap build) but reads as the change's own defect.",
+
+    "CEILING: structurally guaranteed. Which bytes the bootstrap build compiles is a decidable policy fact of heal: the base commit's stage0 source in full, then the head's bytes returned through the journal.",
+
+    "NEXT-RUNG TRIGGER: the repair landed with this row at the bootstrap boundary (bootstrap_round_one_from_base_mirror restores every tracked file under src/v1/stage0/src at the base commit; run_regen_round_cost returns the head's bytes through the journal right after the seed build). The remaining climb is a witness on the real heal workflow, not a fixture of the Rust host.",
+
+    "REVIEW TELL: a heal refusal in round.seed_build naming a symbol that the pull request's own hand-written code introduced or changed. Ask whether the bootstrap built one commit's seed.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.heal_workflow", decl_name: "heal_round_base_mirror_env", field: WholeDeclaration },
+  ],
+}
