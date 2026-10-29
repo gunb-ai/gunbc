@@ -19,14 +19,11 @@ module extdeps.cloud.gcp.error_info
 // refuses rather than guessing a wait -- with no published instant to count a window from, there is no
 // bound to name.
 //
-// PUBLISHED QUOTA ROWS ARE CITED FALLBACKS ONLY. The quota WINDOW (the period a per-minute limit
-// counts over) is not itself an ErrorInfo field; it is read from the live `quota_unit` when present
-// and otherwise from a cited published row. Live `metadata` governs whenever it is present. The live
-// limits DIFFER from the published pages -- IAM v2 reads run 10/min and CRM writes 2400/min, while the
-// pages list different numbers -- so a row transcribed from a page is a fallback period, never a live
-// limit, and the cited rows carry only the per-minute period this wait needs, not a limit value.
+// NO PUBLISHED FALLBACK. The quota WINDOW is read from the live `quota_unit` only. The published pages
+// (cloud.google.com/iam/quotas, cloud.google.com/resource-manager/limits) list limits that DIFFER from
+// the live ones (IAM v2 reads run 10/min, CRM 2400/min), so a number transcribed from a page is not a
+// fact recorded about this refusal; an absent or unrecognized unit refuses naming the missing fact.
 
-import std.algebra { string_contains }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { minutes_per_hour, second, second_count, seconds_per_day, seconds_per_minute, Second }
 import std.optional { Present, Absent }
@@ -167,41 +164,27 @@ fn quota_metadata_field(detail: JsonValue, key: String) -> String? {
   }
 }
 
-// THE QUOTA WINDOW, live metadata governing when present. A quota_unit spells its period as a
-// slash-delimited token -- "1/min/<resource>", "1/hour/...", "1/day/...", "1/s/...". The period is read
-// from std.measure's calendar facts (seconds_per_minute, minutes_per_hour * seconds_per_minute,
-// seconds_per_day) rather than a magic constant. An unrecognized or absent period reads as an absence so
-// the caller falls back to the published row -- and if that too is unknown, refuses.
+// THE QUOTA WINDOW, read from the live quota_unit and nowhere else. A quota_unit is a slash-delimited
+// token "<n>/<period>/<resource>" and the period is its SECOND SEGMENT, matched exactly (so a resource
+// segment such as "admin" can never read as a period). The period comes from std.measure's calendar
+// facts. An absent unit or an unrecognized period is an absence: the wait REFUSES naming it, because a
+// window Google did not record about this refusal is not ours to supply.
 fn quota_window_from_unit(quota_unit: String) -> Second? {
-  if string_contains(s: quota_unit, pattern: "min") {
-    Present { value: second(count: seconds_per_minute()) }
-  } else if string_contains(s: quota_unit, pattern: "hour") {
-    Present { value: second(count: minutes_per_hour() * seconds_per_minute()) }
-  } else if string_contains(s: quota_unit, pattern: "day") {
-    Present { value: second(count: seconds_per_day()) }
-  } else if string_contains(s: quota_unit, pattern: "/s/") || string_contains(s: quota_unit, pattern: "sec") {
-    Present { value: second(count: 1) }
-  } else {
-    none
+  match split(s: quota_unit, delimiter: "/").skip(n: 1).first() {
+    Absent => none
+    Present { value: period } =>
+      if period == "s" { Present { value: second(count: 1) } }
+      else if period == "min" { Present { value: second(count: seconds_per_minute()) } }
+      else if period == "h" || period == "hour" { Present { value: second(count: minutes_per_hour() * seconds_per_minute()) } }
+      else if period == "d" || period == "day" { Present { value: second(count: seconds_per_day()) } }
+      else { none }
   }
 }
 
-// THE CITED FALLBACK WINDOW (cloud.google.com/iam/quotas and cloud.google.com/resource-manager/limits,
-// read 2026-10-29). The governing quota on both pages is a per-minute limit, so the fallback period is
-// one minute -- a calendar period fact, NOT a live limit value (the live limits are 10/min IAM v2 reads
-// and 2400/min CRM, which the pages list differently). Consulted only when the live quota_unit is absent
-// or spells no recognized period.
-fn published_quota_window_fallback() -> Second {
-  second(count: seconds_per_minute())
-}
-
-fn quota_window_for(info: GcpQuotaErrorInfo) -> Second {
+fn quota_window_for(info: GcpQuotaErrorInfo) -> Second? {
   match info.quota_unit {
-    Absent => published_quota_window_fallback()
-    Present { value: unit } => match quota_window_from_unit(quota_unit: unit) {
-      Absent => published_quota_window_fallback()
-      Present { value: window } => window
-    }
+    Absent => none
+    Present { value: unit } => quota_window_from_unit(quota_unit: unit)
   }
 }
 
@@ -222,14 +205,18 @@ fn quota_retry_wait_for(
     Present { value: start_text } => match to_epoch_secs(start_text) {
       Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.window_start_time is not a reducible instant" }
       Present { value: start_secs } => {
-        let window = quota_window_for(info: info)
-        let opens_at = (start_secs as Int) + (second_count(s: window) as Int)
-        if opens_at <= (now_secs as Int) {
-          QuotaWaitNow
-        } else {
-          match checked_int_to_nat(n: opens_at - (now_secs as Int)) {
-            Present { value: secs } => QuotaWaitBefore { wait: second(count: secs) }
-            Absent => QuotaWaitRefused { missing: "the derived quota wait does not fit a whole-second sleep" }
+        match quota_window_for(info: info) {
+          Absent => QuotaWaitRefused { missing: "google.rpc.ErrorInfo.metadata.quota_unit is absent or names no recognized period; the quota window is not recorded" }
+          Present { value: window } => {
+            let opens_at = (start_secs as Int) + (second_count(s: window) as Int)
+            if opens_at <= (now_secs as Int) {
+              QuotaWaitNow
+            } else {
+              match checked_int_to_nat(n: opens_at - (now_secs as Int)) {
+                Present { value: secs } => QuotaWaitBefore { wait: second(count: secs) }
+                Absent => QuotaWaitRefused { missing: "the derived quota wait does not fit a whole-second sleep" }
+              }
+            }
           }
         }
       }

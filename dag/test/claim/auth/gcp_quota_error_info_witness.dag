@@ -52,3 +52,14 @@ test fn an_error_info_without_window_start_time_refuses_the_wait() -> Bool {
     _ => false
   }
 }
+
+// RED: no quota_unit, or a period that is not one of Google's, refuses; a resource segment containing
+// "min" (admin) is not the minute period.
+test fn an_absent_or_unrecognized_quota_unit_refuses_the_wait_instead_of_defaulting_a_window() -> Bool {
+  let none_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: none, window_start_time: Present { value: "T0" } }
+  let odd_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: Present { value: "1/fortnight/admin" }, window_start_time: Present { value: "T0" } }
+  let admin_unit = GcpQuotaErrorInfo { reason: "R", domain: "d", quota_limit_value: none, quota_unit: Present { value: "1/d/admin" }, window_start_time: Present { value: "T0" } }
+  (match quota_retry_wait_for(info: none_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitRefused { missing: m } => string_contains(s: m, pattern: "quota_unit")  _ => false })
+    && (match quota_retry_wait_for(info: odd_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitRefused { missing: _ } => true  _ => false })
+    && (match quota_retry_wait_for(info: admin_unit, now_secs: 1010, to_epoch_secs: fake_epoch) { QuotaWaitBefore { wait: w } => second_count(s: w) == 86390  _ => false })
+}
