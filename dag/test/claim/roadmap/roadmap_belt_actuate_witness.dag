@@ -3,6 +3,8 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_session_placement { SessionSettlePassRan, SessionSettlePassRefused }
 import gunbc.roadmap.roadmap_belt_actuate { belt_settlement_spawn_gate }
+import gunbc.roadmap.roadmap_belt_actuate { belt_lineage_standing, AttemptsObserved, AttemptsRefused }
+import gunbc.roadmap.roadmap_attempt_worktree_claim { LineageUnknown }
 import gunbc.roadmap.roadmap_launch_admission { LaunchNoPlacementGrant }
 import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
@@ -2753,6 +2755,25 @@ test fn a_not_due_request_pending_hold_maps_to_a_wake_route() -> Bool {
     SpawnRouteWake { attempt_key, at } => attempt_key == "a1" && at == 1700000060
     _ => false
   }
+}
+
+// belt_lineage_standing is the ONE 'ended' derivation both the worktree-claim settlement and the worktree
+// restore read (roadmap_attempt_worktree_claim LineageStanding). DESIGN §5: 'can't tell' must not collapse
+// into 'converged', so a state we cannot decide must come back LineageUnknown (which the classifier REFUSES,
+// countably) and never LineageNotEnded (which it reads as a settled keep). The two ledger states decidable
+// without touching the filesystem -- an unobservable ledger, and a present ledger with no row for this attempt
+// (reaped, or an inconsistent ledger) -- are pinned here. The decision-Refused arm of the same function (an
+// unreadable retire record) is wet: belt_continuation_decision_for_progress returns Refused only via
+// LineageRetireUnreadable, which needs a seeded corrupt retire file; that arm is exercised end to end by the
+// live replay, while the Unknown posture is pinned here where it is deterministically observable.
+test fn belt_lineage_standing_reports_unknown_for_an_unreadable_ledger_or_a_missing_row() -> Bool {
+  let inst = srv1_live_dashboard_instance()
+  let nid = roadmap_belt_actuate_nid("shell-dag-lineage-standing-unknown")
+  let unreadable = belt_lineage_standing(instance: inst, ledger: AttemptsRefused { reason: "the prior-attempt ledger is unobservable" }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: nid, attempt_key: "a1")
+  let missing = belt_lineage_standing(instance: inst, ledger: AttemptsObserved { attempts: [] }, panes: BeltAttemptPanesObserved { panes: [] }, node_id: nid, attempt_key: "a1")
+  let u_ok = match unreadable { LineageUnknown { detail: _ } => true  _ => false }
+  let m_ok = match missing { LineageUnknown { detail: _ } => true  _ => false }
+  u_ok && m_ok
 }
 
 // THE COMPOSITION, END TO END OVER THE REAL PRODUCER: an active systemd attempt unit for node-a

@@ -538,7 +538,7 @@ import gunbc.fleet.origin_main_revision_observe {
   LocalTreeRevisionObserved, LocalTreeRevisionUnobserved,
 }
 import extdeps.git {
-  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args, shape_git_worktree_add_branch_argv,
+  shape_git_rev_parse_head_args, shape_git_status_porcelain_nul_args, shape_git_add_all_args,
   shape_git_commit_message_args, git_pathspec_literal, git_command_config_inert_args,
   git_dir_path_from_gitfile, git_untrusted_config_env_words,
   git_worktree_commondir_relative, git_dir_flag_prefix, git_work_tree_flag_prefix,
@@ -3159,8 +3159,20 @@ fn belt_lineage_standing(
             node_id: node_id,
             progress: belt_workflow_progress_for_attempt_ref(instance: instance, panes: panes, attempt: a),
           ) {
+            // The ONE arm that means "this attempt's lineage has ENDED": release/close is allowed only here.
             ContinuationEnded { reason: _ } => LineageEnded
-            _ => LineageNotEnded
+            // A REFUSED decision is 'can't tell' -- the ledger was unobservable or the retire record unreadable --
+            // NOT 'not ended'. It must come back Unknown so the claim pass refuses/counted and the restore skips,
+            // never reporting the claim converged on an undecided standing (§5: every degradation typed and countable).
+            ContinuationRefused { reason } => LineageUnknown { detail: join(["the continuation could not decide: ", reason], "") }
+            // The decided-but-still-open arms (explicit, no wildcard: a new ContinuationDecision arm must be
+            // reconsidered here, not silently swept into a standing). None of these means the lineage ended, so
+            // the claim is KEPT -- the fail-safe direction: only ContinuationEnded above may release it.
+            ContinuationResume { reason: _, attempt_key: _, ordinal: _, causes: _ } => LineageNotEnded
+            ContinuationHoldUntil { reason: _, attempt_key: _, redeliver_at: _ } => LineageNotEnded
+            ContinuationHold { reason: _ } => LineageNotEnded
+            ContinuationSpawnFresh { reason: _ } => LineageNotEnded
+            ContinuationComplete { reason: _ } => LineageNotEnded
           }
       }
   }
