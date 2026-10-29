@@ -6,7 +6,7 @@ import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.measure { byte_size, measure_count }
 import std.content_hash { sha256_hex_digest }
 import std.fabric_blob {
-  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob,
+  FabricBlobAddress, FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob, read_staged_fabric_blob_observed,
   fabric_blob_reading_size, fabric_blob_reading_digest, fabric_blob_object_name,
   FabricBlobPutAdmitted, FabricBlobPutTooLarge, fabric_blob_put_plan, fabric_blob_address_eq, fabric_blob_fits,
 }
@@ -62,5 +62,25 @@ test fn the_object_name_is_the_key_hex() -> Bool {
   match witness_address() {
     Present { value: addr } => (fabric_blob_object_name(address: addr) as String) == key_hex
     Absent => false
+  }
+}
+
+
+test fn supplied_observations_cannot_mint_a_failed_or_negative_size_reading() -> Bool {
+  (match read_staged_fabric_blob_observed(path: fixture_blob_path, digest_observed: false,
+    digest_line: concat(empty_sha256_hex, "  -"), size_observed: true, size_text: "0") {
+    FabricBlobReadRefused { fault: _ } => true FabricBlobRead { reading: _ } => false
+  }) && (match read_staged_fabric_blob_observed(path: fixture_blob_path, digest_observed: true,
+    digest_line: concat(empty_sha256_hex, "  -"), size_observed: true, size_text: "-1") {
+    FabricBlobReadRefused { fault: _ } => true FabricBlobRead { reading: _ } => false
+  })
+}
+
+test fn supplied_nonempty_observation_preserves_digest_path_and_size() -> Bool {
+  match read_staged_fabric_blob_observed(path: fixture_blob_path, digest_observed: true,
+    digest_line: concat(key_hex, "  -"), size_observed: true, size_text: "17") {
+    FabricBlobReadRefused { fault: _ } => false
+    FabricBlobRead { reading: reading } => (fabric_blob_reading_digest(reading: reading).hex as String) == key_hex
+      && measure_count(m: fabric_blob_reading_size(reading: reading)) == 17 && reading.path == fixture_blob_path
   }
 }

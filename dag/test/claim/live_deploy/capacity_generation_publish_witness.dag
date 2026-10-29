@@ -1,5 +1,12 @@
 module test.claim.live_deploy.capacity_generation_publish_witness
 
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import std.materialization_provider { CutoverCaptureRequest }
+import std.fabric_blob { read_staged_fabric_blob_observed, FabricBlobRead, FabricBlobReadRefused }
+import gunbc.live_deploy.apply_legs { apply_modeled_unit_install_payload, ApplyPlanReady, ApplyLegInstallUnit }
+import gunbc.live_deploy.unit_install { ModeledUnitDocument, CapturedUnitDocument }
+import gunbc.live_deploy.capacity_capture_store { capacity_capture_blob_path, capacity_capture_blob_admit }
+import gunbc.live_deploy.capacity_controller_plan { capacity_controller_plan, capacity_controller_bind_publications }
 import std.types { Bool, String, NonEmptyStr }
 import std.scoped_authorization { ClaimLost, ClaimUndecided, AttemptIdentity, AuthorizationGranted, OperatorGrant, Unclaimed, ClaimHeld, ClaimedBy }
 import std.durable_compare_and_set { cas_generation_first }
@@ -8,7 +15,7 @@ import std.optional { Present, Absent }
 import gunbc.live_deploy.capacity_generation_publish { CapacityPlannedGeneration, capacity_generation_plan, capacity_generation_render_admission, capacity_generation_claim_key, capacity_generation_diff_lines, capacity_generation_claim_admission, capacity_generation_target_admit }
 import gunbc.live_deploy.capacity_migration_approval { CapacityGenerationOperation, CapacityCutoverIntent, CapacityCutoverAuthorization, capacity_cutover_request, capacity_cutover_claim }
 import test.claim.live_deploy.capacity_capture_store_witness { capture_fixture_store }
-import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install }
+import test.claim.live_deploy.capacity_controller_plan_witness { controller_fixture_install, controller_fixture_request }
 import test.claim.live_deploy.capacity_cutover_recovery_witness { recovery_fixture_record }
 
 // One inhabitance execution of the modeled document renderer establishes the
@@ -87,6 +94,40 @@ test fn an_unpublished_target_cannot_become_an_installable_generation() -> Bool 
       Ok { value: approval } => match capacity_generation_target_admit(plan: plan, approval: approval,
         at: "2026-10-29T00:02:00Z", published: Err { value: "target was not published" }) {
         Err { value: why } => why == "target was not published" Ok { value: _ } => false
+      }
+    }
+  }
+}
+
+// Supplied observations discriminate at the blob mint, with the rendered unit's
+// real digest and byte size. std_fabric_blob retains the real handler inhabitance.
+test fn a_verified_published_target_binds_the_closed_controller() -> Bool {
+  match generation_fixture_plan() {
+    Err { value: _ } => false
+    Ok { value: plan } => match generation_fixture_approval(plan: plan) {
+      Err { value: _ } => false
+      Ok { value: approval } => {
+        let request = CutoverCaptureRequest { host: approval.intent.host, source_unit: plan.install.destination, digest: plan.operation.digest }
+        let payload = match plan.install.file { ModeledUnitDocument { file: file } => apply_modeled_unit_install_payload(file: file) CapturedUnitDocument { capture: _ } => "" }
+        match capacity_capture_blob_path(store: plan.store, request: request) {
+          Err { value: _ } => false
+          Ok { value: path } => match read_staged_fabric_blob_observed(path: path, digest_observed: true,
+            digest_line: concat(plan.operation.digest.hex as String, "  -"), size_observed: true,
+            size_text: to_string(count(bytes_octets(b: utf8_encode_bytes(s: payload))))) {
+            FabricBlobReadRefused { fault: _ } => false
+            FabricBlobRead { reading: reading } => match capacity_generation_target_admit(plan: plan, approval: approval,
+              at: "2026-10-29T00:02:00Z", published: capacity_capture_blob_admit(store: plan.store, request: request, reading: reading)) {
+              Err { value: _ } => false
+              Ok { value: generation } => match capacity_controller_plan(request: controller_fixture_request(),
+                install_plan: ApplyPlanReady { legs: [ApplyLegInstallUnit { step: "fixture", install: plan.install }] }) {
+                Err { value: _ } => false
+                Ok { value: proposed } => match capacity_controller_bind_publications(plan: proposed, published: [generation]) {
+                  Err { value: _ } => false Ok { value: bound } => count(bound.legs) == 4
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
