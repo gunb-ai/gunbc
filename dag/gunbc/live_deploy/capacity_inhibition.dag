@@ -1,10 +1,11 @@
 module gunbc.live_deploy.capacity_inhibition
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.systemd.manager { SystemManager, UserManager }
-import extdeps.systemd.unit_load_path { systemd_persistent_system_control_directory }
+import extdeps.systemd.unit_load_path { systemd_persistent_system_control_directory, systemd_persistent_user_control_directory }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import gunbc.live_deploy.unit_install { DeploymentUnitInstall }
 
@@ -28,7 +29,7 @@ fn capacity_inhibition_path(subject: CapacityManagedUnit, user_config_home: Resu
       Err { value: why } => { return Err { value: why } }
       Ok { value: config } => {
         if !starts_with(s: (config as String), prefix: "/") { return Err { value: "user configuration root is not absolute" } }
-        concat(config as String, "/systemd/user.control") as NonEmptyStr
+        systemd_persistent_user_control_directory(config_home: config)
       }
     }
   }

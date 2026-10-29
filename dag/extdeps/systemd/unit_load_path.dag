@@ -25,7 +25,7 @@ fn systemd_user_control_directories(config_home: NonEmptyStr, runtime_dir: NonEm
   if !starts_with(s: (config_home as String), prefix: "/") || !starts_with(s: (runtime_dir as String), prefix: "/") {
     Err { value: "systemd user load-path roots must be absolute resolved paths" }
   } else {
-    Ok { value: [concat(config_home as String, "/systemd/user.control") as NonEmptyStr,
+    Ok { value: [systemd_persistent_user_control_directory(config_home: config_home),
       concat(runtime_dir as String, "/systemd/user.control") as NonEmptyStr] }
   }
 }
@@ -33,3 +33,7 @@ fn systemd_user_control_directories(config_home: NonEmptyStr, runtime_dir: NonEm
 // A unit file symlinked to /dev/null is masked. This target is an upstream
 // mechanism, not proof that a particular link wins the host's effective search.
 data systemd_mask_link_target: NonEmptyStr = "/dev/null"
+
+fn systemd_persistent_user_control_directory(config_home: NonEmptyStr) -> NonEmptyStr {
+  concat(config_home as String, "/systemd/user.control") as NonEmptyStr
+}
