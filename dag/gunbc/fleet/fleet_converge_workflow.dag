@@ -6197,7 +6197,12 @@ fn fleet_converge_fleet_keypair_mint_receipt_upload_step(subject: FleetKeypairMi
       kv(key: "retention-days", value: yaml_int(n: 30)),
     ] },
     env: none,
-    if_condition: Present { value: join(["always() && ", fleet_converge_fleet_keypair_mint_step_if, " && failure()"], "") },
+    // `always()` WITHOUT `&& failure()`: a mint that failed is the case where the receipt matters most, but a
+    // mint that SUCCEEDED matters more -- the job runs on a GitHub-hosted VM that is thrown away when the job
+    // ends, and the receipt it wrote (`version_name`, public line, fingerprint) is what the runbook's pinning
+    // and transcription steps read (docs/runbooks/mtcollins1-ssh-host-key-mint.md, Steps 2 and 3). Gating on
+    // failure() would delete the evidence on exactly the path that produces it (review 87458, blocking).
+    if_condition: Present { value: join(["always() && ", fleet_converge_fleet_keypair_mint_step_if], "") },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }

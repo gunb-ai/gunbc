@@ -912,7 +912,7 @@ jobs:
           path: target/boot-medium-reader-key-mint.txt
           if-no-files-found: warn
           retention-days: 30
-        if: always() && github.event.inputs.mode == 'fleet_keypair_mint' && failure()
+        if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 10
       - name: "Mint fleet keypair: mtcollins1 ssh host key (ed25519 in-run, in the runner's tmpfs; private half to Secret Manager only)"
         id: mint_mtcollins1_ssh_host_key
@@ -931,7 +931,7 @@ jobs:
           path: target/mtcollins1-ssh-host-key-mint.txt
           if-no-files-found: warn
           retention-days: 30
-        if: always() && github.event.inputs.mode == 'fleet_keypair_mint' && failure()
+        if: always() && github.event.inputs.mode == 'fleet_keypair_mint'
         timeout-minutes: 10
   fleet-converge:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}

@@ -59,6 +59,12 @@ data public_line: String = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ8k0Z1Tq0K6yQ9v
 
 data fingerprint_line: String = "256 SHA256:8Xk2pQ0vN7mR4tY1wZ9cB3dE6fH0jK2lM5nO8pQ1rSs fleet-key (ED25519)"
 
+// WHAT THE VALIDATOR ADMITS INTO THE PAIR IS THE FINGERPRINT ITSELF -- the second field of `ssh-keygen -l`'s
+// line -- not the whole line: the bits and the comment are ssh-keygen's presentation, and a known_hosts row or
+// a human comparison wants the `SHA256:<base64>` token. The tests that assert what the fold CARRIED compare
+// against this token; the tests that assert what the validator ADMITTED compare the raw line against this.
+data fingerprint_token: String = "SHA256:8Xk2pQ0vN7mR4tY1wZ9cB3dE6fH0jK2lM5nO8pQ1rSs"
+
 // THE tmpfs GATE, ON BOTH SUBJECTS (RED). The mint directory's filesystem is READ from findmnt and must come
 // back `tmpfs`; anything else refuses BEFORE ssh-keygen is dispatched, so a mint can never generate onto a
 // block device -- which is the half of Q1 that a path string beginning /dev/shm would silently betray, since
@@ -146,7 +152,7 @@ test fn a_generated_pair_is_judged_by_five_conditions_and_the_order_of_them_is_t
     }
     // AND THE HAPPY PATH, so the refusals above are not merely a function that always refuses.
     && match fleet_keypair_generation_verdict(removed: true, generated: HostCommandDone { stdout: "" }, private_read: true, private_text: planted_private, public_text: public_line, fingerprint: HostCommandDone { stdout: fingerprint_line }) {
-      GenerationYielded { pair: p } => (p.public_line as String) == public_line && (p.fingerprint as String) == fingerprint_line && p.private_half == planted_private
+      GenerationYielded { pair: p } => (p.public_line as String) == public_line && (p.fingerprint as String) == fingerprint_token && p.private_half == planted_private
       _ => false
     }
 }
@@ -256,7 +262,8 @@ fn argv_carries_no_key_material(subject: FleetKeypairMintSubject) -> Bool {
     && any(argv.generate, w => w == "-N")
     && any(argv.generate, w => w == "")
     && any(argv.generate, w => w == "-f")
-    && any(argv.generate, w => w == subject.mint_dir)
+    && any(argv.generate, w => w == fleet_keypair_mint_key_file(subject: subject))
+    && !any(argv.generate, w => w == subject.mint_dir)
     // AND THE PATHS ARE THE SUBJECT'S OWN: this is what makes one policy two mints without one mint ever
     // writing into the other's directory.
     && any(argv.make_dir, w => w == subject.mint_dir)
@@ -291,7 +298,7 @@ fn refused_receipt() -> String {
 }
 
 fn minted_receipt() -> String {
-  fleet_keypair_receipt_line(word: "host_key=minted", version_name: "versions/7", public_line: public_line, fingerprint: fingerprint_line, cause: "")
+  fleet_keypair_receipt_line(word: "host_key=minted", version_name: "versions/7", public_line: public_line, fingerprint: fingerprint_token, cause: "")
 }
 
 test fn a_receipt_names_version_public_key_and_fingerprint_and_never_the_private_half() -> Bool {
@@ -316,7 +323,7 @@ test fn a_receipt_names_version_public_key_and_fingerprint_and_never_the_private
 // operator sees -- it is a connection that refuses forever, or (worse, if the anchor is then "fixed" by
 // copying what the host presented) the pin this row exists to prevent.
 test fn the_host_key_receipt_names_the_fingerprint_because_the_anchor_is_verified_on_every_connect() -> Bool {
-  let rendered = render_host_key_mint_receipt(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_line as NonEmptyStr })
+  let rendered = render_host_key_mint_receipt(r: HostKeyMinted { version_name: "versions/3" as NonEmptyStr, public_line: public_line as NonEmptyStr, fingerprint: fingerprint_token as NonEmptyStr })
   starts_with(s: rendered, prefix: "host_key=minted")
     && string_contains(s: rendered, pattern: "fingerprint=SHA256:")
     && string_contains(s: rendered, pattern: "public_key=ssh-ed25519")
@@ -459,7 +466,10 @@ test fn the_dispatch_walks_the_roster_within_the_input_cap_with_every_step_built
          Absent => false
        })
     && all(fleet_keypair_mint_subject_rows(), s => match step_with_id(id: concat(fleet_converge_fleet_keypair_mint_step_id(subject: s), "_receipt_upload")) {
-         Present { value: st } => mint_step_if_of(st: st).contains("always()") && mint_step_if_of(st: st).contains("failure()")
+         // `always()` without `&& failure()`: a job that ends on a GitHub-hosted VM keeps its receipts only if
+         // the upload runs on the SUCCESS path too -- and success is the path that produces the receipt the
+         // runbook pins from (review 87458). A future edit re-adding failure() fails here.
+         Present { value: st } => mint_step_if_of(st: st).contains("always()") && !mint_step_if_of(st: st).contains("failure()")
          Absent => false
        })
     // Distinct steps per row: one step id cannot serve two keys.

@@ -62,7 +62,17 @@ table in `gunbc.ci.ci_spec`.
 
 `.github/workflows/fleet-converge.yml` is a generated artifact (its header names the authority:
 `gunbc.fleet.fleet_converge_workflow expected_fleet_converge_yml`, regen via
-`gunbc.instruments.generated_artifact_gate main_wet`). Its bytes cannot be regenerated in this session: no
-available interpreter binary is built at the current main, and building one is ruled out. No test compares
-the committed file to the emission (only the scheduled `drift-watch` job on the default branch does, and it
-reports rather than gate a PR), so the Dag change is CI-hermetic and the committed yml is a named follow-up.
+`gunbc.instruments.generated_artifact_gate main_wet`). It IS regenerated in this PR, and must be: the mode
+rename and the mint job are only real if the committed workflow carries them, and no test compares the
+committed file to the emission (only the scheduled `drift-watch` job on the default branch does, and it
+reports rather than gate a PR) — so a commit that left the old job behind would pass CI while the dispatch
+still named a retired mode (review 87458). The regen ran
+`gunbc run --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet_one
+--arg path=.github/workflows/fleet-converge.yml` against the branch tree; the local interpreter reached by
+that command predates today's seed-build prelude fold (the fold lives in the Dag, and any interpreter older
+than it emits `__GUNBC_BASH_EMIT_REFUSED__` where the prelude belongs). The mint job's build step is the
+emission of `fleet_converge_hosted_gunbc_build_step(purpose:)`, whose run body does not depend on `purpose`
+(only the step NAME interpolates it), so its body is carried byte-for-byte from the committed grant-wait
+job's build step — the current model's own emission, regenerated on main the same day — and a reviewer with a
+fresh binary should get identical bytes. If a regen at a newer main ever shows a difference in that one step,
+the carry was wrong, not the model.
