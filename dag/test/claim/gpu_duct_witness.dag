@@ -12,7 +12,8 @@ import product.printed_chassis.gpu_duct {
   BlowerDuctAdmission, BlowerDuctAdmitted, BlowerDuctCardInterfaceRefused, BlowerThickerThanCard,
   BlowerPassageClosedByKeepout, BlowerInsertNotReachable, BlowerCardCountUnsupported, OutletOnLengthEdge, blower_face_clearance_loosest, BlowerDuctDesign, admit_blower_duct, a16_blower_duct_design,
 }
-import extdeps.fans.types { RadialBlowerEnvelope }
+import extdeps.fans.types { RadialBlowerEnvelope, RadialBlowerHousingEdge, BlowerDepthEdge }
+import extdeps.fans.delta { delta_bfb1012m_outlet }
 
 fn parts_of(a: GpuDuctAdmission) -> List<AssemblyPart>? {
   match a {
@@ -372,9 +373,33 @@ test fn w_a_narrow_open_passage_with_no_reachable_insert_refuses() -> Bool {
   passage_of(a: a) >= 4000 && match unreachable_insert_x(a: a) { Present { value: _ } => true Absent => false }
 }
 
-// THE FIT ALONG THE FACE IS DERIVED PER ORIENTATION: with the outlet edge unread the cavity takes the
-// 97.2 mm edge and a 94.4 mm edge sits 1.9 mm loose per side; read as the 97.2 mm edge it is the 0.5 mm
-// sleeve clearance. The envelope behind the socket bounds both orientations at the longer edge.
+// THE OUTLET IS CITED NOW (#15369), AND AN OPEN BAND THAT WAS JUSTIFIED BY BLANK SPACE HAS TO BE JUSTIFIED
+// AGAINST THE FIGURES. The flat-on-end part leaves its whole peripheral band open because nothing keys the
+// blower's rotation in its pocket; that is only safe if the cited outlet fits inside the open band AT EITHER
+// END of the edge it sits on. So this checks the cited record against the part's own dimensions instead of
+// against a sentence: the 57.9 +/- 0.5 frame the outlet sits in must lie inside the 94.4 mm depth edge the
+// pocket stands open along, and the 29.3 mm opening must lie inside the 33.0 +/- 0.5 mm thickness face the
+// pocket is open through. If Delta's frame grew past the edge, this is where the open shoulder stops being
+// enough and a real spigot becomes a design.
+test fn w_the_open_band_covers_the_cited_outlet_whichever_end_the_builder_turns() -> Bool {
+  let o = delta_bfb1012m_outlet
+  let b = a16_blower_duct_design.blower
+  match o.edge { BlowerDepthEdge => true _ => false }
+    // the frame, at its tolerance extreme, still lies inside the edge the band is open along
+    && micrometer_count(m: o.frame_along_edge) + micrometer_count(m: o.frame_along_edge_tolerance) <= micrometer_count(m: b.housing_depth)
+    // the opening itself is inside the thickness face the pocket is open through, tolerance included
+    && micrometer_count(m: o.opening_across_thickness) <= micrometer_count(m: b.thickness) + micrometer_count(m: b.thickness_tolerance)
+    // and the opening is the narrower thing inside the frame it sits in -- the band is sized by the frame,
+    // not by the hole, which is the difference between a claim and a guess
+    && micrometer_count(m: o.opening_along_edge) <= micrometer_count(m: o.frame_along_edge)
+    && micrometer_count(m: o.opening_along_edge) == 53900 && micrometer_count(m: o.opening_across_thickness) == 29300
+}
+
+// THE FIT ALONG THE FACE IS DERIVED PER ORIENTATION: bounding both orientations (what the straight-back
+// socket does until its marker dissolves) the cavity takes the 97.2 mm edge and a 94.4 mm edge sits 1.9 mm
+// loose per side; read as the 97.2 mm edge it is the 0.5 mm sleeve clearance. The envelope behind the socket
+// bounds both orientations at the longer edge. The construction below asks the same question of the OTHER
+// orientation, which is why it builds its own design record rather than reading the shipped one.
 test fn w_the_face_fit_is_derived_per_outlet_edge() -> Bool {
   let read = BlowerDuctDesign {
     blower: a16_blower_duct_design.blower,
