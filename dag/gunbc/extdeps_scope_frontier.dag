@@ -600,6 +600,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/cloudflare/account_api_tokens.dag",
   "dag/extdeps/cloudflare/r2.dag",
   "dag/extdeps/cloudflare/r2_buckets.dag",
+  "dag/extdeps/cloudflare/zone.dag",
   "dag/extdeps/deepseek/deepseek_v4_1_flash.dag",
   "dag/extdeps/nvidia/api_trial_terms.dag",
   "dag/extdeps/nvidia/nemotron_3_ultra.dag",
