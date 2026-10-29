@@ -2,9 +2,9 @@ module extdeps.cloud.gcp.iam_deny
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.types { String, NonEmptyStr, Secret, List }
+import std.types { String, NonEmptyStr, Secret, List, Bool }
 import extdeps.cloud.gcp.iam { IamCondition }
-import extdeps.cloud.gcp.gcp { GcpOperation }
+import extdeps.cloud.gcp.gcp { GcpOperation, GoogleRpcStatus }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
 
 import extdeps.ietf.http_semantics { GET, POST }
@@ -51,7 +51,7 @@ service gcp.IamDeny {
   operation CreatePolicy {
     requires Network
     input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr, rules: List<GcpDenyPolicyRule> }
-    output { operation_name: String from "name" }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
     transport rest { method: POST, path: "/v2/policies/\{attachment_point\}/denypolicies",
       query: { policyId: policy_id }, body: { rules: rules } }
     response {
@@ -59,6 +59,26 @@ service gcp.IamDeny {
       401 => GcpErrorShape
       403 => GcpErrorShape
       409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  // google.longrunning.Operations.GetOperation (google.aip.dev/151) for the operation a CreatePolicy
+  // returns: the create is accepted asynchronously and the policy is only read back once `done` is true.
+  // IAM v2 serves it at /v2/{name=policies/*/*/*/operations/*}, and the create's operation name is the
+  // path under /v2/ (policies/{attachment_point}/denypolicies/{policy_id}/operations/{operation_id}).
+  operation GetPolicyOperation {
+    requires Network
+    input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr, operation_id: NonEmptyStr }
+    output { operation_name: String from "name", done: Bool?, error: GoogleRpcStatus? }
+    readonly
+    transport rest { method: GET, path: "/v2/policies/\{attachment_point\}/denypolicies/\{policy_id\}/operations/\{operation_id\}" }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
       429 => GcpErrorShape
       5xx => GcpErrorShape
     }

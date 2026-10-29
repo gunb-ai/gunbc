@@ -11,6 +11,7 @@ import extdeps.cloud.gcp.gcp {
 import gunbc.auth.gcp_operation_wait {
   OperationRead, OperationUnreadable, OperationWaitReturn, OperationWaitSleepAndContinue,
   OperationWaitDone, OperationWaitFailed, OperationWaitBudgetSpent, OperationWaitUnreadable, OperationWaitIdentityMismatch, OperationWaitPacingRefused, operation_wait_after_pace,
+  IamDenyOperationNamed, IamDenyOperationNameMismatch, iam_deny_operation_name_parse,
   operation_wait_step, gcp_operation_poll_ticks, gcp_operation_budget_fits_actuation_allowance,
 }
 
@@ -67,4 +68,21 @@ test fn a_poll_answer_naming_another_operation_is_an_identity_mismatch_not_done(
 test fn a_failed_pace_is_a_pacing_refusal_and_never_a_continue() -> Bool {
   (match operation_wait_after_pace(operation_name: "op", paced: false, next_remaining: 4) { OperationWaitReturn { outcome: OperationWaitPacingRefused { operation_name: n } } => n == "op"  _ => false })
     && (match operation_wait_after_pace(operation_name: "op", paced: true, next_remaining: 4) { OperationWaitSleepAndContinue { next_remaining: n } => n == 4  _ => false })
+}
+
+// THE DENY CREATE'S OPERATION NAME must name the policy just created (AIP-151 operations.get target).
+test fn the_deny_operation_name_parse_accepts_the_created_policy_and_refuses_any_other() -> Bool {
+  let ok = "policies/ap/denypolicies/pol-a/operations/op-1"
+  (match iam_deny_operation_name_parse(name: ok, attachment_point: "ap", policy_id: "pol-a") { IamDenyOperationNamed { operation_id: id } => id == "op-1"  _ => false })
+    && (match iam_deny_operation_name_parse(name: ok, attachment_point: "ap", policy_id: "pol-b") { IamDenyOperationNameMismatch { reason: _ } => true  _ => false })
+    && (match iam_deny_operation_name_parse(name: ok, attachment_point: "other", policy_id: "pol-a") { IamDenyOperationNameMismatch { reason: _ } => true  _ => false })
+    && (match iam_deny_operation_name_parse(name: "policies/ap/denypolicies/pol-a/operations", attachment_point: "ap", policy_id: "pol-a") { IamDenyOperationNameMismatch { reason: _ } => true  _ => false })
+}
+
+// DONE POSITIVE vs NOT-DONE RED, through the shared step: not done with no ticks left is the spent
+// budget (never Done); done=true is Done.
+test fn a_deny_operation_not_done_is_never_done_and_done_true_is_done() -> Bool {
+  let n = "policies/ap/denypolicies/pol-a/operations/op-1"
+  (match operation_wait_step(operation_name: n, reading: OperationRead { returned_name: n, standing: gcp_operation_standing(done: Present { value: false }, error: Absent) }, remaining: 0) { OperationWaitReturn { outcome: OperationWaitBudgetSpent { operation_name: _ } } => true  _ => false })
+    && (match operation_wait_step(operation_name: n, reading: OperationRead { returned_name: n, standing: gcp_operation_standing(done: Present { value: true }, error: Absent) }, remaining: 0) { OperationWaitReturn { outcome: OperationWaitDone } => true  _ => false })
 }
