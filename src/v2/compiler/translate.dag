@@ -61,8 +61,9 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   rejected_with_pending,
-  diagnostics_fatal_reason
-, sequence_outcome }
+  diagnostics_fatal_reason,
+  sequence_outcome,
+}
 import v2.std.witness {
   Holds,
   Violates
