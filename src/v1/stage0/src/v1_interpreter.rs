@@ -30199,6 +30199,28 @@ mod value_depth_walker_tests {
         drop(weaks);
     }
 
+    // THE THIRD CARRIER TYPE, TESTED THE SAME WAY. detach_owned_children has three fallback arms
+    // (List, Map, fields), and the two above cover List and fields; without this one the Map arm could
+    // be deleted and the suite would stay green. Same shape: uniquely owned at every level, one `Weak`
+    // outstanding at every level, deep enough that detach_carriers is on.
+    #[test]
+    fn a_weak_held_map_chain_drops() {
+        let mut weaks: Vec<std::rc::Weak<_>> = Vec::with_capacity(DEPTH);
+        let mut value = map_value(HamtMap::new());
+        for level in 0..DEPTH {
+            let mut entries = HamtMap::new();
+            entries.insert(
+                CanonKey::new(Value::Int(level as i64)).expect("reflexive key"),
+                value,
+            );
+            let carrier = Rc::new(entries);
+            weaks.push(Rc::downgrade(&carrier));
+            value = Value::Map(carrier);
+        }
+        drop(value);
+        drop(weaks);
+    }
+
     // THE POSITIVE CONTROL: A SHARED CARRIER IS STILL NOT STOLEN. The fallback must drain only what the
     // dropping value exclusively owns. Here every level's carrier has a SECOND STRONG OWNER held
     // elsewhere, so the strong_count guard must keep it off the try_unwrap path entirely: after the
