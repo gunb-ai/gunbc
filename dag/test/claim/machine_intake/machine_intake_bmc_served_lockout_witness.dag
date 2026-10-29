@@ -256,14 +256,14 @@ test fn threshold_three_refuses_three_failing_logins_and_admits_two() -> Bool {
   let says_two_over_one = match list_head(budget_blocks(two_inside)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 2 && m == 1 && th == 3 && k == 1
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 2 && m == 1 && (th as Int) == 3 && k == 1
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
   let says_three_over_two = match list_head(budget_blocks(three_expired)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 3 && m == 2 && th == 3 && k == 0
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: k } => c == 3 && m == 2 && (th as Int) == 3 && k == 0
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }
@@ -312,7 +312,7 @@ test fn declared_retries_are_charged_as_logins() -> Bool {
   let says_four_over_three = match list_head(budget_blocks(two_declared)) {
     Absent => false
     Present { value: b } => match b {
-      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: _ } => c == 4 && m == 3 && th == 4
+      CostExceedsTheServedHeadroom { cost: c, may_fail: m, threshold: th, known_failures_in_window: _ } => c == 4 && m == 3 && (th as Int) == 4
       FailingLoginsWithNoServedThreshold { cost: _, cause: _ } => false
     }
   }

@@ -5,7 +5,7 @@ import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_leng
 import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import std.algebra { FreeSemigroup, length, list_head }
+import std.algebra { FreeSemigroup, length, list_head, skip }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -3573,9 +3573,20 @@ fn bmc_lockout_reading(surfaces: List<BmcLockoutSurfaceReading>, read_at: Observ
 // collapsed — and neither is ever taken from an absent property (the extdeps
 // shapes hold Option for exactly this reason; the reading turns an absent
 // threshold into LockoutThresholdUnread, never into 0).
+// A served threshold that locks the account: BOTH upstream sources bound it on both
+// sides, and the bound is carried rather than re-derived here — AccountService.v1_19_0
+// AccountLockoutThreshold is a UInt32 whose 0 means "never locked" (that arm is
+// AccountNeverLockedOutByThisController, so a value reaching this one is >= 1), and
+// the IPMI LAN Bad Password Threshold byte is 1..255 (ipmitool's
+// IPMI_LANP_BAD_PASS_THRESH). The product bound is therefore the union of the two
+// upstream bounds, min 1 to max the UInt32 ceiling. Derived counts (how many failures
+// fall in a window, how many a plan may still make) are plain Ints: they are computed
+// here, not served upstream, and clamping them is this module's own arithmetic.
+type BmcAccountLockoutFailedAttempts = Int where range(min: 1, max: 4294967295)
+
 type BmcLockoutThreshold =
     AccountNeverLockedOutByThisController { reason: NonEmptyStr }
-  | AccountLockedOutAfter { failed_attempts: Int }
+  | AccountLockedOutAfter { failed_attempts: BmcAccountLockoutFailedAttempts }
   | LockoutThresholdUnread { cause: NonEmptyStr }
 
 // The threshold whose REFUSAL the plan must fit, per surface. The two upstream
@@ -3635,24 +3646,16 @@ fn bmc_tightest_ipmi_threshold(reading: BmcControllerLockoutReading) -> BmcLocko
 }
 
 // THE TIGHTEST OF A LIST OF THRESHOLDS: unread beats a smaller number beats a
-// larger number beats "never locked out", so a single channel whose policy could
-// not be read makes the whole undetermined surface unread. Accumulated in a typed
-// record, because a fold over a bare Optional leaves the element type unrecoverable.
-type BmcTightestAccumulator sole_constructor {
-  seen: Bool
-  tightest: BmcLockoutThreshold
-}
-
+// larger number beats "never locked out", so a single channel whose policy could not
+// be read makes the whole undetermined surface unread. The empty list is answered by
+// its own arm rather than by a placeholder the accumulator has to be told is a
+// placeholder: presence here is the list's, and std.optional::Optional / list_head
+// already say it (DESIGN §3b, "Cardinality / absence").
 fn bmc_tightest_of(thresholds: List<BmcLockoutThreshold>) -> BmcLockoutThreshold {
-  let start = BmcTightestAccumulator {
-    seen: false,
-    tightest: LockoutThresholdUnread { cause: "no threshold was served on any addressed LAN channel of this controller" },
+  match list_head(thresholds) {
+    Absent => LockoutThresholdUnread { cause: "no threshold was served on any addressed LAN channel of this controller" }
+    Present { value: first } => fold(skip(thresholds, n: 1), init: first, f: (so_far, t) => bmc_tighter(a: so_far, b: t))
   }
-  let acc = fold(thresholds, init: start, f: (so_far, t) => BmcTightestAccumulator {
-    seen: true,
-    tightest: if so_far.seen { bmc_tighter(a: so_far.tightest, b: t) } else { t },
-  })
-  acc.tightest
 }
 
 fn bmc_tighter(a: BmcLockoutThreshold, b: BmcLockoutThreshold) -> BmcLockoutThreshold {
@@ -3660,7 +3663,7 @@ fn bmc_tighter(a: BmcLockoutThreshold, b: BmcLockoutThreshold) -> BmcLockoutThre
     LockoutThresholdUnread { cause: _ } => a
     AccountLockedOutAfter { failed_attempts: na } => match b {
       LockoutThresholdUnread { cause: _ } => b
-      AccountLockedOutAfter { failed_attempts: nb } => if nb < na { b } else { a }
+      AccountLockedOutAfter { failed_attempts: nb } => if (nb as Int) < (na as Int) { b } else { a }
       AccountNeverLockedOutByThisController { reason: _ } => a
     }
     AccountNeverLockedOutByThisController { reason: _ } => b
@@ -3779,7 +3782,7 @@ fn bmc_known_failures_in_window(known: List<BmcKnownFailedLogin>, key: BmcFailed
 // ── THE HEADROOM AND THE VERDICT ─────────────────────────────────────────────
 type BmcFailedLoginHeadroom =
     AccountNotLockedOutByThisController { reason: NonEmptyStr }
-  | HeadroomKnown { threshold: Int, known_failures_in_window: Int, may_fail: Int }
+  | HeadroomKnown { threshold: BmcAccountLockoutFailedAttempts, known_failures_in_window: Int, may_fail: Int }
   | HeadroomUnknown { cause: NonEmptyStr }
 
 fn bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey, reading: BmcControllerLockoutReading, known: List<BmcKnownFailedLogin>, now: EpochMs) -> BmcFailedLoginHeadroom {
@@ -3790,7 +3793,7 @@ fn bmc_failed_login_headroom(key: BmcFailedLoginBudgetKey, reading: BmcControlle
     AccountLockedOutAfter { failed_attempts: n } => {
       let window = bmc_failed_attempt_window(surface: key.surface, reading: reading)
       let used = bmc_known_failures_in_window(known: known, key: key, window: window, now: now)
-      let room = n - 1 - used
+      let room = (n as Int) - 1 - used
       HeadroomKnown { threshold: n, known_failures_in_window: used, may_fail: if room < 0 { 0 } else { room } }
     }
   }
@@ -3813,7 +3816,7 @@ fn bmc_lockout_threshold_for_key(key: BmcFailedLoginBudgetKey, reading: BmcContr
 // state). Collapsing them would tell an operator to shrink a plan that was
 // already small enough.
 type BmcFailedLoginBudgetBlock
-  = CostExceedsTheServedHeadroom { cost: Int, may_fail: Int, threshold: Int, known_failures_in_window: Int }
+  = CostExceedsTheServedHeadroom { cost: Int, may_fail: Int, threshold: BmcAccountLockoutFailedAttempts, known_failures_in_window: Int }
   | FailingLoginsWithNoServedThreshold { cost: Int, cause: NonEmptyStr }
 
 type BmcFailedLoginBudgetBlockReading {
