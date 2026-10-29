@@ -61,33 +61,33 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and refuse unbound at their own atoms; and the arm-block let's binder must stay readable from its rest,
 // which is what the plain `is_accepted` claim for that shape checks. A fix that dropped the binding, or
 // dropped either half, would flip one of these four.
-data lst_ctl_body_let_source: String = "module v2.test.lst_ctl_body_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
+data lst_ctl_body_let_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_body_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n  x\n}\n"
 
-data lst_ctl_arm_expr_source: String = "module v2.test.lst_ctl_arm_expr\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => i\n} }\n"
+data lst_ctl_arm_expr_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_arm_expr\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => v\n  LstB => i\n} }\n"
 
-data lst_ctl_arm_block_source: String = "module v2.test.lst_ctl_arm_block\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => { v }\n  LstB => i\n} }\n"
+data lst_ctl_arm_block_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_arm_block\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => { v }\n  LstB => i\n} }\n"
 
-data lst_ctl_if_branch_source: String = "module v2.test.lst_ctl_if_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(c: Bool, i: Int) -> Int { if c {\n    let x = i\n    x\n  } else { i } }\n"
+data lst_ctl_if_branch_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_if_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(c: Bool, i: Int) -> Int { if c {\n    let x = i\n    x\n  } else { i } }\n"
 
-data lst_ctl_fn_value_source: String = "module v2.test.lst_ctl_fn_value\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let g = fn(x) {\n    let y = x\n    y\n  }\n  i\n}\n"
+data lst_ctl_fn_value_source: String = "module v2.test.fixture.namespace_xl0.lst_ctl_fn_value\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let g = fn(x) {\n    let y = x\n    y\n  }\n  i\n}\n"
 
-data lst_tail_let_source: String = "module v2.test.lst_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n}\n"
+data lst_tail_let_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = i\n}\n"
 
-data lst_tail_let_after_let_source: String = "module v2.test.lst_tail_let_after_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int, j: Int) -> Int {\n  let a = i\n  let d = j\n}\n"
+data lst_tail_let_after_let_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_after_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int, j: Int) -> Int {\n  let a = i\n  let d = j\n}\n"
 
-data lst_tail_let_match_source: String = "module v2.test.lst_tail_let_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
+data lst_tail_let_match_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int {\n  let j = i\n  let d = match s {\n    LstA { v: v } => v\n    LstB => j\n  }\n}\n"
 
-data lst_tail_let_und_source: String = "module v2.test.lst_tail_let_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
+data lst_tail_let_und_source: String = "module v2.test.fixture.namespace_xl0.lst_tail_let_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\nfn lst_probe(i: Int) -> Int {\n  let x = lst_undeclared_tail_value\n}\n"
 
-data lst_arm_block_let_source: String = "module v2.test.lst_arm_block_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_uses(x: r)\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_let_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_block_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_uses(x: r)\n  }\n  LstB => i\n} }\n"
 
-data lst_arm_block_two_let_source: String = "module v2.test.lst_arm_block_two_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int, y: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    let q = i\n    lst_uses(x: r, y: q)\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_two_let_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_block_two_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int, y: Int) -> Int { x }\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    let q = i\n    lst_uses(x: r, y: q)\n  }\n  LstB => i\n} }\n"
 
-data lst_arm_tail_let_source: String = "module v2.test.lst_arm_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n  }\n  LstB => i\n} }\n"
-data lst_arm_block_if_match_source: String = "module v2.test.lst_arm_block_if_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The shape dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 authored: a braced arm block\n// whose first statement binds an `if` whose branches are matches, and whose last statement reads that\n// binding. Resolving it means the block is read as a statement sequence, not as a head.\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let chosen = if lst_predicate(i: v) {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => i\n      }\n    } else {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => 0\n      }\n    }\n    let shifted = chosen + 1\n    lst_uses(x: shifted)\n  }\n  LstB => i\n} }\n"
-data lst_if_match_branch_source: String = "module v2.test.lst_if_match_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The SIBLING leaf of the arm block (DESIGN \u00a76b root generalization): an `if` at term position whose\n// branches are braced statement sequences. One rule reads a braced block in term position, so a braced\n// if-branch must be read the same way as a braced arm body -- or the fix is a per-leaf patch.\nfn lst_probe(s: LstS, i: Int) -> Int { if lst_predicate(i: i) {\n  let left = lst_uses(x: i)\n  let scaled = left * 2\n  lst_uses(x: scaled)\n} else {\n  match s {\n    LstA { v: v } => lst_uses(x: v)\n    LstB => 0\n  }\n} }\n"
+data lst_arm_tail_let_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_tail_let\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n  }\n  LstB => i\n} }\n"
+data lst_arm_block_if_match_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_block_if_match\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The shape dag/gunbc/instruments/fabric_control_plane_live_probe.dag:1053 authored: a braced arm block\n// whose first statement binds an `if` whose branches are matches, and whose last statement reads that\n// binding. Resolving it means the block is read as a statement sequence, not as a head.\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let chosen = if lst_predicate(i: v) {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => i\n      }\n    } else {\n      match s {\n        LstA { v: w } => lst_uses(x: w)\n        LstB => 0\n      }\n    }\n    let shifted = chosen + 1\n    lst_uses(x: shifted)\n  }\n  LstB => i\n} }\n"
+data lst_if_match_branch_source: String = "module v2.test.fixture.namespace_xl0.lst_if_match_branch\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_uses(x: Int) -> Int { x }\n\nfn lst_predicate(i: Int) -> Bool { i > 0 }\n\n// The SIBLING leaf of the arm block (DESIGN \u00a76b root generalization): an `if` at term position whose\n// branches are braced statement sequences. One rule reads a braced block in term position, so a braced\n// if-branch must be read the same way as a braced arm body -- or the fix is a per-leaf patch.\nfn lst_probe(s: LstS, i: Int) -> Int { if lst_predicate(i: i) {\n  let left = lst_uses(x: i)\n  let scaled = left * 2\n  lst_uses(x: scaled)\n} else {\n  match s {\n    LstA { v: v } => lst_uses(x: v)\n    LstB => 0\n  }\n} }\n"
 
-data lst_arm_rest_und_source: String = "module v2.test.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
+data lst_arm_rest_und_source: String = "module v2.test.fixture.namespace_xl0.lst_arm_rest_und\n\nimport v2.std.logic { Bool }\nimport v2.std.integer { Int }\n\ntype LstS = LstA { v: Int } | LstB\n\nfn lst_probe(s: LstS, i: Int) -> Int { match s {\n  LstA { v: v } => {\n    let r = v\n    lst_undeclared_arm_rest\n  }\n  LstB => i\n} }\n"
 
 fn lst_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
   DagSourceReadWitness {
@@ -224,21 +224,21 @@ fn lst_outcomes() -> LstOutcomes {
     Rejected { diagnostics: _ } => LstContextRefused
     Accepted { value: context, diagnostics: _ } =>
       LstOutcomesDecided {
-        ctl_body_let: lst_verdict_in(context: context, module_name: "v2.test.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu),
-        ctl_arm_expr: lst_verdict_in(context: context, module_name: "v2.test.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu),
-        ctl_arm_block: lst_verdict_in(context: context, module_name: "v2.test.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu),
-        ctl_if_branch: lst_verdict_in(context: context, module_name: "v2.test.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu),
-        ctl_fn_value: lst_verdict_in(context: context, module_name: "v2.test.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu),
-        tail_let: lst_verdict_in(context: context, module_name: "v2.test.lst_tail_let", unit: ^lst_tail_let_cu),
-        tail_let_after_let: lst_verdict_in(context: context, module_name: "v2.test.lst_tail_let_after_let", unit: ^lst_tail_let_after_let_cu),
-        tail_let_match: lst_verdict_in(context: context, module_name: "v2.test.lst_tail_let_match", unit: ^lst_tail_let_match_cu),
-        tail_let_und: lst_verdict_in(context: context, module_name: "v2.test.lst_tail_let_und", unit: ^lst_tail_let_und_cu),
-        arm_block_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_let", unit: ^lst_arm_block_let_cu),
-        arm_block_two_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu),
-        arm_tail_let: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu),
-        arm_block_if_match: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu),
-        if_match_branch: lst_verdict_in(context: context, module_name: "v2.test.lst_if_match_branch", unit: ^lst_if_match_branch_cu),
-        arm_rest_und: lst_verdict_in(context: context, module_name: "v2.test.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu)
+        ctl_body_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_body_let", unit: ^lst_ctl_body_let_cu),
+        ctl_arm_expr: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_expr", unit: ^lst_ctl_arm_expr_cu),
+        ctl_arm_block: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_arm_block", unit: ^lst_ctl_arm_block_cu),
+        ctl_if_branch: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_if_branch", unit: ^lst_ctl_if_branch_cu),
+        ctl_fn_value: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_ctl_fn_value", unit: ^lst_ctl_fn_value_cu),
+        tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let", unit: ^lst_tail_let_cu),
+        tail_let_after_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_after_let", unit: ^lst_tail_let_after_let_cu),
+        tail_let_match: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_match", unit: ^lst_tail_let_match_cu),
+        tail_let_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_tail_let_und", unit: ^lst_tail_let_und_cu),
+        arm_block_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_let", unit: ^lst_arm_block_let_cu),
+        arm_block_two_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_two_let", unit: ^lst_arm_block_two_let_cu),
+        arm_tail_let: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_tail_let", unit: ^lst_arm_tail_let_cu),
+        arm_block_if_match: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_block_if_match", unit: ^lst_arm_block_if_match_cu),
+        if_match_branch: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_if_match_branch", unit: ^lst_if_match_branch_cu),
+        arm_rest_und: lst_verdict_in(context: context, module_name: "v2.test.fixture.namespace_xl0.lst_arm_rest_und", unit: ^lst_arm_rest_und_cu)
       }
   }
 }
