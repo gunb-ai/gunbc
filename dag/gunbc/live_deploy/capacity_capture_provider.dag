@@ -5,7 +5,8 @@ import std.types { String, NonEmptyStr, Timestamp, List, Bool }
 import gunbc.owned_directory { OwnedDirectoryTarget }
 import std.content_hash { sha256_hex_of_text }
 import std.scoped_authorization { AuthorizationClaimOutcome, ClaimHeld, ClaimLost, ClaimUndecided }
-import gunbc.authorization_claim_slot { claim_authorization_slot }
+import gunbc.authorization_claim_slot { claim_authorization_slot, settle_authorization_claim }
+import std.process { ExitSuccess, ExitFailure }
 import gunbc.compute.capacity_migration { CapacityManagedUnit }
 import std.fabric_blob { read_staged_fabric_blob, FabricBlobRead, FabricBlobReadRefused, fabric_blob_fault_text, fabric_blob_reading_digest, fabric_blob_reading_path }
 import std.error_primitives { Result, Ok, Err }
@@ -88,9 +89,9 @@ fn capacity_capture_claim_key(store: CapacityCaptureStore, host: NonEmptyStr, so
   ])))) as NonEmptyStr
 }
 
-fn capacity_capture_claim_admission(outcome: AuthorizationClaimOutcome) -> Result<NonEmptyStr, String> {
+fn capacity_capture_claim_admission(outcome: AuthorizationClaimOutcome) -> Result<CasGeneration, String> {
   match outcome {
-    ClaimHeld { state: _, generation: _ } => Ok { value: "capture-claimed" }
+    ClaimHeld { state: _, generation: generation } => Ok { value: generation }
     ClaimLost { holder: _ } => Err { value: "this source has already been claimed for capture in this apply" }
     ClaimUndecided { reason: why } => Err { value: why as String }
   }
@@ -193,9 +194,9 @@ fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalSto
   let at = match capacity_capture_approval_admission(store: store, source: source, approval: approval, now: now) {
     Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: value } => value
   }
-  match capacity_capture_claim_admission(outcome: claim_authorization_slot(
+  let claimed_at = match capacity_capture_claim_admission(outcome: claim_authorization_slot(
     escalation_id: capacity_capture_claim_key(store: store, host: approval.intent.host, source: source), attempt: store.attempt, at: at)) {
-    Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: _ } => {}
+    Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } } Ok { value: generation } => generation
   }
   let scope = serialize_json(v: json_array(elements: [json_string(s: journal.root as String), json_string(s: key as String)])) as NonEmptyStr
   match local_store_bind_retention(held: held, scope: scope) {
@@ -216,7 +217,18 @@ fn capacity_capture_publish_held(store: CapacityCaptureStore, provider: LocalSto
         file: CapacityGenerationFile { host: approval.intent.host, manager: subject.manager, unit: subject.unit, destination: source,
           digest: fabric_blob_reading_digest(reading: capture.reading), address: fabric_blob_reading_path(reading: capture.reading) }) {
         Err { value: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
-        Ok { value: _ } => Ok { value: capture }
+        Ok { value: _ } => {
+          let completed_at = match now() {
+            Err { value: why } => { return Err { value: CapacityCaptureBoundaryRefused { detail: why } } }
+            Ok { value: value } => value
+          }
+          match settle_authorization_claim(label: "cutover capture", outcome: ExitSuccess,
+            escalation_id: capacity_capture_claim_key(store: store, host: approval.intent.host, source: source),
+            attempt: store.attempt, held_at: claimed_at, at: completed_at) {
+            ExitSuccess => Ok { value: capture }
+            ExitFailure { code: _, reason: why } => Err { value: CapacityCaptureBoundaryRefused { detail: why } }
+          }
+        }
       }
     }
   }
